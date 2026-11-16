@@ -141,7 +141,9 @@ impl Host for Staged {
     }
 
     async fn settle(&self) {
-        self.stage.borrow_mut().settle();
+        let mut stage = self.stage.borrow_mut();
+        stage.settle();
+        stage.host().set_key_origin(None);
     }
 
     async fn sleep(&self, time: Duration) {

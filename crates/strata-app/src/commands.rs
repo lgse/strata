@@ -48,7 +48,7 @@ pub(crate) use menu_key::view_keys;
 pub(crate) use owners::{Holds, Situation};
 use owners::{Reach, reach};
 #[cfg(any(test, feature = "qa"))]
-pub(crate) use press::Origin;
+pub(crate) use press::{Origin, XKey};
 
 /// Declares [`Stage`] and the order a press is offered to its variants from one list, so a
 /// stage cannot be declared and never walked.

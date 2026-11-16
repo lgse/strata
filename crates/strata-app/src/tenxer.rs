@@ -45,13 +45,6 @@ impl ChordKind {
         };
         format!("{}-", key_catalog::label(&prefix))
     }
-
-    pub(crate) fn panel_name(self) -> String {
-        let prefix = match self {
-            Self::Go => key_catalog::label(&Keys::One(bindings::GO.shown())),
-        };
-        format!("Keys after {prefix}")
-    }
 }
 
 pub(crate) struct Tenxer {
@@ -138,10 +131,11 @@ pub(crate) fn arm_chord(app: &mut App, kind: ChordKind, rows: Vec<(String, Strin
         .filter(|(cap, _)| !cap.is_empty())
         .map(|(cap, label)| ChordOption::mention(cap, label))
         .collect();
+    let mark = kind.mark();
     app.tenxer.armed = Some(kind);
     app.tenxer.chord.arm(ChordMap {
-        mark: kind.mark(),
-        name: kind.panel_name(),
+        name: mark.clone(),
+        mark,
         options,
     });
 }

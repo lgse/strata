@@ -293,6 +293,12 @@ pub(crate) fn toggle_entry(
     session::toggle(app, entry, depth, tx);
 }
 
+/// Opens or updates the preview drawer on `entry` at `depth` without closing an already-open
+/// drawer (`enter_preview` in `src/ui/window/keyboard/preview.rs`).
+pub(crate) fn show_entry(app: &mut App, entry: FileEntry, depth: Option<usize>, tx: &mut Tx) {
+    session::show(app, entry, depth, tx);
+}
+
 /// Whether single clicks open files in the currently shown view.
 pub(crate) fn one_click_files_in_shown_view(app: &App) -> bool {
     let settings = shell::preferences(app);

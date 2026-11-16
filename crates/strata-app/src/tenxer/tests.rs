@@ -5,9 +5,9 @@ use strata_core::model::Location;
 
 use crate::{
     App,
-    commands::Origin,
+    commands::{Origin, XKey},
     host::offscreen::Offscreen,
-    shell,
+    preview, shell,
     test_support::{
         PATIENCE, folder_of, hosted, send_key,
         view::{all, text},
@@ -38,7 +38,11 @@ fn node_name(host: &Offscreen, key: &str) -> Option<String> {
 }
 
 fn open_and_focus(host: &mut Offscreen) -> tempfile::TempDir {
-    let folder = folder_of(&["alpha.txt", "beta.txt", "gamma.txt"]);
+    open_names_and_focus(host, &["alpha.txt", "beta.txt", "gamma.txt"])
+}
+
+fn open_names_and_focus(host: &mut Offscreen, names: &[&str]) -> tempfile::TempDir {
+    let folder = folder_of(names);
     host.app().open(Location::local(folder.path()));
     assert!(host.run_until(PATIENCE, |h| {
         h.app().browser().column_entry_counts(0).is_some()
@@ -50,6 +54,14 @@ fn open_and_focus(host: &mut Offscreen) -> tempfile::TempDir {
     });
     while host.turn() {}
     folder
+}
+
+fn ctrl() -> Mods {
+    Mods {
+        ctrl: true,
+        cmd: true,
+        ..Mods::default()
+    }
 }
 
 #[test]
@@ -142,13 +154,99 @@ fn russian_layout_origin_moves_cursor_without_replacing_selection() {
             while host.turn() {}
 
             // X keycode 44 is physical J, which types Cyrillic 'о' unshifted on `ru`.
-            host.set_key_origin(Some(Origin::from_x_keycode(44, Some('о'))));
+            host.set_key_origin(Some(Origin::from_x(XKey {
+                keycode: 44,
+                base: Some('о'),
+            })));
             tap(&mut host, char_key("о"), Mods::default());
             host.set_key_origin(None);
 
             let cursor = host.app().browser().focused_item().map(|(_, pos, _)| pos);
             assert_eq!(cursor, Some(1));
             assert_eq!(host.app().browser().selected_positions(0), vec![0]);
+        },
+    );
+}
+
+#[test]
+fn ctrl_d_ctrl_f_ctrl_b_and_ctrl_r_run_tenxer_collection_commands() {
+    hosted(
+        MODULE,
+        "ctrl_d_ctrl_f_ctrl_b_and_ctrl_r_run_tenxer_collection_commands",
+        |mut host| {
+            host.runtime().update(|app, _| {
+                shell::saved(app).change(|s| s.tenxer_mode = true);
+            });
+            let names: Vec<String> = (0..40).map(|i| format!("item-{i:02}.txt")).collect();
+            let refs: Vec<&str> = names.iter().map(String::as_str).collect();
+            let _folder = open_names_and_focus(&mut host, &refs);
+            host.app().browser().select(0, 0);
+            while host.turn() {}
+
+            tap(&mut host, Key::Command('d'), ctrl());
+            let half = host
+                .app()
+                .browser()
+                .focused_item()
+                .map(|(_, pos, _)| pos)
+                .expect("cursor");
+            assert!(half > 0 && half < 39, "Ctrl+D moves half a page: {half}");
+            assert_eq!(host.app().browser().selected_positions(0), vec![0]);
+
+            tap(&mut host, Key::Command('f'), ctrl());
+            let full = host
+                .app()
+                .browser()
+                .focused_item()
+                .map(|(_, pos, _)| pos)
+                .expect("cursor");
+            assert!(full > half, "Ctrl+F pages down: {half} -> {full}");
+            assert!(crate::filter::tenxer_mark(host.app()).is_none());
+
+            let prefs_before = shell::preferences(host.app()).clone();
+            tap(&mut host, Key::Command('b'), ctrl());
+            let back = host
+                .app()
+                .browser()
+                .focused_item()
+                .map(|(_, pos, _)| pos)
+                .expect("cursor");
+            assert!(back < full, "Ctrl+B pages up: {full} -> {back}");
+            assert_eq!(shell::preferences(host.app()), &prefs_before);
+
+            tap(&mut host, Key::Command('r'), ctrl());
+            let expected: Vec<usize> = (1..40).collect();
+            assert_eq!(host.app().browser().selected_positions(0), expected);
+            assert!(!host.app().rename.state.is_open());
+        },
+    );
+}
+
+#[test]
+fn l_and_right_on_file_keep_open_preview_instead_of_closing_it() {
+    hosted(
+        MODULE,
+        "l_and_right_on_file_keep_open_preview_instead_of_closing_it",
+        |mut host| {
+            host.runtime().update(|app, _| {
+                shell::saved(app).change(|s| {
+                    s.tenxer_mode = true;
+                    s.single_click_previews = false;
+                });
+            });
+            let _folder = open_and_focus(&mut host);
+            host.app().browser().select(0, 0);
+            while host.turn() {}
+
+            tap(&mut host, char_key("l"), Mods::default());
+            assert!(preview::panel_pressed(host.app()));
+            assert!(has_key(&host, "preview-close"));
+
+            // Pressing `l` or `Right` again on a file keeps the preview drawer open.
+            tap(&mut host, char_key("l"), Mods::default());
+            assert!(has_key(&host, "preview-close"));
+            tap(&mut host, Key::Right, Mods::default());
+            assert!(has_key(&host, "preview-close"));
         },
     );
 }

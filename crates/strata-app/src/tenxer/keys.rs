@@ -215,7 +215,7 @@ fn icons_keys(app: &mut App, press: &KeyPress, tx: &mut Tx) -> Option<Outcome> {
         arm_go(app);
         return Some(Outcome::Ran);
     }
-    run_non_ascii_collection(app, press, true, tx)
+    run_collection(app, press, true, tx)
 }
 
 fn rows_keys(app: &mut App, press: &KeyPress, tx: &mut Tx) -> Option<Outcome> {
@@ -234,7 +234,7 @@ fn rows_keys(app: &mut App, press: &KeyPress, tx: &mut Tx) -> Option<Outcome> {
         arm_go(app);
         return Some(Outcome::Ran);
     }
-    run_non_ascii_collection(app, press, false, tx)
+    run_collection(app, press, false, tx)
 }
 
 fn enter_or_open_folder(app: &mut App, tx: &mut Tx) {
@@ -255,38 +255,56 @@ fn enter_or_open_folder(app: &mut App, tx: &mut Tx) {
         return;
     }
     match preview::preview_target(entry) {
-        Some(target) => preview::toggle_entry(app, Some(target), app.browser.active_depth(), tx),
+        Some(target) => preview::show_entry(app, target, app.browser.active_depth(), tx),
         None => app.tenxer.flash.show(tr("Nothing to preview"), tx),
     }
 }
 
-fn run_non_ascii_collection(
-    app: &mut App,
-    press: &KeyPress,
-    icons: bool,
-    tx: &mut Tx,
-) -> Option<Outcome> {
-    if !press.used_fallback() && !press.aliased() {
-        return None;
+fn run_collection(app: &mut App, press: &KeyPress, icons: bool, tx: &mut Tx) -> Option<Outcome> {
+    if swallowed_on_hits(app, press) {
+        return Some(Outcome::Ran);
     }
-    let command = collection_command(press, icons)?;
+    let command = non_native_step(press, icons)
+        .map(|dir| Nav::Cursor(Target::Step(dir)))
+        .or_else(|| mapped_collection_command(app, press))?;
     run_collection_command(app, command, tx).then_some(Outcome::Ran)
 }
 
-fn collection_command(press: &KeyPress, icons: bool) -> Option<Nav> {
-    if let Some(dir) = step_direction(press, icons) {
-        return Some(Nav::Cursor(Target::Step(dir)));
+fn non_native_step(press: &KeyPress, icons: bool) -> Option<Direction> {
+    if !press.used_fallback() && !press.aliased() {
+        return None;
     }
-    const MAPPED: [(key_catalog::Command, Nav); 8] = [
+    step_direction(press, icons)
+}
+
+fn swallowed_on_hits(app: &App, press: &KeyPress) -> bool {
+    filter::search_active(app)
+        && (press.is(FIRST_ITEM)
+            || press.is(END_KEY)
+            || press.is(PAGE_UP_KEY)
+            || press.is(PAGE_DOWN_KEY))
+}
+
+fn mapped_collection_command(app: &App, press: &KeyPress) -> Option<Nav> {
+    if press.is(SELECT_ALL) {
+        return filter::targets::selected(app)
+            .is_none()
+            .then_some(Nav::SelectAll);
+    }
+    const MAPPED: [(key_catalog::Command, Nav); 12] = [
         (VISUAL_SELECT, Nav::Range(RangeKind::Select)),
         (VISUAL_UNSET, Nav::Range(RangeKind::Unset)),
+        (FIRST_ITEM, Nav::Cursor(Target::First)),
+        (FIRST_ITEM_UP, Nav::Cursor(Target::First)),
         (LAST_ITEM, Nav::Cursor(Target::Last)),
+        (LAST_ITEM_DOWN, Nav::Cursor(Target::Last)),
+        (PAGE_UP, Nav::Cursor(Target::Page(Vertical::Up))),
+        (PAGE_DOWN, Nav::Cursor(Target::Page(Vertical::Down))),
         (HALF_PAGE_UP, Nav::Cursor(Target::HalfPage(Vertical::Up))),
         (
             HALF_PAGE_DOWN,
             Nav::Cursor(Target::HalfPage(Vertical::Down)),
         ),
-        (SELECT_ALL, Nav::SelectAll),
         (INVERT_SELECTION, Nav::Invert),
         (OPEN, Nav::Activate),
     ];
@@ -313,14 +331,17 @@ fn step_direction(press: &KeyPress, icons: bool) -> Option<Direction> {
 /// Default-map keys of window commands that 10xer mode leaves unbound or binds to other keys
 /// (`claims_unbound_command` in `src/ui/window/keyboard/tenxer.rs`).
 fn claims_unbound_command(press: &KeyPress) -> bool {
-    [
-        DUPLICATE,
-        FILTER,
-        SIDEBAR,
-        RENAME,
-        ARROW_SCOPE,
-        JUMP_TO_FOLDER,
-    ]
-    .into_iter()
-    .any(|command| press.is(command.in_map(Map::Default)) && !press.is(command.in_map(Map::Tenxer)))
+    press.is(TAB_NEW)
+        || [
+            DUPLICATE,
+            FILTER,
+            SIDEBAR,
+            RENAME,
+            ARROW_SCOPE,
+            JUMP_TO_FOLDER,
+        ]
+        .into_iter()
+        .any(|command| {
+            press.is(command.in_map(Map::Default)) && !press.is(command.in_map(Map::Tenxer))
+        })
 }

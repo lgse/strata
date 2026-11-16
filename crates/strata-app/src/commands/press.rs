@@ -37,6 +37,15 @@ pub(crate) struct Origin {
     pub(crate) base: Option<char>,
 }
 
+/// An X keycode (`evdev + 8`) and the unshifted character the active layout types there, for
+/// the offscreen QA host (Rune packet entry 97).
+#[cfg(any(test, feature = "qa"))]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct XKey {
+    pub(crate) keycode: u32,
+    pub(crate) base: Option<char>,
+}
+
 impl Origin {
     /// The origin of the key a handler is seeing.
     pub(super) fn of(tx: &Tx) -> Self {
@@ -46,14 +55,17 @@ impl Origin {
         }
     }
 
-    /// An origin from an X keycode (`evdev + 8`) and the unshifted character the active layout
-    /// types there: what the offscreen QA host supplies while `Runtime::physical_key_input` is
-    /// private (Rune packet entry 97).
+    /// An origin from [`XKey`], while `Runtime::physical_key_input` is private (Rune packet
+    /// entry 97).
     #[cfg(any(test, feature = "qa"))]
-    pub(crate) fn from_x_keycode(keycode: u32, base: Option<char>) -> Self {
+    pub(crate) fn from_x(key: XKey) -> Self {
+        let physical = MAIN_BLOCK_ROWS.iter().find_map(|(first, keys)| {
+            let along = usize::try_from(key.keycode.checked_sub(*first)?).ok()?;
+            keys.get(along).copied()
+        });
         Self {
-            physical: physical_for_x_keycode(keycode),
-            base,
+            physical,
+            base: key.base,
         }
     }
 }
@@ -139,14 +151,6 @@ fn x_keycode(physical: PhysicalKeyCode) -> Option<u32> {
     MAIN_BLOCK_ROWS.iter().find_map(|(first, keys)| {
         let along = keys.iter().position(|key| *key == physical)?;
         u32::try_from(along).ok().map(|along| first + along)
-    })
-}
-
-#[cfg(any(test, feature = "qa"))]
-fn physical_for_x_keycode(keycode: u32) -> Option<PhysicalKeyCode> {
-    MAIN_BLOCK_ROWS.iter().find_map(|(first, keys)| {
-        let along = usize::try_from(keycode.checked_sub(*first)?).ok()?;
-        keys.get(along).copied()
     })
 }
 

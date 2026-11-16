@@ -12,7 +12,7 @@ use super::{
     keymap::{self, Layout},
     keys::{self, Named},
 };
-use crate::commands::Origin;
+use crate::commands::{Origin, XKey};
 
 #[derive(Default)]
 pub(super) struct Keyboard {
@@ -60,6 +60,7 @@ impl Keyboard {
 
     /// The press of the key a scenario names, with `with` held beside what is down already.
     pub(super) fn press(&self, name: &str, with: &[Modifier]) -> Result<KeyEvent, String> {
+        self.origin.set(None);
         let mut held = self.held.clone();
         held.extend(with);
         let shift = held.contains(&Modifier::Shift);
@@ -74,7 +75,10 @@ impl Keyboard {
                 let typed = layout
                     .typed(name, shift, altgr)
                     .ok_or_else(|| format!("no key of a US keyboard is named {name:?}"))?;
-                let origin = Origin::from_x_keycode(typed.keycode, typed.base);
+                let origin = Origin::from_x(XKey {
+                    keycode: typed.keycode,
+                    base: typed.base,
+                });
                 (typed.key, typed.shift, typed.us, Some(origin))
             }
         };

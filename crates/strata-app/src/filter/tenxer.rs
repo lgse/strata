@@ -107,7 +107,7 @@ pub(super) fn fallback_vim_arrow(press: &KeyPress) -> Option<Direction> {
     }
 }
 
-pub(super) fn result_vim_arrow(app: &mut App, call: &Call<'_>, _: &mut Tx) -> Outcome {
+pub(super) fn result_vim_arrow(app: &mut App, call: &Call<'_>, tx: &mut Tx) -> Outcome {
     let Some(dir) = call.press.and_then(fallback_vim_arrow) else {
         return Outcome::Declined;
     };
@@ -115,15 +115,15 @@ pub(super) fn result_vim_arrow(app: &mut App, call: &Call<'_>, _: &mut Tx) -> Ou
     if !prefs.tenxer_mode && prefs.type_to_search {
         return Outcome::Declined;
     }
-    let Some(handle) = crate::tenxer::active_key_handle(app) else {
-        return Outcome::Declined;
-    };
     let target = NavTarget::Step(dir);
     let command = if prefs.tenxer_mode {
         NavCommand::Cursor(target)
     } else {
         NavCommand::Select(target)
     };
-    handle.run(command);
-    Outcome::Ran
+    if crate::tenxer::run_collection_command(app, command, tx) {
+        Outcome::Ran
+    } else {
+        Outcome::Declined
+    }
 }
