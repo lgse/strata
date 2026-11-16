@@ -1940,3 +1940,27 @@ sequence only together with the alphabet's version, so the version is part of th
   `v1-000000000000000f` is parked in `tests/qa/fuzz/corpus/clipboard/parked`; `clipboard v4` moves
   the pointer onto a clicked folder's opened column and pastes into `archive` via the
   selected-folder route from `$root`.
+
+### #2546: after a drag-move out of the folder, GTK gives the keyboard to the neighbouring row, Rune to none
+
+- **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2546), filed on
+  2026-11-16 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** in [A19](packages/A19.md)'s survey of
+  `cross_volume_drop/cross-volume-enter-choice/{columns,icons,list}-move` on Rune. With
+  `todo.txt` selected and holding the keyboard, a drag onto `drop-volume` and the "Copy or
+  move?" prompt's Move take the file out of the shown folder; line 25 waits for
+  `focused: "readme.md"` without a key. Driven on GTK (`qa-drive.sh`, List, 2026-11-16): the
+  focus ring is on `readme.md`, nothing is selected, and the next Down acts from `readme.md`.
+  On Rune no row has the keyboard (`focused: null`).
+- **Why:** a drag-move out is one of the shared `Browser`'s selectionless removals
+  (`set_selectionless_removals`), so it places no cursor; GTK's `GtkListBase` moves its
+  widget focus to the neighbour anyway. Rune's views let go of a cursor whose entry left a
+  complete listing (`handover::sync_rule`, `CursorGone::Clear`, as C1e documents for a plain
+  move out). It is not `main`'s bug [#2361](https://github.com/lgse/strata/issues/2361): GTK
+  draws the cursor where its snapshot says.
+- **Concerns:** `crates/strata-app/src/handover.rs` and
+  `crates/strata-components/src/collection/selection/mod.rs` (`CursorGone`), the shared
+  handover contract. Giving the neighbour the keyboard unselected must not hand the browser a
+  cursor GTK's browser never gets: in Columns a browser cursor on a folder opens it. Any
+  other move out of the shown folder (a cut and paste, A12's) likely shows the same.
+- **State:** open. The three runs stay `pending` on it in `tests/qa/parity/cross_volume_drop.toml`.

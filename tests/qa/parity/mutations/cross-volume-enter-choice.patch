@@ -1,0 +1,13 @@
+diff --git a/crates/strata-app/src/drop_dialog.rs b/crates/strata-app/src/drop_dialog.rs
+index 7b8701e51..0ab647a20 100644
+--- a/crates/strata-app/src/drop_dialog.rs
++++ b/crates/strata-app/src/drop_dialog.rs
+@@ -164,7 +164,7 @@ fn build(app: &App, frame: &mut Frame<'_, App>) -> Option<El> {
+         .message(tr(cross_volume_drop_description(shown.volume)))
+         .action("cancel", tr("Cancel"), dismiss)
+         .action("move", tr("Move"), |app| choose(app, true))
+-        .primary(tr("Copy"), |app| choose(app, false))
++        .primary(tr("Copy"), |app| choose(app, true))
+         .initial_focus(Focus::Primary)
+         .default_button(false)
+         .close_label(tr("Close dialog"))

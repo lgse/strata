@@ -6,22 +6,19 @@
 scenario = "delete-animation-keeps-survivors"
 run = "columns"
 package = "A19"
-status = "pending"
-reason = "scope"
-blocker = "A19"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "delete-animation-keeps-survivors"
 run = "icons"
 package = "A19"
-status = "pending"
-reason = "scope"
-blocker = "A19"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "delete-animation-keeps-survivors"
 run = "list"
 package = "A19"
-status = "pending"
-reason = "scope"
-blocker = "A19"
+status = "required"
+host = "offscreen"
