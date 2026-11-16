@@ -8,15 +8,16 @@
 //! `src/ui/search/panel.rs`, `src/ui/search/results.rs`, `src/ui/window/composition/search.rs`
 //! and `.search-*` in `src/style.css`).
 //!
-//! **Rune 2a44156: partly.** C15's modal shell (`El::modal`, `backdrop_blur`, presence
-//! motion), core `text_input` (`on_input_key`, `on_secondary_press`, `active_descendant`),
-//! `virtual_rows` with `on_visible_rows` (and the set size and positions Rune gives virtual
-//! rows), `Tx::scroll_to_y` and `Tx::scroll_into_view_in`, `live_region`, `truncate_middle`
-//! on rich text, `Tx::wake_after` and `rune::Latest` cover it. Missing: the combobox role on an
-//! input (U-C6-1), virtual rows that show content added above at offset 0 (U-C17-3) and
-//! `reveal_selected` on rows built by index (U-C17-4), both worked around with scroll requests,
-//! and input-method events in scripts (U-C6-7). `Tx::focus` and `El::modal_tx` (22aa8cde)
-//! cover the focus an open hands over and the dismissal's intent.
+//! **Rune 631e8a67: partly.** C15's modal shell (`El::modal_tx`, `backdrop_blur`, presence
+//! motion), core `text_input` (`on_input_key`, `on_secondary_press`, `active_descendant`, Linux
+//! primary selection and middle-click paste, IME finish-on-blur), `El::on_middle_press` and
+//! `El::on_background_press_tx`, `virtual_rows` with `on_visible_rows` (and the set size and
+//! positions Rune gives virtual rows), `Tx::scroll_into_view_in`, `Tx::focus_when_shown`,
+//! `live_region`, `truncate_middle` on rich text, `Tx::wake_after` and `rune::Latest` cover it.
+//! Missing: the combobox role on an input (U-C6-1), virtual rows that show content added above at
+//! offset 0 (U-C17-3) and `reveal_selected` on rows built by index (U-C17-4; `#972` landed the
+//! `Tx::scroll_key_to` half of packet entry 29), worked around with place-keyed rows and scroll
+//! reveals.
 //!
 //! # Hosting
 //!
@@ -110,9 +111,10 @@
 //!   result it shows.
 //! - **Closing and focus.** C15's shell: Escape, a click outside and the host's toggle close
 //!   it, and Rune's modal gives focus back to the opener. Opening a result or its folder
-//!   closes it at once and focuses [`SearchPalette::return_focus_on_open`] with `Tx::focus`, so
-//!   focus goes to the revealed item's view instead: focus the closing change puts outside a
-//!   modal stays there (`runtime/input/modal_focus.rs`).
+//!   closes it at once and focuses [`SearchPalette::return_focus_on_open`] with
+//!   `Tx::focus_when_shown`, so focus goes to the revealed item's view whether it is already
+//!   mounted or arrives on a later commit: focus the closing change puts outside a modal stays
+//!   there (`runtime/input/modal_focus.rs`).
 //!
 //! # What assistive technology hears
 //!
@@ -166,7 +168,7 @@
 //! | Up and Down move the highlight while the caret stays in the query field… | scripts `arrows`, `arrows-second`; tests `up_and_down_leave_the_caret_where_it_was`, `arrows_keep_the_highlighted_row_in_view`, `arrows_while_composing_leave_the_highlight`, `a_resting_pointer_never_moves_the_highlight` |
 //! | When the first result is preselected, one Down highlights the second result | script `arrows-second`; unit `a_new_query_highlights_its_first_result_and_arrows_stop_at_the_ends`; test `a_new_query_s_highlighted_first_result_shows_after_arrowing_down` (a new query scrolls to the top: coordinator ruling) |
 //! | Enter or a single click on a result opens it and closes search | scripts `enter-opens`, `click-opens`; tests `a_press_held_while_a_batch_moves_its_row_opens_nothing` (left and middle), `a_click_between_batches_still_acts_on_its_row` |
-//! | With an input method composing…, Enter that the input method passes back… opens the highlighted result | test `an_enter_after_the_composition_commits_opens_the_highlighted_result` (scripts have no input-method events: U-C6-7) |
+//! | With an input method composing…, Enter that the input method passes back… opens the highlighted result | test `an_enter_after_the_composition_commits_opens_the_highlighted_result` |
 //! | Alt+Enter, or right-click → Open containing folder, closes search and opens the result's parent… | scripts `reveal-alt-enter`, `reveal-menu` (the menu is a stand-in for C21's; the parent and selection are Strata's); test `a_right_press_held_while_a_batch_moves_its_row_asks_for_no_menu` |
 //! | Alt+Enter with Hyper or Meta held also opens the containing folder | script `reveal-alt-super-enter` (Rune reports those as Super) |
 //! | Escape, or a click outside the dialog panel, closes search | scripts `escape-closes`, `click-outside-closes`; test `shift_escape_closes_as_escape_does` (Strata's `ESCAPE_ANY`) |
@@ -231,16 +233,16 @@
 //!   does nothing and the palette stays open.
 //! - **Matched characters on both lines**, from W1's `MatchedText` (the WP asks for it); Strata
 //!   highlights none. Coloured, not bold.
-//! - **A count live region** (owner ruling), hidden as Strata shows no count.
+//! - **A count live region** (owner ruling), hidden as Strata shows no count; kept as the
+//!   `{key}-status` element rather than `Tx::announce` so tests and accessibility goldens can
+//!   read its state in the tree.
 //! - **The dialogs are named** "Search files and folders" and "Jump to a folder" (owner ruling);
 //!   Strata's panel is unnamed.
 //! - **Kit tokens for the look**: the Kit's hover and selected row fills and its focus border
 //!   for the highlight's outline, where Strata uses accent alphas; the name at the Kit's medium
 //!   weight, not 650.
-//! - **The unavailable field is read-only**, not disabled: at 5d421fd `El::disabled` neither
-//!   stopped a `text_input` taking focus nor editing (probe P4; later Rune changes `disabled`
-//!   to opt out of focus, not re-probed here). With no edit handler it takes neither, and reads
-//!   read-only.
+//! - **The unavailable field is read-only**, not disabled: with no edit handler it takes neither
+//!   text nor focus, and reads read-only.
 //! - **Panel sizes are module constants** citing Strata's CSS (owner ruling).
 //!
 //! # What stays in Strata
@@ -257,9 +259,8 @@
 //!
 //! - U-C17-1 is unused: the hidden live region works (probe P5).
 //! - Reused: U-C6-1 (the combobox group), U-C21-2 (rune-kit inputs take no secondary press),
-//!   U-C6-7 (no input-method events in scripts:
-//!   in-process tests), U-C25-3 (scripts can't see a drawn image), #203 (a `virtual_rows` count
-//!   change re-reads every key: a 10,000-result batch is the slowest figure, about 4 ms).
+//!   U-C25-3 (scripts can't see a drawn image), #203 (a `virtual_rows` count change re-reads
+//!   every key: a 10,000-result batch is the slowest figure, about 4 ms).
 //! - **U-C17-3 (draft, not filed): `virtual_rows` keeps its first visible row at offset 0.**
 //!   `El::scroll_anchor`'s docs (`el/scroll.rs:126-133`) say anchoring holds "only while the
 //!   viewport is … scrolled off its top … at the very top new content above shows", and that
@@ -276,16 +277,18 @@
 //!   keyed by place, so the anchored key keeps its place and the offset stays. (Round 1 asked
 //!   for an instant scroll to the old offset in the batch's commit instead; that request beat
 //!   a wheel or fling in the same frame, review round 2's B1.)
-//! - **U-C17-4 (draft, not filed): `reveal_selected` does nothing for rows built by index.** At
-//!   the pin, `runtime/commit/measure.rs:531` checks `focus.reveal_selected` only in the branch
-//!   for rows handed over as children (`virtualize`), not for `virtual_rows`' index-built rows,
-//!   so a changed `focus_selected` row never scrolls into view. Repro, headless (same file): a
-//!   200 pt viewport over 100 rows of 20 pt with `.reveal_selected(true)`, row `i` built
+//! - **U-C17-4 (draft, not filed; packet entry 29): `reveal_selected` does nothing for rows built
+//!   by index.** At Rune 631e8a67, `runtime/commit/measure.rs:659` still checks
+//!   `focus.reveal_selected` only in the branch for rows handed over as children (`virtualize`),
+//!   not for `virtual_rows`' index-built rows (`#972` landed the `Tx::scroll_key_to` half of
+//!   packet entry 29, which places unmounted virtual rows at a fixed offset and stops momentum),
+//!   so a changed `focus_selected` row never scrolls into view on its own. Repro, headless (same
+//!   file): a 200 pt viewport over 100 rows of 20 pt with `.reveal_selected(true)`, row `i` built
 //!   `.focus_selected(i == s.selected)`; set `selected = 60`: with the rows as `virtualize`
 //!   children, row 60 is revealed at y = 180; built by index with `virtual_rows`, it is never
-//!   mounted and the viewport stays at 0. Ask: the same reveal for index-built rows (their keys are known). Searched upstream
-//!   ("reveal_selected", "virtual_rows reveal"): none. Here: an arrow reveals its row with
-//!   `Tx::scroll_into_view_in`, and `deliver` scrolls for answers.
+//!   mounted and the viewport stays at 0. Ask: the same reveal for index-built rows (their keys
+//!   are known). Here: an arrow reveals its row minimally with `Tx::scroll_into_view_in`, and
+//!   `deliver` scrolls for answers.
 //!
 //! # Follow-ups
 //!

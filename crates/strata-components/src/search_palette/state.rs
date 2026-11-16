@@ -198,7 +198,6 @@ impl PaletteState {
             return Polled::default();
         }
         self.edit.replace_text(text);
-        self.edit.set_caret(text.len());
         self.edited()
     }
 
@@ -344,14 +343,20 @@ impl PaletteState {
     }
 
     /// Closes after a result opened, focusing the host's
-    /// [`super::SearchPalette::return_focus_on_open`]: focus the closing change puts outside the
-    /// modal stays there, so the modal hands nothing back to its opener.
+    /// [`super::SearchPalette::return_focus_on_open`] once shown: focus the closing change puts
+    /// outside the modal stays there, and `Tx::focus_when_shown` waits if the target view is still
+    /// mounting or loading.
     fn finish(&mut self, intent: PaletteIntent, by: By, tx: &mut Tx) -> Polled {
         let mut out = Polled::changed();
         out.push(intent);
         out.intents.extend(self.close_by(by).intents);
-        if let Some(to) = self.return_to.borrow().clone() {
-            tx.focus(to, tx.focus_visible() || tx.by_keys());
+        if let Some(to) = self
+            .return_to
+            .borrow()
+            .clone()
+            .filter(|key| !key.is_empty())
+        {
+            tx.focus_when_shown(to, tx.focus_visible() || tx.by_keys());
         }
         out
     }

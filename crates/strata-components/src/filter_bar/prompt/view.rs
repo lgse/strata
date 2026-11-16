@@ -164,48 +164,9 @@ impl<S: 'static, K: Copy + PartialEq + std::fmt::Debug + 'static> FooterPrompt<S
         let st = (self.get)(s);
         let spec = st.spec()?;
         let k = &look.kit;
-        let me = Rc::new(self.clone());
-        let handlers = handlers(&me);
         let hint = self.hint(s);
-        let field_key = self.field_key();
         let list = !st.candidates().is_empty();
-        let mut input = field::input(
-            look,
-            &st.edit,
-            &Spec {
-                key: &field_key,
-                label: &spec.name,
-                placeholder: None,
-                description: hint.as_deref(),
-                invalid: st.invalid(),
-                font: k.ty.ui_compact,
-            },
-            &handlers,
-        );
-        if list && let Some(i) = st.chosen_index() {
-            input = input.active_descendant(self.option_key(i));
-        }
-        let framed = field::frame(
-            look,
-            field::frame_row(look, format!("{}-box", self.key)).child(input),
-            st.edit.focused,
-            st.invalid(),
-            &handlers.menu,
-        );
-        // A text input is always a text box to Rune's accessibility (Rune draft U-C6-1), so a
-        // prompt with candidates is a combobox group around it, as C6's entry is.
-        let field_part = if spec.legend.is_some() {
-            row()
-                .key(format!("{}-combo", self.key))
-                .role("combobox")
-                .label(spec.name.clone())
-                .expanded(list)
-                .grow(1.0)
-                .min_w(0.0)
-                .child(framed)
-        } else {
-            row().grow(1.0).min_w(0.0).child(framed)
-        };
+        let field_part = self.field_part(st, look, hint.as_deref())?;
         let mut bar = row()
             .key(self.key.clone())
             .w_full()
@@ -223,16 +184,17 @@ impl<S: 'static, K: Copy + PartialEq + std::fmt::Debug + 'static> FooterPrompt<S
             )
             .child(field_part);
         if let Some(h) = &hint {
+            let ink = if st.invalid() {
+                k.c.danger.fg
+            } else {
+                k.c.text_muted
+            };
             bar = bar.child(
                 // The field's description says it.
                 text(h.clone())
                     .key(format!("{}-hint", self.key))
                     .font(k.ty.small)
-                    .color(if st.invalid() {
-                        k.c.danger.fg
-                    } else {
-                        k.c.text_muted
-                    })
+                    .color(ink)
                     .truncate()
                     .shrink()
                     .a11y_hidden(),
@@ -249,6 +211,54 @@ impl<S: 'static, K: Copy + PartialEq + std::fmt::Debug + 'static> FooterPrompt<S
             layer.push(self.candidates(s, look, width));
         }
         Some(bar)
+    }
+
+    fn field_part(&self, st: &PromptState<K>, look: &Look, hint: Option<&str>) -> Option<El> {
+        let spec = st.spec()?;
+        let k = &look.kit;
+        let me = Rc::new(self.clone());
+        let handlers = handlers(&me);
+        let field_key = self.field_key();
+        let list = !st.candidates().is_empty();
+        let active = st
+            .chosen_index()
+            .filter(|_| list)
+            .map_or_else(String::new, |i| self.option_key(i));
+        let input = field::input(
+            look,
+            &st.edit,
+            &Spec {
+                key: &field_key,
+                label: &spec.name,
+                placeholder: None,
+                description: hint,
+                invalid: st.invalid(),
+                font: k.ty.ui_compact,
+            },
+            &handlers,
+        )
+        .active_descendant(active);
+        let framed = field::frame(
+            look,
+            field::frame_row(look, format!("{}-box", self.key)).child(input),
+            st.edit.focused,
+            st.invalid(),
+            &handlers.menu,
+        );
+        // A text input is always a text box to Rune's accessibility (Rune draft U-C6-1), so a
+        // prompt with candidates is a combobox group around it, as C6's entry is.
+        Some(if spec.legend.is_some() {
+            row()
+                .key(format!("{}-combo", self.key))
+                .role("combobox")
+                .label(spec.name.clone())
+                .expanded(list)
+                .grow(1.0)
+                .min_w(0.0)
+                .child(framed)
+        } else {
+            row().grow(1.0).min_w(0.0).child(framed)
+        })
     }
 
     /// The candidate list, anchored above the field: rows with a folder icon, the name with
@@ -363,7 +373,7 @@ impl<S: 'static, K: Copy + PartialEq + std::fmt::Debug + 'static> FooterPrompt<S
             .padding(look.space.xxs)
             // The field keeps the keyboard while the pointer picks a row.
             .preserve_focus_on_press(true)
-            .on_press(|_: &mut S| {})
+            .on_background_press(|_: &mut S| {})
             .instant_changes()
             .child(viewport)
             .child(keys);

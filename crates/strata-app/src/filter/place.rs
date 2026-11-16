@@ -156,6 +156,6 @@ impl Where {
             Self::Columns => app.columns.land(depth, id, &app.look, tx),
             _ => app.filter.pane.land(self.view_key(), id, tx),
         }
-        tx.focus(self.view_key(), true);
+        tx.focus_when_shown(self.view_key(), true);
     }
 }

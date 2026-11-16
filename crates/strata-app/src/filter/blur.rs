@@ -6,7 +6,7 @@
 
 use rune::Tx;
 
-use super::{Refocus, bar, place::Where, route};
+use super::{bar, place::Where, route};
 use crate::{
     App,
     commands::{Holds, Situation},
@@ -21,7 +21,7 @@ fn in_filtered_column(app: &App, depth: usize, focused: Option<&str>) -> bool {
 
 /// Overlays and transitions that keep a Columns filter open while focus is outside its column.
 fn keeps_filter_open(app: &App, tx: &Tx) -> bool {
-    if app.filter.refocus != Refocus::No || app.filter.state.tenxer() || app.sort.holds_focus() {
+    if app.filter.refocus_field || app.filter.state.tenxer() || app.sort.holds_focus() {
         return true;
     }
     matches!(

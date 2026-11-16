@@ -154,7 +154,7 @@ pub(crate) fn toggle(app: &mut App, opener: Opener, tx: &mut Tx) {
         returns: opener.in_columns.then_some(view).flatten(),
     });
     if let Some(first) = menu::stops(app).first() {
-        tx.focus(*first, true);
+        tx.focus_when_shown(*first, true);
     }
 }
 
@@ -183,7 +183,7 @@ impl Sort {
 /// keyboard goes back to the Columns view after it closed there. True when anything changed.
 fn follow(app: &mut App, tx: &mut Tx) -> bool {
     if let Some(key) = app.sort.refocus.take() {
-        tx.focus(key, true);
+        tx.focus_when_shown(key, true);
         return true;
     }
     let Some(open) = app.sort.open.as_ref() else {

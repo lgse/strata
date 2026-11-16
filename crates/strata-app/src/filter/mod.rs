@@ -100,16 +100,6 @@ const KEY: &str = "filter";
 /// GTK's `FILTER_DEBOUNCE_DELAY`: how long an edit waits before it asks for results.
 const DEBOUNCE: Duration = Duration::from_millis(40);
 
-/// Where the field's keyboard is after a `/` opened a folder.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Refocus {
-    No,
-    /// The folder's column is on its way.
-    Waiting,
-    /// It is listed, and its listing took the keyboard: the field takes it back.
-    Arrived,
-}
-
 /// The view and the column the filter is open in, and that column's folder.
 #[derive(Clone, Debug, PartialEq)]
 struct OpenIn {
@@ -151,9 +141,9 @@ pub(crate) struct Filter {
     typed: String,
     /// The query a `/` was typed over, until its results settle and its first match opens.
     descent: Option<String>,
-    /// A `/` opened a folder, or the tab came back with the keyboard in the field: the field
-    /// takes the keyboard back once its column is there.
-    refocus: Refocus,
+    /// A `/` opened a folder, or an unlisted tab came back with the keyboard in the field: the
+    /// field takes the keyboard back once its column is listed.
+    refocus_field: bool,
     /// The field had the keyboard when the tab was hidden.
     back_to_field: bool,
     /// Focus has entered the filtered column since it opened in Columns (`blur`).
@@ -253,9 +243,8 @@ fn opening_in(app: &App) -> Option<OpenIn> {
     })
 }
 
-/// Closes the filter in any other column or view, configures [`FilterState`] for `opening`,
-/// and returns whether it was already open there.
-fn prepare_open(app: &mut App, opening: OpenIn, tx: &mut Tx) -> bool {
+/// Closes the filter in any other column or view and configures [`FilterState`] for `opening`.
+fn prepare_open(app: &mut App, opening: OpenIn, tx: &mut Tx) {
     let elsewhere = app
         .filter
         .open_in
@@ -273,7 +262,6 @@ fn prepare_open(app: &mut App, opening: OpenIn, tx: &mut Tx) -> bool {
     app.filter
         .state
         .set_pick_last(opening.place == Where::Columns);
-    let already_open = app.filter.open_in.as_ref() == Some(&opening) && app.filter.state.is_open();
     if app.filter.open_in.as_ref() != Some(&opening) {
         app.filter.serial += 1;
         app.filter.seen_in_column = false;
@@ -284,7 +272,6 @@ fn prepare_open(app: &mut App, opening: OpenIn, tx: &mut Tx) -> bool {
         app.columns.hold_header(Some(opening.depth));
     }
     app.filter.open_in = Some(opening);
-    already_open
 }
 
 /// Opens the filter in the pane or the targeted column, empty or on `query`: Ctrl+F, the
@@ -294,7 +281,7 @@ fn open(app: &mut App, query: Option<&str>, tx: &mut Tx) -> bool {
         return false;
     };
     let (place, depth) = (opening.place, opening.depth);
-    let already_open = prepare_open(app, opening, tx);
+    prepare_open(app, opening, tx);
     let polled = match query {
         Some(query) => {
             let before = place.listing_position(app, depth);
@@ -302,9 +289,7 @@ fn open(app: &mut App, query: Option<&str>, tx: &mut Tx) -> bool {
         }
         None => app.filter.state.open(),
     };
-    if already_open {
-        tx.focus(bar(app).field_key(), false);
-    }
+    tx.focus_when_shown(bar(app).field_key(), false);
     app.filter.typed = app.filter.state.text().to_owned();
     route(app, polled, tx);
     true
@@ -365,9 +350,9 @@ fn refocus_on_close(app: &App, tx: &mut Tx) {
     };
     let focused = tx.focused();
     if focused == Some(bar(app).field_key().as_str()) {
-        tx.focus(place.view_key(), false);
+        tx.focus_when_shown(place.view_key(), false);
     } else if place != Where::Columns && focused == Some(place.view_key()) {
-        tx.focus(place.view_key(), true);
+        tx.focus_when_shown(place.view_key(), true);
     }
 }
 
@@ -604,7 +589,7 @@ pub(crate) fn forget_renamed(app: &mut App, from: &Location, to: Option<&Locatio
 
 fn closed(app: &mut App) {
     stop(app);
-    app.filter.refocus = Refocus::No;
+    app.filter.refocus_field = false;
     app.filter.seen_in_column = false;
     app.filter.open_in = None;
     app.filter.typed.clear();
@@ -702,7 +687,7 @@ pub(crate) fn hit_intent(
         // Up from the first result: the field takes the keyboard back.
         Intent::Edge(Direction::Up) if app.filter.state.is_open() => {
             app.filter.state.focus_field();
-            tx.focus(bar(app).field_key(), false);
+            tx.focus_when_shown(bar(app).field_key(), false);
             true
         }
         Intent::Activate { id, .. } => {
@@ -838,10 +823,11 @@ fn follow_columns(app: &mut App, tx: &mut Tx) -> bool {
     true
 }
 
-/// After a `/` opened a folder, the field takes the keyboard from its new listing, as GTK's
-/// `show_filter_with_query("")` gives it, once the field is drawn in the folder's column.
+/// After a `/` opened a folder (or an unlisted tab returned to its filter), the field takes the
+/// keyboard from its new listing once listed, as GTK's `show_filter_with_query("")` gives it;
+/// `Tx::focus_when_shown` waits if the band's field mounts on a subsequent commit.
 fn refocus(app: &mut App, tx: &mut Tx) -> bool {
-    if app.filter.refocus == Refocus::No {
+    if !app.filter.refocus_field {
         return false;
     }
     let Some(open) = app
@@ -850,7 +836,7 @@ fn refocus(app: &mut App, tx: &mut Tx) -> bool {
         .as_ref()
         .filter(|_| app.filter.state.is_open())
     else {
-        app.filter.refocus = Refocus::No;
+        app.filter.refocus_field = false;
         return false;
     };
     let listed = app.browser.location_at(open.depth).as_ref() == Some(&open.folder)
@@ -858,14 +844,9 @@ fn refocus(app: &mut App, tx: &mut Tx) -> bool {
     if !listed {
         return false;
     }
-    let field = bar(app).field_key();
-    if app.filter.refocus == Refocus::Arrived && tx.focused() == Some(field.as_str()) {
-        app.filter.refocus = Refocus::No;
-        return false;
-    }
-    app.filter.refocus = Refocus::Arrived;
+    app.filter.refocus_field = false;
     app.filter.state.focus_field();
-    tx.focus(field, false);
+    tx.focus_when_shown(bar(app).field_key(), false);
     true
 }
 
@@ -943,7 +924,7 @@ impl Part for Filter {
             pane: PaneHits::new(),
             typed: String::new(),
             descent: None,
-            refocus: Refocus::No,
+            refocus_field: false,
             back_to_field: false,
             seen_in_column: false,
             serial: 0,

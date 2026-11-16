@@ -8,8 +8,8 @@ use std::ops::Range;
 use std::rc::Rc;
 
 use rune::{
-    Align, Chord, Color, El, GrowthSpec, LiveRegion, PointerButton, PointerPress, ScrollSpec,
-    TextStyle, Tx, col, el, icon, row, text,
+    Align, Chord, Color, El, GrowthSpec, LiveRegion, PointerPress, ScrollSpec, TextStyle, Tx, col,
+    el, icon, row, text,
 };
 use rune_kit::{Spinner, TableStyle};
 use strata_kit::density::{PALETTE_LINE_GAP, PALETTE_RULE, PALETTE_THUMB};
@@ -377,7 +377,7 @@ fn results<S: 'static>(
         // Keyed by place (see `option_key`), so the keys never change for a given count. How
         // the list scrolls as answers land is `PaletteState::deliver`'s; arrows reveal their
         // row from the field's key handler. (`reveal_selected` does nothing for rows built by
-        // index at the pin: Rune draft U-C17-4.)
+        // index at Rune 631e8a67: Rune draft U-C17-4.)
         .virtual_rows_version(cx.key.as_str());
     if let Some(f) = on_visible {
         list = list.on_visible_rows(move |s: &mut S, r| f(s, r));
@@ -448,20 +448,69 @@ impl<S: 'static> Rows<S> {
     }
 }
 
-/// One result: the icon or thumbnail, the name over the full path, matches in the accent. The
-/// name and the path are labels in the option, as GTK's row's two labels are.
-fn result_row<S: 'static>(
+type RowPress<S> = Rc<dyn Fn(&mut S, &mut Tx)>;
+type RowMenu<S> = Rc<dyn Fn(&mut S, PointerPress, &mut Tx)>;
+
+struct RowActions<S> {
+    press: RowPress<S>,
+    middle: RowPress<S>,
+    menu: RowMenu<S>,
+}
+
+fn row_actions<S: 'static>(
+    rows: &Rows<S>,
+    id: &str,
+    handler: &super::state::HandlerSlot,
+) -> RowActions<S> {
+    let access = rows.access;
+    let middle_opens = rows.middle_opens;
+    let press = {
+        let (slot, open_id) = (handler.clone(), id.to_owned());
+        Rc::new(move |s: &mut S, tx: &mut Tx| {
+            let polled = access(s).choose(&open_id, false, Via::Click, tx);
+            if let Some(emit) = slot.get::<Emit<S>>() {
+                route(&emit, s, polled, tx);
+            }
+        })
+    };
+    let middle = {
+        let (slot, open_id) = (handler.clone(), id.to_owned());
+        Rc::new(move |s: &mut S, tx: &mut Tx| {
+            // Taking the middle button even when `middle_opens` is off keeps Rune's built-in
+            // middle-click viewport autoscroll from starting on a result row.
+            if !middle_opens {
+                return;
+            }
+            let polled = access(s).choose(&open_id, true, Via::Middle, tx);
+            if let Some(emit) = slot.get::<Emit<S>>() {
+                route(&emit, s, polled, tx);
+            }
+        })
+    };
+    let menu = {
+        let (slot, menu_id) = (handler.clone(), id.to_owned());
+        Rc::new(move |s: &mut S, p: PointerPress, tx: &mut Tx| {
+            let polled = access(s).menu(&menu_id, Point::new(p.x, p.y));
+            if let Some(emit) = slot.get::<Emit<S>>() {
+                route(&emit, s, polled, tx);
+            }
+        })
+    };
+    RowActions {
+        press,
+        middle,
+        menu,
+    }
+}
+
+fn row_content<S>(
     rows: &Rows<S>,
     item: &PaletteItem,
     active: bool,
     thumb: Option<&crate::thumbnails::Thumb>,
-    handler: &super::state::HandlerSlot,
 ) -> El {
-    #[cfg(test)]
-    super::tests::ROW_BUILDS.with(|n| n.set(n.get() + 1));
     let look = &rows.look;
     let k = &look.kit;
-    let access = rows.access;
     let glyph = match (rows.kind, item.icon) {
         (ResultKind::Folders, IconName::File) => IconName::Folder,
         (_, name) => name,
@@ -487,46 +536,16 @@ fn result_row<S: 'static>(
         .color(k.c.text_base)
         .truncate(true)
         .build(k);
+    let path_color = if active {
+        k.c.text_muted
+    } else {
+        k.c.text_weak
+    };
     let path = MatchedText::new(item.detail.clone(), item.detail_matched.iter().cloned())
         .font(k.ty.small)
-        .color(if active {
-            k.c.text_muted
-        } else {
-            k.c.text_weak
-        })
+        .color(path_color)
         .build(k)
         .truncate_middle();
-    // The press handlers sit on an inner element keyed by the result, inside the row keyed by
-    // place. Rune resolves a release by the pressed element's path and drops it when that path
-    // is gone, so a press held while a batch moves another result into the row (the row's key
-    // stays, the inner key changes) opens nothing and asks for no menu, for every button, as
-    // GTK's ListBox activates only when press and release land on the same row. Rune has no
-    // press-down hook for the right button to record the pressed result with instead.
-    let middle_opens = rows.middle_opens;
-    let on_press = {
-        let (press, open_id) = (handler.clone(), item.id.clone());
-        move |s: &mut S, tx: &mut Tx| {
-            let middle = tx.button() == PointerButton::Middle;
-            if middle && !middle_opens {
-                return;
-            }
-            let via = if middle { Via::Middle } else { Via::Click };
-            let polled = access(s).choose(&open_id, middle, via, tx);
-            if let Some(emit) = press.get::<Emit<S>>() {
-                route(&emit, s, polled, tx);
-            }
-        }
-    };
-    let on_menu = {
-        let (menu, menu_id) = (handler.clone(), item.id.clone());
-        move |s: &mut S, p: PointerPress, tx: &mut Tx| {
-            let polled = access(s).menu(&menu_id, Point::new(p.x, p.y));
-            if let Some(emit) = menu.get::<Emit<S>>() {
-                route(&emit, s, polled, tx);
-            }
-        }
-    };
-    let selected = TableStyle::from_kit(k).selected;
     let mut content = row()
         .w_full()
         .h(look.row.palette - PALETTE_RULE)
@@ -543,8 +562,34 @@ fn result_row<S: 'static>(
                 .child(path),
         );
     if active {
+        let selected = TableStyle::from_kit(k).selected;
         content = content.fill(selected).outline(1.0, -1.0, k.c.border_focus);
     }
+    content
+}
+
+/// One result: the icon or thumbnail, the name over the full path, matches in the accent. The
+/// name and the path are labels in the option, as GTK's row's two labels are.
+fn result_row<S: 'static>(
+    rows: &Rows<S>,
+    item: &PaletteItem,
+    active: bool,
+    thumb: Option<&crate::thumbnails::Thumb>,
+    handler: &super::state::HandlerSlot,
+) -> El {
+    #[cfg(test)]
+    super::tests::ROW_BUILDS.with(|n| n.set(n.get() + 1));
+    let look = &rows.look;
+    let k = &look.kit;
+    // The press handlers sit on an inner element keyed by the result, inside the row keyed by
+    // place. Rune resolves a release by the pressed element's path and drops it when that path
+    // is gone, so a press held while a batch moves another result into the row (the row's key
+    // stays, the inner key changes) opens nothing and asks for no menu, for every button, as
+    // GTK's ListBox activates only when press and release land on the same row.
+    let actions = row_actions(rows, &item.id, handler);
+    let (press_box, press_opt) = (actions.press.clone(), actions.press);
+    let (menu_box, menu_opt) = (actions.menu.clone(), actions.menu);
+    let middle = actions.middle;
     let pressable = col()
         .key(format!("result-{}", escape(&item.id)))
         // A layout box to assistive technology: the option around it is the row.
@@ -555,10 +600,10 @@ fn result_row<S: 'static>(
         // when a row scrolls under a still pointer (C6's review round 1, B1).
         .hover(k.c.hover)
         .preserve_focus_on_press(true)
-        .pointer_buttons([PointerButton::Primary, PointerButton::Middle])
-        .on_press_tx(on_press.clone())
-        .on_secondary_press(on_menu.clone())
-        .child(content)
+        .on_background_press_tx(move |s, tx| press_box(s, tx))
+        .on_middle_press(move |s, tx| middle(s, tx))
+        .on_secondary_press(move |s, p, tx| menu_box(s, p, tx))
+        .child(row_content(rows, item, active, thumb))
         .child(rule(k.c.border_weak));
     col()
         .role("option")
@@ -570,8 +615,8 @@ fn result_row<S: 'static>(
         .preserve_focus_on_press(true)
         // Assistive technology's click and menu actions reach the option, not the inner box;
         // the pointer reaches the inner box first.
-        .on_press_tx(on_press)
-        .on_secondary_press(on_menu)
+        .on_press_tx(move |s, tx| press_opt(s, tx))
+        .on_secondary_press(move |s, p, tx| menu_opt(s, p, tx))
         .child(pressable)
 }
 
