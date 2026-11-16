@@ -96,7 +96,7 @@ pub(super) fn show(app: &mut App, entry: FileEntry, depth: Option<usize>, tx: &m
         app.preview.drawer.reset_find();
         app.preview.viewer.stop();
         app.preview.viewer = Viewer::Empty;
-        app.preview.content_owns_focus = 0;
+        app.preview.content_focus = super::ContentFocus::None;
     }
     cancel_focus_timer(app);
     let was_open = app.preview.drawer.is_open();
@@ -196,13 +196,14 @@ pub(super) fn show_empty_slot_after_switch(app: &mut App, tab_shown: bool, tx: &
 
 pub(super) fn clear_target(app: &mut App, tx: &mut Tx) {
     cancel_focus_timer(app);
+    app.preview.loader.focus_archive_on_ready = false;
     app.preview.loader.cancel();
     app.preview.raw.clear();
     app.preview.drawer.reset_find();
     app.preview.current = None;
     app.preview.current_depth = None;
     app.preview.header_source = None;
-    app.preview.content_owns_focus = 0;
+    app.preview.content_focus = super::ContentFocus::None;
     app.preview.viewer.stop();
     app.preview.viewer = Viewer::Empty;
     app.preview.header = HeaderInfo::default();

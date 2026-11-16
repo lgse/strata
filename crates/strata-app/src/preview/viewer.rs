@@ -22,12 +22,16 @@ use strata_components::{
     document_view::DocumentState,
     preview_drawer::{DocumentView, FindStatus, HostedPreview},
     sheet_grid::SheetGridState,
-    viewers::viewport::ViewportState,
+    viewers::{
+        archive::{ArchiveState, PromptState},
+        viewport::ViewportState,
+    },
 };
 use strata_core::i18n::tr;
 use strata_kit::look::Look;
 
 use super::{
+    archive,
     document::{self, DecodedMedia, MediaTask, RenderedDocument},
     image::{self, ImageViewer},
     labels, sheet,
@@ -49,12 +53,17 @@ pub(super) struct DocumentViewer {
     render_pending: bool,
 }
 
+/// The key of a feedback card, such as `No visual preview`, that takes the keyboard on Right.
+pub(super) const MESSAGE_KEY: &str = "preview-message";
+
 pub(super) enum Viewer {
     Empty,
     Loading,
     Code(Box<CodeState>),
     Document(DocumentViewer),
     Image(Box<ImageViewer>),
+    Archive(Box<ArchiveState>),
+    ArchivePrompt(Box<PromptState>),
     Message {
         title: String,
         detail: Option<String>,
@@ -89,7 +98,11 @@ impl Viewer {
 
     pub(super) fn can_focus(&self) -> bool {
         match self {
-            Self::Code(_) | Self::Document(_) | Self::Image(_) => true,
+            Self::Code(_)
+            | Self::Document(_)
+            | Self::Image(_)
+            | Self::Archive(_)
+            | Self::ArchivePrompt(_) => true,
             Self::Message { can_open, .. } => *can_open,
             Self::Empty | Self::Loading => false,
         }
@@ -103,6 +116,38 @@ impl Viewer {
                 ..
             }
         )
+    }
+
+    pub(super) fn is_prompt_focused(&self) -> bool {
+        matches!(self, Self::ArchivePrompt(prompt) if prompt.edit.focused)
+    }
+
+    pub(super) fn leaves_on_left(&self) -> bool {
+        match self {
+            Self::Archive(state) => state.at_root(),
+            Self::ArchivePrompt(prompt) => !prompt.edit.focused,
+            _ => true,
+        }
+    }
+
+    /// Focuses directly into an archive tree or password prompt when one is active, returning
+    /// `true` if handled.
+    pub(super) fn focus_into(&mut self, tx: &mut Tx) -> bool {
+        match self {
+            Self::Archive(state) => {
+                if state.passive() {
+                    state.enter();
+                }
+                tx.focus_when_shown(archive::ARCHIVE_KEY, true);
+                true
+            }
+            Self::ArchivePrompt(prompt) => {
+                prompt.focus();
+                tx.focus_when_shown(archive::PROMPT_FIELD_KEY, true);
+                true
+            }
+            _ => false,
+        }
     }
 
     pub(super) fn code(source: CodeSource<'_>, highlighter: &Highlighter) -> Self {
@@ -191,7 +236,7 @@ impl Viewer {
         match self {
             Self::Code(code) => code.poll(tx),
             Self::Document(doc) => doc.poll(clock, look, tx),
-            Self::Empty | Self::Loading | Self::Image(_) | Self::Message { .. } => false,
+            _ => false,
         }
     }
 
@@ -199,7 +244,7 @@ impl Viewer {
         match self {
             Self::Code(code) => code.poll(tx),
             Self::Document(doc) => doc.poll_async(tx),
-            Self::Empty | Self::Loading | Self::Image(_) | Self::Message { .. } => false,
+            _ => false,
         }
     }
 
@@ -207,7 +252,15 @@ impl Viewer {
         match self {
             Self::Code(code) => code.set_wrap(wrap),
             Self::Document(doc) => doc.set_wrap(wrap),
-            Self::Empty | Self::Loading | Self::Image(_) | Self::Message { .. } => {}
+            _ => {}
+        }
+    }
+
+    fn active_hosted_mut(&mut self) -> Option<&mut dyn HostedPreview> {
+        match self {
+            Self::Code(code) => Some(&mut **code),
+            Self::Document(doc) => doc.active_hosted_mut(),
+            _ => None,
         }
     }
 
@@ -218,6 +271,10 @@ impl Viewer {
             Self::Code(_) => Some(code_view(app, cx, code_ref, code_mut)),
             Self::Document(doc) => doc.build(app, cx),
             Self::Image(img) => Some(image::build_view(img, &app.look, cx, image_viewport_mut)),
+            Self::Archive(_) => Some(archive::build_archive_view(app, archive_ref, archive_mut)),
+            Self::ArchivePrompt(prompt) => {
+                Some(archive::build_prompt_view(prompt, &app.look, prompt_mut))
+            }
             Self::Message {
                 title,
                 detail,
@@ -380,26 +437,14 @@ impl HostedPreview for Viewer {
     }
 
     fn find(&mut self, query: &str) {
-        match self {
-            Self::Code(code) => code.find(query),
-            Self::Document(doc) => {
-                if let Some(hosted) = doc.active_hosted_mut() {
-                    hosted.find(query);
-                }
-            }
-            _ => {}
+        if let Some(hosted) = self.active_hosted_mut() {
+            hosted.find(query);
         }
     }
 
     fn find_step(&mut self, forward: bool) {
-        match self {
-            Self::Code(code) => code.find_step(forward),
-            Self::Document(doc) => {
-                if let Some(hosted) = doc.active_hosted_mut() {
-                    hosted.find_step(forward);
-                }
-            }
-            _ => {}
+        if let Some(hosted) = self.active_hosted_mut() {
+            hosted.find_step(forward);
         }
     }
 
@@ -412,14 +457,8 @@ impl HostedPreview for Viewer {
     }
 
     fn find_end(&mut self) {
-        match self {
-            Self::Code(code) => code.find_end(),
-            Self::Document(doc) => {
-                if let Some(hosted) = doc.active_hosted_mut() {
-                    hosted.find_end();
-                }
-            }
-            _ => {}
+        if let Some(hosted) = self.active_hosted_mut() {
+            hosted.find_end();
         }
     }
 
@@ -511,6 +550,35 @@ fn image_viewport_mut(app: &mut App) -> &mut ViewportState {
     }
 }
 
+pub(super) fn tick_archive_if_active(app: &mut App, tx: &mut Tx) -> bool {
+    if matches!(app.preview.viewer, Viewer::Archive(_)) {
+        archive::tick_archive(app, archive_ref, archive_mut, tx)
+    } else {
+        false
+    }
+}
+
+fn archive_ref(app: &App) -> &ArchiveState {
+    match &app.preview.viewer {
+        Viewer::Archive(state) => state,
+        _ => unreachable!("ArchiveView built only while Viewer::Archive is active"),
+    }
+}
+
+fn archive_mut(app: &mut App) -> &mut ArchiveState {
+    match &mut app.preview.viewer {
+        Viewer::Archive(state) => state,
+        _ => unreachable!("ArchiveView mutated only while Viewer::Archive is active"),
+    }
+}
+
+fn prompt_mut(app: &mut App) -> &mut PromptState {
+    match &mut app.preview.viewer {
+        Viewer::ArchivePrompt(prompt) => prompt,
+        _ => unreachable!("ArchivePrompt mutated only while Viewer::ArchivePrompt is active"),
+    }
+}
+
 fn code_view(
     app: &App,
     cx: &mut Cx<App>,
@@ -543,7 +611,7 @@ fn loading_view(look: &Look) -> El {
 fn message_view(app: &App, title: &str, detail: Option<&str>, can_open: bool) -> El {
     let look = &app.look;
     let mut card = col()
-        .key("preview-message")
+        .key(MESSAGE_KEY)
         .w_full()
         .h_full()
         .px(look.space.xl)
@@ -555,7 +623,7 @@ fn message_view(app: &App, title: &str, detail: Option<&str>, can_open: bool) ->
                 .font(look.kit.ty.ui_medium)
                 .color(look.kit.c.text_base),
         );
-    if !can_open && app.preview.content_owns_focus > 0 {
+    if !can_open && app.preview.content_focus != super::ContentFocus::None {
         card = card.focusable(true);
     }
     if let Some(detail) = detail.filter(|detail| !detail.is_empty()) {

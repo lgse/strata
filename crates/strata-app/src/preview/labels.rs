@@ -4,10 +4,13 @@
 //! [`CodeLabels`], C11's [`DocumentLabels`], and C11b's [`SheetLabels`].
 
 use strata_components::{
-    code_view::CodeLabels, document_view::DocumentLabels, preview_drawer::DrawerLabels,
+    code_view::CodeLabels,
+    document_view::DocumentLabels,
+    preview_drawer::DrawerLabels,
     sheet_grid::SheetLabels,
+    viewers::archive::{ArchiveLabels, PromptLabels},
 };
-use strata_core::i18n::{integer, tr};
+use strata_core::i18n::{count, file_size, integer, tr};
 use strata_desktop::keys::{
     Keys,
     bindings::{FIND_IN_PREVIEW, PREVIEW},
@@ -102,4 +105,38 @@ pub(super) fn sheet() -> SheetLabels {
         retry: tr("Try again"),
         empty: tr("This sheet is empty"),
     }
+}
+
+pub(super) fn archive() -> ArchiveLabels {
+    let mut labels = ArchiveLabels::default();
+    labels.root = tr("Contents");
+    labels.up = tr("Go up one level");
+    labels.empty = tr("This folder is empty");
+    labels.list = String::new();
+    labels.counts = archive_counts;
+    labels.size = file_size;
+    labels
+}
+
+fn archive_counts(files: usize, folders: usize) -> String {
+    match (files, folders) {
+        (0, 0) => tr("Empty folder"),
+        (files, 0) => count("files", files),
+        (0, folders) => count("folders", folders),
+        (files, folders) => rust_i18n::t!(
+            "%{files}, %{folders}",
+            files = count("files", files),
+            folders = count("folders", folders),
+        )
+        .into_owned(),
+    }
+}
+
+pub(super) fn archive_prompt() -> PromptLabels {
+    let mut labels = PromptLabels::default();
+    labels.heading = tr("Password-protected archive");
+    labels.detail = tr("Enter the password to preview the archive contents");
+    labels.placeholder = tr("Password");
+    labels.unlock = tr("Unlock");
+    labels
 }

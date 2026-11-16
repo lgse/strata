@@ -73,9 +73,11 @@ impl FirstVisit {
         if collection.selection.cursor().is_some() || source.is_empty() {
             return false;
         }
+        // The anchor stays missing: GTK's browser holds none for a first visit, so a Shift+click
+        // there selects the clicked entry alone (finding lgse/strata#2551).
         let _ = collection
             .selection
-            .move_cursor(source, 0, AnchorRule::Move);
+            .move_cursor(source, 0, AnchorRule::Keep);
         collection.note_selection(source);
         true
     }
@@ -106,7 +108,7 @@ pub(super) fn keep_on_first_row(pane: &mut Pane, memory: &Memory) -> bool {
     }
     let _ = collection
         .selection
-        .move_cursor(source, 0, AnchorRule::Move);
+        .move_cursor(source, 0, AnchorRule::Keep);
     collection.note_selection(source);
     memory.set_visit_cursor(Some((depth, source.id_at(0))));
     true

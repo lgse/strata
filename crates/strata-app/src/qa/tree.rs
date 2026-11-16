@@ -471,11 +471,15 @@ impl Snapshot {
         children.rotate_right(1);
     }
 
-    /// The nearest entry among the elements `above` an element, by their keys.
+    /// The nearest entry or collection option row among the elements `above` an element, by
+    /// their keys.
     fn entry_around(&self, above: &[String]) -> Option<usize> {
         let entry = |key: &String| {
+            let row_id = is_entry_key(key);
             self.nodes.iter().position(|seen| {
-                seen.mark == Some(Mark::Entry) && seen.key.as_deref() == Some(key.as_str())
+                seen.key.as_deref() == Some(key.as_str())
+                    && (seen.mark == Some(Mark::Entry)
+                        || (row_id && seen.role == "list-box-option"))
             })
         };
         above.iter().find_map(entry)

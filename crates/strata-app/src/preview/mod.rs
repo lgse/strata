@@ -23,6 +23,7 @@ use strata_fs::services::{
     file_activity::{self, Notice},
 };
 
+mod archive;
 mod document;
 mod follow;
 mod image;
@@ -65,7 +66,7 @@ pub(crate) struct Preview {
     current: Option<FileEntry>,
     current_depth: Option<usize>,
     header_source: Option<(FileEntry, Option<String>)>,
-    content_owns_focus: u8,
+    content_focus: ContentFocus,
     tab_shown: bool,
     click_opening: Option<Location>,
     focus_timer: Rc<RefCell<Option<glib::SourceId>>>,
@@ -73,6 +74,16 @@ pub(crate) struct Preview {
     operations: Option<file_activity::Subscription>,
     last_split_width: Option<f32>,
     was_in_band: bool,
+}
+
+/// Whether a `No visual preview` card has the keyboard: asked for until it shows, then owned
+/// until the keyboard leaves it.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(super) enum ContentFocus {
+    #[default]
+    None,
+    Pending,
+    Owned,
 }
 
 impl Preview {
@@ -92,18 +103,21 @@ impl Preview {
             || self.reserves_column_space(app)
     }
 
+    /// Follows the keyboard into and out of a `No visual preview` card, which takes it only
+    /// while it owns it (GTK's `content.set_focusable(true)` and focus-leave controller,
+    /// `src/ui/preview/keyboard.rs`). Whether the card stops taking it, so the view redraws.
     fn sync_message_focus(&mut self, tx: &Tx) -> bool {
-        match (self.content_owns_focus, tx.focused()) {
-            (0, _) | (1, Some("preview-message")) => false,
-            (2, Some("preview-message")) => {
-                self.content_owns_focus = 1;
+        let on_card = tx.focused() == Some(viewer::MESSAGE_KEY);
+        match (self.content_focus, on_card) {
+            (ContentFocus::Pending, true) => {
+                self.content_focus = ContentFocus::Owned;
                 false
             }
-            (1, _) => {
-                self.content_owns_focus = 0;
+            (ContentFocus::Owned, false) => {
+                self.content_focus = ContentFocus::None;
                 true
             }
-            (_, _) => false,
+            _ => false,
         }
     }
 
@@ -135,7 +149,7 @@ impl Part for Preview {
     fn new(setup: &Setup<'_>) -> Self {
         let mut drawer = DrawerState::new();
         drawer.reserve(setup.settings.browser_mode == "columns");
-        let loader = Loader::new(setup.later.clone());
+        let loader = Loader::new(setup.later.clone(), setup.ids.clone());
         loader.set_media_backend(load::effective_media_backend(setup.settings));
         Self {
             drawer,
@@ -151,7 +165,7 @@ impl Part for Preview {
             current: None,
             current_depth: None,
             header_source: None,
-            content_owns_focus: 0,
+            content_focus: ContentFocus::None,
             tab_shown: false,
             click_opening: None,
             focus_timer: Rc::default(),
@@ -163,7 +177,8 @@ impl Part for Preview {
     }
 
     fn keyboard(app: &App) -> Option<Holds> {
-        app.preview.drawer.is_find_focused().then_some(Holds::Field)
+        (app.preview.drawer.is_find_focused() || app.preview.viewer.is_prompt_focused())
+            .then_some(Holds::Field)
     }
 
     fn listen(_: &Setup<'_>) -> Option<Listener<App>> {
@@ -189,7 +204,8 @@ impl Part for Preview {
         };
         let msg_focus = app.preview.sync_message_focus(tx);
         let viewer = app.preview.viewer.poll(clock, &app.look, tx);
-        blocks | viewer | lit_changed | band_synced | msg_focus
+        let archive = viewer::tick_archive_if_active(app, tx);
+        blocks | viewer | archive | lit_changed | band_synced | msg_focus
     }
 
     fn switched(app: &mut App, tx: &mut Tx) {
@@ -395,10 +411,9 @@ pub(crate) fn show_search_file(app: &mut App, path: &Path, name: String, tx: &mu
 }
 
 /// Opens or updates the preview drawer on `entry` at `depth` without closing an already-open
-/// drawer (`enter_preview` in `src/ui/window/keyboard/preview.rs`).
+/// drawer, and hands it keyboard focus (`enter_preview` in `src/ui/window/keyboard/preview.rs`).
 pub(crate) fn show_entry(app: &mut App, entry: FileEntry, depth: Option<usize>, tx: &mut Tx) {
-    session::show(app, entry, depth, tx);
-    keys::take_keyboard(app, tx);
+    keys::enter_entry(app, entry, depth, tx);
 }
 
 /// Whether single clicks open files in the currently shown view.

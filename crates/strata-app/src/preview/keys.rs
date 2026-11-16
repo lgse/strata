@@ -18,10 +18,10 @@ use strata_components::contract::EntryId;
 use strata_core::model::FileEntry;
 use strata_desktop::keys::{
     Active, Binding, Key as DesktopKey, KeyPress, Map, Modifiers,
-    bindings::{LEFT, PREVIEW, RIGHT},
+    bindings::{ENTER, ESCAPE, ESCAPE_ANY_SHIFT, LEFT, PREVIEW, RIGHT, SPACE},
 };
 
-use super::session;
+use super::{ContentFocus, archive, session};
 use crate::{
     App,
     commands::{Action, Call, Keys, On, Outcome, Reads, Situation, Stage},
@@ -62,6 +62,17 @@ pub(super) const COMMANDS: &[Action<App>] = &[
             )
             .when(in_listing_for_preview),
         ]),
+    Action::new("preview-password-escape", close_from_preview)
+        .command(ESCAPE)
+        .keys(
+            &[Keys::at(Stage::PreviewPasswordEscape, &[ESCAPE_ANY_SHIFT])
+                .when(password_prompt_focused)],
+        ),
+    Action::new("preview-open-archive", open_archive_in_columns).keys(&[Keys {
+        stage: Stage::PreviewNavigation,
+        reads: Reads::Press(opens_archive_key),
+        when: opens_archive_in_columns,
+    }]),
     Action::new("preview-enter", enter_preview)
         .command(RIGHT)
         .keys(&[Keys::at(
@@ -87,8 +98,32 @@ fn on_filtered_result(app: &App, at: &Situation) -> bool {
     at.in_view() && filter::targets::preview_result(app).is_some()
 }
 
+fn password_prompt_focused(app: &App, _: &Situation) -> bool {
+    app.preview.enabled && app.preview.viewer.is_prompt_focused()
+}
+
+fn opens_archive_key(press: &KeyPress) -> bool {
+    press.is(RIGHT) || press.is(ENTER) || press.is(SPACE)
+}
+
+/// GTK's 10xer listing claims Right, Enter and Space before this check (marking, activation,
+/// `enter_preview`), so only the default map opens an archive from here.
+fn opens_archive_in_columns(app: &App, at: &Situation) -> bool {
+    at.in_view()
+        && !shell::preferences(app).tenxer_mode
+        && session::browsing_columns(app)
+        && !filter::search_active(app)
+        && app
+            .browser
+            .focused_entry()
+            .is_some_and(|entry| archive::is_previewable_archive(&entry))
+}
+
 fn in_preview_outside_find(app: &App, at: &Situation) -> bool {
-    app.preview.enabled && at.within("preview") && !app.preview.drawer.is_find_focused()
+    app.preview.enabled
+        && at.within("preview")
+        && !app.preview.drawer.is_find_focused()
+        && !app.preview.viewer.is_prompt_focused()
 }
 
 fn in_tenxer_preview_outside_find(app: &App, at: &Situation) -> bool {
@@ -100,7 +135,9 @@ fn on_preview_grip(app: &App, at: &Situation) -> bool {
 }
 
 fn in_preview_body_outside_find(app: &App, at: &Situation) -> bool {
-    in_preview_outside_find(app, at) && !at.within("preview-grip")
+    in_preview_outside_find(app, at)
+        && !at.within("preview-grip")
+        && app.preview.viewer.leaves_on_left()
 }
 
 fn in_tenxer_listing_for_preview(app: &App, at: &Situation) -> bool {
@@ -163,11 +200,16 @@ fn space_preview(app: &mut App, call: &Call<'_>, tx: &mut Tx) -> Outcome {
     if let Some(target) = filter::targets::preview_result(app) {
         return preview_or_enter_filtered(app, target, plain_space, tx);
     }
+    toggle_focused_from_space(app, plain_space, tx);
+    Outcome::Ran
+}
+
+fn toggle_focused_from_space(app: &mut App, plain_space: bool, tx: &mut Tx) {
     let Some((depth, pos, entry)) = app.browser.focused_item() else {
         if app.preview.enabled {
             session::close(app, tx);
         }
-        return Outcome::Ran;
+        return;
     };
     if entry.is_directory() {
         if plain_space {
@@ -175,10 +217,21 @@ fn space_preview(app: &mut App, call: &Call<'_>, tx: &mut Tx) -> Outcome {
         } else if app.preview.enabled {
             session::close(app, tx);
         }
-        return Outcome::Ran;
+        return;
+    }
+    toggle_file_from_space(app, (depth, entry), plain_space, tx);
+}
+
+fn toggle_file_from_space(
+    app: &mut App,
+    (depth, entry): (usize, FileEntry),
+    plain_space: bool,
+    tx: &mut Tx,
+) {
+    if plain_space && !app.preview.enabled {
+        app.preview.loader.focus_archive_on_ready = true;
     }
     session::toggle(app, Some(entry), Some(depth), tx);
-    Outcome::Ran
 }
 
 fn preview_context_row(app: &mut App, depth: usize, id: EntryId, tx: &mut Tx) -> Outcome {
@@ -215,7 +268,7 @@ fn preview_or_enter_filtered(
             session::close(app, tx);
         }
     } else {
-        session::toggle(app, Some(entry), Some(depth), tx);
+        toggle_file_from_space(app, (depth, entry), plain_space, tx);
     }
     Outcome::Ran
 }
@@ -230,34 +283,58 @@ fn enter_folder_from_space(app: &mut App, depth: usize, position: usize, tx: &mu
     shell::settle(app, tx);
 }
 
+fn open_archive_in_columns(app: &mut App, call: &Call<'_>, tx: &mut Tx) -> Outcome {
+    if let Some(press) = call.press
+        && is_plain_letter_with_type_to_search(app, press)
+    {
+        return Outcome::Declined;
+    }
+    shell::publish(app);
+    let Some((depth, _, entry)) = app.browser.focused_item() else {
+        return Outcome::Declined;
+    };
+    enter_entry(app, entry, Some(depth), tx);
+    Outcome::Ran
+}
+
+pub(super) fn enter_entry(app: &mut App, entry: FileEntry, depth: Option<usize>, tx: &mut Tx) {
+    app.preview.loader.focus_archive_on_ready = true;
+    session::show(app, entry, depth, tx);
+    let _ = focus_loaded_or_pending(app, tx);
+}
+
+fn focus_loaded_or_pending(app: &mut App, tx: &mut Tx) -> bool {
+    if app.preview.viewer.focus_into(tx) {
+        return true;
+    }
+    if app.preview.viewer.can_focus() {
+        app.preview.drawer.focus_content();
+        return true;
+    }
+    if app.preview.viewer.needs_body_focus_owner() {
+        app.preview.content_focus = ContentFocus::Pending;
+        app.preview.drawer.focus_content_when_shown(tx);
+        return true;
+    }
+    if let Some(request_id) = app.preview.loader.current_request {
+        app.preview.loader.focus_archive_request = Some(request_id);
+        app.preview.drawer.focus_content_when_shown(tx);
+        return true;
+    }
+    false
+}
+
 fn enter_preview(app: &mut App, call: &Call<'_>, tx: &mut Tx) -> Outcome {
     if let Some(press) = call.press
         && is_plain_letter_with_type_to_search(app, press)
     {
         return Outcome::Declined;
     }
-    if take_keyboard(app, tx) {
+    if focus_loaded_or_pending(app, tx) {
         Outcome::Ran
     } else {
         Outcome::Declined
     }
-}
-
-pub(super) fn take_keyboard(app: &mut App, tx: &mut Tx) -> bool {
-    if app.preview.viewer.can_focus() {
-        app.preview.drawer.focus_content();
-        return true;
-    }
-    if app.preview.viewer.needs_body_focus_owner() {
-        app.preview.content_owns_focus = 2;
-        app.preview.drawer.focus_content_when_shown(tx);
-        return true;
-    }
-    if app.preview.loader.is_active() {
-        app.preview.drawer.focus_content_when_shown(tx);
-        return true;
-    }
-    false
 }
 
 fn focus_divider(app: &mut App, _: &Call<'_>, _: &mut Tx) -> Outcome {
