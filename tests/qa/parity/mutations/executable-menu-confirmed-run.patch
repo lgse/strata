@@ -1,13 +1,14 @@
 diff --git a/crates/strata-app/src/run.rs b/crates/strata-app/src/run.rs
-index a7c789c7f..c25edc780 100644
+index 5287b165f..1a375db43 100644
 --- a/crates/strata-app/src/run.rs
 +++ b/crates/strata-app/src/run.rs
-@@ -190,7 +190,7 @@ fn failed(app: &mut App, detail: String) {
- /// then waits for it. Nothing runs when the thread cannot start; a start that fails on it
- /// comes back through GLib, and `later` shows it.
- fn start(path: &Path, later: Later<App>) -> std::io::Result<()> {
--    let mut command = program_command(path);
-+    let mut command = program_command(Path::new("/bin/true"));
-     let (answer, answered) = mpsc::channel();
-     std::thread::Builder::new()
-         .name("process-reaper".into())
+@@ -182,7 +182,8 @@ fn start(path: PathBuf, later: Later<App>) {
+     crate::terminal::spawn_reaped(
+         later,
+         move || {
+-            program_command(&path, crate::terminal::Emulator::resolve)
++            let _ = &path;
++            program_command(Path::new("/bin/true"), crate::terminal::Emulator::resolve)
+                 .and_then(|mut command| command.spawn())
+                 .map_err(|error| {
+                     tracing::warn!(%error, "unable to run program");
