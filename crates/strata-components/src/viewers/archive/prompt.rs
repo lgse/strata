@@ -17,7 +17,7 @@
 
 use std::rc::Rc;
 
-use rune::{El, LiveRegion, TextEdit, Tx, col, icon, row, text};
+use rune::{El, KeyEvent, LiveRegion, TextEdit, Tx, col, icon, row, text};
 use rune_kit::{Button, ButtonVariant, TextInput};
 use strata_kit::icons::IconName;
 use strata_kit::look::Look;
@@ -84,6 +84,7 @@ impl Default for PromptLabels {
 }
 
 type UnlockFn<S> = Rc<dyn Fn(&mut S, String, &mut Tx)>;
+type FieldKeyFn<S> = Rc<dyn Fn(&mut S, &KeyEvent, &mut Tx) -> bool>;
 
 /// The prompt: `ArchivePrompt::new(&s.prompt, access).on_unlock(..).build(look)`.
 pub struct ArchivePrompt<'a, S> {
@@ -92,6 +93,7 @@ pub struct ArchivePrompt<'a, S> {
     key: String,
     labels: PromptLabels,
     on_unlock: Option<UnlockFn<S>>,
+    on_field_key: Option<FieldKeyFn<S>>,
 }
 
 impl<'a, S: 'static> ArchivePrompt<'a, S> {
@@ -102,6 +104,7 @@ impl<'a, S: 'static> ArchivePrompt<'a, S> {
             key: "archive-prompt".into(),
             labels: PromptLabels::default(),
             on_unlock: None,
+            on_field_key: None,
         }
     }
 
@@ -120,6 +123,15 @@ impl<'a, S: 'static> ArchivePrompt<'a, S> {
     /// Unlock or Enter, with the password typed. The field keeps it until the host answers.
     pub fn on_unlock(mut self, f: impl Fn(&mut S, String, &mut Tx) + 'static) -> Self {
         self.on_unlock = Some(Rc::new(f));
+        self
+    }
+
+    /// Key hook on the password field, offered before `TextInput` consumes keys such as Escape.
+    pub fn on_field_key(
+        mut self,
+        f: impl Fn(&mut S, &KeyEvent, &mut Tx) -> bool + 'static,
+    ) -> Self {
+        self.on_field_key = Some(Rc::new(f));
         self
     }
 
@@ -195,6 +207,9 @@ impl<'a, S: 'static> ArchivePrompt<'a, S> {
             .on_submit(unlock(&self.on_unlock));
         if let Some(error) = self.state.error() {
             field = field.description(error);
+        }
+        if let Some(on_key) = self.on_field_key.clone() {
+            field = field.on_key(move |s: &mut S, ev: &KeyEvent, tx: &mut Tx| on_key(s, ev, tx));
         }
         let field = field
             .build(k)

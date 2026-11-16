@@ -43,4 +43,12 @@ impl Ids {
         table.by_location.insert(location.clone(), id);
         id
     }
+
+    /// Issues an id for a virtual row with no [`Location`] (such as an archive preview member),
+    /// unique across the process.
+    pub(crate) fn fresh(&self) -> EntryId {
+        let mut table = self.0.borrow_mut();
+        table.issued += 1;
+        EntryId::new(table.issued)
+    }
 }

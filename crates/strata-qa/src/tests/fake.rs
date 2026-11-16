@@ -21,11 +21,16 @@ pub(super) struct Node {
     pub(super) field: bool,
 }
 
+type ChordHook = Box<dyn Fn(&Fake, &Chord)>;
+
 #[derive(Default)]
 pub(super) struct Fake {
     nodes: Vec<Node>,
     parents: Vec<Option<usize>>,
     pub(super) focus: Option<usize>,
+    pub(super) live_focus: Cell<Option<usize>>,
+    pub(super) shown_later: RefCell<Vec<usize>>,
+    pub(super) on_chord: Option<ChordHook>,
     /// Every input event and action, in the order the engine sent them.
     pub(super) sent: RefCell<Vec<String>>,
     pointer: Cell<(i16, i16)>,
@@ -98,7 +103,7 @@ impl Backend for Fake {
     }
 
     fn focus(&self, _window: &usize) -> Option<usize> {
-        self.focus
+        self.live_focus.get().or(self.focus)
     }
 
     fn parent(&self, node: &usize) -> Option<usize> {
@@ -112,7 +117,7 @@ impl Backend for Fake {
     }
 
     fn visible(&self, node: &usize) -> bool {
-        !self.nodes[*node].hidden
+        !self.nodes[*node].hidden || self.shown_later.borrow().contains(node)
     }
 
     fn attached(&self, _node: &usize) -> bool {
@@ -146,8 +151,9 @@ impl Backend for Fake {
     }
 
     fn states(&self, node: &usize) -> States {
+        let focused = self.live_focus.get().or(self.focus) == Some(*node);
         States {
-            focused: self.focus == Some(*node),
+            focused,
             ..self.nodes[*node].states
         }
     }
@@ -241,6 +247,9 @@ impl Backend for Fake {
 
     async fn chord(&self, _window: &usize, chord: &Chord) -> Result<(), String> {
         self.sent.borrow_mut().push(format!("chord {}", chord.key));
+        if let Some(f) = &self.on_chord {
+            f(self, chord);
+        }
         Ok(())
     }
 

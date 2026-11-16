@@ -119,4 +119,19 @@ pub enum SidebarIntent {
     Stepped(Step),
     /// 10xer `h`, Left or Backspace in the sidebar: focus goes back to the files.
     LeaveToFiles,
+    /// A reorderable place or pin row crossed the drag threshold.
+    RowDragStart { item: ItemId },
+    /// A dragged place or pin row moved; `landing` is `Some` while inside its block, `None`
+    /// when outside (e.g. over the window header or tab strip).
+    RowDragMove {
+        item: ItemId,
+        landing: Option<Landing>,
+        at: [f32; 2],
+    },
+    /// A dragged place or pin row ended; `dropped_outside` carries the window point when the
+    /// button came up outside its block without being cancelled.
+    RowDragEnd {
+        item: ItemId,
+        dropped_outside: Option<[f32; 2]>,
+    },
 }

@@ -17,7 +17,7 @@ use strata_components::{
         ListTableLabels,
     },
 };
-use strata_core::i18n::tr;
+use strata_core::{i18n::tr, util::DateFormat};
 use strata_desktop::settings::{
     ListColumnId, ListColumns, Preferences, sanitize_list_column_order,
     sanitize_list_hidden_columns,
@@ -99,11 +99,15 @@ fn modified(app: &App, rcx: &RowCx<'_>) -> Cell {
     Cell::text(text.unwrap_or_default())
 }
 
-/// Moves with what a row's cells read beyond its entry, so only the rows whose facts changed
-/// build again; and, while dates are relative, every 30 s, when they read the clock again.
+/// Moves with what a row's cells read beyond its entry, so only the rows whose facts or date
+/// format changed build again; and, while dates are relative, every 30 s, when they read the
+/// clock again.
 pub(super) fn cells_version(app: &App, rcx: &RowCx<'_>) -> u64 {
     let mut hasher = DefaultHasher::new();
     row(app, rcx).map(Row::facts).hash(&mut hasher);
+    DateFormat::parse(&shell::preferences(app).date_format)
+        .as_str()
+        .hash(&mut hasher);
     if app.list.relative_dates {
         app.list.dates.epoch().hash(&mut hasher);
     }

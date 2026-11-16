@@ -69,6 +69,11 @@ const SETTLE_LIMIT: Duration = Duration::from_millis(250);
 /// get, a motion outside it say, is not waited for longer.
 const DISPATCH_LIMIT: Duration = Duration::from_millis(500);
 const DISPATCH_POLL: Duration = Duration::from_millis(2);
+/// How long a motion is given while a drag this window started runs. Under the compositor's
+/// drag grab a motion reaches the data device, not the pointer, so Rune records no input for
+/// it and [`DISPATCH_LIMIT`] would run out at every step; a drag paced so slowly rests on each
+/// folder it crosses past the 750 ms spring, and opens it.
+const DRAG_MOTION_PACE: Duration = Duration::from_millis(16);
 /// How long the window may take to show in the admitted sway.
 const WINDOW_LIMIT: Duration = Duration::from_secs(30);
 const WINDOW_POLL: Duration = Duration::from_millis(20);
@@ -239,6 +244,13 @@ impl Session {
             "strata-rune: the session host: the window had not taken {what} after {} ms",
             DISPATCH_LIMIT.as_millis()
         );
+    }
+
+    /// Whether a drag this window started runs: its motions go to the compositor's data device.
+    fn dragging_out(&self) -> bool {
+        self.link
+            .ask(|app| crate::dnd::is_dragging(app))
+            .unwrap_or(false)
     }
 
     /// Sends `send`'s input, then waits for Rune to take it and for the frame after. Input
@@ -449,7 +461,12 @@ impl Host for Session {
         let moves = self.devices.position() != (x, y);
         self.log.motion((x, y));
         self.devices.motion(x, y)?;
-        if moves {
+        if !moves {
+            return Ok(());
+        }
+        if self.dragging_out() {
+            std::thread::sleep(DRAG_MOTION_PACE);
+        } else {
             self.dispatched(&format!("the motion to ({x}, {y})"));
         }
         Ok(())

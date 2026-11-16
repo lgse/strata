@@ -123,7 +123,10 @@ pub(crate) fn bar(app: &App, view: &str, title: &str, own: Option<El>) -> El {
         .iter()
         .fold(row().items_center(), |buttons, button| {
             buttons.child(navigation(app, view, button))
-        });
+        })
+        .on_drag(|_: &mut App, _: &mut Drag, tx: &mut Tx| tx.live_only())
+        .focusable(false)
+        .preserve_focus_on_press(true);
     // Middle-ellipsized, as GTK's heading label is.
     let heading = text(title.to_owned())
         .font(look.kit.ty.ui_medium)
@@ -131,7 +134,10 @@ pub(crate) fn bar(app: &App, view: &str, title: &str, own: Option<El>) -> El {
         .truncate_middle()
         .shrink()
         .min_w(0.0)
-        .description(title.to_owned());
+        .description(title.to_owned())
+        .on_drag(|_: &mut App, _: &mut Drag, tx: &mut Tx| tx.live_only())
+        .focusable(false)
+        .preserve_focus_on_press(true);
     // Other packages' actions follow the heading here, in GTK's order (the module docs).
     // GTK's order ([`actions`]): Empty Trash, Refresh, then the Icons view's thumbnail size.
     let mut actions = row()
@@ -144,7 +150,11 @@ pub(crate) fn bar(app: &App, view: &str, title: &str, own: Option<El>) -> El {
     }
     actions = actions.children(own);
     // The filter's toggle ends GTK's list (A10).
-    actions = actions.children(crate::filter::pane::toggle(app, view));
+    actions = actions
+        .children(crate::filter::pane::toggle(app, view))
+        .on_drag(|_: &mut App, _: &mut Drag, tx: &mut Tx| tx.live_only())
+        .focusable(false)
+        .preserve_focus_on_press(true);
     row()
         .key(format!("{view}-header"))
         .w_full()
@@ -152,6 +162,9 @@ pub(crate) fn bar(app: &App, view: &str, title: &str, own: Option<El>) -> El {
         .px(look.space.sm)
         .gap(look.space.sm)
         .items_center()
+        .on_drag(crate::pointer::leading_origin_drag)
+        .focusable(false)
+        .preserve_focus_on_press(true)
         .child(navigation)
         .child(row().grow(1.0).min_w(0.0).child(heading))
         .child(actions)

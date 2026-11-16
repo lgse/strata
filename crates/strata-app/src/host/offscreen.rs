@@ -77,7 +77,7 @@ impl Offscreen {
     /// a column that closes then leaves the tree at once.
     #[cfg(feature = "qa")]
     pub(crate) fn without_animations(mut self) -> Self {
-        self.runtime.update(|app, _| app.look.animations = false);
+        self.runtime.update(|app, _| shell::disable_animations(app));
         self
     }
 

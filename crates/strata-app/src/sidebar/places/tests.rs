@@ -99,8 +99,17 @@ fn environment(recent: bool) -> Environment {
     }
 }
 
+fn list(
+    settings: &Preferences,
+    pins: &[(Location, String)],
+    environment: &Environment,
+) -> super::Listed {
+    crate::startup::install_key_library().expect("key library");
+    listed(settings, pins, environment)
+}
+
 fn place_ids(settings: &Preferences, environment: &Environment) -> Vec<String> {
-    listed(settings, &[], environment)
+    list(settings, &[], environment)
         .places
         .iter()
         .map(|place| place.id.clone())
@@ -131,7 +140,7 @@ fn places_show_as_the_settings_and_the_users_folders_allow() {
 
 #[test]
 fn every_row_opens_its_location_the_way_gtk_does() {
-    let listed = listed(&Preferences::default(), &[], &environment(true));
+    let listed = list(&Preferences::default(), &[], &environment(true));
     let rows: Vec<(&str, String, Navigation)> = listed
         .rows
         .iter()
@@ -169,7 +178,7 @@ fn pins_leave_out_the_standard_folders_and_take_drops_only_when_local() {
         (Location::uri("sftp://host/share"), "Share".to_owned()),
         (Location::local("/home/user/Documents"), "Docs".to_owned()),
     ];
-    let listed = listed(&Preferences::default(), &pins, &environment(false));
+    let listed = list(&Preferences::default(), &pins, &environment(false));
     let shown: Vec<(&str, &str, bool)> = listed
         .pins
         .iter()
@@ -207,7 +216,7 @@ fn places_and_local_pins_resolve_saved_tints_and_glyphs_while_uri_rows_stay_plai
         (Location::local("/srv/work"), "Work".to_owned()),
         (Location::uri("sftp://host/share"), "Share".to_owned()),
     ];
-    let listed = listed(&settings, &pins, &environment(true));
+    let listed = list(&settings, &pins, &environment(true));
 
     let home = listed.places.iter().find(|p| p.id == "home").unwrap();
     assert_eq!(home.tint, color_of(&red));
@@ -231,4 +240,56 @@ fn places_and_local_pins_resolve_saved_tints_and_glyphs_while_uri_rows_stay_plai
     assert_eq!(listed.pins[0].icon, RowIcon::Emoji("🚀".to_owned()));
     assert_eq!(listed.pins[1].tint, None);
     assert_eq!(listed.pins[1].icon, RowIcon::Name(IconName::Folder));
+}
+
+#[test]
+fn places_and_visible_pins_carry_go_chord_keycaps_in_display_order() {
+    let mut pins = vec![(Location::local("/home/user"), "Dup Home".to_owned())];
+    for i in 1..=10 {
+        pins.push((Location::local(format!("/srv/pin-{i}")), format!("Pin {i}")));
+    }
+    let env = Environment {
+        home: PathBuf::from("/home/user"),
+        special: |dir| match dir {
+            UserDirectory::Desktop => Some(PathBuf::from("/home/user/Desktop")),
+            UserDirectory::Documents => Some(PathBuf::from("/home/user/Documents")),
+            UserDirectory::Downloads => Some(PathBuf::from("/home/user/Downloads")),
+            _ => None,
+        },
+        recent: true,
+    };
+    let listed = list(&Preferences::default(), &pins, &env);
+    let place_caps: Vec<(&str, Option<&str>)> = listed
+        .places
+        .iter()
+        .map(|p| (p.id.as_str(), p.keycap.as_deref()))
+        .collect();
+    assert_eq!(
+        place_caps,
+        [
+            ("home", Some("h")),
+            ("trash", Some("t")),
+            ("network", Some("n")),
+            ("recent", Some("r")),
+            ("desktop", None),
+            ("documents", Some("k")),
+            ("downloads", Some("d")),
+        ]
+    );
+    let pin_caps: Vec<Option<&str>> = listed.pins.iter().map(|p| p.keycap.as_deref()).collect();
+    assert_eq!(
+        pin_caps,
+        [
+            Some("1"),
+            Some("2"),
+            Some("3"),
+            Some("4"),
+            Some("5"),
+            Some("6"),
+            Some("7"),
+            Some("8"),
+            Some("9"),
+            None,
+        ]
+    );
 }

@@ -14,16 +14,21 @@ use strata_components::{
         prompt::{FooterPrompt, PromptState},
     },
 };
-use strata_core::i18n::tr;
-use strata_desktop::keys::{self as key_catalog, Keys, bindings};
+use strata_core::{i18n::tr, model::FileEntry};
+use strata_desktop::keys::{
+    self as key_catalog, Command as KeyCommand, Keys, Modifiers, bindings, shown,
+};
 
 use crate::{
     App,
     commands::{Action, Holds},
-    shell,
-    slots::{Frame, Part, Place, Setup},
+    filter, shell,
+    slots::{Frame, Later, Listener, Part, Place, Setup},
 };
 
+mod bookmarks;
+mod chords;
+mod go;
 mod keys;
 #[cfg(test)]
 mod tests;
@@ -36,15 +41,107 @@ const PROMPT_KEY: &str = "prompt";
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum ChordKind {
     Go,
+    Copy,
+    Sort,
+    Action,
+    FolderAction,
+    Tabs,
+    BookmarkSet,
+    BookmarkGo,
 }
 
 impl ChordKind {
     pub(crate) fn mark(self) -> String {
         let prefix = match self {
             Self::Go => Keys::One(bindings::GO.shown()),
+            Self::Copy => Keys::One(bindings::COPY_AS.shown()),
+            Self::Sort => Keys::One(bindings::SORT_BY.shown()),
+            Self::Action => Keys::One(bindings::ACTIONS.shown()),
+            Self::FolderAction => Keys::Chord(shown![bindings::ACTIONS, bindings::ACTIONS_FOLDER]),
+            Self::Tabs => Keys::One(bindings::TAB_CHORD.shown()),
+            Self::BookmarkSet => Keys::One(bindings::BOOKMARK_SET.shown()),
+            Self::BookmarkGo => Keys::One(bindings::BOOKMARK_GO.shown()),
         };
         format!("{}-", key_catalog::label(&prefix))
     }
+
+    pub(crate) fn options(self) -> Vec<(String, String)> {
+        let step = |cmd: KeyCommand, action: &str| {
+            (key_catalog::label(&Keys::One(cmd.shown())), tr(action))
+        };
+        match self {
+            Self::Go => go_options(),
+            Self::Copy => vec![
+                step(bindings::COPY_AS_PATH, "Copy path"),
+                step(bindings::COPY_AS_NAME, "Copy name"),
+            ],
+            Self::Sort => sort_options(),
+            Self::Action | Self::FolderAction | Self::BookmarkGo => Vec::new(),
+            Self::BookmarkSet => vec![(
+                key_catalog::label(&Keys::Letters(bindings::BOOKMARK_SET_LETTERS.step())),
+                tr("Save bookmark"),
+            )],
+            Self::Tabs => vec![
+                step(bindings::TAB_CHORD_NEW, "New tab"),
+                step(bindings::TAB_CHORD_CLOSE, "Close tab"),
+                step(bindings::TAB_CHORD_PREVIOUS, "Previous tab"),
+                (
+                    key_catalog::label(&Keys::Digits(bindings::TAB_CHORD_NUMBERS.step())),
+                    tr("Select tab"),
+                ),
+            ],
+        }
+    }
+}
+
+fn go_options() -> Vec<(String, String)> {
+    let one = |cmd: KeyCommand| Keys::One(cmd.shown());
+    let rows = [
+        (one(bindings::GO_FIRST), "First item"),
+        (one(bindings::GO_FOLLOW), "Follow search result"),
+        (one(bindings::GO_HOME), "Home"),
+        (one(bindings::GO_DOWNLOADS), "Downloads"),
+        (one(bindings::GO_CONFIG), "Config"),
+        (one(bindings::GO_TRASH), "Trash"),
+        (one(bindings::GO_NETWORK), "Network"),
+        (one(bindings::GO_RECENT), "Recent"),
+        (one(bindings::GO_DOCUMENTS), "Documents"),
+        (one(bindings::GO_MUSIC), "Music"),
+        (one(bindings::GO_PICTURES), "Pictures"),
+        (one(bindings::GO_VIDEOS), "Videos"),
+        (Keys::Digits(bindings::PIN_NUMBERS.step()), "Pins"),
+        (
+            Keys::Any(shown![bindings::GO_PIN, bindings::GO_UNPIN]),
+            "Pin / unpin folder",
+        ),
+        (one(bindings::GO_PROMPT), "Type a path"),
+    ];
+    rows.into_iter()
+        .map(|(keys, action)| (key_catalog::label(&keys), tr(action)))
+        .collect()
+}
+
+fn sort_options() -> Vec<(String, String)> {
+    let steps = [
+        (bindings::SORT_BY_NAME, "Name"),
+        (bindings::SORT_BY_MODIFIED, "Modified"),
+        (bindings::SORT_BY_SIZE, "Size"),
+        (bindings::SORT_BY_TYPE, "Type"),
+        (bindings::SORT_BY_EXTENSION, "Extension"),
+        (bindings::SORT_BY_CREATED, "Created"),
+        (bindings::SORT_BY_UNSORTED, "Unsorted"),
+        (bindings::SORT_BY_NATURAL, "Natural"),
+        (bindings::SORT_BY_ALPHABETICAL, "Alphabetical"),
+        (bindings::SORT_BY_CASE_SENSITIVE, "Case-sensitive names"),
+        (bindings::SORT_BY_FOLDERS_FIRST, "Folders first"),
+    ];
+    let mut rows: Vec<_> = steps
+        .into_iter()
+        .map(|(cmd, action)| (key_catalog::label(&Keys::One(cmd.shown())), tr(action)))
+        .collect();
+    let shift = key_catalog::modifiers_label_in(&rust_i18n::locale(), Modifiers::SHIFT_MASK);
+    rows.push((shift, tr("Reverse")));
+    rows
 }
 
 pub(crate) struct Tenxer {
@@ -52,6 +149,9 @@ pub(crate) struct Tenxer {
     pub(crate) chord: ChordState<()>,
     pub(crate) armed: Option<ChordKind>,
     pub(crate) prompt: PromptState<()>,
+    pub(crate) later: Later<App>,
+    pub(crate) bookmark_revision: u64,
+    pub(crate) bookmark_pending: bool,
     was_enabled: bool,
 }
 
@@ -66,8 +166,21 @@ impl Part for Tenxer {
             chord: ChordState::new(),
             armed: None,
             prompt: PromptState::new(),
+            later: setup.later.clone(),
+            bookmark_revision: 0,
+            bookmark_pending: false,
             was_enabled: setup.settings.tenxer_mode,
         }
+    }
+
+    fn listen(_: &Setup<'_>) -> Option<Listener<App>> {
+        Some(Box::new(|event, browser, heard| {
+            if bookmarks::cancels_pending_bookmark(browser, event) {
+                heard.then(|app: &mut App, _: &mut Tx| {
+                    app.tenxer.bookmark_pending && cancel_chord(app)
+                });
+            }
+        }))
     }
 
     fn keyboard(app: &App) -> Option<Holds> {
@@ -120,12 +233,26 @@ fn prompt_builder(app: &App) -> FooterPrompt<App, ()> {
 
 /// Cancels any armed chord on `app`.
 pub(crate) fn cancel_chord(app: &mut App) -> bool {
+    if std::mem::replace(&mut app.tenxer.bookmark_pending, false) {
+        app.tenxer.bookmark_revision = app.tenxer.bookmark_revision.wrapping_add(1);
+    }
+    crate::sidebar::show_keycaps(app, false);
     app.tenxer.armed = None;
     app.tenxer.chord.clear()
 }
 
-/// Arms `kind` with `options` (`(keycap, label)`), filtering out unbound keycaps.
+/// Arms `kind` with its default catalog options.
+pub(crate) fn arm_default_chord(app: &mut App, kind: ChordKind) {
+    let options = kind.options();
+    arm_chord(app, kind, options);
+}
+
+/// Arms `kind` with `rows` (`(keycap, label)`), filtering out unbound keycaps.
 pub(crate) fn arm_chord(app: &mut App, kind: ChordKind, rows: Vec<(String, String)>) {
+    if kind != ChordKind::BookmarkGo && std::mem::replace(&mut app.tenxer.bookmark_pending, false) {
+        app.tenxer.bookmark_revision = app.tenxer.bookmark_revision.wrapping_add(1);
+    }
+    crate::sidebar::show_keycaps(app, kind == ChordKind::Go);
     let options = rows
         .into_iter()
         .filter(|(cap, _)| !cap.is_empty())
@@ -155,6 +282,53 @@ pub(crate) fn flash_nothing_to_select(app: &mut App, tx: &mut Tx) {
 /// Shows `message` in the footer flash.
 pub(crate) fn show_flash(app: &mut App, message: String, tx: &mut Tx) {
     app.tenxer.flash.show(message, tx);
+}
+
+pub(crate) fn shows(app: &App, mode: &str) -> bool {
+    shell::shown_view(app).is_some_and(|view| (view.shows)(mode))
+}
+
+/// `BrowserView::focused_listing_depth` (`src/ui/browser/view_selection.rs`).
+pub(crate) fn focused_listing_depth(app: &App) -> Option<usize> {
+    if shows(app, "columns") {
+        Some(app.columns.active_depth())
+            .filter(|depth| app.browser.location_at(*depth).is_some())
+            .or_else(|| app.browser.active_depth())
+    } else {
+        app.browser.active_depth()
+    }
+}
+
+/// `BrowserView::command_targets` (`src/ui/browser/file_commands.rs`).
+pub(crate) fn command_targets(app: &mut App) -> Vec<FileEntry> {
+    let tenxer = shell::preferences(app).tenxer_mode;
+    if let Some(results) = filter::targets::selected(app) {
+        if !results.is_empty() || !tenxer {
+            return results;
+        }
+        return filter::targets::under_cursor(app)
+            .map(|(_, entry)| entry)
+            .into_iter()
+            .collect();
+    }
+    shell::publish(app);
+    if !tenxer {
+        return app.browser.transfer_entries();
+    }
+    focused_listing_depth(app)
+        .map(|depth| app.browser.command_entries(depth))
+        .unwrap_or_default()
+}
+
+/// `BrowserView::focused_target` (`src/ui/browser/file_commands.rs`).
+pub(crate) fn focused_target(app: &mut App) -> Option<FileEntry> {
+    if filter::targets::selected(app).is_some() {
+        return filter::targets::preview_result(app)
+            .or_else(|| filter::targets::under_cursor(app))
+            .map(|(_, entry)| entry);
+    }
+    shell::publish(app);
+    focused_listing_depth(app).and_then(|depth| app.browser.cursor_entry(depth))
 }
 
 /// The `KeyHandle` of whichever collection currently shows.

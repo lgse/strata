@@ -604,6 +604,7 @@ impl<S: 'static> ListTable<S> {
                 Some(edge_bar.build::<S>(&bar_key, &target, look))
             })
             .row_height(|_: &S, look: &Look| strata_kit::slots::list::row_height(look))
+            .row_gap_y(1.0)
             .label(self.shared.label.clone().unwrap_or_else(rows::label))
             .content(rows::content(
                 shared,

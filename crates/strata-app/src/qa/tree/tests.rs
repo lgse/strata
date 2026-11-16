@@ -22,6 +22,7 @@ fn label(above: &[&str], text: &str, x: f64) -> NameLabel {
             width: 50.0,
             height: 18.0,
         },
+        badge: false,
     }
 }
 
@@ -834,4 +835,137 @@ fn open_submenu_surfaces_nest_under_their_owning_menu_and_row_icons_carry_descri
         .find(|s| s.role() == "image")
         .expect("row icon");
     assert_eq!(badge_image.description, "example: Available offline");
+}
+
+#[test]
+fn archive_preview_rows_present_drawn_labels_without_marking_as_browser_entries() {
+    let tree = json!({
+        "role": "window",
+        "children": [
+            { "role": "region", "key": "preview-pane", "name": "Preview", "children": [
+                { "role": "list-box", "key": "preview-archive", "states": ["focused"],
+                  "activeDescendant": "row-42", "children": [
+                    { "role": "list-box-option", "key": "row-42", "name": "docs/",
+                      "states": ["selected"], "bounds": [800.0, 80.0, 360.0, 28.0] },
+                ] },
+            ] },
+        ],
+    });
+    let drawn = Drawn {
+        labels: vec![NameLabel {
+            above: vec![
+                "row-42".to_owned(),
+                "preview-archive".to_owned(),
+                "preview-pane".to_owned(),
+            ],
+            text: "docs/".to_owned(),
+            bounds: bounds(84.0),
+            badge: false,
+        }],
+        ..Drawn::default()
+    };
+    let snapshot = Snapshot::read(&tree, &drawn);
+    let row = (0..)
+        .map_while(|i| snapshot.at(i))
+        .find(|s| s.key.as_deref() == Some("row-42"))
+        .expect("archive member row");
+    assert_eq!(row.mark, None, "archive member is not a browser entry");
+    let child_labels: Vec<_> = row
+        .children
+        .iter()
+        .filter_map(|&c| snapshot.at(c))
+        .filter(|s| s.role() == "label")
+        .map(|s| s.name.as_str())
+        .collect();
+    assert_eq!(child_labels, ["docs/"]);
+}
+
+#[test]
+fn recall_finds_remembered_entry_when_modal_hides_column() {
+    let drawn = drawn_folder();
+    let live_tree = json!({
+        "role": "window",
+        "children": [
+            { "role": "group", "name": "folder", "children": [
+                { "role": "list-box", "key": "columns-col-1", "children": [
+                    { "role": "list-box-option", "key": "row-2", "name": "todo.txt", "bounds": [0.0, 39.0, 300.0, 28.0] },
+                ] },
+            ] },
+        ],
+    });
+    let before_modal = Snapshot::read(&live_tree, &drawn);
+    let row = (0..)
+        .map_while(|i| before_modal.at(i))
+        .find(|s| s.key.as_deref() == Some("row-2"))
+        .expect("entry row");
+    assert_eq!(row.bounds, Some(bounds(0.0)));
+    let kept = before_modal.keep(row.node.as_ref().expect("node"));
+
+    let modal_tree = json!({
+        "role": "window",
+        "children": [
+            { "role": "dialog", "key": "open-with-1-dialog", "name": "Open With", "states": ["modal"] },
+        ],
+    });
+    let behind_modal = Snapshot::read(&modal_tree, &drawn);
+    let recalled = behind_modal.recall(&kept).expect("recalled behind modal");
+    assert_eq!(
+        behind_modal.get(&recalled).map(|s| s.name.as_str()),
+        Some("todo.txt")
+    );
+}
+
+#[test]
+fn grid_cell_entries_keep_accesskit_union_bounds() {
+    let icons = Shape {
+        name: "Icons",
+        list: "grid",
+        entry: "grid-cell",
+    };
+    let icons_tree = json!({
+        "role": "window",
+        "children": [
+            { "role": "group", "name": "folder", "children": [
+                { "role": "grid", "key": "icons", "children": [
+                    { "role": "grid-cell", "key": "row-1", "name": "readme.md", "bounds": [10.0, 20.0, 115.0, 136.0] },
+                ] },
+            ] },
+        ],
+    });
+    let icons_drawn = Drawn {
+        view: Some(icons),
+        lists: vec!["icons".to_owned()],
+        columns: vec![DrawnColumn {
+            list: "icons".to_owned(),
+            name: "folder".to_owned(),
+            bounds: bounds(0.0),
+            pane: bounds(0.0),
+            rows: vec![DrawnRow {
+                key: "row-1".to_owned(),
+                name: "readme.md".to_owned(),
+                selected: false,
+                bounds: Rect {
+                    x: 25.0,
+                    y: 23.0,
+                    width: 76.0,
+                    height: 76.0,
+                },
+            }],
+        }],
+        ..Drawn::default()
+    };
+    let icons_snap = Snapshot::read(&icons_tree, &icons_drawn);
+    let tile = (0..)
+        .map_while(|i| icons_snap.at(i))
+        .find(|s| s.key.as_deref() == Some("row-1"))
+        .expect("grid-cell");
+    assert_eq!(
+        tile.bounds,
+        Some(Rect {
+            x: 10.0,
+            y: 20.0,
+            width: 115.0,
+            height: 136.0,
+        })
+    );
 }

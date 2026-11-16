@@ -127,6 +127,7 @@
   "Autoplay media previews": "Lecture automatique des aperçus multimédias",
   "Video preview start": "Début des aperçus vidéo",
   "Percent of a video's length to open it at; 0 starts at the beginning. A video you already previewed resumes where you left it.": "Pourcentage de la durée d’une vidéo auquel l’ouvrir ; 0 commence au début. Une vidéo déjà prévisualisée reprend là où vous l’avez laissée.",
+  "Autoscroll": "Défilement automatique",
   "Available release": "Version disponible",
   "BACK TO": "REVENIR À",
   "BITRATE": "DÉBIT",

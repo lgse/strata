@@ -6,22 +6,19 @@
 scenario = "scrolling-extends-marquee"
 run = "columns-edge"
 package = "A9"
-status = "pending"
-reason = "scope"
-blocker = "A9"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "scrolling-extends-marquee"
 run = "list-wheel"
 package = "A9"
-status = "pending"
-reason = "scope"
-blocker = "A9"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "sidebar-marquee-keeps-scrolled-list"
 run = "list"
 package = "A9"
-status = "pending"
-reason = "scope"
-blocker = "A9"
+status = "required"
+host = "offscreen"

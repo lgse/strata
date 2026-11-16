@@ -139,6 +139,16 @@ closed issue is not a fixed finding: the state given here is the finding's.
   sibling), failed once in CI's shard 3, in the pull request's first run. That change adds
   key constants and two characters to the table key backend, which the GTK application
   does not install; `./scripts/quality.sh test` had passed with it in the pinned image.
+- **On [#2549](https://github.com/lgse/strata/pull/2549):** a ninth,
+  `ui::window::tests::keyboard_dispatch::preview_ownership::default_archive_keys_follow_pane_focus`
+  ("keyboard fixture did not settle", `src/ui/window/tests/keyboard_dispatch.rs:324`), and,
+  with no GTK in it, `strata-desktop`'s
+  `services::update_install::tests::unowned_release_binary_keeps_in_place_updates`
+  (`crates/strata-desktop/src/services/update_install/tests.rs:258`, the install read as
+  `Pacman`), each failed once in `./scripts/quality.sh all` in the pinned image at
+  `1d4e3b8a9` on a loaded host. That change touches neither `src/` nor
+  `crates/strata-desktop`; alone, the first passed 3 of 3 and the second 1 of 1
+  (`./scripts/test-headless.py`).
 - **State:** open, set aside. Whoever meets one of these in a red shard reads the failure
   first: if the change could reach the test, it is the change's; if not, say why on the pull
   request, rerun the whole workflow once, and stop if the same test fails twice. A new flaky
@@ -706,6 +716,11 @@ sequence only together with the alphabet's version, so the version is part of th
   starts from the clicked row.
 - **Concerns:** seed `0x0d` of `columns v1` (shrunk to 5 steps) and seed `0x09` of
   `columns v3`, parked in `tests/qa/fuzz/corpus/columns/`.
+- **Also met by a deselecting Ctrl+click in List** ([A9](packages/A9.md)'s `pointer v2`, never
+  merged, seed `0x10`). After a Ctrl+click that takes `pictures` out of the selection, GTK's
+  next `j` moves from the entry before it, the cursor `pointer_selection` left, while its focus
+  is on the clicked row. Rune moves from the clicked row. `pointer v3` Ctrl+clicks only entries
+  not selected.
 - **State:** open, waiting for the owner ([`owner.md`](owner.md), F2 item 1). Meanwhile Rune
   keeps the clicked row, and the seeds stay parked.
 
@@ -1940,3 +1955,74 @@ sequence only together with the alphabet's version, so the version is part of th
   `v1-000000000000000f` is parked in `tests/qa/fuzz/corpus/clipboard/parked`; `clipboard v4` moves
   the pointer onto a clicked folder's opened column and pastes into `archive` via the
   selected-folder route from `$root`.
+
+### #2551: Rune anchors a Shift+click at a load's cursor and at the cursor after a clear
+
+- **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2551), filed on
+  2026-11-16 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** in [A9](packages/A9.md)'s `pointer` alphabet: seed `0x05` of `pointer v1` and seed
+  `0x01` of `pointer v3`, both drafts and never merged, GTK against Rune. GTK's Shift+click
+  (`pointer_selection`, `src/ui/collection_interaction.rs`) ranges from the anchor the shared
+  browser keeps, and selects the clicked entry alone when there is none. After a folder's load
+  in List or Icons (cursor on `notes.txt`, nothing selected), a Shift+click on `report.md`
+  selects `[report.md]` on GTK and selected `[notes.txt, report.md]` on Rune. After a click on
+  `diagram.txt`, a Shift+click on `photo.txt` and a click on the pane's empty space, a
+  Shift+click on `diagram.txt` selects `[diagram.txt]` on GTK, whose empty-space press
+  (`unselect_all`) and Escape (`clear_active_selection`) leave the anchor where it was, and
+  selected `[diagram.txt, photo.txt]` on Rune.
+- **Why:** the first visit's cursor took the anchor with it (`single/first_visit.rs`,
+  `AnchorRule::Move`), `Selection::sync` gave a missing anchor the cursor on every sync of a
+  listing, and `Selection::clear` moved the anchor to the cursor (`crates/strata-components/src/collection/selection/mod.rs`).
+- **State:** fixed by [A9](packages/A9.md)'s closing pull request. The first visit keeps the
+  anchor missing, `sync` moves only an anchor whose entry left, and `clear` keeps the anchor.
+  The keyboard's Shift+arrow still starts at the cursor when nothing is selected, as GTK's
+  `resume_native_selection` does, since the keyboard machine moves the anchor there first
+  (`keyboard::tests`). Held by `qa::tests::clicks::a_shift_click_after_a_load_*` and
+  `a_shift_click_after_a_background_click_*` in List and Icons, and by
+  `collection::selection::tests::clear_keeps_the_anchor_for_the_next_shift_click`.
+
+### #2552: after a marquee, GTK's browser cursor is the band's end while its focus stays where it was
+
+- **Code:** `oracle`. [Issue](https://github.com/lgse/strata/issues/2552), filed on
+  2026-11-16 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** in [A9](packages/A9.md)'s `pointer` alphabet, GTK against Rune. GTK's selection
+  sync (`SelectionSync::changed`, `src/ui/browser_modes/selection.rs`) gives the shared browser,
+  as its cursor, the last entry each selection change newly selected. During a band, that is the
+  entry the band reached last, while the list's own focus, which GTK's snapshot reports, stays on
+  the row it was on. What reads the browser's cursor afterwards then starts from the band's end:
+  a return to the folder (click `pictures`, click `photo.txt`, a marquee from empty space up to
+  `diagram.txt`, Alt+Up, click `pictures`: GTK focuses `diagram.txt`, Rune `photo.txt`), a
+  reload (a marquee from empty space up to `readme.md` with `todo.txt` focused, then a file
+  removed: GTK refocuses `readme.md`), and the next arrow (GTK's `j` selected the focused
+  `notes.txt` in place where Rune moved on to `report.md`). Rune keeps its cursor on the
+  focused row.
+- **Concerns:** `fuzz-pointer-v3-000000000000000c` and `-0d`, each shrunk to 5 steps, confirmed
+  3 of 3 against Rune and agreeing with itself in 24 of 24 GTK replays, parked in
+  `tests/qa/fuzz/corpus/pointer/`; the arrow cases, seeds `0x0a`, `0x0e` and `0x14` of
+  `pointer v1`, never merged. Not driven by hand on GTK.
+- **State:** open, set aside: no Rune change. `pointer v3` sends no keyboard cursor moves, and
+  any fix belongs on `main`.
+
+### #2546: after a drag-move out of the folder, GTK gives the keyboard to the neighbouring row, Rune to none
+
+- **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2546), filed on
+  2026-11-16 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** in [A19](packages/A19.md)'s survey of
+  `cross_volume_drop/cross-volume-enter-choice/{columns,icons,list}-move` on Rune. With
+  `todo.txt` selected and holding the keyboard, a drag onto `drop-volume` and the "Copy or
+  move?" prompt's Move take the file out of the shown folder; line 25 waits for
+  `focused: "readme.md"` without a key. Driven on GTK (`qa-drive.sh`, List, 2026-11-16): the
+  focus ring is on `readme.md`, nothing is selected, and the next Down acts from `readme.md`.
+  On Rune no row has the keyboard (`focused: null`).
+- **Why:** a drag-move out is one of the shared `Browser`'s selectionless removals
+  (`set_selectionless_removals`), so it places no cursor; GTK's `GtkListBase` moves its
+  widget focus to the neighbour anyway. Rune's views let go of a cursor whose entry left a
+  complete listing (`handover::sync_rule`, `CursorGone::Clear`, as C1e documents for a plain
+  move out). It is not `main`'s bug [#2361](https://github.com/lgse/strata/issues/2361): GTK
+  draws the cursor where its snapshot says.
+- **Concerns:** `crates/strata-app/src/handover.rs` and
+  `crates/strata-components/src/collection/selection/mod.rs` (`CursorGone`), the shared
+  handover contract. Giving the neighbour the keyboard unselected must not hand the browser a
+  cursor GTK's browser never gets: in Columns a browser cursor on a folder opens it. Any
+  other move out of the shown folder (a cut and paste, A12's) likely shows the same.
+- **State:** open. The three runs stay `pending` on it in `tests/qa/parity/cross_volume_drop.toml`.
