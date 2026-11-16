@@ -43,8 +43,46 @@ fn above<'a>(
         .filter_map(|index| elements.get(index))
 }
 
+/// A row label's box as GTK's `hexpand` `gtk::Label` exposes it to AT-SPI: from the drawn
+/// text's left edge to the trailing edge of its drawn cell (`cell-name` in List) or row content
+/// box (in Columns and List filter results). An Icons tile (`grid-cell`) keeps its caption box.
+fn label_bounds(elements: &[ElementInfo], element: &ElementInfo, app: &App) -> Rect {
+    let mut bounds = rect(element);
+    let chain: Vec<&ElementInfo> = above(elements, element).collect();
+    let Some(row_pos) = chain.iter().position(|outer| {
+        outer
+            .key
+            .as_deref()
+            .is_some_and(|key| key.starts_with("row-"))
+    }) else {
+        return bounds;
+    };
+    if chain[row_pos].role == "grid-cell" {
+        return bounds;
+    }
+    let right = if let Some(cell) = chain
+        .iter()
+        .take(row_pos)
+        .find(|outer| outer.key.as_deref() == Some("cell-name"))
+    {
+        let pad = f64::from(strata_kit::slots::list::cell_pad(&app.look));
+        f64::from(cell.rect[0] + cell.rect[2]) - pad
+    } else if row_pos >= 2 {
+        // `chain[row_pos]` is the row, `chain[row_pos - 1]` its inner box, and
+        // `chain[row_pos - 2]` its drawn content box.
+        let content = chain[row_pos - 2];
+        f64::from(content.rect[0] + content.rect[2])
+    } else {
+        bounds.x + bounds.width
+    };
+    if right > bounds.x + bounds.width {
+        bounds.width = right - bounds.x;
+    }
+    bounds
+}
+
 /// The names the view draws in rows, each with the keys of the elements around it.
-fn name_labels(elements: &[ElementInfo]) -> Vec<NameLabel> {
+fn name_labels(elements: &[ElementInfo], app: &App) -> Vec<NameLabel> {
     let drawn = |element: &&ElementInfo| !element.exiting && element.key.as_deref() == Some(LABEL);
     let label = |element: &ElementInfo| {
         Some(NameLabel {
@@ -52,7 +90,7 @@ fn name_labels(elements: &[ElementInfo]) -> Vec<NameLabel> {
                 .filter_map(|outer| outer.key.clone())
                 .collect(),
             text: element.text.clone()?,
-            bounds: rect(element),
+            bounds: label_bounds(elements, element, app),
         })
     };
     elements.iter().filter(drawn).filter_map(label).collect()
@@ -273,10 +311,11 @@ pub(super) fn drawn(elements: &[ElementInfo], app: &App) -> Drawn {
             .iter()
             .filter_map(|list| drawn_column(elements, list))
             .collect(),
-        labels: name_labels(elements),
+        labels: name_labels(elements, app),
         icons: row_icons(elements),
         buttons: drawn_buttons(elements, &lists),
         sidebar: super::sidebar::Gaps::drawn(elements),
+        tenxer: super::tenxer::Labels::drawn(elements),
         outlined: crate::filter::outlined(app),
         edit_range: elements
             .iter()

@@ -14,6 +14,8 @@
 //!
 //! [A11]: ../../../docs/rune/parity/packages/A11.md
 
+use std::rc::Rc;
+
 use rune::{El, Tx};
 use strata_components::footer::{Footer as Bar, FooterLabels};
 use strata_core::i18n::tr;
@@ -23,10 +25,11 @@ use strata_desktop::keys::{
 };
 
 use crate::{
-    App, buttons, clipboard,
+    App, buttons, clipboard, filter,
     location::labels::with_keys,
     shell,
     slots::{Frame, Listener, Part, Place, Setup},
+    tenxer,
 };
 
 mod count;
@@ -58,14 +61,22 @@ impl Part for Footer {
 /// The button's key: C19's `Footer::shortcuts_key` for the footer keyed `footer`.
 const SHORTCUTS: &str = "footer-shortcuts";
 
-fn build(app: &App, _: &mut Frame<'_, App>) -> Option<El> {
-    let shows = shell::preferences(app).show_keybinding_hints;
+fn build(app: &App, frame: &mut Frame<'_, App>) -> Option<El> {
+    let prefs = shell::preferences(app);
+    let shows = prefs.show_keybinding_hints;
     let footer = Bar::new("footer")
         .shortcuts(shows.then_some((
             |app: &App| &app.shortcuts.reference,
             |app: &mut App| &mut app.shortcuts.reference,
         )))
         .clipboard(clipboard::has_files(app))
+        .tenxer(prefs.tenxer_mode)
+        .mark(filter::tenxer_mark(app))
+        .current_hit(filter::current_hit_path(app))
+        .range(tenxer::active_range(app))
+        .flash(tenxer::flash_el(app))
+        .chord(tenxer::chord_pill_el(app))
+        .prompt(tenxer::prompt_el(app, frame.cx, frame.layer))
         .count(count::shown(app))
         .labels(labels());
     debug_assert_eq!(footer.shortcuts_key(), SHORTCUTS);
@@ -75,10 +86,14 @@ fn build(app: &App, _: &mut Frame<'_, App>) -> Option<El> {
         .map(|footer| buttons::on_return_within(SHORTCUTS, footer))
 }
 
-/// The button's and clipboard badge's names and descriptions, as GTK's `follow_keys` writes
-/// them.
+/// The button's, clipboard badge's and 10xer indicators' names and descriptions, as GTK's
+/// `follow_keys` and `indicators.rs` write them.
 fn labels() -> FooterLabels {
     let reference = Keys::One(REFERENCE.alternate(0).shown());
+    let mode = tr("10xer mode");
+    let caveat = tr("(experimental feature, under active development)");
+    let filter_prefix = tr("filter:");
+    let search_prefix = tr("search:");
     FooterLabels {
         shortcuts: with_keys("%{keys} Shortcuts", Some("Shortcuts"), reference),
         shortcuts_description: with_keys(
@@ -88,7 +103,17 @@ fn labels() -> FooterLabels {
         ),
         clipboard: tr("Files on clipboard"),
         clipboard_description: paste_description(),
-        ..FooterLabels::default()
+        tenxer: "10X".to_owned(),
+        tenxer_name: rust_i18n::t!(
+            "%{mode} (experimental feature, under active development)",
+            mode = mode
+        )
+        .into_owned(),
+        tenxer_caveat: caveat,
+        filter: Rc::new(move |q| format!("{filter_prefix} {q}")),
+        search: Rc::new(move |q| format!("{search_prefix} {q}")),
+        visual: (tr("VISUAL"), tr("Visual select")),
+        unset: (tr("UNSET"), tr("Visual unset")),
     }
 }
 

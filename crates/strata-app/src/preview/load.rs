@@ -246,6 +246,8 @@ pub(super) fn reload_rendered(app: &mut App, entry: FileEntry) {
 
 fn start_request(app: &mut App, entry: FileEntry, render_document: bool) {
     app.preview.header = identity_for(&app.look, &entry, None);
+    let later = app.preview.loader.later.clone();
+    app.preview.raw.load(&entry, later);
     app.preview.loader.cancel();
     if app.preview.drawer.is_suspended() {
         app.preview.loader.defer_on_resume = true;

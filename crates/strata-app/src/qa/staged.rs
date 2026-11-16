@@ -77,9 +77,11 @@ impl Staged {
     /// A key going down and up with its modifiers held around it, then a settle. With no
     /// `event` the key is one a window hears nothing of, a dead key: only the log has it.
     fn tap(&self, name: &str, event: Option<KeyEvent>) {
+        let origin = self.keyboard.borrow().origin();
         let stage = &mut *self.stage.borrow_mut();
         if let Some(event) = event {
             let host = stage.host();
+            host.set_key_origin(origin);
             host.modifiers(event.mods);
             let runtime = host.runtime();
             runtime.key(event.clone());
@@ -89,6 +91,7 @@ impl Staged {
         self.log.key(name, false);
         self.show_modifiers(stage);
         stage.settle();
+        stage.host().set_key_origin(None);
     }
 
     /// One click of the wheel at (x, y), as Rune's window host delivers it off macOS: with
@@ -138,7 +141,9 @@ impl Host for Staged {
     }
 
     async fn settle(&self) {
-        self.stage.borrow_mut().settle();
+        let mut stage = self.stage.borrow_mut();
+        stage.settle();
+        stage.host().set_key_origin(None);
     }
 
     async fn sleep(&self, time: Duration) {
@@ -220,11 +225,14 @@ impl Host for Staged {
         let Some(event) = event else {
             return Ok(());
         };
+        let origin = self.keyboard.borrow().origin();
         let host = stage.host();
         if pressed {
+            host.set_key_origin(origin);
             host.modifiers(event.mods);
             host.runtime().key(event);
         } else {
+            host.set_key_origin(None);
             host.runtime().key_up(event);
             self.show_modifiers(stage);
         }
@@ -276,5 +284,16 @@ impl Host for Staged {
             .host()
             .runtime()
             .accessibility_action(&target.key, Action::Click, None)
+    }
+
+    async fn scroll_to(&self, key: &str, x: f32, y: f32) -> Result<(), String> {
+        let key = key.to_owned();
+        let stage = &mut *self.stage.borrow_mut();
+        stage
+            .host()
+            .runtime()
+            .update(move |_, tx| tx.scroll_to_instant(key, x, y));
+        stage.settle();
+        Ok(())
     }
 }

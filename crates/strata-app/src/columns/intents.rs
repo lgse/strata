@@ -4,7 +4,10 @@
 
 use rune::Tx;
 use strata_components::{
-    collection::element::{Activation, Intent},
+    collection::{
+        element::{Activation, Intent},
+        keyboard::NothingToSelect,
+    },
     columns::ColumnsIntent,
     contract::EntryId,
 };
@@ -58,6 +61,21 @@ impl App {
         }
     }
 
+    fn previewable_click_position(&self, depth: usize, id: EntryId) -> Option<usize> {
+        let preferences = shell::preferences(self);
+        if crate::clicks::one_click_files(crate::clicks::columns(preferences))
+            || !preferences.single_click_previews
+        {
+            return None;
+        }
+        let position = self.columns.position(depth, id)?;
+        self.browser
+            .entry_at(depth, position)
+            .as_ref()
+            .is_some_and(crate::preview::entry_supports_quick_preview)
+            .then_some(position)
+    }
+
     /// A plain click on a file previews it when single-click previews are enabled and two
     /// clicks open files (`PendingActivationKind::Standard { preview: true }`), or else closes
     /// the columns after it (`PendingActivationKind::CloseDeeper` in
@@ -70,15 +88,7 @@ impl App {
         if !file {
             return;
         }
-        if !self.columns.one_click_files()
-            && shell::preferences(self).single_click_previews
-            && let Some(position) = self.columns.position(depth, id)
-            && self
-                .browser
-                .entry_at(depth, position)
-                .as_ref()
-                .is_some_and(crate::preview::entry_supports_quick_preview)
-        {
+        if let Some(position) = self.previewable_click_position(depth, id) {
             self.browser.preview(depth, position);
             return;
         }
@@ -150,6 +160,9 @@ impl App {
                     anchor,
                 };
                 menus::open(self, menu, tx);
+            }
+            Intent::Other(other) if other.downcast_ref::<NothingToSelect>().is_some() => {
+                crate::tenxer::flash_nothing_to_select(self, tx);
             }
             // Drags are interface the slice leaves out. Up and Down at a
             // column's edge have nowhere to go without a header to focus: the view has

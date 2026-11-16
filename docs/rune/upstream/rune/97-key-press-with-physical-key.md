@@ -5,7 +5,7 @@
 | Kind | New issue |
 | Drafts | V8 of the vertical slice (`docs/rune/slice/V8-read-path-parity.md`), from V7's finding |
 | Affects | `strata-app`'s QA backend (`crates/strata-app/src/qa/`), which drives an offscreen `Runtime` as a window would |
-| Retires | The parity ledger's `rune` blocker on `arrow-keys-move-focus/columns-hjkl-tenxer-ru`: a plain-letter binding under a non-Latin layout |
+| Retires | `Offscreen::set_key_origin` and `Live::qa_origin` (`crates/strata-app/src/commands.rs`, `host/offscreen.rs`, `qa/keyboard.rs`, `qa/staged.rs`), which thread the X keycode and base character of a QA press into `commands::read` for `arrow-keys-move-focus/columns-hjkl-tenxer-ru` |
 | Checked | At `2a44156` (2026-11-11): the repro below was built against the pin and run headless, and its output is the Output block. By source, `Runtime::physical_key_input` is `pub(crate)` (`runtime/input/physical.rs:54`) and only the script player calls it (`tooling.rs:372`); `Runtime::physical_input` is public and queues the physical event "without a logical fallback" (`runtime/input/physical.rs:30–36`); `Runtime::key` queues the logical key with no physical key and no base. |
 | Status | Filed on 2026-11-11 as [anomalyco/rune#657](https://github.com/anomalyco/rune/issues/657), by the owner's request, from the text below without its last line, the placeholder link to entry 44. Entry [44](44-headless-tooling.md) asks for the same entry point among five other things, for scripts: when it is filed, link #657 from its fourth item |
 

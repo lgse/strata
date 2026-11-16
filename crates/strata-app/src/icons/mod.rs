@@ -6,11 +6,7 @@
 //! selection, the pane's. A folder opens in place, as GTK's Icons view opens it
 //! (`activate_in_place`).
 
-use strata_components::{
-    collection::keyboard::{KeySettings, Letters},
-    context_menu::AnchorEdge,
-    icons_grid::IconsGridState,
-};
+use strata_components::{context_menu::AnchorEdge, icons_grid::IconsGridState};
 use strata_core::{i18n::tr, model::Location};
 use strata_desktop::settings::Preferences;
 
@@ -24,6 +20,8 @@ use crate::{
 mod part;
 pub(crate) mod size;
 mod view;
+
+pub(crate) use part::tick_active;
 
 /// The grid's key: its collection's, and the element that takes the keyboard. Every element
 /// key of the view starts with it.
@@ -62,28 +60,14 @@ pub(crate) struct Icons {
     fills: Fills,
 }
 
-/// The keys of an Icons grid: Left and Right cross the ends of rows, as GTK's GridView moves.
-/// With "Type to search" off a plain letter starts no search, so `h j k l` are the arrows:
-/// `Context::of` in `src/ui/keys/alias.rs`.
-fn keys(typing: bool) -> KeySettings {
-    let keys = KeySettings::default().wrap_rows(true);
-    match typing {
-        true => keys,
-        false => keys.letters(Letters::Arrows),
-    }
-}
-
 impl Icons {
     fn with_setup(setup: &Setup<'_>) -> Self {
         let settings: &Preferences = setup.settings;
-        // `type_to_search_active` in `src/ui/preferences/input_settings.rs`.
-        let typing = settings.type_to_search && !settings.tenxer_mode;
-        let clicks = (settings.icons_file_clicks, settings.icons_folder_clicks);
         Self {
             single: Single::new(Made {
                 key: VIEW,
-                clicks,
-                keys: keys(typing),
+                wrap_rows: true,
+                left_leaves: false,
                 described: tr("Icons view"),
                 menu_at: AnchorEdge::Right,
                 worn: setup.worn.clone(),

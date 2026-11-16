@@ -26,7 +26,7 @@ use rune::{El, row};
 use strata_components::columns::HeaderCx;
 
 use super::{empty_trash, refresh};
-use crate::{App, buttons};
+use crate::{App, buttons, shell};
 
 /// The actions before the thumbnail size in the header over the single-pane view keyed `view`.
 /// In List, GTK's Sort by leads them, and its direction button follows Refresh in the Recent
@@ -56,10 +56,16 @@ pub(super) fn pane(app: &App, view: &str) -> Vec<El> {
 /// The actions in the header of the Columns column `cx` names.
 pub(crate) fn column(app: &App, cx: &HeaderCx) -> Option<El> {
     let depth = cx.depth;
+    let tenxer = shell::preferences(app).tenxer_mode;
     let mut actions = row().items_center();
+    let mut any = false;
     if let Some(button) = empty_trash::built(app, depth) {
         let key = format!("columns-empty-trash-{depth}");
         actions = actions.child(button.key(key).focusable(false));
+        any = true;
+    }
+    if tenxer {
+        return any.then_some(actions);
     }
     let refresh = refresh::built(app, depth).key(format!("columns-refresh-{depth}"));
     actions = actions.child(refresh.focusable(false));
