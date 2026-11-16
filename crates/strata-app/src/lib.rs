@@ -99,6 +99,7 @@ mod transfer;
 // A13 Archives and providers
 mod archive;
 // A14 Open with, terminal and custom actions
+mod open_with;
 mod terminal;
 // A15 Preview drawer, text and documents
 mod preview;
@@ -161,6 +162,7 @@ slots::parts! {
     // A13 Archives and providers
     archive: archive::Archive,
     // A14 Open with, terminal and custom actions
+    open_with: open_with::OpenWith,
     terminal: terminal::Terminal,
     // A15 Preview drawer, text and documents
     preview: preview::Preview,

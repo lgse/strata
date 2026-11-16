@@ -248,25 +248,22 @@ blocker = "A14: opening a file (`BrowserEvent::OpenRequested`), at line 13"
 scenario = "filtered-file-click-previews"
 run = "columns-one-click"
 package = "A10"
-status = "pending"
-reason = "scope"
-blocker = "A14: opening a file (`BrowserEvent::OpenRequested`), at line 13"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "filtered-file-click-previews"
 run = "icons-one-click"
 package = "A10"
-status = "pending"
-reason = "scope"
-blocker = "A14: opening a file (`BrowserEvent::OpenRequested`), at line 13"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "filtered-file-click-previews"
 run = "list-one-click"
 package = "A10"
-status = "pending"
-reason = "scope"
-blocker = "A14: opening a file (`BrowserEvent::OpenRequested`), at line 13"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "filtered-results-group-selection"
