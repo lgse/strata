@@ -139,6 +139,16 @@ closed issue is not a fixed finding: the state given here is the finding's.
   sibling), failed once in CI's shard 3, in the pull request's first run. That change adds
   key constants and two characters to the table key backend, which the GTK application
   does not install; `./scripts/quality.sh test` had passed with it in the pinned image.
+- **On [#2549](https://github.com/lgse/strata/pull/2549):** a ninth,
+  `ui::window::tests::keyboard_dispatch::preview_ownership::default_archive_keys_follow_pane_focus`
+  ("keyboard fixture did not settle", `src/ui/window/tests/keyboard_dispatch.rs:324`), and,
+  with no GTK in it, `strata-desktop`'s
+  `services::update_install::tests::unowned_release_binary_keeps_in_place_updates`
+  (`crates/strata-desktop/src/services/update_install/tests.rs:258`, the install read as
+  `Pacman`), each failed once in `./scripts/quality.sh all` in the pinned image at
+  `1d4e3b8a9` on a loaded host. That change touches neither `src/` nor
+  `crates/strata-desktop`; alone, the first passed 3 of 3 and the second 1 of 1
+  (`./scripts/test-headless.py`).
 - **State:** open, set aside. Whoever meets one of these in a red shard reads the failure
   first: if the change could reach the test, it is the change's; if not, say why on the pull
   request, rerun the whole workflow once, and stop if the same test fails twice. A new flaky
@@ -2012,6 +2022,30 @@ sequence only together with the alphabet's version, so the version is part of th
   `pointer v1`, never merged. Not driven by hand on GTK.
 - **State:** open, set aside: no Rune change. `pointer v3` sends no keyboard cursor moves, and
   any fix belongs on `main`.
+
+### #2546: after a drag-move out of the folder, GTK gives the keyboard to the neighbouring row, Rune to none
+
+- **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2546), filed on
+  2026-11-16 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** in [A19](packages/A19.md)'s survey of
+  `cross_volume_drop/cross-volume-enter-choice/{columns,icons,list}-move` on Rune. With
+  `todo.txt` selected and holding the keyboard, a drag onto `drop-volume` and the "Copy or
+  move?" prompt's Move take the file out of the shown folder; line 25 waits for
+  `focused: "readme.md"` without a key. Driven on GTK (`qa-drive.sh`, List, 2026-11-16): the
+  focus ring is on `readme.md`, nothing is selected, and the next Down acts from `readme.md`.
+  On Rune no row has the keyboard (`focused: null`).
+- **Why:** a drag-move out is one of the shared `Browser`'s selectionless removals
+  (`set_selectionless_removals`), so it places no cursor; GTK's `GtkListBase` moves its
+  widget focus to the neighbour anyway. Rune's views let go of a cursor whose entry left a
+  complete listing (`handover::sync_rule`, `CursorGone::Clear`, as C1e documents for a plain
+  move out). It is not `main`'s bug [#2361](https://github.com/lgse/strata/issues/2361): GTK
+  draws the cursor where its snapshot says.
+- **Concerns:** `crates/strata-app/src/handover.rs` and
+  `crates/strata-components/src/collection/selection/mod.rs` (`CursorGone`), the shared
+  handover contract. Giving the neighbour the keyboard unselected must not hand the browser a
+  cursor GTK's browser never gets: in Columns a browser cursor on a folder opens it. Any
+  other move out of the shown folder (a cut and paste, A12's) likely shows the same.
+- **State:** open. The three runs stay `pending` on it in `tests/qa/parity/cross_volume_drop.toml`.
 
 ### #2557: the Rune still-image preview names its picture for the file where GTK's is unnamed
 

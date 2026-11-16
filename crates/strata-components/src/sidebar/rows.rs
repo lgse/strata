@@ -358,16 +358,20 @@ pub(crate) fn folder_row<S: 'static>(
         r.build(&look.kit)
     };
     let built = match (spec.reorder, reorder) {
-        (Some((index, count)), Some((state, block, intent))) => {
-            let emit = ctx.emit.clone();
-            drag::attach(
-                built,
+        (Some((index, count)), Some((state, block, intent))) => drag::attach(
+            built,
+            drag::AttachSpec {
                 look,
-                (state, block, ctx.access),
-                (spec.item.clone(), index, count),
-                move |s: &mut S, from, landing, tx| emit(s, intent(from, landing), tx),
-            )
-        }
+                state,
+                block,
+                access: ctx.access,
+                emit: ctx.emit.clone(),
+                item: spec.item.clone(),
+                index,
+                count,
+                intent,
+            },
+        ),
         _ => built,
     };
     let el = activate(ctx, built, spec.item.clone(), spec.new_tab);

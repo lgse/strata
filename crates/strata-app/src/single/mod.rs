@@ -27,9 +27,9 @@
 //!   Their rows are no listing's: the view's rows hooks ask the filter first for an entry of
 //!   theirs, and the rename editor opens and follows its row in the results.
 
-use std::{borrow::Cow, rc::Rc};
+use std::{borrow::Cow, cell::Cell, rc::Rc};
 
-use rune::{El, Tx, WheelEvent, col};
+use rune::{El, Mods, Tx, WheelEvent, col};
 use strata_components::{
     collection::{
         element::{Activation, Collection, CollectionState, Describe, Intent},
@@ -38,11 +38,17 @@ use strata_components::{
         pointer::{ClickModes, PointerIntent, PointerSettings},
     },
     context_menu::AnchorEdge,
-    contract::{Direction, EntryId, EntrySource},
+    contract::{
+        Direction, EntryId, EntrySource,
+        dnd::{DropAction, DropOffer, Dropped},
+    },
     rename::{By, Initial, Polled},
     scroll::AutoscrollSettings,
 };
-use strata_core::i18n::tr;
+use strata_core::{
+    i18n::tr,
+    model::{FileEntry, Location},
+};
 use strata_desktop::settings::Preferences;
 
 use self::first_visit::FirstVisit;
@@ -75,6 +81,8 @@ pub(crate) struct Single {
     surface: Surface,
     /// Another folder shows, until its load ends or the user's input reaches the pane.
     first_visit: FirstVisit,
+    /// Display scale at the last build, for drag preview icons.
+    scale: Cell<f32>,
 }
 
 /// The collection's controllers: the pointer's clicks, the keyboard and the marquee.
@@ -136,7 +144,16 @@ impl Single {
             entries: tr("Files"),
             surface: Surface::translated(),
             first_visit: FirstVisit::default(),
+            scale: Cell::new(1.0),
         }
+    }
+
+    pub(crate) fn scale(&self) -> f32 {
+        self.scale.get()
+    }
+
+    pub(crate) fn set_scale(&self, scale: f32) {
+        self.scale.set(scale);
     }
 
     pub(crate) fn in_band(&self) -> bool {
@@ -158,6 +175,8 @@ pub(crate) trait SinglePane: 'static {
     fn single(app: &App) -> &Single;
 
     fn single_mut(app: &mut App) -> &mut Single;
+
+    fn fills_mut(app: &mut App) -> &mut crate::fills::Fills;
 
     /// The view's state and the rename editor's, borrowed together.
     fn renaming(app: &mut App) -> (&Single, &mut rename::Rename);
@@ -263,7 +282,11 @@ pub(crate) fn collection<V: SinglePane>(app: &App) -> Collection<App> {
             .description(row.index, &single.words)?;
         Some(description.to_owned())
     }))
-    .marks(crate::clipboard::marks)
+    .dnd(crate::dnd::binder(app))
+    .on_drag_phase(|app: &mut App, d, key, tx| crate::dnd::drag_phase(app, d, key, tx))
+    .on_drop(dropped::<V>)
+    .drop_action(drop_action::<V>)
+    .marks(|app: &App, id| crate::dnd::with_marks(app, id, crate::clipboard::marks(app, id)))
     .empty(shown_status::<V>)
     .on_press(|app: &mut App, _, _| interrupted::<V>(app))
     // C3 replaces this with its own, which asks the Icons view's `IconsGrid::on_wheel` first.
@@ -303,7 +326,14 @@ pub(crate) fn results<V: SinglePane>(app: &App) -> Collection<App> {
             .missing_anchor_stays(true),
     )
     .settings(autoscroll_settings(app))
-    .marks(|app: &App, id| crate::clipboard::with_marks(app, id, filter::pane::marks(app, id)))
+    .on_drag_phase(|app: &mut App, d, key, tx| crate::dnd::drag_phase(app, d, key, tx))
+    .marks(|app: &App, id| {
+        crate::dnd::with_marks(
+            app,
+            id,
+            crate::clipboard::with_marks(app, id, filter::pane::marks(app, id)),
+        )
+    })
     .empty(filter::pane::status)
     .on_intent(filter::pane::heard)
     .on_cursor(|app: &mut App, _, _| filter::picked(app))
@@ -384,6 +414,12 @@ pub(crate) fn wheeled<V: SinglePane>(app: &mut App, _: WheelEvent, _: &mut Tx) -
 pub(crate) fn listen<V: SinglePane>(setup: &Setup<'_>) -> Option<Listener<App>> {
     let ids = setup.ids.clone();
     Some(Box::new(move |event, browser, heard| {
+        if matches!(event, strata_fs::app::BrowserEvent::FolderCountsInvalidated) {
+            heard.then(|app: &mut App, _: &mut Tx| {
+                V::fills_mut(app).invalidate();
+                true
+            });
+        }
         let read = events::read(event, browser, &ids);
         heard.copied(read.copied);
         for change in read.changes {
@@ -511,9 +547,70 @@ fn heard<V: SinglePane>(app: &mut App, intent: Intent, tx: &mut Tx) {
         Intent::Other(other) if other.downcast_ref::<NothingToSelect>().is_some() => {
             crate::tenxer::flash_nothing_to_select(app, tx);
         }
-        // Drags and the pane header an edge moves to are other packages' parts.
+        Intent::BeginDrag { ids, .. } => {
+            let entries: Vec<_> = ids
+                .into_iter()
+                .filter_map(|id| {
+                    let position = pane::<V>(app).position(depth, id)?;
+                    app.browser.entry_at(depth, position)
+                })
+                .collect();
+            crate::dnd::begin_entries(app, entries, V::single(app).scale(), tx);
+        }
+        // The pane header an edge moves to is another package's part.
         _ => {}
     }
+    shell::settle(app, tx);
+}
+
+fn drop_destination<V: SinglePane>(app: &App, target: Option<EntryId>) -> Option<Location> {
+    let pane = pane::<V>(app);
+    let depth = pane.depth()?;
+    match target {
+        Some(id) => {
+            let position = pane.position(depth, id)?;
+            app.browser
+                .entry_at(depth, position)
+                .filter(FileEntry::is_directory)
+                .map(|entry| entry.location)
+        }
+        None => app.browser.location_at(depth),
+    }
+}
+
+fn drop_action<V: SinglePane>(
+    app: &App,
+    target: Option<EntryId>,
+    offer: &DropOffer,
+    mods: Mods,
+) -> Option<DropAction> {
+    let dest = drop_destination::<V>(app, target)?;
+    crate::dnd::drop_action(app, &dest, offer, mods)
+}
+
+fn dropped<V: SinglePane>(app: &mut App, target: Option<EntryId>, dropped: Dropped, tx: &mut Tx) {
+    if let Some(dest) = drop_destination::<V>(app, target) {
+        crate::dnd::commit_file_drop(app, dest, &dropped, tx);
+    }
+}
+
+pub(crate) fn spring_open(app: &mut App, depth: usize, id: EntryId, tx: &mut Tx) {
+    let view = shell::shown_view(app);
+    let position = if view.is_some_and(|shown| (shown.shows)("icons")) {
+        app.icons.single.pane.position(depth, id)
+    } else if view.is_some_and(|shown| (shown.shows)("list")) {
+        app.list.single.pane.position(depth, id)
+    } else {
+        None
+    };
+    let Some(entry) = position
+        .and_then(|pos| app.browser.entry_at(depth, pos))
+        .filter(FileEntry::is_directory)
+    else {
+        return;
+    };
+    shell::publish(app);
+    app.browser.navigate_location(entry.location, false);
     shell::settle(app, tx);
 }
 

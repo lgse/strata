@@ -25,7 +25,7 @@ use crate::{
     raw_details, shell,
     sidebar::PinState,
     slots::Part,
-    test_support::{PATIENCE, fixture, hosted, send_key, view::idle},
+    test_support::{PATIENCE, fixture, hosted, hosted_with_env, send_key, view::idle},
 };
 use strata_preview::sandbox::{
     metadata::{Chapter, MediaMetadata, SubtitleTrack},
@@ -352,11 +352,19 @@ fn copy_path_and_rename_actions_follow_file_and_folder_rules() {
     );
 }
 
+/// The Open button hands the browser's `OpenRequested` to the open path in its own commit,
+/// with no `poll` in between, and an executable with no default application asks before it
+/// runs. No application installed on the machine is a default: the lookup GIO answers off the
+/// UI thread finds none.
 #[test]
 fn open_action_on_executable_settles_run_confirmation_immediately() {
-    hosted(
-        MODULE,
-        "open_action_on_executable_settles_run_confirmation_immediately",
+    let no_applications = tempfile::tempdir().expect("empty data dirs");
+    hosted_with_env(
+        (
+            MODULE,
+            "open_action_on_executable_settles_run_confirmation_immediately",
+        ),
+        &[("XDG_DATA_DIRS", no_applications.path().as_os_str())],
         |mut host| {
             let folder = fixture();
             let program = folder.path().join("tool.bin");
@@ -382,16 +390,17 @@ fn open_action_on_executable_settles_run_confirmation_immediately() {
             host.runtime().pointer_down(x, y);
             host.runtime().frame(1.0 / 60.0);
             host.runtime().pointer_up(x, y);
-            // Render one frame without pumping `host.turn()` / `poll`, proving `open_clicked`
-            // settled `BrowserEvent::OpenRequested` in the button's own commit.
+            // One frame without `host.turn()` or `poll`: `open_clicked` applied
+            // `BrowserEvent::OpenRequested` in the button's own commit.
             host.runtime().frame(1.0 / 60.0);
             assert_eq!(
-                (
-                    host.app().properties.open,
-                    has_a11y_node(&host.tree(), "dialog", "Run this program?", None),
-                ),
-                (false, true),
+                (host.app().properties.open, host.app().has_queued_changes()),
+                (false, false),
             );
+            let asks = host.run_until(PATIENCE, |host| {
+                has_a11y_node(&host.tree(), "dialog", "Run this program?", None)
+            });
+            assert!(asks, "opening the program asks first");
 
             press(&mut host, Key::Escape, Mods::default());
             assert!(!has_a11y_node(

@@ -2,15 +2,21 @@
 
 //! What the Columns view asks of its host, taken to `Browser`.
 
-use rune::Tx;
+use std::time::Duration;
+
+use rune::{Mods, PointerEvent, Tx};
 use strata_components::{
     collection::{
-        element::{Activation, Intent},
+        element::{Activation, DropOver, Intent},
         keyboard::NothingToSelect,
     },
     columns::ColumnsIntent,
-    contract::EntryId,
+    contract::{
+        EntryId, Point,
+        dnd::{DropAction, DropHover, DropOffer, DropZone, Dropped, URI_LIST},
+    },
 };
+use strata_core::model::{FileEntry, Location};
 
 use super::Input;
 use crate::{
@@ -101,7 +107,7 @@ impl App {
         }
     }
 
-    fn entry_at(&self, (depth, id): At) -> Option<strata_core::model::FileEntry> {
+    fn entry_at(&self, (depth, id): At) -> Option<FileEntry> {
         if self.columns.shows_hits(depth) {
             filter::targets::at(self, depth, id)
         } else {
@@ -146,6 +152,14 @@ impl App {
     }
 
     fn collection(&mut self, depth: usize, intent: Intent, tx: &mut Tx) {
+        if let Intent::BeginDrag { ids, .. } = intent {
+            let entries: Vec<_> = ids
+                .into_iter()
+                .filter_map(|id| self.entry_at((depth, id)))
+                .collect();
+            crate::dnd::begin_entries(self, entries, self.columns.scale.get(), tx);
+            return;
+        }
         // A filter's results open as GTK's hits do, and are renamed nowhere yet.
         if self.columns.shows_hits(depth) && filter::hit_intent(self, depth, &intent, tx) {
             return;
@@ -218,9 +232,123 @@ pub(super) fn heard(app: &mut App, intent: ColumnsIntent, tx: &mut Tx) {
             shell::leave_view_at_start(app, tx);
         }
         ColumnsIntent::Width(width) => super::width::keep(app, width),
-        // `Dropped` is drag and drop's.
+        ColumnsIntent::Dropped {
+            depth,
+            target,
+            dropped,
+        } => {
+            if let Some(dest) = drop_destination(app, depth, target) {
+                crate::dnd::commit_file_drop(app, dest, &dropped, tx);
+            }
+        }
         _ => {}
     }
+    shell::settle(app, tx);
+}
+
+fn drop_destination(app: &App, depth: usize, target: Option<EntryId>) -> Option<Location> {
+    match target {
+        Some(_) if app.columns.shows_hits(depth) => None,
+        Some(id) => app
+            .entry_at((depth, id))
+            .filter(FileEntry::is_directory)
+            .map(|entry| entry.location),
+        None => app.browser.location_at(depth),
+    }
+}
+
+pub(super) fn drop_action(
+    app: &App,
+    target: Option<(usize, Option<EntryId>)>,
+    offer: &DropOffer,
+    mods: Mods,
+) -> Option<DropAction> {
+    let (depth, row) = target?;
+    let dest = drop_destination(app, depth, row)?;
+    crate::dnd::drop_action(app, &dest, offer, mods)
+}
+
+pub(super) fn strip_action(
+    app: &App,
+    offer: &DropOffer,
+    mods: Mods,
+    point: PointerEvent,
+) -> Option<DropAction> {
+    let window = Point::new(point.window_x, point.window_y);
+    let target = super::view(app).drop_target_at(app, window);
+    drop_action(app, target, offer, mods)
+}
+
+pub(super) fn strip_zone() -> DropZone<App> {
+    DropZone::new(strip_dropped)
+        .on_hover(strip_hover)
+        .on_move(strip_move)
+        .on_reject(|app: &mut App, _, _| app.columns.clear_drag_over())
+}
+
+fn strip_dropped(app: &mut App, dropped: Dropped, tx: &mut Tx) {
+    app.columns.clear_drag_over();
+    let Some(point) = dropped.point else {
+        return;
+    };
+    let window = Point::new(point.window_x, point.window_y);
+    let Some((depth, target)) = super::view(app).drop_target_at(app, window) else {
+        return;
+    };
+    if let Some(dest) = drop_destination(app, depth, target) {
+        crate::dnd::commit_file_drop(app, dest, &dropped, tx);
+    }
+}
+
+fn strip_hover(app: &mut App, hover: DropHover, offer: &DropOffer, tx: &mut Tx) {
+    app.columns.strip_refused = (hover == DropHover::Rejecting).then(|| offer.offers(URI_LIST));
+    if hover == DropHover::Left {
+        strip_over(app, None, tx);
+    }
+}
+
+fn strip_move(app: &mut App, point: PointerEvent, tx: &mut Tx) {
+    if app.columns.strip_refused != Some(false) {
+        strip_over(app, Some(Point::new(point.window_x, point.window_y)), tx);
+    } else {
+        tx.live_only();
+    }
+}
+
+fn strip_over(app: &mut App, at: Option<Point>, tx: &mut Tx) {
+    let target = at
+        .filter(|_| app.columns.strip_refused.is_none())
+        .and_then(|window| super::view(app).drop_target_at(app, window));
+    let mut wake = app.columns.state.drag_over(at);
+    for depth in 0..app.columns.state.len() {
+        let drop = match target {
+            Some((d, Some(id))) if d == depth => Some(DropOver::Row(id)),
+            Some((d, None)) if d == depth => Some(DropOver::Background),
+            _ => None,
+        };
+        if let Some(col) = app.columns.state.column_mut(depth)
+            && col.collection.drop_over() != drop
+        {
+            col.collection.set_drop_over(drop);
+            wake = true;
+        }
+    }
+    if wake {
+        tx.wake_after(Duration::ZERO);
+    } else {
+        tx.live_only();
+    }
+}
+
+pub(crate) fn spring_open(app: &mut App, depth: usize, id: EntryId, tx: &mut Tx) {
+    if app.columns.shows_hits(depth) {
+        return;
+    }
+    let Some(entry) = app.entry_at((depth, id)).filter(FileEntry::is_directory) else {
+        return;
+    };
+    shell::publish(app);
+    app.browser.descend(depth, entry.location);
     shell::settle(app, tx);
 }
 

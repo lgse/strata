@@ -50,7 +50,7 @@ pub(crate) fn hosted_over_in(
     run: impl FnOnce(Offscreen),
 ) {
     let host = |ui, settings| Offscreen::with_parts(parts().leak(), ui, settings);
-    hosted_on((module, name), move || save_mode(mode, ""), host, run);
+    hosted_on((module, name, &[]), move || save_mode(mode, ""), host, run);
 }
 
 /// How a view looks to assistive technology: what its pane is described as, its list's role,

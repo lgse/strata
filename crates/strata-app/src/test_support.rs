@@ -63,15 +63,15 @@ pub(crate) fn in_own_process(test: &str, env: &[(&str, &OsStr)], body: impl FnOn
 }
 
 /// Runs the test `name` of the test module `module` on the host `host` makes, in a process of
-/// its own: the default GLib context, the start-up sequence and the saved settings belong to
-/// one process. `prepare` runs there first, before anything is read.
+/// its own with `env` set there: the default GLib context, the start-up sequence and the saved
+/// settings belong to one process. `prepare` runs there first, before anything is read.
 fn hosted_on(
-    (module, name): (&str, &str),
+    (module, name, env): (&str, &str, &[(&str, &OsStr)]),
     prepare: impl FnOnce(),
     host: impl FnOnce(UiThread, Saved) -> Offscreen,
     run: impl FnOnce(Offscreen),
 ) {
-    in_own_process(&format!("{module}::{name}"), &[], || {
+    in_own_process(&format!("{module}::{name}"), env, || {
         prepare();
         let settings = startup::load_settings();
         let ui = UiThread::claim().expect("the UI thread");
@@ -86,11 +86,21 @@ pub(crate) fn hosted_after(
     prepare: impl FnOnce(),
     run: impl FnOnce(Offscreen),
 ) {
-    hosted_on((module, name), prepare, Offscreen::new, run);
+    hosted_on((module, name, &[]), prepare, Offscreen::new, run);
 }
 
 pub(crate) fn hosted(module: &str, name: &str, run: impl FnOnce(Offscreen)) {
     hosted_after(module, name, || {}, run);
+}
+
+/// [`hosted`], with `env` set in the test's process: an empty `XDG_DATA_DIRS`, say, so that
+/// no application installed on the machine is a file type's default.
+pub(crate) fn hosted_with_env(
+    (module, name): (&str, &str),
+    env: &[(&str, &OsStr)],
+    run: impl FnOnce(Offscreen),
+) {
+    hosted_on((module, name, env), || {}, Offscreen::new, run);
 }
 
 /// A test on a window made of the table `parts`: a test's made-up parts in the place of the
@@ -102,7 +112,7 @@ pub(crate) fn hosted_over(
     run: impl FnOnce(Offscreen),
 ) {
     let host = |ui, settings| Offscreen::with_parts(parts().leak(), ui, settings);
-    hosted_on((module, name), || {}, host, run);
+    hosted_on((module, name, &[]), || {}, host, run);
 }
 
 /// A view for a made-up table: `build` draws it, it answers to `name` as the saved mode and

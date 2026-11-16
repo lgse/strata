@@ -103,6 +103,7 @@ pub(crate) fn results() -> IconsGrid<App> {
 /// The view: the pane's group around the grid, or around a filter's results.
 pub(super) fn build(app: &App, frame: &mut Frame<'_, App>) -> Option<El> {
     let scale = frame.cx.env().scale;
+    app.icons.single.set_scale(scale);
     let body = match app.filter.pane.shows() {
         true => results().scale(scale).build(app),
         false => grid().scale(scale).build(app),

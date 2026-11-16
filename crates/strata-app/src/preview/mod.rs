@@ -237,6 +237,10 @@ impl Part for Preview {
     }
 }
 
+pub(crate) fn current_entry(app: &App) -> Option<&FileEntry> {
+    app.preview.current.as_ref()
+}
+
 fn wrap(app: &App, files: El, frame: &mut Frame<'_, App>) -> El {
     let files_key = shell::view_focus(app).unwrap_or("columns");
     let tenxer = shell::preferences(app).tenxer_mode;
@@ -252,7 +256,9 @@ fn wrap(app: &App, files: El, frame: &mut Frame<'_, App>) -> El {
             .on_intent(on_intent);
 
     if app.preview.current.is_some() {
-        drawer = drawer.header(app.preview.header.clone());
+        drawer = drawer
+            .header(app.preview.header.clone())
+            .drag_source(crate::dnd::binder(app), crate::dnd::preview_drag_source());
         let body = app.preview.viewer.build(app, frame.cx).unwrap_or_else(|| {
             // Keep the slot mounted while a fresh load waits on its 120 ms spinner delay.
             rune::el().key("preview-awaiting").w_full().h_full()
