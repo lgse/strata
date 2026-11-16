@@ -31,6 +31,7 @@ mod keys;
 mod labels;
 mod layout;
 mod load;
+mod raw;
 mod session;
 mod sheet;
 pub(crate) mod viewer;
@@ -51,6 +52,7 @@ use crate::{
 pub(crate) struct Preview {
     drawer: DrawerState,
     viewer: Viewer,
+    raw: raw::RawSection,
     header: HeaderInfo,
     loader: Loader,
     document_view: DocumentView,
@@ -96,6 +98,7 @@ impl Part for Preview {
         Self {
             drawer,
             viewer: Viewer::Empty,
+            raw: raw::RawSection::default(),
             header: HeaderInfo::default(),
             loader,
             document_view: DocumentView::Rendered,
@@ -178,12 +181,11 @@ fn wrap(app: &App, files: El, frame: &mut Frame<'_, App>) -> El {
 
     if app.preview.current.is_some() {
         drawer = drawer.header(app.preview.header.clone());
-        if let Some(body) = app.preview.viewer.build(app, frame.cx) {
-            drawer = drawer.content(body);
-        } else {
+        let body = app.preview.viewer.build(app, frame.cx).unwrap_or_else(|| {
             // Keep the slot mounted while a fresh load waits on its 120 ms spinner delay.
-            drawer = drawer.content(rune::el().key("preview-awaiting").w_full().h_full());
-        }
+            rune::el().key("preview-awaiting").w_full().h_full()
+        });
+        drawer = drawer.content(app.preview.raw.wrap_body(&app.look, body));
     } else if app.preview.reserves_empty_preview(app) {
         drawer = drawer
             .header(HeaderInfo::new(tr("Preview")))

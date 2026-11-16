@@ -122,13 +122,11 @@ pub(super) fn header<S: 'static>(
         );
     }
     if !info.details.is_empty() {
-        heading = heading.child(
-            text(info.details.join(" · "))
-                .key("preview-details")
-                .font(k.ty.small)
-                .color(k.c.text_muted)
-                .max_lines(1),
-        );
+        heading = heading.child(details_row(
+            &info.details,
+            &labels.detail_descriptions,
+            look,
+        ));
     }
     let mut handle = row()
         .key("preview-handle")
@@ -175,4 +173,38 @@ fn control_size(points: f32) -> ControlSize {
     .into_iter()
     .min_by(|a, b| (a.0 - points).abs().total_cmp(&(b.0 - points).abs()))
     .map_or(ControlSize::Regular, |(_, size)| size)
+}
+
+fn details_row(details: &[String], descriptions: &[String; 3], look: &Look) -> El {
+    let k = &look.kit;
+    let mut line = row()
+        .key("preview-details")
+        .w_full()
+        .min_w(0.0)
+        .gap(look.space.xxs)
+        .items_center();
+    for (index, detail) in details.iter().enumerate() {
+        if index > 0 {
+            line = line.child(
+                text("·")
+                    .font(k.ty.small)
+                    .color(k.c.text_muted)
+                    .a11y_hidden(),
+            );
+        }
+        let mut item = text(detail.clone())
+            .label(detail.clone())
+            .key(format!("preview-detail-{index}"))
+            .font(k.ty.small)
+            .color(k.c.text_muted)
+            .max_lines(1);
+        if let Some(desc) = descriptions.get(index).filter(|desc| !desc.is_empty()) {
+            item = item.description(desc.clone());
+        }
+        if index + 1 == details.len() {
+            item = item.grow(1.0).min_w(0.0);
+        }
+        line = line.child(item);
+    }
+    line
 }

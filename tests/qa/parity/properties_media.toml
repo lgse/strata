@@ -6,22 +6,19 @@
 scenario = "media-details-properties-only"
 run = "icons"
 package = "A17"
-status = "pending"
-reason = "scope"
-blocker = "A17"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "raw-details-preview-and-properties"
 run = "columns-dng"
 package = "A17"
-status = "pending"
-reason = "scope"
-blocker = "A17"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "raw-details-preview-and-properties"
 run = "columns-nef"
 package = "A17"
-status = "pending"
-reason = "scope"
-blocker = "A17"
+status = "required"
+host = "offscreen"

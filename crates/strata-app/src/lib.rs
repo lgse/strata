@@ -105,6 +105,7 @@ mod preview;
 // A16 Media, PDF and model viewers
 // A17 Properties
 mod properties;
+mod raw_details;
 // A18 Settings and themes
 // A19 Drag and drop
 // A20 Portal chooser
