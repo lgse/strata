@@ -130,6 +130,7 @@ impl SidebarState {
                 if self.local_only && location.native_path().is_none() {
                     return None;
                 }
+                // A GVfs restart leaves the old mount listed; GIO lists the newest first.
                 if !seen.insert(location.clone()) {
                     return None;
                 }
