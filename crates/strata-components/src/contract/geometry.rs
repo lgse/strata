@@ -262,6 +262,8 @@ pub struct UniformRows {
     pub width: f32,
     /// Space above the first row (padding, a header).
     pub top: f32,
+    /// Vertical margin inside each row line on top and bottom (`0` for contiguous slots).
+    pub inset_y: f32,
     /// The viewport's height, for [`CollectionGeometry::page_step`].
     pub viewport_height: f32,
 }
@@ -274,6 +276,7 @@ impl UniformRows {
             row_height,
             width,
             top: 0.0,
+            inset_y: 0.0,
             viewport_height: 0.0,
         }
     }
@@ -281,6 +284,12 @@ impl UniformRows {
     /// The same rows, starting `inset` points down.
     pub const fn top(mut self, inset: f32) -> Self {
         self.top = inset;
+        self
+    }
+
+    /// The same rows, inset vertically by `inset` points at the top and bottom of each line.
+    pub const fn inset_y(mut self, inset: f32) -> Self {
+        self.inset_y = inset;
         self
     }
 
@@ -292,7 +301,11 @@ impl UniformRows {
 
     /// Whether the rows have an area to hit-test.
     fn drawable(&self) -> bool {
-        self.len > 0 && self.row_height > 0.0 && self.row_height.is_finite() && self.width > 0.0
+        let inset = self.inset_y.max(0.0);
+        self.len > 0
+            && self.row_height > 2.0 * inset
+            && self.row_height.is_finite()
+            && self.width > 0.0
     }
 
     /// The row `y` falls in, as a fractional row number: may be negative or past the end.
@@ -316,8 +329,14 @@ impl UniformRows {
 
 impl CollectionGeometry for UniformRows {
     fn rect_of(&self, index: usize) -> Rect {
-        let y = f64::from(self.top) + index as f64 * f64::from(self.row_height);
-        Rect::new(0.0, y as f32, self.width, self.row_height)
+        let inset = self.inset_y.max(0.0);
+        let y = f64::from(self.top) + index as f64 * f64::from(self.row_height) + f64::from(inset);
+        Rect::new(
+            0.0,
+            y as f32,
+            self.width,
+            (self.row_height - 2.0 * inset).max(0.0),
+        )
     }
 
     fn index_at(&self, point: Point) -> Option<usize> {
@@ -327,7 +346,15 @@ impl CollectionGeometry for UniformRows {
             return None;
         }
         let row = self.row_at(point.y);
-        (row >= 0.0 && row < self.len as f64).then(|| self.clamp_row(row.floor()))
+        if !(row >= 0.0 && row < self.len as f64) {
+            return None;
+        }
+        let index = self.clamp_row(row.floor());
+        let inset = self.inset_y.max(0.0);
+        let line_top = f64::from(self.top) + index as f64 * f64::from(self.row_height);
+        let local_y = f64::from(point.y) - line_top;
+        (local_y >= f64::from(inset) && local_y < f64::from(self.row_height - inset))
+            .then_some(index)
     }
 
     fn range_in(&self, rect: Rect) -> IndexRanges {
@@ -350,8 +377,9 @@ impl CollectionGeometry for UniformRows {
         }
         // Rows i with top(i) < bottom and bottom(i) > top: floor of the band's top row to the
         // ceiling of its bottom row, so a band ending exactly on a row edge leaves that row out.
-        let first = self.clamp_row(self.row_at(r.y).floor());
-        let end = self.clamp_row(self.row_at(r.bottom()).ceil());
+        let inset = self.inset_y.max(0.0);
+        let first = self.clamp_row(self.row_at(r.y + inset).floor());
+        let end = self.clamp_row(self.row_at(r.bottom() - inset).ceil());
         (first..end).into()
     }
 

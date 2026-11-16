@@ -432,6 +432,7 @@ fn element(app: &App, look: &Look, data: SidebarData<'_>) -> El {
     // A middle click opens a row in a new tab once a part registers the command.
     .open_in_new_tab(commands::has(app, OPEN_IN_TAB.id))
     .tenxer(shell::preferences(app).tenxer_mode)
+    .on_background_drag(crate::pointer::leading_origin_drag)
     .on_intent(heard)
     .build(look)
 }
