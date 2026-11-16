@@ -1,9 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-//! Initial window-control visibility for desktop sessions.
-
-/// Hide window controls on recognized tiling desktops; otherwise keep them discoverable.
-/// Saved application preferences take precedence over this initial default.
+/// Default for window buttons the user has not saved; unknown desktops show them.
 pub fn default_window_buttons_visible() -> bool {
     let desktop = std::env::var("XDG_CURRENT_DESKTOP").unwrap_or_default();
     buttons_visible_for_desktop(&desktop)
