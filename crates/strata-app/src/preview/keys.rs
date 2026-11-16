@@ -101,8 +101,11 @@ fn opens_archive_key(press: &KeyPress) -> bool {
     press.is(RIGHT) || press.is(ENTER) || press.is(SPACE)
 }
 
+/// GTK's 10xer listing claims Right, Enter and Space before this check (marking, activation,
+/// `enter_preview`), so only the default map opens an archive from here.
 fn opens_archive_in_columns(app: &App, at: &Situation) -> bool {
     at.in_view()
+        && !shell::preferences(app).tenxer_mode
         && session::browsing_columns(app)
         && !filter::search_active(app)
         && app

@@ -186,6 +186,48 @@ fn columns_explicit_entry_focuses_archive_tree_and_left_navigates_then_returns_t
     );
 }
 
+fn focused_position(host: &mut Offscreen) -> Option<usize> {
+    host.app().browser().focused_item().map(|(_, pos, _)| pos)
+}
+
+#[test]
+fn tenxer_columns_space_marks_and_enter_activates_an_archive_without_previewing() {
+    hosted(
+        MODULE,
+        "tenxer_columns_space_marks_and_enter_activates_an_archive_without_previewing",
+        |mut host| {
+            host.runtime().update(|app: &mut App, _: &mut Tx| {
+                shell::saved(app).change(|settings| settings.tenxer_mode = true);
+            });
+            while host.turn() {}
+            let (_folder, _entry) = setup_folder_with_archive(&mut host, "bundle.zip");
+            let cursor = focused_position(&mut host).expect("archive focused");
+            let marked = host.app().browser().selected_positions(0);
+
+            press_without_draining(&mut host, Key::Text(" ".to_owned()));
+            assert_eq!(host.app().preview.loader.current_request, None);
+            assert!(!host.app().preview.enabled, "10xer Space opens no preview");
+            assert_ne!(
+                host.app().browser().selected_positions(0),
+                marked,
+                "10xer Space toggles the archive's mark"
+            );
+            assert_ne!(
+                focused_position(&mut host),
+                Some(cursor),
+                "10xer Space moves the cursor down"
+            );
+            while host.turn() {}
+
+            press(&mut host, Key::Up);
+            assert_eq!(focused_position(&mut host), Some(cursor));
+            press_without_draining(&mut host, Key::Enter);
+            assert_eq!(host.app().preview.loader.current_request, None);
+            assert!(!host.app().preview.enabled, "10xer Enter opens no preview");
+        },
+    );
+}
+
 fn deliver_wrong_password(host: &mut Offscreen, entry: FileEntry) {
     host.runtime().update(move |app: &mut App, tx: &mut Tx| {
         if let Viewer::ArchivePrompt(prompt) = &mut app.preview.viewer {
