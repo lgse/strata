@@ -1485,6 +1485,7 @@
   "GVfs isn't running, so trash, network locations and devices are unavailable.": "GVfs không chạy nên thùng rác, vị trí mạng và thiết bị không khả dụng.",
   "The GVfs backend is installed.": "Backend GVfs đã được cài đặt.",
   "The GVfs backend isn't installed.": "Backend GVfs chưa được cài đặt.",
+  "KDE's MTP service is also installed, and whichever claims a phone first leaves the other with no storage. If a phone appears empty, unplug it, run pkill -x kiod6, then reconnect it unlocked.": "Dịch vụ MTP của KDE cũng đã được cài đặt, và bên nào nhận điện thoại trước thì bên còn lại sẽ không thấy bộ nhớ nào. Nếu điện thoại hiện trống, hãy rút ra, chạy pkill -x kiod6, rồi cắm lại khi đã mở khóa.",
   "Unavailable while GVfs isn't running.": "Không khả dụng khi GVfs không chạy.",
   "UDisks2 and the GVfs volume monitor are available.": "UDisks2 và trình theo dõi ổ đĩa GVfs đều khả dụng.",
   "UDisks2 isn't available, so drives can't be mounted, formatted or unlocked.": "UDisks2 không khả dụng nên không thể gắn, định dạng hay mở khóa ổ đĩa.",
