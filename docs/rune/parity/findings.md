@@ -163,6 +163,15 @@ closed issue is not a fixed finding: the state given here is the finding's.
   the five item-customization getters/setters in `src/ui/preferences/file_settings.rs` and
   the two emoji/choice helpers in `src/assets.rs` to `strata_desktop::settings`, which
   `minimization::deletion` never calls.
+- **Sighting on [#2548](https://github.com/lgse/strata/pull/2548):** a tenth, in
+  `strata-desktop`,
+  `services::update_install::tests::unowned_release_binary_keeps_in_place_updates`
+  (`crates/strata-desktop/src/services/update_install/tests.rs:258`, `left: Pacman, right:
+  InPlace`, its ownership probe read under load), failed once in `./scripts/quality.sh all
+  --jobs 4` (shard 0, lane 3, 79 of 80 passed) at `4bc5cd808`, and passed alone twice under
+  `./scripts/test-headless.py`. That pull request changes no `src/` and no shared crate: only
+  `crates/strata-app`, `crates/strata-components`, the QA files and Markdown, none of which
+  the GTK lane compiles.
 
 ### #2176: a GTK critical after a file appears during a rename on a multiple selection
 
