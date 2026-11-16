@@ -5,8 +5,8 @@
 //! - **Catalog & menu rows** (`src/ui/actions.rs`, `src/ui/browser/context_menu/actions.rs`):
 //!   loads `$XDG_CONFIG_HOME/strata/actions/*/action.toml` through [`ActionRegistry`] and
 //!   [`LocalActionStore`], places `MenuPlacement::Top` matches directly on entry and folder
-//!   context menus, groups `MenuPlacement::Submenu` matches under the `"Actions"` submenu, and
-//!   updates an open context menu live if a reload adopts changes.
+//!   context menus, and groups `MenuPlacement::Submenu` matches under the `"Actions"` submenu.
+//!   As on GTK, the rows are built when the menu opens and never change while it is open.
 //! - **Confirmation & execution** (`src/ui/actions.rs`, `src/ui/window/keyboard/direct.rs`):
 //!   re-verifies the action's manifest on disk before running, asks `"Run this action?"` on
 //!   C15's `StrataDialog` when `run.confirm` is set, binds `CUSTOM_ACTIONS` (1..10) in
@@ -53,7 +53,6 @@ use crate::{
 
 struct Services {
     registry: Rc<ActionRegistry>,
-    _registry_guard: ListenerGuard<Rc<dyn Fn()>>,
     jobs: Rc<JobService>,
     _jobs_guard: ListenerGuard<Rc<dyn Fn()>>,
 }
@@ -137,10 +136,6 @@ impl CustomActions {
         let later = self.later.clone();
         self.services.get_or_insert_with(move || {
             let registry = ActionRegistry::new(LocalActionStore::new());
-            let catalog_later = later.clone();
-            let registry_guard = registry.observe(Rc::new(move || {
-                catalog_later.then(on_catalog_changed);
-            }));
             let jobs = JobService::new(LocalActionRunner::new());
             let jobs_later = later;
             let jobs_guard = jobs.observe(Rc::new(move || {
@@ -148,7 +143,6 @@ impl CustomActions {
             }));
             Services {
                 registry,
-                _registry_guard: registry_guard,
                 jobs,
                 _jobs_guard: jobs_guard,
             }
@@ -170,17 +164,4 @@ pub(crate) fn shared_registry(app: &mut App) -> Rc<ActionRegistry> {
 
 pub(crate) fn shared_jobs(app: &mut App) -> Rc<JobService> {
     app.custom_actions.ensure_services().jobs.clone()
-}
-
-fn on_catalog_changed(app: &mut App, _: &mut Tx) -> bool {
-    let Some(registry) = app
-        .custom_actions
-        .services
-        .as_ref()
-        .map(|s| s.registry.clone())
-    else {
-        return false;
-    };
-    let catalog = registry.catalog();
-    menu::refresh_open_menu(app, &catalog)
 }

@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: MIT
 
 //! Custom-action manifest icon slug mapping (`ACTION_ICON_CHOICES` in `src/ui/actions.rs`).
+//!
+//! `strata_kit::icons::IconName` has no Lucide `scale`, `printer`, `key`, `bug` or `code-xml`
+//! yet: `scale` and `printer` fall back to Play, as an unknown slug does, and `key` shows Lock,
+//! `bug` Warning and `code-xml` Source. Only the look differs from GTK.
 
 use strata_kit::icons::IconName;
 

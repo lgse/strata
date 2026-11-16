@@ -63,10 +63,10 @@ fn section_labels(model: &MenuModel) -> Vec<Vec<String>> {
 }
 
 #[test]
-fn menu_places_top_and_submenu_actions_before_edit_rows_and_refreshes_open_menu_live() {
+fn menu_places_top_and_submenu_actions_before_edit_rows_and_keeps_them_while_open() {
     hosted(
         MODULE,
-        "menu_places_top_and_submenu_actions_before_edit_rows_and_refreshes_open_menu_live",
+        "menu_places_top_and_submenu_actions_before_edit_rows_and_keeps_them_while_open",
         |mut host| {
             write_action(
                 "alpha-top",
@@ -87,7 +87,8 @@ fn menu_places_top_and_submenu_actions_before_edit_rows_and_refreshes_open_menu_
             open_entry_menu(&mut host, id);
             assert_initial_menu_sections(&host);
 
-            // Add a second submenu action while the menu remains open and trigger reload.
+            // A second submenu action lands while the menu is open: as on GTK, the open menu
+            // keeps the rows it opened with, and the next menu shows it.
             write_action(
                 "gamma-sub",
                 "schema_version = 1\nid = \"gamma-sub\"\nname = \"Gamma sub\"\nmenu = \"submenu\"\n[when]\n[run]\nruntime = \"command\"\nprogram = \"/bin/true\"\nargs = [\"{paths}\"]\n",
@@ -96,8 +97,30 @@ fn menu_places_top_and_submenu_actions_before_edit_rows_and_refreshes_open_menu_
                 let _ = super::shared_registry(app);
             });
             assert!(
-                host.run_until(PATIENCE, |h| submenu_item_count(h) == Some(2)),
-                "live menu refresh adopts Gamma sub"
+                host.run_until(PATIENCE, |h| catalog_len(h) == 3),
+                "the reload adopts Gamma sub"
+            );
+            while host.turn() {}
+            assert_eq!(
+                submenu_item_count(&host),
+                Some(1),
+                "the open menu is unchanged"
+            );
+
+            send_key(
+                &mut host,
+                KeyEvent {
+                    key: Key::Escape,
+                    mods: Mods::default(),
+                },
+            );
+            while host.turn() {}
+            assert!(!host.app().menu.state.is_open());
+            open_entry_menu(&mut host, id);
+            assert_eq!(
+                submenu_item_count(&host),
+                Some(2),
+                "the next menu shows Gamma sub"
             );
         },
     );
@@ -133,17 +156,25 @@ fn assert_initial_menu_sections(host: &Offscreen) {
         .expect("custom section present");
     assert_eq!(sections[custom_idx], ["Alpha top", "Actions"]);
     assert_eq!(sections[custom_idx + 1][0], "Cut");
-    let submenu = model.sections[host.app().menu.custom_slot()].items[1]
+    let submenu = custom_section(&model).expect("custom section").items[1]
         .submenu
         .as_ref()
         .expect("Actions submenu");
     assert_eq!(submenu[0].items[0].label, "Beta sub");
 }
 
+fn custom_section(model: &MenuModel) -> Option<&strata_components::context_menu::Section> {
+    model.sections.iter().find(|section| {
+        section
+            .items
+            .iter()
+            .any(|item| super::is_menu_action(&item.action))
+    })
+}
+
 fn submenu_item_count(host: &Offscreen) -> Option<usize> {
-    let slot = host.app().menu.custom_slot();
     let model = host.app().menu.state.model()?;
-    let submenu = model.sections[slot].items.last()?.submenu.as_ref()?;
+    let submenu = custom_section(model)?.items.last()?.submenu.as_ref()?;
     Some(submenu[0].items.len())
 }
 
@@ -213,16 +244,55 @@ fn confirmed_action_runs_job_opens_dashboard_and_clears_finished_history() {
                 format!("{}\n", folder.path().join("todo.txt").display())
             );
 
-            // ClearFinished empties finished job rows.
-            host.runtime().update(|app, _| {
-                super::jobs::build_footer_jobs(app, &mut Vec::new());
-                let service = super::shared_jobs(app);
-                service.clear_finished();
-                super::jobs::sync_rows(app);
-            });
-            assert!(host.app().custom_actions.job_rows.is_empty());
+            assert_clear_finished_closes_jobs(&mut host);
         },
     );
+}
+
+/// Clear finished with nothing left closes the list and its button, as GTK hides the button,
+/// and focus goes back to the view.
+fn assert_clear_finished_closes_jobs(host: &mut Offscreen) {
+    press_element(host, "jobs-clear");
+    assert!(host.app().custom_actions.job_rows.is_empty());
+    assert!(!host.app().custom_actions.jobs_state.is_open());
+    assert!(
+        !mounted(host, "jobs"),
+        "the Jobs button goes with the last job"
+    );
+    let view = shell::view_focus(host.app()).expect("a shown view");
+    assert_eq!(focused_key(host).as_deref(), Some(view));
+}
+
+fn mounted(host: &Offscreen, key: &str) -> bool {
+    host.elements()
+        .iter()
+        .any(|element| !element.exiting && element.key.as_deref() == Some(key))
+}
+
+fn focused_key(host: &Offscreen) -> Option<String> {
+    host.elements()
+        .into_iter()
+        .find(|element| element.focused && !element.exiting)
+        .and_then(|element| element.key)
+}
+
+fn press_element(host: &mut Offscreen, key: &str) {
+    assert!(
+        host.run_until(PATIENCE, |h| mounted(h, key)),
+        "{key} is mounted"
+    );
+    let elements = host.elements();
+    let element = elements
+        .iter()
+        .find(|element| !element.exiting && element.key.as_deref() == Some(key))
+        .expect("the element");
+    let [x, y, w, h] = element.visible;
+    let (x, y) = (x + w / 2.0, y + h / 2.0);
+    host.runtime().pointer_move(x, y);
+    host.runtime().pointer_down(x, y);
+    host.turn();
+    host.runtime().pointer_up(x, y);
+    while host.turn() {}
 }
 
 fn focused(node: &serde_json::Value, name: &str) -> bool {

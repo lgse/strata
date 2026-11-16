@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: MIT
 
-//! Context-menu custom-action rows (`MenuPlacement::Top` and the `"Actions"` submenu), live
-//! catalog updates on an open menu, and menu activation (`src/ui/browser/context_menu/actions.rs`).
+//! Context-menu custom-action rows (`MenuPlacement::Top` and the `"Actions"` submenu) and menu
+//! activation (`src/ui/browser/context_menu/actions.rs`). As on GTK
+//! (`rebuild_for_selection` / `rebuild_for_folder`), the rows are built once, from the catalog
+//! as it stands when the menu opens; a reload the opening starts shows on the next menu, and a
+//! row whose manifest changed meanwhile answers "Actions changed" when it runs.
 
 use std::{
     ffi::OsStr,
@@ -9,16 +12,14 @@ use std::{
 };
 
 use strata_components::{
-    context_menu::{ContextMenuState, Item, MenuModel, Section},
+    context_menu::{Item, Section},
     contract::EntryId,
 };
 use strata_core::{
     i18n::tr,
     model::{ActionInput, FOLDER_CONTENT_TYPE, FileEntry, InputKind, Location, MenuPlacement},
 };
-use strata_fs::services::{
-    ActionCatalog, InvocationSource, JobRequest, MatchedAction, guess_content_type,
-};
+use strata_fs::services::{InvocationSource, JobRequest, MatchedAction, guess_content_type};
 use strata_kit::icons::IconName;
 
 use super::{dialog::run_action, icons::action_icon};
@@ -30,8 +31,6 @@ const RUN_PREFIX: &str = "custom-action:run:";
 
 #[derive(Clone)]
 pub(super) struct MenuContext {
-    depth: usize,
-    entry: Option<EntryId>,
     inputs: Vec<ActionInput>,
     paths: Vec<PathBuf>,
     parent: PathBuf,
@@ -83,7 +82,7 @@ pub(crate) fn native_paths(entries: &[FileEntry]) -> Option<Vec<PathBuf>> {
 }
 
 /// Builds the custom-actions [`Section`] when a context menu opens and remembers its target
-/// so catalog reloads and menu clicks act on the captured inputs.
+/// so a click on one of its rows acts on the captured inputs.
 pub(crate) fn begin_menu(app: &mut App, depth: usize, entry: Option<EntryId>) -> Section {
     app.custom_actions.menu_context = None;
     let Some(mut context) = build_context(app, depth, entry) else {
@@ -112,8 +111,6 @@ fn selection_context(app: &App, depth: usize, id: EntryId) -> Option<MenuContext
     let inputs = inputs_for_entries(&entries)?;
     let paths = native_paths(&entries)?;
     Some(MenuContext {
-        depth,
-        entry: Some(id),
         inputs,
         paths,
         parent,
@@ -127,8 +124,6 @@ fn background_context(app: &App, depth: usize) -> Option<MenuContext> {
     let input = folder_input(&location)?;
     let path = location.native_path()?.to_path_buf();
     Some(MenuContext {
-        depth,
-        entry: None,
         inputs: vec![input],
         paths: vec![path.clone()],
         parent: path,
@@ -169,76 +164,6 @@ fn action_item(index: usize, matched: &MatchedAction) -> Item {
         item = item.description(hint.to_owned());
     }
     item
-}
-
-pub(super) fn refresh_open_menu(app: &mut App, catalog: &ActionCatalog) -> bool {
-    if !app.menu.state.is_open() {
-        return false;
-    }
-    let Some(context) = app.custom_actions.menu_context.as_mut() else {
-        return false;
-    };
-    if context.depth != app.menu.depth()
-        || context.entry != app.menu.state.target().and_then(|t| t.entry())
-    {
-        return false;
-    }
-    context.matched = catalog.matches(&context.inputs);
-    let next = build_section(&context.matched);
-    let custom_slot = app.menu.custom_slot();
-    replace_slot(&mut app.menu.state, custom_slot, next)
-}
-
-fn replace_slot(state: &mut ContextMenuState, custom_slot: usize, next: Section) -> bool {
-    let Some(mut model) = state.model().cloned() else {
-        return false;
-    };
-    let Some(slot) = model.sections.get(custom_slot) else {
-        return false;
-    };
-    if *slot == next {
-        return false;
-    }
-    let open_actions = open_submenu_actions(&model, state.submenu());
-    model.sections[custom_slot] = next;
-    let reopened = resolve_submenu_actions(&model, &open_actions);
-    state.update_model(model);
-    state.close_submenu(0);
-    if !reopened.is_empty() {
-        state.open_submenu(&reopened);
-    }
-    true
-}
-
-fn open_submenu_actions(model: &MenuModel, path: &[usize]) -> Vec<String> {
-    let mut actions = Vec::with_capacity(path.len());
-    for depth in 1..=path.len() {
-        let Some(item) = model.item_at(&path[..depth]) else {
-            break;
-        };
-        actions.push(item.action.to_string());
-    }
-    actions
-}
-
-fn resolve_submenu_actions(model: &MenuModel, actions: &[String]) -> Vec<usize> {
-    let mut path = Vec::with_capacity(actions.len());
-    let mut sections: &[Section] = &model.sections;
-    for wanted in actions {
-        let mut flat = sections.iter().flat_map(|s| s.items.iter());
-        let Some(pos) = flat.position(|item| &*item.action == wanted) else {
-            break;
-        };
-        path.push(pos);
-        let Some(sub) = model
-            .item_at(&path)
-            .and_then(|item| item.submenu.as_deref())
-        else {
-            break;
-        };
-        sections = sub;
-    }
-    path
 }
 
 pub(crate) fn is_menu_action(action: &str) -> bool {

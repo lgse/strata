@@ -37,7 +37,7 @@ pub(super) fn localized_words() -> JobsWords {
         finished: Rc::new(|n| rust_i18n::t!("%{count} finished", count = n).into_owned()),
         status: Rc::new(status_phrase),
         failed: Rc::new(|n| rust_i18n::t!("%{count} failed", count = n).into_owned()),
-        hidden: Rc::new(|n| format!("{} older jobs are hidden", integer(n as u64))),
+        hidden: Rc::new(|n| count("older_jobs_hidden", n)),
         duration: Rc::new(duration),
         integer: Rc::new(integer),
         title: tr("Jobs"),
@@ -88,7 +88,7 @@ pub(crate) fn build_footer_jobs(app: &App, layer: &mut Vec<El>) -> Option<El> {
     builder.build(app, &app.look, layer)
 }
 
-fn handle_intent(app: &mut App, intent: JobsIntent, _: &mut Tx) {
+fn handle_intent(app: &mut App, intent: JobsIntent, tx: &mut Tx) {
     let service = super::shared_jobs(app);
     match intent {
         JobsIntent::Cancel(id) | JobsIntent::Remove(id) => {
@@ -102,6 +102,22 @@ fn handle_intent(app: &mut App, intent: JobsIntent, _: &mut Tx) {
         }
     }
     sync_rows(app);
+    close_when_emptied(app, tx);
+}
+
+/// GTK hides the Jobs button, and with it the open dashboard, once nothing is left to show
+/// (`refresh_indicator` in `src/ui/jobs.rs`). C16 keeps an emptied list open on "No background
+/// jobs.", so the adapter closes it and hands focus to the view, which GTK loses (finding
+/// lgse/strata#2554).
+fn close_when_emptied(app: &mut App, tx: &mut Tx) {
+    let state = &mut app.custom_actions.jobs_state;
+    if !state.is_open() || !app.custom_actions.job_rows.is_empty() {
+        return;
+    }
+    state.close();
+    if let Some(view) = shell::view_focus(app) {
+        tx.focus(view, false);
+    }
 }
 
 pub(super) fn enqueue_and_present(app: &mut App, request: JobRequest, tx: &mut Tx) {
@@ -205,7 +221,19 @@ fn snapshot_to_row(snapshot: &JobSnapshot, clock: f64) -> JobRow {
         output: snapshot.log.clone(),
         output_truncated: snapshot.log_truncated,
         error: snapshot.message.clone(),
+        created: created_line(snapshot.created.len()),
     }
+}
+
+/// `RowWidgets::update` in `src/ui/jobs.rs`: shown only once the job reported something.
+fn created_line(created: usize) -> Option<String> {
+    (created > 0).then(|| {
+        rust_i18n::t!(
+            "Reported %{value1} created.",
+            value1 = count("items", created)
+        )
+        .into_owned()
+    })
 }
 
 fn progress_counts(snapshot: &JobSnapshot) -> (Option<(usize, usize)>, usize) {

@@ -49,8 +49,6 @@ pub(crate) struct Menu {
     pub(crate) state: ContextMenuState,
     /// The column the menu is for.
     depth: usize,
-    /// Index in `MenuModel::sections` reserved for custom actions (`MenuPlacement::Top` + `"Actions"`).
-    custom_slot: usize,
     /// Index in `MenuModel::sections` where external file-provider sections are spliced.
     provider_slot: usize,
     /// What assistive technology hears the menu called: its entry or its folder.
@@ -290,7 +288,6 @@ impl Part for Menu {
         Self {
             state: ContextMenuState::default(),
             depth: 0,
-            custom_slot: 0,
             provider_slot: 0,
             name: String::new(),
             // `type_to_search_active` in `src/ui/preferences/input_settings.rs`.
@@ -302,7 +299,6 @@ impl Part for Menu {
 impl Menu {
     fn show(&mut self, depth: usize, opening: Opening, at: Point) {
         self.depth = depth;
-        self.custom_slot = opening.custom_slot;
         self.provider_slot = opening.provider_slot;
         self.name = opening.name;
         self.state.open(opening.target, at, opening.model);
@@ -310,10 +306,6 @@ impl Menu {
 
     pub(crate) fn depth(&self) -> usize {
         self.depth
-    }
-
-    pub(crate) fn custom_slot(&self) -> usize {
-        self.custom_slot
     }
 
     pub(crate) fn provider_slot(&self) -> usize {

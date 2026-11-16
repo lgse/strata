@@ -132,8 +132,10 @@ pub(super) const COMMANDS: &[Action<App>] = &[
         .when(in_listing)]),
 ];
 
+/// `item_view_has_focus` in `src/ui/window/keyboard/files.rs`, outside 10xer mode and any
+/// text field, the filter's included.
 fn in_listing(app: &App, at: &Situation) -> bool {
-    !shell::preferences(app).tenxer_mode && !at.text() && (at.in_view() || at.filter())
+    !shell::preferences(app).tenxer_mode && !at.text() && at.in_view()
 }
 
 fn run_listed_action(app: &mut App, index: usize, tx: &mut Tx) {
