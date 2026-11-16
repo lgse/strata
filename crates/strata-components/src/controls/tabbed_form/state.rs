@@ -89,6 +89,14 @@ fn is_form_tab(focused: &str, prefix: &str) -> bool {
         .is_some_and(|rest| !rest.is_empty() && rest.bytes().all(|b| b.is_ascii_digit()))
 }
 
+/// Targets for [`TabbedFormState::carry_page`] when a keyboard page switch hides the old page.
+pub(super) struct PageCarry {
+    pub panel: String,
+    pub tab: String,
+    pub tabs_prefix: String,
+    pub ring: bool,
+}
+
 impl TabbedFormState {
     /// The first page chosen.
     pub fn new() -> Self {
@@ -111,18 +119,12 @@ impl TabbedFormState {
     /// After a switch from the keyboard (Ctrl+Page Up or Down) with the keyboard off the tabs:
     /// if the switch dropped focus out of the hidden page, move it to `panel` when it holds a
     /// focusable element, else to `tab`. Replaces a carry not yet done.
-    pub(super) fn carry_page(
-        &mut self,
-        (panel, tab): (String, String),
-        tabs_prefix: String,
-        ring: bool,
-        tx: &mut Tx,
-    ) {
+    pub(super) fn carry_page(&mut self, page: PageCarry, tx: &mut Tx) {
         self.carry = Some(Carry::Page {
-            panel: Some(panel),
-            tab,
-            tabs_prefix,
-            ring,
+            panel: Some(page.panel),
+            tab: page.tab,
+            tabs_prefix: page.tabs_prefix,
+            ring: page.ring,
         });
         tx.wake_after(Duration::ZERO);
     }

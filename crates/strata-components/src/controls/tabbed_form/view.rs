@@ -7,7 +7,7 @@ use std::rc::Rc;
 use rune::{El, Key, KeyEvent, TextStyle, Tx, col, el, row, text};
 use strata_kit::look::Look;
 
-use super::state::{FormPage, Mounting, TabbedFormState};
+use super::state::{FormPage, Mounting, PageCarry, TabbedFormState};
 
 /// Strata's `.settings-action-tabs` (style.css): a tab at least 36 px tall (`min-height`, so
 /// it grows with a large text size) with 6 px sides and 8 px after it, its label at 55 % until
@@ -144,9 +144,12 @@ impl<S: 'static> TabbedForm<S> {
                 (self.get_mut)(s).keep_tab(tab, ring, tx);
             } else {
                 (self.get_mut)(s).carry_page(
-                    (self.panel_key(next), self.tab_key(next)),
-                    format!("{}-tab-", self.key),
-                    ring,
+                    PageCarry {
+                        panel: self.panel_key(next),
+                        tab: self.tab_key(next),
+                        tabs_prefix: format!("{}-tab-", self.key),
+                        ring,
+                    },
                     tx,
                 );
             }

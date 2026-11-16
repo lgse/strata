@@ -100,7 +100,7 @@ fn command(w: &mut Win, cmd: &Value, tx: &mut Tx) {
     w.command(cmd, tx);
 }
 
-fn main() {
+fn parse_args() -> (PathBuf, &'static str, bool, bool) {
     let args = rune::tooling::extra_args();
     let flag = |f: &str| args.iter().any(|a| a == f);
     let value = |f: &str| {
@@ -122,11 +122,33 @@ fn main() {
             .unwrap_or_else(|| "clipboard wiring".into())
             .into_boxed_str(),
     );
-    let apply = flag("--apply");
+    (
+        root,
+        title,
+        flag("--apply"),
+        flag("--as-if-no-data-control"),
+    )
+}
+
+fn spawn_stdin(stdin_handle: AppHandle<Win>) {
+    std::thread::spawn(move || {
+        for line in std::io::stdin().lock().lines() {
+            let Ok(line) = line else { break };
+            let Ok(cmd) = serde_json::from_str::<Value>(&line) else {
+                log("bad-command", json!({ "line": line }));
+                continue;
+            };
+            stdin_handle.update(move |w, tx| command(w, &cmd, tx));
+        }
+    });
+}
+
+fn main() {
+    let (root, title, apply, as_if_no_data_control) = parse_args();
     rune::tooling::set_app_id("strata-clipboard-wiring");
     clipboard::on_diagnostic(|m| log("diagnostic", json!({ "message": m })));
     let clip = FileClipboard::new(|w: &mut Win| &mut w.clip).test_route(TestRoute {
-        as_if_no_data_control: flag("--as-if-no-data-control"),
+        as_if_no_data_control,
         as_if_libwayland_below_1_23: false,
     });
     let attach = clip.handle();
@@ -143,17 +165,7 @@ fn main() {
         .on_quit(|_, _| shutdown("quit"))
         .on_close(|_, _| shutdown("window closed"));
     let handle: AppHandle<Win> = app.handle();
-    let stdin_handle = handle.clone();
-    std::thread::spawn(move || {
-        for line in std::io::stdin().lock().lines() {
-            let Ok(line) = line else { break };
-            let Ok(cmd) = serde_json::from_str::<Value>(&line) else {
-                log("bad-command", json!({ "line": line }));
-                continue;
-            };
-            stdin_handle.update(move |w, tx| command(w, &cmd, tx));
-        }
-    });
+    spawn_stdin(handle.clone());
     rune::orderly_exit();
     static DRAWN: AtomicBool = AtomicBool::new(false);
     let result = app
