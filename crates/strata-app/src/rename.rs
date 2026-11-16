@@ -464,7 +464,7 @@ pub(crate) fn heard(app: &mut App, intent: RenameIntent, tx: &mut Tx) {
         RenameIntent::Rename { name, .. } => ask(app, editing, name),
         RenameIntent::Move { path, .. } => ask(app, editing, path),
         // The name stays: Escape, an unchanged, an empty or a refused name.
-        _ => {}
+        _ => app.browser.clear_group_folder_for(&editing.entry.location),
     }
     if let Some(step) = step {
         advance(app, from, step, tx);
@@ -529,6 +529,8 @@ fn completed(app: &mut App, asked: &Asked, tx: &mut Tx) {
 /// `src/ui/browser/inline_edit/pending.rs`).
 fn failed(app: &mut App, asked: &Asked, message: String, tx: &mut Tx) {
     crate::filter::forget_renamed(app, &asked.editing.entry.location, asked.renamed.as_ref());
+    app.browser
+        .clear_group_folder_for(&asked.editing.entry.location);
     if asked.advanced {
         cancel(app, tx);
         let location = &asked.editing.entry.location;
@@ -558,6 +560,8 @@ fn answered(app: &mut App, answer: Answer, tx: &mut Tx) {
                     &asked.editing.entry.location,
                     asked.renamed.as_ref(),
                 );
+                app.browser
+                    .clear_group_folder_for(&asked.editing.entry.location);
             }
         }
         // GTK reports every failed rename, its undo and redo among them, whoever asked.

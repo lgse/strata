@@ -187,3 +187,160 @@ fn a_rename_begun_while_a_new_item_waits_gives_the_naming_up() {
         },
     );
 }
+
+fn ctrl_alt() -> Mods {
+    Mods {
+        ctrl: true,
+        cmd: true,
+        alt: true,
+        ..Mods::default()
+    }
+}
+
+fn ctrl_only() -> Mods {
+    Mods {
+        ctrl: true,
+        cmd: true,
+        ..Mods::default()
+    }
+}
+
+fn listed_in_root(host: &Offscreen, name: &str) -> bool {
+    let browser = host.app().browser();
+    let Some(snapshot) = browser.column_snapshot(0).filter(|s| !s.loading) else {
+        return false;
+    };
+    browser
+        .with_entries(0, 0..snapshot.count, |entries| {
+            entries.iter().any(|entry| entry.display_name == name)
+        })
+        .unwrap_or(false)
+}
+
+fn select_at_zero(host: &mut Offscreen, names: &[&str]) {
+    let owned: Vec<String> = names.iter().map(|name| (*name).to_owned()).collect();
+    host.runtime().update(|app: &mut App, tx| {
+        assert!(app.browser.select_entries_by_name_at(0, &owned));
+        crate::shell::settle(app, tx);
+    });
+    while host.turn() {}
+}
+
+#[test]
+fn ctrl_alt_n_falls_back_without_fill_and_groups_selection_into_one_undo_step() {
+    hosted(
+        MODULE,
+        "ctrl_alt_n_falls_back_without_fill_and_groups_selection_into_one_undo_step",
+        |mut host| {
+            let folder = listed(&mut host);
+            let root = folder.path();
+            assert!(host.app().browser().selection_is_load_cursor());
+            key(&mut host, Key::Command('n'), ctrl_alt());
+            wait_for_field(&mut host, "new folder");
+            assert!(root.join("readme.md").is_file());
+            assert!(root.join("todo.txt").is_file());
+            key(&mut host, Key::Escape, Mods::default());
+            key(&mut host, Key::Command('z'), ctrl_only());
+            assert!(host.run_until(PATIENCE, |h| {
+                !root.join("new folder").exists()
+                    && !h.app().browser().has_foreground_operation()
+                    && !listed_in_root(h, "new folder")
+            }));
+            while host.turn() {}
+
+            select_at_zero(&mut host, &["readme.md", "todo.txt"]);
+            key(&mut host, Key::Command('n'), ctrl_alt());
+            name_it(&mut host, "new folder", "grouped");
+
+            wait_on_disk(&mut host, &root.join("grouped/readme.md"), true);
+            wait_on_disk(&mut host, &root.join("grouped/todo.txt"), true);
+            assert!(host.run_until(PATIENCE, |h| {
+                !h.app().browser().has_foreground_operation() && listed_in_root(h, "grouped")
+            }));
+            while host.turn() {}
+            assert!(!root.join("readme.md").exists());
+            assert!(!root.join("todo.txt").exists());
+            assert!(!root.join("new folder").exists());
+
+            key(&mut host, Key::Command('z'), ctrl_only());
+            wait_on_disk(&mut host, &root.join("readme.md"), true);
+            wait_on_disk(&mut host, &root.join("todo.txt"), true);
+            wait_on_disk(&mut host, &root.join("grouped"), false);
+            assert!(!root.join("new folder").exists());
+        },
+    );
+}
+
+fn abandon_group_editor(host: &mut Offscreen, collide: bool) {
+    wait_for_field(host, "new folder");
+    if !collide {
+        key(host, Key::Escape, Mods::default());
+        return;
+    }
+    type_text(host, "archive");
+    wait_for_field(host, "archive");
+    key(host, Key::Enter, Mods::default());
+    assert!(host.run_until(PATIENCE, |h| {
+        crate::error_dialog::shown_details(h.app()).is_some()
+    }));
+    key(host, Key::Escape, Mods::default());
+    assert!(crate::error_dialog::shown_details(host.app()).is_none());
+}
+
+fn check_abandoned_group_naming(test_name: &str, collide: bool) {
+    hosted(MODULE, test_name, |mut host| {
+        let folder = listed(&mut host);
+        let root = folder.path();
+        select_at_zero(&mut host, &["readme.md", "todo.txt"]);
+        let readme = Location::local(root.join("readme.md"));
+        let readme_id = crate::shell::id_of(host.app(), &readme);
+        assert_eq!(
+            run_now(&mut host, "group", On::Row((0, readme_id))),
+            Some(Outcome::Ran)
+        );
+        abandon_group_editor(&mut host, collide);
+        assert!(root.join("new folder/readme.md").is_file());
+        assert!(root.join("new folder/todo.txt").is_file());
+
+        select_at_zero(&mut host, &["new folder"]);
+        key(&mut host, Key::Function(2), Mods::default());
+        name_it(&mut host, "new folder", "later");
+        assert!(host.run_until(PATIENCE, |h| {
+            root.join("later/readme.md").is_file()
+                && !h.app().browser().has_foreground_operation()
+                && listed_in_root(h, "later")
+        }));
+        while host.turn() {}
+
+        key(&mut host, Key::Command('z'), ctrl_only());
+        assert!(host.run_until(PATIENCE, |h| {
+            root.join("new folder/readme.md").is_file()
+                && !h.app().browser().has_foreground_operation()
+                && listed_in_root(h, "new folder")
+        }));
+        while host.turn() {}
+        assert!(root.join("new folder/todo.txt").is_file());
+        assert!(!root.join("later").exists());
+
+        key(&mut host, Key::Command('z'), ctrl_only());
+        wait_on_disk(&mut host, &root.join("readme.md"), true);
+        wait_on_disk(&mut host, &root.join("todo.txt"), true);
+        wait_on_disk(&mut host, &root.join("new folder"), false);
+    });
+}
+
+#[test]
+fn abandoned_group_naming_by_escape_leaves_later_rename_separate_in_undo() {
+    check_abandoned_group_naming(
+        "abandoned_group_naming_by_escape_leaves_later_rename_separate_in_undo",
+        false,
+    );
+}
+
+#[test]
+fn failed_group_naming_by_collision_leaves_later_rename_separate_in_undo() {
+    check_abandoned_group_naming(
+        "failed_group_naming_by_collision_leaves_later_rename_separate_in_undo",
+        true,
+    );
+}

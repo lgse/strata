@@ -26,6 +26,12 @@ list v3 53cac7ac7cdfa46c
 # tests/qa/fuzz/corpus/location.
 location v2 c074595ff2aab0b4
 sidebar v1 4acfcd20a194fff5
+# tabs: versions 1 and 2 were A4's drafts, never merged: version 1 caught the hidden-tab
+# view-switch focus and tab_shown bug (fixed in shell/tabs.rs) and met lgse/strata#2507;
+# version 2 met lgse/strata#2510 on F2 in Icons, lgse/strata#2415, and an unclosed location
+# field on empty reopen history; version 3 scopes F2 to Columns and guards pointer actions with
+# editable_fields: 0.
+tabs v3 1f8e63a3fc4ed901
 # views: versions 1 and 2 were A8's drafts, never merged: version 1's smoke tier met the plain
 # popover's app.dialog (lgse/strata#2405), Up off a first row, and #2386, since fixed;
 # version 2's, with the Up guard, met lgse/strata#2408, parked in tests/qa/fuzz/corpus/views.
