@@ -143,6 +143,23 @@ fn each_mode_names_its_reference_and_counts_the_selection(
     }
 }
 
+fn a_mode_switch_restyles_the_selected_entry(view: &BrowserView, footer: &ShortcutFooter) {
+    let depth = view.browser().active_depth().expect("active directory");
+    let file = (0..3)
+        .find(|position| {
+            view.browser()
+                .entry_at(depth, *position)
+                .is_some_and(|entry| entry.display_name == "one.txt")
+        })
+        .expect("file position");
+    view.browser().set_selection(depth, &[file], Some(file));
+    view.set_view_mode(BrowserMode::List);
+    wait_for_count(footer, "one.txt (3 B)");
+    view.set_view_mode(BrowserMode::Icons);
+    wait_for_count_prefix(footer, "one.txt (3 B) — ");
+    view.browser().set_selection(depth, &[], None);
+}
+
 fn selection_details_describe_known_and_missing_sizes(view: &BrowserView) {
     use crate::model::MetadataValue::{Known, Unavailable, Unknown};
     let mut files = (0..3)
@@ -274,6 +291,7 @@ fn footer_tracks_modes_and_shields_files_while_open() {
     view.connect_view_mode_changed(move |mode| updated.set_mode(mode));
     let (window, entry) = present_with_entry(&footer);
     each_mode_names_its_reference_and_counts_the_selection(&view, &footer);
+    a_mode_switch_restyles_the_selected_entry(&view, &footer);
     selection_details_describe_known_and_missing_sizes(&view);
     view.browser().navigate(crate::model::Location::local(
         directory.path().join("folder"),

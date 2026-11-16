@@ -49,7 +49,8 @@ pub(super) fn update_item_count(
         request_selected_sizes(browser, depth);
     }
     if selected_len > 0 {
-        show_selection_count(label, browser, &counts, selected_len, mode);
+        let text = selection_label(browser, &counts, selected_len, mode);
+        show_selection_count(label, &text, &counts, selected_len);
     } else {
         label.set_label(&crate::i18n::count("items", counts.total));
         crate::ui::accessibility::set_description(
@@ -75,12 +76,11 @@ fn request_selected_sizes(browser: &Rc<crate::app::Browser>, depth: usize) {
 
 fn show_selection_count(
     label: &gtk::Label,
-    browser: &crate::app::Browser,
+    text: &str,
     counts: &ListingCounts,
     selected_len: usize,
-    mode: BrowserMode,
 ) {
-    label.set_label(&selection_label(browser, counts, selected_len, mode));
+    label.set_label(text);
     // The plural form follows the total; the selected count fills in afterwards.
     let selection = rust_i18n::replace_patterns(
         &crate::i18n::count("selected_of_items", counts.total),
