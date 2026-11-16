@@ -614,3 +614,12 @@ fn finish_preparing(
     collisions::resolve(app, plan, collisions, accepted);
     shell::settle(app, tx);
 }
+
+/// Shows a transient dock notice, as external file providers do.
+pub(crate) fn show_notice(
+    app: &mut App,
+    notice: strata_components::progress_dock::Notice,
+    tx: &mut Tx,
+) {
+    app.transfer.ops.dock.notice(notice, tx);
+}

@@ -4,14 +4,14 @@
 
 use std::hash::{Hash, Hasher};
 
-use rune::{El, SurfaceFit, TextStyle, el, icon, row, text};
+use rune::{El, Pixels, SurfaceFit, TextStyle, el, icon, row, text};
 use strata_kit::{icons::IconName, look::Look};
 
 use super::step::Step;
 use super::store::{Thumb, ThumbnailStore};
 use crate::{
     collection::element::{ICON, RowCx, Slot},
-    contract::{Entry, EntryGlyph, EntryKind},
+    contract::{Entry, EntryGlyph, EntryId, EntryKind},
 };
 
 /// The key of a part's image, under the part ([`ICON`] in a row).
@@ -19,6 +19,34 @@ pub const THUMB: &str = "thumb";
 
 /// The key of a part's placeholder icon, under the part.
 pub const GLYPH: &str = "glyph";
+
+/// The key of an optional corner badge over the part.
+pub const BADGE: &str = "badge";
+
+/// Corner badge side for a `points × points` slot, matching Strata's `ThumbnailSlot`.
+fn badge_size(points: f32) -> f32 {
+    (points * 0.55).clamp(10.0, 24.0)
+}
+
+/// Overlays `badge` in the bottom-right corner of a `(inset, slot_points)` box.
+pub(crate) fn overlay_badge(el: El, badge: Option<Pixels>, (inset, slot_points): (f32, f32)) -> El {
+    let Some(badge_px) = badge else {
+        return el;
+    };
+    let size = badge_size(slot_points);
+    let edge = inset + slot_points - size;
+    el.child(
+        rune::el()
+            .key(BADGE)
+            .absolute(edge, edge)
+            .w(size)
+            .h(size)
+            .a11y_hidden()
+            .pixels_fit(&badge_px, SurfaceFit::Fit),
+    )
+}
+
+type BadgeAccess<S> = (fn(&S, EntryId) -> u64, fn(&S, EntryId) -> Option<Pixels>);
 
 /// `thumb` over `icon` in a `w × h` box: the icon centred underneath, faded out through the
 /// handle's opacity while an image is held, and the image fitted (letterboxed, centred) over
@@ -69,6 +97,7 @@ pub fn icon_slot<S: 'static>(
         step,
         points,
         dim_files: false,
+        badge: None,
     }
 }
 
@@ -78,6 +107,7 @@ pub struct IconSlot<S> {
     step: Step,
     points: f32,
     dim_files: bool,
+    badge: Option<BadgeAccess<S>>,
 }
 
 impl<S: 'static> IconSlot<S> {
@@ -86,6 +116,17 @@ impl<S: 'static> IconSlot<S> {
     /// as a whole). Strata's List rows leave it off.
     pub fn dim_files(mut self) -> Self {
         self.dim_files = true;
+        self
+    }
+
+    /// Overlays an optional corner badge (`Pixels`) in the bottom-right corner of the slot,
+    /// rebuilding a row's slot only when `version` changes for that entry.
+    pub fn badge(
+        mut self,
+        version: fn(&S, EntryId) -> u64,
+        pixels: fn(&S, EntryId) -> Option<Pixels>,
+    ) -> Self {
+        self.badge = Some((version, pixels));
         self
     }
 }
@@ -97,6 +138,7 @@ impl<S: 'static> From<IconSlot<S>> for Slot<S> {
             step,
             points,
             dim_files,
+            badge,
         } = slot;
         Slot::new(
             move |s: &S, rcx: &RowCx<'_>| {
@@ -111,12 +153,15 @@ impl<S: 'static> From<IconSlot<S>> for Slot<S> {
                 {
                     store(s).version(key).hash(&mut h);
                 }
+                badge
+                    .map_or(0, |(ver, _)| ver(s, rcx.entry.id))
+                    .hash(&mut h);
                 h.finish()
             },
             move |s: &S, rcx: &RowCx<'_>| {
                 let glyph = placeholder(rcx, points, icon_opacity(rcx, dim_files));
                 let st = store(s);
-                match shown_thumbnail(rcx.entry) {
+                let built = match shown_thumbnail(rcx.entry) {
                     Some(key) if st.enabled() && mark_icon(rcx.state.marks).is_none() => {
                         picture(&st.thumb(key), glyph, points, points).key(ICON)
                     }
@@ -127,7 +172,9 @@ impl<S: 'static> From<IconSlot<S>> for Slot<S> {
                         .center()
                         .a11y_hidden()
                         .child(glyph),
-                }
+                };
+                let px = badge.and_then(|(_, px_fn)| px_fn(s, rcx.entry.id));
+                overlay_badge(built, px, (0.0, points))
             },
         )
     }

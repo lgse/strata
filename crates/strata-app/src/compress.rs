@@ -56,8 +56,9 @@ use crate::{
     conflict_dialog::{
         self, ConflictActions, ConflictChoice, ConflictFocus, ConflictPrompt, compact_display_path,
     },
-    filter, launch, menus, shell,
+    launch, menus, shell,
     slots::{Later, Part, Place, Setup},
+    tenxer,
 };
 
 /// One open or closing Compress dialog.
@@ -208,44 +209,37 @@ fn entry_kind_summary(entries: &[FileEntry]) -> String {
     }
 }
 
-fn shows_columns(app: &App) -> bool {
-    shell::shown_view(app).is_some_and(|view| (view.shows)("columns"))
-}
-
-/// `BrowserView::command_targets` (`src/ui/browser/file_commands.rs`).
-fn focus_entries(app: &mut App) -> Vec<FileEntry> {
-    let tenxer = shell::preferences(app).tenxer_mode;
-    if let Some(results) = filter::targets::selected(app) {
-        if !results.is_empty() || !tenxer {
-            return results;
-        }
-        return filter::targets::under_cursor(app)
-            .map(|(_, entry)| entry)
-            .into_iter()
-            .collect();
-    }
-    shell::publish(app);
-    if !tenxer {
-        return app.browser.transfer_entries();
-    }
-    let depth = if shows_columns(app) {
-        Some(app.columns.targeted())
-    } else {
-        app.browser.active_depth()
-    };
-    depth
-        .map(|d| app.browser.command_entries(d))
-        .unwrap_or_default()
-}
-
 fn target_entries(app: &mut App, on: &On) -> Vec<FileEntry> {
     match *on {
         On::Row((depth, id)) => menus::context_entries(app, depth, id)
             .map(|(_, entries)| entries)
             .unwrap_or_default(),
-        On::Focus => focus_entries(app),
+        On::Focus => tenxer::command_targets(app),
         On::Column(_) | On::Place(_) => Vec::new(),
     }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum CompressAttempt {
+    Nothing,
+    Refused,
+    Started,
+}
+
+/// `BrowserView::compress_targets` (`src/ui/browser/file_commands.rs`) for 10xer's `; c` chord.
+pub(crate) fn open_for_focus(app: &mut App) -> CompressAttempt {
+    let entries = tenxer::command_targets(app);
+    if entries.is_empty() {
+        return CompressAttempt::Nothing;
+    }
+    if entries
+        .iter()
+        .any(|entry| entry.location.native_path().is_none())
+    {
+        return CompressAttempt::Refused;
+    }
+    open(app, entries);
+    CompressAttempt::Started
 }
 
 fn compress(app: &mut App, call: &Call<'_>, _: &mut Tx) -> Outcome {

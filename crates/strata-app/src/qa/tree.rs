@@ -149,6 +149,7 @@ pub(super) struct Drawn {
     pub(super) columns: Vec<DrawnColumn>,
     pub(super) labels: Vec<NameLabel>,
     pub(super) icons: Vec<RowIcon>,
+    pub(super) icon_descriptions: HashMap<EntryId, String>,
     pub(super) buttons: Vec<DrawnButton>,
     pub(super) sidebar: super::sidebar::Gaps,
     pub(super) tenxer: super::tenxer::Labels,
@@ -359,6 +360,7 @@ impl Snapshot {
         };
         if tree.is_object() {
             snapshot.add(tree, None, "window".to_owned());
+            super::submenus::nest(&mut snapshot.nodes);
         }
         snapshot.focus = snapshot.keyboard_focus();
         snapshot.apply_drawn_states(drawn);
@@ -378,7 +380,7 @@ impl Snapshot {
             snapshot.add_label(label);
         }
         for icon in &drawn.icons {
-            snapshot.add_icon(icon);
+            snapshot.add_icon(icon, &drawn.icon_descriptions);
         }
         for button in &drawn.buttons {
             snapshot.add_hidden_button(button, &panes);
@@ -523,12 +525,19 @@ impl Snapshot {
     }
 
     /// Presents a row's drawn icon as an `image` under the entry it is in.
-    fn add_icon(&mut self, icon: &RowIcon) {
+    fn add_icon(&mut self, icon: &RowIcon, descriptions: &HashMap<EntryId, String>) {
         let Some(row) = self.entry_around(&icon.above) else {
             return;
         };
+        let description = self.nodes[row]
+            .node
+            .as_ref()
+            .and_then(|node| self.keep(node).entry())
+            .and_then(|id| descriptions.get(&id).cloned())
+            .unwrap_or_default();
         let seen = Seen {
             role: "image".to_owned(),
+            description,
             bounds: Some(icon.glyph.unwrap_or(icon.bounds)),
             ..Seen::default()
         };

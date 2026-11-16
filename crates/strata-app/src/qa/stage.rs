@@ -313,6 +313,7 @@ pub(super) fn drawn(elements: &[ElementInfo], app: &App) -> Drawn {
             .collect(),
         labels: name_labels(elements, app),
         icons: row_icons(elements),
+        icon_descriptions: crate::file_providers::presented_descriptions(app),
         buttons: drawn_buttons(elements, &lists),
         sidebar: super::sidebar::Gaps::drawn(elements),
         tenxer: super::tenxer::Labels::drawn(elements),

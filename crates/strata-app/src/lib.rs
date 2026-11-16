@@ -36,6 +36,7 @@ mod shell;
 mod single;
 mod slots;
 mod startup;
+mod theme;
 // Thumbnails for the views: the render pool, one per process, and a view's viewer.
 #[cfg(test)]
 mod test_support;
@@ -98,6 +99,7 @@ mod conflict_dialog;
 mod transfer;
 // A13 Archives and providers
 mod archive;
+mod file_providers;
 // A14 Open with, terminal and custom actions
 mod open_with;
 mod terminal;
@@ -108,6 +110,7 @@ mod preview;
 mod properties;
 mod raw_details;
 // A18 Settings and themes
+mod settings_dialog;
 // A19 Drag and drop
 // A20 Portal chooser
 // A21 Window and launch
@@ -161,6 +164,7 @@ slots::parts! {
     conflict_dialog: conflict_dialog::ConflictDialog,
     // A13 Archives and providers
     archive: archive::Archive,
+    file_providers: file_providers::FileProviders,
     // A14 Open with, terminal and custom actions
     open_with: open_with::OpenWith,
     terminal: terminal::Terminal,
@@ -170,6 +174,7 @@ slots::parts! {
     // A17 Properties
     properties: properties::Properties,
     // A18 Settings and themes
+    settings_dialog: settings_dialog::SettingsDialog,
     // A19 Drag and drop
     // A20 Portal chooser
     // A21 Window and launch

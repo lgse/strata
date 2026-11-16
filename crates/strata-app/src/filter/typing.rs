@@ -30,6 +30,6 @@ pub(super) fn query(press: &KeyPress) -> Option<Query> {
 }
 
 /// Whether `press` opens the filter: what the command's stage reads.
-pub(super) fn reads(press: &KeyPress) -> bool {
+pub(crate) fn reads(press: &KeyPress) -> bool {
     query(press).is_some()
 }

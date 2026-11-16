@@ -63,7 +63,7 @@ pub(crate) struct Preview {
     child_pane: bool,
     current: Option<FileEntry>,
     current_depth: Option<usize>,
-    current_content_type: Option<String>,
+    header_source: Option<(FileEntry, Option<String>)>,
     content_owns_focus: u8,
     focus_timer: Rc<RefCell<Option<glib::SourceId>>>,
     released_from: Option<Option<usize>>,
@@ -103,6 +103,26 @@ impl Preview {
             (_, _) => false,
         }
     }
+
+    #[cfg(test)]
+    pub(crate) fn media_backend(&self) -> strata_preview::sandbox::MediaPreviewBackend {
+        self.loader.media_backend()
+    }
+}
+
+pub(crate) fn refresh_header(app: &mut App) {
+    if let Some((entry, content_type)) = &app.preview.header_source {
+        app.preview.header = load::identity_for(&app.look, entry, content_type.as_deref());
+    }
+}
+
+pub(crate) fn sync_preferences(app: &mut App) {
+    let prefs = shell::preferences(app);
+    let wrap = prefs.preview_text_wrap;
+    let backend = load::effective_media_backend(prefs);
+    app.preview.viewer.set_wrap(wrap);
+    app.preview.loader.set_media_backend(backend);
+    refresh_header(app);
 }
 
 impl Part for Preview {
@@ -113,7 +133,7 @@ impl Part for Preview {
         let mut drawer = DrawerState::new();
         drawer.reserve(setup.settings.browser_mode == "columns");
         let loader = Loader::new(setup.later.clone());
-        loader.set_media_backend(&setup.settings.video_preview_backend);
+        loader.set_media_backend(load::effective_media_backend(setup.settings));
         Self {
             drawer,
             viewer: Viewer::Empty,
@@ -127,7 +147,7 @@ impl Part for Preview {
             child_pane: false,
             current: None,
             current_depth: None,
-            current_content_type: None,
+            header_source: None,
             content_owns_focus: 0,
             focus_timer: Rc::default(),
             released_from: None,
@@ -187,10 +207,7 @@ impl Part for Preview {
 
     fn tab_shown(app: &mut App, _tx: &mut Tx) {
         ensure_operations_watch(app);
-        let wrap = shell::preferences(app).preview_text_wrap;
-        let media_backend = shell::preferences(app).video_preview_backend.clone();
-        app.preview.viewer.set_wrap(wrap);
-        app.preview.loader.set_media_backend(&media_backend);
+        sync_preferences(app);
         let prefs = shell::preferences(app);
         app.columns.refresh_mirror_preferences(prefs);
         session::sync_reservation(app);
