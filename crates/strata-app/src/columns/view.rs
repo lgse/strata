@@ -70,6 +70,8 @@ pub(crate) fn view(app: &App) -> ColumnsView<App> {
     .labels(app.columns.labels.0.clone())
     // "Show sizes in Columns view", read at each build: the popover's row changes it live.
     .show_sizes(|app: &App| shell::preferences(app).columns_show_sizes)
+    .escape_closes(|app: &App| !shell::preferences(app).tenxer_mode)
+    .close_buttons(|app: &App| !shell::preferences(app).tenxer_mode)
     .collection(|app, depth, collection| {
         let collection = collection
             .empty(move |app: &App| shown_status(app, depth))
@@ -85,8 +87,8 @@ pub(crate) fn view(app: &App) -> ColumnsView<App> {
             Some((said, _)) => collection.description(said.into_owned()),
             None => collection,
         };
-        let collection = match &app.columns.keys {
-            Some(keys) => collection.settings(keys.clone()),
+        let collection = match super::live_keys(shell::preferences(app)) {
+            Some(keys) => collection.settings(keys),
             None => collection,
         };
         // The editor answers in the column its edit names, and in no other.

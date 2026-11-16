@@ -32,9 +32,18 @@ use strata_desktop::keys::{Key, KeyPress, KeyPressParts, Modifiers, Typed};
 
 /// Where a key is and what it types with nothing held, as far as Rune says.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(super) struct Origin {
-    pub(super) physical: Option<PhysicalKeyCode>,
-    pub(super) base: Option<char>,
+pub(crate) struct Origin {
+    pub(crate) physical: Option<PhysicalKeyCode>,
+    pub(crate) base: Option<char>,
+}
+
+/// An X keycode (`evdev + 8`) and the unshifted character the active layout types there, for
+/// the offscreen QA host (Rune packet entry 97).
+#[cfg(any(test, feature = "qa"))]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct XKey {
+    pub(crate) keycode: u32,
+    pub(crate) base: Option<char>,
 }
 
 impl Origin {
@@ -45,57 +54,101 @@ impl Origin {
             base: tx.key_base(),
         }
     }
+
+    /// An origin from [`XKey`], while `Runtime::physical_key_input` is private (Rune packet
+    /// entry 97).
+    #[cfg(any(test, feature = "qa"))]
+    pub(crate) fn from_x(key: XKey) -> Self {
+        let physical = MAIN_BLOCK_ROWS.iter().find_map(|(first, keys)| {
+            let along = usize::try_from(key.keycode.checked_sub(*first)?).ok()?;
+            keys.get(along).copied()
+        });
+        Self {
+            physical,
+            base: key.base,
+        }
+    }
 }
 
 /// A keycode no key of the US table has: a press with it gets no Latin fallback and no
 /// digit by position, and is still read by what it types.
 const OFF_THE_TABLE: u32 = 8;
 
+const MAIN_BLOCK_ROWS: [(u32, &[PhysicalKeyCode]); 5] = [
+    (
+        10,
+        &[
+            PhysicalKeyCode::Digit1,
+            PhysicalKeyCode::Digit2,
+            PhysicalKeyCode::Digit3,
+            PhysicalKeyCode::Digit4,
+            PhysicalKeyCode::Digit5,
+            PhysicalKeyCode::Digit6,
+            PhysicalKeyCode::Digit7,
+            PhysicalKeyCode::Digit8,
+            PhysicalKeyCode::Digit9,
+            PhysicalKeyCode::Digit0,
+            PhysicalKeyCode::Minus,
+            PhysicalKeyCode::Equal,
+        ],
+    ),
+    (
+        24,
+        &[
+            PhysicalKeyCode::KeyQ,
+            PhysicalKeyCode::KeyW,
+            PhysicalKeyCode::KeyE,
+            PhysicalKeyCode::KeyR,
+            PhysicalKeyCode::KeyT,
+            PhysicalKeyCode::KeyY,
+            PhysicalKeyCode::KeyU,
+            PhysicalKeyCode::KeyI,
+            PhysicalKeyCode::KeyO,
+            PhysicalKeyCode::KeyP,
+            PhysicalKeyCode::BracketLeft,
+            PhysicalKeyCode::BracketRight,
+        ],
+    ),
+    (
+        38,
+        &[
+            PhysicalKeyCode::KeyA,
+            PhysicalKeyCode::KeyS,
+            PhysicalKeyCode::KeyD,
+            PhysicalKeyCode::KeyF,
+            PhysicalKeyCode::KeyG,
+            PhysicalKeyCode::KeyH,
+            PhysicalKeyCode::KeyJ,
+            PhysicalKeyCode::KeyK,
+            PhysicalKeyCode::KeyL,
+            PhysicalKeyCode::Semicolon,
+            PhysicalKeyCode::Quote,
+            PhysicalKeyCode::Backquote,
+        ],
+    ),
+    (51, &[PhysicalKeyCode::Backslash]),
+    (
+        52,
+        &[
+            PhysicalKeyCode::KeyZ,
+            PhysicalKeyCode::KeyX,
+            PhysicalKeyCode::KeyC,
+            PhysicalKeyCode::KeyV,
+            PhysicalKeyCode::KeyB,
+            PhysicalKeyCode::KeyN,
+            PhysicalKeyCode::KeyM,
+            PhysicalKeyCode::Comma,
+            PhysicalKeyCode::Period,
+            PhysicalKeyCode::Slash,
+        ],
+    ),
+];
+
 /// The X keycode of a key of the main block: its evdev code plus 8, which is what GDK
 /// reports and what the shared crate's US table is keyed by. A table of positions, not of
 /// what any layout types there.
 fn x_keycode(physical: PhysicalKeyCode) -> Option<u32> {
-    use PhysicalKeyCode::*;
-    const ROWS: [(u32, &[PhysicalKeyCode]); 5] = [
-        (
-            10,
-            &[
-                Digit1, Digit2, Digit3, Digit4, Digit5, Digit6, Digit7, Digit8, Digit9, Digit0,
-                Minus, Equal,
-            ],
-        ),
-        (
-            24,
-            &[
-                KeyQ,
-                KeyW,
-                KeyE,
-                KeyR,
-                KeyT,
-                KeyY,
-                KeyU,
-                KeyI,
-                KeyO,
-                KeyP,
-                BracketLeft,
-                BracketRight,
-            ],
-        ),
-        (
-            38,
-            &[
-                KeyA, KeyS, KeyD, KeyF, KeyG, KeyH, KeyJ, KeyK, KeyL, Semicolon, Quote, Backquote,
-            ],
-        ),
-        (51, &[Backslash]),
-        (
-            52,
-            &[
-                KeyZ, KeyX, KeyC, KeyV, KeyB, KeyN, KeyM, Comma, Period, Slash,
-            ],
-        ),
-    ];
-    ROWS.iter().find_map(|(first, keys)| {
+    MAIN_BLOCK_ROWS.iter().find_map(|(first, keys)| {
         let along = keys.iter().position(|key| *key == physical)?;
         u32::try_from(along).ok().map(|along| first + along)
     })
