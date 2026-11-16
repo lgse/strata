@@ -147,6 +147,10 @@ impl Thumbs {
     pub(super) fn icon(&self, look: &Look) -> Slot<App> {
         icon_slot(shell::thumbnails, self.step(look), ROW_THUMBNAIL)
             .dim_files()
+            .badge(
+                crate::file_providers::badge_version,
+                crate::file_providers::badge_pixels,
+            )
             .into()
     }
 

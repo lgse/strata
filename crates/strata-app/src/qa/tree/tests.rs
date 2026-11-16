@@ -741,3 +741,97 @@ fn window_announcer_is_stripped_while_real_status_bars_remain() {
         .collect();
     assert_eq!(statuses, ["1 item copied"]);
 }
+
+fn nested_submenu_tree() -> serde_json::Value {
+    json!({
+        "role": "window",
+        "children": [
+            { "role": "group", "key": "kit-root", "children": [
+                { "role": "menu", "key": "menu-menu", "name": "todo.txt", "states": ["modal"], "children": [
+                    { "role": "menu-item", "key": "menu-item1", "name": "Offline availability", "bounds": [10.0, 20.0, 160.0, 28.0] },
+                ] },
+                { "role": "menu", "key": "menu-item1-sub-menu", "name": "Offline availability", "children": [
+                    { "role": "menu-item", "key": "menu-item1-sub-item0", "name": "Keep test pin", "bounds": [170.0, 20.0, 160.0, 28.0] },
+                    { "role": "menu-item", "key": "menu-item1-sub-item1", "name": "Details", "bounds": [170.0, 48.0, 160.0, 28.0] },
+                ] },
+                { "role": "menu", "key": "menu-item1-sub-item1-sub-menu", "name": "Details", "children": [
+                    { "role": "menu-item", "key": "menu-item1-sub-item1-sub-item0", "name": "Inspect nested state", "bounds": [330.0, 48.0, 160.0, 28.0] },
+                ] },
+            ] },
+        ],
+    })
+}
+
+#[test]
+fn open_submenu_surfaces_nest_under_their_owning_menu_and_row_icons_carry_descriptions() {
+    let tree = nested_submenu_tree();
+    let mut icon_descriptions = std::collections::HashMap::new();
+    icon_descriptions.insert(
+        strata_components::contract::EntryId::new(1),
+        "example: Available offline".to_owned(),
+    );
+    let drawn = Drawn {
+        view: Some(COLUMNS),
+        lists: vec!["columns-col-0".to_owned()],
+        columns: vec![DrawnColumn {
+            list: "columns-col-0".to_owned(),
+            name: "Files".to_owned(),
+            bounds: bounds(0.0),
+            pane: bounds(0.0),
+            rows: vec![DrawnRow {
+                key: "row-1".to_owned(),
+                name: "todo.txt".to_owned(),
+                selected: true,
+                bounds: bounds(0.0),
+            }],
+        }],
+        icons: vec![RowIcon {
+            above: vec!["row-1".to_owned()],
+            bounds: bounds(4.0),
+            glyph: None,
+        }],
+        icon_descriptions,
+        ..Drawn::default()
+    };
+    let snapshot = Snapshot::read(&tree, &drawn);
+
+    // Only the top-level menu remains under kit-root; nested submenus sit inside it.
+    let kit_root = snapshot.at(1).expect("kit-root");
+    let root_menus: Vec<_> = kit_root
+        .children
+        .iter()
+        .filter_map(|&c| snapshot.at(c))
+        .filter(|s| s.role() == "menu")
+        .map(|s| s.name.as_str())
+        .collect();
+    assert_eq!(root_menus, ["todo.txt"]);
+
+    let root_menu_idx = kit_root
+        .children
+        .iter()
+        .copied()
+        .find(|&c| snapshot.at(c).is_some_and(|s| s.role() == "menu"))
+        .expect("root menu");
+    let items: Vec<_> = snapshot
+        .below(root_menu_idx)
+        .into_iter()
+        .filter_map(|i| snapshot.at(i))
+        .filter(|s| s.role() == "menu item")
+        .map(|s| s.name.as_str())
+        .collect();
+    assert_eq!(
+        items,
+        [
+            "Offline availability",
+            "Keep test pin",
+            "Details",
+            "Inspect nested state"
+        ]
+    );
+
+    let badge_image = (0..)
+        .map_while(|i| snapshot.at(i))
+        .find(|s| s.role() == "image")
+        .expect("row icon");
+    assert_eq!(badge_image.description, "example: Available offline");
+}

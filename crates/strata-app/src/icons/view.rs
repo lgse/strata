@@ -37,6 +37,10 @@ pub(crate) fn grid() -> IconsGrid<App> {
         Some((app.window.thumbnails_mut(), id, source))
     })
     .details(details_version, details_text)
+    .badge(
+        crate::file_providers::badge_version,
+        crate::file_providers::badge_pixels,
+    )
     .on_visible(|app: &mut App, range| {
         // Recorded only: the part asks for the fills once a poll.
         app.icons.fills.see(range);
@@ -88,6 +92,10 @@ pub(crate) fn results() -> IconsGrid<App> {
             hasher.finish()
         },
         |app: &App, rcx: &RowCx<'_>| crate::filter::pane::path_of(app, rcx.entry.id).map(Arc::from),
+    )
+    .badge(
+        crate::file_providers::badge_version,
+        crate::file_providers::badge_pixels,
     )
     .on_size(size::resized)
 }

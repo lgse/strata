@@ -59,7 +59,12 @@ impl Thumbs {
     /// The rows' icon: the entry's thumbnail from the window's store, else its icon, at full
     /// opacity, as GTK's List rows draw it.
     pub(super) fn icon(&self, look: &Look) -> Slot<App> {
-        icon_slot(shell::thumbnails, self.step(look), ROW_THUMBNAIL).into()
+        icon_slot(shell::thumbnails, self.step(look), ROW_THUMBNAIL)
+            .badge(
+                crate::file_providers::badge_version,
+                crate::file_providers::badge_pixels,
+            )
+            .into()
     }
 }
 

@@ -232,10 +232,10 @@ mod store;
 #[cfg(test)]
 mod tests;
 
-pub(crate) use part::mark_icon;
 pub use part::{
-    GLYPH, IconSlot, THUMB, entry_glyph, folder_badge, icon_opacity, icon_slot, picture,
+    BADGE, GLYPH, IconSlot, THUMB, entry_glyph, folder_badge, icon_opacity, icon_slot, picture,
 };
+pub(crate) use part::{mark_icon, overlay_badge};
 pub use queue::{Direction, Request, Tier, ViewerId, Viewport};
 pub use step::Step;
 pub use store::{Landed, Outcome, Settings, State, Stats, Thumb, ThumbnailStore, Ticket, Why};
