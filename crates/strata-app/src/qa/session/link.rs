@@ -39,7 +39,11 @@ impl Frames {
     /// it draws.
     pub(super) fn record(&self, runtime: &rune::Runtime<App>) {
         let tree = runtime.accessibility_json();
-        let drawn = stage::drawn(&runtime.elements(), &runtime.state);
+        let drawn = stage::drawn_with_busy(
+            &runtime.elements(),
+            &runtime.state,
+            &runtime.accessibility_tree(),
+        );
         let mut latest = self.latest.lock().unwrap_or_else(PoisonError::into_inner);
         let serial = latest.as_ref().map_or(1, |frame| frame.serial + 1);
         *latest = Some(Arc::new(Frame {

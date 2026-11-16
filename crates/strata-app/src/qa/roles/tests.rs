@@ -19,6 +19,11 @@ fn runes_roles_read_as_the_at_spi_names_the_scenarios_use() {
         ("tooltip", "label"),
         ("menu-item", "menu item"),
         ("menu-item-radio", "radio menu item"),
+        ("tab-panel", "panel"),
+        ("toolbar", "tool bar"),
+        ("tree", "tree"),
+        ("tree-grid", "tree table"),
+        ("tree-item", "tree item"),
     ] {
         assert_eq!(at_spi(rune, true), expected, "{rune}, named");
         assert_eq!(at_spi(rune, false), expected, "{rune}, unnamed");
@@ -32,6 +37,8 @@ fn a_button_with_a_pressed_state_is_a_toggle_button() {
     for (rune, toggled, expected) in [
         ("button", true, "toggle button"),
         ("button", false, "button"),
+        ("default-button", true, "toggle button"),
+        ("default-button", false, "button"),
         ("check-box", true, "check box"),
         ("menu-item-check-box", true, "check menu item"),
     ] {

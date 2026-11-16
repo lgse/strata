@@ -3,7 +3,11 @@
 //! Rune's accessibility tree as the QA engine walks it: one snapshot of
 //! `Runtime::accessibility_json`, with each node under the path of keys that leads to it.
 
-use std::{collections::HashMap, fmt::Write as _, rc::Rc};
+use std::{
+    collections::{HashMap, HashSet},
+    fmt::Write as _,
+    rc::Rc,
+};
 
 use serde_json::Value;
 use strata_components::{collection::element::row_key, contract::EntryId};
@@ -149,6 +153,12 @@ pub(super) struct Drawn {
     pub(super) sidebar: super::sidebar::Gaps,
     /// The entry the filter's Enter would open (`qa::filter`).
     pub(super) outlined: Option<EntryId>,
+    /// On the focused non-secure text field: its selection's anchor and caret in UTF-8 bytes
+    /// of its text (`ElementInfo::edit_range`).
+    pub(super) edit_range: Option<[usize; 2]>,
+    /// Paths of nodes whose AccessKit node reports `is_busy` (`El::busy`), which
+    /// `Runtime::accessibility_json` leaves out of `"states"`.
+    pub(super) busy: HashSet<String>,
 }
 
 /// How far a scroll view has scrolled, whether it can, and how much it shows: along x, then
@@ -212,6 +222,10 @@ pub(super) struct Seen {
     /// A text field's selection as Rune reports it: the line and the place in it of the end
     /// that stays, then of the end that moves, which is the caret.
     pub(super) selection: Option<[u64; 4]>,
+    /// On the focused non-secure text field: the selection's anchor and caret in UTF-8 bytes
+    /// of `value` (`ElementInfo::edit_range`).
+    pub(super) edit_range: Option<[usize; 2]>,
+    pub(super) busy: bool,
     /// A scroll view's offsets and limits.
     pub(super) scroll: Option<Scrolled>,
     pub(super) mark: Option<Mark>,
@@ -308,6 +322,24 @@ fn scrolled(node: &Value) -> Option<Scrolled> {
 /// Rune's role of an unnamed box, which the role map presents as GTK's `panel`.
 const PANEL: &str = "group";
 
+/// Whether `node`, a direct child of the window, is Rune's window-level live region for
+/// `Tx::announce` (`a11y/tree.rs` at the pinned rev): a 1x1 `status` node with no key,
+/// actions or children. GTK's `GtkAccessible::announce` emits an AT-SPI signal without adding
+/// a widget to the tree.
+fn is_window_announcer(node: &Value) -> bool {
+    let unit = Rect {
+        x: 0.0,
+        y: 0.0,
+        width: 1.0,
+        height: 1.0,
+    };
+    let bare = node["key"].is_null() && node["children"].is_null() && node["actions"].is_null();
+    let live = texts(node, "states")
+        .iter()
+        .any(|state| matches!(state.as_str(), "live-polite" | "live-assertive"));
+    bare && live && node["role"].as_str() == Some("status") && bounds(node) == Some(unit)
+}
+
 /// Whether `key` is the collection's key for an entry's row ([`row_key`]). A list holds
 /// other nodes of an entry's role: the List table's headings are a `row` of its grid too.
 fn is_entry_key(key: &str) -> bool {
@@ -328,6 +360,7 @@ impl Snapshot {
             snapshot.add(tree, None, "window".to_owned());
         }
         snapshot.focus = snapshot.keyboard_focus();
+        snapshot.apply_drawn_states(drawn);
         let mut panes = Vec::new();
         if let Some(view) = &drawn.view {
             for column in &drawn.columns {
@@ -533,12 +566,17 @@ impl Snapshot {
             bounds: bounds(value),
             active_descendant: value["activeDescendant"].as_str().map(str::to_owned),
             selection: selection(value),
+            edit_range: None,
+            busy: false,
             scroll: scrolled(value),
             mark: None,
         });
         let children = value["children"].as_array().map_or(&[][..], Vec::as_slice);
         let mut taken: Vec<String> = Vec::new();
         for (place, child) in children.iter().enumerate() {
+            if parent.is_none() && is_window_announcer(child) {
+                continue;
+            }
             let mut segment = child["key"]
                 .as_str()
                 .map_or_else(|| format!("#{place}"), str::to_owned);
@@ -550,6 +588,24 @@ impl Snapshot {
             taken.push(segment);
         }
         index
+    }
+
+    fn apply_drawn_states(&mut self, drawn: &Drawn) {
+        if !drawn.busy.is_empty() {
+            for seen in &mut self.nodes {
+                seen.busy = seen
+                    .node
+                    .as_ref()
+                    .is_some_and(|node| drawn.busy.contains(node.0.as_ref()));
+            }
+        }
+        let Some(focused) = self.focus else {
+            return;
+        };
+        let seen = &mut self.nodes[focused];
+        if super::field::is_one(&seen.role) && seen.role != "password-input" {
+            seen.edit_range = drawn.edit_range;
+        }
     }
 
     fn keyboard_focus(&self) -> Option<usize> {
