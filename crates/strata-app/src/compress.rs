@@ -21,21 +21,16 @@
 //!   and matches **Confirm password** (stacking a danger error dialog over Compress when not).
 //! - **Starting compression.** `archive_name_taken` probes the destination off the UI thread
 //!   (`strata_fs::adapters::probes::presence`). When the name is free, `Browser::compress`
-//!   starts with `TransferConflict::FailIfExists`, and `BrowserEvent::ArchiveCompleted` selects
-//!   the created archive in its destination folder.
+//!   starts with `TransferConflict::FailIfExists`; on a collision, `ask_to_replace_archive`
+//!   prompts with **Replace**, **Keep Both**, or **Cancel** via [`crate::conflict_dialog`], and
+//!   [`crate::archive`] reveals the created archive once `BrowserEvent::ArchiveCompleted` arrives.
 //!
-//! Left out for [A13]:
+//! Left out for [A11]:
 //!
-//! - **Compression conflicts** (`ask_to_replace_archive` when `archive_name_taken` finds an
-//!   existing file), **progress / cancelling** (`on_archive_started`), and **undoing** a
-//!   replaced archive (`docs/rune/parity/packages/A6.md`, item 7). When the destination name is
-//!   already taken, compression stops without overwriting, as `transfer.rs` did before A12's
-//!   conflict dialog.
 //! - **10xer's `;` -> `c` chord** and its shortcut feedback banner (`Nothing to compress`,
 //!   `Can't compress these items`), [A11]'s.
 //!
 //! [A11]: ../../../docs/rune/parity/packages/A11.md
-//! [A13]: ../../../docs/rune/parity/packages/A13.md
 
 #[cfg(test)]
 mod tests;
@@ -51,15 +46,18 @@ use strata_core::{
 use strata_desktop::keys::{Map, bindings::ACTIONS_COMPRESS};
 use strata_fs::{
     adapters::probes::{self, Presence},
-    app::BrowserEvent,
     services::{Naming, TransferConflict, name_field_error, validate_basename},
 };
+use strata_kit::icons::IconName;
 
 use crate::{
-    App,
+    App, archive,
     commands::{Action, Call, Holds, Keys, On, Outcome, Stage},
+    conflict_dialog::{
+        self, ConflictActions, ConflictChoice, ConflictFocus, ConflictPrompt, compact_display_path,
+    },
     filter, launch, menus, shell,
-    slots::{Later, Listener, Part, Place, Setup},
+    slots::{Later, Part, Place, Setup},
 };
 
 /// One open or closing Compress dialog.
@@ -150,8 +148,6 @@ pub(crate) struct Compress {
     notice: Option<Notice>,
     notice_open: bool,
     notices: u64,
-    pending_destination: Option<Location>,
-    pending_select: Option<String>,
 }
 
 impl Part for Compress {
@@ -166,15 +162,7 @@ impl Part for Compress {
             notice: None,
             notice_open: false,
             notices: 0,
-            pending_destination: None,
-            pending_select: None,
         }
-    }
-
-    fn listen(_: &Setup<'_>) -> Option<Listener<App>> {
-        Some(Box::new(|event, _, heard| {
-            queue_archive_event(event, heard);
-        }))
     }
 
     fn keyboard(app: &App) -> Option<Holds> {
@@ -407,123 +395,83 @@ async fn archive_name_taken(destination: &Location, final_name: &str) -> bool {
     )
 }
 
+#[derive(Clone)]
+struct PendingCompression {
+    entries: Vec<FileEntry>,
+    destination: Location,
+    archive_name: String,
+    format: ArchiveFormat,
+    password: Option<String>,
+}
+
 fn start_compression(
     app: &mut App,
     entries: Vec<FileEntry>,
     destination: Location,
     (archive_name, format, password): (String, ArchiveFormat, Option<String>),
 ) {
+    archive::clear_extract_destination(app);
+    let pending = PendingCompression {
+        entries,
+        destination,
+        archive_name,
+        format,
+        password,
+    };
     let later = app.compress.later.clone();
     glib::MainContext::default().spawn_local(async move {
-        let final_name = format!("{archive_name}.{}", format.extension());
-        let taken = archive_name_taken(&destination, &final_name).await;
+        let final_name = format!("{}.{}", pending.archive_name, pending.format.extension());
+        let taken = archive_name_taken(&pending.destination, &final_name).await;
         later.then(move |app, tx| {
-            // Compression conflict prompts (`ask_to_replace_archive`) belong to A13; stop safely
-            // without overwriting when the target path already exists.
             if taken {
-                return false;
+                ask_to_replace_archive(app, pending, final_name);
+                return true;
             }
-            app.compress.pending_destination = Some(destination.clone());
-            app.compress.pending_select = None;
-            shell::publish(app);
-            app.browser.compress(
-                entries,
-                destination,
-                archive_name,
-                TransferConflict::FailIfExists,
-                format,
-                password,
-            );
+            run_compression(app, pending, TransferConflict::FailIfExists);
             shell::settle(app, tx);
             true
         });
     });
 }
 
-fn queue_archive_event(event: &BrowserEvent, heard: &mut crate::slots::Heard<'_, App>) {
-    match event {
-        BrowserEvent::ArchiveCompleted { select_name } => {
-            let select_name = select_name.clone();
-            heard.then(move |app, tx| on_archive_completed(app, select_name, tx));
-        }
-        BrowserEvent::EntriesInserted { depth, .. }
-        | BrowserEvent::EntriesReplaced { depth, .. }
-        | BrowserEvent::EntriesPublished { depth, .. }
-        | BrowserEvent::EntriesSpliced { depth, .. }
-        | BrowserEvent::LoadFinished { depth, .. }
-        | BrowserEvent::ColumnReloaded { depth } => {
-            let depth = *depth;
-            heard.then(move |app, tx| reveal_pending_at(app, depth, tx));
-        }
-        BrowserEvent::OperationFailed { .. }
-        | BrowserEvent::OperationCompletedWithErrors { .. }
-        | BrowserEvent::OperationCancelled { .. }
-        | BrowserEvent::Reset => {
-            heard.then(|app, _| {
-                app.compress.pending_destination = None;
-                app.compress.pending_select = None;
-                false
-            });
-        }
-        _ => {}
-    }
+fn run_compression(app: &mut App, pending: PendingCompression, conflict: TransferConflict) {
+    archive::prepare_compression(app, pending.destination.clone());
+    shell::publish(app);
+    app.browser.compress(
+        pending.entries,
+        pending.destination,
+        pending.archive_name,
+        conflict,
+        pending.format,
+        pending.password,
+    );
 }
 
-fn destination_depth(app: &App, destination: &Location) -> Option<usize> {
-    if shows_columns(app) {
-        app.browser.open_depth(destination)
-    } else {
-        app.browser
-            .active_depth()
-            .filter(|depth| app.browser.location_at(*depth).as_ref() == Some(destination))
-    }
-}
-
-fn on_archive_completed(app: &mut App, select_name: String, tx: &mut Tx) -> bool {
-    if select_name.is_empty() {
-        app.compress.pending_destination = None;
-        app.compress.pending_select = None;
-        return false;
-    }
-    let Some(destination) = app.compress.pending_destination.clone() else {
-        return false;
+fn ask_to_replace_archive(app: &mut App, pending: PendingCompression, final_name: String) {
+    let explanation = rust_i18n::t!(
+        "An archive named “%{final_name}” already exists in %{value1}. Replace it to overwrite its contents, or keep both to create a numbered copy.",
+        final_name = final_name,
+        value1 = compact_display_path(&pending.destination)
+    )
+    .into_owned();
+    let prompt = ConflictPrompt {
+        name: final_name,
+        explanation,
+        apply_to_all_visible: false,
+        skip_visible: false,
+        actions: ConflictActions {
+            replace: true,
+            keep_both: true,
+            merge: false,
+            focus: ConflictFocus::Replace,
+        },
     };
-    app.compress.pending_select = Some(select_name);
-    match destination_depth(app, &destination) {
-        Some(depth) => reveal_pending_at(app, depth, tx),
-        None => {
-            if app.browser.active_location().as_ref() == Some(&destination) {
-                app.browser.reload_active();
-            } else {
-                app.browser.navigate(destination);
-            }
-            shell::settle(app, tx);
-            true
-        }
-    }
-}
-
-fn reveal_pending_at(app: &mut App, depth: usize, tx: &mut Tx) -> bool {
-    let Some(destination) = app.compress.pending_destination.as_ref() else {
-        return false;
-    };
-    if app.browser.location_at(depth).as_ref() != Some(destination) {
-        return false;
-    }
-    let Some(name) = app.compress.pending_select.clone() else {
-        return false;
-    };
-    if !app
-        .browser
-        .select_entries_by_name_at(depth, std::slice::from_ref(&name))
-    {
-        return false;
-    }
-    if shows_columns(app) {
-        app.browser.set_active_column(depth);
-    }
-    app.compress.pending_destination = None;
-    app.compress.pending_select = None;
-    shell::settle(app, tx);
-    true
+    conflict_dialog::prompt_with_icon(app, IconName::Archive, prompt, move |app, choice, _| {
+        let conflict = match choice {
+            ConflictChoice::Replace => TransferConflict::ReplaceExisting,
+            ConflictChoice::KeepBoth => TransferConflict::KeepBoth,
+            ConflictChoice::Merge | ConflictChoice::Skip => return,
+        };
+        run_compression(app, pending.clone(), conflict);
+    });
 }
