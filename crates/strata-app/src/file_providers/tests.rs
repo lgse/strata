@@ -128,7 +128,7 @@ fn badges_sort_by_priority_descending_then_provider_id_ascending() {
     let mut state = FileProviders {
         later: crate::slots::Inbox::new().later(),
         started: true,
-        ticking: Default::default(),
+        timer: None,
         hub: Hub::new(),
         open_menu: OpenMenu::default(),
         presented: HashMap::new(),
@@ -306,7 +306,22 @@ fn reload_retires_providers_with_waiting_activations_and_clears_presentations() 
                     .hub
                     .pending
                     .insert(42, Pending::Activate(0));
+                app.file_providers.ensure_started();
+                let first_token = app
+                    .file_providers
+                    .timer
+                    .clone()
+                    .expect("initial timer armed");
+                app.file_providers.stop_timer();
+                assert!(!first_token.get(), "stopped timer token is cancelled");
                 super::reload(app);
+                let second_token = app
+                    .file_providers
+                    .timer
+                    .clone()
+                    .expect("reload rearms timer");
+                assert!(second_token.get());
+                assert!(!std::rc::Rc::ptr_eq(&first_token, &second_token));
             });
             assert!(host.app().file_providers.hub.providers.is_empty());
             assert_eq!(host.app().file_providers.hub.retiring.len(), 1);

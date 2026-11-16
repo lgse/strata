@@ -54,7 +54,7 @@ impl Presented {
 pub(crate) struct FileProviders {
     later: Later<App>,
     started: bool,
-    ticking: Rc<Cell<bool>>,
+    timer: Option<Rc<Cell<bool>>>,
     hub: Hub,
     open_menu: OpenMenu,
     presented: HashMap<EntryId, Presented>,
@@ -63,7 +63,7 @@ pub(crate) struct FileProviders {
 
 impl Drop for FileProviders {
     fn drop(&mut self) {
-        self.ticking.set(false);
+        self.stop_timer();
     }
 }
 
@@ -76,14 +76,21 @@ impl FileProviders {
         }
     }
 
+    fn stop_timer(&mut self) {
+        if let Some(token) = self.timer.take() {
+            token.set(false);
+        }
+    }
+
     fn start_timer(&mut self) {
-        if self.ticking.replace(true) {
+        if self.timer.is_some() {
             return;
         }
-        let ticking = self.ticking.clone();
+        let token = Rc::new(Cell::new(true));
+        self.timer = Some(token.clone());
         let later = self.later.clone();
         glib::timeout_add_local(TICK_INTERVAL, move || {
-            if !ticking.get() {
+            if !token.get() {
                 return glib::ControlFlow::Break;
             }
             later.then(tick);
@@ -155,13 +162,13 @@ impl FileProviders {
 }
 
 fn tick(app: &mut App, tx: &mut Tx) -> bool {
-    if !app.file_providers.ticking.get() {
+    if app.file_providers.timer.is_none() {
         return false;
     }
     let mut effects = Vec::new();
     app.file_providers.hub.drain(&mut effects);
     if app.file_providers.hub.idle() {
-        app.file_providers.ticking.set(false);
+        app.file_providers.stop_timer();
         let cleared = app.file_providers.clear_all_presentations();
         let menu_changed = refresh_open_menu(app, &mut effects);
         let showed = apply_effects(app, effects, tx);
@@ -364,7 +371,7 @@ impl Part for FileProviders {
         Self {
             later: setup.later.clone(),
             started: false,
-            ticking: Rc::new(Cell::new(false)),
+            timer: None,
             hub: Hub::new(),
             open_menu: OpenMenu::default(),
             presented: HashMap::new(),
