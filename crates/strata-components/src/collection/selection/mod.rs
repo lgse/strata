@@ -72,8 +72,11 @@
 //!   last entry. With no cursor yet, the cursor (and the anchor) go to the first entry. In
 //!   Columns the keyboard machine then moves the cursor to the last entry, as Strata's model
 //!   does there (C1c's `KeySettings::select_all_to_last`, which C2 turns on).
-//! - [`Selection::clear`] (Escape, or a plain press on empty space) moves the anchor to the
-//!   cursor, for pointer and keyboard alike, so the next Shift range starts at the cursor.
+//! - [`Selection::clear`] (Escape, or a plain press on empty space) keeps the anchor, as
+//!   Strata's `clear_active_selection` and its marquee's `unselect_all` do: the next
+//!   Shift+click ranges from it (finding lgse/strata#2551). The next Shift+arrow starts at the
+//!   cursor all the same, since the keyboard moves the anchor there first when nothing is
+//!   selected (`resume_native_selection`).
 //! - Ctrl+Shift+click: both [`Extend::Replace`] (what Strata's pointer code does) and
 //!   [`Extend::Add`] exist. The pointer controller (C1b) picks.
 //! - Filtering: `sync` drops the ids a filter hides. The filter bar (C18) saves
@@ -671,16 +674,15 @@ impl Selection {
         self.finish(changed)
     }
 
-    /// Selects nothing, keeps the cursor, and moves the anchor to the cursor: Escape, or a
-    /// plain press on empty space. Reports no change when nothing was selected.
+    /// Selects nothing and keeps the cursor and the anchor: Escape, or a plain press on empty
+    /// space. Reports no change when nothing was selected.
     pub fn clear(&mut self) -> Changed {
         self.gesture = Gesture::None;
         self.provisional = false;
-        let mut changed = Changed {
+        let changed = Changed {
             selection: self.members.clear(),
             ..Changed::NONE
         };
-        changed.anchor = self.set_anchor(self.cursor);
         self.finish(changed)
     }
 
@@ -801,9 +803,12 @@ impl Selection {
             },
             None => self.cursor_hint = None,
         }
+        // A missing anchor stays missing: a load's cursor has none, so a Shift+click selects the
+        // clicked entry alone, as Strata's `pointer_selection` does (finding lgse/strata#2551).
+        let anchor_left = self.anchor.is_some() && self.anchor_index(source).is_none();
         if self.cursor.is_none() {
             changed.anchor |= self.set_anchor(None);
-        } else if self.anchor_index(source).is_none() {
+        } else if anchor_left {
             changed.anchor |= self.set_anchor(self.cursor);
         }
         self.finish(changed)
