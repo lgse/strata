@@ -37,14 +37,14 @@
 //!
 //! Not yet: A19's drag binder, cross-volume confirmation and foreign content saving.
 
-use std::path::Path;
+use std::{borrow::Cow, cell::RefCell, path::Path};
 
 use rune::{El, Tx};
 use strata_components::{
     contract::dnd::Dnd,
     tabs::{
         BrowserTabs, BrowserTabsState, ClosedTabs, HOVER_DELAY, NewTabButton, Tab, TabId, TabOpen,
-        TabsData, TabsIntent, TabsLabels, Via, new_tab_key,
+        TabWords, TabsData, TabsIntent, TabsLabels, Via, new_tab_key,
     },
 };
 use strata_core::{i18n::tr, model::Location};
@@ -168,6 +168,36 @@ fn labels() -> TabsLabels {
     }
 }
 
+thread_local! {
+    /// [`TabWords`] holds `&'static str`, so an owned translation is cached once per locale.
+    static WORDS: RefCell<Vec<(String, TabWords)>> = const { RefCell::new(Vec::new()) };
+}
+
+fn cached_words(locale: String, close: String) -> TabWords {
+    WORDS.with_borrow_mut(|made| {
+        if let Some((_, words)) = made.iter().find(|(made, _)| *made == locale) {
+            return *words;
+        }
+        let words = TabWords {
+            close: Box::leak(close.into_boxed_str()),
+            ..TabWords::default()
+        };
+        made.push((locale, words));
+        words
+    })
+}
+
+/// The strip's close-button accessible name in the active locale (`strip.rs` in GTK).
+fn words() -> TabWords {
+    match rust_i18n::t!("Close tab") {
+        Cow::Borrowed(close) => TabWords {
+            close,
+            ..TabWords::default()
+        },
+        Cow::Owned(close) => cached_words(rust_i18n::locale().to_string(), close),
+    }
+}
+
 /// The single-tab header's New tab button: C7's [`NewTabButton`] keyed `key` (`"header-new-tab"`)
 /// so header focus navigation and drops onto New tab both work while the strip is hidden.
 fn header_new_tab(app: &App, key: &'static str) -> El {
@@ -207,6 +237,7 @@ fn build(app: &App, close: Option<El>, frame: &mut Frame<'_, App>) -> Option<El>
     .badges(badges_shown(app))
     .spring_delay(spring)
     .labels(labels())
+    .words(words())
     .on_intent(|app: &mut App, intent, tx: &mut Tx| {
         route(app, intent, tx);
     });

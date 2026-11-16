@@ -279,4 +279,89 @@ fn a_click_takes_its_suggestion_even_while_keys_wait() {
     assert!(!s.editing());
 }
 
+struct CrumbHost {
+    look: strata_kit::look::Look,
+    trail: Trail,
+    state: LocationBarState,
+    open_in_new: bool,
+    intents: Vec<LocationIntent>,
+}
+
+fn crumb_view(h: &CrumbHost, cx: &mut rune::Cx<CrumbHost>) -> rune::El {
+    let mut layer = Vec::new();
+    let bar = LocationBar::new(
+        "loc",
+        &h.look,
+        &h.trail,
+        &h.state,
+        |h: &mut CrumbHost| &mut h.state,
+        |h: &mut CrumbHost, intent, _| h.intents.push(intent),
+    )
+    .open_in_new(h.open_in_new)
+    .build(cx, &mut layer);
+    rune_kit::root(bar, layer)
+}
+
+fn mount_bar(open_in_new: bool) -> rune::Runtime<CrumbHost> {
+    let host = CrumbHost {
+        look: strata_kit::look::Look::default(),
+        trail: Trail::new(
+            vec![
+                Crumb::new("0", "~"),
+                Crumb::new("1", "Projects"),
+                Crumb::new("2", "strata"),
+            ],
+            "~/Projects/strata",
+        ),
+        state: LocationBarState::new(),
+        open_in_new,
+        intents: Vec::new(),
+    };
+    let mut rt = rune::Runtime::new(host, crumb_view, (500.0, 48.0), rune::Env::default());
+    rt.frame(0.0);
+    rt.frame(1.0 / 60.0);
+    rt
+}
+
+#[test]
+fn middle_press_on_ancestor_crumb_opens_tab_or_window_when_enabled() {
+    use rune::{Mods, PhysicalInput, PointerButton};
+
+    let mut rt = mount_bar(true);
+    let crumb = rt
+        .elements()
+        .into_iter()
+        .find(|e| e.key.as_deref() == Some("loc-crumb-1"))
+        .expect("ancestor crumb");
+    let (x, y) = (
+        crumb.visible[0] + crumb.visible[2] / 2.0,
+        crumb.visible[1] + crumb.visible[3] / 2.0,
+    );
+    rt.pointer_move(x, y);
+    rt.button_down(x, y, PointerButton::Middle);
+    rt.button_up(x, y, PointerButton::Middle);
+    rt.frame(1.0 / 60.0);
+    rt.physical_input(PhysicalInput::Modifiers(Mods {
+        ctrl: true,
+        ..Mods::default()
+    }));
+    rt.button_down(x, y, PointerButton::Middle);
+    rt.button_up(x, y, PointerButton::Middle);
+    rt.frame(1.0 / 60.0);
+    assert_eq!(
+        rt.state.intents,
+        [
+            LocationIntent::OpenInNewTab { id: "1".into() },
+            LocationIntent::OpenInNewWindow { id: "1".into() },
+        ]
+    );
+
+    let mut disabled = mount_bar(false);
+    disabled.pointer_move(x, y);
+    disabled.button_down(x, y, PointerButton::Middle);
+    disabled.button_up(x, y, PointerButton::Middle);
+    disabled.frame(1.0 / 60.0);
+    assert!(disabled.state.intents.is_empty());
+}
+
 mod perf;

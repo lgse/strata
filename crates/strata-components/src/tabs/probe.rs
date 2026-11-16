@@ -5,8 +5,9 @@
 //!
 //! It leans on rune-kit's layout at the pinned rev, so it is fragile: the strip's root starts
 //! its scroll viewport at its left edge, with nothing before it, and lists the tabs from the
-//! viewport's start, tab 0 first. While a tab dragged in from elsewhere holds the gap before
-//! tab 0, an offset read is off by that gap.
+//! viewport's start, tab 0 first (`TabStrip` keeps tab 0 and the active tab built when
+//! virtualizing past `BAND_PAST`, sizing unbuilt spacers identically). While a tab dragged in
+//! from elsewhere holds the gap before tab 0, an offset read is off by that gap.
 
 use std::cell::Cell;
 use std::rc::Rc;

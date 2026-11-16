@@ -92,10 +92,9 @@
 //!
 //! # Rune drafts (not filed)
 //!
-//! - **U-X1-1, window activation in scripts.** Rune's headless scripts have no event that
-//!   deactivates the window (`{"type": "window-focus", "focused": false}`), so what follows
-//!   `on_window_focus` (the header's `active`) is testable only in process, through
-//!   `Runtime::window_focus`.
+//! - **U-X1-1, window activation outside the root.** `on_window_focus` is heard only on the
+//!   app's root (`{"t": .., "focus": false}` in headless scripts, `Runtime::window_focus` in
+//!   process), so the host forwards its active state in [`WindowChrome::active`].
 //! - **U-X1-2, titlebar actions in scripts and trees.** What a press on a `.window_drag()`
 //!   region did (a move, a double-click zoom) reaches neither a script's `expect` nor `--tree`;
 //!   only `Runtime::take_titlebar_action` in process sees it.

@@ -294,3 +294,124 @@ fn under_wait_a_gap_refuses_a_drop_the_host_hasnt_confirmed() {
         None
     );
 }
+
+struct MountedHost {
+    sidebar: SidebarState,
+    look: strata_kit::look::Look,
+    places: Vec<Place>,
+    pins: Vec<Pin>,
+    groups: Vec<DeviceGroup>,
+    intents: Vec<SidebarIntent>,
+}
+
+fn mounted_view(h: &MountedHost, _: &mut rune::Cx<MountedHost>) -> rune::El {
+    let data = SidebarData {
+        places: &h.places,
+        pins: &h.pins,
+        devices: &h.groups,
+        labels: SidebarLabels {
+            pinned: "PINNED",
+            devices: "DEVICES",
+            rows: |n| format!("{n} items"),
+        },
+        ..SidebarData::default()
+    };
+    PlacesSidebar::new(&h.sidebar, |h: &mut MountedHost| &mut h.sidebar, data)
+        .on_intent(|h, intent, _| h.intents.push(intent))
+        .build(&h.look)
+}
+
+fn mount_sidebar() -> rune::Runtime<MountedHost> {
+    let look = strata_kit::look::Look::default();
+    let host = MountedHost {
+        sidebar: SidebarState::new(&look),
+        look,
+        places: vec![Place::folder("home", "Home", IconName::Home)],
+        pins: vec![Pin::new("docs", "Docs")],
+        groups: vec![DeviceGroup::new(vec![
+            dev("mounted").mounted(true),
+            dev("unmounted").mounted(false),
+        ])],
+        intents: Vec::new(),
+    };
+    let mut rt = rune::Runtime::new(host, mounted_view, (260.0, 500.0), rune::Env::default());
+    rt.frame(0.0);
+    rt.frame(1.0 / 60.0);
+    rt
+}
+
+fn element_center<S: 'static>(rt: &rune::Runtime<S>, key: &str) -> (f32, f32) {
+    let e = rt
+        .elements()
+        .into_iter()
+        .find(|e| e.key.as_deref() == Some(key))
+        .expect(key);
+    (
+        e.visible[0] + e.visible[2] / 2.0,
+        e.visible[1] + e.visible[3] / 2.0,
+    )
+}
+
+#[test]
+fn row_press_middle_click_and_keyboard_activation_route_cleanly() {
+    use rune::{Key, KeyEvent, Mods, PointerButton};
+
+    let mut rt = mount_sidebar();
+    let (hx, hy) = element_center(&rt, "places-place-home");
+    rt.pointer_move(hx, hy);
+    rt.pointer_down(hx, hy);
+    rt.pointer_up(hx, hy);
+    rt.frame(1.0 / 60.0);
+    rt.button_down(hx, hy, PointerButton::Middle);
+    rt.button_up(hx, hy, PointerButton::Middle);
+    rt.frame(1.0 / 60.0);
+
+    let (ux, uy) = element_center(&rt, "places-device-unmounted");
+    rt.pointer_move(ux, uy);
+    rt.button_down(ux, uy, PointerButton::Middle);
+    rt.button_up(ux, uy, PointerButton::Middle);
+    rt.frame(1.0 / 60.0);
+
+    // An off-row drag release leaves `dropped` set; keyboard Enter/Space still opens via Keyboard.
+    let home = ItemId::Place("home".into());
+    rt.state.sidebar.dropped = Some(home.clone());
+    rt.update(|_, tx| tx.focus("places-place-home", true));
+    rt.frame(1.0 / 60.0);
+    for key in [Key::Enter, Key::Text(" ".into())] {
+        rt.key(KeyEvent {
+            key,
+            mods: Mods::default(),
+        });
+        rt.frame(1.0 / 60.0);
+    }
+    rt.update(|_, tx| tx.focus("places-heading-pinned", true));
+    rt.frame(1.0 / 60.0);
+    rt.key(KeyEvent {
+        key: Key::Enter,
+        mods: Mods::default(),
+    });
+    rt.frame(1.0 / 60.0);
+
+    assert_eq!(
+        rt.state.intents,
+        [
+            SidebarIntent::Open {
+                item: home.clone(),
+                via: Via::Pointer,
+            },
+            SidebarIntent::OpenInNewTab { item: home.clone() },
+            SidebarIntent::Open {
+                item: home.clone(),
+                via: Via::Keyboard,
+            },
+            SidebarIntent::Open {
+                item: home,
+                via: Via::Keyboard,
+            },
+            SidebarIntent::SectionToggled {
+                section: Section::Pinned,
+                collapsed: true,
+            },
+        ]
+    );
+}

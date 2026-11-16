@@ -9,13 +9,14 @@
 //! feature map, against lgse/strata `upstream/main` 35ee677ab
 //! (`src/ui/window/composition/tabs.rs`, `tabs/strip.rs`, `tabs/strip/drop.rs`, `style.css`).
 //!
-//! Rune dev 5d421fd: **partly**. rune-kit's `TabStrip` covers reorder (with Escape to put the
-//! tab back), tear-out, a gap for a tab coming in from another strip, middle-click close,
-//! shrink-then-scroll with edge fades and auto-scroll while dragging, a keyboard-focused tab's
-//! close button, and the `tablist` and `tab` roles with the selected state; `Tx::set_title`
-//! applies the title. Nothing covers drop targets on tabs, the spring, the closed-tabs stack,
-//! the wheel's sideways mapping or Strata's look. Since 5d421fd a tab's title runs in its own
-//! direction (cded95f) and `WindowTitlebar::rtl` became `WindowTitlebar::direction`.
+//! Rune dev 631e8a67: **partly**. rune-kit's `TabStrip` covers reorder (with Escape to put the
+//! tab back), tear-out, a gap for a tab coming in from another strip, middle-click close
+//! (`El::on_middle_press`), shrink-then-scroll with edge fades, virtualization past 40 tabs and
+//! auto-scroll while dragging, a keyboard-focused tab's close button, translated status and close
+//! words (`TabStrip::words`), `live_only` hover and non-drag click release, and the `tablist` and
+//! `tab` roles with the selected state; `Tx::set_title` applies the title. Nothing covers drop
+//! targets on tabs, the spring, the closed-tabs stack, the wheel's sideways mapping or Strata's
+//! look.
 //!
 //! # Parts
 //!
@@ -226,8 +227,8 @@
 //! - **Tear-out** is new and off by default; moving tabs between windows works on X11 only.
 //! - **The tab list is one Tab stop** with arrow keys, as rune-kit's lists are; Strata makes
 //!   each tab button a Tab stop. The close buttons are pointer-only.
-//! - **The close button reads "Close tab"** in English with no tooltip (U-C7-1); Strata
-//!   translates it and its tooltip names Ctrl+W.
+//! - **The close button has no tooltip** (U-C7-1): [`BrowserTabs::words`] sets its translated
+//!   accessible name through `TabStrip::words`, while Strata's tooltip also names Ctrl+W.
 //! - **An image dropped on a tab behind a modal** isn't delivered: Rune routes no drop outside
 //!   a modal.
 //!
@@ -244,9 +245,9 @@
 //! Drafts for the owner to file, after searching `anomalyco/rune` (none covers TabStrip; #329
 //! and #302 are near). Headless repros are in `strata-spikes/c7-probes` (`RESULTS.md`).
 //!
-//! - **U-C7-1 (draft, not filed)** rune-kit: TabStrip's close button is labelled "Close tab"
-//!   in English, with no tooltip and no shortcut hint, and nothing sets them. Ask:
-//!   `TabStrip::close_label` and `close_help`.
+//! - **U-C7-1 (draft, partially resolved by #922)** rune-kit: `TabStrip::words` (`TabWords`)
+//!   translates the close button's accessible name, but `TabStrip` still sets no tooltip or
+//!   shortcut hint on it. Ask: `TabStrip::close_help`.
 //! - **U-C7-2 (draft, not filed)** A vertical wheel over a sideways-only viewport scrolls
 //!   nothing (U-C6-5), and an app can neither read a viewport's offset nor scroll one by a
 //!   delta, so it can't map the wheel itself without reading where its content drew (probe 2).
@@ -297,6 +298,7 @@ pub use closed::{CLOSED_TABS_KEPT, Closed, ClosedTabs};
 pub use data::{Accepts, LABEL_CHARS, Tab, TabId, TabsData, TitleFormat, elide_end, window_title};
 pub use intent::{DropSite, TabOpen, TabsIntent, Via};
 pub use new_tab::{NewTabButton, TabsLabels};
+pub use rune_kit::shell::TabWords;
 pub use state::{BrowserTabsState, HOVER_DELAY, Polled};
 
 /// The key the strip's elements start with unless the host sets one

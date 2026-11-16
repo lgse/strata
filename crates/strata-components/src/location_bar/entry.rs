@@ -41,28 +41,6 @@ pub(super) fn view<S: 'static>(cx: &Ctx<'_, S>) -> El {
             taken
         })
         .build(k);
-    let button = |icon: IconName, label: &str, suffix: &str, cancel: bool| {
-        let emit = cx.emit.clone();
-        // The header's action look; its tooltip names it.
-        header::action(look, icon, label)
-            .on_press_tx(move |s: &mut S, tx: &mut Tx| {
-                let st = access(s);
-                let polled = if cancel {
-                    st.cancel()
-                } else {
-                    let text = st.edit.text.clone();
-                    st.submit(text)
-                };
-                route(&emit, s, polled, tx);
-            })
-            .build(k)
-            .key(format!("{}-{suffix}", cx.key))
-            // The entry keeps the keyboard, so pressing the button isn't a press outside it.
-            // A focusable button would take the keyboard on a press, and nothing tells the bar
-            // where it went (U-C6-3), so they are pointer-only: Enter and Escape do the same.
-            .focusable(false)
-            .preserve_focus_on_press(true)
-    };
     // A text input is always a text box to Rune's accessibility (U-C6-1), so the combobox is
     // the group around it, expanded while the suggestions show.
     row()
@@ -81,13 +59,38 @@ pub(super) fn view<S: 'static>(cx: &Ctx<'_, S>) -> El {
                 .min_w(0.0)
                 .child(field),
         )
-        .child(button(
-            IconName::Check,
-            &cx.labels.navigate,
-            "navigate",
-            false,
-        ))
-        .child(button(IconName::Close, &cx.labels.cancel, "cancel", true))
+        .child(entry_button(cx, IconName::Check, "navigate", false))
+        .child(entry_button(cx, IconName::Close, "cancel", true))
+}
+
+fn entry_button<S: 'static>(cx: &Ctx<'_, S>, icon: IconName, suffix: &str, cancel: bool) -> El {
+    let access = cx.access;
+    let emit = cx.emit.clone();
+    let label = if cancel {
+        &cx.labels.cancel
+    } else {
+        &cx.labels.navigate
+    };
+    // The header's action look; its tooltip names it.
+    header::action(cx.look, icon, label)
+        .on_press_tx(move |s: &mut S, tx: &mut Tx| {
+            let st = access(s);
+            let polled = if cancel {
+                st.cancel()
+            } else {
+                let text = st.edit.text.clone();
+                st.submit(text)
+            };
+            tx.blur();
+            route(&emit, s, polled, tx);
+        })
+        .build(&cx.look.kit)
+        .key(format!("{}-{suffix}", cx.key))
+        // The entry keeps the keyboard, so pressing the button isn't a press outside it.
+        // A focusable button would take the keyboard on a press, and nothing tells the bar
+        // where it went (U-C6-3), so they are pointer-only: Enter and Escape do the same.
+        .focusable(false)
+        .preserve_focus_on_press(true)
 }
 
 /// A key in the entry, before the editor sees it. True takes it.
@@ -108,7 +111,9 @@ fn key(
         if tx.key_repeat() {
             return (Polled::default(), true);
         }
-        // No `tx.blur()`: the entry leaves the tree, and Rune drops its focus with it.
+        // `tx.blur()` keeps Rune's `focus_fallback` from handing focus to the next header button
+        // when the entry unmounts; a host's `tx.focus(...)` in `route` still wins after it.
+        tx.blur();
         return (st.cancel(), true);
     }
     if complete.iter().any(|c| c.matches_tx(ev, tx)) {
@@ -134,6 +139,7 @@ fn key(
         Command::Activate => {
             let text = st.edit.text.clone();
             let submitted = st.submit(text);
+            tx.blur();
             polled.changed |= submitted.changed;
             polled.intents.extend(submitted.intents);
             (polled, true)

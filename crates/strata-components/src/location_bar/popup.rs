@@ -121,6 +121,7 @@ fn suggestion<S: 'static>(
         .hover(k.c.hover)
         .on_press_tx(move |s: &mut S, tx: &mut Tx| {
             let polled = access(s).choose(i);
+            tx.blur();
             if let Some(emit) = handler.get::<Emit<S>>() {
                 route(&emit, s, polled, tx);
             }
