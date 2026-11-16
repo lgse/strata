@@ -47,7 +47,14 @@ pub(super) fn geometry<S: 'static>(cfg: &Config<S>, s: &S) -> Box<dyn Collection
     let (src, st) = (cfg.get)(s);
     match line_map(cfg, s) {
         LineMap::Grouped(groups) => Box::new(
-            GroupedRows::new(groups, row_height, st.viewport.w).viewport_height(st.viewport.h),
+            GroupedRows::new(groups, row_height, st.viewport.w)
+                .inset_y(cfg.row_gap_y)
+                .viewport_height(st.viewport.h),
+        ),
+        LineMap::Packed(1) if cfg.row_gap_y > 0.0 => Box::new(
+            crate::contract::UniformRows::new(src.len(), row_height, st.viewport.w)
+                .inset_y(cfg.row_gap_y)
+                .viewport_height(st.viewport.h),
         ),
         LineMap::Packed(_) => {
             cfg.lines

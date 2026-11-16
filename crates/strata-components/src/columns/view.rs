@@ -487,6 +487,7 @@ pub(super) fn collection<S: 'static>(sh: &Rc<Shared<S>>, s: &S, serial: u64) -> 
     let tall = sh.clone();
     c.name(title)
         .row_height(move |s: &S, l: &Look| row_height(&tall, s, serial, l))
+        .row_gap_y(1.0)
         .keys_by_host()
         .settings(pointer)
         .settings(autoscroll)

@@ -127,6 +127,7 @@
   "Autoplay media previews": "미디어 미리 보기 자동 재생",
   "Video preview start": "동영상 미리 보기 시작 위치",
   "Percent of a video's length to open it at; 0 starts at the beginning. A video you already previewed resumes where you left it.": "동영상을 열 위치를 전체 길이에 대한 백분율로 지정합니다. 0이면 처음부터 시작합니다. 이미 미리 본 동영상은 멈춘 위치에서 다시 시작합니다.",
+  "Autoscroll": "자동 스크롤",
   "Available release": "사용 가능한 릴리스",
   "BACK TO": "다음으로 돌아가기",
   "BITRATE": "비트레이트",

@@ -13,9 +13,13 @@
 
 use rune::Tx;
 use strata_components::{
-    collection::keyboard::{KeySettings, Letters},
+    collection::{
+        keyboard::{KeySettings, Letters},
+        pointer::PointerIntent,
+    },
     context_menu::AnchorEdge,
     list_table::{ColumnLayout, ColumnWidths, ListTableLabels, ListTableState, MenuAt},
+    scroll::{Autoscroll, AutoscrollPointer, Target},
 };
 use strata_core::{i18n::tr, util::DateFormat};
 use strata_desktop::settings::Preferences;
@@ -31,7 +35,7 @@ mod columns;
 mod dates;
 mod part;
 mod thumbs;
-mod view;
+pub(crate) mod view;
 
 /// The table's key: its collection's, and the element that takes the keyboard. Every
 /// element key of the view starts with it.
@@ -40,6 +44,7 @@ pub(crate) const VIEW: &str = "list";
 pub(crate) struct List {
     pub(crate) single: Single,
     table: ListTableState,
+    autoscroll: Autoscroll,
     /// The columns shown, in order: the saved `list_column_order` and `list_hidden_columns`.
     layout: ColumnLayout,
     /// The column widths set by hand: the saved `browser_list_columns`.
@@ -77,15 +82,31 @@ impl List {
         let settings: &Preferences = setup.settings;
         // `type_to_search_active` in `src/ui/preferences/input_settings.rs`.
         let typing = settings.type_to_search && !settings.tenxer_mode;
+        let table = ListTableState::new();
+        let autoscroll = Autoscroll::new();
+        let mut single = Single::new(Made {
+            key: VIEW,
+            keys: keys(typing),
+            described: tr("List view"),
+            menu_at: AnchorEdge::Center,
+            worn: setup.worn.clone(),
+        });
+        single.pane.parts_mut().1.controllers.pointer = Some(Box::new(
+            AutoscrollPointer::new(
+                Some(Box::new(PointerIntent::new())),
+                autoscroll.clone(),
+                VIEW,
+                table.feed().clone(),
+            )
+            .sideways(Target::horizontal(
+                format!("{VIEW}-scroll"),
+                table.sideways_feed().clone(),
+            )),
+        ));
         Self {
-            single: Single::new(Made {
-                key: VIEW,
-                keys: keys(typing),
-                described: tr("List view"),
-                menu_at: AnchorEdge::Center,
-                worn: setup.worn.clone(),
-            }),
-            table: ListTableState::new(),
+            single,
+            table,
+            autoscroll,
             layout: columns::layout(settings),
             widths: columns::widths(settings),
             headings: columns::Headings::translated(),
@@ -95,6 +116,10 @@ impl List {
             dates: dates::Dates::default(),
             thumbs: thumbs::Thumbs::new(setup.later.clone()),
         }
+    }
+
+    pub(crate) fn autoscroll(&self) -> &Autoscroll {
+        &self.autoscroll
     }
 }
 

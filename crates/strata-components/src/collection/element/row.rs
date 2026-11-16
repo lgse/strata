@@ -371,6 +371,7 @@ pub struct RestReport {
 /// as Strata draws them (`outline: 1px`, `src/style.css`). No look token sizes outlines.
 const OUTLINE: f32 = 1.0;
 
+/// Vertical margin above and below each row's card inside its virtual line, matching GTK's
 /// What the view decided once for every row it builds.
 #[derive(Clone, Copy, Debug)]
 pub(super) struct Frame {
@@ -378,6 +379,7 @@ pub(super) struct Frame {
     /// What the builder's settings make every row: see [`config_key`].
     pub config_key: u64,
     pub row_height: f32,
+    pub row_gap_y: f32,
     pub per_line: usize,
     /// The space left and right of a line of several entries (`Lines::inset`).
     pub inset: f32,
@@ -647,6 +649,7 @@ fn item<S: 'static>(cfg: &Rc<Config<S>>, frame: &Frame, s: &S, rcx: &RowCx<'_>) 
         .focus_selected(state.selected)
         .h(frame.row_height)
         .px(tokens::row_inset(look))
+        .py(frame.row_gap_y)
         .child(inner);
     finish_item(cfg, frame, s, rcx, outer)
 }

@@ -369,7 +369,8 @@ impl Snapshot {
                 }
             }
             for list in &drawn.lists {
-                snapshot.mark_column(list, view);
+                let column = drawn.columns.iter().find(|column| column.list == *list);
+                snapshot.mark_column(list, view, column);
             }
             snapshot.add_row_panels();
         }
@@ -633,21 +634,35 @@ impl Snapshot {
         found
     }
 
+    fn mark_entry(&mut self, index: usize, entry_role: &str, column: Option<&DrawnColumn>) {
+        let is_entry = {
+            let seen = &self.nodes[index];
+            seen.role == entry_role && seen.key.as_deref().is_some_and(is_entry_key)
+        };
+        if !is_entry {
+            return;
+        }
+        self.nodes[index].mark = Some(Mark::Entry);
+        let key = self.nodes[index].key.as_deref();
+        if let Some((col, key)) = column.zip(key)
+            && let Some(row) = col.rows.iter().find(|row| row.key == key)
+        {
+            self.nodes[index].bounds = Some(row.bounds);
+        }
+    }
+
     /// Marks one column where the adapter put it: the list with the column's key is the entry
     /// container, the nodes of the entry role under it keyed as the collection keys its rows
     /// are the entries, and the named group around it, which the view names by the folder, is
     /// the pane.
-    fn mark_column(&mut self, list: &str, view: &Shape) {
+    fn mark_column(&mut self, list: &str, view: &Shape, column: Option<&DrawnColumn>) {
         let is_list = |seen: &Seen| seen.role == view.list && seen.key.as_deref() == Some(list);
         let Some(container) = self.nodes.iter().position(is_list) else {
             return;
         };
         self.nodes[container].mark = Some(Mark::EntryContainer);
         for index in self.below(container) {
-            let seen = &self.nodes[index];
-            if seen.role == view.entry && seen.key.as_deref().is_some_and(is_entry_key) {
-                self.nodes[index].mark = Some(Mark::Entry);
-            }
+            self.mark_entry(index, view.entry, column);
         }
         let above = std::iter::successors(self.nodes[container].parent, |index| {
             self.nodes[*index].parent

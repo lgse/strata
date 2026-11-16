@@ -40,6 +40,7 @@ use strata_components::{
     context_menu::AnchorEdge,
     contract::{Direction, EntryId, EntrySource},
     rename::{By, Initial, Polled},
+    scroll::AutoscrollSettings,
 };
 use strata_core::i18n::tr;
 use strata_desktop::settings::Preferences;
@@ -208,6 +209,12 @@ fn source<V: SinglePane>(app: &App) -> (&dyn EntrySource, &CollectionState) {
     (pane.source(), pane.collection())
 }
 
+fn autoscroll_settings(app: &App) -> AutoscrollSettings {
+    let mut settings = AutoscrollSettings::STRATA;
+    settings.margin = strata_kit::slots::collection::row_inset(&app.look);
+    settings
+}
+
 /// The collection under the view's component: what the host sets on it, before the
 /// component adds its own parts.
 pub(crate) fn collection<V: SinglePane>(app: &App) -> Collection<App> {
@@ -227,6 +234,7 @@ pub(crate) fn collection<V: SinglePane>(app: &App) -> Collection<App> {
     .description(described::<V>(app))
     .settings(single.keys.clone())
     .settings(PointerSettings::default().modes(V::clicks(shell::preferences(app))))
+    .settings(autoscroll_settings(app))
     .describe(Describe::pure(|app: &App, row| {
         let single = V::single(app);
         let description = single
@@ -274,6 +282,7 @@ pub(crate) fn results<V: SinglePane>(app: &App) -> Collection<App> {
             .modes(V::clicks(shell::preferences(app)))
             .missing_anchor_stays(true),
     )
+    .settings(autoscroll_settings(app))
     .marks(|app: &App, id| crate::clipboard::with_marks(app, id, filter::pane::marks(app, id)))
     .empty(filter::pane::status)
     .on_intent(filter::pane::heard)
@@ -337,7 +346,7 @@ pub(crate) fn poll<V: SinglePane>(app: &mut App, clock: f64, tx: &mut Tx) -> boo
 }
 
 /// The user's input reached the view's pane: a first visit leaves the cursor to them.
-fn interrupted<V: SinglePane>(app: &mut App) {
+pub(crate) fn interrupted<V: SinglePane>(app: &mut App) {
     V::single_mut(app).first_visit.interrupt();
 }
 
@@ -499,7 +508,7 @@ fn clicked<V: SinglePane>(app: &App, depth: usize, id: EntryId) {
 
 /// The collection moved its cursor or changed its selection: the browser takes it now, so
 /// the frame drawn for the input shows the browser in step.
-fn moved(app: &mut App, tx: &mut Tx) {
+pub(crate) fn moved(app: &mut App, tx: &mut Tx) {
     // The user's own move: the cursor is no first visit's any more.
     shell::restore_memory(app).set_visit_cursor(None);
     shell::settle(app, tx);

@@ -278,6 +278,7 @@ pub(crate) struct Config<S> {
     description: Option<String>,
     roles: Roles,
     row_height: RowHeightFn<S>,
+    row_gap_y: f32,
     lines: Rc<dyn Lines>,
     group_style: GroupStyleFn,
     dnd: Dnd<S>,
@@ -360,6 +361,7 @@ impl<S: 'static> Collection<S> {
                 description: None,
                 roles: Roles::LISTBOX,
                 row_height: Rc::new(|_, l| l.row.list),
+                row_gap_y: 0.0,
                 lines: Rc::new(OnePerLine),
                 group_style: Rc::new(GroupStyle::from_look),
                 dnd: Dnd::rune(),
@@ -472,6 +474,12 @@ impl<S: 'static> Collection<S> {
     /// frame and caption, not the whole cell.
     pub fn bare_items(mut self) -> Self {
         self.cfg.bare_items = true;
+        self
+    }
+
+    /// Blank margin at the top and bottom of each virtual row slot (`0.0` by default).
+    pub fn row_gap_y(mut self, gap: f32) -> Self {
+        self.cfg.row_gap_y = gap.max(0.0);
         self
     }
 
@@ -842,6 +850,7 @@ impl<S: 'static> Collection<S> {
             look_key: row::look_key(look),
             config_key: row::config_key(&cfg),
             row_height,
+            row_gap_y: cfg.row_gap_y,
             per_line: per,
             inset: if per > 1 { cfg.lines.inset() } else { 0.0 },
             len,

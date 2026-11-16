@@ -7,9 +7,13 @@
 //! (`activate_in_place`).
 
 use strata_components::{
-    collection::keyboard::{KeySettings, Letters},
+    collection::{
+        keyboard::{KeySettings, Letters},
+        pointer::PointerIntent,
+    },
     context_menu::AnchorEdge,
-    icons_grid::IconsGridState,
+    icons_grid::{IconsGridState, autoscroll_background},
+    scroll::{Autoscroll, AutoscrollPointer},
 };
 use strata_core::{i18n::tr, model::Location};
 use strata_desktop::settings::Preferences;
@@ -23,7 +27,7 @@ use crate::{
 
 mod part;
 pub(crate) mod size;
-mod view;
+pub(crate) mod view;
 
 /// The grid's key: its collection's, and the element that takes the keyboard. Every element
 /// key of the view starts with it.
@@ -32,6 +36,7 @@ pub(crate) const VIEW: &str = "icons";
 pub(crate) struct Icons {
     pub(crate) single: Single,
     grid: IconsGridState,
+    autoscroll: Autoscroll,
     /// The tile size in points, from 32 to 256 (`size.rs`).
     size: f32,
     /// The folder shown when the size was last set, so the part's poll can tell when another
@@ -64,15 +69,28 @@ impl Icons {
         let settings: &Preferences = setup.settings;
         // `type_to_search_active` in `src/ui/preferences/input_settings.rs`.
         let typing = settings.type_to_search && !settings.tenxer_mode;
+        let grid = IconsGridState::new();
+        let autoscroll = Autoscroll::new();
+        let mut single = Single::new(Made {
+            key: VIEW,
+            keys: keys(typing),
+            described: tr("Icons view"),
+            menu_at: AnchorEdge::Right,
+            worn: setup.worn.clone(),
+        });
+        single.pane.parts_mut().1.controllers.pointer = Some(Box::new(
+            AutoscrollPointer::new(
+                Some(Box::new(PointerIntent::new())),
+                autoscroll.clone(),
+                VIEW,
+                grid.feed().clone(),
+            )
+            .background(autoscroll_background),
+        ));
         Self {
-            single: Single::new(Made {
-                key: VIEW,
-                keys: keys(typing),
-                described: tr("Icons view"),
-                menu_at: AnchorEdge::Right,
-                worn: setup.worn.clone(),
-            }),
-            grid: IconsGridState::new(),
+            single,
+            grid,
+            autoscroll,
             size: size::tile_size(settings.icons_thumbnail_size),
             sized_for: None,
             sized_at: 0,
@@ -80,6 +98,10 @@ impl Icons {
             thumbs: Viewer::new(setup.later.clone(), part::locate),
             fills: Fills::new(Details::All),
         }
+    }
+
+    pub(crate) fn autoscroll(&self) -> &Autoscroll {
+        &self.autoscroll
     }
 }
 

@@ -47,21 +47,24 @@ fn base(app: &App) -> Collection<App> {
 }
 
 /// The collection with the table's parts: what the poll ticks.
-pub(super) fn ticked(app: &App) -> Collection<App> {
+pub(crate) fn ticked(app: &App) -> Collection<App> {
     table(app).collection(app, base(app))
 }
 
 /// A filter's results in the table's place (A10's [`crate::filter::pane`]): a list of rows,
 /// each its icon, its name, and its path under the folder while the filter searches the
 /// subfolders, as GTK's `ResultKind::Rows`.
-pub(super) fn results(app: &App) -> Collection<App> {
+pub(crate) fn results(app: &App) -> Collection<App> {
     let paths = app.filter.pane.recursive;
+    let feed = app.filter.pane.list_feed().clone();
     single::results::<List>(app)
         .roles(Roles::LIST)
         .row_height(move |_: &App, look: &Look| match paths {
             true => (look.row.list + look.kit.ty.small.line_height + 2.0).round(),
             false => look.row.list,
         })
+        .row_gap_y(1.0)
+        .on_scroll(move |pos| feed.set(pos))
         .label(Slot::pure(results_label))
 }
 
