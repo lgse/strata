@@ -143,6 +143,7 @@ pub(crate) enum Finding {
     GvfsMissing,
     BackendInstalled,
     BackendMissing,
+    KdeMtpConflict,
     RequiresGvfs,
     DrivesReady,
     UdisksMissing,
@@ -413,19 +414,19 @@ fn system_checks(sender: &Sender<Check>) {
     send(audio_playback(probe_gstreamer()));
     let vfs = VfsState::detect();
     send(gvfs(&vfs));
+    let session = bus_names(gio::BusType::Session);
+    let system = bus_names(gio::BusType::System);
     for id in [
         CheckId::Sftp,
         CheckId::Smb,
         CheckId::Ftp,
         CheckId::WebDav,
-        CheckId::Mtp,
         CheckId::Afc,
         CheckId::Cameras,
     ] {
         send(remote_backend(id, &vfs));
     }
-    let session = bus_names(gio::BusType::Session);
-    let system = bus_names(gio::BusType::System);
+    send(mtp(&vfs, session.as_ref()));
     send(drives(session.as_ref(), system.as_ref()));
     send(session_service(CheckId::Portal, session.as_ref()));
     send(session_service(CheckId::SecretService, session.as_ref()));
@@ -720,6 +721,19 @@ fn remote_backend(id: CheckId, state: &VfsState) -> Check {
         VfsState::Running(_) => Check::warning(id, Finding::BackendMissing).fixed_by(packages),
         VfsState::Bypassed | VfsState::Missing => Check::warning(id, Finding::RequiresGvfs),
     }
+}
+
+/// kio-extras' MTP daemon, hosted by `kiod`. It and GVfs both claim a phone at
+/// plug-in, and whichever loses sees it with no storage.
+const KDE_MTP_NAME: &str = "org.kde.kmtpd5";
+
+fn mtp(state: &VfsState, session: Option<&HashSet<String>>) -> Check {
+    let check = remote_backend(CheckId::Mtp, state);
+    let kde_mtp = session.is_some_and(|names| names.contains(KDE_MTP_NAME));
+    if check.status == Status::Passed && kde_mtp {
+        return Check::warning(CheckId::Mtp, Finding::KdeMtpConflict);
+    }
+    check
 }
 
 /// Owned or activatable names, or `None` when the bus is unreachable.

@@ -1485,6 +1485,7 @@
   "GVfs isn't running, so trash, network locations and devices are unavailable.": "O GVfs não está em execução, então a lixeira, os locais de rede e os dispositivos estão indisponíveis.",
   "The GVfs backend is installed.": "O backend do GVfs está instalado.",
   "The GVfs backend isn't installed.": "O backend do GVfs não está instalado.",
+  "KDE's MTP service is also installed, and whichever claims a phone first leaves the other with no storage. If a phone appears empty, unplug it, run pkill -x kiod6, then reconnect it unlocked.": "O serviço MTP do KDE também está instalado, e quem assumir um celular primeiro deixa o outro sem armazenamento. Se um celular aparecer vazio, desconecte-o, execute pkill -x kiod6 e conecte-o de novo desbloqueado.",
   "Unavailable while GVfs isn't running.": "Indisponível enquanto o GVfs não estiver em execução.",
   "UDisks2 and the GVfs volume monitor are available.": "O UDisks2 e o monitor de volumes do GVfs estão disponíveis.",
   "UDisks2 isn't available, so drives can't be mounted, formatted or unlocked.": "O UDisks2 não está disponível, então não é possível montar, formatar nem desbloquear unidades.",

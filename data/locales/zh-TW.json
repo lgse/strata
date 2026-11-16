@@ -1460,6 +1460,7 @@
   "GVfs isn't running, so trash, network locations and devices are unavailable.": "GVfs 未執行，因此資源回收桶、網路位置與裝置都無法使用。",
   "The GVfs backend is installed.": "GVfs 後端已安裝。",
   "The GVfs backend isn't installed.": "GVfs 後端未安裝。",
+  "KDE's MTP service is also installed, and whichever claims a phone first leaves the other with no storage. If a phone appears empty, unplug it, run pkill -x kiod6, then reconnect it unlocked.": "KDE 的 MTP 服務也已安裝，先佔用手機的一方會讓另一方看不到任何儲存空間。如果手機顯示為空，請拔下手機，執行 pkill -x kiod6，然後在解鎖狀態下重新連接。",
   "Unavailable while GVfs isn't running.": "GVfs 未執行時無法使用。",
   "UDisks2 and the GVfs volume monitor are available.": "UDisks2 與 GVfs 磁碟區監視器可用。",
   "UDisks2 isn't available, so drives can't be mounted, formatted or unlocked.": "UDisks2 不可用，因此無法掛載、格式化或解鎖磁碟機。",
