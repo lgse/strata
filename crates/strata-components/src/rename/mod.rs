@@ -79,12 +79,16 @@
 //! - **Focus afterwards.** The editor carries `El::focus_return` to its collection, so when
 //!   Enter, Escape or a last Tab removes the field, the keyboard goes back to the listing
 //!   (probe P2). It acts on every way the field goes, and only while the field has the
-//!   keyboard, which `Tx::focus` from each path wouldn't. A collection keyed by its host
-//!   takes no keyboard, and a return to it leaves the keyboard nowhere: such a host names
-//!   the element that does ([`RenameEditor::focus_return`]).
+//!   keyboard, which `Tx::focus` from each path wouldn't. When a collection is keyed by its
+//!   host and takes no keyboard, Rune's unmount fallback walks to a surviving sibling control
+//!   or ancestor container; [`RenameEditor::focus_return`] names the exact element that owns
+//!   the keyboard (Columns' strip), so sibling controls inside it never steal focus.
 //! - **Input methods.** Rune gives Enter and Escape to a composition, and the editor passes
-//!   every key while one is open. A blur mid-composition keeps only the committed text.
-//! - **Paste.** The field is single-line, so a pasted line break or tab is dropped (Rune).
+//!   every key while one is open. Blurring the field mid-composition commits the active
+//!   preedit into the field's text (as GTK, Chromium and NSTextView do); an input method that
+//!   cancels its preedit leaves only the already-committed text.
+//! - **Paste.** The field is single-line, so a pasted line break or tab is dropped (Rune). On
+//!   Linux, a middle click on the field places the caret and pastes the primary selection.
 //! - **Validation.** The validator runs as the text changes; an empty field is never an error.
 //!   A refused name turns the field's outline `danger`, marks it invalid, gives it the message
 //!   as its description, and shows the message ([`RenameEditor::message`]): a polite live
@@ -109,9 +113,11 @@
 //! - **The box.** The field's box (its fill and outline, a row tall) is a `textbox`, as
 //!   rune-kit's text inputs are: Rune routes a press anywhere in it to the field, so a press in
 //!   its margin, off the text line, moves the caret rather than ending the edit. A right-click
-//!   there is the field's menu press too. That routing is for primary presses: the box also
-//!   takes the middle button, or a middle press in it would walk up to the collection's root
-//!   and open the row being renamed in a new tab. Back and Forward stay the host's.
+//!   there is the field's menu press too. That routing is for primary presses: on Linux Rune
+//!   pastes the primary selection on a middle click in the field itself, while the box also
+//!   takes the middle button so a middle press in its margin doesn't walk up to the
+//!   collection's root and open the row being renamed in a new tab. Back and Forward stay the
+//!   host's.
 //! - **Spellcheck** is off: a file name isn't prose. Rune has no checker on Linux anyway.
 //! - **Upstream #180.** Rune syncs focus into every field of the last view, the one just
 //!   removed too, so [`RenameState::edit`] is always present: a spare while no edit is open.
@@ -233,16 +239,18 @@
 //! by a right-click and by the Menu key), the hold ending without `menu_closed` and when no
 //! menu takes the keyboard, a press in the box's margin, a middle press in the field and its
 //! margin, a press on the message, page keys in the field, Shift+Escape, `menu_closed`'s
-//! refocus, a `tick` with another collection's scope, #180, a composition ending in a blur,
-//! and paste.
+//! refocus, a `tick` with another collection's scope, #180, a composition committed on blur or
+//! cancelled by the input method, and paste.
 //!
 //! # Rune
 //!
-//! **Rune 2a44156: partly.** `text_input` covers the editing, `set_selection`, undo, IME
-//! (Enter and Escape to the composition), single-line paste, Ctrl+A and Ctrl+Z in the field, the
+//! **Rune 631e8a67: partly.** `text_input` covers the editing, `set_selection`, undo, IME
+//! (Enter and Escape to the composition, preedit committed on blur), single-line paste, Linux
+//! primary-selection middle-click paste, Ctrl+A and Ctrl+Z in the field, the
 //! keyboard kept across window deactivation, focused virtual rows kept mounted,
-//! `El::focus_return`, `invalid`, `description`, `live_region`, `on_input_change` and a field's
-//! own `on_secondary_press`. Not covered: a focus-change hook (#106), a field menu on Linux,
+//! `El::focus_return` and unmount focus fallback, `invalid`, `description`, `live_region`,
+//! `on_input_change` and a field's own `on_secondary_press`. Not covered: a focus-change hook
+//! (#106), a field menu on Linux,
 //! an accessor safe after its field is removed (#180). `El::dir` and Left and Right across
 //! bidi text in a field (cded95f) are in the pin, for right-to-left names.
 //!

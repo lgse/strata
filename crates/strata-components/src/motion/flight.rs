@@ -8,7 +8,7 @@ use std::cell::Cell;
 use rune::{Beat, Easing, El, Icon, Sequence, Spring, el, icon};
 use strata_kit::look::Look;
 
-use super::model::{EffectId, Event, Pulses};
+use super::model::{EffectId, Event, FlightTick, Pulses};
 use super::pulse::PulseKind;
 
 /// Travel into the target (Strata's `TRAVEL`).
@@ -287,14 +287,8 @@ impl FlightRun {
     }
 
     /// One tick at `now`: pushes this flight's events, lowers `next` to its next deadline,
-    /// and says whether it plays on.
-    pub fn step(
-        &mut self,
-        now: f64,
-        events: &mut Vec<Event>,
-        next: &mut Option<f64>,
-        pulses: &mut Pulses,
-    ) -> bool {
+    /// sets `animate` when a flight swaps onto its flyers, and says whether it plays on.
+    pub fn step(&mut self, now: f64, tick: &mut FlightTick<'_>) -> bool {
         const EPS: f64 = 1e-6;
         let due = |next: &mut Option<f64>, at: f64| *next = Some(next.map_or(at, |n| n.min(at)));
         match self.phase {
@@ -302,29 +296,30 @@ impl FlightRun {
             // one poll ticks before its view runs), or for 3 ticks with no layer at all.
             Phase::Mount { ticks } if !self.viewed.get() && ticks < 3 => {
                 self.phase = Phase::Mount { ticks: ticks + 1 };
-                due(next, now);
+                due(tick.next, now);
                 true
             }
             Phase::Mount { .. } => {
-                events.push(Event::Launched(self.id));
+                tick.events.push(Event::Launched(self.id));
                 self.flying = (0..self.legs.len())
                     .filter(|&i| self.legs[i].seen.get().is_some())
                     .collect();
                 if self.flying.is_empty() {
                     // Nothing flies (no layer, reduced motion, every leg or the target out of
                     // sight): a restore's rows still show at Landed.
-                    events.push(Event::Landed(self.id));
-                    events.push(Event::Done(self.id));
+                    tick.events.push(Event::Landed(self.id));
+                    tick.events.push(Event::Done(self.id));
                     return false;
                 }
+                tick.animate = true;
                 self.phase = Phase::Fly {
                     t0: now,
                     landed: None,
                 };
                 if !self.mode.pulse().1 {
-                    self.start_pulse(pulses);
+                    self.start_pulse(tick.pulses);
                 }
-                due(next, self.land_at(now));
+                due(tick.next, self.land_at(now));
                 true
             }
             Phase::Fly { t0, landed } => {
@@ -332,9 +327,9 @@ impl FlightRun {
                 let landed = match landed {
                     Some(at) => at,
                     None if now + EPS >= land => {
-                        events.push(Event::Landed(self.id));
+                        tick.events.push(Event::Landed(self.id));
                         if self.mode.pulse().1 {
-                            self.start_pulse(pulses);
+                            self.start_pulse(tick.pulses);
                         }
                         self.phase = Phase::Fly {
                             t0,
@@ -343,17 +338,17 @@ impl FlightRun {
                         now
                     }
                     None => {
-                        due(next, land);
+                        due(tick.next, land);
                         return true;
                     }
                 };
                 let done = self.done_at(t0, landed);
                 if now + EPS >= done {
-                    events.push(Event::Done(self.id));
-                    self.spend_pulse(pulses);
+                    tick.events.push(Event::Done(self.id));
+                    self.spend_pulse(tick.pulses);
                     return false;
                 }
-                due(next, done);
+                due(tick.next, done);
                 true
             }
         }

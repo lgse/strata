@@ -54,6 +54,13 @@ impl std::fmt::Debug for Effects {
     }
 }
 
+pub(super) struct FlightTick<'a> {
+    pub events: &'a mut Vec<Event>,
+    pub next: &'a mut Option<f64>,
+    pub pulses: &'a mut Pulses,
+    pub animate: bool,
+}
+
 impl Effects {
     /// Nothing playing.
     pub fn new() -> Self {
@@ -95,13 +102,21 @@ impl Effects {
     }
 
     /// One frame at `now` seconds on the host's clock: moves the effects on, asks `tx` for the
-    /// next wake they need, and returns what happened, in order.
+    /// next wake they need (and for motion when a flight launches from a poll without window
+    /// input), and returns what happened, in order.
     pub fn tick(&mut self, now: f64, tx: &mut Tx) -> Vec<Event> {
         let mut events = Vec::new();
         let mut next = None;
-        let pulses = &mut self.pulses;
-        self.flights
-            .retain_mut(|f| f.step(now, &mut events, &mut next, pulses));
+        let mut flight_tick = FlightTick {
+            events: &mut events,
+            next: &mut next,
+            pulses: &mut self.pulses,
+            animate: false,
+        };
+        self.flights.retain_mut(|f| f.step(now, &mut flight_tick));
+        if flight_tick.animate {
+            tx.animated();
+        }
         if let Some(d) = &mut self.dissolve
             && !d.step(now, &mut events, &mut next)
         {

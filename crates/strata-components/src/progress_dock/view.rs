@@ -206,33 +206,11 @@ impl<S: 'static> DockView<S> {
                 .checked(end.pinned);
             header = header.child(pin);
         }
-        let x = if ended.is_some() {
-            let intent = intent.clone();
-            IconButton::new(look.icon(IconName::Close))
-                .variant(IconButtonVariant::Ghost)
-                .control_size(ControlSize::Mini)
-                .label(words.dismiss.clone())
-                .help(words.dismiss.clone())
-                .on_press_tx(move |s: &mut S, tx: &mut Tx| {
-                    if get_mut(s).dismiss(id) {
-                        intent(s, DockIntent::Dismissed(id), tx);
-                    }
-                })
-        } else {
-            let intent = intent.clone();
-            IconButton::new(look.icon(IconName::Close))
-                .variant(IconButtonVariant::Ghost)
-                .control_size(ControlSize::Mini)
-                .label(op.spec.cancel_label.clone())
-                .help(words.cancel_operation.clone())
-                .disabled(!shown.cancel_enabled)
-                .on_press_tx(move |s: &mut S, tx: &mut Tx| {
-                    if get_mut(s).cancel(id, tx) {
-                        intent(s, DockIntent::Cancel(id), tx);
-                    }
-                })
-        };
-        header = header.child(x.build(k).key(format!("{key}-cancel")));
+        header = header.child(
+            self.card_close_button(op, dock, look)
+                .build(k)
+                .key(format!("{key}-cancel")),
+        );
 
         let mut details = row().w_full().gap(space.md).items_start().child(
             text(shown.info.clone())
@@ -260,6 +238,7 @@ impl<S: 'static> DockView<S> {
             .key(key.clone())
             .role("group")
             .label(shown.title.clone())
+            .busy(ended.is_none())
             .min_w(CARD_MIN_WIDTH)
             .max_w(CARD_MAX_WIDTH)
             .padding(space.xl)
@@ -371,6 +350,37 @@ impl<S: 'static> DockView<S> {
             card = card.live_opacity(fade);
         }
         card
+    }
+
+    fn card_close_button(&self, op: &Op, dock: &Dock, look: &Look) -> IconButton {
+        let words = dock.words();
+        let id = op.id;
+        let get_mut = self.get_mut;
+        let intent = self.on_intent.clone();
+        if op.shown.ended.is_some() {
+            IconButton::new(look.icon(IconName::Close))
+                .variant(IconButtonVariant::Ghost)
+                .control_size(ControlSize::Mini)
+                .label(words.dismiss.clone())
+                .help(words.dismiss.clone())
+                .on_press_tx(move |s: &mut S, tx: &mut Tx| {
+                    if get_mut(s).dismiss(id) {
+                        intent(s, DockIntent::Dismissed(id), tx);
+                    }
+                })
+        } else {
+            IconButton::new(look.icon(IconName::Close))
+                .variant(IconButtonVariant::Ghost)
+                .control_size(ControlSize::Mini)
+                .label(op.spec.cancel_label.clone())
+                .help(words.cancel_operation.clone())
+                .disabled(!op.shown.cancel_enabled)
+                .on_press_tx(move |s: &mut S, tx: &mut Tx| {
+                    if get_mut(s).cancel(id, tx) {
+                        intent(s, DockIntent::Cancel(id), tx);
+                    }
+                })
+        }
     }
 }
 

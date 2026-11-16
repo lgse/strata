@@ -50,7 +50,6 @@ pub(super) struct Ops {
     next_id: OpId,
     foreground: Option<TrackedOp>,
     background: HashMap<OperationRequestId, TrackedOp>,
-    pub(super) last_clock: f64,
     pub(super) queued_cancels: Vec<OpId>,
 }
 
@@ -63,7 +62,6 @@ impl Default for Ops {
             next_id: 0,
             foreground: None,
             background: HashMap::new(),
-            last_clock: 0.0,
             queued_cancels: Vec::new(),
         }
     }
@@ -250,7 +248,7 @@ pub(super) fn on_transfer_started(app: &mut App, start: StartedTransfer, tx: &mu
         }
         None => app.transfer.ops.foreground = Some(tracked),
     }
-    let now = app.transfer.ops.last_clock;
+    let now = tx.clock();
     app.transfer.ops.dock.start(op_id, spec, tx);
     app.transfer
         .ops
@@ -264,7 +262,7 @@ pub(super) fn on_transfer_progress(
     update: ProgressUpdate,
     tx: &mut Tx,
 ) -> bool {
-    let now = app.transfer.ops.last_clock;
+    let now = tx.clock();
     let Some(tracked) = app.transfer.ops.tracked_mut(bg) else {
         return false;
     };
@@ -290,7 +288,7 @@ pub(super) fn on_transfer_progress(
 }
 
 pub(super) fn on_flushing(app: &mut App, bg: Option<OperationRequestId>, tx: &mut Tx) -> bool {
-    let now = app.transfer.ops.last_clock;
+    let now = tx.clock();
     let Some(tracked) = app.transfer.ops.tracked_mut(bg) else {
         return false;
     };

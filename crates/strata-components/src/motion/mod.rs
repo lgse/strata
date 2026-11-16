@@ -5,10 +5,12 @@
 //!
 //! Work package: C23, `docs/rune/work/phase-1-leaves/C23-motion-effects.md`.
 //!
-//! Rune 2a44156: **partly**. `El::matched` flies the icons (one straight path on a
+//! Rune 631e8a67: **partly**. `El::matched` flies the icons (one straight path on a
 //! spring, drawn above the window), `El::sequence` draws their fades and shrinks and the
 //! target's pulses on the render clock, `Live` values move the dissolve's fragments with no
-//! commit, and `Cx::window_layout` finds sources and targets by key. No flight can start late
+//! commit, `Tx::animated` marks a flight's launch poll commit animated when no window input
+//! caused that frame, `El::animated_changes` keeps the overlay's transitions live, and
+//! `Cx::window_layout` finds sources and targets by key. No flight can start late
 //! or bend (U-C23-1), a `Beat` has no offset or rotation (U-C23-2), and nothing captures a
 //! subtree's pixels (U-C23-3).
 //!
@@ -66,13 +68,15 @@
 //!
 //! # Host rules
 //!
-//! - **Don't flip on an instant commit.** `Tx::instant` (or a settle) on the commit that
-//!   answers [`Event::Launched`] turns the matched swap off: the icons appear at their landing
-//!   places. The test `an_instant_flip_flies_nothing_at_the_pin` pins it. An instant commit
-//!   later in the 0.4 s flight keeps the flight when it leaves the flyers' layout as it was
-//!   (Rune `5a9f64e8`, `runtime/commit/apply.rs`); one that moves a flyer, a settle, or a flyer
-//!   with `instant_changes` still lands it. `f7bf9e04` (a matched flight starts from where it
-//!   was seen after an earlier commit in the frame) is in the pin too, not re-checked here.
+//! - **Don't flip on an instant commit.** [`Effects::tick`] calls `Tx::animated` when a flight
+//!   launches so a poll commit without window input still flies; calling `Tx::instant` (or a
+//!   settle) *after* `tick` on the commit that answers [`Event::Launched`] turns the matched
+//!   swap off, so the icons appear at their landing places. The test
+//!   `an_instant_flip_flies_nothing_at_the_pin` pins it. An instant commit later in the 0.4 s
+//!   flight keeps the flight when it leaves the flyers' layout as it was (Rune `5a9f64e8`,
+//!   `runtime/commit/apply.rs`); one that moves a flyer, a settle, or a flyer with
+//!   `instant_changes` still lands it. `f7bf9e04` (a matched flight starts from where it was
+//!   seen after an earlier commit in the frame) is in the pin too, not re-checked here.
 //! - **Remove the rows at Launched**, not before: the effect reads their rects first.
 //! - **Start an effect from a handler, or in a poll that commits** (returns true), before or
 //!   after the tick: the layer must draw it before it moves, and a poll that doesn't commit
