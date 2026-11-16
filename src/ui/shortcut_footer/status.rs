@@ -125,14 +125,11 @@ fn single_entry_label(entry: &crate::model::FileEntry, mode: BrowserMode) -> Str
     if !entry.is_directory() {
         text.push_str(&size_suffix(std::slice::from_ref(entry), 1));
     }
-    if matches!(mode, BrowserMode::Icons | BrowserMode::Columns)
-        && let crate::model::MetadataValue::Known(seconds) = entry.modified_unix_seconds
-    {
-        let date = strata_core::util::modified_date_for_seconds(
-            seconds,
-            strata_core::util::DateDisplay::Preferred,
-        );
-        text.push_str(&format!(" — {date}"));
+    if matches!(mode, BrowserMode::Icons | BrowserMode::Columns) {
+        let date = strata_core::util::modified_date(entry);
+        if !date.is_empty() {
+            text.push_str(&format!(" — {date}"));
+        }
     }
     text
 }

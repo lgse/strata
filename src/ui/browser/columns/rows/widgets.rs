@@ -194,6 +194,7 @@ impl RowWidgets {
             edit,
             spacer: self.spacer,
             size: self.size,
+            modified: self.modified,
         }
     }
 
