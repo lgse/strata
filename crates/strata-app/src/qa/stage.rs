@@ -183,7 +183,11 @@ fn drawn_column(elements: &[ElementInfo], list: &str) -> Option<DrawnColumn> {
 }
 
 /// Replaces `seen.bounds` with the inner card bounds drawn for its row in `list`, if present.
+/// Grid cells (`Icons`) keep AccessKit's union bounds across their icon, caption, and details.
 pub(super) fn sync_entry_bounds(columns: &[DrawnColumn], list: &str, seen: &mut Seen) {
+    if seen.role == "grid-cell" {
+        return;
+    }
     let Some(key) = seen.key.as_deref() else {
         return;
     };

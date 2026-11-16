@@ -47,11 +47,16 @@ impl Kept {
         self.since
     }
 
+    pub(super) fn row_key(&self) -> Option<&str> {
+        let key = self.node.0.rsplit('/').next()?;
+        is_entry_key(key).then_some(key)
+    }
+
     /// The entry whose row this is, read from the row's key.
     pub(super) fn entry(&self) -> Option<EntryId> {
-        let key = self.node.0.rsplit('/').next()?;
+        let key = self.row_key()?;
         let digits = key.trim_start_matches(|c: char| !c.is_ascii_digit());
-        is_entry_key(key).then(|| digits.parse().ok().map(EntryId::new))?
+        digits.parse().ok().map(EntryId::new)
     }
 }
 

@@ -674,8 +674,14 @@ impl Snapshot {
     }
 
     pub(super) fn recall(&self, kept: &Kept) -> Option<Node> {
-        let seen = self.get(&kept.node)?;
-        (seen.role == kept.role).then(|| kept.node.clone())
+        if let Some(seen) = self.get(&kept.node) {
+            return (seen.role == kept.role).then(|| kept.node.clone());
+        }
+        let key = kept.row_key()?;
+        self.nodes
+            .iter()
+            .find(|seen| seen.role == kept.role && seen.key.as_deref() == Some(key))
+            .and_then(|seen| seen.node.clone())
     }
 
     /// The tree as text, a line for each node: Rune's role and key, the AT-SPI role, the name,
