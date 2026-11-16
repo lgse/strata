@@ -17,7 +17,6 @@ use rune::Tx;
 use strata_components::{
     collection::{
         keyboard::{KeySettings, Letters},
-        pointer::{ClickCount, ClickModes},
         selection::Listing,
     },
     columns::{ColumnsState, Focus, Opening},
@@ -80,7 +79,6 @@ pub(crate) struct Columns {
     /// Entries a rename gave another id, until the listing shows the change.
     moving: Moving,
     mirror: Mirror,
-    clicks: ClickModes,
     tenxer: Cell<bool>,
     labels: view::Labels,
     /// What a column says while it shows no entry.
@@ -106,13 +104,6 @@ pub(super) fn live_keys(settings: &Preferences) -> Option<KeySettings> {
     }
 }
 
-fn clicks(count: u8) -> ClickCount {
-    match count {
-        1 => ClickCount::One,
-        _ => ClickCount::Two,
-    }
-}
-
 impl Columns {
     fn with_setup(setup: &Setup<'_>) -> Self {
         let settings: &Preferences = setup.settings;
@@ -131,10 +122,6 @@ impl Columns {
                 settings.columns_mirror_selection,
                 settings.single_click_previews,
                 setup.shown.clone(),
-            ),
-            clicks: ClickModes::new(
-                clicks(settings.columns_file_clicks),
-                clicks(settings.columns_folder_clicks),
             ),
             tenxer: Cell::new(settings.tenxer_mode),
             labels: view::Labels::translated(),
@@ -166,10 +153,6 @@ impl Columns {
             settings.columns_mirror_selection,
             settings.single_click_previews,
         );
-    }
-
-    pub(crate) fn one_click_files(&self) -> bool {
-        self.clicks.files == ClickCount::One
     }
 
     pub(crate) fn last_edge_lit(&self) -> bool {

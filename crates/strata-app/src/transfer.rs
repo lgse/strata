@@ -82,6 +82,7 @@ impl Part for Transfer {
     }
 
     fn poll(app: &mut App, clock: f64, tx: &mut Tx) -> bool {
+        app.transfer.ops.just_docked = None;
         app.transfer.ops.dock.set_animations(app.look.animations);
         let cancels = std::mem::take(&mut app.transfer.ops.queued_cancels);
         let cancelled = !cancels.is_empty();
@@ -178,7 +179,35 @@ fn queue_transfer_event(
             heard.then(move |app, tx| dock::on_background_event(app, request_id, inner, tx));
             true
         }
-        _ => queue_outcome_event(event, heard),
+        _ => queue_archive_event(event, browser, heard) || queue_outcome_event(event, heard),
+    }
+}
+
+fn queue_archive_event(
+    event: &BrowserEvent,
+    browser: &Browser,
+    heard: &mut Heard<'_, App>,
+) -> bool {
+    match event {
+        BrowserEvent::ArchiveStarted { total } => {
+            let started = dock::StartedArchive::capture(browser, *total);
+            heard.then(move |app, tx| {
+                dock::on_archive_started(app, started, tx);
+                true
+            });
+            true
+        }
+        BrowserEvent::ArchiveProgress { completed, total } => {
+            let (completed, total) = (*completed, *total);
+            heard.then(move |app, tx| dock::on_archive_progress(app, None, (completed, total), tx));
+            true
+        }
+        BrowserEvent::ArchiveCompleted { select_name } => {
+            let select_name = select_name.clone();
+            heard.then(move |app, tx| dock::on_archive_completed(app, None, select_name, tx));
+            true
+        }
+        _ => false,
     }
 }
 
@@ -202,11 +231,16 @@ fn queue_outcome_event(event: &BrowserEvent, heard: &mut Heard<'_, App>) -> bool
             true
         }
         BrowserEvent::OperationFailed {
-            message, report, ..
+            message,
+            password_failure,
+            report,
         } => {
-            let message = message.clone();
-            let report = report.clone();
-            heard.then(move |app, _| dock::on_operation_failed(app, None, message, &report));
+            let outcome = dock::FailedOutcome {
+                message: message.clone(),
+                password_failure: *password_failure,
+                report: report.clone(),
+            };
+            heard.then(move |app, tx| dock::on_operation_failed(app, None, outcome, tx));
             true
         }
         BrowserEvent::OperationCancelled {

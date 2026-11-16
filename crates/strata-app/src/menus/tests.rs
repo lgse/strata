@@ -293,6 +293,7 @@ fn a_saved_keymap_moves_the_hints_with_the_keys() {
             let pane = folder(&FolderTarget {
                 has_entries: true,
                 can_paste: false,
+                can_open_terminal: true,
                 hidden_shown: false,
                 typing: true,
             });
@@ -310,6 +311,7 @@ fn a_panes_menu_lists_the_gtk_menus_rows_with_paste_greyed() {
     let menu = folder(&FolderTarget {
         has_entries: true,
         can_paste: false,
+        can_open_terminal: true,
         hidden_shown: false,
         typing: true,
     });
@@ -336,6 +338,7 @@ fn a_panes_menu_lists_the_gtk_menus_rows_with_paste_greyed() {
     let pasteable = folder(&FolderTarget {
         has_entries: true,
         can_paste: true,
+        can_open_terminal: true,
         hidden_shown: false,
         typing: true,
     });
@@ -345,11 +348,14 @@ fn a_panes_menu_lists_the_gtk_menus_rows_with_paste_greyed() {
     let empty = folder(&FolderTarget {
         has_entries: false,
         can_paste: false,
+        can_open_terminal: false,
         hidden_shown: true,
         typing: true,
     });
     let select_all = items(&empty).find(|item| item.label == "Select All");
     assert!(select_all.is_some_and(|item| !item.enabled));
+    let terminal = items(&empty).find(|item| item.label == "Open in Terminal");
+    assert!(terminal.is_some_and(|item| !item.enabled));
     assert!(labels(&empty).contains(&"Hide Hidden Files"));
 }
 
@@ -384,7 +390,9 @@ fn the_rows_with_a_command_act_and_the_rest_are_inert() {
                     "open",
                     "preview",
                     "run",
+                    "terminal",
                     "open-in-tab",
+                    "extract",
                     "cut",
                     "copy",
                     "duplicate",
@@ -395,12 +403,14 @@ fn the_rows_with_a_command_act_and_the_rest_are_inert() {
                     "copy-name",
                     "copy-paths",
                     "copy-names",
+                    "properties",
                     "trash",
                     "delete",
                     "paste",
                     "select-all",
                     "refresh",
-                    "hidden"
+                    "hidden",
+                    "properties"
                 ]
             );
         },

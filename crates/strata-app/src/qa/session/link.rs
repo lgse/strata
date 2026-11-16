@@ -102,7 +102,7 @@ impl Link {
         &self,
         read: impl FnOnce(&mut App) -> T + Send + 'static,
     ) -> Result<T, String> {
-        self.run(read, false)
+        self.run(|app, _| read(app), false)
     }
 
     /// [`Link::ask`] for a change: the window draws a frame after it.
@@ -110,18 +110,26 @@ impl Link {
         &self,
         change: impl FnOnce(&mut App) -> T + Send + 'static,
     ) -> Result<T, String> {
+        self.run(|app, _| change(app), true)
+    }
+
+    /// [`Link::change`] with access to the update transaction.
+    pub(super) fn change_tx<T: Send + 'static>(
+        &self,
+        change: impl FnOnce(&mut App, &mut rune::Tx) -> T + Send + 'static,
+    ) -> Result<T, String> {
         self.run(change, true)
     }
 
     fn run<T: Send + 'static>(
         &self,
-        call: impl FnOnce(&mut App) -> T + Send + 'static,
+        call: impl FnOnce(&mut App, &mut rune::Tx) -> T + Send + 'static,
         changes: bool,
     ) -> Result<T, String> {
         let (answer, answered) = mpsc::sync_channel(1);
-        self.handle.update_if(move |app, _| {
+        self.handle.update_if(move |app, tx| {
             // The session may have stopped waiting; the answer is then nobody's.
-            let _ = answer.send(call(app));
+            let _ = answer.send(call(app, tx));
             changes
         });
         answered

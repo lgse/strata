@@ -35,13 +35,14 @@ use strata_components::{
         element::{Activation, Collection, CollectionState, Describe, Intent},
         keyboard::{KeyHandle, KeySettings, Keyboard, Letters, NothingToSelect},
         marquee::Marquee,
-        pointer::{ClickCount, ClickModes, PointerIntent, PointerSettings},
+        pointer::{ClickModes, PointerIntent, PointerSettings},
     },
     context_menu::AnchorEdge,
     contract::{Direction, EntryId, EntrySource},
     rename::{By, Initial, Polled},
 };
 use strata_core::i18n::tr;
+use strata_desktop::settings::Preferences;
 
 use self::first_visit::FirstVisit;
 use crate::{
@@ -61,7 +62,6 @@ use crate::{
 pub(crate) struct Single {
     pub(crate) pane: Pane,
     pub(crate) keys_handle: KeyHandle,
-    clicks: ClickModes,
     wrap_rows: bool,
     left_leaves: bool,
     words: Words,
@@ -74,13 +74,6 @@ pub(crate) struct Single {
     surface: Surface,
     /// Another folder shows, until its load ends or the user's input reaches the pane.
     first_visit: FirstVisit,
-}
-
-fn clicks(count: u8) -> ClickCount {
-    match count {
-        1 => ClickCount::One,
-        _ => ClickCount::Two,
-    }
 }
 
 /// The collection's controllers: the pointer's clicks, the keyboard and the marquee.
@@ -109,8 +102,6 @@ pub(crate) fn results_state(list: bool, handle: KeyHandle) -> CollectionState {
 pub(crate) struct Made {
     /// The view's collection's key ([`SinglePane::KEY`]).
     pub(crate) key: &'static str,
-    /// How many clicks open a file and a folder.
-    pub(crate) clicks: (u8, u8),
     pub(crate) wrap_rows: bool,
     pub(crate) left_leaves: bool,
     /// The view's translated `view_name`.
@@ -125,7 +116,6 @@ impl Single {
     pub(crate) fn new(made: Made) -> Self {
         let Made {
             key,
-            clicks: (file, folder),
             wrap_rows,
             left_leaves,
             described,
@@ -138,7 +128,6 @@ impl Single {
         Self {
             pane: Pane::new(key, collection).with_worn(worn),
             keys_handle,
-            clicks: ClickModes::new(clicks(file), clicks(folder)),
             wrap_rows,
             left_leaves,
             words: Words::translated(),
@@ -147,10 +136,6 @@ impl Single {
             surface: Surface::translated(),
             first_visit: FirstVisit::default(),
         }
-    }
-
-    pub(crate) fn one_click_files(&self) -> bool {
-        self.clicks.files == ClickCount::One
     }
 
     pub(crate) fn in_band(&self) -> bool {
@@ -175,6 +160,9 @@ pub(crate) trait SinglePane: 'static {
 
     /// The view's state and the rename editor's, borrowed together.
     fn renaming(app: &mut App) -> (&Single, &mut rename::Rename);
+
+    /// The view's live click-activation modes, read from `settings`.
+    fn clicks(settings: &Preferences) -> ClickModes;
 
     /// The view's layout, as C1e keys a remembered scroll offset: the mode and anything that
     /// changes wrapping. An offset comes back only in the layout it was measured in, as GTK's
@@ -258,7 +246,7 @@ pub(crate) fn collection<V: SinglePane>(app: &App) -> Collection<App> {
     .name(title::<V>(app))
     .description(described::<V>(app))
     .settings(live_keys(app, single))
-    .settings(PointerSettings::default().modes(single.clicks))
+    .settings(PointerSettings::default().modes(V::clicks(shell::preferences(app))))
     .describe(Describe::pure(|app: &App, row| {
         let single = V::single(app);
         let description = single
@@ -303,7 +291,7 @@ pub(crate) fn results<V: SinglePane>(app: &App) -> Collection<App> {
     // Shift+press sets (findings lgse/strata#2375 and #2431).
     .settings(
         PointerSettings::default()
-            .modes(single.clicks)
+            .modes(V::clicks(shell::preferences(app)))
             .missing_anchor_stays(true),
     )
     .marks(|app: &App, id| crate::clipboard::with_marks(app, id, filter::pane::marks(app, id)))
@@ -523,7 +511,8 @@ fn heard<V: SinglePane>(app: &mut App, intent: Intent, tx: &mut Tx) {
 /// A plain click on a file previews it when single-click previews are enabled and two clicks
 /// open files (`PendingActivationKind::Standard { preview: true }`).
 fn clicked<V: SinglePane>(app: &App, depth: usize, id: EntryId) {
-    if V::single(app).one_click_files() || !shell::preferences(app).single_click_previews {
+    let settings = shell::preferences(app);
+    if crate::clicks::one_click_files(V::clicks(settings)) || !settings.single_click_previews {
         return;
     }
     let Some(position) = pane::<V>(app).position(depth, id) else {

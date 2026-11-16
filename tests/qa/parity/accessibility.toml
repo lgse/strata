@@ -139,9 +139,8 @@ host = "offscreen"
 scenario = "permission-bits-expose-state"
 run = "columns"
 package = "A6"
-status = "pending"
-reason = "scope"
-blocker = "A17: the Properties dialog on Alt+Return (line 4)"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "settings-choice-buttons-expose-value"

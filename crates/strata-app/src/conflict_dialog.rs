@@ -127,6 +127,7 @@ fn compact_native_path(path: &Path) -> String {
 type OnChoice = Rc<dyn Fn(&mut App, ConflictChoice, bool)>;
 
 struct Shown {
+    icon: IconName,
     prompt: ConflictPrompt,
     apply_to_all: bool,
     generation: u64,
@@ -166,10 +167,22 @@ pub(crate) fn prompt(
     prompt: ConflictPrompt,
     on_choice: impl Fn(&mut App, ConflictChoice, bool) + 'static,
 ) {
+    prompt_with_icon(app, IconName::Copy, prompt, on_choice);
+}
+
+/// Opens a conflict prompt with `icon` in its header box (`ask_to_replace_archive` uses
+/// [`IconName::Archive`]).
+pub(crate) fn prompt_with_icon(
+    app: &mut App,
+    icon: IconName,
+    prompt: ConflictPrompt,
+    on_choice: impl Fn(&mut App, ConflictChoice, bool) + 'static,
+) {
     let dialog = &mut app.conflict_dialog;
     dialog.opened += 1;
     let generation = dialog.opened;
     dialog.shown = Some(Shown {
+        icon,
         prompt,
         apply_to_all: false,
         generation,
@@ -267,7 +280,7 @@ fn build(app: &App, frame: &mut Frame<'_, App>) -> Option<El> {
     let mut dialog = StrataDialog::new(key.clone(), tr("File already exists"), dismiss)
         .open(state.open)
         .subtitle(prompt.name.clone())
-        .icon(IconName::Copy)
+        .icon(shown.icon)
         .tone(Tone::Danger);
     for paragraph in prompt.explanation.split("\n\n") {
         dialog = dialog.message(paragraph);

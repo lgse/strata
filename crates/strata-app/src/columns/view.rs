@@ -101,7 +101,9 @@ pub(crate) fn view(app: &App) -> ColumnsView<App> {
         };
         commands::in_view(collection)
     })
-    .pointer_settings(|app: &App| PointerSettings::default().modes(app.columns.clicks))
+    .pointer_settings(|app: &App| {
+        PointerSettings::default().modes(crate::clicks::columns(shell::preferences(app)))
+    })
     // GTK's column header actions, in its order (`pane_header::actions`).
     .header_actions(|app: &App, cx| pane_header::actions::column(app, &cx))
     // The filter's field, in a band under the header of the column it is open in.

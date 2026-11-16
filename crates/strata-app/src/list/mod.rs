@@ -63,12 +63,9 @@ pub(crate) struct List {
 impl List {
     fn with_setup(setup: &Setup<'_>) -> Self {
         let settings: &Preferences = setup.settings;
-        // `explorer_file_clicks` and `explorer_folder_clicks`: the List view's.
-        let clicks = (settings.list_file_clicks, settings.list_folder_clicks);
         Self {
             single: Single::new(Made {
                 key: VIEW,
-                clicks,
                 wrap_rows: false,
                 left_leaves: true,
                 described: tr("List view"),

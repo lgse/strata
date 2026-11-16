@@ -49,11 +49,9 @@ pub(crate) struct Icons {
 impl Icons {
     fn with_setup(setup: &Setup<'_>) -> Self {
         let settings: &Preferences = setup.settings;
-        let clicks = (settings.icons_file_clicks, settings.icons_folder_clicks);
         Self {
             single: Single::new(Made {
                 key: VIEW,
-                clicks,
                 wrap_rows: true,
                 left_leaves: false,
                 described: tr("Icons view"),

@@ -344,7 +344,7 @@ impl PointerMachine {
         match g.press.button {
             Button::Middle => middle(&g, (index, id), release.mods, s),
             Button::Primary => {
-                self.rename = primary_release(&g, index, id, &settings, s).map(|due| {
+                self.rename = primary_release(&g, (index, id), &settings, s).map(|due| {
                     s.emit(Outcome::WakeAfter(settings.double_click));
                     PendingRename {
                         id,
@@ -505,15 +505,7 @@ fn primary(
     g
 }
 
-/// A primary click's release: the deferred operation, the group collapse, then opening,
-/// arming a rename (returns its delay in seconds) or a plain click, in Strata's order.
-fn primary_release(
-    g: &Gesture,
-    index: usize,
-    id: EntryId,
-    settings: &PointerSettings,
-    s: &mut dyn Surface,
-) -> Option<f64> {
+fn apply_deferred(g: &Gesture, index: usize, settings: &PointerSettings, s: &mut dyn Surface) {
     match g.deferred {
         Deferred::None => {}
         Deferred::Toggle => apply(s, |sel, src| sel.toggle(src, index)),
@@ -524,6 +516,38 @@ fn primary_release(
             });
         }
     }
+}
+
+fn activation_for_click(
+    count: u32,
+    id: EntryId,
+    kind: crate::contract::EntryKind,
+    settings: &PointerSettings,
+) -> Option<ActivateBy> {
+    match (count, settings.modes.for_kind(kind)) {
+        (1, ClickCount::One) => Some(ActivateBy::Click),
+        (2, ClickCount::Two) => Some(ActivateBy::DoubleClick),
+        (2, ClickCount::One) if settings.already_open == Some(id) => Some(ActivateBy::DoubleClick),
+        _ => None,
+    }
+}
+
+fn arms_slow_rename(g: &Gesture, id: EntryId, activates: bool, settings: &PointerSettings) -> bool {
+    let mods = g.press.mods;
+    let plain_name = g.count == 1 && !mods.alt && !mods.logo && g.press.spot == Spot::Name;
+    let eligible = g.sole_before && settings.rename;
+    plain_name && eligible && (!activates || settings.already_open == Some(id))
+}
+
+/// A primary click's release: the deferred operation, the group collapse, then opening,
+/// arming a rename (returns its delay in seconds) or a plain click, in Strata's order.
+fn primary_release(
+    g: &Gesture,
+    (index, id): (usize, EntryId),
+    settings: &PointerSettings,
+    s: &mut dyn Surface,
+) -> Option<f64> {
+    apply_deferred(g, index, settings, s);
     let mods = g.press.mods;
     if mods.ctrl || mods.shift {
         return None;
@@ -532,19 +556,8 @@ fn primary_release(
         apply(s, |sel, src| sel.select_only(src, index));
     }
     let kind = s.source().entry(index).kind;
-    let activate = match (g.count, settings.modes.for_kind(kind)) {
-        (1, ClickCount::One) => Some(ActivateBy::Click),
-        (2, ClickCount::Two) => Some(ActivateBy::DoubleClick),
-        _ => None,
-    };
-    let renames = g.count == 1
-        && !mods.alt
-        && !mods.logo
-        && g.press.spot == Spot::Name
-        && g.sole_before
-        && settings.rename
-        && (activate.is_none() || settings.already_open == Some(id));
-    if renames {
+    let activate = activation_for_click(g.count, id, kind, settings);
+    if arms_slow_rename(g, id, activate.is_some(), settings) {
         return Some(settings.double_click.as_secs_f64());
     }
     if let Some(how) = activate {

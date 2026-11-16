@@ -1915,3 +1915,28 @@ sequence only together with the alphabet's version, so the version is part of th
   `src/ui/browser_modes/list_pane.rs`, and `tabs.toml` (`rename-switch` and `rename-back` scoped
   to `Columns` until `row_label_matches` checks only the primary name widget).
 - **State:** open, [H3](packages/H3.md)'s.
+
+### #2525: `Ctrl+V` after clicking a folder in Columns pastes into the parent under the parked pointer on GTK
+
+- **Code:** `oracle`. [Issue](https://github.com/lgse/strata/issues/2525), filed on
+  2026-11-16 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** in [A12](packages/A12.md)'s `clipboard v1` differential smoke run (15 of 20 seeds;
+  `0x0f` shrunk from 55 steps to 4, confirmed 3 of 3 against Rune and 24 of 24 on GTK: click
+  `todo.txt` in `$root`, `Ctrl+C`, click `archive` in `$root`, `Ctrl+V`). Clicking `archive`
+  selects it in `$root` and opens `archive` as the active, focused child column while the mouse
+  pointer remains parked over `$root`. Pressing `Ctrl+V` duplicates `todo (1).txt` into `$root`
+  on GTK, whereas Rune pastes `todo.txt` into `archive/todo.txt`.
+- **Why:** `BrowserView::paste_location` (`src/ui/browser/view_edit.rs:132-148`) has the same
+  parked-pointer `destination_depth` fallback diagnosed and fixed for
+  `BrowserView::open_terminal` in [#867](https://github.com/lgse/strata/issues/867)
+  (`src/ui/browser/view_edit.rs:234-252`): `selected_entries()` reads only the newly opened empty
+  `archive` column (`selected = []`), while `destination_depth()` returns `Some(0)` (`$root`)
+  because `last_navigation == NavigationInput::Pointer` and `hovered_column == Some(0)`. (The
+  shared `clipboard/` and `copy_conflicts/` scenarios work around it with `{"move":{"pane":"archive"}}`
+  before `{"key":"ctrl+v"}`.) On Rune, `ColumnsState::set_active_quiet` sets `targeted` to the
+  newly opened active column.
+- **Concerns:** `src/ui/browser/view_edit.rs` (`paste_location`), and `fuzz-clipboard-v1-000000000000000f`.
+- **State:** open, set aside: Rune behaves as intended, and any fix belongs on `main`.
+  `v1-000000000000000f` is parked in `tests/qa/fuzz/corpus/clipboard/parked`; `clipboard v4` moves
+  the pointer onto a clicked folder's opened column and pastes into `archive` via the
+  selected-folder route from `$root`.

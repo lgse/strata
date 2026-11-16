@@ -845,6 +845,21 @@ fn a_slow_click_on_an_open_folders_name_renames_instead_of_reopening() {
             Outcome::BeginRename { id: id(1) }
         ]
     );
+
+    r.wait(1.0).click(1, Spot::Name, PLAIN);
+    r.wait(0.1).click(1, Spot::Name, PLAIN);
+    r.settle();
+    assert_eq!(
+        r.take(),
+        [
+            Outcome::WakeAfter(Duration::from_secs_f64(INTERVAL)),
+            Outcome::Activate {
+                id: id(1),
+                how: ActivateBy::DoubleClick
+            }
+        ],
+        "a double-click on the open folder's name activates instead of renaming"
+    );
 }
 
 // Modifiers held at the press.

@@ -667,6 +667,31 @@ impl Snapshot {
         self.index.get(node).map(|index| &self.nodes[*index])
     }
 
+    /// The first scroll view in the tree that scrolls along `along`, with its keyed path for
+    /// `Tx::scroll_to_instant` and its current `[x, y]` offsets (`src/qa/reveal.rs`,
+    /// `set_scrollbar`).
+    pub(super) fn scrollbar_target(&self, along: Orientation) -> Option<(Node, String, [f64; 2])> {
+        for (index, seen) in self.nodes.iter().enumerate() {
+            let Some(scrolled) = seen.scroll else {
+                continue;
+            };
+            if !scrolled.along(along).scrollable {
+                continue;
+            }
+            let node = seen.node.clone()?;
+            let mut segments: Vec<&str> =
+                std::iter::successors(Some(index), |at| self.nodes[*at].parent)
+                    .filter_map(|at| self.nodes[at].key.as_deref())
+                    .collect();
+            if segments.is_empty() {
+                continue;
+            }
+            segments.reverse();
+            return Some((node, segments.join("/"), scrolled.offset));
+        }
+        None
+    }
+
     pub(super) fn at(&self, index: usize) -> Option<&Seen> {
         self.nodes.get(index)
     }

@@ -65,6 +65,12 @@ impl SinglePane for List {
         (&app.list.single, &mut app.rename)
     }
 
+    fn clicks(
+        settings: &strata_desktop::settings::Preferences,
+    ) -> strata_components::collection::pointer::ClickModes {
+        crate::clicks::list(settings)
+    }
+
     /// The table's mode and its row height: rows of one height scroll alike at any width.
     fn layout_key(app: &App) -> u64 {
         let mut hasher = DefaultHasher::new();

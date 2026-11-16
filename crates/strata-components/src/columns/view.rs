@@ -613,6 +613,7 @@ fn column_intent<S: 'static>(
         Intent::Activate { id, .. } if reopens(sh, s, depth, id) => {
             let p = (sh.parts_mut)(s);
             p.state.set_active(depth + 1, p.look, tx);
+            sh.emit(s, ColumnsIntent::Active { depth: depth + 1 }, tx);
         }
         Intent::Other(any) if any.downcast_ref::<Rested>().is_some() => {
             let p = (sh.parts)(s);
