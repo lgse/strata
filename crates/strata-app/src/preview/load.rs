@@ -28,6 +28,9 @@ use strata_core::{
     model::FileEntry,
     util::modified_date,
 };
+use strata_desktop::settings::{
+    Preferences, configured_hardware_acceleration, configured_video_preview_backend,
+};
 use strata_fs::{
     adapters::LocalPreviewProvider,
     services::{
@@ -41,7 +44,7 @@ use strata_kit::{
     look::Look,
     theme::syntax::{Editor, editor, syntect_theme},
 };
-use strata_preview::sandbox::{DocumentFormat, MediaPreviewBackend};
+use strata_preview::sandbox::{DocumentFormat, MediaPreviewBackend, polaris_gpu_available};
 
 use super::{
     archive,
@@ -157,10 +160,13 @@ impl Loader {
         }
     }
 
-    pub(super) fn set_media_backend(&self, backend: &str) {
-        let parsed =
-            MediaPreviewBackend::from_argument(backend).unwrap_or(MediaPreviewBackend::Automatic);
-        self.media_backend.set(parsed);
+    pub(super) fn set_media_backend(&self, backend: MediaPreviewBackend) {
+        self.media_backend.set(backend);
+    }
+
+    #[cfg(test)]
+    pub(super) fn media_backend(&self) -> MediaPreviewBackend {
+        self.media_backend.get()
     }
 
     pub(super) fn is_active(&self) -> bool {
@@ -213,6 +219,16 @@ impl Loader {
         let blocks = self.highlighter(look).blocks();
         self.blocks = Some(blocks.clone());
         blocks
+    }
+}
+
+/// Effective media decoding backend (`media_preview_backend` in
+/// `src/ui/preferences/preview_settings.rs`).
+pub(super) fn effective_media_backend(saved: &Preferences) -> MediaPreviewBackend {
+    if !configured_hardware_acceleration(saved, polaris_gpu_available()) {
+        MediaPreviewBackend::Software
+    } else {
+        configured_video_preview_backend(saved)
     }
 }
 
@@ -274,6 +290,7 @@ fn start_request(
     render_document: bool,
     archive_password: Option<SecretString>,
 ) {
+    app.preview.header_source = Some((entry.clone(), None));
     app.preview.header = identity_for(&app.look, &entry, None);
     let later = app.preview.loader.later.clone();
     app.preview.raw.load(&entry, later);
@@ -380,6 +397,7 @@ fn render_password_prompt(
     tx: &mut Tx,
 ) {
     let focus = app.preview.loader.take_focus_archive(expected);
+    app.preview.header_source = Some((entry.clone(), None));
     app.preview.header = identity_for(&app.look, entry, None);
     let mut prompt = match std::mem::replace(&mut app.preview.viewer, Viewer::Empty) {
         Viewer::ArchivePrompt(existing) if error.is_some() => existing,
@@ -419,6 +437,7 @@ fn render_failed(
 pub(super) fn render_ready(app: &mut App, loaded: Preview, tx: &mut Tx) {
     let focus_archive = app.preview.loader.take_focus_archive(loaded.request_id);
     app.preview.viewer.stop();
+    app.preview.header_source = Some((loaded.entry.clone(), Some(loaded.content_type.clone())));
     app.preview.header = identity_for(&app.look, &loaded.entry, Some(&loaded.content_type));
     app.preview.viewer = build_ready_viewer(app, loaded, focus_archive, tx);
     app.preview.viewer.reset_viewport(tx);

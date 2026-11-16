@@ -11,7 +11,16 @@ use gio::prelude::*;
 use glib::UserDirectory;
 use strata_components::sidebar::{ItemId, Pin, Place};
 use strata_core::{i18n::tr, model::Location};
-use strata_desktop::settings::Preferences;
+use strata_desktop::{
+    keys::{
+        self as key_catalog, Command, Keys, Map,
+        bindings::{
+            GO_DOCUMENTS, GO_DOWNLOADS, GO_HOME, GO_MUSIC, GO_NETWORK, GO_PICTURES, GO_RECENT,
+            GO_TRASH, GO_VIDEOS, PIN_NUMBERS,
+        },
+    },
+    settings::Preferences,
+};
 use strata_kit::icons::IconName;
 
 use crate::slots::path_customization;
@@ -152,19 +161,61 @@ pub(super) fn listed(
         .iter()
         .enumerate()
         .filter(|(_, (location, _))| !environment.is_standard(location));
-    for (index, (location, name)) in shown {
-        let pin = Pin::new(index.to_string(), name.as_str())
-            .accepts_drops(location.native_path().is_some())
-            .description(location.display_path());
-        let pin = decorate_pin(pin, settings, location.native_path());
+    for (ordinal, (index, entry)) in shown.enumerate() {
+        let pin = build_pin(ordinal, index, entry, settings);
         listed.rows.push(Row {
             item: pin.item(),
-            location: location.clone(),
+            location: entry.0.clone(),
             navigation: Navigation::Validate,
         });
         listed.pins.push(pin);
     }
     listed
+}
+
+fn build_pin(
+    ordinal: usize,
+    index: usize,
+    (location, name): &(Location, String),
+    settings: &Preferences,
+) -> Pin {
+    let pin = Pin::new(index.to_string(), name.as_str())
+        .accepts_drops(location.native_path().is_some())
+        .description(location.display_path());
+    let pin = match pin_keycap(ordinal) {
+        Some(cap) => pin.keycap(cap),
+        None => pin,
+    };
+    decorate_pin(pin, settings, location.native_path())
+}
+
+fn with_place_keycap(place: Place, step: Command) -> Place {
+    let cap =
+        key_catalog::label_in_map(&rust_i18n::locale(), &Keys::One(step.shown()), Map::Tenxer);
+    if cap.is_empty() {
+        place
+    } else {
+        place.keycap(cap)
+    }
+}
+
+fn pin_keycap(ordinal: usize) -> Option<String> {
+    let pin = u8::try_from(ordinal + 1)
+        .ok()
+        .filter(|pin| PIN_NUMBERS.contains(*pin))?;
+    let cap = key_catalog::digit_label(PIN_NUMBERS.step(), pin);
+    (!cap.is_empty()).then_some(cap)
+}
+
+fn standard_place_chord_key(id: &str) -> Option<Command> {
+    match id {
+        "documents" => Some(GO_DOCUMENTS),
+        "downloads" => Some(GO_DOWNLOADS),
+        "music" => Some(GO_MUSIC),
+        "pictures" => Some(GO_PICTURES),
+        "videos" => Some(GO_VIDEOS),
+        _ => None,
+    }
 }
 
 /// One built-in place, or none when the settings hide it or it has no folder.
@@ -178,21 +229,25 @@ fn place(
             let location = Location::local(&environment.home);
             let place =
                 Place::folder(id, tr("Home"), IconName::Home).description(location.display_path());
+            let place = with_place_keycap(place, GO_HOME);
             let place = decorate_place(place, settings, &environment.home);
             (place, location, Navigation::Validate)
         }),
         "trash" => settings.sidebar_show_trash.then(|| {
             let place = Place::trash(tr("Trash"), false).description("trash:///");
+            let place = with_place_keycap(place, GO_TRASH);
             (place, Location::uri("trash:///"), Navigation::Direct)
         }),
         "network" => settings.sidebar_show_network.then(|| {
             let location = Location::uri("network:///");
             let place = Place::other(id, tr("Network"), IconName::Network)
                 .description(location.display_path());
+            let place = with_place_keycap(place, GO_NETWORK);
             (place, location, Navigation::Validate)
         }),
         "recent" => (settings.sidebar_show_recent && environment.recent).then(|| {
             let place = Place::other(id, tr("Recent"), IconName::Recent).description("recent:///");
+            let place = with_place_keycap(place, GO_RECENT);
             (place, Location::uri("recent:///"), Navigation::Direct)
         }),
         _ => standard_place(id, settings, environment),
@@ -250,6 +305,10 @@ fn standard_place(
         .filter(|path| shows_standard_place(id, path, &environment.home))?;
     let location = Location::local(&path);
     let place = Place::folder(id, tr(name), icon).description(location.display_path());
+    let place = match standard_place_chord_key(id) {
+        Some(step) => with_place_keycap(place, step),
+        None => place,
+    };
     let place = decorate_place(place, settings, &path);
     Some((place, location, Navigation::Direct))
 }

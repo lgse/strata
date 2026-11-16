@@ -69,10 +69,12 @@ struct WornItem {
     glyph: Option<SavedGlyph>,
 }
 
-/// Every item customization saved in the window's settings, indexed by [`EntryId`].
+/// Every item customization saved in the window's settings, indexed by [`EntryId`], plus
+/// whether rendered STL model thumbnails are enabled (`Preferences::stl_thumbnails`).
 #[derive(Default)]
 pub(crate) struct Worn {
     version: u64,
+    stl_thumbnails: bool,
     by_id: HashMap<EntryId, WornItem>,
 }
 
@@ -98,11 +100,19 @@ impl Worn {
             let id = ids.of(&Location::local(Path::new(path)));
             by_id.entry(id).or_default().glyph = Some(glyph);
         }
-        Rc::new(Self { version, by_id })
+        Rc::new(Self {
+            version,
+            stl_thumbnails: settings.stl_thumbnails,
+            by_id,
+        })
     }
 
     pub(crate) fn version(&self) -> u64 {
         self.version
+    }
+
+    pub(crate) fn stl_thumbnails(&self) -> bool {
+        self.stl_thumbnails
     }
 
     pub(crate) fn get(&self, id: EntryId) -> Option<(Option<Color>, Option<EntryGlyph<'_>>)> {

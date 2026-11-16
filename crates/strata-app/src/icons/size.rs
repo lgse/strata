@@ -78,6 +78,7 @@ fn reset(app: &mut App, _: &Call<'_>, tx: &mut Tx) -> Outcome {
 
 /// C3 works the step out and lays the grid out again; [`resized`] keeps the size.
 fn apply(app: &mut App, command: SizeCommand, tx: &mut Tx) -> Outcome {
+    crate::tenxer::cancel_chord(app);
     view::grid().apply_size(app, command, tx);
     Outcome::Ran
 }

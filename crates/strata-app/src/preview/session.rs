@@ -165,6 +165,7 @@ pub(super) fn clear_target(app: &mut App, tx: &mut Tx) {
     app.preview.drawer.reset_find();
     app.preview.current = None;
     app.preview.current_depth = None;
+    app.preview.header_source = None;
     app.preview.viewer.stop();
     app.preview.viewer = Viewer::Empty;
     app.preview.header = HeaderInfo::default();

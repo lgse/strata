@@ -252,7 +252,7 @@ fn the_headers_buttons_wait_for_the_parts_that_own_their_commands() {
             let inert: Vec<&str> = shell::header_commands()
                 .filter(|command| !has(host.app(), command))
                 .collect();
-            assert_eq!(inert, ["settings"]);
+            assert!(inert.is_empty(), "every header button is wired: {inert:?}");
         },
     );
 }

@@ -1,21 +1,20 @@
 // SPDX-License-Identifier: MIT
 
-//! 10xer mode's key stage (`Stage::TenxerKeys`), mode toggle (`Ctrl+Shift+M`), Escape ladder
-//! and non-Latin layout cursor/range fallback (`src/ui/window/keyboard/tenxer.rs`,
-//! `items/tenxer_items.rs`, `escape.rs`).
+//! 10xer mode's key stage (`Stage::TenxerKeys`), mode toggle (`Ctrl+Shift+M`), Escape ladder,
+//! chord prefix triggers, and non-Latin layout cursor/range fallback
+//! (`src/ui/window/keyboard/tenxer.rs`, `items/tenxer_items.rs`, `files.rs`, `escape.rs`).
 
-use rune::Tx;
+use rune::{Key, KeyEvent, Mods, Tx};
 use strata_components::{
     collection::keyboard::{Command as Nav, RangeKind, Target, Vertical},
     contract::Direction,
 };
 use strata_core::i18n::tr;
-use strata_desktop::keys::{
-    self as key_catalog, KeyPress, Keys as KeyLabels, Map, Modifiers, bindings::*,
-};
+use strata_desktop::keys::{self as key_catalog, KeyPress, Map, Modifiers, bindings::*};
 
 use super::{
-    ChordKind, arm_chord, cancel_chord, end_active_range, end_session, run_collection_command,
+    ChordKind, arm_default_chord, bookmarks, cancel_chord, chords, end_active_range, end_session,
+    run_collection_command, shows,
 };
 use crate::{
     App,
@@ -24,6 +23,11 @@ use crate::{
 };
 
 pub(super) const COMMANDS: &[Action<App>] = &[
+    Action::new("tenxer-entry", bookmarks::on_entry_key).keys(&[Keys {
+        stage: Stage::Entry,
+        reads: Reads::Press(|press| !press.is_modifier()),
+        when: |_, _| true,
+    }]),
     Action::new("tenxer-mode", toggle_mode)
         .command(TENXER_MODE)
         .keys(&[
@@ -44,8 +48,13 @@ pub(super) const COMMANDS: &[Action<App>] = &[
         ]),
     Action::new("tenxer-keys", tenxer_stage).keys(&[Keys {
         stage: Stage::TenxerKeys,
-        reads: Reads::Press(|press| press.modifier_key().is_empty()),
+        reads: Reads::Press(|press| !press.is_modifier()),
         when: tenxer_active,
+    }]),
+    Action::new("tenxer-swallow-typing", swallow_unclaimed_typing).keys(&[Keys {
+        stage: Stage::ItemNavigation,
+        reads: Reads::Press(claims_file_list_typing),
+        when: in_tenxer_listing,
     }]),
 ];
 
@@ -59,6 +68,19 @@ fn tenxer_active(app: &App, at: &Situation) -> bool {
             at.holds(),
             Some(Holds::Modal { .. } | Holds::Menu | Holds::Popover)
         )
+}
+
+fn in_tenxer_listing(app: &App, at: &Situation) -> bool {
+    shell::preferences(app).tenxer_mode && at.in_view()
+}
+
+fn claims_file_list_typing(press: &KeyPress) -> bool {
+    (press.is(SPACE.ignoring(Modifiers::SHIFT_MASK)) || filter::is_typing_key(press))
+        && !press.is_any(key_catalog::direct_commands(Map::Tenxer))
+}
+
+fn swallow_unclaimed_typing(_: &mut App, _: &Call<'_>, _: &mut Tx) -> Outcome {
+    Outcome::Ran
 }
 
 fn toggle_mode(app: &mut App, _: &Call<'_>, _: &mut Tx) -> Outcome {
@@ -91,7 +113,7 @@ fn tenxer_stage(app: &mut App, call: &Call<'_>, tx: &mut Tx) -> Outcome {
 
 fn window_or_chord(app: &mut App, press: &KeyPress, tx: &mut Tx) -> Option<Outcome> {
     if app.tenxer.armed.is_some() {
-        return Some(handle_armed_chord(app, press, tx));
+        return Some(chords::handle_armed_chord(app, press, tx));
     }
     if press.is(CLOSE_WINDOW) {
         shell::close_window(app, tx);
@@ -106,8 +128,10 @@ fn chrome_or_escape(
     at: &Situation,
     tx: &mut Tx,
 ) -> Option<Outcome> {
-    if at.within("sidebar") {
-        return Some(Outcome::Declined);
+    if at.within("sidebar")
+        && let Some(outcome) = tenxer_sidebar(app, press, tx)
+    {
+        return Some(outcome);
     }
     if press.is(ESCAPE_ANY_SHIFT) && at.holds() != Some(Holds::Edit) {
         escape_ladder(app, tx);
@@ -116,43 +140,85 @@ fn chrome_or_escape(
     None
 }
 
+fn tenxer_sidebar(app: &mut App, press: &KeyPress, tx: &mut Tx) -> Option<Outcome> {
+    let held = press.modifiers();
+    if held.intersects(Modifiers::CONTROL_MASK | Modifiers::ALT_MASK | Modifiers::SUPER_MASK) {
+        return None;
+    }
+    if held.contains(Modifiers::SHIFT_MASK) {
+        return Some(Outcome::Ran);
+    }
+    sidebar_chord_outcome(app, press, tx)
+        .or_else(|| sidebar_swallows(press).then_some(Outcome::Ran))
+}
+
+fn sidebar_swallows(press: &KeyPress) -> bool {
+    press.is(RIGHT) || press.is(MOVE_TO_TRASH.in_map(Map::Default))
+}
+
+fn sidebar_chord_outcome(app: &App, press: &KeyPress, tx: &mut Tx) -> Option<Outcome> {
+    if press.is(LEFT.or_alternates()) || press.is(BACKSPACE) {
+        if let Some(view) = shell::view_focus(app) {
+            tx.focus(view, true);
+        }
+        return Some(Outcome::Ran);
+    }
+    if press.is(ENTER) || press.is(SPACE) {
+        return Some(Outcome::Declined);
+    }
+    if press.is(RIGHT.alternates()) {
+        send_plain(tx, Key::Enter);
+        return Some(Outcome::Ran);
+    }
+    sidebar_step_outcome(press, tx)
+}
+
+fn sidebar_step_outcome(press: &KeyPress, tx: &mut Tx) -> Option<Outcome> {
+    if press.is(DOWN.or_alternates()) {
+        return Some(step_or_yield(press, DOWN, Key::Down, tx));
+    }
+    if press.is(UP.or_alternates()) {
+        return Some(step_or_yield(press, UP, Key::Up, tx));
+    }
+    None
+}
+
+fn step_or_yield(press: &KeyPress, arrow: key_catalog::Command, key: Key, tx: &mut Tx) -> Outcome {
+    if !press.is(arrow.alternates()) {
+        return Outcome::Declined;
+    }
+    send_plain(tx, key);
+    Outcome::Ran
+}
+
+fn send_plain(tx: &mut Tx, key: Key) {
+    tx.send_key(KeyEvent {
+        key,
+        mods: Mods::default(),
+    });
+}
+
 fn listing_or_unbound(
     app: &mut App,
     press: &KeyPress,
     at: &Situation,
     tx: &mut Tx,
 ) -> Option<Outcome> {
-    if at.in_view()
-        && let Some(outcome) = listing_keys(app, press, tx)
+    let mut in_view = at.in_view();
+    if routes_typing_to_listing(in_view, at, press)
+        && let Some(view) = shell::view_focus(app)
     {
+        tx.focus(view, true);
+        in_view = true;
+    }
+    if in_view && let Some(outcome) = listing_keys(app, press, tx) {
         return Some(outcome);
     }
     claims_unbound_command(press).then_some(Outcome::Ran)
 }
 
-fn handle_armed_chord(app: &mut App, press: &KeyPress, tx: &mut Tx) -> Outcome {
-    let Some(kind) = app.tenxer.armed else {
-        return Outcome::Declined;
-    };
-    cancel_chord(app);
-    if press.is(ESCAPE_ANY) {
-        return Outcome::Ran;
-    }
-    match kind {
-        ChordKind::Go if press.is(GO_FIRST) => {
-            run_collection_command(app, Nav::Cursor(Target::First), tx);
-            Outcome::Ran
-        }
-        ChordKind::Go => {
-            app.tenxer.flash.show(tr("Unknown chord"), tx);
-            Outcome::Ran
-        }
-    }
-}
-
-fn arm_go(app: &mut App) {
-    let cap = key_catalog::label(&KeyLabels::One(GO_FIRST.shown()));
-    arm_chord(app, ChordKind::Go, vec![(cap, tr("First item"))]);
+fn routes_typing_to_listing(in_view: bool, at: &Situation, press: &KeyPress) -> bool {
+    !in_view && !at.within("preview") && filter::is_typing_key(press)
 }
 
 /// 10xer's Escape ladder (`src/ui/window/keyboard/escape.rs`): dismisses one interaction per
@@ -173,20 +239,39 @@ fn escape_ladder(app: &mut App, tx: &mut Tx) {
         || app.browser.clear_active_selection();
 }
 
-fn shows(app: &App, mode: &str) -> bool {
-    shell::shown_view(app).is_some_and(|view| (view.shows)(mode))
-}
-
 fn listing_keys(app: &mut App, press: &KeyPress, tx: &mut Tx) -> Option<Outcome> {
-    if let Some(outcome) = alt_navigation(app, press, tx) {
+    if let Some(outcome) = file_keys(app, press, tx).or_else(|| alt_navigation(app, press, tx)) {
         return Some(outcome);
     }
-    let icons = shows(app, "icons");
-    if icons {
+    if shows(app, "icons") {
         icons_keys(app, press, tx)
     } else {
         rows_keys(app, press, tx)
     }
+}
+
+/// `tenxer_file_keys` (`src/ui/window/keyboard/files.rs`): file verbs and chord triggers on
+/// the focused listing.
+fn file_keys(app: &mut App, press: &KeyPress, tx: &mut Tx) -> Option<Outcome> {
+    if press.is(HIDDEN_FILES) {
+        return Some(commands::run(app, "hidden", On::Focus, tx));
+    }
+    if press.is(BOOKMARK_SET) {
+        arm_default_chord(app, ChordKind::BookmarkSet);
+    } else if press.is(BOOKMARK_GO) {
+        bookmarks::arm_go(app);
+    } else if press.is(SORT_BY) {
+        arm_default_chord(app, ChordKind::Sort);
+    } else if press.is(ACTIONS) {
+        chords::arm_actions(app, false);
+    } else if press.is(COPY_AS) {
+        arm_default_chord(app, ChordKind::Copy);
+    } else if press.is(TAB_CHORD) {
+        arm_default_chord(app, ChordKind::Tabs);
+    } else {
+        return None;
+    }
+    Some(Outcome::Ran)
 }
 
 fn alt_navigation(app: &mut App, press: &KeyPress, tx: &mut Tx) -> Option<Outcome> {
@@ -212,7 +297,7 @@ fn icons_keys(app: &mut App, press: &KeyPress, tx: &mut Tx) -> Option<Outcome> {
         return Some(commands::run(app, "navigate-up", On::Focus, tx));
     }
     if press.is(GO) {
-        arm_go(app);
+        arm_default_chord(app, ChordKind::Go);
         return Some(Outcome::Ran);
     }
     run_collection(app, press, true, tx)
@@ -231,7 +316,7 @@ fn rows_keys(app: &mut App, press: &KeyPress, tx: &mut Tx) -> Option<Outcome> {
         return Some(Outcome::Ran);
     }
     if press.is(GO) {
-        arm_go(app);
+        arm_default_chord(app, ChordKind::Go);
         return Some(Outcome::Ran);
     }
     run_collection(app, press, false, tx)

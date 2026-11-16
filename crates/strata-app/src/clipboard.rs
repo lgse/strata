@@ -492,6 +492,25 @@ fn copy_locations_text(app: &mut App, entries: &[FileEntry]) {
     app.clipboard.write_text(&text);
 }
 
+/// `BrowserView::copy_target_text` (`src/ui/browser/file_commands.rs`): copies `entries`'
+/// display names or shell-escaped paths to the clipboard, returning `false` when empty.
+pub(crate) fn copy_entries_text(app: &mut App, entries: &[FileEntry], names: bool) -> bool {
+    if entries.is_empty() {
+        return false;
+    }
+    if names {
+        let text = entries
+            .iter()
+            .map(|entry| entry.display_name.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        app.clipboard.write_text(&text);
+    } else {
+        copy_locations_text(app, entries);
+    }
+    true
+}
+
 fn copy_name(app: &mut App, call: &Call<'_>, _: &mut Tx) -> Outcome {
     let On::Row((depth, id)) = call.on else {
         return Outcome::Declined;
