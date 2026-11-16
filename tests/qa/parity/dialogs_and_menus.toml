@@ -111,7 +111,7 @@ run = "columns-file"
 package = "A6"
 status = "pending"
 reason = "scope"
-blocker = "A17: the Properties dialog (line 8); then the clipboard it copies to (line 11)"
+blocker = "A17: the Properties dialog (line 8)"
 
 [[run]]
 scenario = "properties-copy-path-slashes-only-folders"
@@ -119,7 +119,7 @@ run = "columns-directory"
 package = "A6"
 status = "pending"
 reason = "scope"
-blocker = "A17: the Properties dialog (line 8); then the clipboard it copies to (line 11)"
+blocker = "A17: the Properties dialog (line 8)"
 
 [[run]]
 scenario = "properties-pins-and-unpins-folder"
@@ -181,7 +181,7 @@ run = "columns"
 package = "A6"
 status = "pending"
 reason = "scope"
-blocker = "A14: the custom actions' Actions submenu (line 10); then A12: Copy and Ctrl+V (lines 50 and 57)"
+blocker = "A14: the custom actions' Actions submenu (line 10)"
 
 [[run]]
 scenario = "submenu-arrows-return-to-parent"
@@ -189,7 +189,7 @@ run = "icons"
 package = "A6"
 status = "pending"
 reason = "scope"
-blocker = "A14: the custom actions' Actions submenu (line 10); then A12: Copy and Ctrl+V (lines 50 and 57)"
+blocker = "A14: the custom actions' Actions submenu (line 10)"
 
 [[run]]
 scenario = "submenu-arrows-return-to-parent"
@@ -197,4 +197,4 @@ run = "list"
 package = "A6"
 status = "pending"
 reason = "scope"
-blocker = "A14: the custom actions' Actions submenu (line 10); then A12: Copy and Ctrl+V (lines 50 and 57)"
+blocker = "A14: the custom actions' Actions submenu (line 10)"
