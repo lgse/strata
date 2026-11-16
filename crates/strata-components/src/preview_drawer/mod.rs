@@ -46,9 +46,12 @@
 //! ([`DrawerState::focus_content`] and kin) bumps a counter in the stub's key, so the old stub
 //! is removed and Rune returns focus to the stub's target, as it does when a popover closes. A
 //! stub inside the slot returns focus to the files when the preview closes. The stubs stay
-//! although Rune 2a44156 has `Tx::focus`: a returned focus goes to the target's
+//! although Rune `631e8a67` has `Tx::focus`: a returned focus goes to the target's
 //! `focus_selected` element first (the files' cursor row, an archive's chosen member), while
-//! `Tx::focus` takes the target's first focusable element (`runtime/input/focus.rs`).
+//! `Tx::focus` takes the target's first focusable element (`runtime/input/focus.rs`). When the
+//! drawer's content is still loading and nothing inside [`BODY_KEY`] is focusable yet,
+//! [`DrawerState::focus_content_when_shown`] queues `Tx::focus_when_shown(BODY_KEY, true)` so
+//! focus lands as soon as the viewer mounts (cancelling automatically if the user acts first).
 //!
 //! # Deliberate changes
 //!
@@ -432,24 +435,7 @@ impl<'a, S: 'static> PreviewDrawer<'a, S> {
                 .child(divider::divider(&shared, st, solved, columns, look))
                 .child(stub("preview-open-stub".into(), &files_key));
         } else {
-            slot = slot.a11y_hidden();
-            if slot_width > 0.0 {
-                // The empty reserved slot keeps the divider's line, so the edge beside the
-                // columns looks the same with or without a preview, and a plain click there
-                // clears the columns' selection like blank space beside the strip.
-                let empty = shared.clone();
-                slot = slot
-                    .on_press_tx(move |s: &mut S, tx: &mut Tx| empty_slot_press(&empty, s, tx))
-                    .child(
-                        el().key("preview-empty-line")
-                            .w(rules.line)
-                            .h_full()
-                            .pin(Some(0.0), Some(0.0), None, Some(0.0))
-                            .fill(look.kit.c.border_base)
-                            .a11y_hidden()
-                            .inert(),
-                    );
-            }
+            slot = empty_reserved_slot(slot, &shared, slot_width, look);
         }
         if st.is_open() && has_body {
             slot = slot.child(fit_marker(&shared, st, solved.fits));
@@ -668,6 +654,34 @@ fn stub(key: String, to: &str) -> El {
         .a11y_hidden()
         .transition(Transition::none())
         .focus_return(to)
+}
+
+fn empty_reserved_slot<S: 'static>(
+    slot: El,
+    shared: &Shared<S>,
+    slot_width: f32,
+    look: &Look,
+) -> El {
+    let slot = slot.a11y_hidden();
+    if slot_width <= 0.0 {
+        return slot;
+    }
+    // The empty reserved slot keeps the divider's line, so the edge beside the columns looks the
+    // same with or without a preview, and a plain click there clears the columns' selection like
+    // blank space beside the strip.
+    let empty = shared.clone();
+    slot.on_background_press_tx(move |s: &mut S, tx: &mut Tx| {
+        empty_slot_press(&empty, s, tx);
+    })
+    .child(
+        el().key("preview-empty-line")
+            .w(shared.rules.line)
+            .h_full()
+            .pin(Some(0.0), Some(0.0), None, Some(0.0))
+            .fill(look.kit.c.border_base)
+            .a11y_hidden()
+            .inert(),
+    )
 }
 
 fn empty_slot_press<S: 'static>(shared: &Shared<S>, s: &mut S, tx: &mut Tx) {

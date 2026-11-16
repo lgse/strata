@@ -23,7 +23,7 @@
 //! target until the clock reports it (or for at most a second, should the host drop it), so
 //! no frame shows the old position, and the handler asks for the wake that brings the poll.
 //!
-//! **Rune dev 5d421fd: partly.** `Pixels` updated in place (C14a's viewport), `Live`
+//! **Rune `631e8a67`: partly.** `Pixels` updated in place (C14a's viewport), `Live`
 //! offsets, rects, opacity and gradients, `canvas` shapes, the slider role (`on_step`,
 //! `on_step_limit`, `range_value`, `a11y_value`), an element's `on_key` ahead of the slider's
 //! step keys, `wake_after` and `LoopSpec::rotation` cover it. Missing: rune-kit has no Slider
@@ -31,7 +31,7 @@
 //! geometry can't be bound live (U-C13-1), `on_step`'s page is a fixed 10 steps (U-C13-2),
 //! and only icon quads turn without a commit (U-C13-3). `Player` has no Linux backend
 //! (anomalyco/rune#30, #112); P7 replaces it. The timeline follows the playback clock (P7),
-//! not Rune's, so `Tx::clock` (c650fe0c) retires nothing here.
+//! not Rune's, so `Tx::clock` retires nothing here.
 //!
 //! # What it does
 //!

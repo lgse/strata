@@ -192,6 +192,14 @@ impl DrawerState {
         self.focus_content = self.focus_content.wrapping_add(1);
     }
 
+    /// Moves keyboard focus into the preview's content as soon as a focusable control mounts
+    /// inside [`BODY_KEY`](super::BODY_KEY) (`Tx::focus_when_shown`, Rune `#1000`). If the user
+    /// presses another key or clicks elsewhere before the viewer arrives, Rune cancels the
+    /// pending handoff automatically.
+    pub fn focus_content_when_shown(&self, tx: &mut Tx) {
+        tx.focus_when_shown(super::BODY_KEY, true);
+    }
+
     /// Moves keyboard focus back to the files (their `focus_selected` row): Left at the
     /// content's edge, or at an archive's root.
     pub fn focus_files(&mut self) {

@@ -48,32 +48,18 @@
 //!   ([`archive::ArchiveView::on_leave`]): Strata's tree passes it on, and its listing takes
 //!   focus back. Here the host moves focus in
 //!   `on_leave`; with no `on_leave`, the key goes on as in Strata.
-//! - **The password error is announced, not described**: a polite live region, with the field
-//!   marked invalid (draft R-C14b-3).
 //!
 //! # Rune drafts (not filed)
 //!
-//! - **R-C14b-1: no busy state for assistive technology** (draft, not filed). Strata marks the
-//!   model picture busy while a view renders (`accessibility::set_busy`); Rune's builders have
-//!   no busy state at the pinned rev, so a screen reader hears only the spinner's label. Repro:
-//!   `el().role("image").label("Model preview")` in a headless runtime; `--tree` has no busy
-//!   state and no builder adds one. Ask: `El::busy(bool)`, mapped to AccessKit's busy.
 //! - **R-C14b-2: no wait cursor** (draft, not filed). Strata shows a wait cursor over the
-//!   picture while a view renders. `rune::Cursor` has no wait or progress shape at the pinned
-//!   rev (Default, Pointer, Text, Grab, Grabbing, NotAllowed, Move, the resize cursors,
-//!   Crosshair, Hidden, Image), so the default arrow stands in. Repro: none needed; the enum
-//!   lists them. Ask: `Cursor::Wait` and `Cursor::Progress`.
+//!   picture while a view renders. `rune::Cursor` has no wait or progress shape at Rune `631e8a67`
+//!   (Default, Pointer, Text, Grab, Grabbing, NotAllowed, Move, the resize cursors, Crosshair,
+//!   Cell, Hidden, Image), so the default arrow stands in. Repro: none needed; the enum lists
+//!   them. Ask: `Cursor::Wait` and `Cursor::Progress`.
 //!
-//! - **R-C14b-3: rune-kit's `TextInput` can't describe its editor** (draft, not filed). Its
-//!   `name_field` passes no description to the editor at the pinned rev, so an error can't be the
-//!   field's description; `TextField` can (`error`) but has no `on_submit`. The archive prompt's
-//!   error is a polite live region instead. Repro:
-//!   `TextInput::new(&edit).build(k).description("x")` puts "x" on the outer group, not on the
-//!   `text-input` node `--tree` shows. Ask:
-//!   `TextInput::description` (or `error`) applied to the editor.
-//!
-//! Earlier drafts these views meet: U-C1f-6 (`live_text` turns off the virtual-window fast path:
-//! why the route's labels commit instead, [`route`]).
+//! Retired at Rune `631e8a67`: R-C14b-1 (`El::busy(bool)`, `#732`) and R-C14b-3
+//! (`TextInput::description`, `#1015`). Earlier drafts these views meet: U-C1f-6 (`live_text`
+//! turns off the virtual-window fast path: why the route's labels commit instead, [`route`]).
 
 pub mod archive;
 pub mod image;

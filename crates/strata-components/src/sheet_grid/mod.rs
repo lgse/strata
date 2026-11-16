@@ -20,15 +20,14 @@
 //! // poll: changed |= s.grid.tick(now, &s.look, tx);   on closing the preview: s.grid.stop();
 //! ```
 //!
-//! Rune 2a44156: **partly**. rune-kit's `Table` covers 100,000 virtual rows, a fixed
+//! Rune `631e8a67`: **partly**. rune-kit's `Table` covers 100,000 virtual rows, a fixed
 //! header with a sort caret and resize handles, and the `grid`, `row`, `columnheader` and
 //! `gridcell` roles; but it selects whole rows only, sorts by one key, can't scroll sideways
 //! (C4's draft R-K6), has no row-header column, and its cells take no presses (R-K5, Rune
-//! #331). Rune core covers `virtual_rows`, `scroll_xy`, `sticky_left`, `live_offset`, the
-//! sorted state and set positions on virtual rows; rune-kit's `TabStrip` covers the sheet
-//! tabs. Nothing covers cell ranges, sorting by several keys, or a grid's row and column
-//! index and count. Since 5d421fd rune-kit's `Table` gained only its column-resize grip
-//! (0b07bc85), which is crate-private.
+//! #331). Rune core covers `virtual_rows`, `scroll_xy`, `sticky_left`, `live_offset`,
+//! `Cursor::Cell` (`#582`), the sorted state and set positions on virtual rows; rune-kit's
+//! `TabStrip` covers the sheet tabs. Nothing covers cell ranges, sorting by several keys, or a
+//! grid's row and column index and count.
 //!
 //! # The data and what stays in Strata
 //!
@@ -249,7 +248,7 @@ mod tests;
 
 use std::rc::Rc;
 
-use rune::{Cx, El, GrowthSpec, KeyEvent, ScrollSpec, Tx, col, text};
+use rune::{Cursor, Cx, El, GrowthSpec, KeyEvent, ScrollSpec, Tx, col, text};
 use rune_kit::shell::{TabItem, TabOrientation, TabOverflow, TabStrip};
 use strata_kit::look::Look;
 use strata_kit::slots::tabs as slot;
@@ -372,16 +371,7 @@ fn grid<S: 'static>(
         return root.child(placeholder(look, format!("{key}-loading"), &labels.loading));
     };
     if data.truncated {
-        root = root.child(
-            text(labels.limited.clone())
-                .key(format!("{key}-limited"))
-                .wrap()
-                .w_full()
-                .font(k.ty.text_small)
-                .color(k.c.text_muted)
-                .px(look.space.md)
-                .py(look.space.xs),
-        );
+        root = root.child(limited_banner(look, &key, labels));
     }
     if v.columns() == 0 {
         return root.child(placeholder(look, format!("{key}-empty"), &labels.empty));
@@ -407,54 +397,7 @@ fn grid<S: 'static>(
         built,
     });
 
-    let rows_ctx = ctx.clone();
-    // The viewport and the list are layout to assistive technology (`none`), not the buttons
-    // their drag handlers would make them: the rows are the grid's own.
-    let list = col()
-        .key(st.list_key())
-        .role("none")
-        .w_full()
-        .min_w(ctx.cols.width())
-        .growth(GrowthSpec::default())
-        .virtual_rows(
-            v.rows(),
-            paint.style.row_height,
-            move |s: &S, i| get(s).row_key(i).into(),
-            move |s: &S, i| build_row(&rows_ctx, s, i),
-        )
-        // Keys are by position: one set per sheet and row count, so no commit reads them.
-        .virtual_rows_version((st.active, v.rows()))
-        // Column windowing: the rows report where they've scrolled to on every frame of a
-        // scroll; only leaving the built columns rebuilds the view.
-        .on_layout_tx(move |s: &mut S, r: [f32; 4], tx: &mut Tx| {
-            if !get_mut(s).follow_columns(r[0]) {
-                tx.live_only();
-            }
-        })
-        .on_drag(move |s: &mut S, d: &mut rune::Drag, tx: &mut Tx| {
-            let st = get_mut(s);
-            let changed = match d.phase {
-                rune::Phase::Down => {
-                    st.press(d.x, d.y, tx.mods().shift);
-                    true
-                }
-                rune::Phase::Move => st.drag_to(d.x, d.y),
-                // Escape while the drag is held: Rune ends it cancelled and the key reaches
-                // no handler. Strata's capture-phase key controller clears the range on it.
-                rune::Phase::Up if d.cancelled() => {
-                    st.release();
-                    st.clear_range()
-                }
-                rune::Phase::Up => {
-                    let moved = st.drag_to(d.x, d.y);
-                    st.release();
-                    moved
-                }
-            };
-            if !changed {
-                tx.live_only();
-            }
-        });
+    let list = body_list(st, v, ctx.clone());
     let (feed, vbar, hbar, strip_x) = (
         st.feed.clone(),
         st.vbar.clone(),
@@ -499,6 +442,78 @@ fn grid<S: 'static>(
     let body = st.hbar.area(st.vbar.area(overlay(viewport, [vbar, hbar])));
     root.child(header(&ctx, st, v, &st.strip_x))
         .child(col().w_full().grow(1.0).min_h(0.0).child(body))
+}
+
+fn limited_banner(look: &Look, key: &str, labels: &SheetLabels) -> El {
+    let k = &look.kit;
+    text(labels.limited.clone())
+        .key(format!("{key}-limited"))
+        .wrap()
+        .w_full()
+        .font(k.ty.text_small)
+        .color(k.c.text_muted)
+        .px(look.space.md)
+        .py(look.space.xs)
+}
+
+fn body_list<S: 'static>(st: &SheetGridState, v: &state::SheetView, ctx: Rc<Ctx<S>>) -> El {
+    let (get, get_mut, row_h, width) = (
+        ctx.get,
+        ctx.get_mut,
+        ctx.paint.style.row_height,
+        ctx.cols.width(),
+    );
+    // The viewport and the list are layout to assistive technology (`none`), not the buttons
+    // their drag handlers would make them: the rows are the grid's own.
+    col()
+        .key(st.list_key())
+        .role("none")
+        .cursor(Cursor::Cell)
+        .w_full()
+        .min_w(width)
+        .growth(GrowthSpec::default())
+        .virtual_rows(
+            v.rows(),
+            row_h,
+            move |s: &S, i| get(s).row_key(i).into(),
+            move |s: &S, i| build_row(&ctx, s, i),
+        )
+        // Keys are by position: one set per sheet and row count, so no commit reads them.
+        .virtual_rows_version((st.active, v.rows()))
+        // Column windowing: the rows report where they've scrolled to on every frame of a
+        // scroll; only leaving the built columns rebuilds the view.
+        .on_layout_tx(move |s: &mut S, r: [f32; 4], tx: &mut Tx| {
+            if !get_mut(s).follow_columns(r[0]) {
+                tx.live_only();
+            }
+        })
+        .on_drag(move |s: &mut S, d: &mut rune::Drag, tx: &mut Tx| {
+            on_body_drag(get_mut(s), d, tx);
+        })
+}
+
+fn on_body_drag(st: &mut SheetGridState, d: &rune::Drag, tx: &mut Tx) {
+    let changed = match d.phase {
+        rune::Phase::Down => {
+            st.press(d.x, d.y, tx.mods().shift);
+            true
+        }
+        rune::Phase::Move => st.drag_to(d.x, d.y),
+        // Escape while the drag is held: Rune ends it cancelled and the key reaches
+        // no handler. Strata's capture-phase key controller clears the range on it.
+        rune::Phase::Up if d.cancelled() => {
+            st.release();
+            st.clear_range()
+        }
+        rune::Phase::Up => {
+            let moved = st.drag_to(d.x, d.y);
+            st.release();
+            moved
+        }
+    };
+    if !changed {
+        tx.live_only();
+    }
 }
 
 /// What each column is drawn at while nobody has resized one: what it wants, fitted to

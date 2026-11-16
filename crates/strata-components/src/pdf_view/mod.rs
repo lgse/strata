@@ -109,11 +109,10 @@
 //! nearest point on any page, measured in window points, so pages drawn at different sizes
 //! compare fairly (Strata measures in each page's own pixels).
 //!
-//! A zoom keeps its anchor until its page has laid out again after the scroll that places it:
-//! a notch on the next frame zooms about the same point rather than about pages the last
-//! notch's estimate put on screen. The
-//! estimate for rows not laid out is the mean of the pages' sizes, so a jump far down a mixed
-//! document lands near the right page in its first frame.
+//! A zoom places its anchor's row in the same frame through `Tx::scroll_key_to` (Rune `#972`),
+//! and keeps the anchor cached until that row's layout report arrives at the placed offset: a
+//! notch on the very next frame zooms about the same point before `rects` has been repopulated.
+//! The estimate for unvisited virtual rows is the mean of the pages' sizes.
 //!
 //! The I-beam follows the text under the pointer, also when the pages scroll under a still
 //! pointer (each page's layout checks the last pointer point); a drag keeps its own cursor and
@@ -176,15 +175,9 @@
 //!   one page.
 //! - **D5** Click counting is Rune's (`Drag::clicks`: the double-click interval, 0.5 s on
 //!   Linux, and 4 points), not Strata's 450 ms and 6 pixels.
-//! - **D6** A zoom on a document of mixed page sizes can draw a frame off before it lands (probe
-//!   P1): Rune places a row only once it has laid it out, so the zoom jumps to where the
-//!   centre's page would be if every row above were the mean row's height, then that page
-//!   places itself. Strata corrects in an idle callback, a frame late, too. Measured on 500
-//!   pages, every third landscape (`a_zoom_far_down_a_mixed_document_keeps_the_centre`): one
-//!   notch at page 300 draws one frame 0.13 pages off, four notches on consecutive frames at
-//!   most 0.40 pages off on the way, at page 30 at most 0.14; each lands within 0.003 of the
-//!   page's height of where it was. Before review 1 one notch drew a frame 1.6 pages off, and
-//!   four on consecutive frames landed 3 pages off.
+//! - **D6** Zoom places the anchor's virtual row in the same frame (`Tx::scroll_key_to`, Rune
+//!   `#972`); unvisited rows above it still contribute the mean row height to the total scroll
+//!   extent until visited (`U-C12-2`).
 //! - **D7** (owner ruling 8) Each page's text is a `paragraph` for assistive technology, and the
 //!   root reads the page and zoom; Strata exposes an image named "PDF page text".
 //! - **D8** Text layers stay under a budget plus every selected page, so Ctrl+A's "every
@@ -201,14 +194,10 @@
 //!   can't be given per-character rects. Ask: `El::positioned_text(text, rects)` taking part in
 //!   the selection, copying and the accessible text. (Upstream #353 is about hit-testing
 //!   shaped text, not this.)
-//! - **U-C12-2** Virtual rows take one height estimate: a document of mixed page sizes places
-//!   its unvisited rows wrong, so a zoom far down can't land in one frame, and the scroll extent
-//!   drifts until rows are visited (probe P1). Ask: a per-index height hint
-//!   (`virtual_rows_heights(|s, i| h)`), used until a row is measured.
-//! - **U-C12-3** `scroll_key_to` places only a row laid out: after a commit that resizes every
-//!   row far down the list, the row under the centre isn't mounted at the old offset, and the
-//!   request does nothing (probe P1, 500 rows, row 300). Ask: place a virtual row by key from
-//!   the commit's layout, as `scroll_into_view` reaches an unmounted row.
+//! - **U-C12-2** Virtual rows take one height estimate: the total scroll extent of a mixed-size
+//!   document drifts until unvisited rows are measured (`U-C12-3`'s same-frame `scroll_key_to`
+//!   landed in Rune `#972`). Ask: a per-index height hint (`virtual_rows_heights(|s, i| h)`),
+//!   used until a row is measured.
 //! - **U-C12-4** A hoverable child's cursor never shows inside a draggable parent: the cursor
 //!   comes from the element a press would go to (`primary_target`), so a text band with
 //!   `Cursor::Text` and a hover handler inside the draggable pages shows the parent's grab
