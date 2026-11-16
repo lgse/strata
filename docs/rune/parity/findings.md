@@ -139,6 +139,16 @@ closed issue is not a fixed finding: the state given here is the finding's.
   sibling), failed once in CI's shard 3, in the pull request's first run. That change adds
   key constants and two characters to the table key backend, which the GTK application
   does not install; `./scripts/quality.sh test` had passed with it in the pinned image.
+- **On [#2549](https://github.com/lgse/strata/pull/2549):** a ninth,
+  `ui::window::tests::keyboard_dispatch::preview_ownership::default_archive_keys_follow_pane_focus`
+  ("keyboard fixture did not settle", `src/ui/window/tests/keyboard_dispatch.rs:324`), and,
+  with no GTK in it, `strata-desktop`'s
+  `services::update_install::tests::unowned_release_binary_keeps_in_place_updates`
+  (`crates/strata-desktop/src/services/update_install/tests.rs:258`, the install read as
+  `Pacman`), each failed once in `./scripts/quality.sh all` in the pinned image at
+  `1d4e3b8a9` on a loaded host. That change touches neither `src/` nor
+  `crates/strata-desktop`; alone, the first passed 3 of 3 and the second 1 of 1
+  (`./scripts/test-headless.py`).
 - **State:** open, set aside. Whoever meets one of these in a red shard reads the failure
   first: if the change could reach the test, it is the change's; if not, say why on the pull
   request, rerun the whole workflow once, and stop if the same test fails twice. A new flaky
