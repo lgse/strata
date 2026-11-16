@@ -50,9 +50,13 @@ menus v4 389c2a5b99f176f3
 # activating header buttons, `Open in default application` hiding instead of disabling on a
 # placeholder, `.a11y_hidden()` omitting the header's `·` separators, and stale `—` metadata when
 # MetadataFilled raced PreviewEvent::Ready in List (all five fixed), and met CodeView/DocumentView/
-# SheetGrid body app.preview differences (lgse/strata#2509). Version 2 previews cover archives,
-# RAW/archive failure cards, binary unsupported cards, and folder/empty placeholders.
-preview v2 08a10513675f6792
+# SheetGrid body app.preview differences (lgse/strata#2509). Version 2, also a draft, previewed
+# cover archives, RAW/archive failure cards, binary unsupported cards and folder/empty
+# placeholders: its smoke tier caught a context-menu Quick preview keeping the old anchor, the
+# extension label upper-cased, and `No visual preview` refusing focus on Right (all fixed), and
+# met cover archives written with wall-clock ZIP timestamps. Version 3 writes the archives as
+# fixed bytes.
+preview v3 f37c745872a8b58a
 # properties: versions 1 and 2 were A17's drafts, never merged: version 1 met `Open` on fixture
 # folders opening GTK's Open With chooser (`BrowserEvent::OpenRequested`, A14's Slice 2) and
 # lgse/strata#2356 on already-open folder clicks and cursorless background-menu Escape; version 2
