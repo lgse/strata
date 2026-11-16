@@ -229,6 +229,7 @@ pub(crate) fn open(app: &mut App, request: Request, tx: &mut Tx) {
         );
         app.menu
             .show(depth, opening, Point::new(anchor.x, anchor.y));
+        crate::open_with::prepare_menu(app, depth, entry);
     }
 }
 
@@ -299,6 +300,10 @@ impl Menu {
 
     pub(crate) fn provider_slot(&self) -> usize {
         self.provider_slot
+    }
+
+    pub(crate) fn open_item(&self) -> Item {
+        OPEN.item(self.typing)
     }
 
     fn name(&self) -> &str {
