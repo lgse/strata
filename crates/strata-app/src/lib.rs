@@ -100,6 +100,7 @@ mod transfer;
 mod preview;
 // A16 Media, PDF and model viewers
 // A17 Properties
+mod properties;
 // A18 Settings and themes
 // A19 Drag and drop
 // A20 Portal chooser
@@ -157,6 +158,7 @@ slots::parts! {
     preview: preview::Preview,
     // A16 Media, PDF and model viewers
     // A17 Properties
+    properties: properties::Properties,
     // A18 Settings and themes
     // A19 Drag and drop
     // A20 Portal chooser

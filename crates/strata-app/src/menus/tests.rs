@@ -395,12 +395,14 @@ fn the_rows_with_a_command_act_and_the_rest_are_inert() {
                     "copy-name",
                     "copy-paths",
                     "copy-names",
+                    "properties",
                     "trash",
                     "delete",
                     "paste",
                     "select-all",
                     "refresh",
-                    "hidden"
+                    "hidden",
+                    "properties"
                 ]
             );
         },
