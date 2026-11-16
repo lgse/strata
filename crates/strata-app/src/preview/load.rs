@@ -27,6 +27,9 @@ use strata_core::{
     model::FileEntry,
     util::modified_date,
 };
+use strata_desktop::settings::{
+    Preferences, configured_hardware_acceleration, configured_video_preview_backend,
+};
 use strata_fs::{
     adapters::LocalPreviewProvider,
     services::{
@@ -39,7 +42,7 @@ use strata_kit::{
     look::Look,
     theme::syntax::{Editor, editor, syntect_theme},
 };
-use strata_preview::sandbox::{DocumentFormat, MediaPreviewBackend};
+use strata_preview::sandbox::{DocumentFormat, MediaPreviewBackend, polaris_gpu_available};
 
 use super::{
     document::{DocumentSpec, RenderedDocument},
@@ -143,10 +146,13 @@ impl Loader {
         }
     }
 
-    pub(super) fn set_media_backend(&self, backend: &str) {
-        let parsed =
-            MediaPreviewBackend::from_argument(backend).unwrap_or(MediaPreviewBackend::Automatic);
-        self.media_backend.set(parsed);
+    pub(super) fn set_media_backend(&self, backend: MediaPreviewBackend) {
+        self.media_backend.set(backend);
+    }
+
+    #[cfg(test)]
+    pub(super) fn media_backend(&self) -> MediaPreviewBackend {
+        self.media_backend.get()
     }
 
     pub(super) fn is_active(&self) -> bool {
@@ -194,6 +200,16 @@ impl Loader {
         let blocks = self.highlighter(look).blocks();
         self.blocks = Some(blocks.clone());
         blocks
+    }
+}
+
+/// Effective media decoding backend (`media_preview_backend` in
+/// `src/ui/preferences/preview_settings.rs`).
+pub(super) fn effective_media_backend(saved: &Preferences) -> MediaPreviewBackend {
+    if !configured_hardware_acceleration(saved, polaris_gpu_available()) {
+        MediaPreviewBackend::Software
+    } else {
+        configured_video_preview_backend(saved)
     }
 }
 
@@ -245,6 +261,7 @@ pub(super) fn reload_rendered(app: &mut App, entry: FileEntry) {
 }
 
 fn start_request(app: &mut App, entry: FileEntry, render_document: bool) {
+    app.preview.header_source = Some((entry.clone(), None));
     app.preview.header = identity_for(&app.look, &entry, None);
     let later = app.preview.loader.later.clone();
     app.preview.raw.load(&entry, later);
@@ -341,6 +358,7 @@ fn on_event(app: &mut App, expected: PreviewRequestId, event: PreviewEvent, tx: 
 
 pub(super) fn render_ready(app: &mut App, loaded: Preview, tx: &mut Tx) {
     app.preview.viewer.stop();
+    app.preview.header_source = Some((loaded.entry.clone(), Some(loaded.content_type.clone())));
     app.preview.header = identity_for(&app.look, &loaded.entry, Some(&loaded.content_type));
     let wrap = shell::preferences(app).preview_text_wrap;
     let highlighter = app.preview.loader.highlighter(&app.look);
