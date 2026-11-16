@@ -13,8 +13,8 @@ pub const FADE: f64 = 0.18;
 const EPS: f64 = 1e-6;
 
 /// A time stamped at the next tick. The dock's cards start from handlers that have a `Tx`, so
-/// `Tx::clock` (Rune c650fe0c) could stamp them, except C15's dialog buttons, which carry no
-/// `Tx` ([`super::Dock::cancel_untimed`]).
+/// `Tx::clock` (Rune 631e8a67) could stamp runtime-built `Tx`s, except C15's dialog buttons,
+/// which carry no `Tx` ([`super::Dock::cancel_untimed`]).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum Since {
     Pending,

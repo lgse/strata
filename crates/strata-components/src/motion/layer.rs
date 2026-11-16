@@ -49,6 +49,7 @@ impl<S: 'static> MotionLayer<S> {
         let root = el()
             .key(LAYER)
             .pin(Some(0.0), Some(0.0), Some(0.0), Some(0.0))
+            .animated_changes()
             .inert()
             .a11y_hidden();
         if !fx.playing() {

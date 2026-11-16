@@ -10,18 +10,19 @@
 //! `src/ui/progress_dock/completion.rs`, `src/ui/notice.rs`, `src/ui/browser/progress/*`,
 //! `src/ui/jobs.rs`, `src/i18n.rs` and `src/style.css`.
 //!
-//! **Rune dev 5d421fd: partly.** `Live`, `LiveText` and `Tween` draw the bars and live labels
+//! **Rune 631e8a67: partly.** `Live`, `LiveText` and `Tween` draw the bars and live labels
 //! without running the view; `El::on_layout_tx` with `Tx::live_only` gives the track's size
-//! without a commit; `role("status")` is a polite live region (`a11y/node.rs:181`); progress
-//! bars take range values; `El::modal` with `focus_return`, `popover::anchored` and
-//! `ScrollSpec { stick_bottom }` make the jobs list; C15's `StrataDialog` makes the blocking
-//! dialog. rune-kit's ToastRegion, Toast and Card are too fixed for the dock (below); its
-//! Progress draws the jobs rows. Missing: an accessibility value that follows a `Live`
-//! (U-C16-3), a fill width as a live fraction (U-C16-2), a callback when focus enters or
-//! leaves an element (U-C16-4). Not adopted: rune-kit's `ToastStack` (1633f8d6), Sonner's
-//! stack that merges toasts by key and pauses every timer while expanded, where Strata pauses
-//! a card and replaces notices by its own rule; and `Tx::clock` (c650fe0c), which could retire
-//! the stamp-at-the-next-tick pattern below once C15's dialog buttons carry a `Tx`.
+//! without a commit; `El::busy` marks active cards and running job rows busy; `role("status")`
+//! is a polite live region (`a11y/node.rs:181`); progress bars take range values; `El::modal`
+//! with `focus_return`, `popover::anchored` and `ScrollSpec { stick_bottom }` make the jobs
+//! list; C15's `StrataDialog` makes the blocking dialog. rune-kit's ToastRegion, Toast and Card
+//! are too fixed for the dock (below); its Progress draws the jobs rows. Missing: an
+//! accessibility value that follows a `Live` (U-C16-3), a fill width as a live fraction
+//! (U-C16-2), a callback when focus enters or leaves an element (U-C16-4). Not adopted:
+//! rune-kit's `ToastStack` (1633f8d6), Sonner's stack that merges toasts by key and pauses
+//! every timer while expanded, where Strata pauses a card and replaces notices by its own rule;
+//! and `Tx::clock` (c650fe0c), which could retire the stamp-at-the-next-tick pattern below once
+//! C15's dialog buttons carry a `Tx`.
 //!
 //! # Hosting
 //!
@@ -202,8 +203,8 @@
 //! - **Committed text at most 4 times a second** (OWNER ruling); Strata renders at 33 ms. The bars
 //!   and live labels follow every sample.
 //! - **Focus doesn't pause a countdown**: Rune has no way to tell a card that keyboard focus
-//!   came in (U-C16-4; `hover_group_focus` draws the hover but `on_hover_change` doesn't hear
-//!   it). Hover and the pin pause it; the card's border shows focus within.
+//!   came in (U-C16-4; `hover_group` draws the hover on focus within, while `on_hover_change`
+//!   doesn't hear it). Hover and the pin pause it; the card's border shows focus within.
 //! - **Check notices are a card wide** (340 pt): a wrapping text in a row without a width lays
 //!   out at its narrowest in Rune, so a notice can't size to its words up to Strata's 60
 //!   characters. A status notice is one line and fits its words.
@@ -312,7 +313,7 @@
 //!
 //! # Rune drafts (not filed)
 //!
-//! - **U-C16-1, ToastRegion and Toast are fixed.** At 5d421fd ToastRegion keys itself
+//! - **U-C16-1, ToastRegion and Toast are fixed.** At 631e8a67 ToastRegion keys itself
 //!   `toast-region`, names itself "Notifications", pins 32 and 48 points in and has no height
 //!   cap or scroll; Toast is 320 points wide with a fixed radius and padding. Ask: a key, a
 //!   name, insets, a maximum height that scrolls, and the width from the caller.
@@ -328,9 +329,9 @@
 //! - **U-C16-4, no focus-within callback.** No element hears keyboard focus enter or leave it: a
 //!   poll can read `Tx::focused` (Rune cd2bd55a) but only by comparing frames, Tab never reaches
 //!   the window's `on_key` once a control has focus, and `on_hover_change` doesn't fire for
-//!   `hover_group_focus`. Repro: a row with `hover_group_focus().on_hover_change(..)` around a
-//!   focusable button, Tab into it: the hover visual turns on, the handler hears nothing. Ask:
-//!   `El::on_focus_within(|s, bool, tx|)`.
+//!   `hover_group`'s focus-within visual. Repro: a row with `hover_group().on_hover_change(..)`
+//!   around a focusable button, Tab into it: the hover visual turns on, the handler hears
+//!   nothing. Ask: `El::on_focus_within(|s, bool, tx|)`.
 
 mod countdown;
 mod dialog;

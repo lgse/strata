@@ -497,12 +497,7 @@ impl<S: 'static> Jobs<S> {
                     .color(c.text_accent)
                     .a11y_hidden(),
             );
-        let mark = match r.status {
-            JobStatus::Succeeded => Some(IconName::Check),
-            JobStatus::Failed | JobStatus::Cancelled => Some(IconName::Close),
-            _ => None,
-        };
-        if let Some(m) = mark {
+        if let Some(m) = status_mark(r.status) {
             head = head.child(
                 icon(look.icon(m), look.icon_size.sm)
                     .color(c.icon_base)
@@ -598,6 +593,7 @@ impl<S: 'static> Jobs<S> {
             .role("group")
             .label(r.name.clone())
             .description(format!("{status_words} · {meta}"))
+            .busy(r.status.is_running())
             .w_full()
             .gap(space.lg)
             .items_start()
@@ -609,6 +605,14 @@ impl<S: 'static> Jobs<S> {
             row_el = row_el.border_sides([1.0, 0.0, 0.0, 0.0], c.border_muted);
         }
         row_el
+    }
+}
+
+fn status_mark(status: JobStatus) -> Option<IconName> {
+    match status {
+        JobStatus::Succeeded => Some(IconName::Check),
+        JobStatus::Failed | JobStatus::Cancelled => Some(IconName::Close),
+        _ => None,
     }
 }
 

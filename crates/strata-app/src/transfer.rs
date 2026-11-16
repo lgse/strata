@@ -82,7 +82,6 @@ impl Part for Transfer {
     }
 
     fn poll(app: &mut App, clock: f64, tx: &mut Tx) -> bool {
-        app.transfer.ops.last_clock = clock;
         app.transfer.ops.dock.set_animations(app.look.animations);
         let cancels = std::mem::take(&mut app.transfer.ops.queued_cancels);
         let cancelled = !cancels.is_empty();

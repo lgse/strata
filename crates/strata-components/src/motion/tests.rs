@@ -46,6 +46,9 @@ struct Host {
     t: f64,
     /// Answer Launched with an instant commit.
     instant: bool,
+    /// Start each poll unprompted (`tx.instant()` before `Effects::tick`), as a real window's
+    /// poll commit lands at once unless a handler calls `tx.animated()`.
+    unprompted: bool,
     /// Flights name the list as their rows' viewport.
     rows_in: bool,
     /// The list's height: rows below it are laid out but scrolled out of it.
@@ -69,6 +72,7 @@ impl Host {
             events: Vec::new(),
             t: 0.0,
             instant: false,
+            unprompted: false,
             rows_in: false,
             list_h: H,
             ghost: true,
@@ -160,42 +164,49 @@ fn view(s: &Host, cx: &mut Cx<Host>) -> El {
 
 fn poll(s: &mut Host, t: f64, tx: &mut rune::Tx) -> bool {
     s.t = t;
+    if s.unprompted {
+        tx.instant();
+    }
     let events = s.fx.tick(t, tx);
     let changed = !events.is_empty();
     for e in events {
         s.events.push((t, e));
-        let (id, at) = match e {
-            Event::Launched(id) => (id, Owe::RemoveAtLaunch),
-            Event::Landed(id) => (id, Owe::ShowAtLanded),
-            Event::Done(id) => (id, Owe::RemoveAtDone),
-        };
-        // Each event acts only on the rows its own effect is owed, so a skipped one can't
-        // be hidden by a later event clearing them.
-        let rows: Vec<u64> = s
-            .owed
-            .iter()
-            .filter(|o| o.0 == id && o.1 == at)
-            .flat_map(|o| o.2.clone())
-            .collect();
-        match at {
-            Owe::RemoveAtLaunch if !rows.is_empty() => {
-                s.rows.retain(|r| !rows.contains(r));
-                if s.instant {
-                    tx.instant();
-                }
-            }
-            Owe::ShowAtLanded => s.vanished.retain(|v| !rows.contains(v)),
-            Owe::RemoveAtDone => {
-                s.rows.retain(|r| !rows.contains(r));
-                s.vanished.retain(|v| !rows.contains(v));
-            }
-            Owe::RemoveAtLaunch => {}
-        }
-        if matches!(e, Event::Done(_)) {
-            s.owed.retain(|o| o.0 != id);
-        }
+        apply_event(s, e, tx);
     }
     changed
+}
+
+fn apply_event(s: &mut Host, e: Event, tx: &mut rune::Tx) {
+    let (id, at) = match e {
+        Event::Launched(id) => (id, Owe::RemoveAtLaunch),
+        Event::Landed(id) => (id, Owe::ShowAtLanded),
+        Event::Done(id) => (id, Owe::RemoveAtDone),
+    };
+    // Each event acts only on the rows its own effect is owed, so a skipped one can't
+    // be hidden by a later event clearing them.
+    let rows: Vec<u64> = s
+        .owed
+        .iter()
+        .filter(|o| o.0 == id && o.1 == at)
+        .flat_map(|o| o.2.clone())
+        .collect();
+    match at {
+        Owe::RemoveAtLaunch if !rows.is_empty() => {
+            s.rows.retain(|r| !rows.contains(r));
+            if s.instant {
+                tx.instant();
+            }
+        }
+        Owe::ShowAtLanded => s.vanished.retain(|v| !rows.contains(v)),
+        Owe::RemoveAtDone => {
+            s.rows.retain(|r| !rows.contains(r));
+            s.vanished.retain(|v| !rows.contains(v));
+        }
+        Owe::RemoveAtLaunch => {}
+    }
+    if matches!(e, Event::Done(_)) {
+        s.owed.retain(|o| o.0 != id);
+    }
 }
 
 /// The rows the host still shows: listed and not vanished.
@@ -698,8 +709,24 @@ fn a_moved_target_still_takes_the_icons() {
 
 #[test]
 fn an_instant_flip_flies_nothing_at_the_pin() {
-    // At Rune 2a44156 an instant commit turns the matched swap off: the icon shows at its
-    // landing place at once.
+    // At Rune 631e8a67 `Effects::tick` marks a launch commit animated so an unprompted poll
+    // commit still flies, while `tx.instant()` after `tick` turns the matched swap off so the
+    // icon shows at its landing place at once.
+    let mut unprompted = Host::new(5);
+    unprompted.unprompted = true;
+    let mut rt = runtime(unprompted);
+    let id = trash(&mut rt, &[4]).unwrap();
+    let from = middle(rt.presented(&launch_key(id, 0)).unwrap().0);
+    frames(&mut rt, 1.0, launched);
+    rt.frame(DT);
+    let flyer = middle(rt.presented(&flyer_key(id, 0)).unwrap().0);
+    assert!(
+        distance(flyer, target_middle(&rt)) > 20.0
+            && distance(flyer, from) < distance(from, target_middle(&rt)),
+        "tick asked for motion on the unprompted poll: {flyer:?} left {from:?} toward {:?}",
+        target_middle(&rt)
+    );
+
     let mut host = Host::new(5);
     host.instant = true;
     let mut rt = runtime(host);
