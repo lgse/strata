@@ -288,6 +288,12 @@ fn leave_folder_being_deleted(app: &App, entries: &[FileEntry]) {
     }
 }
 
+/// Moves dropped file entries to the Trash (`trash_dropped_locations` in
+/// `src/ui/browser/trash.rs`).
+pub(crate) fn trash_dropped(app: &mut App, entries: Vec<FileEntry>) {
+    let _ = request(app, entries, false);
+}
+
 /// `request_delete`.
 fn request(app: &mut App, entries: Vec<FileEntry>, permanent: bool) -> Outcome {
     if entries.iter().any(|entry| !can_remove(&entry.location)) {

@@ -8,7 +8,6 @@ use strata_components::viewers::{
     viewport::{Mode, ViewportState},
 };
 use strata_core::{i18n::tr, model::FileEntry};
-use strata_kit::look::Look;
 
 use crate::App;
 
@@ -73,7 +72,7 @@ fn image_label(entry: &FileEntry) -> String {
 
 pub(super) fn build_view(
     viewer: &ImageViewer,
-    look: &Look,
+    app: &App,
     cx: &mut Cx<App>,
     access: fn(&mut App) -> &mut ViewportState,
 ) -> El {
@@ -82,5 +81,6 @@ pub(super) fn build_view(
         .pixels(&viewer.pixels)
         .name(viewer.name.clone())
         .size_px(viewer.size_px)
-        .build(look, cx)
+        .drag_source(crate::dnd::binder(app), crate::dnd::preview_drag_source())
+        .build(&app.look, cx)
 }

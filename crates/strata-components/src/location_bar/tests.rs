@@ -364,4 +364,28 @@ fn middle_press_on_ancestor_crumb_opens_tab_or_window_when_enabled() {
     assert!(disabled.state.intents.is_empty());
 }
 
+// Packet entry 108: a `Tx::element_at` callback inside `Runtime::frame` sees `tx.clock() == 0.0`
+// even when the window's clock is seconds ahead; the spring stamps its start on the next tick.
+#[test]
+fn a_zero_clock_pick_hover_waits_the_full_delay_from_next_tick() {
+    let mut s = LocationBarState::new();
+    let mut tx = Tx::default();
+    s.drag_over(
+        1,
+        "/home/demo",
+        DropHover::Accepting,
+        Some(SPRING_DELAY),
+        0.0,
+    );
+    assert!(intents(s.tick(2.5, &mut tx)).is_empty());
+    assert!(intents(s.tick(3.0, &mut tx)).is_empty());
+    assert_eq!(
+        intents(s.tick(2.5 + SPRING_DELAY, &mut tx)),
+        [LocationIntent::Open {
+            id: "/home/demo".into(),
+            via: Via::Spring
+        }]
+    );
+}
+
 mod perf;

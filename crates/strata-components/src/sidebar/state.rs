@@ -282,7 +282,7 @@ impl SidebarState {
     }
 
     /// The drag dropped or left the window: no site holds it.
-    pub(crate) fn end_drag(&mut self) {
+    pub fn end_drag(&mut self) {
         self.drop = None;
         self.drag = None;
     }

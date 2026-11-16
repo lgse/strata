@@ -415,3 +415,69 @@ fn row_press_middle_click_and_keyboard_activation_route_cleanly() {
         ]
     );
 }
+
+#[test]
+fn row_drag_outside_sidebar_reports_start_move_and_outside_release() {
+    let look = strata_kit::look::Look::default();
+    let host = MountedHost {
+        sidebar: SidebarState::new(&look),
+        look,
+        places: vec![Place::folder("home", "Home", IconName::Home)],
+        pins: vec![Pin::new("docs", "Docs")],
+        groups: Vec::new(),
+        intents: Vec::new(),
+    };
+    let mut rt = rune::Runtime::new(
+        host,
+        |h: &MountedHost, _: &mut rune::Cx<MountedHost>| {
+            let data = SidebarData {
+                places: &h.places,
+                pins: &h.pins,
+                devices: &h.groups,
+                labels: SidebarLabels {
+                    pinned: "PINNED",
+                    devices: "DEVICES",
+                    rows: |n| format!("{n} items"),
+                },
+                ..SidebarData::default()
+            };
+            PlacesSidebar::new(&h.sidebar, |h: &mut MountedHost| &mut h.sidebar, data)
+                .reorder(true)
+                .on_intent(|h, intent, _| h.intents.push(intent))
+                .build(&h.look)
+        },
+        (260.0, 500.0),
+        rune::Env::default(),
+    );
+    rt.frame(0.0);
+    rt.frame(1.0 / 60.0);
+    let (hx, hy) = element_center(&rt, "places-place-home");
+    rt.pointer_move(hx, hy);
+    rt.pointer_down(hx, hy);
+    rt.pointer_move(hx + 24.0, hy);
+    rt.frame(1.0 / 60.0);
+    rt.pointer_move(360.0, hy);
+    rt.frame(1.0 / 60.0);
+    rt.pointer_up(360.0, hy);
+    rt.frame(1.0 / 60.0);
+
+    let home = ItemId::Place("home".into());
+    assert!(
+        rt.state
+            .intents
+            .contains(&SidebarIntent::RowDragStart { item: home.clone() })
+    );
+    assert!(
+        rt.state
+            .intents
+            .iter()
+            .any(|intent| matches!(intent, SidebarIntent::RowDragMove { item, landing: None, .. } if *item == home))
+    );
+    assert_eq!(
+        rt.state.intents.last(),
+        Some(&SidebarIntent::RowDragEnd {
+            item: home,
+            dropped_outside: Some([360.0, hy]),
+        })
+    );
+}
