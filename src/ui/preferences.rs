@@ -5,7 +5,6 @@ use std::{
     cell::{Cell, RefCell},
     path::{Component, Path, PathBuf},
     rc::Rc,
-    time::Duration,
 };
 #[cfg(test)]
 use std::{collections::HashMap, fs};
@@ -15,6 +14,12 @@ use gtk::{glib, prelude::*};
 // strata-desktop, where the Rune interface reads them too. This module keeps what needs GTK.
 #[cfg(test)]
 use strata_desktop::settings::read_preferences;
+use strata_desktop::settings::{
+    ADOPTED_DEFAULT_KEYS, KeymapOverrides, MAX_ICONS_THUMBNAIL_SIZE, MIN_ICONS_THUMBNAIL_SIZE,
+    ThemeAvailability, configured_hardware_acceleration, configured_video_preview_backend,
+    normalized_font_family, normalized_search_limit, normalized_video_start, normalized_volume,
+    parse_preferences, settings_path, sort_preferences, store_sort,
+};
 pub use strata_desktop::settings::{
     CornerRoundness, ListColumnId, ListColumns, TextSize, default_list_column_order,
 };
@@ -23,12 +28,6 @@ pub(crate) use strata_desktop::settings::{
     sanitize_list_hidden_columns,
 };
 use strata_desktop::settings::{FinishedSave, PendingSave, SaveOutcome, Saving};
-use strata_desktop::settings::{
-    KeymapOverrides, MAX_ICONS_THUMBNAIL_SIZE, MIN_ICONS_THUMBNAIL_SIZE,
-    configured_hardware_acceleration, configured_video_preview_backend, normalized_font_family,
-    normalized_search_limit, normalized_video_start, normalized_volume, parse_preferences,
-    settings_path, sort_preferences, store_sort,
-};
 pub(in crate::ui) use strata_desktop::settings::{
     MAX_PREVIEW_VIDEO_START, Preferences, SEARCH_ENTRY_LIMIT_CHOICES, SEARCH_TIME_LIMIT_CHOICES,
 };
@@ -148,20 +147,14 @@ impl PreferenceManager {
         omarchy_available: bool,
     ) {
         let mut preferences = self.preferences.borrow_mut();
-        if !theme_is_known(&preferences.theme) {
-            preferences.theme = "azure-glow".to_owned();
-        }
-        let mode_available = match preferences.mode.as_str() {
-            "theme" => true,
-            "system" => system_available,
-            "omarchy" => omarchy_available,
-            _ => false,
-        };
-        if !mode_available {
-            preferences.mode = "theme".to_owned();
-        } else if !settings_path().is_file() && omarchy_available {
-            preferences.mode = "omarchy".to_owned();
-        }
+        preferences.normalize_theme_selection(
+            theme_is_known,
+            ThemeAvailability {
+                system: system_available,
+                omarchy: omarchy_available,
+                settings_file_exists: settings_path().is_file(),
+            },
+        );
         self.saving.borrow_mut().rebase(&preferences);
         self.changes.reset_baseline(&preferences);
     }

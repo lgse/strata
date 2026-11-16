@@ -54,51 +54,31 @@ impl PreferenceManager {
 
     /// The variant remembered for the active Omarchy theme.
     pub fn omarchy_variant(&self) -> OmarchyVariant {
-        let active = self.active_omarchy_theme.borrow();
-        active
-            .as_ref()
-            .and_then(|theme| {
-                self.preferences
-                    .borrow()
-                    .omarchy_variants
-                    .get(theme)
-                    .copied()
-            })
-            .unwrap_or_default()
+        self.preferences
+            .borrow()
+            .omarchy_variant(self.active_omarchy_theme.borrow().as_deref())
     }
 
     pub fn set_omarchy_variant(&self, variant: OmarchyVariant) {
         let Some(theme) = self.active_omarchy_theme.borrow().clone() else {
             return;
         };
-        if self.omarchy_variant() == variant {
-            return;
+        let changed = self
+            .preferences
+            .borrow_mut()
+            .set_omarchy_variant(&theme, variant);
+        if changed {
+            self.save_preferences();
         }
-        {
-            let variants = &mut self.preferences.borrow_mut().omarchy_variants;
-            if variant == OmarchyVariant::default() {
-                variants.remove(&theme);
-            } else {
-                variants.insert(theme, variant);
-            }
-        }
-        self.save_preferences();
     }
 
     /// Records which Omarchy theme is current without publishing; the theme
     /// manager reapplies and notifies once its palette state is updated.
     pub(in crate::ui) fn set_active_omarchy_theme(&self, theme: &str) {
-        let theme = theme.trim().to_owned();
-        let mut preferences = self.preferences.borrow_mut();
-        // Older versions always saved "original", so only a contrast choice was deliberate.
-        if let Some(legacy) = preferences.legacy_omarchy_variant.take()
-            && legacy == OmarchyVariant::Contrast
-        {
-            preferences
-                .omarchy_variants
-                .entry(theme.clone())
-                .or_insert(legacy);
-        }
+        let theme = self
+            .preferences
+            .borrow_mut()
+            .migrate_active_omarchy_theme(theme);
         self.active_omarchy_theme.replace(Some(theme));
     }
 

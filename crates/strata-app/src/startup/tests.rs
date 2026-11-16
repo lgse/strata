@@ -2,10 +2,10 @@
 
 use strata_desktop::keys::{
     self, Backend, Context, Key, KeyPress, KeyPressParts, Keys, Map, Modifiers, Typed,
-    bindings::COPY, label_in_map, rewrite,
+    bindings::COPY, conflicts, label_in_map, rewrite,
 };
 
-use super::{UiThread, every_binding_fires};
+use super::UiThread;
 
 const MODULE: &str = "startup::tests";
 
@@ -88,7 +88,7 @@ impl Backend for Foreign {
 fn the_ui_thread_is_not_claimed_over_another_key_library() {
     let test = "startup::tests::the_ui_thread_is_not_claimed_over_another_key_library";
     crate::test_support::in_own_process(test, &[], || {
-        assert!(keys::install(&Foreign, every_binding_fires));
+        assert!(keys::install(&Foreign, conflicts::never_fires));
         let refused = UiThread::claim().err().expect("the claim is refused");
         assert!(refused.contains("key library"), "{refused}");
     });

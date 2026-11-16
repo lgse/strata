@@ -1,0 +1,299 @@
+# The clipboard and conflicts alphabet (A12): what a user does to copy, cut, paste, duplicate,
+# copy paths and names, and resolve or dismiss destination collisions in Columns on the canonical
+# fixture:
+# - Copy (`Ctrl+C` and entry menu `Copy`), Cut (`Ctrl+X` and entry menu `Cut`), and Duplicate
+#   (`Ctrl+D` and entry menu `Duplicate`, creating numbered copies of files, folders and
+#   multi-selections in place);
+# - Copy path (`y` in the Default map while type-to-search is off, plus entry menu `Copy path`,
+#   `Copy paths`, `Copy name` and `Copy names`, which replace any file clipboard with text and
+#   clear copied/cut marks so a subsequent Paste is a no-op);
+# - Paste (`Ctrl+V` into a selected folder, into the active column, or into a parent directory
+#   after `Alt+Up`, and background context menu `Paste` when sensitive);
+# - Single-item, folder, unreplaceable file-vs-folder, and multi-item mixed-paste collisions
+#   opening `"File already exists"`, resolved by `Keep Both`, `Replace`, `Merge`, `Skip`,
+#   `Apply to All`, keyboard navigation (`Shift+Tab` then `Return`), or dismissed cleanly via
+#   `Escape`, `Cancel` or `Close dialog`, plus `Ctrl+Z` undo.
+#
+# Type to search is off (`prefs`), so `h`, `j`, `k` and `l` navigate and `y` runs `copy-path`.
+#
+# Left out, with why:
+# - Foreign clipboard offers (`x-special/gnome-copied-files`, `application/x-kde-cutselection`)
+#   and cross-process clipboard persistence: fuzz sequences may not carry `clipboard_set` or
+#   `session` host headers; covered by `copy-offers-file-manager-formats`,
+#   `paste-honors-foreign-cut-markers` and `keyboard-only-copy-paste` on `host = "session"`.
+# - Clicking the location bar's `Copy path` button: both interfaces switch its accessible name to
+#   `"Path copied"` on a 2 s feedback timer (`Duration::from_secs(2)` / `COPIED_FOR`), longer
+#   than `REST`'s 350 ms quiet window, so a later pick near 2 s races on `"Copy path"` presence.
+# - `New Folder with Selection` (`Ctrl+Alt+N` / entry menu `group`) in Columns: GTK's Columns run
+#   is flaky on finding lgse/strata#2162 (`entries.toml`); covered by
+#   `new-folder-with-selection-groups/{icons,list}` and `new_item::tests`.
+# - Pressing `Ctrl+V` while the pointer stays parked over a parent column after clicking a folder
+#   there: GTK's `BrowserView::paste_location` falls back to `destination_depth()` under the
+#   parked pointer and duplicates into the parent instead of pasting into the opened folder
+#   (lgse/strata#2525, `oracle`). Folder-opening clicks move the pointer onto the opened column,
+#   as the shared `clipboard/` and `copy_conflicts/` scenarios do.
+# - Clicking an already-open folder column, dismissing a background menu or conflict dialog on a
+#   non-empty column with no cursor, or splicing an external filesystem entry into a focused column
+#   with no cursor or above its focused row: GTK's `GtkListView` puts or keeps widget focus on row
+#   0 / the recycled slot while selection stays empty or moves (lgse/strata#2356, lgse/strata#2361,
+#   `oracle`).
+# - `Ctrl+A` in a pane (lgse/strata#2351), `Up` from a column's first row (`owner.md` A1 item 3),
+#   `Right` on empty `archive` or `archive/readme.md` (lgse/strata#2408), `Left` from `$root`
+#   (leaves the fixture), and `Return` on a file in the listing (opens GTK's Open With chooser,
+#   A14's).
+#
+# Versions 1 to 3 were A12's drafts, never merged: version 1 met lgse/strata#2525 (`0x0f`, 15 of
+# 20 seeds) and lgse/strata#2356 (`0x01`, `0x07`), parked in `tests/qa/fuzz/corpus/clipboard`;
+# version 2 moved the pointer onto a clicked folder's opened column and guarded already-open folder
+# clicks and cursorless background-menu Escape, reaching 16 of 20 and meeting lgse/strata#2356 when
+# dismissing `"File already exists"` over a cursorless non-empty `archive` column; version 3 pasted
+# into `archive` via the selected-folder route from `$root`, guarded `paste-key` and `undo` with a
+# cursor on non-empty columns, and kept `Right`/`l` off `readme.md`, reaching 18 of 20 with `0x05`
+# and `0x0b` meeting lgse/strata#2356 when `seed-file-conflict` wrote into a focused cursorless
+# `archive` column. Version 4 seeds `archive` collisions while focus is outside `archive`.
+area = "clipboard"
+version = 4
+about = "Columns on the canonical fixture, type to search off: Copy, Cut, Paste, Duplicate and Copy path/name by keyboard and entry/background menus, parent and selected-folder paste routing, single, folder, unreplaceable and mixed-paste conflicts resolved by Keep Both, Replace, Merge, Skip, Apply to All and keyboard or dismissed by Escape, Cancel and Close dialog, with Ctrl+Z undo and seeded destination collisions"
+header = '{"modes":["columns"],"prefs":{"type_to_search":false}}'
+
+[[action]]
+name = "down"
+weight = 6
+steps = ['{"key":"<key>","when":{"all":[{"focused_pane":true},{"not":{"matches":[]}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}']
+choose.key = ["Down", "j"]
+
+[[action]]
+name = "up"
+weight = 4
+steps = ['{"key":"<key>","when":{"all":[{"focused_pane":true},{"focused_in_matches":true},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null},{"any":[{"all":[{"entries":{"first":"archive"}},{"not":{"focused":"archive"}}]},{"all":[{"entries":{"first":"notes.txt"}},{"not":{"focused":"notes.txt"}}]},{"all":[{"entries":{"first":"diagram.txt"}},{"not":{"focused":"diagram.txt"}}]}]}]}}']
+choose.key = ["Up", "k"]
+
+[[action]]
+name = "right"
+weight = 4
+steps = ['{"key":"<key>","when":{"all":[{"focused_pane":true},{"not":{"matches":[]}},{"not":{"focused":{"one_of":["archive","readme.md"]}}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}']
+choose.key = ["Right", "l"]
+
+[[action]]
+name = "left"
+weight = 4
+steps = ['{"key":"<key>","when":{"all":[{"focused_pane":true},{"not":{"directory":"$root"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}']
+choose.key = ["Left", "h"]
+
+[[action]]
+name = "parent"
+weight = 3
+steps = ['{"key":"alt+Up","when":{"all":[{"focused_pane":true},{"not":{"directory":"$root"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}']
+
+[[action]]
+name = "edge"
+weight = 3
+steps = ['{"key":"<key>","when":{"all":[{"focused_pane":true},{"not":{"matches":[]}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}']
+choose.key = ["Home", "End"]
+
+[[action]]
+name = "escape"
+weight = 2
+steps = ['{"key":"Escape","when":{"all":[{"focused_pane":true},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}']
+
+[[action]]
+name = "click-file"
+weight = 4
+steps = ['{"click":{"entry":"<entry>"},"when":{"all":[{"present":{"entry":"<entry>"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}']
+choose.entry = ["readme.md", "todo.txt", "notes.txt", "report.md", "spreadsheet.csv", "photo.txt"]
+
+[[action]]
+name = "open-folder-click"
+weight = 3
+steps = [
+  '{"click":{"entry":"<folder>","dir":"$root"},"when":{"all":[{"present":{"entry":"<folder>","dir":"$root"}},{"absent":{"pane":"<folder>"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}',
+  '{"move":{"pane":"<folder>"},"when":{"present":{"pane":"<folder>"}}}',
+]
+choose.folder = ["archive", "documents", "pictures"]
+
+[[action]]
+name = "ctrl-click-entry"
+weight = 3
+steps = ['{"click":{"entry":"<entry>"},"mods":["ctrl"],"when":{"all":[{"present":{"entry":"<entry>"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}']
+choose.entry = ["readme.md", "todo.txt", "notes.txt", "report.md", "photo.txt"]
+
+[[action]]
+name = "copy-key"
+weight = 5
+steps = ['{"key":"ctrl+c","when":{"all":[{"focused_in_matches":true},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}']
+
+[[action]]
+name = "cut-key"
+weight = 4
+steps = ['{"key":"ctrl+x","when":{"all":[{"focused_in_matches":true},{"not":{"focused":"archive"}},{"not":{"all_selected":{"contains":["archive"]}}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}']
+
+[[action]]
+name = "duplicate-key"
+weight = 4
+steps = ['{"key":"ctrl+d","when":{"all":[{"focused_in_matches":true},{"not":{"focused":"archive"}},{"not":{"all_selected":{"contains":["archive"]}}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}']
+
+[[action]]
+name = "copy-path-key"
+weight = 3
+steps = ['{"key":"y","when":{"all":[{"focused_pane":true},{"focused_in_matches":true},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}']
+
+[[action]]
+name = "paste-key"
+weight = 6
+steps = ['{"key":"ctrl+v","when":{"all":[{"focused_pane":true},{"any":[{"matches":[]},{"focused_in_matches":true}]},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}']
+
+[[action]]
+name = "menu-copy"
+weight = 3
+steps = [
+  '{"click":{"entry":"<entry>"},"button":3,"when":{"all":[{"present":{"entry":"<entry>"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}',
+  '{"click":{"menu_item":"Copy"},"when":{"present":{"menu_item":"Copy"}}}',
+]
+choose.entry = ["documents", "pictures", "readme.md", "todo.txt", "notes.txt", "report.md", "photo.txt"]
+
+[[action]]
+name = "menu-cut"
+weight = 3
+steps = [
+  '{"click":{"entry":"<entry>"},"button":3,"when":{"all":[{"present":{"entry":"<entry>"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}',
+  '{"click":{"menu_item":"Cut"},"when":{"present":{"menu_item":"Cut"}}}',
+]
+choose.entry = ["readme.md", "todo.txt", "notes.txt", "report.md", "photo.txt"]
+
+[[action]]
+name = "menu-duplicate"
+weight = 3
+steps = [
+  '{"click":{"entry":"<entry>"},"button":3,"when":{"all":[{"present":{"entry":"<entry>"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}',
+  '{"click":{"menu_item":"Duplicate"},"when":{"present":{"menu_item":"Duplicate"}}}',
+]
+choose.entry = ["readme.md", "todo.txt", "notes.txt", "photo.txt", "documents"]
+
+[[action]]
+name = "menu-copy-text"
+weight = 3
+steps = [
+  '{"click":{"entry":"<entry>"},"button":3,"when":{"all":[{"present":{"entry":"<entry>"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}',
+  '{"click":{"menu_item":"<item>"},"when":{"present":{"menu_item":"<item>"}}}',
+  '{"key":"Escape","when":{"menu_items":{}}}',
+]
+choose.entry = ["readme.md", "todo.txt", "notes.txt", "documents"]
+choose.item = ["Copy path", "Copy name", "Copy paths", "Copy names"]
+
+[[action]]
+name = "menu-paste"
+weight = 4
+steps = [
+  '{"click":{"background":true,"dir":"<dir>"},"button":3,"when":{"all":[{"directory":"<dir>"},{"present":{"pane":"<dir>"}},{"any":[{"matches":[]},{"focused_in_matches":true}]},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}',
+  '{"click":{"menu_item":"Paste"},"when":{"all":[{"present":{"menu_item":"Paste"}},{"state":{"target":{"menu_item":"Paste"},"sensitive":true}}]}}',
+  '{"key":"Escape","when":{"menu_items":{}}}',
+]
+choose.dir = ["$root", "$root", "archive", "documents", "pictures"]
+
+# Copies a root file and pastes into `archive` via the selected-folder route (`Home` then
+# `Ctrl+V`), reliably reaching file and unreplaceable file-vs-folder conflicts in 40-step
+# sequences while keeping `$root`'s cursor for clean conflict-dialog dismissal.
+[[action]]
+name = "copy-file-paste-archive"
+weight = 4
+steps = [
+  '{"click":{"entry":"<entry>","dir":"$root"},"when":{"all":[{"present":{"entry":"<entry>","dir":"$root"}},{"present":{"entry":"archive","dir":"$root"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}',
+  '{"key":"ctrl+c","when":{"all":[{"focused":"<entry>"},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}',
+  '{"key":"Home","when":{"all":[{"directory":"$root"},{"entries":{"first":"archive"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}',
+  '{"key":"ctrl+v","when":{"all":[{"focused":"archive"},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}',
+]
+choose.entry = ["todo.txt", "readme.md"]
+
+# Copies a root folder via its context menu and pastes into `archive` via the selected-folder
+# route, reliably reaching folder `Merge` conflicts without clicking an already-open folder column.
+[[action]]
+name = "copy-folder-paste-archive"
+weight = 3
+steps = [
+  '{"click":{"entry":"<folder>","dir":"$root"},"button":3,"when":{"all":[{"present":{"entry":"<folder>","dir":"$root"}},{"present":{"entry":"archive","dir":"$root"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}',
+  '{"click":{"menu_item":"Copy"},"when":{"present":{"menu_item":"Copy"}}}',
+  '{"key":"Home","when":{"all":[{"directory":"$root"},{"entries":{"first":"archive"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}',
+  '{"key":"ctrl+v","when":{"all":[{"focused":"archive"},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}',
+]
+choose.folder = ["documents", "pictures"]
+
+# Copies two files from `documents` and pastes into `archive` via `Left` + `Home` + `Ctrl+V`,
+# exercising `Apply to All` and `Skip` when `archive/notes.txt` or `archive/report.md` already
+# exists.
+[[action]]
+name = "mixed-paste-archive"
+weight = 4
+steps = [
+  '{"click":{"entry":"documents","dir":"$root"},"when":{"all":[{"present":{"entry":"documents","dir":"$root"}},{"absent":{"pane":"documents"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}',
+  '{"move":{"pane":"documents"},"when":{"present":{"pane":"documents"}}}',
+  '{"click":{"entry":"notes.txt","dir":"documents"},"when":{"all":[{"present":{"entry":"notes.txt","dir":"documents"}},{"present":{"entry":"report.md","dir":"documents"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}',
+  '{"click":{"entry":"report.md","dir":"documents"},"mods":["ctrl"],"when":{"all":[{"present":{"entry":"report.md","dir":"documents"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}',
+  '{"key":"ctrl+c","when":{"all":[{"focused":"report.md"},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}',
+  '{"key":"Left","when":{"all":[{"directory":"documents"},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}',
+  '{"key":"Home","when":{"all":[{"directory":"$root"},{"entries":{"first":"archive"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}',
+  '{"key":"ctrl+v","when":{"all":[{"focused":"archive"},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}',
+]
+
+[[action]]
+name = "conflict-keep-both"
+weight = 5
+steps = ['{"click":{"dialog_button":"Keep Both"},"when":{"all":[{"dialog":"File already exists"},{"present":{"dialog_button":"Keep Both"}}]}}']
+
+[[action]]
+name = "conflict-replace"
+weight = 5
+steps = ['{"click":{"dialog_button":"Replace"},"when":{"all":[{"dialog":"File already exists"},{"present":{"dialog_button":"Replace"}}]}}']
+
+[[action]]
+name = "conflict-merge"
+weight = 4
+steps = ['{"click":{"dialog_button":"Merge"},"when":{"all":[{"dialog":"File already exists"},{"present":{"dialog_button":"Merge"}}]}}']
+
+[[action]]
+name = "conflict-skip"
+weight = 3
+steps = ['{"click":{"dialog_button":"Skip"},"when":{"all":[{"dialog":"File already exists"},{"present":{"dialog_button":"Skip"}}]}}']
+
+[[action]]
+name = "conflict-apply-all"
+weight = 4
+steps = [
+  '{"click":{"named":"Apply to All","within":{"dialog":true}},"when":{"all":[{"dialog":"File already exists"},{"present":{"named":"Apply to All","within":{"dialog":true}}}]}}',
+  '{"click":{"dialog_button":"<choice>"},"when":{"all":[{"dialog":"File already exists"},{"present":{"dialog_button":"<choice>"}}]}}',
+]
+choose.choice = ["Keep Both", "Replace", "Skip"]
+
+[[action]]
+name = "conflict-keyboard"
+weight = 3
+steps = [
+  '{"key":"shift+Tab","when":{"all":[{"dialog":"File already exists"},{"state":{"target":{"dialog_button":"Replace"},"focused":true}}]}}',
+  '{"key":"Return","when":{"all":[{"dialog":"File already exists"},{"any":[{"state":{"target":{"dialog_button":"Keep Both"},"focused":true}},{"state":{"target":{"dialog_button":"Merge"},"focused":true}}]}]}}',
+]
+
+[[action]]
+name = "conflict-dismiss"
+weight = 5
+steps = ['{"click":{"dialog_button":"<button>"},"when":{"all":[{"dialog":"File already exists"},{"present":{"dialog_button":"<button>"}}]}}']
+choose.button = ["Cancel", "Close dialog"]
+
+[[action]]
+name = "dismiss-overlay"
+weight = 4
+steps = ['{"key":"Escape","when":{"any":[{"dialog":true},{"menu_items":{}}]}}']
+
+[[action]]
+name = "undo"
+weight = 3
+steps = ['{"key":"ctrl+z","when":{"all":[{"focused_pane":true},{"any":[{"matches":[]},{"focused_in_matches":true}]},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}']
+
+[[action]]
+name = "seed-file-conflict"
+weight = 3
+steps = ['{"fs":{"path":"<path>","write":"existing\n"},"when":{"all":[{"not":{"directory":"archive"}},{"not":{"dialog":true}},{"file":{"path":"$fixture/<path>","exists":false}}]}}']
+choose.path = ["archive/todo.txt", "archive/notes.txt", "archive/report.md"]
+
+[[action]]
+name = "seed-dir-conflict"
+weight = 2
+steps = ['{"fs":{"path":"archive/readme.md","mkdir":true},"when":{"all":[{"not":{"directory":"archive"}},{"not":{"dialog":true}},{"file":{"path":"$fixture/archive/readme.md","exists":false}}]}}']

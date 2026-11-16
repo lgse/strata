@@ -4,7 +4,7 @@
 //! `executable-requires-confirmation` and `executable-menu-confirmed-run` do, by the browser's
 //! open and by the menu's row.
 
-use std::{os::unix::fs::PermissionsExt, path::Path};
+use std::{ffi::OsStr, os::unix::fs::PermissionsExt, path::Path};
 
 use rune::{Key, KeyEvent, Mods};
 use serde_json::Value;
@@ -13,11 +13,21 @@ use strata_core::model::Location;
 use crate::{
     App,
     commands::{On, Outcome, run},
+    error_dialog,
     host::offscreen::Offscreen,
-    test_support::{PATIENCE, folder_of, hosted, send_key},
+    startup::{self, UiThread},
+    test_support::{PATIENCE, folder_of, hosted, in_own_process, send_key},
 };
 
 const MODULE: &str = "run::tests";
+
+fn hosted_with_env(name: &str, env: &[(&str, &OsStr)], run: impl FnOnce(Offscreen)) {
+    in_own_process(&format!("{MODULE}::{name}"), env, || {
+        let settings = startup::load_settings();
+        let ui = UiThread::claim().expect("the UI thread");
+        run(Offscreen::new(ui, settings));
+    });
+}
 
 /// A program that leaves `ran` beside itself, in its own folder, when it runs.
 fn program(folder: &Path) -> Location {
@@ -140,24 +150,78 @@ fn executable_file(folder: &Path, name: &str, text: &str) -> Location {
     Location::local(&path)
 }
 
-/// A program whose start fails says so once its thread has answered, and a shell script,
-/// whose terminal this interface does not open yet, starts nothing and says so too.
+/// A program whose start fails says so once its thread has answered, and a shell script with
+/// no terminal emulator on `PATH` starts nothing and reports the missing terminal.
 #[test]
 fn a_program_that_cannot_start_says_so() {
-    hosted(MODULE, "a_program_that_cannot_start_says_so", |mut host| {
-        let folder = folder_of(&[]);
-        let broken = executable_file(folder.path(), "broken", "#!/no/such/interpreter\n");
-        let script = executable_file(folder.path(), "script.sh", "#!/bin/sh\nprintf ran > ran\n");
-        host.app().open(Location::local(folder.path()));
-        let listed = |host: &Offscreen| host.app().browser().column_entry_counts(0).is_some();
-        assert!(host.run_until(PATIENCE, listed), "the folder's listing");
-        while host.turn() {}
+    let empty_dir = tempfile::tempdir().expect("empty PATH dir");
+    hosted_with_env(
+        "a_program_that_cannot_start_says_so",
+        &[
+            ("PATH", empty_dir.path().as_os_str()),
+            ("TERMINAL", OsStr::new("")),
+        ],
+        |mut host| {
+            let folder = folder_of(&[]);
+            let broken = executable_file(folder.path(), "broken", "#!/no/such/interpreter\n");
+            let script =
+                executable_file(folder.path(), "script.sh", "#!/bin/sh\nprintf ran > ran\n");
+            host.app().open(Location::local(folder.path()));
+            let listed = |host: &Offscreen| host.app().browser().column_entry_counts(0).is_some();
+            assert!(host.run_until(PATIENCE, listed), "the folder's listing");
+            while host.turn() {}
 
-        fails_to_start(&mut host, &broken);
-        fails_to_start(&mut host, &script);
-        assert!(
-            !folder.path().join("ran").exists(),
-            "the script did not run"
-        );
-    });
+            fails_to_start(&mut host, &broken);
+            opened(&mut host, &script);
+            run_focused(&mut host);
+            key(&mut host, Key::Enter);
+            let said = host.run_until(PATIENCE, |host| {
+                dialog(&host.tree(), "Unable to run program")
+            });
+            assert!(said, "Run says the script could not start");
+            let (_, _, _, _, detail) =
+                error_dialog::shown_details(host.app()).expect("script error");
+            assert!(detail.contains("No terminal emulator"), "{detail}");
+            assert!(
+                !folder.path().join("ran").exists(),
+                "the script did not run"
+            );
+        },
+    );
+}
+
+#[test]
+fn a_shell_script_runs_in_the_resolved_terminal() {
+    let launcher_dir = tempfile::tempdir().expect("launcher dir");
+    let launcher = launcher_dir.path().join("xdg-terminal-exec");
+    std::fs::write(
+        &launcher,
+        "#!/bin/sh\nwhile [ \"$#\" -gt 0 ]; do\n  if [ \"$1\" = \"--\" ]; then\n    shift\n    exec \"$@\" < /dev/null\n  fi\n  shift\ndone\nexit 1\n",
+    )
+    .expect("write stub terminal");
+    std::fs::set_permissions(&launcher, std::fs::Permissions::from_mode(0o755))
+        .expect("chmod stub terminal");
+    hosted_with_env(
+        "a_shell_script_runs_in_the_resolved_terminal",
+        &[
+            ("PATH", launcher_dir.path().as_os_str()),
+            ("TERMINAL", OsStr::new("")),
+        ],
+        |mut host| {
+            let folder = folder_of(&[]);
+            let script =
+                executable_file(folder.path(), "script.sh", "#!/bin/sh\nprintf ran > ran\n");
+            let ran = folder.path().join("ran");
+            host.app().open(Location::local(folder.path()));
+            let listed = |host: &Offscreen| host.app().browser().column_entry_counts(0).is_some();
+            assert!(host.run_until(PATIENCE, listed), "the folder's listing");
+            while host.turn() {}
+
+            opened(&mut host, &script);
+            run_focused(&mut host);
+            key(&mut host, Key::Enter);
+            let finished = host.run_until(PATIENCE, |_| ran.exists());
+            assert!(finished, "the shell script ran in its folder via terminal");
+        },
+    );
 }

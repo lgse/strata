@@ -6,22 +6,19 @@
 scenario = "columns-terminal-parent-pane-folder"
 run = "columns"
 package = "A14"
-status = "pending"
-reason = "scope"
-blocker = "A14"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "terminal-launchers-reaped"
 run = "columns"
 package = "A14"
-status = "pending"
-reason = "scope"
-blocker = "A14"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "terminal-without-emulator-reports"
 run = "columns"
 package = "A14"
-status = "pending"
-reason = "scope"
-blocker = "A14"
+status = "required"
+host = "offscreen"
