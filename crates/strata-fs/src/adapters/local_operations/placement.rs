@@ -104,7 +104,7 @@ mod rungs;
 pub(super) use aside::*;
 pub(super) use exchange::*;
 use mount::Mount;
-pub(super) use mount::{Feasibility, can_place, can_set_aside, links_hold};
+pub(super) use mount::{Feasibility, can_set_aside, links_hold, stages_folders};
 #[cfg(test)]
 pub(super) use mount::{Probed, probe};
 pub(super) use rename::*;

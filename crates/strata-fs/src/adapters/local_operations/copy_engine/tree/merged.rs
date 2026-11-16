@@ -193,7 +193,7 @@ impl Live {
         mut new: Vec<(OsString, FileType, Planned)>,
     ) -> Result<(), Failure> {
         let mut in_place = Vec::new();
-        if placement::can_place(tree.copy.fs, self.dir.as_fd(), true) == Some(false) {
+        if !placement::stages_folders(tree.copy.fs, self.dir.as_fd()) {
             (in_place, new) = new
                 .into_iter()
                 .partition(|(_, kind, _)| *kind == FileType::Directory);

@@ -113,6 +113,9 @@ pub enum OverEmptyDirectory {
     Supported,
     NotEmpty,
     Eperm,
+    /// Makes the folder's subfolders in the empty one, then fails with `EIO` and leaves its
+    /// files, as rclone does while it has yet to upload them.
+    InSteps,
 }
 
 #[derive(Clone, Copy, Debug, Default)]
