@@ -350,10 +350,19 @@ fn queue_event(event: &BrowserEvent, heard: &mut Heard<'_, App>) {
             let depth = *depth;
             heard.then(move |app, tx| reveal_pending_at(app, depth, tx));
         }
-        BrowserEvent::OperationCompletedWithErrors { .. } | BrowserEvent::Reset => {
+        BrowserEvent::OperationCompletedWithErrors { .. } => {
             heard.then(|app, _| {
                 app.archive.pending_destination = None;
                 app.archive.pending_select.clear();
+                false
+            });
+        }
+        BrowserEvent::Reset => {
+            heard.then(|app, _| {
+                if app.archive.pending_destination.as_ref() != app.browser.location_at(0).as_ref() {
+                    app.archive.pending_destination = None;
+                    app.archive.pending_select.clear();
+                }
                 false
             });
         }
@@ -405,6 +414,15 @@ fn navigate_to_result(
     select_name: String,
     tx: &mut Tx,
 ) -> bool {
+    if app.browser.active_location().as_ref() == Some(&destination) {
+        if select_name.is_empty() {
+            app.archive.pending_destination = None;
+            app.archive.pending_select.clear();
+            return false;
+        }
+        app.archive.pending_destination = Some(destination.clone());
+        return reveal_compressed(app, destination, select_name, tx);
+    }
     if !select_name.is_empty() {
         app.archive.pending_destination = Some(destination.clone());
         app.archive.pending_select = vec![select_name];

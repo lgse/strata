@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use rune::{Key, KeyEvent, Mods, Tx};
 use strata_core::model::{EntryKind, FileEntry, Location, MetadataValue};
 
-use super::{Archive, extract_entry, extract_to_chosen};
+use super::{Archive, extract_entry, extract_to_chosen, on_background_completed};
 use crate::{
     App,
     commands::{self, Holds, On, Outcome},
@@ -321,6 +321,105 @@ fn compression_collision_supports_keep_both_and_replace() {
                 host.run_until(PATIENCE, replaced),
                 "Replace overwrites readme.md.zip"
             );
+        },
+    );
+}
+
+fn is_selected_at(host: &Offscreen, expected_dir: &Location, name: &str) -> bool {
+    host.app().browser().active_location().as_ref() == Some(expected_dir)
+        && host
+            .app()
+            .browser()
+            .selected_entries()
+            .iter()
+            .any(|entry| entry.display_name == name)
+}
+
+#[test]
+fn extract_to_chosen_selects_result_in_same_or_different_folder_across_reset() {
+    hosted(
+        MODULE,
+        "extract_to_chosen_selects_result_in_same_or_different_folder_across_reset",
+        |mut host| {
+            let folder = fixture();
+            let same_tar = folder.path().join("same.tar");
+            let other_tar = folder.path().join("other.tar");
+            write_single_file_tar(&same_tar, "same_dir.txt", b"in root\n");
+            write_single_file_tar(&other_tar, "into_docs.txt", b"in documents\n");
+            // Seed another alphabetically earlier file in documents so LoadSelection::FirstEntry
+            // would pick "00_first.txt" if Reset wiped pending_select.
+            std::fs::write(folder.path().join("documents/00_first.txt"), "earlier\n")
+                .expect("seed earlier file");
+            open_fixture(&mut host, folder.path());
+
+            // Choosing the already-active folder reveals in place without leaving stale state.
+            let root = Location::local(folder.path());
+            let same_entry = dummy_archive_at(&same_tar, "same.tar");
+            let same_dest = root.clone();
+            host.runtime().update(move |app: &mut App, tx: &mut Tx| {
+                extract_to_chosen(app, same_entry, same_dest, tx);
+            });
+            assert!(
+                host.run_until(PATIENCE, |h| is_selected_at(h, &root, "same_dir.txt")),
+                "same-folder extract_to_chosen selects same_dir.txt"
+            );
+            assert!(host.app().archive.pending_destination.is_none());
+            assert!(host.app().archive.pending_select.is_empty());
+
+            // Choosing another folder navigates there and preserves pending_select across Reset.
+            let documents = Location::local(folder.path().join("documents"));
+            let other_entry = dummy_archive_at(&other_tar, "other.tar");
+            let docs_dest = documents.clone();
+            host.runtime().update(move |app: &mut App, tx: &mut Tx| {
+                extract_to_chosen(app, other_entry, docs_dest, tx);
+            });
+            assert!(
+                host.run_until(PATIENCE, |h| is_selected_at(h, &documents, "into_docs.txt")),
+                "cross-folder extract_to_chosen navigates to documents and selects into_docs.txt"
+            );
+        },
+    );
+}
+
+#[test]
+fn background_completion_from_another_folder_navigates_and_unrelated_reset_clears() {
+    hosted(
+        MODULE,
+        "background_completion_from_another_folder_navigates_and_unrelated_reset_clears",
+        |mut host| {
+            let folder = fixture();
+            std::fs::write(folder.path().join("00_earlier.txt"), "first\n")
+                .expect("seed earlier root entry");
+            std::fs::write(folder.path().join("zzz_docked.zip"), "docked archive")
+                .expect("seed docked archive");
+            let documents = folder.path().join("documents");
+            open_fixture(&mut host, &documents);
+
+            // Docked compression finishing in root while viewing documents navigates back and
+            // selects zzz_docked.zip instead of LoadSelection::FirstEntry ("00_earlier.txt").
+            let root = Location::local(folder.path());
+            let dest = root.clone();
+            host.runtime().update(move |app: &mut App, tx: &mut Tx| {
+                on_background_completed(app, Some(dest), "zzz_docked.zip".to_owned(), tx);
+            });
+            assert!(
+                host.run_until(PATIENCE, |h| is_selected_at(h, &root, "zzz_docked.zip")),
+                "docked completion navigates to root and selects zzz_docked.zip"
+            );
+
+            // Navigating to an unrelated folder clears stale pending_destination on Reset.
+            let pictures = Location::local(folder.path().join("pictures"));
+            let stale = Location::local(documents);
+            let target = pictures.clone();
+            host.runtime().update(move |app: &mut App, tx: &mut Tx| {
+                app.archive.pending_destination = Some(stale);
+                app.archive.pending_select = vec!["ghost.zip".to_owned()];
+                app.browser.navigate(target);
+                shell::settle(app, tx);
+            });
+            idle(&mut host);
+            assert!(host.app().archive.pending_destination.is_none());
+            assert!(host.app().archive.pending_select.is_empty());
         },
     );
 }
