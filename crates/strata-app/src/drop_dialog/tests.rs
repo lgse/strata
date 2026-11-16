@@ -35,18 +35,16 @@ fn wait_exists(host: &mut Offscreen, path: &Path, exists: bool) {
     idle(host);
 }
 
+/// A prompt asked although the volumes were found the same (a forced ask) says what an
+/// unknown relation says, as GTK's does; only a confirmed other device says so.
 #[test]
-fn description_distinguishes_confirmed_cross_device_from_unknown_volume() {
-    assert_eq!(
+fn only_a_confirmed_other_device_is_described_as_one() {
+    let unknown = cross_volume_drop_description(VolumeRelation::Unknown);
+    assert_eq!(cross_volume_drop_description(VolumeRelation::Same), unknown);
+    assert_ne!(
         cross_volume_drop_description(VolumeRelation::Different),
-        "The destination is on a different device."
+        unknown
     );
-    for unknown in [VolumeRelation::Same, VolumeRelation::Unknown] {
-        assert_eq!(
-            cross_volume_drop_description(unknown),
-            "Strata could not determine whether the destination is on the same device."
-        );
-    }
 }
 
 #[test]
