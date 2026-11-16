@@ -26,6 +26,7 @@ use strata_fs::{
     },
 };
 
+mod archive;
 mod document;
 mod image;
 mod keys;
@@ -95,7 +96,7 @@ impl Part for Preview {
     fn new(setup: &Setup<'_>) -> Self {
         let mut drawer = DrawerState::new();
         drawer.reserve(setup.settings.browser_mode == "columns");
-        let loader = Loader::new(setup.later.clone());
+        let loader = Loader::new(setup.later.clone(), setup.ids.clone());
         loader.set_media_backend(&setup.settings.video_preview_backend);
         Self {
             drawer,
@@ -119,7 +120,8 @@ impl Part for Preview {
     }
 
     fn keyboard(app: &App) -> Option<Holds> {
-        app.preview.drawer.is_find_focused().then_some(Holds::Field)
+        (app.preview.drawer.is_find_focused() || app.preview.viewer.is_prompt_focused())
+            .then_some(Holds::Field)
     }
 
     fn listen(_: &Setup<'_>) -> Option<Listener<App>> {
@@ -144,7 +146,8 @@ impl Part for Preview {
             false
         };
         let viewer = app.preview.viewer.poll(clock, &app.look, tx);
-        blocks | viewer | lit_changed | band_synced
+        let archive = viewer::tick_archive_if_active(app, tx);
+        blocks | viewer | archive | lit_changed | band_synced
     }
 
     fn switched(app: &mut App, tx: &mut Tx) {
@@ -358,9 +361,9 @@ pub(crate) fn show_search_file(app: &mut App, path: &Path, name: String, tx: &mu
 }
 
 /// Opens or updates the preview drawer on `entry` at `depth` without closing an already-open
-/// drawer (`enter_preview` in `src/ui/window/keyboard/preview.rs`).
+/// drawer, and hands it keyboard focus (`enter_preview` in `src/ui/window/keyboard/preview.rs`).
 pub(crate) fn show_entry(app: &mut App, entry: FileEntry, depth: Option<usize>, tx: &mut Tx) {
-    session::show(app, entry, depth, tx);
+    keys::enter_entry(app, entry, depth, tx);
 }
 
 /// Whether single clicks open files in the currently shown view.

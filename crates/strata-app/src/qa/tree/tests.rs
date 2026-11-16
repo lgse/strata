@@ -835,3 +835,45 @@ fn open_submenu_surfaces_nest_under_their_owning_menu_and_row_icons_carry_descri
         .expect("row icon");
     assert_eq!(badge_image.description, "example: Available offline");
 }
+
+#[test]
+fn archive_preview_rows_present_drawn_labels_without_marking_as_browser_entries() {
+    let tree = json!({
+        "role": "window",
+        "children": [
+            { "role": "region", "key": "preview-pane", "name": "Preview", "children": [
+                { "role": "list-box", "key": "preview-archive", "states": ["focused"],
+                  "activeDescendant": "row-42", "children": [
+                    { "role": "list-box-option", "key": "row-42", "name": "docs/",
+                      "states": ["selected"], "bounds": [800.0, 80.0, 360.0, 28.0] },
+                ] },
+            ] },
+        ],
+    });
+    let drawn = Drawn {
+        labels: vec![NameLabel {
+            above: vec![
+                "row-42".to_owned(),
+                "preview-archive".to_owned(),
+                "preview-pane".to_owned(),
+            ],
+            text: "docs/".to_owned(),
+            bounds: bounds(84.0),
+        }],
+        ..Drawn::default()
+    };
+    let snapshot = Snapshot::read(&tree, &drawn);
+    let row = (0..)
+        .map_while(|i| snapshot.at(i))
+        .find(|s| s.key.as_deref() == Some("row-42"))
+        .expect("archive member row");
+    assert_eq!(row.mark, None, "archive member is not a browser entry");
+    let child_labels: Vec<_> = row
+        .children
+        .iter()
+        .filter_map(|&c| snapshot.at(c))
+        .filter(|s| s.role() == "label")
+        .map(|s| s.name.as_str())
+        .collect();
+    assert_eq!(child_labels, ["docs/"]);
+}

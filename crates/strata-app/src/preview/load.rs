@@ -21,6 +21,7 @@ use rune::Tx;
 use strata_components::{
     code_view::highlight::{CodeBlocks, Highlighter},
     preview_drawer::{DocumentView, HeaderInfo, HostedPreview},
+    viewers::archive::PromptState,
 };
 use strata_core::{
     i18n::{file_size, tr},
@@ -30,8 +31,9 @@ use strata_core::{
 use strata_fs::{
     adapters::LocalPreviewProvider,
     services::{
-        DocumentLayout, LoadHandle, MediaPreviewSize, Preview, PreviewContent, PreviewEvent,
-        PreviewProvider, PreviewRequest, PreviewRequestId, normalize_preview_text,
+        DocumentLayout, INCORRECT_ARCHIVE_PASSWORD, LoadHandle, MediaPreviewSize, Preview,
+        PreviewContent, PreviewEvent, PreviewProvider, PreviewRequest, PreviewRequestId,
+        SecretString, normalize_preview_text,
     },
 };
 use strata_kit::{
@@ -42,12 +44,18 @@ use strata_kit::{
 use strata_preview::sandbox::{DocumentFormat, MediaPreviewBackend};
 
 use super::{
+    archive,
     document::{DocumentSpec, RenderedDocument},
     image::ImageViewer,
     sheet,
     viewer::{CodeSource, RenderedBody, Viewer, build_code_state},
 };
-use crate::{App, listing::known, shell, slots::Later};
+use crate::{
+    App,
+    listing::known,
+    shell,
+    slots::{Ids, Later},
+};
 
 const TEXT_BYTE_LIMIT: usize = 1024 * 1024;
 const PREVIEW_SPINNER_DELAY: Duration = Duration::from_millis(120);
@@ -109,19 +117,22 @@ pub(super) struct Loader {
     provider: Rc<dyn PreviewProvider>,
     media_backend: Rc<Cell<MediaPreviewBackend>>,
     pub(super) later: Later<App>,
+    pub(super) ids: Ids,
     waiter: Rc<Later<App>>,
     highlighter: Option<Highlighter>,
     blocks: Option<CodeBlocks>,
     last_editor: Option<Editor>,
     next_request: u64,
-    current_request: Option<PreviewRequestId>,
+    pub(super) current_request: Option<PreviewRequestId>,
     active_load: Option<LoadHandle>,
     spinner_timer: Rc<RefCell<Option<glib::SourceId>>>,
     pub(super) defer_on_resume: bool,
+    pub(super) focus_archive_on_ready: bool,
+    pub(super) focus_archive_request: Option<PreviewRequestId>,
 }
 
 impl Loader {
-    pub(super) fn new(later: Later<App>) -> Self {
+    pub(super) fn new(later: Later<App>, ids: Ids) -> Self {
         let media_backend = Rc::new(Cell::new(MediaPreviewBackend::Automatic));
         let backend_reader = media_backend.clone();
         let waiter = Rc::new(later.clone());
@@ -131,6 +142,7 @@ impl Loader {
             }))),
             media_backend,
             later,
+            ids,
             waiter,
             highlighter: None,
             blocks: None,
@@ -140,6 +152,8 @@ impl Loader {
             active_load: None,
             spinner_timer: Rc::default(),
             defer_on_resume: false,
+            focus_archive_on_ready: false,
+            focus_archive_request: None,
         }
     }
 
@@ -150,16 +164,21 @@ impl Loader {
     }
 
     pub(super) fn is_active(&self) -> bool {
-        self.current_request.is_some()
+        self.active_load.is_some()
     }
 
     pub(super) fn cancel(&mut self) {
         self.current_request = None;
         self.active_load = None;
         self.defer_on_resume = false;
+        self.focus_archive_request = None;
         if let Some(timer) = self.spinner_timer.borrow_mut().take() {
             timer.remove();
         }
+    }
+
+    pub(super) fn take_focus_archive(&mut self, expected: PreviewRequestId) -> bool {
+        self.focus_archive_request.take() == Some(expected)
     }
 
     pub(super) fn sync_theme(&mut self, look: &Look) {
@@ -236,21 +255,33 @@ pub(super) fn start(app: &mut App, entry: FileEntry) {
     } else {
         DocumentView::Source
     };
-    start_request(app, entry, render_document);
+    start_request(app, entry, render_document, None);
+}
+
+pub(super) fn start_with_password(app: &mut App, entry: FileEntry, password: SecretString) {
+    let render_document = shell::preferences(app).render_documents_by_default;
+    start_request(app, entry, render_document, Some(password));
 }
 
 pub(super) fn reload_rendered(app: &mut App, entry: FileEntry) {
     app.preview.document_view = DocumentView::Rendered;
-    start_request(app, entry, true);
+    start_request(app, entry, true, None);
 }
 
-fn start_request(app: &mut App, entry: FileEntry, render_document: bool) {
+fn start_request(
+    app: &mut App,
+    entry: FileEntry,
+    render_document: bool,
+    archive_password: Option<SecretString>,
+) {
     app.preview.header = identity_for(&app.look, &entry, None);
     let later = app.preview.loader.later.clone();
     app.preview.raw.load(&entry, later);
+    let focus_archive = std::mem::replace(&mut app.preview.loader.focus_archive_on_ready, false);
     app.preview.loader.cancel();
     if app.preview.drawer.is_suspended() {
         app.preview.loader.defer_on_resume = true;
+        app.preview.loader.focus_archive_on_ready = focus_archive;
         app.preview.viewer.stop();
         app.preview.viewer = Viewer::Empty;
         return;
@@ -258,6 +289,9 @@ fn start_request(app: &mut App, entry: FileEntry, render_document: bool) {
     let request_id = PreviewRequestId(app.preview.loader.next_request);
     app.preview.loader.next_request = app.preview.loader.next_request.saturating_add(1);
     app.preview.loader.current_request = Some(request_id);
+    if focus_archive {
+        app.preview.loader.focus_archive_request = Some(request_id);
+    }
     schedule_spinner(app, request_id);
 
     let later = app.preview.loader.later.clone();
@@ -273,7 +307,7 @@ fn start_request(app: &mut App, entry: FileEntry, render_document: bool) {
         media_size: MediaPreviewSize::for_viewport(DEFAULT_MEDIA_EDGE, DEFAULT_MEDIA_EDGE, 1),
         model_palette: Default::default(),
         model_view: Default::default(),
-        archive_password: None,
+        archive_password,
     };
     let handle = app.preview.loader.provider.load(request, emit);
     app.preview.loader.active_load = Some(handle);
@@ -298,7 +332,12 @@ fn schedule_spinner(app: &mut App, expected: PreviewRequestId) {
     app.preview.loader.spinner_timer.replace(Some(source));
 }
 
-fn on_event(app: &mut App, expected: PreviewRequestId, event: PreviewEvent, tx: &mut Tx) -> bool {
+pub(super) fn on_event(
+    app: &mut App,
+    expected: PreviewRequestId,
+    event: PreviewEvent,
+    tx: &mut Tx,
+) -> bool {
     if !app.preview.enabled || app.preview.loader.current_request != Some(expected) {
         return false;
     }
@@ -314,38 +353,84 @@ fn on_event(app: &mut App, expected: PreviewRequestId, event: PreviewEvent, tx: 
             false
         }
         PreviewEvent::Ready(loaded) => {
+            app.preview.loader.active_load = None;
+            app.preview.loader.current_request = None;
             render_ready(app, loaded, tx);
             true
         }
-        PreviewEvent::NeedsPassword { .. } => {
-            app.preview.viewer.stop();
-            app.preview.viewer = Viewer::Message {
-                title: tr("Password required"),
-                detail: None,
-                can_open: true,
-            };
+        PreviewEvent::NeedsPassword { entry, .. } => {
+            app.preview.loader.active_load = None;
+            app.preview.loader.current_request = None;
+            render_password_prompt(app, (expected, &entry), None, tx);
             true
         }
-        PreviewEvent::Failed { message, .. } => {
-            app.preview.viewer.stop();
-            let offers_open = message == strata_preview::sandbox::PDF_PASSWORD_PROTECTED;
-            app.preview.viewer = Viewer::Message {
-                title: tr("Preview unavailable"),
-                detail: Some(tr(&message)),
-                can_open: offers_open,
-            };
+        PreviewEvent::Failed { entry, message, .. } => {
+            app.preview.loader.active_load = None;
+            app.preview.loader.current_request = None;
+            render_failed(app, (expected, &entry), &message, tx);
             true
         }
     }
 }
 
+fn render_password_prompt(
+    app: &mut App,
+    (expected, entry): (PreviewRequestId, &FileEntry),
+    error: Option<String>,
+    tx: &mut Tx,
+) {
+    let focus = app.preview.loader.take_focus_archive(expected);
+    app.preview.header = identity_for(&app.look, entry, None);
+    let mut prompt = match std::mem::replace(&mut app.preview.viewer, Viewer::Empty) {
+        Viewer::ArchivePrompt(existing) if error.is_some() => existing,
+        mut other => {
+            other.stop();
+            Box::new(PromptState::default())
+        }
+    };
+    prompt.set_error(error);
+    if focus {
+        prompt.focus();
+        tx.focus_when_shown(archive::PROMPT_FIELD_KEY, true);
+    }
+    app.preview.viewer = Viewer::ArchivePrompt(prompt);
+}
+
+fn render_failed(
+    app: &mut App,
+    (expected, entry): (PreviewRequestId, &FileEntry),
+    message: &str,
+    tx: &mut Tx,
+) {
+    if message == INCORRECT_ARCHIVE_PASSWORD {
+        render_password_prompt(app, (expected, entry), Some(tr(message)), tx);
+        return;
+    }
+    let _ = app.preview.loader.take_focus_archive(expected);
+    app.preview.viewer.stop();
+    let offers_open = message == strata_preview::sandbox::PDF_PASSWORD_PROTECTED;
+    app.preview.viewer = Viewer::Message {
+        title: tr("Preview unavailable"),
+        detail: Some(tr(message)),
+        can_open: offers_open,
+    };
+}
+
 pub(super) fn render_ready(app: &mut App, loaded: Preview, tx: &mut Tx) {
+    let focus_archive = app.preview.loader.take_focus_archive(loaded.request_id);
     app.preview.viewer.stop();
     app.preview.header = identity_for(&app.look, &loaded.entry, Some(&loaded.content_type));
+    app.preview.viewer = build_ready_viewer(app, loaded, focus_archive, tx);
+    app.preview.viewer.reset_viewport(tx);
+    reapply_active_find(app, tx);
+}
+
+fn build_ready_viewer(app: &mut App, loaded: Preview, focus_archive: bool, tx: &mut Tx) -> Viewer {
     let wrap = shell::preferences(app).preview_text_wrap;
     let highlighter = app.preview.loader.highlighter(&app.look);
     let file_name = loaded.entry.native_name.to_string_lossy().into_owned();
-    app.preview.viewer = match loaded.content {
+    match loaded.content {
+        PreviewContent::Archive { tree } => build_archive_viewer(app, &tree, focus_archive, tx),
         PreviewContent::Text { content, truncated } => Viewer::code(
             CodeSource {
                 content: normalize_preview_text(&content).into_owned(),
@@ -398,9 +483,21 @@ pub(super) fn render_ready(app: &mut App, loaded: Preview, tx: &mut Tx) {
             can_open: false,
         },
         _ => unavailable_viewer(None),
-    };
-    app.preview.viewer.reset_viewport(tx);
-    reapply_active_find(app, tx);
+    }
+}
+
+fn build_archive_viewer(
+    app: &mut App,
+    tree: &strata_fs::services::ArchivePreviewTree,
+    focus_archive: bool,
+    tx: &mut Tx,
+) -> Viewer {
+    let mut state = archive::build_state(tree, &app.preview.loader.ids);
+    if focus_archive {
+        state.enter();
+        tx.focus_when_shown(archive::ARCHIVE_KEY, true);
+    }
+    Viewer::Archive(Box::new(state))
 }
 
 fn reapply_active_find(app: &mut App, tx: &mut Tx) {
