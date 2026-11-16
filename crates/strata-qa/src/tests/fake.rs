@@ -21,6 +21,8 @@ pub(super) struct Node {
     pub(super) field: bool,
 }
 
+type ChordHook = Box<dyn Fn(&Fake, &Chord)>;
+
 #[derive(Default)]
 pub(super) struct Fake {
     nodes: Vec<Node>,
@@ -28,7 +30,7 @@ pub(super) struct Fake {
     pub(super) focus: Option<usize>,
     pub(super) live_focus: Cell<Option<usize>>,
     pub(super) shown_later: RefCell<Vec<usize>>,
-    pub(super) on_chord: Option<Box<dyn Fn(&Fake, &Chord)>>,
+    pub(super) on_chord: Option<ChordHook>,
     /// Every input event and action, in the order the engine sent them.
     pub(super) sent: RefCell<Vec<String>>,
     pointer: Cell<(i16, i16)>,
