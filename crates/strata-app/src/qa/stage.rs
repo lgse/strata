@@ -275,6 +275,7 @@ pub(super) fn drawn(elements: &[ElementInfo], app: &App) -> Drawn {
             .collect(),
         labels: name_labels(elements),
         icons: row_icons(elements),
+        icon_descriptions: crate::file_providers::presented_descriptions(app),
         buttons: drawn_buttons(elements, &lists),
         sidebar: super::sidebar::Gaps::drawn(elements),
         outlined: crate::filter::outlined(app),

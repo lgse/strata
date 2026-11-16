@@ -49,6 +49,8 @@ pub(crate) struct Menu {
     pub(crate) state: ContextMenuState,
     /// The column the menu is for.
     depth: usize,
+    /// Index in `MenuModel::sections` where external file-provider sections are spliced.
+    provider_slot: usize,
     /// What assistive technology hears the menu called: its entry or its folder.
     name: String,
     /// "Type to search" takes plain keys, so a row hides a hint that is one.
@@ -60,6 +62,9 @@ struct Opening {
     name: String,
     target: MenuTarget,
     model: MenuModel,
+    provider_slot: usize,
+    provider_paths: Option<Vec<std::path::PathBuf>>,
+    background: bool,
 }
 
 /// Entry `id` in column `depth` of the shown view, and what a menu opened on it acts on: the
@@ -111,18 +116,34 @@ fn can_create_in_pane(app: &App, depth: usize, id: EntryId) -> bool {
 /// part of.
 fn entry_menu(app: &App, depth: usize, id: EntryId) -> Option<Opening> {
     let (entry, entries) = context_entries(app, depth, id)?;
+    let can_create = can_create_in_pane(app, depth, id);
     let model = self::entry(&EntryTarget {
         entry: &entry,
         entries: &entries,
-        can_create: can_create_in_pane(app, depth, id),
+        can_create,
         can_trash: app.browser.can_trash_at(depth),
         can_delete: app.browser.can_delete_at(depth),
         typing: app.menu.typing,
     });
+    let has_native_parent = app
+        .browser
+        .location_at(depth)
+        .is_some_and(|loc| loc.native_path().is_some());
+    let provider_paths = has_native_parent
+        .then(|| {
+            entries
+                .iter()
+                .map(|e| e.location.native_path().map(std::path::Path::to_path_buf))
+                .collect::<Option<Vec<_>>>()
+        })
+        .flatten();
     Some(Opening {
         name: entry.display_name,
         target: MenuTarget::Entry(id),
         model,
+        provider_slot: if can_create { 3 } else { 1 },
+        provider_paths,
+        background: false,
     })
 }
 
@@ -133,6 +154,7 @@ fn folder_menu(app: &App, depth: usize) -> Option<Opening> {
     let location = app.browser.location_at(depth)?;
     let name = location.display_name();
     let counts = app.browser.column_entry_counts(depth);
+    let provider_paths = location.native_path().map(|p| vec![p.to_path_buf()]);
     let model = folder(&FolderTarget {
         has_entries: counts.is_some_and(|counts| counts.total > 0),
         can_paste: crate::clipboard::may_paste(app, &location),
@@ -143,6 +165,9 @@ fn folder_menu(app: &App, depth: usize) -> Option<Opening> {
         name,
         target: MenuTarget::Background,
         model,
+        provider_slot: 2,
+        provider_paths,
+        background: true,
     })
 }
 
@@ -189,7 +214,18 @@ pub(crate) fn open(app: &mut App, request: Request, tx: &mut Tx) {
         Some(id) => entry_menu(app, depth, id),
         None => folder_menu(app, depth),
     };
-    if let Some(opening) = opening {
+    if let Some(mut opening) = opening {
+        let sections = crate::file_providers::begin_menu(
+            app,
+            opening.provider_paths.take(),
+            opening.background,
+            tx,
+        );
+        crate::file_providers::menus::splice_provider_sections(
+            &mut opening.model,
+            opening.provider_slot,
+            sections,
+        );
         app.menu
             .show(depth, opening, Point::new(anchor.x, anchor.y));
     }
@@ -201,6 +237,10 @@ pub(crate) fn open(app: &mut App, request: Request, tx: &mut Tx) {
 /// a button ask for it too. A row no part has a command for does nothing.
 fn chosen(app: &mut App, intent: MenuIntent, tx: &mut Tx) {
     let MenuIntent::Activate { target, action } = intent;
+    if crate::file_providers::menus::is_provider_action(&action) {
+        crate::file_providers::activate_menu_action(app, &action, tx);
+        return;
+    }
     let depth = app.menu.depth();
     let on = match target.entry() {
         Some(id) => On::Row((depth, id)),
@@ -236,6 +276,7 @@ impl Part for Menu {
         Self {
             state: ContextMenuState::default(),
             depth: 0,
+            provider_slot: 0,
             name: String::new(),
             // `type_to_search_active` in `src/ui/preferences/input_settings.rs`.
             typing: settings.type_to_search && !settings.tenxer_mode,
@@ -246,12 +287,17 @@ impl Part for Menu {
 impl Menu {
     fn show(&mut self, depth: usize, opening: Opening, at: Point) {
         self.depth = depth;
+        self.provider_slot = opening.provider_slot;
         self.name = opening.name;
         self.state.open(opening.target, at, opening.model);
     }
 
     pub(crate) fn depth(&self) -> usize {
         self.depth
+    }
+
+    pub(crate) fn provider_slot(&self) -> usize {
+        self.provider_slot
     }
 
     fn name(&self) -> &str {

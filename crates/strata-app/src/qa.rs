@@ -25,6 +25,7 @@ mod session;
 mod sidebar;
 mod stage;
 mod staged;
+mod submenus;
 mod tree;
 
 use std::{
