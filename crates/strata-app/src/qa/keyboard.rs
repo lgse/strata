@@ -2,6 +2,8 @@
 
 //! The keyboard the QA mode types on: which modifiers are down, and the layout.
 
+use std::cell::Cell;
+
 use rune::{Key, KeyEvent, Mods};
 use strata_qa::{Keymap, Modifier};
 
@@ -10,6 +12,7 @@ use super::{
     keymap::{self, Layout},
     keys::{self, Named},
 };
+use crate::commands::{Origin, XKey};
 
 #[derive(Default)]
 pub(super) struct Keyboard {
@@ -19,6 +22,8 @@ pub(super) struct Keyboard {
     layout: Option<Layout>,
     /// The dead-key sequence in progress under a layout that has dead keys.
     compose: Option<Compose>,
+    /// The physical origin of the last non-US press, for `commands::read` (packet entry 97).
+    origin: Cell<Option<Origin>>,
 }
 
 impl Keyboard {
@@ -55,28 +60,38 @@ impl Keyboard {
 
     /// The press of the key a scenario names, with `with` held beside what is down already.
     pub(super) fn press(&self, name: &str, with: &[Modifier]) -> Result<KeyEvent, String> {
+        self.origin.set(None);
         let mut held = self.held.clone();
         held.extend(with);
         let shift = held.contains(&Modifier::Shift);
-        let (key, shift, us) = match &self.layout {
+        let (key, shift, us, origin) = match &self.layout {
             None => {
                 let key = keys::named(name)?;
                 let implied = matches!(key, Named::Character(typed) if keys::needs_shift(typed));
-                (key, shift || implied, None)
+                (key, shift || implied, None, None)
             }
             Some(layout) => {
                 let altgr = held.contains(&Modifier::AltGr) && layout.has_altgr();
                 let typed = layout
                     .typed(name, shift, altgr)
                     .ok_or_else(|| format!("no key of a US keyboard is named {name:?}"))?;
-                (typed.key, typed.shift, typed.us)
+                let origin = Origin::from_x(XKey {
+                    keycode: typed.keycode,
+                    base: typed.base,
+                });
+                (typed.key, typed.shift, typed.us, Some(origin))
             }
         };
+        self.origin.set(origin);
         let mods = Mods {
             shift,
             ..keys::mods(&held, self.altgr_shifts_level())
         };
         Ok(keys::event(key, us, mods))
+    }
+
+    pub(super) fn origin(&self) -> Option<Origin> {
+        self.origin.get()
     }
 
     /// What the key's press does to a dead-key sequence, under a layout that has one.
@@ -99,14 +114,23 @@ impl Keyboard {
         with: &[Modifier],
     ) -> Result<Option<KeyEvent>, String> {
         match self.compose(name, with) {
-            Composed::Pending => Ok(None),
-            Composed::Text(text) => Ok(Some(KeyEvent {
-                key: Key::Text(text),
-                mods: self.mods(),
-            })),
+            Composed::Pending => {
+                self.origin.set(None);
+                Ok(None)
+            }
+            Composed::Text(text) => {
+                self.origin.set(None);
+                Ok(Some(KeyEvent {
+                    key: Key::Text(text),
+                    mods: self.mods(),
+                }))
+            }
             Composed::Cancelled => {
                 let pressed = self.press(name, with)?;
                 let types = matches!(pressed.key, Key::Text(_) | Key::Command(_));
+                if types {
+                    self.origin.set(None);
+                }
                 Ok((!types).then_some(pressed))
             }
             Composed::Passed => self.press(name, with).map(Some),
@@ -118,7 +142,10 @@ impl Keyboard {
     pub(super) fn typed(&mut self, character: char) -> Option<KeyEvent> {
         let unlisted = keys::event(Named::Character(character), None, self.mods());
         self.strike(&character.to_string(), &[])
-            .unwrap_or(Some(unlisted))
+            .unwrap_or_else(|_| {
+                self.origin.set(None);
+                Some(unlisted)
+            })
     }
 }
 

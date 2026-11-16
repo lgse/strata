@@ -36,6 +36,7 @@ pub(super) fn drawer() -> DrawerLabels {
     labels.no_matches = tr("No matches");
     labels.match_of = match_of;
     labels.divider = tr("Preview panel minimum width");
+    labels.detail_descriptions = [tr("Size"), tr("Modified"), tr("Type")];
     labels
 }
 

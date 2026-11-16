@@ -507,3 +507,96 @@ fn right_during_active_preview_load_focuses_viewer_when_shown() {
         },
     );
 }
+
+#[test]
+fn image_preview_decodes_png_and_supports_enter_and_leave_keys() {
+    hosted(
+        MODULE,
+        "image_preview_decodes_png_and_supports_enter_and_leave_keys",
+        |mut host| {
+            let folder = tempfile::tempdir().expect("tempdir");
+            let img_path = folder.path().join("photo.png");
+            let mut png_bytes = Vec::new();
+            image::DynamicImage::ImageRgb8(image::RgbImage::from_pixel(
+                24,
+                12,
+                image::Rgb([20, 140, 60]),
+            ))
+            .write_to(
+                &mut std::io::Cursor::new(&mut png_bytes),
+                image::ImageFormat::Png,
+            )
+            .expect("encode png");
+            std::fs::write(&img_path, &png_bytes).expect("write png");
+
+            host.app()
+                .browser()
+                .navigate(Location::local(folder.path()));
+            let counted = |host: &Offscreen| host.app().browser().column_entry_counts(0).is_some();
+            assert!(host.run_until(PATIENCE, counted));
+            while host.turn() {}
+            disable_auto_preview(&mut host);
+
+            select(&mut host, &Location::local(&img_path));
+            focus_view(&mut host);
+            host.runtime().update(move |app: &mut App, tx: &mut Tx| {
+                let (_, _, entry) = app.browser.focused_item().expect("selected photo");
+                app.preview.current = Some(entry.clone());
+                app.preview.current_depth = Some(0);
+                app.preview.enabled = true;
+                app.preview.drawer.open(&app.look, tx);
+                super::load::render_ready(
+                    app,
+                    strata_fs::services::Preview {
+                        request_id: strata_fs::services::PreviewRequestId(1),
+                        entry,
+                        content_type: "image/png".to_owned(),
+                        content: strata_fs::services::PreviewContent::Rasterized { png: png_bytes },
+                    },
+                    tx,
+                );
+            });
+            while host.turn() {}
+            assert!(matches!(
+                host.app().preview.viewer,
+                super::viewer::Viewer::Image(_)
+            ));
+            assert!(tree_has_name(&host.tree(), "photo.png"));
+
+            press(&mut host, Key::Right, Mods::default());
+            assert_eq!(
+                focused_key(&mut host).as_deref(),
+                Some("preview-image-picture")
+            );
+            press(&mut host, Key::Left, Mods::default());
+            assert_eq!(focused_key(&mut host).as_deref(), Some("columns"));
+            assert_blank_preview_click_and_marquee(&mut host);
+        },
+    );
+}
+
+fn assert_blank_preview_click_and_marquee(host: &mut Offscreen) {
+    press(host, Key::Right, Mods::default());
+    assert_eq!(focused_key(host).as_deref(), Some("preview-image-picture"));
+    let slot = host
+        .runtime()
+        .elements()
+        .into_iter()
+        .find(|el| el.key.as_deref() == Some("preview-slot"))
+        .expect("open preview slot");
+    let x = slot.rect[0] + slot.rect[2] - 24.0;
+    let y = slot.rect[1] + slot.rect[3] - 24.0;
+    host.runtime().pointer_down(x, y);
+    host.turn();
+    host.runtime().pointer_up(x, y);
+    while host.turn() {}
+    assert_eq!(focused_key(host).as_deref(), Some("preview-image-picture"));
+
+    host.runtime().pointer_down(x, y);
+    host.turn();
+    host.runtime().pointer_move(x - 64.0, y);
+    while host.turn() {}
+    assert_eq!(focused_key(host).as_deref(), Some("columns"));
+    host.runtime().pointer_up(x - 64.0, y);
+    while host.turn() {}
+}

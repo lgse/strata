@@ -320,3 +320,169 @@ fn tab_and_shift_tab_follow_gtksourceview() {
     outdent(&mut e);
     assert_eq!((e.text.as_str(), e.range()), ("abc", (2, 2)));
 }
+
+#[test]
+fn keyboard_caret_and_shift_arrows_copy_ranges() {
+    use super::caret;
+    use rune::{Key, KeyEvent, Mods};
+
+    let mut st = CodeState::new("the quick brown fox\nsecond line\n");
+    let press = |key: Key, mods: Mods| KeyEvent { key, mods };
+    let ctrl = Mods {
+        ctrl: true,
+        ..Mods::default()
+    };
+    let shift = Mods {
+        shift: true,
+        ..Mods::default()
+    };
+    let mut tx = Tx::default();
+    assert_eq!(
+        caret::on_key(&mut st, &press(Key::Home, ctrl), &mut tx),
+        Some(true)
+    );
+    for _ in 0..3 {
+        assert_eq!(
+            caret::on_key(&mut st, &press(Key::Right, shift), &mut tx),
+            Some(true)
+        );
+    }
+    assert_eq!(st.copy_keyboard().as_deref(), Some("the"));
+
+    // Plain Left collapses a non-empty keyboard selection to its start instead of leaving;
+    // a second plain Left returns None so the host leaves the preview.
+    assert_eq!(
+        caret::on_key(&mut st, &press(Key::Left, Mods::default()), &mut tx),
+        Some(true)
+    );
+    assert_eq!(st.copy_keyboard(), None);
+    assert_eq!(
+        caret::on_key(&mut st, &press(Key::Left, Mods::default()), &mut tx),
+        None
+    );
+}
+
+#[test]
+fn gutter_drag_selects_into_line() {
+    use rune::{Cx, El, Env, Runtime};
+    use strata_kit::look::Look;
+
+    use super::CodeView;
+    use super::caret::byte_at_x;
+    use super::render::Paint;
+
+    struct Host {
+        code: CodeState,
+        look: Look,
+    }
+    fn view(s: &Host, cx: &mut Cx<Host>) -> El {
+        CodeView::new(|h: &Host| &h.code, |h: &mut Host| &mut h.code).build(s, &s.look, cx)
+    }
+
+    let mut rt = Runtime::new(
+        Host {
+            code: CodeState::new("the quick brown fox\nsecond line\n"),
+            look: Look::fallback(false),
+        },
+        view,
+        (320.0, 200.0),
+        Env::new(false, 1.0),
+    );
+    for _ in 0..8 {
+        rt.frame(1.0 / 60.0);
+    }
+
+    let mono = Paint::from_look(&rt.state.look).mono;
+    let w9 = rune::text::advance("the quick", mono);
+    assert_eq!(byte_at_x("the quick brown fox", w9, mono), 9);
+
+    rt.pointer_move(34.0, 14.0);
+    rt.pointer_down(34.0, 14.0);
+    rt.frame(1.0 / 60.0);
+    rt.pointer_move(140.0, 14.0);
+    rt.frame(1.0 / 60.0);
+    rt.pointer_up(140.0, 14.0);
+    rt.frame(1.0 / 60.0);
+    let copied = rt
+        .state
+        .code
+        .copy_keyboard()
+        .expect("gutter drag selects into line");
+    assert!(copied.contains("quick"), "copied {copied:?}");
+}
+
+#[test]
+fn line_break_and_blank_line_shift_selection_survive_frames_and_hosted_left_leaves() {
+    use std::cell::Cell;
+    use std::rc::Rc;
+
+    use rune::{Cx, El, Env, Key, KeyEvent, Mods, Runtime};
+    use strata_kit::look::Look;
+
+    use super::{CodeIntent, CodeView};
+
+    struct Host {
+        code: CodeState,
+        look: Look,
+        left_count: Rc<Cell<usize>>,
+    }
+    fn view(s: &Host, cx: &mut Cx<Host>) -> El {
+        let sink = s.left_count.clone();
+        CodeView::new(|h: &Host| &h.code, |h: &mut Host| &mut h.code)
+            .on_intent(move |_, intent, _| {
+                if intent == CodeIntent::Leave {
+                    sink.set(sink.get() + 1);
+                }
+            })
+            .build(s, &s.look, cx)
+    }
+
+    let left_seen = Rc::new(Cell::new(0usize));
+    let mut rt = Runtime::new(
+        Host {
+            code: CodeState::new("\ndef\nghi\njkl\n"),
+            look: Look::fallback(false),
+            left_count: left_seen.clone(),
+        },
+        view,
+        (320.0, 200.0),
+        Env::new(false, 1.0),
+    );
+    for _ in 0..4 {
+        rt.frame(1.0 / 60.0);
+    }
+    rt.update(|_, tx| {
+        tx.focus("code", true);
+    });
+    rt.frame(1.0 / 60.0);
+
+    let send = |rt: &mut Runtime<Host>, key: Key, mods: Mods| {
+        rt.key(KeyEvent { key, mods });
+        rt.frame(1.0 / 60.0);
+    };
+    let ctrl = Mods {
+        ctrl: true,
+        ..Mods::default()
+    };
+    let shift = Mods {
+        shift: true,
+        ..Mods::default()
+    };
+    send(&mut rt, Key::Home, ctrl);
+    send(&mut rt, Key::Down, shift);
+    assert_eq!(rt.state.code.copy_keyboard().as_deref(), Some("\n"));
+    send(&mut rt, Key::End, shift);
+    assert_eq!(rt.state.code.copy_keyboard().as_deref(), Some("\ndef"));
+
+    send(&mut rt, Key::End, Mods::default());
+    send(&mut rt, Key::Down, shift);
+    assert_eq!(rt.state.code.copy_keyboard().as_deref(), Some("\nghi"));
+    send(&mut rt, Key::End, Mods::default());
+    send(&mut rt, Key::Right, shift);
+    assert_eq!(rt.state.code.copy_keyboard().as_deref(), Some("\n"));
+    send(&mut rt, Key::Down, shift);
+    assert_eq!(rt.state.code.copy_keyboard().as_deref(), Some("\njkl\n"));
+
+    send(&mut rt, Key::Left, Mods::default());
+    assert_eq!(left_seen.get(), 1);
+}

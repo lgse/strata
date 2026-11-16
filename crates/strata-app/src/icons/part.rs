@@ -155,3 +155,10 @@ impl Part for Icons {
         ticked | said
     }
 }
+
+pub(crate) fn tick_active(app: &mut App, tx: &mut Tx) -> bool {
+    match app.filter.pane.shows() {
+        true => view::results().collection(app).tick(app, tx),
+        false => view::grid().collection(app).tick(app, tx),
+    }
+}

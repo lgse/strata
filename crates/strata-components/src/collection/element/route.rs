@@ -27,7 +27,7 @@ use crate::contract::{CollectionGeometry, EntrySource, Point, Rect};
 
 /// Where an input came from, for what the element does after it.
 #[derive(Clone, Copy, Debug, PartialEq)]
-enum Source {
+pub(super) enum Source {
     /// A pointer input; for a move, its content point, which a marquee begun by it hears.
     Pointer(Option<Point>),
     Key,
@@ -91,7 +91,7 @@ pub(super) fn under_stuck_header<S: 'static>(cfg: &Config<S>, s: &S, e: PointerE
 
 /// Runs `f` with the controllers and a [`Ctx`], then applies what it changed and asked for.
 /// Returns the controller's flow, and whether anything the view reads changed.
-fn dispatch<S: 'static>(
+pub(super) fn dispatch<S: 'static>(
     cfg: &Rc<Config<S>>,
     s: &mut S,
     tx: &mut Tx,
@@ -249,7 +249,7 @@ fn after<S: 'static>(
     }
 }
 
-fn begin_marquee<S: 'static>(
+pub(super) fn begin_marquee<S: 'static>(
     cfg: &Rc<Config<S>>,
     s: &mut S,
     tx: &mut Tx,
@@ -429,39 +429,68 @@ pub(super) fn on_drag<S: 'static>(cfg: &Rc<Config<S>>, s: &mut S, d: &mut Drag, 
     {
         f(s, &input, tx);
     }
-    // A press on the header held back (`Collection::header_defers_press`): it reaches the
-    // controllers once it travels past the threshold, with the move that took it there; a
-    // release before then is a click on the header, which the collection doesn't take.
-    let mut released = false;
-    if let Some(threshold) = cfg.header_defer {
-        let st = (cfg.get_mut)(s).1;
-        match phase {
-            PointerPhase::Down if on_header => {
-                st.deferred = Some(input);
-                tx.live_only();
-                return;
-            }
-            PointerPhase::Down => st.deferred = None,
-            PointerPhase::Move if st.deferred.is_some() => {
-                let past = input.travel.x.abs() > threshold || input.travel.y.abs() > threshold;
-                if !past || input.cancelled {
-                    tx.live_only();
-                    return;
-                }
-                let down = st.deferred.take().expect("checked");
-                released = route_pointer(cfg, s, tx, &down);
-            }
-            PointerPhase::Up if st.deferred.take().is_some() => {
-                tx.live_only();
-                return;
-            }
-            _ => {}
-        }
-    }
+    let Some(released) = handle_deferred_header(cfg, s, tx, (&input, on_header)) else {
+        return;
+    };
     let shows = route_pointer(cfg, s, tx, &input) || released;
     // A move that changed nothing the view reads commits nothing, an open band's included: a
     // marquee that redraws says so with `Ctx::repaint`.
     if phase == PointerPhase::Move && !shows && hover_was_live {
+        tx.live_only();
+    }
+}
+
+/// Holds a header press back until it crosses `header_defer` or releases (`None` ends `on_drag`).
+fn handle_deferred_header<S: 'static>(
+    cfg: &Rc<Config<S>>,
+    s: &mut S,
+    tx: &mut Tx,
+    (input, on_header): (&PointerInput, bool),
+) -> Option<bool> {
+    let Some(threshold) = cfg.header_defer else {
+        return Some(false);
+    };
+    let st = (cfg.get_mut)(s).1;
+    match input.phase {
+        PointerPhase::Down if on_header => {
+            st.deferred = Some(*input);
+            tx.live_only();
+            None
+        }
+        PointerPhase::Down => {
+            st.deferred = None;
+            Some(false)
+        }
+        PointerPhase::Move if st.deferred.is_some() => {
+            if !is_past_threshold(input, threshold) || input.cancelled {
+                tx.live_only();
+                return None;
+            }
+            let down = st.deferred.take().expect("checked");
+            Some(route_pointer(cfg, s, tx, &down))
+        }
+        PointerPhase::Up if st.deferred.is_some() => {
+            let down = st.deferred.take().expect("checked");
+            finish_deferred_click(cfg, s, tx, (&down, input.cancelled));
+            None
+        }
+        _ => Some(false),
+    }
+}
+
+fn is_past_threshold(input: &PointerInput, threshold: f32) -> bool {
+    input.travel.x.abs() > threshold || input.travel.y.abs() > threshold
+}
+
+fn finish_deferred_click<S: 'static>(
+    cfg: &Rc<Config<S>>,
+    s: &mut S,
+    tx: &mut Tx,
+    (down, cancelled): (&PointerInput, bool),
+) {
+    if !cancelled && let Some(f) = &cfg.on_header_click {
+        f(s, down, tx);
+    } else {
         tx.live_only();
     }
 }

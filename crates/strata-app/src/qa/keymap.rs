@@ -22,6 +22,10 @@ pub(super) struct Typed {
     pub(super) shift: bool,
     /// The character the key types unshifted on a US layout.
     pub(super) us: Option<char>,
+    /// The key's X keycode (`evdev + 8`).
+    pub(super) keycode: u32,
+    /// The character the key types unshifted on this layout (`Tx::key_base`).
+    pub(super) base: Option<char>,
 }
 
 pub(super) struct Layout {
@@ -173,10 +177,16 @@ impl Layout {
             _ => Named::Character(character(state.key_get_utf32(keycode))?),
         };
         let us = self.us.key_get_syms_by_level(keycode, 0, 0).first();
+        let base = self
+            .keymap
+            .key_get_syms_by_level(keycode, self.group, 0)
+            .first();
         Some(Typed {
             key,
             shift,
             us: us.and_then(|keysym| character(xkb::keysym_to_utf32(*keysym))),
+            keycode: keycode.raw(),
+            base: base.and_then(|keysym| character(xkb::keysym_to_utf32(*keysym))),
         })
     }
 }

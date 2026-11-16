@@ -23,6 +23,7 @@
 
 mod actions;
 mod measure;
+mod media;
 mod permissions;
 #[cfg(test)]
 mod tests;
@@ -59,6 +60,7 @@ use crate::{
 struct Tasks {
     info: Option<glib::JoinHandle<()>>,
     measure: Option<glib::JoinHandle<()>>,
+    media: media::ActiveLoad,
 }
 
 impl Tasks {
@@ -69,6 +71,7 @@ impl Tasks {
         if let Some(handle) = self.measure.take() {
             handle.abort();
         }
+        self.media.abort();
     }
 }
 
@@ -95,6 +98,7 @@ struct Single {
     opens_with: String,
     hidden: String,
     copied: bool,
+    media: media::Section,
     permissions: permissions::Editor,
 }
 
@@ -301,6 +305,12 @@ fn open_single(
     state.notice_open = false;
     state.opened += 1;
     let generation = state.opened;
+    let (media_section, media_load) = media::start(
+        entry.as_ref(),
+        is_directory,
+        generation,
+        state.later.clone(),
+    );
     state.dialog = Some(Dialog::Single(Box::new(Single {
         generation,
         location: location.clone(),
@@ -318,9 +328,11 @@ fn open_single(
         hidden: tr(if name.starts_with('.') { "Yes" } else { "No" }),
         name,
         copied: false,
+        media: media_section,
         permissions: permissions::Editor::default(),
     })));
     state.open = true;
+    state.tasks.media = media_load;
     if measuring {
         state.tasks.measure = Some(measure::spawn_folder(
             state.later.clone(),

@@ -4,7 +4,10 @@
 
 use rune::Tx;
 use strata_components::{
-    collection::element::{Activation, Intent},
+    collection::{
+        element::{Activation, Intent},
+        keyboard::NothingToSelect,
+    },
     columns::ColumnsIntent,
     contract::EntryId,
 };
@@ -157,6 +160,9 @@ impl App {
                     anchor,
                 };
                 menus::open(self, menu, tx);
+            }
+            Intent::Other(other) if other.downcast_ref::<NothingToSelect>().is_some() => {
+                crate::tenxer::flash_nothing_to_select(self, tx);
             }
             // Drags are interface the slice leaves out. Up and Down at a
             // column's edge have nowhere to go without a header to focus: the view has

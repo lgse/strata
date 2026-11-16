@@ -15,16 +15,21 @@ use super::{
     Dialog, Properties,
     actions::{PinAction, pin_action_for},
     measure::{directory_counts_label, measurement_warning_text, size_label},
+    media::media_rows,
     permissions::{toggled_permission, with_execute_permissions},
 };
 use crate::{
     App,
     commands::{self, Holds, On, Outcome},
     host::offscreen::Offscreen,
-    shell,
+    raw_details, shell,
     sidebar::PinState,
     slots::Part,
     test_support::{PATIENCE, fixture, hosted, send_key, view::idle},
+};
+use strata_preview::sandbox::{
+    metadata::{Chapter, MediaMetadata, SubtitleTrack},
+    raw_metadata::RawMetadata,
 };
 
 const MODULE: &str = "properties::tests";
@@ -396,5 +401,66 @@ fn open_action_on_executable_settles_run_confirmation_immediately() {
                 None,
             ));
         },
+    );
+}
+
+#[test]
+fn media_and_raw_rows_format_streams_tracks_and_camera_fields() {
+    let media = MediaMetadata {
+        dimensions: Some((320, 180)),
+        duration: Some(3661.4),
+        bitrate: Some(1_500_000.0),
+        video_codec: Some("h264".into()),
+        frame_rate: Some(24.0),
+        audio_codec: Some("aac".into()),
+        sample_rate: Some(48_000.0),
+        channels: Some(2),
+        subtitle_tracks: vec![SubtitleTrack {
+            language: Some("en".into()),
+        }],
+        chapters: vec![Chapter {
+            start: 0.0,
+            end: 10.0,
+            title: None,
+        }],
+        ..MediaMetadata::default()
+    };
+    let expected_media = vec![
+        ("RESOLUTION", "320 × 180 pixels".into()),
+        ("DURATION", "1:01:01".into()),
+        ("BITRATE", "1.50 Mb/s".into()),
+        ("VIDEO CODEC", "h264".into()),
+        ("FRAME RATE", "24.00 fps".into()),
+        ("AUDIO CODEC", "aac".into()),
+        ("SAMPLE RATE", "48.0 kHz".into()),
+        ("CHANNELS", "2 (Stereo)".into()),
+        ("SUBTITLES", "1 (en)".into()),
+        ("CHAPTERS", "1".into()),
+    ];
+    assert_eq!(media_rows(&media), expected_media);
+
+    let raw = RawMetadata {
+        dimensions: Some((600, 400)),
+        camera: Some("Strata Test Camera".into()),
+        lens: Some("Synthetic 50mm lens".into()),
+        focal_length: Some(50.0),
+        shutter_speed: Some(0.004),
+        iso: Some(400.0),
+        gps: Some((-12.5, -45.25)),
+    };
+    let expected_raw = [
+        ("DIMENSIONS", "600 × 400 pixels".into()),
+        ("CAMERA", "Strata Test Camera".into()),
+        ("LENS", "Synthetic 50mm lens".into()),
+        ("FOCAL LENGTH", "50 mm".into()),
+        ("SHUTTER SPEED", "1/250 s".into()),
+        ("ISO", "400".into()),
+        ("GPS COORDINATES", "-12.500000, -45.250000".into()),
+    ];
+    assert_eq!(raw_details::rows(&raw), expected_raw);
+    assert!(
+        raw_details::default_rows()
+            .iter()
+            .all(|(_, val)| val == "N/A")
     );
 }

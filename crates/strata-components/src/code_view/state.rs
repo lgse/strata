@@ -50,6 +50,8 @@ pub(crate) struct Content {
     pub ends: Option<(usize, usize)>,
     /// Ctrl+A selected the whole text, and nothing has changed the selection since.
     pub all: Cell<bool>,
+    /// Active keyboard or gutter-drag byte range `(lo, hi)` when `lo < hi`.
+    pub keyboard_range: Cell<Option<(usize, usize)>>,
 }
 
 impl Content {
@@ -66,6 +68,7 @@ impl Content {
             rows,
             keys,
             all: Cell::new(false),
+            keyboard_range: Cell::new(None),
         }
     }
 
@@ -103,6 +106,10 @@ pub struct CodeState {
     /// Ctrl+A asked Rune to select everything from a selection that didn't hold it, and the
     /// selection change that makes hasn't come yet.
     all_pending: bool,
+    /// Read-only keyboard caret `(anchor, head)` byte offsets in `rows.text`.
+    caret: Option<(usize, usize)>,
+    /// Selection `(row, range)` most recently requested by [`Self::apply_caret`].
+    expected_select: Option<Option<(usize, Range<usize>)>>,
     pub(crate) position: Position,
     /// The sideways bar while wrap is off (C24's).
     pub(crate) sideways: Bar,
@@ -151,6 +158,8 @@ impl CodeState {
             pending: Vec::new(),
             visible: 0..0,
             all_pending: false,
+            caret: None,
+            expected_select: None,
             position: Position::default(),
             sideways: Bar::new(),
             overflow: false,
@@ -212,6 +221,8 @@ impl CodeState {
         self.content = Rc::new(Content::new(self.content.key.clone(), text.into()));
         self.revision = serial();
         self.all_pending = false;
+        self.caret = None;
+        self.expected_select = None;
         self.folded = OnceCell::new();
         self.found = self.run_find();
         self.current = None;
@@ -364,11 +375,91 @@ impl CodeState {
     pub(crate) fn select_all(&mut self, before: Option<&TextSelection>) {
         let already = before.is_some_and(|sel| copy::reads_whole(&self.content, sel));
         self.content.all.set(already);
+        self.content.keyboard_range.set(None);
+        self.caret = Some((0, self.content.rows.text.len()));
+        self.expected_select = None;
         self.all_pending = !already;
     }
 
     pub(crate) fn all_selected(&self) -> bool {
         self.content.all.get()
+    }
+
+    pub(crate) fn caret(&self) -> Option<(usize, usize)> {
+        self.caret
+    }
+
+    pub(crate) fn keyboard_selection(&self) -> Option<(usize, usize)> {
+        self.content.keyboard_range.get()
+    }
+
+    pub(crate) fn caret_or_selection(&self, sel: Option<&TextSelection>) -> (usize, usize) {
+        if let Some(pair) = self.caret {
+            return pair;
+        }
+        sel.and_then(|s| copy::span(&self.content, s))
+            .unwrap_or((0, 0))
+    }
+
+    pub(crate) fn apply_caret(&mut self, anchor: usize, head: usize, tx: &mut Tx) {
+        let len = self.content.rows.text.len();
+        let anchor = anchor.min(len);
+        let head = head.min(len);
+        self.caret = Some((anchor, head));
+        self.content.all.set(false);
+        self.all_pending = false;
+        let (lo, hi) = (anchor.min(head), anchor.max(head));
+        if lo < hi {
+            self.content.keyboard_range.set(Some((lo, hi)));
+            if let Some((r, range)) = self.first_nonempty_row_slice(lo, hi) {
+                self.expected_select = Some(Some((r, range.clone())));
+                tx.select_text(format!("{}/t", self.row_key(r)), range);
+            } else {
+                self.expected_select = Some(None);
+                tx.clear_text_selection();
+            }
+        } else {
+            self.content.keyboard_range.set(None);
+            self.expected_select = Some(None);
+            tx.clear_text_selection();
+        }
+    }
+
+    fn first_nonempty_row_slice(&self, lo: usize, hi: usize) -> Option<(usize, Range<usize>)> {
+        let start_row = self.content.rows.row_at(lo);
+        let end_row = self.content.rows.row_at(hi);
+        for r in start_row..=end_row {
+            let row = self.content.rows.row(r);
+            let a = lo.max(row.start);
+            let b = hi.min(row.end);
+            if a < b {
+                return Some((r, (a - row.start)..(b - row.start)));
+            }
+        }
+        None
+    }
+
+    pub(crate) fn copy_keyboard(&self) -> Option<String> {
+        let (a, b) = self.content.keyboard_range.get()?;
+        (a < b && b <= self.content.rows.text.len())
+            .then(|| self.content.rows.text[a..b].to_owned())
+    }
+
+    fn matches_expected_select(&self, sel: Option<&TextSelection>) -> bool {
+        let Some(expected) = &self.expected_select else {
+            return false;
+        };
+        let selected: Vec<_> = sel
+            .map(|s| s.texts().iter().filter(|t| t.is_selected()).collect())
+            .unwrap_or_default();
+        match expected {
+            None => selected.is_empty(),
+            Some((r, range)) => {
+                selected.len() == 1
+                    && copy::locate(&self.content.key, selected[0].path()) == Some(*r)
+                    && selected[0].range() == *range
+            }
+        }
     }
 
     /// The selection changed: the change Ctrl+A's select-all makes starts copy-everything if
@@ -377,6 +468,12 @@ impl CodeState {
         let pending = std::mem::take(&mut self.all_pending);
         let all = pending && sel.is_some_and(|sel| copy::reads_whole(&self.content, sel));
         self.content.all.set(all);
+        if all || self.matches_expected_select(sel) {
+            return;
+        }
+        self.expected_select = None;
+        self.content.keyboard_range.set(None);
+        self.caret = sel.and_then(|s| copy::span(&self.content, s));
     }
 
     /// What copying `sel` takes: the text between its ends, from the model.
@@ -455,6 +552,9 @@ impl HostedPreview for CodeState {
         // Each edit to the query clears the selection; the first match then takes it.
         self.pending.push(Request::Clear);
         self.content.all.set(false);
+        self.content.keyboard_range.set(None);
+        self.caret = None;
+        self.expected_select = None;
         self.all_pending = false;
         self.select_current();
     }
@@ -469,6 +569,9 @@ impl HostedPreview for CodeState {
             Some(c) => (c + n - 1) % n,
             None => 0,
         });
+        self.content.keyboard_range.set(None);
+        self.caret = None;
+        self.expected_select = None;
         self.select_current();
     }
 

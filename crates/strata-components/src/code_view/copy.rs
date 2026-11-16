@@ -27,7 +27,7 @@ pub(crate) fn locate(key: &str, path: &str) -> Option<usize> {
 }
 
 /// The text bytes a selection covers, if any of it is the view's.
-fn span(c: &Content, sel: &TextSelection) -> Option<(usize, usize)> {
+pub(crate) fn span(c: &Content, sel: &TextSelection) -> Option<(usize, usize)> {
     let mut out: Option<(usize, usize)> = None;
     for t in sel.texts().iter().filter(|t| t.is_selected()) {
         let Some(r) = locate(&c.key, t.path()).filter(|&r| r < c.rows.len()) else {
@@ -46,6 +46,13 @@ fn span(c: &Content, sel: &TextSelection) -> Option<(usize, usize)> {
 pub(crate) fn copy(c: &Content, sel: &TextSelection) -> String {
     if c.all.get() {
         return c.rows.text.to_string();
+    }
+    if let Some((a, b)) = c
+        .keyboard_range
+        .get()
+        .filter(|(a, b)| a < b && *b <= c.rows.text.len())
+    {
+        return c.rows.text[a..b].to_owned();
     }
     match span(c, sel) {
         Some((a, b)) if a <= b => c.rows.text[a..b].to_owned(),

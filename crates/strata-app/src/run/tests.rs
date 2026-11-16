@@ -16,7 +16,7 @@ use crate::{
     error_dialog,
     host::offscreen::Offscreen,
     startup::{self, UiThread},
-    test_support::{PATIENCE, folder_of, hosted, in_own_process, send_key},
+    test_support::{PATIENCE, folder_of, in_own_process, send_key},
 };
 
 const MODULE: &str = "run::tests";
@@ -77,9 +77,10 @@ fn run_focused(host: &mut Offscreen) {
 
 #[test]
 fn an_executable_runs_only_once_confirmed() {
-    hosted(
-        MODULE,
+    let empty_data = tempfile::tempdir().expect("empty data dirs");
+    hosted_with_env(
         "an_executable_runs_only_once_confirmed",
+        &[("XDG_DATA_DIRS", empty_data.path().as_os_str())],
         |mut host| {
             let folder = folder_of(&["todo.txt"]);
             let run_me = program(folder.path());
@@ -90,10 +91,20 @@ fn an_executable_runs_only_once_confirmed() {
             while host.turn() {}
 
             opened(&mut host, &Location::local(folder.path().join("todo.txt")));
+            let fallback = host.run_until(PATIENCE, |host| host.app().open_with.is_open());
+            assert!(
+                fallback,
+                "a non-executable file with no default opens Open With"
+            );
             assert!(!asking(&host), "a file that is not executable asks nothing");
+            key(&mut host, Key::Escape);
+            assert!(host.run_until(PATIENCE, |host| !host.app().open_with.is_open()));
 
             opened(&mut host, &run_me);
-            assert!(asking(&host), "opening the program asks first");
+            assert!(
+                host.run_until(PATIENCE, asking),
+                "opening the program asks first"
+            );
             run_focused(&mut host);
             key(&mut host, Key::Escape);
             let closed = host.run_until(PATIENCE, |host| !asking(host));
@@ -155,11 +166,13 @@ fn executable_file(folder: &Path, name: &str, text: &str) -> Location {
 #[test]
 fn a_program_that_cannot_start_says_so() {
     let empty_dir = tempfile::tempdir().expect("empty PATH dir");
+    let empty_data = tempfile::tempdir().expect("empty data dirs");
     hosted_with_env(
         "a_program_that_cannot_start_says_so",
         &[
             ("PATH", empty_dir.path().as_os_str()),
             ("TERMINAL", OsStr::new("")),
+            ("XDG_DATA_DIRS", empty_data.path().as_os_str()),
         ],
         |mut host| {
             let folder = folder_of(&[]);
@@ -193,6 +206,7 @@ fn a_program_that_cannot_start_says_so() {
 #[test]
 fn a_shell_script_runs_in_the_resolved_terminal() {
     let launcher_dir = tempfile::tempdir().expect("launcher dir");
+    let empty_data = tempfile::tempdir().expect("empty data dirs");
     let launcher = launcher_dir.path().join("xdg-terminal-exec");
     std::fs::write(
         &launcher,
@@ -206,6 +220,7 @@ fn a_shell_script_runs_in_the_resolved_terminal() {
         &[
             ("PATH", launcher_dir.path().as_os_str()),
             ("TERMINAL", OsStr::new("")),
+            ("XDG_DATA_DIRS", empty_data.path().as_os_str()),
         ],
         |mut host| {
             let folder = folder_of(&[]);

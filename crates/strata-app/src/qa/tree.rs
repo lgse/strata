@@ -151,6 +151,7 @@ pub(super) struct Drawn {
     pub(super) icons: Vec<RowIcon>,
     pub(super) buttons: Vec<DrawnButton>,
     pub(super) sidebar: super::sidebar::Gaps,
+    pub(super) tenxer: super::tenxer::Labels,
     /// The entry the filter's Enter would open (`qa::filter`).
     pub(super) outlined: Option<EntryId>,
     /// On the focused non-secure text field: its selection's anchor and caret in UTF-8 bytes
@@ -384,6 +385,7 @@ impl Snapshot {
             snapshot.add_hidden_button(button, &panes);
         }
         drawn.sidebar.present(&mut snapshot);
+        drawn.tenxer.present(&mut snapshot);
         snapshot
     }
 

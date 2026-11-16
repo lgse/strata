@@ -13,10 +13,7 @@
 
 use rune::Tx;
 use strata_components::{
-    collection::{
-        keyboard::{KeySettings, Letters},
-        pointer::PointerIntent,
-    },
+    collection::pointer::PointerIntent,
     context_menu::AnchorEdge,
     list_table::{ColumnLayout, ColumnWidths, ListTableLabels, ListTableState, MenuAt},
     scroll::{Autoscroll, AutoscrollPointer, Target},
@@ -37,9 +34,20 @@ mod part;
 mod thumbs;
 pub(crate) mod view;
 
+pub(crate) use part::tick_active;
+
 /// The table's key: its collection's, and the element that takes the keyboard. Every
 /// element key of the view starts with it.
 pub(crate) const VIEW: &str = "list";
+
+pub(crate) fn origin_drag(app: &mut App, d: &mut rune::Drag, clears: bool, tx: &mut Tx) {
+    let c = if app.filter.pane.shows() {
+        view::results(app)
+    } else {
+        view::ticked(app)
+    };
+    c.origin_drag(app, (d, clears), tx);
+}
 
 pub(crate) struct List {
     pub(crate) single: Single,
@@ -64,29 +72,15 @@ pub(crate) struct List {
     thumbs: thumbs::Thumbs,
 }
 
-/// The keys of the List table. Every row is at the pane's left edge (`at_left_edge` in
-/// `src/ui/browser_modes/focus.rs`), so Left leaves it with or without a cursor. With "Type
-/// to search" off a plain letter starts no search, so `h j k l` are the arrows:
-/// `Context::of` in `src/ui/keys/alias.rs`.
-fn keys(typing: bool) -> KeySettings {
-    let mut keys = KeySettings::default();
-    keys.left_leaves_without_cursor = true;
-    match typing {
-        true => keys,
-        false => keys.letters(Letters::Arrows),
-    }
-}
-
 impl List {
     fn with_setup(setup: &Setup<'_>) -> Self {
         let settings: &Preferences = setup.settings;
-        // `type_to_search_active` in `src/ui/preferences/input_settings.rs`.
-        let typing = settings.type_to_search && !settings.tenxer_mode;
         let table = ListTableState::new();
         let autoscroll = Autoscroll::new();
         let mut single = Single::new(Made {
             key: VIEW,
-            keys: keys(typing),
+            wrap_rows: false,
+            left_leaves: true,
             described: tr("List view"),
             menu_at: AnchorEdge::Center,
             worn: setup.worn.clone(),

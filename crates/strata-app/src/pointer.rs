@@ -9,7 +9,7 @@ mod marquee;
 mod tests;
 
 use rune::{El, Tx};
-use strata_components::scroll::{Autoscroll, Shield};
+use strata_components::scroll::{Autoscroll, Shield, Stop};
 use strata_core::i18n::tr;
 
 use crate::{
@@ -50,6 +50,11 @@ fn stop_all_autoscroll(app: &mut App) {
 fn build(app: &App, frame: &mut Frame<'_, App>) -> Option<El> {
     if let Some(shield) = Shield::new(active_autoscroll, |app: &App| &app.look)
         .label(app.pointer.label.clone())
+        .on_stop(|app: &mut App, stop| {
+            if stop == Stop::Escape {
+                crate::tenxer::cancel_chord(app);
+            }
+        })
         .build(app)
     {
         frame.layer.push(shield);
