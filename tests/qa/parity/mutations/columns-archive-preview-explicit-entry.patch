@@ -2,12 +2,8 @@ diff --git a/crates/strata-app/src/preview/keys.rs b/crates/strata-app/src/previ
 index 62bfbe649..4a18a9c8b 100644
 --- a/crates/strata-app/src/preview/keys.rs
 +++ b/crates/strata-app/src/preview/keys.rs
-@@ -98,7 +98,7 @@ fn password_prompt_focused(app: &App, _: &Situation) -> bool {
- }
- 
+@@ -100,3 +100,3 @@ fn password_prompt_focused(app: &App, _: &Situation) -> bool {
  fn opens_archive_key(press: &KeyPress) -> bool {
 -    press.is(RIGHT) || press.is(ENTER) || press.is(SPACE)
 +    press.is(RIGHT)
  }
- 
- /// GTK's 10xer listing claims Right, Enter and Space before this check (marking, activation,

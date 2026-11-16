@@ -2,12 +2,8 @@ diff --git a/crates/strata-app/src/file_providers/hub.rs b/crates/strata-app/src
 index 351a9518b..4f78ed1c0 100644
 --- a/crates/strata-app/src/file_providers/hub.rs
 +++ b/crates/strata-app/src/file_providers/hub.rs
-@@ -587,7 +587,7 @@ impl Hub {
-             .iter()
-             .filter_map(|p| p.badge(path))
+@@ -589,3 +589,3 @@ impl Hub {
              .collect();
 -        badges.sort_by(|a, b| b.priority.cmp(&a.priority).then(a.provider.cmp(b.provider)));
 +        badges.sort_by(|a, b| a.priority.cmp(&b.priority).then(a.provider.cmp(b.provider)));
          badges
-     }
- 
