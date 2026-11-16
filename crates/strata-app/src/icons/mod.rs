@@ -6,7 +6,12 @@
 //! selection, the pane's. A folder opens in place, as GTK's Icons view opens it
 //! (`activate_in_place`).
 
-use strata_components::{context_menu::AnchorEdge, icons_grid::IconsGridState};
+use strata_components::{
+    collection::pointer::PointerIntent,
+    context_menu::AnchorEdge,
+    icons_grid::{IconsGridState, autoscroll_background},
+    scroll::{Autoscroll, AutoscrollPointer},
+};
 use strata_core::{i18n::tr, model::Location};
 use strata_desktop::settings::Preferences;
 
@@ -19,7 +24,7 @@ use crate::{
 
 mod part;
 pub(crate) mod size;
-mod view;
+pub(crate) mod view;
 
 pub(crate) use part::tick_active;
 
@@ -44,6 +49,7 @@ pub(crate) fn origin_drag(
 pub(crate) struct Icons {
     pub(crate) single: Single,
     grid: IconsGridState,
+    autoscroll: Autoscroll,
     /// The tile size in points, from 32 to 256 (`size.rs`).
     size: f32,
     /// The folder shown when the size was last set, so the part's poll can tell when another
@@ -63,16 +69,29 @@ pub(crate) struct Icons {
 impl Icons {
     fn with_setup(setup: &Setup<'_>) -> Self {
         let settings: &Preferences = setup.settings;
+        let grid = IconsGridState::new();
+        let autoscroll = Autoscroll::new();
+        let mut single = Single::new(Made {
+            key: VIEW,
+            wrap_rows: true,
+            left_leaves: false,
+            described: tr("Icons view"),
+            menu_at: AnchorEdge::Right,
+            worn: setup.worn.clone(),
+        });
+        single.pane.parts_mut().1.controllers.pointer = Some(Box::new(
+            AutoscrollPointer::new(
+                Some(Box::new(PointerIntent::new())),
+                autoscroll.clone(),
+                VIEW,
+                grid.feed().clone(),
+            )
+            .background(autoscroll_background),
+        ));
         Self {
-            single: Single::new(Made {
-                key: VIEW,
-                wrap_rows: true,
-                left_leaves: false,
-                described: tr("Icons view"),
-                menu_at: AnchorEdge::Right,
-                worn: setup.worn.clone(),
-            }),
-            grid: IconsGridState::new(),
+            single,
+            grid,
+            autoscroll,
             size: size::tile_size(settings.icons_thumbnail_size),
             sized_for: None,
             sized_at: 0,
@@ -80,6 +99,10 @@ impl Icons {
             thumbs: Viewer::new(setup.later.clone(), part::locate),
             fills: Fills::new(Details::All),
         }
+    }
+
+    pub(crate) fn autoscroll(&self) -> &Autoscroll {
+        &self.autoscroll
     }
 }
 

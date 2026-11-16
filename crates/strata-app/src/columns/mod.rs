@@ -175,6 +175,31 @@ impl Columns {
         self.state.clear_selection(&self.listings);
     }
 
+    pub(crate) fn autoscroll(&self) -> &Autoscroll {
+        self.state.autoscroll()
+    }
+
+    /// Column 0's source, collection state, and viewport path, for a leading marquee origin.
+    pub(crate) fn leading_marquee_parts(
+        &mut self,
+    ) -> Option<(
+        &dyn EntrySource,
+        &mut strata_components::collection::element::CollectionState,
+        String,
+    )> {
+        let key = self.state.column_key(0)?;
+        let source = self.listings.shown(0)?;
+        let column = self.state.column_mut(0)?;
+        let viewport = strata_components::collection::element::viewport_path(&key);
+        Some((source, &mut column.collection, viewport))
+    }
+
+    pub(crate) fn activate_leading(&mut self, look: &Look, tx: &mut Tx) {
+        if self.state.active() != 0 && !self.state.is_empty() {
+            self.state.set_active(0, look, tx);
+        }
+    }
+
     pub(crate) fn in_band(&self) -> bool {
         (0..self.state.len()).any(|depth| {
             self.state

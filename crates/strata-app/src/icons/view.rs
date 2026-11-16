@@ -16,7 +16,7 @@ use strata_components::{
 use super::{Icons, VIEW, size};
 use crate::{App, details, listing::Row, shell, single, slots::Frame};
 
-pub(super) fn grid() -> IconsGrid<App> {
+pub(crate) fn grid() -> IconsGrid<App> {
     IconsGrid::new(
         VIEW,
         single::collection::<Icons>,
@@ -70,7 +70,7 @@ fn details_text(app: &App, rcx: &RowCx<'_>) -> Option<Arc<str>> {
 /// A filter's results in the grid's place (A10's [`crate::filter::pane`]): tiles as the
 /// grid's, at its size, each with its path under the folder as its details line while the
 /// filter searches the subfolders (GTK's `ResultKind::Icons`).
-pub(super) fn results() -> IconsGrid<App> {
+pub(crate) fn results() -> IconsGrid<App> {
     IconsGrid::new(
         VIEW,
         single::results::<Icons>,

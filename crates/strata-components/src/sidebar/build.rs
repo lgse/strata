@@ -17,6 +17,8 @@ use super::state::{SidebarState, Step};
 use super::{ActionFn, Emit, drops};
 use crate::contract::dnd::{Dnd, DropAction, DropHover, DropOffer};
 
+type DragFn<S> = Rc<dyn Fn(&mut S, &mut Drag, &mut Tx)>;
+
 /// The places sidebar: built-in places, then PINNED and DEVICES, in three widths.
 ///
 /// ```ignore
@@ -44,6 +46,7 @@ pub struct PlacesSidebar<'a, S> {
     tenxer: bool,
     footer: Option<Box<dyn FnOnce(Step) -> El + 'a>>,
     trash: Option<Box<dyn FnOnce(El) -> El + 'a>>,
+    background_drag: Option<DragFn<S>>,
     emit: Emit<S>,
 }
 
@@ -66,6 +69,7 @@ impl<'a, S: 'static> PlacesSidebar<'a, S> {
             tenxer: false,
             footer: None,
             trash: None,
+            background_drag: None,
             emit: Rc::new(|_, _, _| {}),
         }
     }
@@ -133,6 +137,13 @@ impl<'a, S: 'static> PlacesSidebar<'a, S> {
         self
     }
 
+    /// Hears a primary drag starting on blank space inside the sidebar's scroll area, away from
+    /// its rows, headings and resize grip.
+    pub fn on_background_drag(mut self, f: impl Fn(&mut S, &mut Drag, &mut Tx) + 'static) -> Self {
+        self.background_drag = Some(Rc::new(f));
+        self
+    }
+
     pub fn build(self, look: &Look) -> El {
         let shown = self.state.width.shown();
         let root = col()
@@ -178,23 +189,8 @@ impl<'a, S: 'static> PlacesSidebar<'a, S> {
         } else {
             self.state.width.pane.width()
         };
-        let mut root = root.w(width).child(
-            col()
-                .key(format!("{}-scroll", self.key))
-                .w_full()
-                .grow(1.0)
-                .min_h(0.0)
-                .scroll(ScrollSpec {
-                    stick_bottom: false,
-                })
-                .child(list)
-                .on_secondary_press({
-                    let emit = self.emit.clone();
-                    move |s: &mut S, point: PointerPress, tx: &mut Tx| {
-                        emit(s, SidebarIntent::ContextMenu { item: None, point }, tx)
-                    }
-                }),
-        );
+        let scroll = scroll_area(&self.key, list, &self.emit, self.background_drag);
+        let mut root = root.w(width).child(scroll);
         if let Some(f) = self.footer {
             root = root.child(f(shown));
         }
@@ -203,6 +199,34 @@ impl<'a, S: 'static> PlacesSidebar<'a, S> {
         }
         self.dnd
             .drop_zone_keyed(root, self.key.clone(), drops::background(self.access))
+    }
+}
+
+fn scroll_area<S: 'static>(
+    key: &str,
+    list: El,
+    emit: &super::Emit<S>,
+    background_drag: Option<DragFn<S>>,
+) -> El {
+    let emit = emit.clone();
+    let scroll = col()
+        .key(format!("{key}-scroll"))
+        .w_full()
+        .grow(1.0)
+        .min_h(0.0)
+        .scroll(ScrollSpec {
+            stick_bottom: false,
+        })
+        .child(list)
+        .on_secondary_press(move |s: &mut S, point: PointerPress, tx: &mut Tx| {
+            emit(s, SidebarIntent::ContextMenu { item: None, point }, tx)
+        });
+    match background_drag {
+        Some(drag) => scroll
+            .on_drag(move |s: &mut S, d: &mut Drag, tx: &mut Tx| drag(s, d, tx))
+            .focusable(false)
+            .preserve_focus_on_press(true),
+        None => scroll,
     }
 }
 

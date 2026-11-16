@@ -9,6 +9,23 @@ use serde_json::json;
 use super::{KEYBOARD_SELECT_STEPS, POLL_INTERVAL, scope::Scope};
 use crate::{Backend, Chord, DEFAULT_WAIT, Failure, Observation, Outcome};
 
+enum StepResult {
+    Reached(Outcome),
+    Continue,
+    Failed(Outcome),
+}
+
+struct CursorBefore {
+    focused: Option<String>,
+    listed: Vec<String>,
+}
+
+fn target_is_above(listed: &[String], name: &str, focused: Option<&str>) -> bool {
+    let focused = focused.and_then(|cur| listed.iter().position(|entry| entry == cur));
+    let target = listed.iter().position(|entry| entry == name);
+    matches!((target, focused), (Some(t), Some(f)) if t < f)
+}
+
 impl<B: Backend> Scope<'_, B> {
     pub(super) async fn press(&self, chord: &Chord) -> Result<(), String> {
         self.backend.chord(&self.window, chord).await
@@ -51,6 +68,76 @@ impl<B: Backend> Scope<'_, B> {
         outcome
     }
 
+    async fn rehome(&self, name: &str, home: &Chord) -> Result<(), Outcome> {
+        self.press(home).await.map_err(Outcome::error)?;
+        self.wait_for(
+            name,
+            |observation| observation.focused_entry.is_some(),
+            "the keyboard cursor".to_owned(),
+        )
+        .await
+    }
+
+    async fn confirm_listed(&self, name: &str) -> Outcome {
+        match self
+            .wait_for(
+                name,
+                |observation| observation.entry(name, None).is_some(),
+                format!("the entry {name:?} to appear"),
+            )
+            .await
+        {
+            Ok(()) => Outcome::default(),
+            Err(outcome) => outcome,
+        }
+    }
+
+    async fn advance_cursor(
+        &self,
+        name: &str,
+        before: CursorBefore,
+        (next, home): (&Chord, &Chord),
+    ) -> StepResult {
+        if let Err(error) = self.press(next).await {
+            return StepResult::Failed(Outcome::error(error));
+        }
+        if let Err(outcome) = self
+            .wait_for(
+                name,
+                |obs| obs.focused_entry != before.focused || obs.entry_names(None) != before.listed,
+                format!("the cursor to move past {:?}", before.focused),
+            )
+            .await
+        {
+            return StepResult::Failed(outcome);
+        }
+        // A directory reload arriving while parked on the last row leaves focus there; restart
+        // from `Home` so the next steps walk through the newly listed entry.
+        if self.scene().observation.focused_entry == before.focused
+            && let Err(outcome) = self.rehome(name, home).await
+        {
+            return StepResult::Failed(outcome);
+        }
+        StepResult::Continue
+    }
+
+    async fn step_toward(&self, name: &str, next: &Chord, home: &Chord) -> StepResult {
+        let observation = self.scene().observation;
+        if observation.focused_entry.as_deref() == Some(name) {
+            return StepResult::Reached(self.confirm_listed(name).await);
+        }
+        let listed = observation.entry_names(None);
+        let focused = observation.focused_entry;
+        if target_is_above(&listed, name, focused.as_deref()) {
+            return match self.rehome(name, home).await {
+                Ok(()) => StepResult::Continue,
+                Err(outcome) => StepResult::Failed(outcome),
+            };
+        }
+        let before = CursorBefore { focused, listed };
+        self.advance_cursor(name, before, (next, home)).await
+    }
+
     async fn walk_to(&self, name: &str) -> Outcome {
         if let Err(outcome) = self
             .wait_for(
@@ -71,46 +158,13 @@ impl<B: Backend> Scope<'_, B> {
             modifiers: Vec::new(),
             key: "Home".to_owned(),
         };
-        if let Err(error) = self.press(&home).await {
-            return Outcome::error(error);
-        }
-        if let Err(outcome) = self
-            .wait_for(
-                name,
-                |observation| observation.focused_entry.is_some(),
-                "the keyboard cursor".to_owned(),
-            )
-            .await
-        {
+        if let Err(outcome) = self.rehome(name, &home).await {
             return outcome;
         }
         for _ in 0..KEYBOARD_SELECT_STEPS {
-            let previous = self.scene().observation.focused_entry;
-            if previous.as_deref() == Some(name) {
-                return match self
-                    .wait_for(
-                        name,
-                        |observation| observation.entry(name, None).is_some(),
-                        format!("the entry {name:?} to appear"),
-                    )
-                    .await
-                {
-                    Ok(()) => Outcome::default(),
-                    Err(outcome) => outcome,
-                };
-            }
-            if let Err(error) = self.press(&next).await {
-                return Outcome::error(error);
-            }
-            if let Err(outcome) = self
-                .wait_for(
-                    name,
-                    |observation| observation.focused_entry != previous,
-                    format!("the cursor to move past {previous:?}"),
-                )
-                .await
-            {
-                return outcome;
+            match self.step_toward(name, &next, &home).await {
+                StepResult::Reached(outcome) | StepResult::Failed(outcome) => return outcome,
+                StepResult::Continue => {}
             }
         }
         Outcome {

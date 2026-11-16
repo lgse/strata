@@ -17,6 +17,7 @@ mod host;
 mod input_log;
 mod invariants;
 mod jobs;
+mod kept;
 mod keyboard;
 mod keymap;
 mod keys;
