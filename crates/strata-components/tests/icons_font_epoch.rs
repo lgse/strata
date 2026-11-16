@@ -2,7 +2,7 @@
 
 //! C3: a tile cuts its name again when the fonts move (a fallback font loading, the interface
 //! font changing), not only when its name or width does. Alone in its own test binary: it moves
-//! the process-wide fonts `rune::text::measure` reads (docs/rune/testing.md, K6).
+//! `rune::text::font_epoch` via `Tx::set_font_families` (docs/rune/testing.md, K6).
 
 use rune::{Cx, El, Env, Runtime, col};
 use strata_components::collection::element::{Collection, CollectionState};
@@ -68,21 +68,22 @@ fn a_tile_cuts_its_name_again_when_the_fonts_move() {
         grid: IconsGridState::new(),
         look: Look::fallback(false),
     };
-    let mut rt = Runtime::new(host, view, (600.0, 400.0), Env::new(false, 1.0));
+    let text = rune::text::TextSystem::new(strata_kit::fonts::FONTS, ("Inter", "Inter"));
+    let mut rt = Runtime::with_text(host, view, (600.0, 400.0), Env::new(false, 1.0), text);
     for _ in 0..4 {
         rt.frame(1.0 / 60.0);
     }
     let before = label(&rt);
     assert!(before.contains('…'), "cut in the first font: {before}");
-    // Another font set process-wide moves the fonts' epoch, as a font loading does.
+    // Switching the runtime's font families moves `font_epoch` and the runtime's own TextSystem
+    // (`measure::lend` in Rune 631e8a67), as changing the interface font does in a window.
     let epoch = rune::text::font_epoch();
-    let _text = rune::text::TextSystem::new(strata_kit::fonts::FONTS, strata_kit::fonts::FAMILIES);
-    assert_ne!(rune::text::font_epoch(), epoch);
-    // Any commit builds the view again: the tile's versions see the new epoch.
-    rt.update(|_, _| {});
+    let (sans, mono) = strata_kit::fonts::FAMILIES;
+    rt.update(|_, tx| tx.set_font_families(sans, mono));
     for _ in 0..4 {
         rt.frame(1.0 / 60.0);
     }
+    assert_ne!(rune::text::font_epoch(), epoch);
     let after = label(&rt);
     assert_ne!(after, before, "cut again in the new fonts");
 }
