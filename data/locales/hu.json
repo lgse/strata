@@ -1485,7 +1485,7 @@
   "GVfs isn't running, so trash, network locations and devices are unavailable.": "A GVfs nem fut, ezért a kuka, a hálózati helyek és az eszközök nem érhetők el.",
   "The GVfs backend is installed.": "A GVfs háttérprogram telepítve van.",
   "The GVfs backend isn't installed.": "A GVfs háttérprogram nincs telepítve.",
-  "KDE's MTP service is also installed, and whichever claims a phone first leaves the other with no storage. If a phone appears empty, unplug it, run pkill -x kiod6, then reconnect it unlocked.": "A KDE MTP-szolgáltatása is telepítve van, és amelyik előbb veszi át a telefont, a másik nem lát rajta tárhelyet. Ha egy telefon üresnek látszik, húzza ki, futtassa a pkill -x kiod6 parancsot, majd csatlakoztassa újra feloldott állapotban.",
+  "KDE's MTP service is also installed, and whichever claims a phone first leaves the other with no storage. If a phone appears empty, unplug it, run pkill -x kiod6, then reconnect it unlocked.": "A KDE MTP-szolgáltatása is telepítve van, és amelyik előbb „lefoglalja” a telefont, az a másik elől elveszi a hozzáférést a tárhelyhez. Ha a telefon tárhelye üresnek tűnik, húzza ki a kábelt, futtassa a pkill -x kiod6 parancsot, majd csatlakoztassa újra a telefont feloldott állapotban.",
   "Unavailable while GVfs isn't running.": "Nem érhető el, amíg a GVfs nem fut.",
   "UDisks2 and the GVfs volume monitor are available.": "Az UDisks2 és a GVfs kötetfigyelő elérhető.",
   "UDisks2 isn't available, so drives can't be mounted, formatted or unlocked.": "Az UDisks2 nem érhető el, ezért a meghajtók nem csatolhatók, formázhatók vagy oldhatók fel.",
