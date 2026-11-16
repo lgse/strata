@@ -24,8 +24,8 @@ use std::{
 };
 
 use strata_fs::services::{
-    SearchCoverage, SearchEvent, SearchHandle, SearchItem, SearchLimits, index_filter,
-    index_trees_with_exclusions,
+    NavigationHistory, RefusedFolders, SearchCoverage, SearchEvent, SearchHandle, SearchItem,
+    SearchLimits, index_filter, index_folder_paths, index_paths, index_trees_with_exclusions,
 };
 
 /// How often GTK reads the worker's channel, and how many events at a time.
@@ -44,6 +44,13 @@ pub(crate) struct Input {
 pub(crate) enum Scope {
     /// A filter's folder, and whether it goes into subfolders (`index_filter`).
     Folder { root: PathBuf, recursive: bool },
+    /// 10xer's fuzzy term/path index (`index_paths`): non-recursive for `f`, recursive for `s`.
+    Paths { root: PathBuf, recursive: bool },
+    /// 10xer's folder-picker index (`index_folder_paths`), which also lists empty queries.
+    Folders {
+        root: PathBuf,
+        refused: RefusedFolders,
+    },
     /// The palette's roots, every subfolder but the excluded ones
     /// (`index_trees_with_exclusions`).
     Trees {
@@ -52,12 +59,32 @@ pub(crate) enum Scope {
     },
 }
 
+impl Scope {
+    pub(crate) fn lists_without_query(&self) -> bool {
+        matches!(self, Self::Folders { .. })
+    }
+}
+
 impl Input {
     fn start(&self, limits: SearchLimits) -> (SearchHandle, Receiver<SearchEvent>) {
         match &self.scope {
             Scope::Folder { root, recursive } => {
                 index_filter(root.clone(), self.show_hidden, *recursive, limits)
             }
+            Scope::Paths { root, recursive } => index_paths(
+                root.clone(),
+                self.show_hidden,
+                *recursive,
+                NavigationHistory::shared().frecency_within(root),
+                limits,
+            ),
+            Scope::Folders { root, refused } => index_folder_paths(
+                root.clone(),
+                self.show_hidden,
+                NavigationHistory::shared().frecency_within(root),
+                refused.clone(),
+                limits,
+            ),
             Scope::Trees { roots, exclusions } => index_trees_with_exclusions(
                 roots.clone(),
                 self.show_hidden,
@@ -150,7 +177,7 @@ impl Session {
         deliver: impl Fn(Batch) + 'static,
     ) {
         let query = query.trim();
-        if query.is_empty() {
+        if query.is_empty() && !input.scope.lists_without_query() {
             self.cancel();
             return;
         }
@@ -220,7 +247,13 @@ impl Session {
             if state.generation.get() != generation {
                 return glib::ControlFlow::Break;
             }
-            let (latest, disconnected) = drain(&receiver, &state.query.borrow());
+            let lists_without_query = state
+                .worker
+                .borrow()
+                .as_ref()
+                .is_some_and(|w| w.input.scope.lists_without_query());
+            let (latest, disconnected) =
+                drain(&receiver, &state.query.borrow(), lists_without_query);
             if let Some(mut batch) = latest {
                 state.awaiting.set(false);
                 batch.generation = generation;
@@ -238,12 +271,16 @@ impl Session {
 
 /// The last batch among the next few events that answers the query typed now, and whether
 /// the worker has gone.
-fn drain(receiver: &Receiver<SearchEvent>, current: &str) -> (Option<Batch>, bool) {
+fn drain(
+    receiver: &Receiver<SearchEvent>,
+    current: &str,
+    lists_without_query: bool,
+) -> (Option<Batch>, bool) {
     let mut latest = None;
     for _ in 0..PER_POLL {
         match receiver.try_recv() {
             Ok(event) => {
-                if let Some(batch) = batch_for(event, current) {
+                if let Some(batch) = batch_for(event, current, lists_without_query) {
                     latest = Some(batch);
                 }
             }
@@ -255,7 +292,7 @@ fn drain(receiver: &Receiver<SearchEvent>, current: &str) -> (Option<Batch>, boo
 }
 
 /// `event` as a batch, when it answers `current`.
-fn batch_for(event: SearchEvent, current: &str) -> Option<Batch> {
+fn batch_for(event: SearchEvent, current: &str, lists_without_query: bool) -> Option<Batch> {
     let SearchEvent::Results {
         query,
         items,
@@ -264,7 +301,7 @@ fn batch_for(event: SearchEvent, current: &str) -> Option<Batch> {
         has_more,
         candidates,
     } = event;
-    (!query.is_empty() && query == current).then_some(Batch {
+    ((!query.is_empty() || lists_without_query) && query == current).then_some(Batch {
         generation: 0,
         query,
         items,

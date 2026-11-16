@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
-//! 10xer mode's hooks into [`super::Filter`]: the footer's `filter:` and `search:` marks, the
+//! 10xer mode's hooks into [`super::Filter`]: the footer's `filter:` and `search:` marks,
+//! driving listing filters (`f`) and subfolder searches (`s`) from C18's `FooterPrompt`, the
 //! subfolder search hit path under the cursor, Escape's dismissal of `f` vs `s`, and non-Latin
 //! `h j k l` moves on search results (`Stage::SearchResultKeys`).
 
@@ -10,17 +11,26 @@ use strata_components::{
     contract::Direction,
     footer::FilterMark,
 };
+use strata_core::model::Location;
 use strata_desktop::keys::{
     KeyPress,
     bindings::{DOWN, LEFT, RIGHT, UP},
 };
 
-use super::{route, targets};
+use super::{OpenIn, flush_search, place::Where, prepare_open, results, route, targets};
 use crate::{
     App,
     commands::{Call, Outcome},
     shell,
 };
+
+fn open_shown(app: &App, open: &OpenIn) -> bool {
+    Where::shown(app) == Some(open.place)
+        && match open.place {
+            Where::Columns => crate::tenxer::focused_listing_depth(app) == Some(open.depth),
+            _ => open.place.depth_shown(app, open.depth),
+        }
+}
 
 /// The footer's `filter: …` or `search: …` mark while 10xer mode or a subfolder search is
 /// active (`FilterMark`).
@@ -30,10 +40,10 @@ pub(crate) fn mark(app: &App) -> Option<FilterMark> {
         return None;
     }
     let query = app.filter.state.text();
-    if query.is_empty() || !open.place.depth_shown(app, open.depth) {
+    if query.trim().is_empty() || !open_shown(app, open) {
         return None;
     }
-    if app.filter.pane.recursive {
+    if app.filter.forced_recursive {
         Some(FilterMark::Search(query.to_owned()))
     } else if shell::preferences(app).tenxer_mode {
         Some(FilterMark::Filter(query.to_owned()))
@@ -44,10 +54,13 @@ pub(crate) fn mark(app: &App) -> Option<FilterMark> {
 
 /// The subfolder search hit under the cursor, as a path below the searched folder.
 pub(crate) fn current_hit_path(app: &App) -> Option<String> {
-    if !app.filter.pane.recursive {
+    if !app.filter.forced_recursive {
         return None;
     }
     let open = app.filter.open_in.as_ref()?;
+    if !open_shown(app, open) {
+        return None;
+    }
     let root = open.folder.native_path()?;
     let (_, entry) = targets::under_cursor(app)?;
     let path = entry.location.native_path()?;
@@ -60,32 +73,224 @@ pub(crate) fn current_hit_path(app: &App) -> Option<String> {
 }
 
 fn non_empty_open(app: &App) -> bool {
-    app.filter.state.is_open() && !app.filter.state.text().is_empty()
+    app.filter.state.is_open() && !app.filter.state.text().trim().is_empty()
 }
 
 /// Whether a subfolder search (`s`) is open in the shown column.
 pub(crate) fn search_active(app: &App) -> bool {
-    app.filter.pane.recursive && non_empty_open(app)
+    app.filter.forced_recursive && non_empty_open(app)
 }
 
-/// Dismisses an open subfolder search (`s`).
+/// Dismisses an open subfolder search (`s`), restoring any `f` filter it borrowed.
 pub(crate) fn dismiss_search_only(app: &mut App, tx: &mut Tx) -> bool {
-    if !search_active(app) {
+    let borrowed = app.filter.saved_filter.take();
+    if !app.filter.forced_recursive && borrowed.is_none() {
         return false;
     }
-    let polled = app.filter.state.close();
-    route(app, polled, tx);
+    app.filter.forced_recursive = false;
+    let saved = borrowed.unwrap_or_default();
+    if saved.trim().is_empty() {
+        let polled = app.filter.state.close();
+        route(app, polled, tx);
+    } else {
+        apply_tenxer_query(app, &saved, false, true, tx);
+        focus_results_or_view(app, tx);
+    }
     true
 }
 
 /// Clears an open listing filter (`f`).
 pub(crate) fn dismiss_filter_only(app: &mut App, tx: &mut Tx) -> bool {
-    if app.filter.pane.recursive || !non_empty_open(app) {
+    if app.filter.forced_recursive || !non_empty_open(app) {
         return false;
     }
     let polled = app.filter.state.close();
     route(app, polled, tx);
     true
+}
+
+fn opening_in_tenxer(app: &App) -> Option<OpenIn> {
+    let place = Where::shown(app)?;
+    let depth = match place {
+        Where::Columns => crate::tenxer::focused_listing_depth(app)?,
+        pane => pane.pane(app)?.depth()?,
+    };
+    let folder = app.browser.location_at(depth)?;
+    Some(OpenIn {
+        place,
+        depth,
+        folder,
+    })
+}
+
+/// `BrowserView::listing_filter`: the current or saved `f` query in the focused listing.
+pub(crate) fn listing_filter_query(app: &App) -> Option<String> {
+    let target = opening_in_tenxer(app)?;
+    let open = app
+        .filter
+        .open_in
+        .as_ref()
+        .filter(|open| **open == target)?;
+    let _ = open;
+    if !app.filter.state.is_open() {
+        return None;
+    }
+    let text = if app.filter.forced_recursive {
+        app.filter.saved_filter.clone().unwrap_or_default()
+    } else {
+        app.filter.state.text().to_owned()
+    };
+    (!text.trim().is_empty()).then_some(text)
+}
+
+fn apply_tenxer_query(app: &mut App, query: &str, forced: bool, flush: bool, tx: &mut Tx) -> bool {
+    let Some(opening) = opening_in_tenxer(app) else {
+        return false;
+    };
+    if query.trim().is_empty() && !forced {
+        if app.filter.open_in.as_ref() == Some(&opening) && app.filter.state.is_open() {
+            let polled = app.filter.state.close();
+            route(app, polled, tx);
+        }
+        return true;
+    }
+    let (place, depth) = (opening.place, opening.depth);
+    let before = place.listing_position(app, depth);
+    prepare_open(app, opening, tx);
+    app.filter.forced_recursive = forced;
+    app.filter.tenxer_owned = true;
+    let polled = if !app.filter.state.is_open() {
+        app.filter.state.open_with(query, before)
+    } else {
+        app.filter.state.edit.replace_text(query.to_owned());
+        app.filter.state.edit.set_caret(query.len());
+        app.filter.state.text_edited(before)
+    };
+    app.filter.state.edit.focused = false;
+    app.filter.typed = app.filter.state.text().to_owned();
+    route(app, polled, tx);
+    if flush && !query.trim().is_empty() {
+        flush_search(app, query);
+    }
+    true
+}
+
+/// `BrowserView::set_listing_filter`: updates the focused listing's `f` filter live.
+pub(crate) fn set_listing_filter(app: &mut App, query: &str, tx: &mut Tx) {
+    app.filter.saved_filter = None;
+    apply_tenxer_query(app, query, false, false, tx);
+}
+
+/// `BrowserView::commit_listing_filter`: flushes `query` and returns focus to the results/view.
+pub(crate) fn commit_listing_filter(app: &mut App, query: &str, tx: &mut Tx) {
+    app.filter.saved_filter = None;
+    apply_tenxer_query(app, query, false, true, tx);
+    focus_results_or_view(app, tx);
+}
+
+/// `BrowserView::clear_listing_filter`: clears an active `f` filter and focuses the listing.
+pub(crate) fn clear_listing_filter(app: &mut App, tx: &mut Tx) -> bool {
+    let Some(target) = opening_in_tenxer(app) else {
+        return false;
+    };
+    if app.filter.open_in.as_ref() != Some(&target)
+        || !app.filter.state.is_open()
+        || app.filter.state.text().is_empty()
+    {
+        return false;
+    }
+    let polled = app.filter.state.close();
+    route(app, polled, tx);
+    focus_results_or_view(app, tx);
+    true
+}
+
+/// `BrowserView::begin_listing_search`: starts `s` on a local folder, saving any active `f` query.
+pub(crate) fn begin_listing_search(app: &mut App) -> Option<String> {
+    let target = opening_in_tenxer(app)?;
+    target.folder.native_path()?;
+    if app.filter.open_in.as_ref() == Some(&target) && search_active(app) {
+        return Some(app.filter.state.text().to_owned());
+    }
+    let saved = listing_filter_query(app).unwrap_or_default();
+    app.filter.saved_filter = Some(saved);
+    Some(String::new())
+}
+
+/// `BrowserView::set_listing_search`: updates `s` hits live, or previews the saved `f` filter when empty.
+pub(crate) fn set_listing_search(app: &mut App, query: &str, tx: &mut Tx) {
+    if query.trim().is_empty() {
+        let saved = app.filter.saved_filter.clone().unwrap_or_default();
+        apply_tenxer_query(app, &saved, false, false, tx);
+        return;
+    }
+    let _ = crate::tenxer::end_all_ranges(app);
+    apply_tenxer_query(app, query, true, false, tx);
+}
+
+/// `BrowserView::commit_listing_search`: commits `query`, or dismisses `s` when empty.
+pub(crate) fn commit_listing_search(app: &mut App, query: &str, tx: &mut Tx) {
+    if query.trim().is_empty() {
+        if !dismiss_search_only(app, tx) {
+            focus_results_or_view(app, tx);
+        }
+        return;
+    }
+    apply_tenxer_query(app, query, true, true, tx);
+    focus_results_or_view(app, tx);
+}
+
+/// Clears filters opened by 10xer's `f` or `s` prompts when leaving 10xer mode, keeping a `Ctrl+F`
+/// filter opened before entering 10xer mode (`end_tenxer_session`).
+pub(crate) fn end_tenxer_filters(app: &mut App, tx: &mut Tx) {
+    app.filter.saved_filter = None;
+    if app.filter.tenxer_owned || app.filter.forced_recursive {
+        let polled = app.filter.state.close();
+        route(app, polled, tx);
+    }
+}
+
+/// Focuses visible filter/search results in the shown view, returning `false` when none show.
+pub(crate) fn focus_visible_results(app: &App, tx: &mut Tx) -> bool {
+    let Some(open) = app.filter.open_in.as_ref() else {
+        return false;
+    };
+    if !open.place.shows_hits(app, open.depth) {
+        return false;
+    }
+    tx.focus_when_shown(open.place.view_key(), true);
+    true
+}
+
+fn focus_results_or_view(app: &App, tx: &mut Tx) {
+    if !focus_visible_results(app, tx)
+        && let Some(view) = shell::view_focus(app)
+    {
+        tx.focus_when_shown(view, true);
+    }
+}
+
+/// Resolves the settled directory match for a `/` typed into 10xer's `f` prompt: `None` while
+/// results are still arriving, `Some(Some(folder))` when the settled match is a folder, and
+/// `Some(None)` when settled on a file or empty results (`settled_filter_match`).
+pub(crate) fn settled_descent_folder(app: &App, at_cursor: bool) -> Option<Option<Location>> {
+    if app.filter.open_in.is_none() {
+        return Some(None);
+    }
+    if at_cursor && let Some((_, entry)) = targets::under_cursor(app) {
+        return Some(entry.is_directory().then_some(entry.location));
+    }
+    if app.filter.debounce.borrow().is_some() || app.filter.session.awaiting() {
+        return None;
+    }
+    let folder = app
+        .filter
+        .state
+        .target(results(app))
+        .and_then(|id| app.filter.found.get(&id))
+        .filter(|entry| entry.is_directory())
+        .map(|entry| entry.location.clone());
+    Some(folder)
 }
 
 /// `reveal_listing_search_hit` (`src/ui/browser/listing_search.rs`): ends an active `s`
@@ -100,6 +305,7 @@ pub(crate) fn reveal_search_hit(app: &mut App, tx: &mut Tx) -> bool {
     let Some(folder) = entry.location.parent() else {
         return false;
     };
+    app.filter.saved_filter = None;
     let polled = app.filter.state.close();
     route(app, polled, tx);
     shell::publish(app);

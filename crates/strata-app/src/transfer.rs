@@ -47,6 +47,7 @@ struct PreparingKey {
     sources: Vec<Location>,
     move_sources: bool,
     reveal: bool,
+    focus: ConflictFocus,
 }
 
 pub(crate) struct Transfer {
@@ -344,7 +345,9 @@ fn resolve_paste_location(app: &App, on: &On) -> Option<Location> {
             } else {
                 Vec::new()
             };
-            let depth = if shows_columns(app) {
+            let depth = if shell::preferences(app).tenxer_mode {
+                crate::tenxer::focused_listing_depth(app)
+            } else if shows_columns(app) {
                 Some(app.columns.targeted())
             } else {
                 app.browser.active_depth()
@@ -361,23 +364,63 @@ fn paste(app: &mut App, call: &Call<'_>, tx: &mut Tx) -> Outcome {
     let Some(destination) = resolve_paste_location(app, &call.on) else {
         return Outcome::Ran;
     };
+    paste_into(app, destination, ConflictFocus::Replace, None, tx);
+    Outcome::Ran
+}
+
+/// `BrowserView::paste_preferring` (`src/ui/browser/file_commands.rs`): pastes with `focus` as
+/// the default conflict button, calling `on_empty` when the clipboard offers no files.
+pub(crate) fn paste_preferring(
+    app: &mut App,
+    focus: ConflictFocus,
+    on_empty: std::rc::Rc<dyn Fn(&mut App, &mut Tx)>,
+    tx: &mut Tx,
+) {
+    shell::publish(app);
+    if !clipboard::has_files(app) {
+        on_empty(app, tx);
+        return;
+    }
+    if let Some(destination) = resolve_paste_location(app, &On::Focus) {
+        paste_into(app, destination, focus, Some(on_empty), tx);
+    }
+}
+
+fn paste_into(
+    app: &mut App,
+    destination: Location,
+    focus: ConflictFocus,
+    on_empty: Option<std::rc::Rc<dyn Fn(&mut App, &mut Tx)>>,
+    tx: &mut Tx,
+) {
     let later = app.transfer.later.clone();
     clipboard::read_files(
         app,
         move |app, decoded, tx| {
             let Some((sources, foreign_cut)) = decoded else {
+                if let Some(on_empty) = on_empty {
+                    on_empty(app, tx);
+                }
                 return;
             };
             later.then(move |app, _| {
                 let move_sources = foreign_cut || clipboard::is_cut_match(app, &sources);
-                begin_transfer(app, destination, sources, move_sources);
+                begin_transfer_request(
+                    app,
+                    TransferRequest {
+                        destination,
+                        sources,
+                        move_sources,
+                        reveal: true,
+                        focus,
+                    },
+                );
                 false
             });
             shell::settle(app, tx);
         },
         tx,
     );
-    Outcome::Ran
 }
 
 fn focus_duplicate_entries(app: &App) -> Vec<FileEntry> {
@@ -394,12 +437,7 @@ fn focus_duplicate_entries(app: &App) -> Vec<FileEntry> {
     if !tenxer {
         return app.browser.transfer_entries();
     }
-    let depth = if shows_columns(app) {
-        Some(app.columns.targeted())
-    } else {
-        app.browser.active_depth()
-    };
-    depth
+    crate::tenxer::focused_listing_depth(app)
         .map(|d| app.browser.command_entries(d))
         .unwrap_or_default()
 }
@@ -474,6 +512,7 @@ struct TransferRequest {
     sources: Vec<Location>,
     move_sources: bool,
     reveal: bool,
+    focus: ConflictFocus,
 }
 
 /// Starts a file drop transfer on the shown tab (`start_drop_transfer` in
@@ -493,6 +532,7 @@ pub(crate) fn start_drop_transfer(
             sources,
             move_sources,
             reveal,
+            focus: ConflictFocus::Replace,
         },
     );
 }
@@ -507,6 +547,27 @@ pub(crate) fn move_into_group_folder(app: &mut App, destination: Location, sourc
             sources,
             move_sources: true,
             reveal: false,
+            focus: ConflictFocus::Replace,
+        },
+    );
+}
+
+/// `ViewState::start_transfer_in_place` (`src/ui/browser/transfer.rs`): moves or copies `sources`
+/// into `destination` without navigating to `destination`, keeping `KeepBoth` focused on conflicts.
+pub(crate) fn start_in_place_transfer(
+    app: &mut App,
+    destination: Location,
+    sources: Vec<Location>,
+    move_sources: bool,
+) {
+    begin_transfer_request(
+        app,
+        TransferRequest {
+            destination,
+            sources,
+            move_sources,
+            reveal: false,
+            focus: ConflictFocus::KeepBoth,
         },
     );
 }
@@ -532,6 +593,7 @@ fn begin_transfer(
             sources,
             move_sources,
             reveal: true,
+            focus: ConflictFocus::Replace,
         },
     );
 }
@@ -542,6 +604,7 @@ fn begin_transfer_request(app: &mut App, req: TransferRequest) {
         sources,
         move_sources,
         reveal,
+        focus,
     } = req;
     if transfer_refused(&destination, &sources, move_sources) {
         return;
@@ -558,6 +621,7 @@ fn begin_transfer_request(app: &mut App, req: TransferRequest) {
         sources: sources.clone(),
         move_sources,
         reveal,
+        focus,
     };
     if app.transfer.preparing.contains(&key) {
         return;
@@ -608,7 +672,7 @@ fn finish_preparing(
         destination: key.destination.clone(),
         move_sources: key.move_sources,
         reveal: key.reveal,
-        focus: ConflictFocus::Replace,
+        focus: key.focus,
     };
     shell::publish(app);
     collisions::resolve(app, plan, collisions, accepted);

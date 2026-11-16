@@ -23,7 +23,7 @@ use crate::{
     App, clipboard,
     commands::{self, Call, On, Outcome},
     error_dialog::{self, Error},
-    filter, menus, shell,
+    menus, shell,
 };
 
 #[derive(Clone)]
@@ -484,31 +484,10 @@ fn finish_target_lookup(
     true
 }
 
-fn shows_columns(app: &App) -> bool {
-    shell::shown_view(app).is_some_and(|view| (view.shows)("columns"))
+pub(crate) fn cancel_target_lookup(app: &mut App) {
+    app.open_with.bump_target_generation();
 }
 
 fn focus_entries(app: &mut App) -> Vec<FileEntry> {
-    let tenxer = shell::preferences(app).tenxer_mode;
-    if let Some(results) = filter::targets::selected(app) {
-        if !results.is_empty() || !tenxer {
-            return results;
-        }
-        return filter::targets::under_cursor(app)
-            .map(|(_, entry)| entry)
-            .into_iter()
-            .collect();
-    }
-    shell::publish(app);
-    if !tenxer {
-        return app.browser.transfer_entries();
-    }
-    let depth = if shows_columns(app) {
-        Some(app.columns.targeted())
-    } else {
-        app.browser.active_depth()
-    };
-    depth
-        .map(|d| app.browser.command_entries(d))
-        .unwrap_or_default()
+    crate::tenxer::command_targets(app)
 }
