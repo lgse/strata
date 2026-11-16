@@ -32,7 +32,8 @@
 //!
 //! In the rail each row is the sidebar's own icon-only list item, with its icon where the full
 //! row has it, so a step moves no icon and the keyboard order stays. Its name stays its
-//! accessible name and becomes its tooltip. Rail rows drag to reorder as full rows do.
+//! accessible name and becomes its tooltip (`Side::Right`, beside the rail). Rail rows drag to
+//! reorder as full rows do.
 //! Device buttons and the headings' titles, rules and counts are left out; a heading keeps
 //! its row with only its chevron, and a separator line stands above each section.
 //!
@@ -130,16 +131,16 @@
 //! - **U20** rune-kit: a collapsed `SidebarSection` drops every row, with no way to keep the
 //!   row of the open item in view. Here: the sidebar's own section.
 //! - **U21** rune-kit `Reorder`: no keyboard move; a drag past the list's end clamps to the
-//!   end, with no way to cancel a drop outside the list; with `pointer_buttons([Middle])` a
-//!   middle-button drag reorders too; `Reorder::follow` is private, so an app can't drive it
-//!   from its own row; `SidebarRow::reorder` takes a plain `fn` accessor (no capture); and its
-//!   drop runs with no `Tx`. And it rounds where a row lands (`from + round(dy / pitch)`), so a
-//!   drop past half a row lands a row further on than Strata's, with its drag's offset private
-//!   (Rune packet entry 102). Here: the sidebar's own drag ([`RowDrag`], `drag.rs`) on every
-//!   reorderable row in both widths, which lands as Strata's does and reports the move with the
-//!   release's `Tx`. Rune then presses the row on the same release when the pointer is still
-//!   over it (`runtime/input/pointer.rs`, `release`), and the state keeps the dropped row so that
-//!   press opens nothing; the next press or drag forgets it.
+//!   end, with no way to cancel a drop outside the list; `Reorder::follow` is private, so an app
+//!   can't drive it from its own row; `SidebarRow::reorder` takes a plain `fn` accessor (no
+//!   capture); and its drop runs with no `Tx`. And it rounds where a row lands (`from + round(dy
+//!   / pitch)`), so a drop past half a row lands a row further on than Strata's, with its drag's
+//!   offset private (Rune packet entry 102). Here: the sidebar's own drag ([`RowDrag`], `drag.rs`)
+//!   on every reorderable row in both widths, which lands as Strata's does and reports the move
+//!   with the release's `Tx` (`El::on_middle_press` handles middle-click new-tab without opting
+//!   middle drags into `on_drag`). Rune then presses the row on the same release when the pointer
+//!   is still over it (`runtime/input/pointer.rs`, `release`), and the state keeps the dropped row
+//!   so that pointer press opens nothing; the next press or drag forgets it.
 //! - **U22** rune-kit: `SidebarRow`'s icon box is fixed at 16 points
 //!   ([`strata_kit::slots::sidebar::ICON_BOX`]), and its row inset is a private 8
 //!   ([`strata_kit::slots::sidebar::ROW_INSET`]); its selected fill is fixed to `c.pressed`;
@@ -151,11 +152,9 @@
 //!   by the sidebar, the rail's icon box and inset matching rune-kit's so a step moves no icon
 //!   at any text size, and `over` copied. An icon larger than the box (K2 at large text sizes)
 //!   overflows it, centred, in both widths.
-//! - **U23** Rune: a press handler can't tell a click from a keyboard press (`Tx::button` says
-//!   only which pointer button). Strata opens a place with its first item selected from the
-//!   keyboard only. Here: each row's `on_key` takes Return and Space before the list's focus
-//!   navigation presses the row, and reports [`Via::Keyboard`].
 //! - Hover-time paths and actions for file drags are S5's **U3**; C8's folder check waits on it.
+//!   U23 (telling a click from a keyboard press) is retired on Rune 631e8a67: the `list` focus
+//!   group presses rows and headings on Return and Space with `Tx::by_keys`.
 
 mod build;
 mod data;

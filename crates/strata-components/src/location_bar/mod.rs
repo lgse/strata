@@ -98,7 +98,7 @@
 //! | While editing, a click outside… cancels… and still performs the click's normal action | script `click-outside-cancels`; unit `a_press_elsewhere_cancels_on_the_next_tick_only_after_the_entry_had_focus` |
 //! | Enter or the Navigate button opens…; Escape or the Cancel button restores… | scripts `enter-navigates`, `navigate-button`, `cancel-button`, `escape-restores-folder` |
 //! | Escape in the entry restores the folder the breadcrumbs name | script `escape-restores-folder` |
-//! | With an input method composing…, Escape cancels only the composition | test `escape_while_composing_keeps_the_entry_open` (scripts have no IME event: U-C6-7) |
+//! | With an input method composing…, Escape cancels only the composition | test `escape_while_composing_keeps_the_entry_open` |
 //! | The entry and its buttons have the accessible names… | golden `c6-editing` (a11y); names are [`LocationLabels`], the host's to follow its key map |
 //! | While the entry has focus, Ctrl+K and Ctrl+1–3 reach the entry… | **Strata** (key dispatch): [`LocationBarState::entry_focused`] tells the host |
 //! | A location that cannot be opened shows an "Unable to open location" dialog… | **partial**: [`LocationBarState::end_edit`] here; the dialog (C15) and validation are Strata's |
@@ -231,20 +231,19 @@
 //!   forwards it. Scripts *can* deactivate a window, though: `{"t": .., "focus": false}`
 //!   reaches the root's `on_window_focus` (probe P2b), so X1's U-X1-1 is wrong for a root
 //!   handler.
-//! - **U-C6-7 (draft, not filed)** Headless scripts have no input-method event, so a
-//!   composition is testable only in process (`Runtime::ime`).
 //! - **U-C6-8 (draft, not filed)** rune-kit's `Menu` takes no accessible name (`.label`), and a
 //!   `MenuItem` can't give an accessible name apart from the text it draws, so an item shortened
 //!   to fit reads shortened. Here: the menu reads unnamed, and its items read as drawn.
-//! - **A right-click on the entry (since Rune 5d421fd).** The text field has no
-//!   `on_secondary_press` of its own, so Rune asks for its native field menu (Cut, Copy, Paste,
-//!   Select All; `--trace` logs `popup-menu:open`). `popup_menu` isn't supported on Linux, so
-//!   it answers None and nothing shows; the entry stays open with its selection. Strata's GTK
-//!   entry shows its menu there. An in-app field menu is C21's to give (known; probe in
+//! - **A right-click on the entry (Rune 631e8a67).** The text field has no `on_secondary_press`
+//!   of its own, so Rune asks for its native field menu (Cut, Copy, Paste, Select All; `--trace`
+//!   logs `popup-menu:open`). `popup_menu` isn't supported on Linux, so it answers None and
+//!   nothing shows; the entry stays open with its selection (Linux primary selection and
+//!   middle-click paste work natively on the field, #890). Strata's GTK entry shows its menu
+//!   there. An in-app field menu is C21's to give (known; probe in
 //!   `strata-spikes/c6-probes/r1/w4/rclick.*`).
-//! - Reused: U3 (a drag's paths only at the drop). U-C1b-1 (script pointer events dropped
-//!   modifiers, probe P6b at 78d22ed) is fixed at the current pin, 5d421fd (4805095): scripts hold
-//!   them with `{"hold": "ctrl"}`.
+//! - Reused: U3 (a drag's paths only at the drop). Retired at Rune 631e8a67: U-C6-7 (headless
+//!   scripts gained `"type": "ime"`, #740) and U-C1b-1 (scripts hold modifiers with
+//!   `{"hold": "ctrl"}`); ancestor crumbs use `El::on_middle_press` (#874).
 
 mod build;
 mod completion;
