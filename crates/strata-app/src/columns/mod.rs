@@ -81,8 +81,7 @@ pub(crate) struct Columns {
     moving: Moving,
     mirror: Mirror,
     clicks: ClickModes,
-    /// The keys the view reads other than by its default, when the saved settings ask.
-    keys: Option<KeySettings>,
+    tenxer: Cell<bool>,
     labels: view::Labels,
     /// What a column says while it shows no entry.
     surface: Surface,
@@ -95,10 +94,16 @@ pub(crate) struct Columns {
     pub(super) rebuilding: Cell<bool>,
 }
 
-/// With "Type to search" off a plain letter starts no search, so `h j k l` are the arrows:
-/// `Context::of` in `src/ui/keys/alias.rs`. On, the view's default passes letters on.
-fn keys(typing: bool) -> Option<KeySettings> {
-    (!typing).then(|| KeySettings::default().letters(Letters::Arrows))
+/// With 10xer mode on, C1c's 10xer map moves the cursor without changing the selection; with
+/// "Type to search" off, `h j k l` alias the arrows (`Context::of` in `src/ui/keys/alias.rs`).
+pub(super) fn live_keys(settings: &Preferences) -> Option<KeySettings> {
+    if settings.tenxer_mode {
+        Some(KeySettings::tenxer())
+    } else if !settings.type_to_search {
+        Some(KeySettings::default().letters(Letters::Arrows))
+    } else {
+        None
+    }
 }
 
 fn clicks(count: u8) -> ClickCount {
@@ -111,8 +116,6 @@ fn clicks(count: u8) -> ClickCount {
 impl Columns {
     fn with_setup(setup: &Setup<'_>) -> Self {
         let settings: &Preferences = setup.settings;
-        // `type_to_search_active` in `src/ui/preferences/input_settings.rs`.
-        let typing = settings.type_to_search && !settings.tenxer_mode;
         Self {
             listings: Listings::translated(setup.worn.clone()),
             state: {
@@ -133,7 +136,7 @@ impl Columns {
                 clicks(settings.columns_file_clicks),
                 clicks(settings.columns_folder_clicks),
             ),
-            keys: keys(typing),
+            tenxer: Cell::new(settings.tenxer_mode),
             labels: view::Labels::translated(),
             surface: Surface::translated(),
             thumbs: Thumbs::new(setup.later.clone()),
@@ -158,6 +161,7 @@ impl Columns {
     }
 
     pub(crate) fn refresh_mirror_preferences(&self, settings: &Preferences) {
+        self.tenxer.set(settings.tenxer_mode);
         self.mirror.set_preferences(
             settings.columns_mirror_selection,
             settings.single_click_previews,

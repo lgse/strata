@@ -90,6 +90,7 @@ mod filter;
 mod palette;
 mod sort;
 // A11 10xer mode
+mod tenxer;
 // A12 Clipboard and conflicts
 mod clipboard;
 mod conflict_dialog;
@@ -146,6 +147,7 @@ slots::parts! {
     palette_menu: palette::menu::PaletteMenu,
     sort: sort::Sort,
     // A11 10xer mode
+    tenxer: tenxer::Tenxer,
     // A12 Clipboard and conflicts
     clipboard: clipboard::Clipboard,
     transfer: transfer::Transfer,

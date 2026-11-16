@@ -47,6 +47,8 @@ use heard::{Asked, Heard, Span, Stamp, span};
 pub(crate) use menu_key::view_keys;
 pub(crate) use owners::{Holds, Situation};
 use owners::{Reach, reach};
+#[cfg(any(test, feature = "qa"))]
+pub(crate) use press::Origin;
 
 /// Declares [`Stage`] and the order a press is offered to its variants from one list, so a
 /// stage cannot be declared and never walked.
@@ -234,6 +236,10 @@ pub(crate) struct Live {
     resolved: RefCell<KeymapOverrides>,
     /// The press a view's collection last asked the early stages for ([`heard`]).
     asked: Asked,
+    /// The physical origin the offscreen QA host supplies for a queued press while Rune's
+    /// `Runtime::physical_key_input` is private (packet entry 97).
+    #[cfg(any(test, feature = "qa"))]
+    qa_origin: Cell<Option<press::Origin>>,
 }
 
 impl Live {
@@ -247,6 +253,8 @@ impl Live {
             keymap: RefCell::new(Rc::new(resolve_keymap(&settings.keymap, report_to))),
             resolved: RefCell::new(settings.keymap.clone()),
             asked: Asked::default(),
+            #[cfg(any(test, feature = "qa"))]
+            qa_origin: Cell::new(None),
         });
         live.follow(settings);
         let weak = Rc::downgrade(&live);
@@ -268,6 +276,16 @@ impl Live {
                 .replace(Rc::new(resolve_keymap(&settings.keymap, None)));
             self.resolved.replace(settings.keymap.clone());
         }
+    }
+
+    #[cfg(any(test, feature = "qa"))]
+    pub(crate) fn set_qa_origin(&self, origin: Option<press::Origin>) {
+        self.qa_origin.set(origin);
+    }
+
+    #[cfg(any(test, feature = "qa"))]
+    fn qa_origin(&self) -> Option<press::Origin> {
+        self.qa_origin.get()
     }
 }
 
@@ -425,8 +443,21 @@ pub(crate) fn read(app: &App, event: &KeyEvent, at: &Situation, tx: &Tx) -> KeyP
     // aliases and every matcher after them read.
     let live = shell::live_keys(app);
     let typing = at.typing() || live.type_to_search_active();
-    let press = press::read(event, press::Origin::of(tx));
+    let press = press::read(event, origin_of(live, tx));
     keys::rewrite(press, Context { typing })
+}
+
+fn origin_of(live: &Live, tx: &Tx) -> press::Origin {
+    let origin = press::Origin::of(tx);
+    #[cfg(any(test, feature = "qa"))]
+    if origin.physical.is_none()
+        && let Some(qa) = live.qa_origin()
+    {
+        return qa;
+    }
+    #[cfg(not(any(test, feature = "qa")))]
+    let _ = live;
+    origin
 }
 
 /// One place's hearing of a key: true when a command took it. A key no command takes is not
