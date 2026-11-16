@@ -55,13 +55,7 @@ impl PreferenceManager {
     }
 
     pub fn search_limits(&self) -> SearchLimits {
-        let preferences = self.preferences.borrow();
-        SearchLimits {
-            time_budget: (preferences.search_time_limit != 0)
-                .then(|| Duration::from_secs(u64::from(preferences.search_time_limit))),
-            max_entries: (preferences.search_entry_limit != 0)
-                .then(|| preferences.search_entry_limit as usize),
-        }
+        self.preferences.borrow().search_limits()
     }
 
     pub fn filter_include_subfolders(&self) -> bool {

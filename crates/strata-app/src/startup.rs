@@ -6,7 +6,7 @@
 use std::{marker::PhantomData, sync::OnceLock};
 
 use strata_core::{logging, metrics};
-use strata_desktop::keys::{self, Binding, Command, Map, Xkb};
+use strata_desktop::keys::{self, Xkb, conflicts};
 
 use crate::settings::Saved;
 
@@ -51,13 +51,6 @@ impl UiThread {
     }
 }
 
-/// This interface's answer to which bindings of a keymap entry never fire, which a key label
-/// leaves out: none. It has no conflict check yet, and no shipped binding is one the GTK
-/// application's check leaves out either.
-fn every_binding_fires(_: Map, _: Command, _: Binding, _: bool) -> bool {
-    false
-}
-
 /// Makes the shared key catalog answerable in this process: `strata_desktop::keys` asks an
 /// installed key library for a key's name, character and case, and this interface's is
 /// `Xkb`: Strata's own table for the keys it declares and libxkbcommon for the rest, each
@@ -71,7 +64,7 @@ fn every_binding_fires(_: Map, _: Command, _: Binding, _: bool) -> bool {
 pub(crate) fn install_key_library() -> Result<(), String> {
     static OURS: OnceLock<bool> = OnceLock::new();
     let install = || {
-        let installed = keys::install(&Xkb, every_binding_fires);
+        let installed = keys::install(&Xkb, conflicts::never_fires);
         tracing::debug!(
             library = ?keys::library_in_use(),
             installed,

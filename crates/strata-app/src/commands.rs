@@ -31,8 +31,8 @@ use rune::{KeyEvent, Tx};
 use strata_components::collection::element::Collection;
 use strata_core::model::Location;
 use strata_desktop::{
-    keys::{self, Active, Command, Context, Digits, KeyPress, Keymap, Matcher},
-    settings::{KeymapOverrides, Preferences, resolve_keymap},
+    keys::{self, Active, Command, Context, Digits, KeyPress, Keymap, Matcher, conflicts::Policy},
+    settings::{KeymapOverrides, Preferences, report_keymap_conflicts, resolve_keymap},
 };
 
 use crate::{App, shell, slots::At};
@@ -244,13 +244,24 @@ pub(crate) struct Live {
 
 impl Live {
     /// The window's source, registered for this thread and holding `settings`' values. With
-    /// `report_to`, the saved keymap's entries that cannot apply are logged against that
-    /// file, as GTK logs them once for its process (`PreferenceManager::keymap`).
+    /// `report_to`, the saved keymap's entries that cannot apply and the conflicts their
+    /// keys cause are logged against that file, as GTK logs them once for its process
+    /// (`PreferenceManager::keymap`).
     pub(crate) fn registered(settings: &Preferences, report_to: Option<&Path>) -> Rc<Self> {
+        let resolved = Rc::new(resolve_keymap(&settings.keymap, report_to));
+        if let Some(file) = report_to {
+            report_keymap_conflicts(
+                &resolved,
+                file,
+                Policy {
+                    type_to_search: settings.type_to_search,
+                },
+            );
+        }
         let live = Rc::new(Self {
             tenxer: Cell::new(false),
             typing: Cell::new(false),
-            keymap: RefCell::new(Rc::new(resolve_keymap(&settings.keymap, report_to))),
+            keymap: RefCell::new(resolved),
             resolved: RefCell::new(settings.keymap.clone()),
             asked: Asked::default(),
             #[cfg(any(test, feature = "qa"))]
