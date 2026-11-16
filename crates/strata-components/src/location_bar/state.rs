@@ -56,8 +56,9 @@ struct Spring {
     index: usize,
     id: String,
     delay: f64,
-    /// When it arrived, on `Tx::clock`.
-    since: f64,
+    /// When it arrived, on `Tx::clock`, or `None` until the next `tick` when armed from a pick
+    /// callback whose `Tx::clock` is `0.0` (packet entry 108).
+    since: Option<f64>,
 }
 
 /// The location bar's state: crumbs or the entry, the entry's text, the suggestions, the
@@ -341,7 +342,8 @@ impl LocationBarState {
             }
         }
         if let Some(spring) = self.spring.as_mut() {
-            let left = spring.delay - (now - spring.since);
+            let since = *spring.since.get_or_insert(now);
+            let left = spring.delay - (now - since);
             if left <= 1e-6 {
                 let id = spring.id.clone();
                 self.spring = None;
@@ -350,7 +352,7 @@ impl LocationBarState {
                     via: Via::Spring,
                 });
             } else {
-                tx.wake_at(spring.since + spring.delay);
+                tx.wake_after(std::time::Duration::from_secs_f64(left));
             }
         }
         match self.copied {
@@ -440,7 +442,7 @@ impl LocationBarState {
                     index,
                     id: id.to_owned(),
                     delay,
-                    since: now,
+                    since: (now > 0.0).then_some(now),
                 });
             }
             _ if self.spring.as_ref().is_some_and(|s| s.index == index) => self.spring = None,

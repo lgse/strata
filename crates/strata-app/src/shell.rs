@@ -1088,7 +1088,12 @@ pub(crate) fn view(app: &App, cx: &mut Cx<App>) -> El {
         .child(body(app, placed.sidebar, placed.files))
         .children(placed.footer)
         .children(placed.anchors);
-    let content = col().w_full().h_full().children(placed.tabs).child(tab);
+    let content = col()
+        .w_full()
+        .h_full()
+        .children(placed.tabs)
+        .child(tab)
+        .children(crate::dnd::keep_alive(app));
     let window = csd::decorate(
         header::frame("window-frame", content, look, &chrome),
         &app.window.csd,

@@ -6,46 +6,40 @@
 scenario = "sidebar-destinations-accept-three-files"
 run = "columns-home"
 package = "A19"
-status = "pending"
-reason = "scope"
-blocker = "A19"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "sidebar-destinations-accept-three-files"
 run = "icons-home"
 package = "A19"
-status = "pending"
-reason = "scope"
-blocker = "A19"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "sidebar-destinations-accept-three-files"
 run = "list-home"
 package = "A19"
-status = "pending"
-reason = "scope"
-blocker = "A19"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "sidebar-destinations-accept-three-files"
 run = "columns-trash"
 package = "A19"
-status = "pending"
-reason = "scope"
-blocker = "A19"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "sidebar-destinations-accept-three-files"
 run = "icons-trash"
 package = "A19"
-status = "pending"
-reason = "scope"
-blocker = "A19"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "sidebar-destinations-accept-three-files"
 run = "list-trash"
 package = "A19"
-status = "pending"
-reason = "scope"
-blocker = "A19"
+status = "required"
+host = "offscreen"

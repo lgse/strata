@@ -257,7 +257,7 @@ impl Viewer {
             Self::Loading => Some(loading_view(&app.look)),
             Self::Code(_) => Some(code_view(app, cx, code_ref, code_mut)),
             Self::Document(doc) => doc.build(app, cx),
-            Self::Image(img) => Some(image::build_view(img, &app.look, cx, image_viewport_mut)),
+            Self::Image(img) => Some(image::build_view(img, app, cx, image_viewport_mut)),
             Self::Archive(_) => Some(archive::build_archive_view(app, archive_ref, archive_mut)),
             Self::ArchivePrompt(prompt) => {
                 Some(archive::build_prompt_view(prompt, &app.look, prompt_mut))

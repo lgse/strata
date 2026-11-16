@@ -44,7 +44,13 @@
 //! and the field's own menu.
 //! `docs/rune/parity/packages/A10.md` keeps the list.
 
-use std::{cell::RefCell, collections::HashMap, rc::Rc, time::Duration};
+use std::{
+    cell::RefCell,
+    collections::{HashMap, HashSet},
+    path::PathBuf,
+    rc::Rc,
+    time::Duration,
+};
 
 use rune::{El, Tx};
 use strata_components::{
@@ -141,6 +147,8 @@ pub(crate) struct Filter {
     state: FilterState,
     open_in: Option<OpenIn>,
     session: Session,
+    /// Ordered search items currently shown, for pruning absent paths after moves or deletions.
+    items: Vec<SearchItem>,
     /// Each result's entry, by its id: what a command acts on ([`targets`]).
     found: HashMap<EntryId, FileEntry>,
     /// A rename of a shown result that the next batch follows to its new path.
@@ -472,6 +480,7 @@ fn hits_for_batch(
     items: &[SearchItem],
     batch: &Batch,
 ) -> HitsUpdate {
+    filter.items = items.to_vec();
     let rows: Vec<Row> = items
         .iter()
         .map(|item| Row::of(&hits::entry_of(item), &filter.ids))
@@ -558,9 +567,82 @@ fn stop(app: &mut App) {
     }
     app.filter.edits += 1;
     app.filter.session.cancel();
+    app.filter.items.clear();
     app.filter.found.clear();
     app.filter.renamed.clear();
     app.filter.descent = None;
+}
+
+/// Probes currently shown search results and removes any proven absent (`prune_stale_search_results`
+/// in `src/ui/browser/events/reveal.rs`).
+fn prune_stale_results(app: &mut App, _: &mut Tx) -> bool {
+    if !shows_live_results(&app.filter) {
+        return false;
+    }
+    let filter = &app.filter;
+    let paths: Vec<PathBuf> = filter
+        .items
+        .iter()
+        .map(|item| item.path.clone())
+        .filter(|path| !filter.renamed.awaits(path))
+        .collect();
+    let later = app.filter.later.clone();
+    app.filter.session.prune_missing(paths, move |gone| {
+        later.then(move |app: &mut App, tx: &mut Tx| apply_pruned_results(app, &gone, tx));
+    });
+    false
+}
+
+/// A search is running and its results show in a pane.
+fn shows_live_results(filter: &Filter) -> bool {
+    filter.session.is_active() && !filter.items.is_empty() && filter.open_in.is_some()
+}
+
+fn apply_pruned_results(app: &mut App, gone: &HashSet<PathBuf>, tx: &mut Tx) -> bool {
+    let (Some(open), true) = (app.filter.open_in.clone(), app.filter.state.is_open()) else {
+        return false;
+    };
+    if !app
+        .filter
+        .items
+        .iter()
+        .any(|item| gone.contains(&item.path))
+    {
+        return false;
+    }
+    let show_hidden = app
+        .browser
+        .column_preferences(open.depth)
+        .unwrap_or_else(|| app.browser.preferences())
+        .show_hidden;
+    let items: Vec<SearchItem> = app
+        .filter
+        .items
+        .iter()
+        .filter(|item| {
+            !gone.contains(&item.path)
+                && (show_hidden || !item.name.starts_with('.'))
+                && app.browser.allows_entry(&hits::entry_of(item))
+        })
+        .cloned()
+        .collect();
+    app.filter.items.clone_from(&items);
+    let rows: Vec<Row> = items
+        .iter()
+        .map(|item| Row::of(&hits::entry_of(item), &app.filter.ids))
+        .collect();
+    app.filter.found = items
+        .iter()
+        .map(|item| {
+            let entry = hits::entry_of(item);
+            (app.filter.ids.of(&entry.location), entry)
+        })
+        .collect();
+    let mut hits = Column::new(open.folder.clone(), true, None);
+    hits.apply(Edit::Replace(rows));
+    hits.set_load(Load::Listed);
+    open.show_hits(app, HitsUpdate::plain(hits, false), tx);
+    true
 }
 
 /// Tells the filter's results to follow a rename of `from` to `to` (`None` when moved to
@@ -934,6 +1016,7 @@ impl Part for Filter {
             state,
             open_in: None,
             session: Session::default(),
+            items: Vec::new(),
             found: HashMap::new(),
             renamed: RenamedResult::default(),
             pane: PaneHits::new(),
@@ -963,6 +1046,18 @@ impl Part for Filter {
             );
             if moves {
                 heard.then(follow_columns);
+            }
+            let prunes = match event {
+                BrowserEvent::TransferFinished { .. }
+                | BrowserEvent::DeletionFinished { .. }
+                | BrowserEvent::RenameCompleted { .. } => true,
+                BrowserEvent::EntriesSpliced { splices, .. } => {
+                    splices.iter().any(|splice| splice.removed > 0)
+                }
+                _ => false,
+            };
+            if prunes {
+                heard.then(prune_stale_results);
             }
         }))
     }

@@ -374,13 +374,14 @@ fn gap<S: 'static>(
     let closed = slot::row_gap(look);
     let height = if open { slot::gap_open(look) } else { closed };
     let reach = slot::gap_reach(look);
+    let band_h = (height + reach).max(closed + 2.0 * reach);
     let gap = gap_at(pins, i);
     let band_key = format!("{}-band-{i}", ctx.key);
     let band = el()
         .key(band_key.clone())
         .absolute(0.0, -reach)
         .w_full()
-        .h(height + 2.0 * reach)
+        .h(band_h)
         .raise();
     let band = ctx.dnd.drop_zone_keyed(
         band,

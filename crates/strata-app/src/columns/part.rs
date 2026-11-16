@@ -35,10 +35,21 @@ fn apply(app: &mut App, change: Change, tx: &mut Tx) -> bool {
 impl Part for Columns {
     const PLACE: Place<App> = Place::View(View {
         build: |app, frame| {
+            let scale = frame.cx.env().scale;
             app.columns.rebuilding.set(false);
-            app.columns.thumbs.set_scale(frame.cx.env().scale);
+            app.columns.scale.set(scale);
+            app.columns.thumbs.set_scale(scale);
             let built = view(app).build(app);
-            Some(built.on_layout(|app: &mut App, rect| width::fit_area(app, rect)))
+            let host = rune::col()
+                .key("columns-host")
+                .w_full()
+                .h_full()
+                .min_w(0.0)
+                .min_h(0.0)
+                .child(built);
+            let zoned = crate::dnd::PointZone::new(intents::strip_zone(), intents::strip_action);
+            let host = crate::dnd::drop_target_by_point(app, host, "columns-host", zoned);
+            Some(host.on_layout(|app: &mut App, rect| width::fit_area(app, rect)))
         },
         shows: |mode| mode == MODE,
         focus: VIEW,
@@ -93,6 +104,12 @@ impl Part for Columns {
     fn listen(setup: &Setup<'_>) -> Option<Listener<App>> {
         let ids = setup.ids.clone();
         Some(Box::new(move |event, browser, heard| {
+            if matches!(event, strata_fs::app::BrowserEvent::FolderCountsInvalidated) {
+                heard.then(|app: &mut App, _: &mut Tx| {
+                    app.columns.fills.invalidate();
+                    true
+                });
+            }
             let read = events::read(event, browser, &ids);
             heard.copied(read.copied);
             for change in read.changes {

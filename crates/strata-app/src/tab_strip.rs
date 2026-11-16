@@ -99,7 +99,6 @@ impl Part for TabStrip {
         tabs_of::forget_arrived(app);
         if drops::blocked(app) {
             app.tab_strip.state.end_drag();
-            app.tab_strip.drops.clear_hover();
         }
         let tabs = named(app);
         let data = TabsData::new(&tabs, Some(id(shown_tab(app))));
@@ -112,30 +111,17 @@ impl Part for TabStrip {
     }
 }
 
-/// Sets the drag-and-drop binder the strip and the header's New tab button attach their zones
-/// through (default [`Dnd::rune`]), for A19's system drag-and-drop binder.
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "A19's drag binder wires in-process and Wayland drags"
-    )
-)]
+/// Overrides the drag-and-drop binder the strip and the header's New tab button attach their zones
+/// through (defaults to [`crate::dnd::binder`]).
+#[cfg(test)]
 pub(crate) fn set_dnd(app: &mut App, dnd: Dnd<App>) {
-    app.tab_strip.drops.dnd = dnd;
+    app.tab_strip.drops.dnd = Some(dnd);
 }
 
 /// Tells the strip and the header's New tab button whether an in-process drag that opens tabs is
 /// running (`Some(TabOpen::AtGap)` for a sidebar row, `Some(TabOpen::AtEnd)` for a folder-only
 /// view drag, `None` when none runs), lighting New tab while it runs and clearing any open gap or
 /// hover when it ends.
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "A19's drag binder marks sidebar and folder-only drags"
-    )
-)]
 pub(crate) fn set_open_drag(app: &mut App, open: Option<TabOpen>) {
     app.tab_strip.drops.open_drag = open;
     app.tab_strip
@@ -143,8 +129,15 @@ pub(crate) fn set_open_drag(app: &mut App, open: Option<TabOpen>) {
         .set_open_drag(open.is_some() && !drops::blocked(app));
     if open.is_none() {
         app.tab_strip.state.end_drag();
-        app.tab_strip.drops.clear_hover();
     }
+}
+
+fn active_dnd(app: &App) -> Dnd<App> {
+    app.tab_strip
+        .drops
+        .dnd
+        .clone()
+        .unwrap_or_else(|| crate::dnd::binder(app))
 }
 
 fn id(key: TabKey) -> TabId {
@@ -207,7 +200,7 @@ fn header_new_tab(app: &App, key: &'static str) -> El {
         tabs(app).len(),
     )
     .key(key)
-    .dnd(app.tab_strip.drops.dnd.clone())
+    .dnd(active_dnd(app))
     .tab_open(drops::tab_open)
     .labels(labels())
     .on_intent(|app: &mut App, intent, tx: &mut Tx| {
@@ -231,7 +224,7 @@ fn build(app: &App, close: Option<El>, frame: &mut Frame<'_, App>) -> Option<El>
         |app: &mut App| &mut app.tab_strip.state,
         |app| &mut app.tab_strip.state.drag,
     )
-    .dnd(app.tab_strip.drops.dnd.clone())
+    .dnd(active_dnd(app))
     .drop_action(drops::drop_action)
     .tab_open(drops::tab_open)
     .badges(badges_shown(app))
@@ -309,7 +302,8 @@ fn route(app: &mut App, intent: TabsIntent, tx: &mut Tx) -> bool {
         TabsIntent::Reorder { id, to, .. } => tabs_of::move_to(app, key(id), to),
         // The shell titles the window for the tab shown.
         TabsIntent::Title(_) => false,
-        TabsIntent::DropHover { site, hover, offer } => drops::hover(app, site, hover, offer),
+        // The volumes a hovered drop needs are looked up as its action is asked (`dnd::policy`).
+        TabsIntent::DropHover { .. } => false,
         TabsIntent::DropInto { id, dropped } => drops::drop_into(app, id, dropped, tx),
         TabsIntent::OpenTabs { at, dropped } => drops::open_tabs(app, at, dropped, tx),
         TabsIntent::TearOut { .. } | TabsIntent::TearMove { .. } => false,
