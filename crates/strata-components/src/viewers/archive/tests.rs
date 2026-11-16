@@ -235,7 +235,7 @@ fn an_error_clears_the_password_typed() {
 
 mod prompt {
     use rune::accesskit::{Action, Live};
-    use rune::{Cx, El, Env, Runtime};
+    use rune::{Cx, El, Env, Key, KeyEvent, Mods, Runtime};
     use strata_kit::look::Look;
 
     use super::super::{ArchivePrompt, PromptState};
@@ -243,10 +243,18 @@ mod prompt {
     struct App {
         prompt: PromptState,
         look: Look,
+        escaped: bool,
     }
 
     fn view(s: &App, _cx: &mut Cx<App>) -> El {
         ArchivePrompt::new(&s.prompt, |s: &mut App| &mut s.prompt)
+            .on_field_key(|s: &mut App, ev, _| {
+                if ev.key == Key::Escape {
+                    s.escaped = true;
+                    return true;
+                }
+                false
+            })
             .on_unlock(|s: &mut App, _, _| {
                 s.prompt
                     .set_error(Some("The password is incorrect.".into()));
@@ -294,6 +302,7 @@ mod prompt {
         let app = App {
             prompt: PromptState::default(),
             look: Look::fallback(false),
+            escaped: false,
         };
         let mut rt = Runtime::new(app, view, (420.0, 400.0), Env::new(false, 1.0));
         rt.frame(1.0 / 60.0);
@@ -310,6 +319,32 @@ mod prompt {
         assert_ne!(
             first, second,
             "the second error is a new node, so it is announced"
+        );
+    }
+
+    #[test]
+    fn on_field_key_intercepts_escape_before_the_field_blurs() {
+        let mut prompt = PromptState::default();
+        prompt.focus();
+        let app = App {
+            prompt,
+            look: Look::fallback(false),
+            escaped: false,
+        };
+        let mut rt = Runtime::new(app, view, (420.0, 400.0), Env::new(false, 1.0));
+        for _ in 0..3 {
+            rt.frame(1.0 / 60.0);
+        }
+        assert!(rt.state.prompt.edit.focused);
+        rt.key(KeyEvent {
+            key: Key::Escape,
+            mods: Mods::default(),
+        });
+        rt.frame(1.0 / 60.0);
+        assert!(rt.state.escaped, "on_field_key receives Escape");
+        assert!(
+            rt.state.prompt.edit.focused,
+            "consuming Escape prevents TextInput from blurring on its own"
         );
     }
 }
