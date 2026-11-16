@@ -188,6 +188,29 @@ impl Columns {
         self.state.len().min(self.listings.columns.len())
     }
 
+    /// Visible `(depth, EntryId)` pairs across open columns, for external file provider queries.
+    pub(crate) fn visible_rows(&self) -> Vec<(usize, EntryId)> {
+        let cap = strata_fs::services::file_providers::PATH_LIMIT;
+        let mut out = Vec::new();
+        for depth in 0..self.open() {
+            let Some(shown) = self.listings.shown(depth) else {
+                continue;
+            };
+            let len = shown.len();
+            let vis = self
+                .state
+                .column(depth)
+                .map_or(0..0, |col| col.collection.visible_range());
+            let range = if vis.is_empty() {
+                0..len.min(cap)
+            } else {
+                vis.start..vis.end.min(len)
+            };
+            out.extend(range.map(|i| (depth, shown.id_at(i))));
+        }
+        out
+    }
+
     /// The browser's position of entry `id` in column `depth`.
     pub(crate) fn position(&self, depth: usize, id: EntryId) -> Option<usize> {
         self.listings.columns.get(depth)?.position_of(id)

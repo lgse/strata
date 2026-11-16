@@ -58,6 +58,7 @@ pub(super) fn results(app: &App) -> Collection<App> {
     let paths = app.filter.pane.recursive;
     single::results::<List>(app)
         .roles(Roles::LIST)
+        .icon(app.list.thumbs.icon(&app.look))
         .row_height(move |_: &App, look: &Look| match paths {
             true => (look.row.list + look.kit.ty.small.line_height + 2.0).round(),
             false => look.row.list,

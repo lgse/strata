@@ -359,6 +359,10 @@ type ThumbsMutFn<S> = Rc<
 type BaseFn<S> = Rc<dyn Fn(&S) -> Collection<S>>;
 type VersionFn<S> = Rc<dyn Fn(&S, &RowCx<'_>) -> u64>;
 type DetailsFn<S> = Rc<dyn Fn(&S, &RowCx<'_>) -> Option<Arc<str>>>;
+type BadgeFn<S> = (
+    Rc<dyn Fn(&S, EntryId) -> u64>,
+    Rc<dyn Fn(&S, EntryId) -> Option<rune::Pixels>>,
+);
 type SizeFn<S> = Rc<dyn Fn(&mut S, SizeRequest, &mut Tx)>;
 type VisibleFn<S> = Rc<dyn Fn(&mut S, Range<usize>) -> bool>;
 type WheelFn<S> = Rc<dyn Fn(&mut S, WheelEvent, &mut Tx) -> bool>;
@@ -371,6 +375,7 @@ pub(crate) struct Shared<S> {
     grid_mut: GridMutFn<S>,
     thumbs_mut: Option<ThumbsMutFn<S>>,
     details: Option<(VersionFn<S>, DetailsFn<S>)>,
+    badge: Option<BadgeFn<S>>,
     lines: usize,
     on_size: Option<SizeFn<S>>,
     on_visible: Option<VisibleFn<S>>,
@@ -387,6 +392,7 @@ impl<S> Clone for Shared<S> {
             grid_mut: self.grid_mut.clone(),
             thumbs_mut: self.thumbs_mut.clone(),
             details: self.details.clone(),
+            badge: self.badge.clone(),
             lines: self.lines,
             on_size: self.on_size.clone(),
             on_visible: self.on_visible.clone(),
@@ -452,6 +458,7 @@ impl<S: 'static> IconsGrid<S> {
                 grid_mut: Rc::new(grid_mut),
                 thumbs_mut: None,
                 details: None,
+                badge: None,
                 lines: 2,
                 on_size: None,
                 on_visible: None,
@@ -459,6 +466,17 @@ impl<S: 'static> IconsGrid<S> {
                 scale: None,
             },
         }
+    }
+
+    /// Overlays an optional corner badge (`Pixels`) in the bottom-right corner of each tile's
+    /// thumbnail slot, rebuilding a tile's frame only when `version` changes for that entry.
+    pub fn badge(
+        mut self,
+        version: impl Fn(&S, EntryId) -> u64 + 'static,
+        pixels: impl Fn(&S, EntryId) -> Option<rune::Pixels> + 'static,
+    ) -> Self {
+        self.shared.badge = Some((Rc::new(version), Rc::new(pixels)));
+        self
     }
 
     /// The thumbnail store and the grid's viewer in it, with the listing, for the grid's own
