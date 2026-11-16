@@ -95,6 +95,10 @@ impl Viewer {
         }
     }
 
+    pub(super) fn needs_body_focus_owner(&self) -> bool {
+        matches!(self, Self::Message { can_open: false, .. })
+    }
+
     pub(super) fn code(source: CodeSource<'_>, highlighter: &Highlighter) -> Self {
         Self::Code(Box::new(build_code_state(source, highlighter)))
     }
@@ -212,7 +216,7 @@ impl Viewer {
                 title,
                 detail,
                 can_open,
-            } => Some(message_view(&app.look, title, detail.as_deref(), *can_open)),
+            } => Some(message_view(app, title, detail.as_deref(), *can_open)),
         }
     }
 }
@@ -530,7 +534,8 @@ fn loading_view(look: &Look) -> El {
         .child(Spinner::new().build(&look.kit))
 }
 
-fn message_view(look: &Look, title: &str, detail: Option<&str>, can_open: bool) -> El {
+fn message_view(app: &App, title: &str, detail: Option<&str>, can_open: bool) -> El {
+    let look = &app.look;
     let mut card = col()
         .key("preview-message")
         .w_full()
@@ -544,6 +549,9 @@ fn message_view(look: &Look, title: &str, detail: Option<&str>, can_open: bool) 
                 .font(look.kit.ty.ui_medium)
                 .color(look.kit.c.text_base),
         );
+    if !can_open && app.preview.content_owns_focus > 0 {
+        card = card.focusable(true);
+    }
     if let Some(detail) = detail.filter(|detail| !detail.is_empty()) {
         card = card.child(
             text(detail.to_owned())

@@ -96,6 +96,8 @@ pub(super) fn show(app: &mut App, entry: FileEntry, depth: Option<usize>, tx: &m
         app.preview.drawer.reset_find();
         app.preview.viewer.stop();
         app.preview.viewer = Viewer::Empty;
+        app.preview.current_content_type = None;
+        app.preview.content_owns_focus = 0;
     }
     cancel_focus_timer(app);
     let was_open = app.preview.drawer.is_open();
@@ -164,6 +166,8 @@ pub(super) fn clear_target(app: &mut App, tx: &mut Tx) {
     app.preview.drawer.reset_find();
     app.preview.current = None;
     app.preview.current_depth = None;
+    app.preview.current_content_type = None;
+    app.preview.content_owns_focus = 0;
     app.preview.viewer.stop();
     app.preview.viewer = Viewer::Empty;
     app.preview.header = HeaderInfo::default();

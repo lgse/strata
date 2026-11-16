@@ -249,9 +249,36 @@ fn right_enters_preview_in_columns_and_stays_in_icons() {
             press(&mut host, Key::Right, Mods::default());
             assert_eq!(focused_key(&mut host).as_deref(), Some("preview-code"));
 
+            // In default mode, Space inside the preview body keeps the drawer open; Escape closes
+            // it and returns focus to the listing (`tenxer-l-enters-preview`).
             space(&mut host);
+            assert!(host.app().preview.enabled);
+            press(&mut host, Key::Escape, Mods::default());
             assert!(!host.app().preview.enabled);
             assert_eq!(focused_key(&mut host).as_deref(), Some("columns"));
+
+            // Plain `i` with type-to-search off must not toggle preview outside 10xer mode.
+            host.runtime().update(|app, _| {
+                shell::saved(app).change(|s| s.type_to_search = false);
+            });
+            press(&mut host, Key::Text("i".into()), Mods::default());
+            assert!(!host.app().preview.enabled);
+
+            // In 10xer mode, `i` opens the preview from the listing and closes it from inside.
+            host.runtime().update(|app, _| {
+                shell::saved(app).change(|s| s.tenxer_mode = true);
+            });
+            press(&mut host, Key::Text("i".into()), Mods::default());
+            assert!(host.app().preview.enabled);
+            wait_for_code_preview(&mut host);
+            press(&mut host, Key::Right, Mods::default());
+            assert_eq!(focused_key(&mut host).as_deref(), Some("preview-code"));
+            press(&mut host, Key::Text("i".into()), Mods::default());
+            assert!(!host.app().preview.enabled);
+            assert_eq!(focused_key(&mut host).as_deref(), Some("columns"));
+            host.runtime().update(|app, _| {
+                shell::saved(app).change(|s| s.tenxer_mode = false);
+            });
 
             switch_view(&mut host, "icons");
             select(&mut host, &todo);

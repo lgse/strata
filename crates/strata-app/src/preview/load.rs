@@ -24,7 +24,7 @@ use strata_components::{
 };
 use strata_core::{
     i18n::{file_size, tr},
-    model::FileEntry,
+    model::{FileEntry, MetadataValue},
     util::modified_date,
 };
 use strata_fs::{
@@ -215,11 +215,13 @@ pub(super) fn identity_for(
 }
 
 fn extension_label(entry: &FileEntry) -> String {
-    Path::new(&entry.native_name)
-        .extension()
+    entry
+        .location
+        .native_path()
+        .and_then(Path::extension)
         .and_then(|ext| ext.to_str())
-        .filter(|ext| !ext.is_empty())
-        .map_or_else(|| tr("File"), |ext| ext.to_ascii_uppercase())
+        .unwrap_or("file")
+        .to_owned()
 }
 
 fn icon_for(entry: &FileEntry) -> IconName {
@@ -245,6 +247,9 @@ pub(super) fn reload_rendered(app: &mut App, entry: FileEntry) {
 }
 
 fn start_request(app: &mut App, entry: FileEntry, render_document: bool) {
+    let entry = freshest_browser_entry(app, entry);
+    app.preview.current = Some(entry.clone());
+    app.preview.current_content_type = None;
     app.preview.header = identity_for(&app.look, &entry, None);
     let later = app.preview.loader.later.clone();
     app.preview.raw.load(&entry, later);
@@ -339,9 +344,52 @@ fn on_event(app: &mut App, expected: PreviewRequestId, event: PreviewEvent, tx: 
     }
 }
 
+fn freshest_browser_entry(app: &App, fallback: FileEntry) -> FileEntry {
+    let Some(depth) = app.preview.current_depth else {
+        return fallback;
+    };
+    (0..)
+        .map_while(|pos| app.browser.entry_at(depth, pos))
+        .find(|entry| entry.location == fallback.location)
+        .unwrap_or(fallback)
+}
+
+fn lacks_header_metadata(entry: &FileEntry) -> bool {
+    entry.size == MetadataValue::Unknown || entry.modified_unix_seconds == MetadataValue::Unknown
+}
+
+pub(super) fn on_metadata_filled(app: &mut App, depth: usize, entries: &[FileEntry]) -> bool {
+    if !app.preview.enabled || app.preview.current_depth != Some(depth) {
+        return false;
+    }
+    let Some(current) = app.preview.current.as_ref() else {
+        return false;
+    };
+    if !lacks_header_metadata(current) {
+        return false;
+    }
+    let Some(updated) = entries
+        .iter()
+        .find(|e| e.location == current.location)
+        .cloned()
+    else {
+        return false;
+    };
+    app.preview.header = identity_for(
+        &app.look,
+        &updated,
+        app.preview.current_content_type.as_deref(),
+    );
+    app.preview.current = Some(updated);
+    true
+}
+
 pub(super) fn render_ready(app: &mut App, loaded: Preview, tx: &mut Tx) {
     app.preview.viewer.stop();
-    app.preview.header = identity_for(&app.look, &loaded.entry, Some(&loaded.content_type));
+    let entry = freshest_browser_entry(app, loaded.entry.clone());
+    app.preview.current = Some(entry.clone());
+    app.preview.current_content_type = Some(loaded.content_type.clone());
+    app.preview.header = identity_for(&app.look, &entry, Some(&loaded.content_type));
     let wrap = shell::preferences(app).preview_text_wrap;
     let highlighter = app.preview.loader.highlighter(&app.look);
     let file_name = loaded.entry.native_name.to_string_lossy().into_owned();

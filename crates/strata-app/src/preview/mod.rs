@@ -63,6 +63,8 @@ pub(crate) struct Preview {
     child_pane: bool,
     current: Option<FileEntry>,
     current_depth: Option<usize>,
+    current_content_type: Option<String>,
+    content_owns_focus: u8,
     focus_timer: Rc<RefCell<Option<glib::SourceId>>>,
     released_from: Option<Option<usize>>,
     operations: Option<file_activity::Subscription>,
@@ -85,6 +87,21 @@ impl Preview {
         self.current.is_some()
             || self.reserves_empty_preview(app)
             || self.reserves_column_space(app)
+    }
+
+    fn sync_message_focus(&mut self, tx: &Tx) -> bool {
+        match (self.content_owns_focus, tx.focused()) {
+            (0, _) | (1, Some("preview-message")) => false,
+            (2, Some("preview-message")) => {
+                self.content_owns_focus = 1;
+                false
+            }
+            (1, _) => {
+                self.content_owns_focus = 0;
+                true
+            }
+            (_, _) => false,
+        }
     }
 }
 
@@ -110,6 +127,8 @@ impl Part for Preview {
             child_pane: false,
             current: None,
             current_depth: None,
+            current_content_type: None,
+            content_owns_focus: 0,
             focus_timer: Rc::default(),
             released_from: None,
             operations: None,
@@ -143,8 +162,9 @@ impl Part for Preview {
         } else {
             false
         };
+        let msg_focus = app.preview.sync_message_focus(tx);
         let viewer = app.preview.viewer.poll(clock, &app.look, tx);
-        blocks | viewer | lit_changed | band_synced
+        blocks | viewer | lit_changed | band_synced | msg_focus
     }
 
     fn switched(app: &mut App, tx: &mut Tx) {
@@ -361,6 +381,7 @@ pub(crate) fn show_search_file(app: &mut App, path: &Path, name: String, tx: &mu
 /// drawer (`enter_preview` in `src/ui/window/keyboard/preview.rs`).
 pub(crate) fn show_entry(app: &mut App, entry: FileEntry, depth: Option<usize>, tx: &mut Tx) {
     session::show(app, entry, depth, tx);
+    keys::take_keyboard(app, tx);
 }
 
 /// Whether single clicks open files in the currently shown view.
@@ -498,6 +519,13 @@ fn hear(event: &BrowserEvent, browser: &Browser, heard: &mut Heard<'_, App>) {
                 session::lend_slot_to_child(app, depth, None);
                 session::clear_target(app, tx);
                 true
+            });
+        }
+        BrowserEvent::MetadataFilled { depth, updates } => {
+            let depth = *depth;
+            let entries: Vec<FileEntry> = updates.iter().map(|(_, entry)| entry.clone()).collect();
+            heard.then(move |app: &mut App, _: &mut Tx| {
+                load::on_metadata_filled(app, depth, &entries)
             });
         }
         BrowserEvent::EntriesSpliced { depth, splices } => {

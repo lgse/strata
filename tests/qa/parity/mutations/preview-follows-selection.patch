@@ -1,0 +1,22 @@
+diff --git a/crates/strata-app/src/preview/mod.rs b/crates/strata-app/src/preview/mod.rs
+--- a/crates/strata-app/src/preview/mod.rs
++++ b/crates/strata-app/src/preview/mod.rs
+@@ -540,16 +540,11 @@ fn hear(event: &BrowserEvent, browser: &Browser, heard: &mut Heard<'_, App>) {
+ }
+ 
+ fn follow_focus(app: &mut App, depth: usize, entry: Option<FileEntry>, tx: &mut Tx) -> bool {
++    let _ = (depth, entry, tx);
+     if !app.preview.enabled || session::in_band(app) {
+         return false;
+     }
+-    if let Some(target) = preview_target(entry.clone()) {
+-        session::show_after_focus_change(app, target, Some(depth), tx);
+-    } else {
+-        session::lend_slot_to_child(app, depth, entry.as_ref());
+-        session::clear_target(app, tx);
+-    }
+-    true
++    false
+ }
+ 
+ fn follow_removal(app: &mut App, depth: usize, tx: &mut Tx) -> bool {

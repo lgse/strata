@@ -36,10 +36,10 @@ pub(super) const COMMANDS: &[Action<App>] = &[
     Action::new("preview-close", close_from_preview)
         .command(PREVIEW)
         .keys(&[Keys::at(
-            Stage::FilterAndLocationCommands,
-            &[PREVIEW.ignoring(Modifiers::empty())],
+            Stage::DirectCommands,
+            &[PREVIEW.in_map(Map::Tenxer)],
         )
-        .when(in_preview_outside_find)]),
+        .when(in_tenxer_preview_outside_find)]),
     Action::new("preview", space_preview)
         .command(PREVIEW)
         .keys(&[
@@ -48,12 +48,11 @@ pub(super) const COMMANDS: &[Action<App>] = &[
                 &[PREVIEW.in_map(Map::Default)],
             )
             .when(on_filtered_result),
+            Keys::at(Stage::DirectCommands, &[PREVIEW.in_map(Map::Tenxer)])
+                .when(in_tenxer_listing_for_preview),
             Keys::at(
                 Stage::ItemNavigation,
-                &[
-                    PREVIEW.in_map(Map::Default).ignoring(PREVIEW_IGNORED),
-                    PREVIEW.in_map(Map::Tenxer),
-                ],
+                &[PREVIEW.in_map(Map::Default).ignoring(PREVIEW_IGNORED)],
             )
             .when(in_listing_for_preview),
         ]),
@@ -86,19 +85,20 @@ fn in_preview_outside_find(app: &App, at: &Situation) -> bool {
     app.preview.enabled && at.within("preview") && !app.preview.drawer.is_find_focused()
 }
 
+fn in_tenxer_preview_outside_find(app: &App, at: &Situation) -> bool {
+    shell::preferences(app).tenxer_mode && in_preview_outside_find(app, at)
+}
+
 fn in_preview_body_outside_find(app: &App, at: &Situation) -> bool {
     in_preview_outside_find(app, at) && !at.within("preview-grip")
 }
 
-fn in_listing_for_preview(app: &App, at: &Situation) -> bool {
-    if !at.in_view() {
-        return false;
-    }
-    // In default mode with type-to-search on, `PREVIEW` is Space (not a letter); in 10xer mode
-    // `PREVIEW` is `i` and type-to-search is inactive. Guard against plain-letter bindings when
-    // type-to-search is active, just like `navigation_keys_active`.
-    let _ = app;
-    true
+fn in_tenxer_listing_for_preview(app: &App, at: &Situation) -> bool {
+    shell::preferences(app).tenxer_mode && at.in_view()
+}
+
+fn in_listing_for_preview(_: &App, at: &Situation) -> bool {
+    at.in_view()
 }
 
 fn can_enter_preview(app: &App, at: &Situation) -> bool {
@@ -226,15 +226,28 @@ fn enter_preview(app: &mut App, call: &Call<'_>, tx: &mut Tx) -> Outcome {
     {
         return Outcome::Declined;
     }
+    if take_keyboard(app, tx) {
+        Outcome::Ran
+    } else {
+        Outcome::Declined
+    }
+}
+
+pub(super) fn take_keyboard(app: &mut App, tx: &mut Tx) -> bool {
     if app.preview.viewer.can_focus() {
         app.preview.drawer.focus_content();
-        return Outcome::Ran;
+        return true;
+    }
+    if app.preview.viewer.needs_body_focus_owner() {
+        app.preview.content_owns_focus = 2;
+        app.preview.drawer.focus_content_when_shown(tx);
+        return true;
     }
     if app.preview.loader.is_active() {
         app.preview.drawer.focus_content_when_shown(tx);
-        return Outcome::Ran;
+        return true;
     }
-    Outcome::Declined
+    false
 }
 
 fn focus_divider(app: &mut App, _: &Call<'_>, _: &mut Tx) -> Outcome {

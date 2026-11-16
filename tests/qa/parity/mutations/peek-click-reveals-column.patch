@@ -1,0 +1,13 @@
+diff --git a/crates/strata-components/src/columns/view.rs b/crates/strata-components/src/columns/view.rs
+index c29aa0a55..d750a4dcf 100644
+--- a/crates/strata-components/src/columns/view.rs
++++ b/crates/strata-components/src/columns/view.rs
+@@ -925,7 +925,7 @@ fn reveal_clipped<S: 'static>(
+         let now = tx.clock();
+         p.state.peek_seq = Some((now, window));
+         p.state.set_active_quiet(depth);
+-        p.state.reveal(p.look, tx);
++        let _ = p.look;
+     }
+     sh.emit(s, ColumnsIntent::Active { depth }, tx);
+ }
