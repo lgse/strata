@@ -207,7 +207,7 @@ impl Part for Compress {
             Stage::DirectCommands,
             &[ACTIONS_COMPRESS.in_map(Map::Default)],
         )
-        .when(|_, at| !at.text() && at.in_view())])];
+        .when(|app, at| !shell::preferences(app).tenxer_mode && !at.text() && at.in_view())])];
 }
 
 /// Basename used when creating the archive, with `format`'s extension removed (`archive.rs`).
@@ -467,7 +467,10 @@ fn queue_archive_event(event: &BrowserEvent, heard: &mut crate::slots::Heard<'_,
             let depth = *depth;
             heard.then(move |app, tx| reveal_pending_at(app, depth, tx));
         }
-        BrowserEvent::OperationFailed { .. } | BrowserEvent::Reset => {
+        BrowserEvent::OperationFailed { .. }
+        | BrowserEvent::OperationCompletedWithErrors { .. }
+        | BrowserEvent::OperationCancelled { .. }
+        | BrowserEvent::Reset => {
             heard.then(|app, _| {
                 app.compress.pending_destination = None;
                 app.compress.pending_select = None;

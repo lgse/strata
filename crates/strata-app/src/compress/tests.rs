@@ -268,6 +268,15 @@ fn bind_compress_shortcut_and_select_pair(host: &mut Offscreen) {
     idle(host);
 }
 
+fn set_tenxer_mode(host: &mut Offscreen, enabled: bool) {
+    host.runtime().update(|app: &mut App, tx: &mut Tx| {
+        shell::saved(app).change(|settings| settings.tenxer_mode = enabled);
+        shell::settle(app, tx);
+        tx.focus(crate::columns::VIEW, true);
+    });
+    idle(host);
+}
+
 #[test]
 fn confirming_creates_and_selects_archive_while_collision_stops_without_overwriting() {
     hosted(
@@ -291,6 +300,11 @@ fn confirming_creates_and_selects_archive_while_collision_stops_without_overwrit
                 alt: true,
                 ..Mods::default()
             };
+            set_tenxer_mode(&mut host, true);
+            press(&mut host, Key::Text("c".to_owned()), chord);
+            assert!(!host.app().compress.open);
+
+            set_tenxer_mode(&mut host, false);
             press(&mut host, Key::Text("c".to_owned()), chord);
             assert!(host.app().compress.open);
             let form = host.app().compress.form.as_ref().expect("form");
