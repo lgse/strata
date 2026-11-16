@@ -57,16 +57,36 @@ pub struct TabbedFormState {
     carry: Option<Carry>,
 }
 
-/// A keyboard on the page a switch hides: the switch's commit makes the page inert (or
-/// removes it), which drops focus. Only the focused key is known when the switch is asked
-/// for, not whether the page holds it, so the next poll checks what was dropped: with nothing
-/// focused, the keyboard goes to the first of `targets`, and if that shows nothing focusable,
-/// to the next a poll later. A keyboard outside the form keeps its place.
+/// A keyboard carried across a page switch:
+///
+/// - [`Carry::Page`]: Ctrl+Page Up or Down ran with focus off the tabs. Making the old page inert
+///   drops focus to `None`, while unmounting it (`Mounting::Rebuilt`) triggers Rune's unmount
+///   `focus_fallback`, which lands focus on the tab strip ahead of the panels. Only the focused
+///   key was known when the switch was asked for, so the next poll checks whether focus is now
+///   `None` or on one of the form's tabs: if so, focus was inside the hidden page and moves to
+///   `panel` first, then `tab` a poll later if `panel` holds nothing focusable. Focus outside the
+///   form (such as a dialog footer button) stays where it was.
+/// - [`Carry::Tab`]: a switch with focus on a tab. Under `Mounting::Rebuilt`, remounting a page
+///   whose `TextEdit` kept `focused = true` across an earlier unmount steals focus in the switch's
+///   commit; the next poll restores `key` when that happened.
 #[derive(Clone, Debug, PartialEq, Eq)]
-struct Carry {
-    /// The next target first.
-    targets: Vec<String>,
-    ring: bool,
+enum Carry {
+    Page {
+        panel: Option<String>,
+        tab: String,
+        tabs_prefix: String,
+        ring: bool,
+    },
+    Tab {
+        key: String,
+        ring: bool,
+    },
+}
+
+fn is_form_tab(focused: &str, prefix: &str) -> bool {
+    focused
+        .strip_prefix(prefix)
+        .is_some_and(|rest| !rest.is_empty() && rest.bytes().all(|b| b.is_ascii_digit()))
 }
 
 impl TabbedFormState {
@@ -89,10 +109,28 @@ impl TabbedFormState {
     }
 
     /// After a switch from the keyboard (Ctrl+Page Up or Down) with the keyboard off the tabs:
-    /// if the switch dropped it (it was on the page now hidden), move it to the first of
-    /// `targets` with a focusable element. Replaces a carry not yet done.
-    pub(super) fn carry(&mut self, targets: Vec<String>, ring: bool, tx: &mut Tx) {
-        self.carry = Some(Carry { targets, ring });
+    /// if the switch dropped focus out of the hidden page, move it to `panel` when it holds a
+    /// focusable element, else to `tab`. Replaces a carry not yet done.
+    pub(super) fn carry_page(
+        &mut self,
+        (panel, tab): (String, String),
+        tabs_prefix: String,
+        ring: bool,
+        tx: &mut Tx,
+    ) {
+        self.carry = Some(Carry::Page {
+            panel: Some(panel),
+            tab,
+            tabs_prefix,
+            ring,
+        });
+        tx.wake_after(Duration::ZERO);
+    }
+
+    /// Keeps focus on tab `key` across a page switch when a remounted `TextEdit` on the shown
+    /// page still carried `focused = true` from before it unmounted.
+    pub(super) fn keep_tab(&mut self, key: String, ring: bool, tx: &mut Tx) {
+        self.carry = Some(Carry::Tab { key, ring });
         tx.wake_after(Duration::ZERO);
     }
 
@@ -114,16 +152,41 @@ impl TabbedFormState {
     /// From the host's poll, every frame: carries a keyboard a page switch dropped. True when
     /// it asked to move focus.
     pub fn tick(&mut self, tx: &mut Tx) -> bool {
-        let Some(carry) = self.carry.as_mut() else {
-            return false;
-        };
-        if tx.focused().is_some() || carry.targets.is_empty() {
-            self.carry = None;
-            return false;
+        match self.carry.as_mut() {
+            None => false,
+            Some(Carry::Page {
+                panel,
+                tab,
+                tabs_prefix,
+                ring,
+            }) => {
+                let dropped = tx
+                    .focused()
+                    .is_none_or(|focused| is_form_tab(focused, tabs_prefix));
+                if !dropped {
+                    self.carry = None;
+                    return false;
+                }
+                let ring = *ring;
+                if let Some(panel) = panel.take() {
+                    tx.focus(panel, ring);
+                    tx.wake_after(Duration::ZERO);
+                } else {
+                    let tab = tab.clone();
+                    self.carry = None;
+                    tx.focus(tab, ring);
+                }
+                true
+            }
+            Some(Carry::Tab { key, ring }) => {
+                let (key, ring) = (key.clone(), *ring);
+                self.carry = None;
+                if tx.focused() == Some(key.as_str()) {
+                    return false;
+                }
+                tx.focus(key, ring);
+                true
+            }
         }
-        let target = carry.targets.remove(0);
-        tx.focus(target, carry.ring);
-        tx.wake_after(Duration::ZERO);
-        true
     }
 }

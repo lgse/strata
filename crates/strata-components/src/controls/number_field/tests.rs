@@ -221,6 +221,7 @@ struct Host {
 /// the keyboard to.
 fn field() -> NumberField<Host> {
     NumberField::new("n", |h: &Host| &h.field, |h: &mut Host| &mut h.field)
+        .label("Workers")
         .on_change(|h: &mut Host, v, _| h.heard.push(v))
         .on_menu(|_: &mut Host, _, _: &mut Tx| false)
 }
@@ -228,6 +229,7 @@ fn field() -> NumberField<Host> {
 fn view(h: &Host, _: &mut Cx<Host>) -> El {
     col().child(field().build(h, &h.look)).child(
         el().key("other")
+            .label("Other")
             .size(40.0, 20.0)
             .focusable(true)
             .on_press(|_: &mut Host| {}),

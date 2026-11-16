@@ -99,15 +99,9 @@ impl<S: 'static> ContextMenu<S> {
                     emit(s, MenuIntent::Activate { target, action }, tx);
                 }
             }),
-            on_submenu: Rc::new(move |s: &mut S, path: Vec<usize>, keys: bool| {
-                let st = get_mut(s);
-                if keys {
-                    st.enter_submenu(&path)
-                } else {
-                    st.open_submenu(&path)
-                }
+            on_submenu: Rc::new(move |s: &mut S, path: Vec<usize>| {
+                get_mut(s).open_submenu(&path);
             }),
-            entering: Rc::new(move |s: &mut S| get_mut(s).take_entering()),
             close_to: Rc::new(move |s: &mut S, depth: usize| {
                 get_mut(s).close_submenu(depth);
             }),

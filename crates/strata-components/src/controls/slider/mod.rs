@@ -10,7 +10,7 @@
 //! does no I/O and holds no policy: what a value means (Strata's density presets, the
 //! thumbnail ladder its shortcuts walk, saving) stays with the host.
 //!
-//! **Rune 2a44156: partly.** The slider role (`on_step`, `on_step_limit`, `range_value`,
+//! **Rune 631e8a67: partly.** The slider role (`on_step`, `on_step_limit`, `range_value`,
 //! `range_step`, `a11y_value`, the set-value action as steps), `on_drag` with its cancel,
 //! `on_wheel` that passes on what it doesn't take, an element's `on_key` ahead of the slider's
 //! step keys, `on_layout_tx` and `instant_changes` cover it. Missing: rune-kit has no Slider

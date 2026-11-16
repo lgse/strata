@@ -150,7 +150,6 @@ pub(crate) struct Compress {
     notice: Option<Notice>,
     notice_open: bool,
     notices: u64,
-    focus_target: Option<String>,
     pending_destination: Option<Location>,
     pending_select: Option<String>,
 }
@@ -167,7 +166,6 @@ impl Part for Compress {
             notice: None,
             notice_open: false,
             notices: 0,
-            focus_target: None,
             pending_destination: None,
             pending_select: None,
         }
@@ -177,17 +175,6 @@ impl Part for Compress {
         Some(Box::new(|event, _, heard| {
             queue_archive_event(event, heard);
         }))
-    }
-
-    fn poll(app: &mut App, _: f64, tx: &mut Tx) -> bool {
-        let Some(target) = app.compress.focus_target.take() else {
-            return false;
-        };
-        if app.compress.open {
-            tx.focus(target, false);
-            return true;
-        }
-        false
     }
 
     fn keyboard(app: &App) -> Option<Holds> {
@@ -298,7 +285,6 @@ fn open(app: &mut App, entries: Vec<FileEntry>) {
         previous.wipe_secrets();
     }
     compress.notice_open = false;
-    compress.focus_target = None;
     compress.opened += 1;
     compress.form = Some(Form::new(entries, destination, compress.opened));
     compress.open = true;
@@ -308,7 +294,6 @@ fn cancel(app: &mut App) {
     let compress = &mut app.compress;
     compress.open = false;
     compress.notice_open = false;
-    compress.focus_target = None;
     if let Some(form) = &mut compress.form {
         form.wipe_secrets();
     }
@@ -345,7 +330,7 @@ fn choose_format(app: &mut App, format: ArchiveFormat) {
     }
 }
 
-fn set_password_protected(app: &mut App, protected: bool) {
+fn set_password_protected(app: &mut App, protected: bool, tx: &mut Tx) {
     let Some(form) = &mut app.compress.form else {
         return;
     };
@@ -355,7 +340,7 @@ fn set_password_protected(app: &mut App, protected: bool) {
     form.password_protected = protected;
     if protected {
         form.password.focused = true;
-        app.compress.focus_target = Some(view::password_key(form.generation));
+        tx.focus_when_shown(view::password_key(form.generation), false);
     }
 }
 
@@ -378,7 +363,7 @@ fn validated_password(form: &Form) -> Result<Option<String>, (&'static str, &'st
     Ok(Some(form.password.text.clone()))
 }
 
-fn submit(app: &mut App) {
+fn submit(app: &mut App, tx: &mut Tx) {
     let Some(form) = app.compress.form.as_mut() else {
         return;
     };
@@ -392,7 +377,7 @@ fn submit(app: &mut App) {
         let end = form.name.text.len();
         form.name.anchor = 0;
         form.name.focus = end;
-        app.compress.focus_target = Some(view::name_key(form.generation));
+        tx.focus(view::name_key(form.generation), false);
         return;
     }
     let password = match validated_password(form) {

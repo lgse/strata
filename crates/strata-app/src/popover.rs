@@ -195,7 +195,7 @@ fn scrim(key: &str, listing: Option<[f32; 4]>, closes: Closes) -> El {
         .w_full()
         .h_full()
         .a11y_hidden()
-        .on_press_tx(move |app: &mut App, tx: &mut Tx| closes.close(app, tx))
+        .on_background_press_tx(move |app: &mut App, tx: &mut Tx| closes.close(app, tx))
         .on_secondary_press(move |app: &mut App, _: PointerPress, tx: &mut Tx| {
             on_secondary.close(app, tx);
         })

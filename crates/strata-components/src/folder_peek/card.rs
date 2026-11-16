@@ -166,13 +166,13 @@ fn body<S: 'static>(sh: &Rc<Shared<S>>, s: &S, target: &PeekTarget, look: &Look)
         .w(WIDTH - 2.0 * CARD_PADDING)
         .child(header)
         .child(list)
-        // A click anywhere on the card opens the folder; hidden from assistive technology so
-        // the card reads as a group (a pressable group is a button to Rune).
+        // A click anywhere on the card opens the folder; `on_background_press_tx` keeps it a
+        // non-focusable pointer surface, and `a11y_hidden` keeps it out of the accessibility tree.
         .child(
             el().key("peek-open")
                 .pin(Some(0.0), Some(0.0), Some(0.0), Some(0.0))
                 .a11y_hidden()
-                .on_press_tx(move |s: &mut S, tx| {
+                .on_background_press_tx(move |s: &mut S, tx| {
                     let target = (open.get)(s).target().cloned();
                     (open.get_mut)(s).close();
                     open.changed(s, super::Change::Closed, tx);

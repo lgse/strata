@@ -114,7 +114,6 @@ pub struct IconPickerState {
     browse: Page,
     version: u64,
     open: bool,
-    dismissed: bool,
 }
 
 impl IconPickerState {
@@ -131,7 +130,6 @@ impl IconPickerState {
             browse: Page::Category(0),
             version: 0,
             open: false,
-            dismissed: false,
         };
         st.page = st.first_page();
         st.browse = st.page;
@@ -355,7 +353,6 @@ impl IconPickerState {
     /// with the query cleared (GTK's chooser opens on its recent section).
     pub fn open(&mut self) {
         self.open = true;
-        self.dismissed = false;
         self.select_page(self.first_page());
     }
 
@@ -367,19 +364,6 @@ impl IconPickerState {
     /// Whether the popover is open.
     pub fn is_open(&self) -> bool {
         self.open
-    }
-
-    /// A press outside closed the popover (Rune's modal dismissal, which has no `Tx`): the
-    /// picker's `poll` reports it.
-    pub(super) fn dismiss(&mut self) {
-        if self.open {
-            self.open = false;
-            self.dismissed = true;
-        }
-    }
-
-    pub(super) fn take_dismissed(&mut self) -> bool {
-        std::mem::take(&mut self.dismissed)
     }
 
     /// Lists what the page shows and puts the cursor on its first item, or on the current

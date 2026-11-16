@@ -159,8 +159,8 @@ impl<S: 'static> IconPicker<S> {
         self
     }
 
-    /// Hears the popover close: after a choice, Escape, or a press outside (reported from
-    /// [`IconPicker::poll`], a frame later). Focus goes back to the button either way.
+    /// Hears the popover close: after a choice, Escape, or a press outside. Focus goes back to
+    /// the button either way.
     pub fn on_close(mut self, f: impl Fn(&mut S, &mut Tx) + 'static) -> Self {
         self.on_close = Some(Rc::new(f));
         self
@@ -293,29 +293,22 @@ impl<S: 'static> IconPicker<S> {
                 (((POPOVER_MAX_W - 2.0 * pad - 2.0 * m.pad) / m.cell).floor() as usize).max(1);
             let columns = self.columns.min(fit);
             // Rune's modal traps Tab, focuses the first stop (the field) and gives focus back
-            // to the button when it goes. A press outside dismisses it (reported by `poll`);
-            // Escape never reaches the dismissal, as the picker takes it first and closes.
+            // to the button when it goes. A press outside dismisses it via `modal_tx`; Escape
+            // never reaches the dismissal, as the picker takes it first and closes.
+            let dismiss = self.clone();
             let body = self
                 .body(s, look, &m, columns)
                 .role("none")
-                .modal(true, move |s: &mut S| get_mut(s).dismiss());
+                .modal_tx(true, move |s: &mut S, tx: &mut Tx| dismiss.close(s, tx));
             popover = popover.child(body);
         }
         row().child(popover.build(k, layer))
     }
 
-    /// Call from the host's poll every frame: reports a popover a press outside closed
-    /// (Rune's modal dismissal has no `Tx`), and runs the grid's controllers. True when it
-    /// changed the state.
+    /// Call from the host's poll every frame: runs the grid's controllers. True when it changed
+    /// the state.
     pub fn poll(&self, s: &mut S, tx: &mut Tx) -> bool {
-        let mut changed = false;
-        if (self.get_mut)(s).take_dismissed() {
-            if let Some(f) = &self.on_close {
-                f(s, tx);
-            }
-            changed = true;
-        }
-        changed | self.collection(s).tick(s, tx)
+        self.collection(s).tick(s, tx)
     }
 
     /// Searches for the field's text after the host changed it (C21's `FieldMenu` pasted,
@@ -463,11 +456,12 @@ impl<S: 'static> IconPicker<S> {
             .child(picker.collection(s).build(s));
         let tabs = picker.tabs(s, look, m);
         let grid = if tabs.is_some() {
-            col()
-                .key(format!("{}-panel", self.key))
-                .role("tabpanel")
-                .label(self.page_name(s, st.page()))
-                .child(grid)
+            let mut panel = col().key(format!("{}-panel", self.key)).role("tabpanel");
+            panel = match st.page() {
+                Page::Results => panel.label(self.page_name(s, Page::Results)),
+                page => panel.labelled_by(self.tab_key(s, page)),
+            };
+            panel.child(grid)
         } else {
             grid
         };

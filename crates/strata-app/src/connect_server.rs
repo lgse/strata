@@ -37,7 +37,7 @@ use crate::{
     App,
     commands::{Action, Call, Holds, Outcome},
     shell,
-    slots::{Frame, Later, Listener, Part, Place, Setup},
+    slots::{Frame, Listener, Part, Place, Setup},
 };
 
 /// Minimum duration an asynchronous failure stays in **Connecting…** (`network_location.rs`).
@@ -88,25 +88,19 @@ impl Form {
 }
 
 pub(crate) struct ConnectServer {
-    later: Later<App>,
     opened: u64,
     open: bool,
     form: Option<Form>,
-    focus_address: Option<String>,
-    focus_view: Option<String>,
 }
 
 impl Part for ConnectServer {
     const PLACE: Place<App> = Place::Dialogs(build);
 
-    fn new(setup: &Setup<'_>) -> Self {
+    fn new(_: &Setup<'_>) -> Self {
         Self {
-            later: setup.later.clone(),
             opened: 0,
             open: false,
             form: None,
-            focus_address: None,
-            focus_view: None,
         }
     }
 
@@ -120,20 +114,7 @@ impl Part for ConnectServer {
     }
 
     fn poll(app: &mut App, clock: f64, tx: &mut Tx) -> bool {
-        let mut changed = poll_pending(app, clock, tx);
-        if focus_pending_view(app, tx) {
-            changed = true;
-        }
-        let ready = app
-            .connect_server
-            .form
-            .as_ref()
-            .is_some_and(|form| !form.connecting);
-        if ready && let Some(key) = app.connect_server.focus_address.take() {
-            tx.focus(key, false);
-            changed = true;
-        }
-        changed
+        poll_pending(app, clock, tx)
     }
 
     fn keyboard(app: &App) -> Option<Holds> {
@@ -175,9 +156,7 @@ fn poll_pending(app: &mut App, clock: f64, tx: &mut Tx) -> bool {
             form.error = Some(message);
             form.attempt += 1;
             form.address.focused = true;
-            let key = view::address_key(form.generation);
-            app.connect_server.focus_address = Some(key);
-            tx.wake_after(Duration::ZERO);
+            tx.focus_when_shown(view::address_key(form.generation), false);
             true
         }
         None => false,
@@ -197,8 +176,6 @@ fn connect_to_server(app: &mut App, _: &Call<'_>, _: &mut Tx) -> Outcome {
     state.opened += 1;
     state.form = Some(Form::new(state.opened));
     state.open = true;
-    state.focus_address = None;
-    state.focus_view = None;
     Outcome::Ran
 }
 
@@ -252,39 +229,23 @@ fn settle_column(app: &mut App, column: &Location, tx: &mut Tx) -> bool {
     let Some(pin) = reached else {
         return false;
     };
-    complete_open(app, column.clone(), pin, Some(tx));
+    complete_open(app, column.clone(), pin, tx);
     true
 }
 
-fn focus_pending_view(app: &mut App, tx: &mut Tx) -> bool {
-    let Some(view) = app.connect_server.focus_view.take() else {
-        return false;
-    };
-    tx.focus(view, true);
-    true
-}
-
-fn complete_open(app: &mut App, location: Location, pin: bool, tx: Option<&mut Tx>) {
+fn complete_open(app: &mut App, location: Location, pin: bool, tx: &mut Tx) {
     if pin {
         pin_location(location);
     }
     let view = shell::view_focus(app).map(str::to_owned);
     app.connect_server.open = false;
-    app.connect_server.focus_address = None;
-    app.connect_server.focus_view = None;
     if let Some(form) = app.connect_server.form.as_mut() {
         form.connecting = false;
         form.pending = None;
         form.clear_address();
     }
-    match (tx, view) {
-        (Some(tx), Some(view)) => tx.focus(view, true),
-        (None, Some(view)) => {
-            app.connect_server.focus_view = Some(view);
-            let later = app.connect_server.later.clone();
-            later.then(focus_pending_view);
-        }
-        _ => {}
+    if let Some(view) = view {
+        tx.focus(view, true);
     }
 }
 
@@ -319,8 +280,6 @@ pub(super) fn cancel(app: &mut App) {
         app.browser.bump_navigation_generation();
     }
     app.connect_server.open = false;
-    app.connect_server.focus_address = None;
-    app.connect_server.focus_view = None;
     if let Some(form) = app.connect_server.form.as_mut() {
         form.connecting = false;
         form.pending = None;
@@ -328,7 +287,7 @@ pub(super) fn cancel(app: &mut App) {
     }
 }
 
-pub(super) fn submit(app: &mut App) {
+pub(super) fn submit(app: &mut App, tx: &mut Tx) {
     if !app.connect_server.open {
         return;
     }
@@ -357,7 +316,7 @@ pub(super) fn submit(app: &mut App) {
                 .as_ref()
                 .is_some_and(|active| same_location(active, &target));
             if reopened {
-                complete_open(app, target, pin, None);
+                complete_open(app, target, pin, tx);
             } else if let Some(form) = app.connect_server.form.as_mut() {
                 form.connecting = true;
                 form.pending = Some(Pending::Waiting {
@@ -374,7 +333,7 @@ pub(super) fn submit(app: &mut App) {
                 form.attempt += 1;
                 form.address.focused = true;
             }
-            app.connect_server.focus_address = Some(view::address_key(generation));
+            tx.focus_when_shown(view::address_key(generation), false);
         }
     }
 }

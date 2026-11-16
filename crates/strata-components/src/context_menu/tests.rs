@@ -120,6 +120,7 @@ fn view(s: &Host, _: &mut Cx<Host>) -> El {
         .on_press(|_: &mut Host| {});
     let field = text_input(&s.edit, ty)
         .key("field")
+        .label("Field")
         .single_line()
         .w(200.0)
         .h(24.0)
@@ -127,6 +128,7 @@ fn view(s: &Host, _: &mut Cx<Host>) -> El {
         .on_secondary_press(fields(s).hook(0));
     let secret = text_input(&s.secret, ty)
         .key("secret")
+        .label("Secret")
         .single_line()
         .w(200.0)
         .h(24.0)

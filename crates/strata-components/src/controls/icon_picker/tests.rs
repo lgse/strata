@@ -237,12 +237,19 @@ fn the_cursor_starts_on_the_current_choice_where_the_page_shows_it() {
 }
 
 #[test]
-fn an_emoji_draws_with_one_emoji_presentation_selector() {
+fn emoji_presentation_borrows_as_is_and_unqualified_text_default_qualifies() {
     let drawn = |c: Choice| drawn_text(&c).into_owned();
     assert_eq!(
         drawn(Choice::emoji("♈")),
-        "♈\u{fe0f}",
-        "added where missing"
+        "♈",
+        "Emoji_Presentation needs no U+FE0F"
+    );
+    assert_eq!(drawn(Choice::emoji("😀")), "😀");
+    assert_eq!(drawn(Choice::emoji("🧑\u{200d}🚀")), "🧑\u{200d}🚀");
+    assert_eq!(
+        drawn(Choice::emoji("❤")),
+        "❤\u{fe0f}",
+        "unqualified text-default emoji takes its bundled U+FE0F"
     );
     assert_eq!(
         drawn(Choice::emoji("❤\u{fe0f}")),

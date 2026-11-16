@@ -46,7 +46,7 @@ pub(super) fn build(app: &App, frame: &mut Frame<'_, App>) -> Option<El> {
         .blocking(form.is_dirty())
         .children(body(&app.look, form))
         .secondary(tr("Cancel"), super::cancel)
-        .primary(tr("Compress"), super::submit)
+        .primary_tx(tr("Compress"), super::submit)
         .initial_focus(Focus::First)
         .close_label(tr("Close dialog"));
         // `Form::new` focuses the name field as the dialog opens, so tell Rune's modal stack to
@@ -161,14 +161,14 @@ fn protection_section(look: &Look, form: &Form) -> El {
             tr("No password"),
             !form.password_protected,
         )
-        .on_press(|app: &mut App| super::set_password_protected(app, false)),
+        .on_press_tx(|app: &mut App, tx: &mut Tx| super::set_password_protected(app, false, tx)),
         segment_button(
             look,
             format!("compress-{generation}-protection-password"),
             tr("Password protected"),
             form.password_protected,
         )
-        .on_press(|app: &mut App| super::set_password_protected(app, true)),
+        .on_press_tx(|app: &mut App, tx: &mut Tx| super::set_password_protected(app, true, tx)),
     ];
     let bar = segmented_bar(look, format!("compress-{generation}-protection"), choices);
     let mut group = labeled_group(look, &tr("Protection"), bar);
@@ -313,6 +313,10 @@ struct SegmentButton<'a> {
 
 impl SegmentButton<'_> {
     fn on_press(self, press: impl Fn(&mut App) + 'static) -> El {
+        self.on_press_tx(move |app, _| press(app))
+    }
+
+    fn on_press_tx(self, press: impl Fn(&mut App, &mut Tx) + 'static) -> El {
         let variant = if self.active {
             ButtonVariant::Neutral
         } else {
@@ -321,7 +325,7 @@ impl SegmentButton<'_> {
         Button::new(self.label)
             .variant(variant)
             .control_size(ControlSize::Small)
-            .on_press(press)
+            .on_press_tx(press)
             .build(&self.look.kit)
             .key(self.key)
             .grow(1.0)

@@ -185,20 +185,23 @@ pub(super) fn glyph(look: &Look, m: &Metrics, choice: &Choice) -> El {
     }
 }
 
-/// The text to draw for `choice`, for display only: an emoji's own text with U+FE0F after it
-/// when it holds none, an icon's name as it is. Save and compare the choice itself, never
-/// this. Hosts drawing a saved emoji (a button label, a preview) draw it through this.
+/// The text to draw for `choice`, for display only: an unqualified text-default emoji (such as
+/// bare `"❤"` from hand-edited config) borrows its bundled `U+FE0F`-qualified form so Rune
+/// sends it to the colour emoji font, while `Emoji_Presentation` emoji (`"♈"`, `"😀"`),
+/// already-qualified emoji (`"❤\u{fe0f}"`), keycaps, ZWJ sequences and icon names borrow as
+/// they are. Save and compare the choice itself, never this.
 ///
-/// Rune 5d421fd sends a grapheme to the colour emoji font first only when it holds U+FE0F
-/// (anomalyco/rune#102), so an emoji whose default presentation is already emoji (♈, ⛺, 🆎)
-/// draws as the outline of the first symbol font covering it (Noto Sans Symbols here; DejaVu
-/// Sans in #102). Probe P1 (C20d): 23 of the 1,898 bundled emoji drew so, and every one in
-/// colour with U+FE0F after it.
+/// Rune 631e8a67 (#764) routes `Emoji_Presentation` graphemes to the colour emoji font and
+/// draws COLR v1 paint graphs without needing `U+FE0F`; only text-default code points
+/// (`Emoji_Presentation=No`) still need `U+FE0F` for colour presentation.
 ///
 /// Used by: hosts.
 pub fn drawn_text(choice: &Choice) -> Cow<'_, str> {
     match choice {
-        Choice::Emoji(e) if !e.contains('\u{fe0f}') => Cow::Owned(format!("{e}\u{fe0f}")),
+        Choice::Emoji(e) if !e.contains('\u{fe0f}') => match super::emoji::qualified(e) {
+            Some(qualified) => Cow::Borrowed(qualified),
+            None => Cow::Borrowed(e),
+        },
         Choice::Icon(t) | Choice::Emoji(t) => Cow::Borrowed(t),
     }
 }
