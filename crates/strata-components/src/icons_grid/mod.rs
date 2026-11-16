@@ -130,10 +130,10 @@
 //!   not followed: there it is an edge. Left and Right cross row ends (C1c's `wrap_rows`); Left
 //!   on the first tile and Up from the first row are edges the host hears (`Intent::Edge`).
 //! - **Tooltips are Rune's `El::help`** (owner ruling): the delay is the window's, set by the
-//!   host with `Cx::help_look` (the gallery sets Strata's 900 ms); the grid sets none. A press
-//!   while it waits cancels it until the pointer leaves the element; a press on an open one
-//!   keeps it (Rune 0cde17ec), where Strata hides it. Moving inside an element doesn't restart
-//!   the wait (Strata restarts after 4 px). Sweeping across tiles shows
+//!   host with `Cx::help_look` (the gallery sets Strata's 900 ms); the grid sets none. Pressing a
+//!   mouse button hides an open tooltip and cancels a pending wait until the pointer leaves the
+//!   element (Rune 631e8a67, anomalyco/rune#1013). Moving inside an element doesn't restart the
+//!   wait (Strata restarts after 4 px). Sweeping across tiles shows
 //!   none, as each new element starts the wait again. Draft U-C3-2.
 //! - **Ctrl+Shift+wheel right after a plain wheel scrolls** (C3 review round 1): Rune keeps a
 //!   wheel gesture a scroll until it has been still 0.1 s (a trackpad gesture until it ends),
@@ -152,11 +152,9 @@
 //!   keys are the host's.
 //! - **Tiles over 128 pt at scale 2** draw a 256 px image up (above).
 //! - **A view switch mid-drag on the scroll bar** (C24b review round 1): Rune tells an element
-//!   removed under a drag nothing (Rune draft R-C4-2, in C4's docs), so a thumb drag a view
-//!   switch cuts off leaves [`IconsGridState`]'s bar held: if the host keeps the state, the
-//!   overlay bar shows when the grid comes back, until a later press on it ends. The grid has
-//!   no reset hook for it yet, unlike C4's `ListTableState::reset`; C24's `Bar::release` is
-//!   what one would call.
+//!   removed under a drag nothing (Rune draft R-C4-2, in C4's docs), so hosts call
+//!   [`IconsGridState::reset`] when leaving the view (as C4's `ListTableState::reset` and C2's
+//!   `ColumnsState::reset` do), releasing C24's [`Bar`](crate::scroll::Bar).
 //!
 //! # Left to other work packages and hosts
 //!
@@ -168,7 +166,8 @@
 //! - The rename editor (C5): the grid places it in the name's reserved lines.
 //! - Drag and drop wiring (X2): folder tiles take C1e's drop zones; [`IconsGrid::tile_path`]
 //!   finds a tile's path at the current count.
-//! - Position restore's focus rules (C1e's Decisions: Rune can't move focus).
+//! - Position restore's focus rules (the host focuses the collection with `Tx::focus` or
+//!   `Tx::focus_when_shown`, C1e's Decisions).
 //! - Autoscroll on the grid: the host installs C24's `AutoscrollPointer` with
 //!   [`IconsGridState::feed`] and passes [`autoscroll_background`], which counts a tile's blank
 //!   space as the background. The grid draws C24's listing bar itself (C24b): the pointer over
@@ -254,12 +253,13 @@
 //!   an elision mode that
 //!   combines with `max_lines` (`.max_lines(2).elide_middle()`), cutting between graphemes.
 //! - **U-C3-2: per-element tooltip timing.** `El::help`'s delay is the window's
-//!   (`HelpLook::delay`), a press keeps an open tooltip (one still waiting is cancelled until the
-//!   pointer leaves), and a move inside the element never restarts the wait. Strata's Icons names
-//!   wait 900 ms where its buttons wait the toolkit's, restart after 4 px of movement, and show
-//!   again after a press once the pointer moves. Repro: two elements with `.help`, one wanting
-//!   0.9 s; there is no builder for it, and `Runtime::help_tooltip` shows both at the window's
-//!   delay. Ask: `El::help_delay(secs)`, and a restart distance.
+//!   (`HelpLook::delay`), a press hides an open tooltip and cancels a pending wait until the
+//!   pointer leaves (Rune 631e8a67, anomalyco/rune#1013), and a move inside the element never
+//!   restarts the wait. Strata's Icons names wait 900 ms where its buttons wait the toolkit's,
+//!   restart after 4 px of movement, and show again after a press once the pointer moves. Repro:
+//!   two elements with `.help`, one wanting 0.9 s; there is no builder for it, and
+//!   `Runtime::help_tooltip` shows both at the window's delay. Ask: `El::help_delay(secs)`, and a
+//!   restart distance.
 //! - **U-C3-3: modified wheels over a scroll view's content.** `on_wheel` is offered from the
 //!   element under the pointer up to the nearest scroll view, so an ancestor of a scroll view
 //!   never hears a wheel over its content (C1e's `Collection::on_wheel` sits on the viewport

@@ -142,9 +142,10 @@ impl<S: 'static> Shield<S> {
             .child(marker);
 
         let (get, stop) = (self.get.clone(), self.on_stop.clone());
-        let dismiss = move |s: &mut S| {
-            get(s).request_stop();
-            if let Some(f) = &stop {
+        let dismiss = move |s: &mut S, tx: &mut Tx| {
+            if get(s).stop_now(tx)
+                && let Some(f) = &stop
+            {
                 f(s, Stop::Escape);
             }
         };
@@ -162,7 +163,7 @@ impl<S: 'static> Shield<S> {
                 // A modal reads as a dialog, and hides the window behind it from assistive
                 // technology while it runs.
                 .label(self.label.clone())
-                .modal(false, dismiss)
+                .modal_tx(false, dismiss)
                 .on_pointer_move_any(move |p, tx| {
                     tx.live_only();
                     if mover.track(Point::new(p.window_x, p.window_y)) {

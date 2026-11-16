@@ -87,8 +87,8 @@ impl Autoscroll {
         self.0.borrow_mut().stop_now(tx)
     }
 
-    /// Stops on the next [`Autoscroll::drive`], for a caller with no transaction (the modal's
-    /// dismiss).
+    /// Stops on the next [`Autoscroll::drive`], for a caller with no transaction (such as a stop
+    /// without a [`Shield`]).
     pub fn request_stop(&self) {
         self.0.borrow_mut().request_stop();
     }

@@ -3,7 +3,7 @@
 //! [`ColumnsState`]: what the host keeps for one window's column strip, and the lifecycle
 //! calls it makes as Strata opens, closes and returns to folders.
 
-use rune::{Spring, Tx};
+use rune::{Live, Spring, Tx};
 use strata_kit::look::Look;
 
 use super::reveal::ColumnSpan;
@@ -102,6 +102,9 @@ pub struct ColumnState {
     pub(super) slot: u64,
     pub(super) feed: ScrollFeed,
     pub(super) bar: Bar,
+    /// Where the last frame drew the column's shell (`[x, y, w, h]` in window points), moving
+    /// through width springs, entrance slides and strip scrolls (`El::drawn_rect_into`).
+    pub(super) drawn: Live<[f32; 4]>,
     /// The width in base points (at the default text size): dragged, fitted, spread or
     /// saved.
     pub(super) width: f32,
@@ -162,6 +165,8 @@ pub struct ColumnsState {
     pub(super) strip_bar: Bar,
     /// The strip's viewport in window points, as last laid out.
     pub(super) strip: Rect,
+    /// Where the last frame drew the strip's viewport (`[x, y, w, h]` in window points).
+    pub(super) strip_drawn: Live<[f32; 4]>,
     /// A reveal asked for before the strip had a width.
     pub(super) reveal_after_layout: bool,
     default_width: f32,
@@ -258,6 +263,7 @@ impl ColumnsState {
             strip_feed: ScrollFeed::new(),
             strip_bar: Bar::new(),
             strip: Rect::default(),
+            strip_drawn: Live::new([0.0; 4]),
             reveal_after_layout: false,
             default_width: width::STANDARD,
             cap: None,
@@ -432,6 +438,7 @@ impl ColumnsState {
             slot,
             feed,
             bar,
+            drawn: Live::new([0.0; 4]),
             width: self.default_width,
             limit,
             entrance,
@@ -465,9 +472,13 @@ impl ColumnsState {
         if depth >= self.columns.len() {
             return self.push(open, focus, look, tx);
         }
+        let (slot, drawn) = self
+            .columns
+            .get(depth)
+            .map_or((None, [0.0; 4]), |c| (Some(c.slot), c.drawn.get()));
         self.drop_from(depth);
-        let slot = self.columns.get(depth).map(|c| c.slot);
         let column = self.new_column(slot, look, Entrance::Fade);
+        column.drawn.set(drawn);
         self.columns.truncate(depth);
         self.columns.push(column);
         self.enter(depth, open, focus, look, tx);
@@ -519,11 +530,12 @@ impl ColumnsState {
     }
 
     /// Ends what belongs to the columns from `len` on: a resize of one, a menu held on one, its
-    /// autoscroll.
+    /// autoscroll and scroll bar.
     fn drop_from(&mut self, len: usize) {
         for c in self.columns.iter().skip(len) {
             self.autoscroll
                 .stop_gone(Some(&keys::column(&self.key, c.serial)));
+            c.bar.release();
         }
         if self.resize.as_ref().is_some_and(|r| r.depth >= len) {
             self.resize = None;
@@ -936,14 +948,18 @@ impl ColumnsState {
         self.drag.over(at)
     }
 
-    /// Ends a column-edge resize or a held drag, as when the strip leaves the view mid-gesture
-    /// (a view switch): Rune tells an element removed under a drag nothing (Rune draft
-    /// R-C4-2).
+    /// Ends a column-edge resize, a held drag or a scroll-bar drag, as when the strip leaves the
+    /// view mid-gesture (a view switch): Rune tells an element removed under a drag nothing
+    /// (Rune draft R-C4-2).
     pub fn reset(&mut self) {
         self.resize = None;
         self.edge_hover = None;
         self.edge_lit = None;
         self.drag.reset();
+        self.strip_bar.release();
+        for c in &self.columns {
+            c.bar.release();
+        }
     }
 
     /// The scroll request target for column `depth`'s listing.

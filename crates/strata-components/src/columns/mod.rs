@@ -210,13 +210,10 @@
 //!   2.2 to 3.5 ms), with no view run and every hard bar held.
 //! - **A vertical swipe that crosses columns scrolls each of them** (Rune draft U-C24-3).
 //! - **Shift+wheel can't be tested headless** (Rune draft U-C24-7); the plain-wheel half is.
-//! - **During a width spring** (a swapped sibling's), the columns' spans the drag autoscroll and
-//!   [`ColumnsView::drop_target_at`] work from are where the layout ends, not where the frame
-//!   draws them (Rune draft U-C2-3).
-//! - **For the 220 ms a column comes or goes, [`ColumnsView::drop_target_at`] maps points by
-//!   the live columns where they end**: a point inside a new column's 24 pt slide maps to the
-//!   column before it, and a point over a closing column (drawn fading over the one that
-//!   replaces it, and inert) to the live column under it, as Rune routes the drop itself.
+//! - **A closing column takes no drop**: [`ColumnsView::drop_target_at`] reads the live columns'
+//!   drawn rects (`El::drawn_rect_into`), so a point over a closing column (drawn fading over the
+//!   one that replaces it, and inert) maps to the live column under it, or to the blank strip past
+//!   the last live column, as Rune routes the drop itself.
 //!
 //! # Tests
 //!
@@ -378,17 +375,22 @@
 //! - A drag from the blank strip beside the last column starting a band in it
 //!   (`browser/selection/marquee`): not built; the blank strip has no collection.
 //!
-//! # Rune coverage (5d421fd)
+//! # Rune coverage (631e8a67)
 //!
-//! What Rune covers for C2b: the badge's hover fade and its at-once hiding are hover groups
-//! (`hover_group`, `hover_motion`, `group_opacity` with an instant `opacity_motion`), and
-//! keyboard mode's hiding is a `hover_alone` cover; the line's accent is a `group_opacity` line,
-//! since Rune has no hover border colour (anomalyco/rune#328, filed upstream); autofit measures
-//! with `rune::text::measure`; the immediate drawer line and the 400 ms caption are two nested
-//! hover delays. One gap, worked around: a hover group that holds its own press stops being
-//! hovered once the pointer leaves it, so a resize holds the line lit by its rest (README says
-//! a *descendant's* press holds it). No new draft: `hold_landing_width` does what it says, it
-//! just doesn't fit a strip of fixed-width columns (see the decisions).
+//! What Rune covers for C2 and C2b: each column's shell and the strip's viewport write their
+//! drawn rects into `Live` cells on every frame with no view run (`El::drawn_rect_into`,
+//! anomalyco/rune#65, retiring U-C2-3), so [`ColumnsView::drop_target_at`] and [`drag_scroll`]
+//! follow width springs and entrance slides frame by frame; the blank strip beside the last
+//! column takes presses through `El::on_background_press` (anomalyco/rune#732); the badge's hover
+//! fade and its at-once hiding are hover groups (`hover_group`, `hover_motion`, `group_opacity`
+//! with an instant `opacity_motion`), and keyboard mode's hiding is a `hover_alone` cover; the
+//! line's accent is a `group_opacity` line, since Rune has no hover border colour
+//! (anomalyco/rune#328, filed upstream); autofit measures with `rune::text::measure`; the
+//! immediate drawer line and the 400 ms caption are two nested hover delays. One gap, worked
+//! around: a hover group that holds its own press stops being hovered once the pointer leaves it,
+//! so a resize holds the line lit by its rest (README says a *descendant's* press holds it).
+//! `hold_landing_width` does what it says, it just doesn't fit a strip of fixed-width columns
+//! (see the decisions).
 //!
 //! # Rune drafts (not filed)
 //!
@@ -403,13 +405,6 @@
 //!   `on_drop_hover` and `on_drop_move` holding two children with their own; `drag_files` over a
 //!   child and move: the row hears nothing until the drag reaches its own space. Ask: a passive
 //!   drop-motion observer on an ancestor, heard alongside the target's.
-//! - **U-C2-3: `on_layout` reports a layout spring's end, not where the frame draws.** During a
-//!   width spring, a sibling's `on_layout` hears its final rect once, while
-//!   `ElementInfo::rect` moves for several frames, so an app hit-testing by layout is ahead of
-//!   what is drawn. Repro (probe `p6`): two columns in a row; widen the first from 300 to 500 in
-//!   an animated commit: the second's `on_layout` hears x 500 at once while its drawn x goes
-//!   310, 381, 440, 473 over the next frames. Ask: the drawn rect in `on_layout` (or a drawn
-//!   counterpart), or a flag that a spring is moving it.
 //!
 //! - **U-C2-4: a scoped reveal can't be kept to its own viewport's axis.**
 //!   `Tx::scroll_into_view_in(scope, row)` scrolls the nearest vertical viewport around the row

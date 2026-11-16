@@ -53,6 +53,12 @@ impl IconsGridState {
         self.bar.set_mode(mode);
     }
 
+    /// Lets go of the grid's scroll bar when the grid leaves the view mid-gesture (a view
+    /// switch): Rune tells an element removed under a drag nothing (Rune draft R-C4-2).
+    pub fn reset(&mut self) {
+        self.bar.release();
+    }
+
     /// The display scale the view last built at, 1 before it has.
     pub fn scale(&self) -> f32 {
         let s = self.scale.get();

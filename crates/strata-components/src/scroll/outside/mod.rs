@@ -87,7 +87,7 @@ impl<S: 'static> OutsideWheel<S> {
             .absolute(0.0, 0.0)
             .w_full()
             .h_full()
-            .on_press_tx(move |s: &mut S, tx: &mut Tx| (press.close)(s, tx))
+            .on_background_press_tx(move |s: &mut S, tx: &mut Tx| (press.close)(s, tx))
             .on_wheel(move |s: &mut S, e: WheelEvent, tx: &mut Tx| {
                 wheel.tick(s, e, &pending, tx);
                 true

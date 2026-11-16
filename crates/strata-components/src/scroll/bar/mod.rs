@@ -13,7 +13,7 @@ use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::time::Duration;
 
-use rune::{Color, El, Live, Phase, PointerButton, ScrollPos, Spring, col};
+use rune::{Color, El, Live, Phase, ScrollPos, Spring, col};
 use strata_kit::look::Look;
 use strata_kit::slots::scroll as tokens;
 
@@ -344,8 +344,9 @@ impl Bar {
             // `on_key`, the collection. (`preserve_focus_on_press` keeps only a blur from
             // happening, not that.)
             .keeps_text_selection()
-            .pointer_buttons([PointerButton::Middle])
-            // A secondary press on the bar is the bar's: no row's menu, no selection.
+            // Middle and secondary presses on the bar are the bar's: no autoscroll, no row
+            // menu, no selection.
+            .on_middle_press(|_: &mut S, tx: &mut rune::Tx| tx.live_only())
             .on_secondary_press(|_: &mut S, _, tx: &mut rune::Tx| tx.live_only());
         if let Some(base) = look.base {
             band = band.fill(base);
@@ -357,10 +358,6 @@ impl Bar {
         })
         .on_drag_any(move |d, tx| {
             tx.live_only();
-            if tx.button() != PointerButton::Primary {
-                // A middle press on the bar is the bar's: it starts no autoscroll.
-                return;
-            }
             drag.0.drag(d, tx);
         })
         .child(trough)

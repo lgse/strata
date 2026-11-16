@@ -241,14 +241,15 @@ impl DragScroll {
     }
 }
 
-/// The column whose span holds `p`'s x, while `p` is in the strip.
+/// The column whose span holds `p`'s x, while `p` is in the strip. Later columns win when an
+/// entrance slide overlaps its parent, matching Rune's reverse-tree hit test.
 pub(crate) fn column_at(geo: &StripGeometry, p: Point) -> Option<usize> {
     if !geo.strip.contains(p) {
         return None;
     }
     geo.columns
         .iter()
-        .position(|c| p.x >= c.left && p.x < c.right)
+        .rposition(|c| p.x >= c.left && p.x < c.right)
 }
 
 fn sign(x: f32) -> i8 {

@@ -96,6 +96,7 @@ pub(super) fn shell<S: 'static>(sh: &Rc<Shared<S>>, s: &S, depth: usize) -> El {
         .w(w)
         .h_full()
         .min_h(0.0)
+        .drawn_rect_into(&c.drawn)
         .transition(shell_motion)
         .child(body)
         .child(line)

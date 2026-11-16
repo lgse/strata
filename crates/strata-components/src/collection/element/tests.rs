@@ -2595,6 +2595,22 @@ fn revealing_an_entry_keeps_it_clear_of_the_stuck_header() {
         "going down, the entry at the bottom"
     );
 
+    // Own-viewport reveals (Columns' U-C2-4 path) land at the same offsets, grouped and packed.
+    rt.update(|s, _| s.coll.set_own_viewport_reveals(true));
+    scroll_to(&mut rt, 900.0 * h);
+    assert_eq!(reveal(&mut rt, 503), (line_of(503) - 1.0) * h);
+    assert_eq!(reveal(&mut rt, 0), 0.0);
+    assert_eq!(reveal(&mut rt, 80) + vh, (line_of(80) + 1.0) * h);
+    let mut packed = runtime(Host::new(200));
+    let ph = row_h(&packed);
+    packed.update(|s, _| s.coll.set_own_viewport_reveals(true));
+    scroll_to(&mut packed, 100.0 * ph);
+    assert_eq!(
+        reveal(&mut packed, 40),
+        40.0 * ph,
+        "ungrouped: entry at top"
+    );
+
     // A key that moves the cursor up onto the line the stuck header covers.
     let mut host = grouped(1_000, 10);
     host.coll.controllers.keyboard = Some(Box::new(Step));

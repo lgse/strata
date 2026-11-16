@@ -56,11 +56,11 @@
 //!
 //! # Decisions
 //!
-//! - **Focus.** Rune 2a44156 has no focus-change notification and no focus-within styles
+//! - **Focus.** Rune 631e8a67 has no focus-change notification and no focus-within styles
 //!   (Rune draft U-C1e-4; anomalyco/rune#106). The element never moves focus itself: the
 //!   position-restore bullets on focus after Back, Forward and Up, and the first-visit
-//!   refocus, are the host's, which can focus the collection by its key with `Tx::focus`
-//!   (Rune 22aa8cde). A selection looks
+//!   refocus, are the host's, which focuses the collection by its key with `Tx::focus` or
+//!   `Tx::focus_when_shown` (anomalyco/rune#1000, #1006). A selection looks
 //!   the same whether or not the collection has focus (Strata dims it when unfocused), and the
 //!   cursor outline follows keyboard mode (the last input that moved the cursor was a key)
 //!   instead of keyboard focus.

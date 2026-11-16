@@ -541,3 +541,76 @@ fn a_folder_change_stops_the_collections_autoscroll() {
     assert!(!r.auto.active());
     assert!(r.auto.shown().is_none());
 }
+
+#[test]
+fn an_escape_on_the_shield_stops_autoscroll_in_the_same_frame() {
+    // browser/scrolling: Escape, or another click with any button anywhere in the window, stops autoscroll.
+    // (`El::modal_tx` hands dismiss a `Tx`, retiring U-C24-6.)
+    use rune::{Cx, El, Env, Key, KeyEvent, Mods, Runtime, col};
+    use strata_kit::look::Look;
+
+    struct Host {
+        auto: Autoscroll,
+        look: Look,
+        stops: Vec<super::Stop>,
+    }
+
+    fn view(s: &Host, _: &mut Cx<Host>) -> El {
+        let mut root = col().size(800.0, 600.0).child(
+            col()
+                .key("list/viewport")
+                .size(800.0, 600.0)
+                .scroll_xy()
+                .child(col().size(800.0, 4_000.0)),
+        );
+        if let Some(shield) = super::Shield::new(|h: &Host| &h.auto, |h: &Host| &h.look)
+            .on_stop(|h: &mut Host, reason| h.stops.push(reason))
+            .build(s)
+        {
+            root = root.child(shield);
+        }
+        root
+    }
+
+    let f = feed([0.0, 500.0], [0.0, 3_400.0]);
+    let auto = Autoscroll::new();
+    assert!(auto.start(
+        Start {
+            owner: "list".into(),
+            anchor: Point::new(400.0, 300.0),
+            viewport: Rect::new(0.0, 0.0, 800.0, 600.0),
+            targets: vec![Target::vertical("list/viewport", f)],
+        },
+        S,
+    ));
+    auto.track(Point::new(400.0, 520.0));
+    let mut rt = Runtime::new(
+        Host {
+            auto,
+            look: Look::fallback(false),
+            stops: Vec::new(),
+        },
+        view,
+        (800.0, 600.0),
+        Env::new(false, 1.0),
+    );
+    rt.frame(0.0);
+    rt.update(|s, tx| {
+        s.auto.drive(0.0, true, tx);
+    });
+    rt.frame(1.0 / 60.0);
+    assert!(rt.state.auto.active());
+
+    rt.key(KeyEvent {
+        key: Key::Escape,
+        mods: Mods::default(),
+    });
+    // `rt.poll` is unset (`drive` never runs): the single frame that dispatches Escape stops
+    // `auto` directly from `modal_tx`'s dismiss handler.
+    rt.frame(1.0 / 60.0);
+    assert!(
+        !rt.state.auto.active(),
+        "stopped in the dismiss handler's transaction without waiting for drive"
+    );
+    assert_eq!(rt.state.stops, vec![super::Stop::Escape]);
+}
