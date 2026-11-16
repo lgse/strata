@@ -19,9 +19,9 @@ use strata_fs::services::VolumeRelation;
 use strata_kit::icons::IconName;
 
 use crate::{
-    App, conflict_dialog,
+    App,
     commands::Holds,
-    shell,
+    conflict_dialog, shell,
     slots::{Frame, Later, Part, Place, Scope, Setup},
     transfer,
 };

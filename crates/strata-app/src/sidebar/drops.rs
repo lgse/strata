@@ -111,20 +111,25 @@ pub(super) fn pin_drop(app: &mut App, gap: Gap, dropped: Dropped, _tx: &mut Tx) 
     let shown = shown_pin_locations(app);
     let after = gap.index.checked_sub(1).and_then(|i| shown.get(i)).cloned();
     let before = shown.get(gap.index).cloned();
+    match known_pin_folders(app, &dropped) {
+        Some(Some(folders)) => save_pinned_folders(app, folders, (after, before)),
+        Some(None) => {}
+        None => validate_and_pin(app, &dropped, (after, before)),
+    }
+}
+
+/// The folders a drop pins when they are known already: a local drag's, or a foreign drag's
+/// its hover checked (`Some(None)` when they were refused). `None` when they are still to check.
+fn known_pin_folders(app: &App, dropped: &Dropped) -> Option<Option<Vec<(Location, String)>>> {
     if dropped.offer.local {
-        if let Some(folders) = dnd::local_pin_folders(app).map( <[ (Location, String) ]>::to_vec) {
-            save_pinned_folders(app, folders, (after, before));
-        }
-        return;
+        return Some(dnd::local_pin_folders(app).map(<[(Location, String)]>::to_vec));
     }
-    if let Some((cached_serial, cached)) = app.sidebar.foreign_pins.clone()
-        && cached_serial == dropped.offer.serial
-    {
-        if let Some(folders) = cached {
-            save_pinned_folders(app, folders, (after, before));
-        }
-        return;
-    }
+    let (serial, cached) = app.sidebar.foreign_pins.clone()?;
+    (serial == dropped.offer.serial).then_some(cached)
+}
+
+/// Checks a foreign drop's folders, then pins them between `around`'s two pins.
+fn validate_and_pin(app: &App, dropped: &Dropped, around: (Option<Location>, Option<Location>)) {
     let uris = dropped.data.uris();
     let Some(locations) = valid_pin_locations(&uris) else {
         return;
@@ -137,7 +142,7 @@ pub(super) fn pin_drop(app: &mut App, gap: Gap, dropped: Dropped, _tx: &mut Tx) 
             .flatten();
         if let Some(folders) = checked {
             later.then(move |app, _| {
-                save_pinned_folders(app, folders, (after, before));
+                save_pinned_folders(app, folders, around);
                 false
             });
         }
@@ -208,18 +213,17 @@ fn save_pinned_folders(
 }
 
 pub(super) fn row_drag_start(app: &mut App, item: &ItemId) {
-    let Some(location) = app.sidebar.location_of(item).map(|row| row.location.clone()) else {
+    let Some(location) = app
+        .sidebar
+        .location_of(item)
+        .map(|row| row.location.clone())
+    else {
         return;
     };
     dnd::sidebar_drag_start(app, location);
 }
 
-pub(super) fn row_drag_move(
-    app: &mut App,
-    landing: Option<Landing>,
-    at: [f32; 2],
-    tx: &mut Tx,
-) {
+pub(super) fn row_drag_move(app: &mut App, landing: Option<Landing>, at: [f32; 2], tx: &mut Tx) {
     dnd::sidebar_drag_move(app, landing.is_some(), at, tx);
 }
 

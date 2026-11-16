@@ -23,7 +23,9 @@ use strata_components::{
 };
 use strata_core::{i18n::tr, model::Location};
 use strata_fs::{
-    adapters::{DropVolumeQuery, DropVolumes, location_for_file, lookup_drop_volumes, query_file_entry},
+    adapters::{
+        DropVolumeQuery, DropVolumes, location_for_file, lookup_drop_volumes, query_file_entry,
+    },
     services::{
         CrossVolumeDropStrategy, VolumeRelation as FsVolumeRelation, WebLink, has_web_scheme,
         transferable_drop_sources,
@@ -110,13 +112,29 @@ pub(crate) fn valid_drop_destination(location: &Location) -> bool {
     !clipboard::paths::is_trash(location) && !location.is_recent_location()
 }
 
+/// A modal dialog is open, or a sidebar row is being dragged: neither drops files.
+fn drops_blocked(app: &App) -> bool {
+    shell::modal_open(app) || super::is_sidebar_drag(app)
+}
+
+fn refuses_file_drop(app: &App, destination: &Location) -> bool {
+    drops_blocked(app) || !valid_drop_destination(destination)
+}
+
+/// Web links drop as `.desktop` files: only into a local folder, and only when each parses.
+fn web_link_action(destination: &Location, uris: &[String]) -> Option<DropAction> {
+    let local = destination.native_path().is_some() && !uris.is_empty();
+    let parses = uris.iter().all(|uri| WebLink::parse(uri).is_some());
+    (local && parses).then_some(DropAction::Copy)
+}
+
 pub(crate) fn drop_action(
     app: &App,
     destination: &Location,
     offer: &DropOffer,
     mods: Mods,
 ) -> Option<DropAction> {
-    if shell::modal_open(app) || super::is_sidebar_drag(app) || !valid_drop_destination(destination) {
+    if refuses_file_drop(app, destination) {
         return None;
     }
     let cross = cross_device(app);
@@ -129,10 +147,7 @@ pub(crate) fn drop_action(
         ));
     };
     if uris.iter().any(|uri| has_web_scheme(uri)) {
-        let valid_links = destination.native_path().is_some()
-            && !uris.is_empty()
-            && uris.iter().all(|uri| WebLink::parse(uri).is_some());
-        return valid_links.then_some(DropAction::Copy);
+        return web_link_action(destination, uris);
     }
     let sources = locations_from_uris(uris)?;
     let transferable = transferable_drop_sources(destination, &sources);
@@ -148,13 +163,44 @@ pub(crate) fn drop_action(
     can_commit_action(action, &transferable).then_some(action)
 }
 
+/// What a drop does when the volumes are the same, and when they are not known.
+#[derive(Clone, Copy)]
+struct Choices {
+    same: ActionInput,
+    unknown: ActionInput,
+}
+
+impl Choices {
+    fn of(app: &App, dropped: &Dropped) -> Self {
+        let cross = cross_device(app);
+        let input =
+            |relation| ActionInput::new(dropped.mods, dropped.offer.actions, relation, cross);
+        Self {
+            same: input(VolumeRelation::Same),
+            unknown: input(VolumeRelation::Unknown),
+        }
+    }
+
+    /// The volumes cannot change what the drop does.
+    fn settled(self) -> bool {
+        choose_action(self.same) == choose_action(self.unknown)
+    }
+
+    /// Either volume relation leaves an action the sources allow.
+    fn possible(self, sources: &[Location]) -> bool {
+        [self.same, self.unknown]
+            .into_iter()
+            .any(|input| choose_action(input).is_some_and(|a| can_commit_action(a, sources)))
+    }
+}
+
 pub(crate) fn commit_file_drop(
     app: &mut App,
     destination: Location,
     dropped: &Dropped,
     tx: &mut Tx,
 ) -> bool {
-    if shell::modal_open(app) || super::is_sidebar_drag(app) || !valid_drop_destination(&destination) {
+    if refuses_file_drop(app, &destination) {
         return false;
     }
     let Some(sources) = dropped_locations(&dropped.data) else {
@@ -164,41 +210,40 @@ pub(crate) fn commit_file_drop(
     if sources.is_empty() {
         return false;
     }
-    let cross = cross_device(app);
-    let same = ActionInput::new(
-        dropped.mods,
-        dropped.offer.actions,
-        VolumeRelation::Same,
-        cross,
-    );
-    let unknown = ActionInput::new(
-        dropped.mods,
-        dropped.offer.actions,
-        VolumeRelation::Unknown,
-        cross,
-    );
-    if choose_action(same) == choose_action(unknown) {
-        let Some(action) = choose_action(unknown).filter(|&a| can_commit_action(a, &sources)) else {
-            return false;
-        };
-        apply_drop_action(app, destination, sources, (action, FsVolumeRelation::Unknown));
-        shell::settle(app, tx);
-        return true;
+    let choices = Choices::of(app, dropped);
+    if choices.settled() {
+        return commit_unknown_volume(app, (destination, sources), choices.unknown, tx);
     }
-    let possible = [same, unknown]
-        .into_iter()
-        .any(|input| choose_action(input).is_some_and(|a| can_commit_action(a, &sources)));
-    if !possible {
+    if !choices.possible(&sources) {
         return false;
     }
-    resolve_with_volume_lookup(app, destination, sources, same, tx);
+    resolve_with_volume_lookup(app, (destination, sources), choices.same, tx);
+    true
+}
+
+/// Commits a drop whose action the volumes cannot change, without looking them up.
+fn commit_unknown_volume(
+    app: &mut App,
+    (destination, sources): (Location, Vec<Location>),
+    unknown: ActionInput,
+    tx: &mut Tx,
+) -> bool {
+    let Some(action) = choose_action(unknown).filter(|&a| can_commit_action(a, &sources)) else {
+        return false;
+    };
+    apply_drop_action(
+        app,
+        destination,
+        sources,
+        (action, FsVolumeRelation::Unknown),
+    );
+    shell::settle(app, tx);
     true
 }
 
 fn resolve_with_volume_lookup(
     app: &mut App,
-    destination: Location,
-    sources: Vec<Location>,
+    (destination, sources): (Location, Vec<Location>),
     base: ActionInput,
     tx: &mut Tx,
 ) {
@@ -268,10 +313,7 @@ pub(crate) fn can_trash_sources(sources: &[Location]) -> bool {
 }
 
 pub(crate) fn trash_action(app: &App, offer: &DropOffer) -> Option<DropAction> {
-    if shell::modal_open(app)
-        || super::is_sidebar_drag(app)
-        || !offer.actions.contains(DropActions::MOVE)
-    {
+    if drops_blocked(app) || !offer.actions.contains(DropActions::MOVE) {
         return None;
     }
     match offer.uris.as_deref() {
@@ -284,7 +326,7 @@ pub(crate) fn trash_action(app: &App, offer: &DropOffer) -> Option<DropAction> {
 }
 
 pub(crate) fn commit_trash_drop(app: &mut App, dropped: &Dropped, tx: &mut Tx) -> bool {
-    if shell::modal_open(app) || super::is_sidebar_drag(app) {
+    if drops_blocked(app) {
         return false;
     }
     let Some(sources) = dropped_locations(&dropped.data) else {
@@ -302,10 +344,7 @@ pub(crate) fn commit_trash_drop(app: &mut App, dropped: &Dropped, tx: &mut Tx) -
                 Err(error) => {
                     let message = error.to_string();
                     later.then(move |app, _| {
-                        error_dialog::show(
-                            app,
-                            Error::new(tr("Unable to move to Trash"), message),
-                        );
+                        error_dialog::show(app, Error::new(tr("Unable to move to Trash"), message));
                         true
                     });
                     return;
@@ -372,8 +411,15 @@ pub(crate) fn locations_from_uris(uris: &[String]) -> Option<Vec<Location>> {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum SpringTarget {
-    SidebarRow { tab: TabKey, item: ItemId },
-    ViewRow { tab: TabKey, depth: usize, id: EntryId },
+    SidebarRow {
+        tab: TabKey,
+        item: ItemId,
+    },
+    ViewRow {
+        tab: TabKey,
+        depth: usize,
+        id: EntryId,
+    },
 }
 
 #[derive(Default)]
@@ -388,7 +434,7 @@ impl Spring {
 }
 
 fn current_spring_target(app: &App) -> Option<SpringTarget> {
-    if !super::is_dragging(app) || shell::modal_open(app) || super::is_sidebar_drag(app) {
+    if !super::is_dragging(app) || drops_blocked(app) {
         return None;
     }
     let tab = shell::tabs::shown_tab(app);

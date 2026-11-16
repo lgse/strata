@@ -2,7 +2,7 @@
 
 use std::path::Path;
 
-use rune::{Key, KeyEvent, Mods};
+use rune::{ElementInfo, Key, KeyEvent, Mods};
 use strata_components::tabs::{TabId, tab_key};
 use strata_core::model::Location;
 
@@ -29,25 +29,27 @@ fn open_listed(host: &mut Offscreen, folder: &Path) {
     idle(host);
 }
 
-fn label_centre(host: &mut Offscreen, text: &str) -> (f32, f32) {
-    let el = host
-        .runtime()
+/// The visible rectangle of the first live element `wanted` picks; `what` names it on failure.
+fn visible(host: &mut Offscreen, what: &str, wanted: impl Fn(&ElementInfo) -> bool) -> [f32; 4] {
+    host.runtime()
         .elements()
         .into_iter()
-        .find(|el| !el.exiting && el.text.as_deref() == Some(text))
-        .unwrap_or_else(|| panic!("missing element with text `{text}`"));
-    let [x, y, w, h] = el.visible;
+        .find(|el| !el.exiting && wanted(el))
+        .unwrap_or_else(|| panic!("missing element {what}"))
+        .visible
+}
+
+fn label_centre(host: &mut Offscreen, text: &str) -> (f32, f32) {
+    let [x, y, w, h] = visible(host, &format!("with text `{text}`"), |el| {
+        el.text.as_deref() == Some(text)
+    });
     (x + w.min(24.0) / 2.0, y + h / 2.0)
 }
 
 fn key_centre(host: &mut Offscreen, key: &str) -> (f32, f32) {
-    let el = host
-        .runtime()
-        .elements()
-        .into_iter()
-        .find(|el| !el.exiting && el.key.as_deref() == Some(key))
-        .unwrap_or_else(|| panic!("missing element `{key}`"));
-    let [x, y, w, h] = el.visible;
+    let [x, y, w, h] = visible(host, &format!("`{key}`"), |el| {
+        el.key.as_deref() == Some(key)
+    });
     (x + w / 2.0, y + h / 2.0)
 }
 
@@ -85,49 +87,50 @@ fn columns_row_drag_moves_by_default_copies_with_ctrl_and_cancels_on_escape() {
         MODULE,
         "columns_row_drag_moves_by_default_copies_with_ctrl_and_cancels_on_escape",
         |mut host| {
-        let dir = fixture();
-        let root = dir.path();
-        open_listed(&mut host, root);
+            let dir = fixture();
+            let root = dir.path();
+            open_listed(&mut host, root);
 
-        // Escape cancels an active drag without moving the file or clearing selection.
-        let from = label_centre(&mut host, "todo.txt");
-        let dest = label_centre(&mut host, "archive");
-        drag_steps(&mut host, from, dest, false);
-        assert!(super::is_dragging(host.app()));
-        send_key(
-            &mut host,
-            KeyEvent {
-                key: Key::Escape,
-                mods: Mods::default(),
-            },
-        );
-        host.turn();
-        host.runtime().pointer_up(dest.0, dest.1);
-        host.turn();
-        idle(&mut host);
-        assert!(!super::is_dragging(host.app()));
-        assert!(root.join("todo.txt").exists());
-        assert!(!root.join("archive/todo.txt").exists());
+            // Escape cancels an active drag without moving the file or clearing selection.
+            let from = label_centre(&mut host, "todo.txt");
+            let dest = label_centre(&mut host, "archive");
+            drag_steps(&mut host, from, dest, false);
+            assert!(super::is_dragging(host.app()));
+            send_key(
+                &mut host,
+                KeyEvent {
+                    key: Key::Escape,
+                    mods: Mods::default(),
+                },
+            );
+            host.turn();
+            host.runtime().pointer_up(dest.0, dest.1);
+            host.turn();
+            idle(&mut host);
+            assert!(!super::is_dragging(host.app()));
+            assert!(root.join("todo.txt").exists());
+            assert!(!root.join("archive/todo.txt").exists());
 
-        // Ctrl+drag copies and preserves the source file.
-        host.modifiers(Mods {
-            ctrl: true,
-            ..Mods::default()
-        });
-        let from = label_centre(&mut host, "todo.txt");
-        let dest = label_centre(&mut host, "archive");
-        drag_steps(&mut host, from, dest, true);
-        host.modifiers(Mods::default());
-        wait_path(&mut host, &root.join("archive/todo.txt"), true);
-        assert!(root.join("todo.txt").exists());
+            // Ctrl+drag copies and preserves the source file.
+            host.modifiers(Mods {
+                ctrl: true,
+                ..Mods::default()
+            });
+            let from = label_centre(&mut host, "todo.txt");
+            let dest = label_centre(&mut host, "archive");
+            drag_steps(&mut host, from, dest, true);
+            host.modifiers(Mods::default());
+            wait_path(&mut host, &root.join("archive/todo.txt"), true);
+            assert!(root.join("todo.txt").exists());
 
-        // Plain drag moves the file into another folder.
-        let from = label_centre(&mut host, "todo.txt");
-        let dest = label_centre(&mut host, "documents");
-        drag_steps(&mut host, from, dest, true);
-        wait_path(&mut host, &root.join("documents/todo.txt"), true);
-        wait_path(&mut host, &root.join("todo.txt"), false);
-    });
+            // Plain drag moves the file into another folder.
+            let from = label_centre(&mut host, "todo.txt");
+            let dest = label_centre(&mut host, "documents");
+            drag_steps(&mut host, from, dest, true);
+            wait_path(&mut host, &root.join("documents/todo.txt"), true);
+            wait_path(&mut host, &root.join("todo.txt"), false);
+        },
+    );
 }
 
 #[test]
@@ -136,54 +139,55 @@ fn hovering_inactive_tab_springs_tab_and_keeps_drag_alive_until_drop() {
         MODULE,
         "hovering_inactive_tab_springs_tab_and_keeps_drag_alive_until_drop",
         |mut host| {
-        let dir = fixture();
-        let root = dir.path();
-        let archive = root.join("archive");
-        open_listed(&mut host, root);
-        let first: TabKey = shown_tab(host.app());
+            let dir = fixture();
+            let root = dir.path();
+            let archive = root.join("archive");
+            open_listed(&mut host, root);
+            let first: TabKey = shown_tab(host.app());
 
-        host.runtime().update(|app, tx| {
-            assert_eq!(run(app, "tab-new", On::Focus, tx), Outcome::Ran);
-        });
-        idle(&mut host);
-        let second = shown_tab(host.app());
-        host.app().open(Location::local(&archive));
-        assert!(host.run_until(PATIENCE, |h| {
-            h.app().browser().active_location() == Some(Location::local(&archive))
-        }));
-        idle(&mut host);
+            host.runtime().update(|app, tx| {
+                assert_eq!(run(app, "tab-new", On::Focus, tx), Outcome::Ran);
+            });
+            idle(&mut host);
+            let second = shown_tab(host.app());
+            host.app().open(Location::local(&archive));
+            assert!(host.run_until(PATIENCE, |h| {
+                h.app().browser().active_location() == Some(Location::local(&archive))
+            }));
+            idle(&mut host);
 
-        let first_centre = key_centre(&mut host, &tab_key("tabs", TabId(first.0)));
-        host.runtime().pointer_move(first_centre.0, first_centre.1);
-        host.runtime().pointer_down(first_centre.0, first_centre.1);
-        host.runtime().pointer_up(first_centre.0, first_centre.1);
-        host.turn();
-        idle(&mut host);
-        assert_eq!(shown_tab(host.app()), first);
+            let first_centre = key_centre(&mut host, &tab_key("tabs", TabId(first.0)));
+            host.runtime().pointer_move(first_centre.0, first_centre.1);
+            host.runtime().pointer_down(first_centre.0, first_centre.1);
+            host.runtime().pointer_up(first_centre.0, first_centre.1);
+            host.turn();
+            idle(&mut host);
+            assert_eq!(shown_tab(host.app()), first);
 
-        let from = label_centre(&mut host, "todo.txt");
-        let second_centre = key_centre(&mut host, &tab_key("tabs", TabId(second.0)));
-        drag_steps(&mut host, from, second_centre, false);
-        host.runtime().frame(0.8);
-        host.turn();
-        idle(&mut host);
-        assert_eq!(shown_tab(host.app()), second);
-        assert!(super::is_dragging(host.app()));
+            let from = label_centre(&mut host, "todo.txt");
+            let second_centre = key_centre(&mut host, &tab_key("tabs", TabId(second.0)));
+            drag_steps(&mut host, from, second_centre, false);
+            host.runtime().frame(0.8);
+            host.turn();
+            idle(&mut host);
+            assert_eq!(shown_tab(host.app()), second);
+            assert!(super::is_dragging(host.app()));
 
-        // Move into the sprung tab's listing (exercising `keep_alive_drag`) and release.
-        host.runtime().pointer_move(400.0, 220.0);
-        host.turn();
-        host.runtime().pointer_up(400.0, 220.0);
-        host.turn();
-        idle(&mut host);
-        wait_path(&mut host, &archive.join("todo.txt"), true);
-        wait_path(&mut host, &root.join("todo.txt"), false);
-        assert_eq!(tabs(host.app()).len(), 2);
-        assert_eq!(
-            tab_browser(host.app(), second).and_then(|b| b.active_location()),
-            Some(Location::local(&archive))
-        );
-    });
+            // Move into the sprung tab's listing (exercising `keep_alive_drag`) and release.
+            host.runtime().pointer_move(400.0, 220.0);
+            host.turn();
+            host.runtime().pointer_up(400.0, 220.0);
+            host.turn();
+            idle(&mut host);
+            wait_path(&mut host, &archive.join("todo.txt"), true);
+            wait_path(&mut host, &root.join("todo.txt"), false);
+            assert_eq!(tabs(host.app()).len(), 2);
+            assert_eq!(
+                tab_browser(host.app(), second).and_then(|b| b.active_location()),
+                Some(Location::local(&archive))
+            );
+        },
+    );
 }
 
 #[test]

@@ -101,32 +101,25 @@ pub(crate) fn drag_icon(count: usize, folders: bool, scale: f32) -> DragIcon {
     DragIcon::snapshot(Badge { count, folders }, build, (48.0, 48.0), scale, false)
 }
 
+/// Each action as W1 and P1 name it: as a set's member on both sides, and as P1's one action.
+const ACTIONS: [(DropActions, Actions, DragAction); 3] = [
+    (DropActions::COPY, Actions::COPY, DragAction::Copy),
+    (DropActions::MOVE, Actions::MOVE, DragAction::Move),
+    (DropActions::LINK, Actions::LINK, DragAction::Link),
+];
+
 pub(crate) fn actions_to_p1(actions: DropActions) -> Actions {
-    let mut out = Actions::NONE;
-    for (w1, p1) in [
-        (DropActions::COPY, Actions::COPY),
-        (DropActions::MOVE, Actions::MOVE),
-        (DropActions::LINK, Actions::LINK),
-    ] {
-        if actions.contains(w1) {
-            out = out | p1;
-        }
-    }
-    out
+    ACTIONS
+        .into_iter()
+        .filter(|(w1, ..)| actions.contains(*w1))
+        .fold(Actions::NONE, |out, (_, p1, _)| out | p1)
 }
 
 pub(crate) fn actions_of_p1(actions: Actions) -> DropActions {
-    let mut out = DropActions::NONE;
-    for (p1, w1) in [
-        (DragAction::Copy, DropActions::COPY),
-        (DragAction::Move, DropActions::MOVE),
-        (DragAction::Link, DropActions::LINK),
-    ] {
-        if actions.has(p1) {
-            out = out | w1;
-        }
-    }
-    out
+    ACTIONS
+        .into_iter()
+        .filter(|(.., one)| actions.has(*one))
+        .fold(DropActions::NONE, |out, (w1, ..)| out | w1)
 }
 
 pub(crate) fn action_to_p1(action: DropAction) -> DragAction {

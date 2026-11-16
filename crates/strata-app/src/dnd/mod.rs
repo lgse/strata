@@ -13,18 +13,18 @@
 use std::collections::HashSet;
 
 use gio::prelude::*;
-use rune::{AppHandle, Drag, El, Mods, PointerEvent, Tx, WindowHandle};
+use rune::{AppHandle, Drag, El, Mods, Tx, WindowHandle};
 use strata_components::{
     collection::element::RowMarks,
     contract::{
         Dnd as Binder, EntryId,
-        dnd::{DragPayload, DragSource, DropAction, DropActions, DropOffer, DropZone},
+        dnd::{DragPayload, DragSource, DropActions},
     },
     sidebar::PinVerdict,
     tabs::TabOpen,
 };
 use strata_core::model::{FileEntry, Location};
-use strata_desktop::keys::bindings::ESCAPE_ANY;
+use strata_desktop::keys::bindings::{ESCAPE, ESCAPE_ANY};
 use strata_fs::{adapters::gio_file_for_location, services::has_web_scheme};
 
 use crate::{
@@ -37,6 +37,7 @@ use crate::{
 
 pub(crate) mod adapter;
 pub(crate) mod policy;
+mod registry;
 mod router;
 #[cfg(test)]
 mod tests;
@@ -45,6 +46,7 @@ pub(crate) use policy::{
     apply_drop_action, commit_file_drop, commit_trash_drop, drop_action, locations_from_uris,
     trash_action,
 };
+pub(crate) use registry::PointZone;
 
 struct ActiveDrag {
     tab: TabKey,
@@ -83,9 +85,9 @@ impl Part for Dnd {
         policy::poll_spring(app, clock, tx)
     }
 
-    const COMMANDS: &'static [Action<App>] = &[Action::new("dnd-cancel", cancel_by_key).keys(&[
-        Keys::at(Stage::TabStrip, &[ESCAPE_ANY]).when(|app, _| is_dragging(app)),
-    ])];
+    const COMMANDS: &'static [Action<App>] = &[Action::new("dnd-cancel", cancel_by_key)
+        .command(ESCAPE)
+        .keys(&[Keys::at(Stage::TabStrip, &[ESCAPE_ANY]).when(|app, _| is_dragging(app))])];
 }
 
 fn cancel_by_key(app: &mut App, _: &Call<'_>, tx: &mut Tx) -> Outcome {
@@ -114,14 +116,8 @@ pub(crate) fn binder(app: &App) -> Binder<App> {
     app.dnd.wiring.binder()
 }
 
-pub(crate) fn drop_target_by_point(
-    app: &App,
-    el: El,
-    key: &str,
-    zone: DropZone<App>,
-    action: impl Fn(&App, &DropOffer, Mods, PointerEvent) -> Option<DropAction> + 'static,
-) -> El {
-    app.dnd.wiring.drop_target_by_point(el, key, zone, action)
+pub(crate) fn drop_target_by_point(app: &App, el: El, key: &str, zoned: PointZone) -> El {
+    app.dnd.wiring.drop_target_by_point(el, key, zoned)
 }
 
 pub(crate) fn bind(app: &mut App, p1: strata_platform::dnd::Dnd<App>) {
@@ -165,7 +161,14 @@ pub(crate) fn keep_alive_drag(app: &mut App, d: &mut Drag, tx: &mut Tx) {
 
 pub(crate) fn drag_phase(app: &mut App, d: &Drag, key: &str, tx: &mut Tx) -> bool {
     let wiring = app.dnd.wiring.clone();
-    wiring.drag_phase(app, d, key, tx)
+    wiring.drag_phase(
+        app,
+        router::Gesture {
+            drag: d,
+            source: key,
+        },
+        tx,
+    )
 }
 
 pub(crate) fn with_marks(app: &App, id: EntryId, mut marks: RowMarks) -> RowMarks {
@@ -184,7 +187,11 @@ pub(crate) fn can_pin_location(location: &Location) -> bool {
         && !location.uri_value().is_some_and(has_web_scheme)
 }
 
-fn build_entries_payload(app: &App, entries: &[FileEntry], mods: Mods) -> Option<(DragPayload, ActiveDrag)> {
+fn build_entries_payload(
+    app: &App,
+    entries: &[FileEntry],
+    mods: Mods,
+) -> Option<(DragPayload, ActiveDrag)> {
     if entries.is_empty() {
         return None;
     }
@@ -228,10 +235,8 @@ pub(crate) fn begin_entries(app: &mut App, entries: Vec<FileEntry>, scale: f32, 
     let icon = adapter::drag_icon(entries.len(), all_folders, scale);
     let wiring = app.dnd.wiring.clone();
     install_active_drag(app, active, all_folders.then_some(TabOpen::AtEnd));
-    if wiring
-        .start(app, tx, payload, Some(icon), |app, _, tx| on_drag_ended(app, tx))
-        .is_err()
-    {
+    let launch = router::Launch::new(payload, |app, _, tx| on_drag_ended(app, tx)).icon(icon);
+    if wiring.start(app, launch, tx).is_err() {
         on_drag_ended(app, tx);
     }
 }
@@ -259,8 +264,8 @@ pub(super) fn on_preview_drag_start(app: &mut App, _tx: &mut Tx) {
 pub(crate) fn sidebar_drag_start(app: &mut App, location: Location) {
     let id = shell::id_of(app, &location);
     let uri: String = gio_file_for_location(&location).uri().into();
-    let payload = DragPayload::new(vec![id], vec![uri])
-        .actions(DropActions::COPY | DropActions::MOVE);
+    let payload =
+        DragPayload::new(vec![id], vec![uri]).actions(DropActions::COPY | DropActions::MOVE);
     let active = ActiveDrag {
         tab: shell::tabs::shown_tab(app),
         ids: HashSet::from([id]),
@@ -268,7 +273,8 @@ pub(crate) fn sidebar_drag_start(app: &mut App, location: Location) {
         sidebar_row: true,
     };
     let wiring = app.dnd.wiring.clone();
-    wiring.start_sidebar_drag(app, payload, |app, _, tx| on_drag_ended(app, tx));
+    let launch = router::Launch::new(payload, |app, _, tx| on_drag_ended(app, tx));
+    wiring.start_sidebar_drag(app, launch);
     install_active_drag(app, active, Some(TabOpen::AtGap));
 }
 

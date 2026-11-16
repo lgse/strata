@@ -579,12 +579,7 @@ fn drop_action<V: SinglePane>(
     crate::dnd::drop_action(app, &dest, offer, mods)
 }
 
-fn dropped<V: SinglePane>(
-    app: &mut App,
-    target: Option<EntryId>,
-    dropped: Dropped,
-    tx: &mut Tx,
-) {
+fn dropped<V: SinglePane>(app: &mut App, target: Option<EntryId>, dropped: Dropped, tx: &mut Tx) {
     if let Some(dest) = drop_destination::<V>(app, target) {
         crate::dnd::commit_file_drop(app, dest, &dropped, tx);
     }

@@ -298,8 +298,7 @@ fn strip_dropped(app: &mut App, dropped: Dropped, tx: &mut Tx) {
 }
 
 fn strip_hover(app: &mut App, hover: DropHover, offer: &DropOffer, tx: &mut Tx) {
-    app.columns.strip_refused =
-        (hover == DropHover::Rejecting).then(|| offer.offers(URI_LIST));
+    app.columns.strip_refused = (hover == DropHover::Rejecting).then(|| offer.offers(URI_LIST));
     if hover == DropHover::Left {
         strip_over(app, None, tx);
     }

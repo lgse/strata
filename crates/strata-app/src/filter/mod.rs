@@ -572,13 +572,16 @@ fn stop(app: &mut App) {
 /// Probes currently shown search results and removes any proven absent (`prune_stale_search_results`
 /// in `src/ui/browser/events/reveal.rs`).
 fn prune_stale_results(app: &mut App, _: &mut Tx) -> bool {
-    if !app.filter.session.is_active()
-        || app.filter.items.is_empty()
-        || app.filter.open_in.is_none()
-    {
+    if !shows_live_results(&app.filter) {
         return false;
     }
-    let paths: Vec<PathBuf> = app.filter.items.iter().map(|i| i.path.clone()).collect();
+    let filter = &app.filter;
+    let paths: Vec<PathBuf> = filter
+        .items
+        .iter()
+        .map(|item| item.path.clone())
+        .filter(|path| !filter.renamed.awaits(path))
+        .collect();
     let later = app.filter.later.clone();
     app.filter.session.prune_missing(paths, move |gone| {
         later.then(move |app: &mut App, tx: &mut Tx| apply_pruned_results(app, &gone, tx));
@@ -586,11 +589,21 @@ fn prune_stale_results(app: &mut App, _: &mut Tx) -> bool {
     false
 }
 
+/// A search is running and its results show in a pane.
+fn shows_live_results(filter: &Filter) -> bool {
+    filter.session.is_active() && !filter.items.is_empty() && filter.open_in.is_some()
+}
+
 fn apply_pruned_results(app: &mut App, gone: &HashSet<PathBuf>, tx: &mut Tx) -> bool {
     let (Some(open), true) = (app.filter.open_in.clone(), app.filter.state.is_open()) else {
         return false;
     };
-    if !app.filter.items.iter().any(|item| gone.contains(&item.path)) {
+    if !app
+        .filter
+        .items
+        .iter()
+        .any(|item| gone.contains(&item.path))
+    {
         return false;
     }
     let show_hidden = app

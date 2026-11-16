@@ -7,152 +7,76 @@
 use std::{
     borrow::Cow,
     cell::{Cell, RefCell},
-    collections::HashMap,
     rc::Rc,
 };
 
-use rune::{Drag, DragOutcome, El, Live, Mods, Phase, Pick, Picked, PointerEvent, Tx, el};
+use rune::{Drag, DragOutcome, El, Phase, Pick, Picked, Tx, el};
 use strata_components::contract::{
     Dnd as Binder,
     dnd::{
-        DragPayload, DragSource, DropAction, DropActions, DropData, DropHover, DropItem, DropOffer,
-        DropZone, Dropped, ElementKey, URI_LIST,
+        DragPayload, DragSource, DropAction, DropData, DropHover, DropItem, DropOffer, DropZone,
+        Dropped, ElementKey, URI_LIST,
     },
 };
-use strata_platform::dnd::{
-    DragIcon, DropOffer as P1Offer, DropPoint, Error as P1Error,
-};
+use strata_platform::dnd::{DragIcon, DropOffer as P1Offer, DropPoint, Error as P1Error};
 
-use super::adapter::{
-    action_to_p1, drag_item, encode_uri_list, offer_of_p1, point_of_p1, set_running, target_of,
+use super::{
+    adapter::{
+        action_to_p1, drag_item, encode_uri_list, offer_of_p1, point_of_p1, set_running, target_of,
+    },
+    registry::{Landing, PointZone, Probe, Registry, scoped_id},
 };
 use crate::{App, shell, slots::TabKey};
 
-const REGISTRY_CAP: usize = 16_384;
 const SOURCE_SLOP: f32 = 8.0;
 
-type PointActionFn = Rc<dyn Fn(&App, &DropOffer, Mods, PointerEvent) -> Option<DropAction>>;
 type EndFn = Rc<dyn Fn(&mut App, DragOutcome, &mut Tx)>;
 
-struct TargetEntry {
-    zone: DropZone<App>,
-    by_point: Option<PointActionFn>,
-    rect: Live<[f32; 4]>,
-    stamp: u64,
+/// A pointer gesture on a drag source: the drag, and the source element's key.
+#[derive(Clone, Copy)]
+pub(crate) struct Gesture<'a> {
+    pub(crate) drag: &'a Drag,
+    pub(crate) source: &'a str,
 }
 
-impl TargetEntry {
-    fn point_of(&self, at: [f32; 2]) -> PointerEvent {
-        let [rx, ry, ..] = self.rect.get();
-        let mut event = PointerEvent::default();
-        event.x = at[0] - rx;
-        event.y = at[1] - ry;
-        event.window_x = at[0];
-        event.window_y = at[1];
-        event
-    }
+/// What a drag carries, how it looks, and what runs when it ends.
+pub(crate) struct Launch {
+    payload: DragPayload,
+    icon: Option<DragIcon>,
+    on_end: EndFn,
 }
 
-#[derive(Default)]
-struct Registry {
-    entries: HashMap<String, TargetEntry>,
-    next: u64,
-}
-
-fn scoped_id(scope: &str, key: &str) -> String {
-    format!("{scope}\u{1f}{key}")
-}
-
-fn keyed_segments(path: &str) -> impl DoubleEndedIterator<Item = &str> {
-    path.split('/')
-        .filter(|seg| !seg.is_empty() && !seg.starts_with('#'))
-}
-
-impl Registry {
-    fn put(
-        &mut self,
-        key: &str,
-        zone: DropZone<App>,
-        by_point: Option<PointActionFn>,
-    ) -> Live<[f32; 4]> {
-        self.next += 1;
-        let stamp = self.next;
-        if let Some(entry) = self.entries.get_mut(key) {
-            entry.zone = zone;
-            entry.by_point = by_point;
-            entry.stamp = stamp;
-            return entry.rect.clone();
-        }
-        let rect = Live::new([0.0; 4]);
-        self.entries.insert(
-            key.to_owned(),
-            TargetEntry {
-                zone,
-                by_point,
-                rect: rect.clone(),
-                stamp,
-            },
-        );
-        if self.entries.len() > REGISTRY_CAP {
-            self.evict();
-        }
-        rect
-    }
-
-    fn evict(&mut self) {
-        let mut stamps: Vec<u64> = self.entries.values().map(|e| e.stamp).collect();
-        stamps.sort_unstable();
-        let cut = stamps[stamps.len() / 8];
-        self.entries.retain(|_, e| e.stamp > cut);
-    }
-
-    fn get(&self, key: &str) -> Option<&TargetEntry> {
-        self.entries.get(key)
-    }
-
-    fn along(&self, path: &str) -> Vec<String> {
-        let segs: Vec<&str> = keyed_segments(path).collect();
-        let mut out = Vec::new();
-        for (idx, seg) in segs.iter().enumerate().rev() {
-            if self.entries.contains_key(*seg) {
-                out.push((*seg).to_owned());
-                continue;
-            }
-            if let Some(id) = segs[..idx]
-                .iter()
-                .rev()
-                .map(|scope| scoped_id(scope, seg))
-                .find(|id| self.entries.contains_key(id))
-            {
-                out.push(id);
-            }
-        }
-        out
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-enum Landing {
-    Nowhere,
-    Accepting { key: String, action: DropAction },
-    Rejecting { key: String },
-}
-
-impl Landing {
-    fn key(&self) -> Option<&str> {
-        match self {
-            Self::Nowhere => None,
-            Self::Accepting { key, .. } | Self::Rejecting { key } => Some(key),
+impl Launch {
+    pub(crate) fn new(
+        payload: DragPayload,
+        on_end: impl Fn(&mut App, DragOutcome, &mut Tx) + 'static,
+    ) -> Self {
+        Self {
+            payload,
+            icon: None,
+            on_end: Rc::new(on_end),
         }
     }
 
-    fn hover(&self) -> DropHover {
-        match self {
-            Self::Nowhere => DropHover::Left,
-            Self::Accepting { .. } => DropHover::Accepting,
-            Self::Rejecting { .. } => DropHover::Rejecting,
-        }
+    pub(crate) fn icon(mut self, icon: DragIcon) -> Self {
+        self.icon = Some(icon);
+        self
     }
+}
+
+/// An element hit-test's answer for the drag numbered `serial` (its `seq` or its `id`).
+#[derive(Clone, Copy)]
+struct Hit<'a> {
+    serial: u64,
+    path: Option<&'a str>,
+}
+
+/// A drag's landing before and after a move.
+struct Change {
+    old: Landing,
+    new: Landing,
+    offer: DropOffer,
+    at: [f32; 2],
 }
 
 struct InWindowDrag {
@@ -166,6 +90,14 @@ struct InWindowDrag {
     origin_tab: TabKey,
     tab_tail: Option<Vec<String>>,
     on_end: Option<EndFn>,
+}
+
+/// Where to look for the drag source's path in the tree, to keep it mounted while the drag runs.
+struct TailProbe {
+    id: u64,
+    tab: TabKey,
+    source_key: String,
+    at: (f32, f32),
 }
 
 #[derive(Clone)]
@@ -209,6 +141,16 @@ impl Wiring {
         self.0.in_window.borrow().is_some()
     }
 
+    /// A new press: a release Escape swallowed before is not this one's.
+    fn arm(&self) {
+        self.0.swallow_until_up.set(false);
+    }
+
+    /// Escape cancelled the drag, and the button has not come up since.
+    fn swallowing(&self) -> bool {
+        self.0.swallow_until_up.get()
+    }
+
     pub(crate) fn binder(&self) -> Binder<App> {
         let (drops, drags) = (self.clone(), self.clone());
         Binder::custom_keyed(
@@ -235,23 +177,17 @@ impl Wiring {
         Binder::rune().drop_zone(el, zone)
     }
 
-    pub(crate) fn drop_target_by_point(
-        &self,
-        el: El,
-        key: &str,
-        zone: DropZone<App>,
-        action: impl Fn(&App, &DropOffer, Mods, PointerEvent) -> Option<DropAction> + 'static,
-    ) -> El {
-        let by_point: PointActionFn = Rc::new(action);
+    pub(crate) fn drop_target_by_point(&self, el: El, key: &str, zoned: PointZone) -> El {
+        let PointZone { zone, action } = zoned;
         let rect = self
             .0
             .registry
             .borrow_mut()
-            .put(key, zone.clone(), Some(by_point.clone()));
+            .put(key, zone.clone(), Some(action.clone()));
         if self.0.windowed.get() {
             let target = target_of(zone).action_at(
-                move |app: &App, offer: &P1Offer, mods: Option<Mods>, point: DropPoint| {
-                    by_point(
+                move |app: &App, offer: &P1Offer, mods: Option<rune::Mods>, point: DropPoint| {
+                    action(
                         app,
                         &offer_of_p1(offer),
                         mods.unwrap_or_default(),
@@ -282,237 +218,197 @@ impl Wiring {
             });
             return self.0.p1.borrow().drag_source(el, key.key(), p1_source);
         }
-        self.offscreen_drag_source(el, key.key(), source)
+        let offscreen = OffscreenSource {
+            wiring: self.clone(),
+            key: key.key().to_owned(),
+            source,
+            pressed: Cell::new(None),
+        };
+        el.key(key.key())
+            .on_drag(move |app: &mut App, d: &mut Drag, tx: &mut Tx| offscreen.on_drag(app, d, tx))
     }
 
-    fn offscreen_drag_source(&self, el: El, key: &str, source: DragSource<App>) -> El {
-        let me = self.clone();
-        let source_key = key.to_owned();
-        let pressed: Rc<Cell<Option<[f32; 2]>>> = Rc::new(Cell::new(None));
-        el.key(key).on_drag(move |app: &mut App, d: &mut Drag, tx: &mut Tx| {
-            match d.phase {
-                Phase::Down => {
-                    me.0.swallow_until_up.set(false);
-                    pressed.set(Some(d.window_point()));
-                }
-                Phase::Move if me.0.swallow_until_up.get() => {}
-                Phase::Move if me.is_dragging() => {
-                    me.move_to(d.window_point(), tx);
-                }
-                Phase::Move => {
-                    let Some([sx, sy]) = pressed.get() else {
-                        return;
-                    };
-                    let [wx, wy] = d.window_point();
-                    if (wx - sx).abs().max((wy - sy).abs()) <= SOURCE_SLOP {
-                        return;
-                    }
-                    let Some(payload) = source.payload(app) else {
-                        return;
-                    };
-                    super::on_preview_drag_start(app, tx);
-                    let src = source.clone();
-                    me.start_in_window(
-                        app,
-                        (d, &source_key),
-                        payload,
-                        false,
-                        move |app, outcome, tx| {
-                            super::on_drag_ended(app, tx);
-                            src.end(app, outcome, tx);
-                        },
-                        tx,
-                    );
-                }
-                Phase::Up => {
-                    pressed.set(None);
-                    if me.0.swallow_until_up.replace(false) {
-                        return;
-                    }
-                    if me.is_dragging() {
-                        me.finish_gesture(app, d, tx);
-                    }
-                }
-            }
-        })
-    }
-
-    pub(crate) fn drag_phase(&self, app: &mut App, d: &Drag, key: &str, tx: &mut Tx) -> bool {
+    /// A gesture on a source that starts its drag itself ([`Wiring::start`]). Returns whether
+    /// the router took the event.
+    pub(crate) fn drag_phase(&self, app: &mut App, gesture: Gesture<'_>, tx: &mut Tx) -> bool {
+        let d = gesture.drag;
         if self.0.windowed.get() && self.0.p1.borrow().owns(d) {
             return true;
         }
         match d.phase {
             Phase::Down => {
-                self.0.swallow_until_up.set(false);
-                *self.0.phase.borrow_mut() = Some((*d, key.to_owned()));
+                self.arm();
+                self.remember(gesture);
                 false
             }
-            Phase::Move if self.0.swallow_until_up.get() => true,
-            Phase::Move if self.is_dragging() => {
-                self.move_to(d.window_point(), tx);
-                true
-            }
-            Phase::Move => {
-                *self.0.phase.borrow_mut() = Some((*d, key.to_owned()));
-                false
-            }
+            Phase::Move => self.phase_moved(gesture, tx),
             Phase::Up => {
                 *self.0.phase.borrow_mut() = None;
-                if self.0.swallow_until_up.replace(false) {
-                    return true;
-                }
-                if self.is_dragging() {
-                    self.finish_gesture(app, d, tx);
-                    return true;
-                }
-                false
+                self.release(app, d, tx)
             }
         }
+    }
+
+    fn phase_moved(&self, gesture: Gesture<'_>, tx: &mut Tx) -> bool {
+        if self.swallowing() {
+            return true;
+        }
+        if self.is_dragging() {
+            self.move_to(gesture.drag.window_point(), tx);
+            return true;
+        }
+        self.remember(gesture);
+        false
+    }
+
+    fn remember(&self, gesture: Gesture<'_>) {
+        *self.0.phase.borrow_mut() = Some((*gesture.drag, gesture.source.to_owned()));
+    }
+
+    /// The button went up: a release Escape swallowed, or the drag's drop. Returns whether
+    /// either took it.
+    fn release(&self, app: &mut App, d: &Drag, tx: &mut Tx) -> bool {
+        if self.0.swallow_until_up.replace(false) {
+            return true;
+        }
+        if self.is_dragging() {
+            self.finish_gesture(app, d, tx);
+            return true;
+        }
+        false
     }
 
     pub(crate) fn start(
         &self,
         app: &mut App,
+        mut launch: Launch,
         tx: &mut Tx,
-        payload: DragPayload,
-        icon: Option<DragIcon>,
-        on_end: impl Fn(&mut App, DragOutcome, &mut Tx) + 'static,
     ) -> Result<(), String> {
         let Some((drag, key)) = self.0.phase.borrow_mut().take() else {
             return Err("no drag phase to start from".to_owned());
         };
-        let on_end: EndFn = Rc::new(on_end);
-        if self.0.windowed.get() {
-            let item = drag_item(&payload, icon);
-            let p1_end = on_end.clone();
-            set_running(Some(payload.clone()));
-            let res = self.0.p1.borrow().start_drag(
-                tx,
-                &drag,
-                &key,
-                item,
-                move |app: &mut App, outcome, tx| {
-                    set_running(None);
-                    p1_end(app, outcome, tx);
-                },
-            );
-            match res {
-                Ok(()) => return Ok(()),
-                Err(P1Error::NotAttached) => set_running(None),
-                Err(err) => {
-                    set_running(None);
-                    return Err(err.to_string());
-                }
-            }
+        let gesture = Gesture {
+            drag: &drag,
+            source: &key,
+        };
+        if self.0.windowed.get() && self.start_p1(gesture, &mut launch, tx)? {
+            return Ok(());
         }
-        self.start_in_window(
-            app,
-            (&drag, &key),
-            payload,
-            false,
-            move |app, outcome, tx| on_end(app, outcome, tx),
-            tx,
-        );
+        let in_window = self.in_window_drag(app, &key, launch);
+        self.begin_in_window(in_window, &drag, tx);
         Ok(())
     }
 
-    pub(crate) fn start_sidebar_drag(
+    /// Starts the drag through P1. `Ok(false)` when no window is attached, so it runs in the
+    /// window instead.
+    fn start_p1(
         &self,
-        app: &App,
-        payload: DragPayload,
-        on_end: impl Fn(&mut App, DragOutcome, &mut Tx) + 'static,
-    ) {
+        gesture: Gesture<'_>,
+        launch: &mut Launch,
+        tx: &mut Tx,
+    ) -> Result<bool, String> {
+        let item = drag_item(&launch.payload, launch.icon.take());
+        let end = launch.on_end.clone();
+        set_running(Some(launch.payload.clone()));
+        let res = self.0.p1.borrow().start_drag(
+            tx,
+            gesture.drag,
+            gesture.source,
+            item,
+            move |app: &mut App, outcome, tx| {
+                set_running(None);
+                end(app, outcome, tx);
+            },
+        );
+        match res {
+            Ok(()) => Ok(true),
+            Err(P1Error::NotAttached) => {
+                set_running(None);
+                Ok(false)
+            }
+            Err(err) => {
+                set_running(None);
+                Err(err.to_string())
+            }
+        }
+    }
+
+    pub(crate) fn start_sidebar_drag(&self, app: &App, launch: Launch) {
         let id = self.next_serial();
-        let offer = DropOffer::new(Vec::<Cow<'static, str>>::new(), payload.actions)
+        let offer = DropOffer::new(Vec::<Cow<'static, str>>::new(), launch.payload.actions)
             .local(true)
             .serial(id);
-        set_running(Some(payload.clone()));
+        set_running(Some(launch.payload.clone()));
         *self.0.in_window.borrow_mut() = Some(InWindowDrag {
             id,
             source_key: String::new(),
             offer,
-            payload,
+            payload: launch.payload,
             at: [0.0, 0.0],
             landing: Landing::Nowhere,
             seq: 0,
             origin_tab: shell::tabs::shown_tab(app),
             tab_tail: None,
-            on_end: Some(Rc::new(on_end)),
+            on_end: Some(launch.on_end),
         });
     }
 
-    fn start_in_window(
-        &self,
-        app: &App,
-        (drag, source_key): (&Drag, &str),
-        payload: DragPayload,
-        sidebar_only: bool,
-        on_end: impl Fn(&mut App, DragOutcome, &mut Tx) + 'static,
-        tx: &mut Tx,
-    ) {
+    /// A drag of `launch`'s files from the element `source_key`, not yet under way.
+    fn in_window_drag(&self, app: &App, source_key: &str, launch: Launch) -> InWindowDrag {
         let id = self.next_serial();
-        let mimes: Vec<Cow<'static, str>> = if sidebar_only {
-            Vec::new()
-        } else {
-            vec![Cow::Borrowed(URI_LIST)]
-        };
-        let mut offer = DropOffer::new(mimes, payload.actions)
+        let offer = DropOffer::new(vec![Cow::Borrowed(URI_LIST)], launch.payload.actions)
             .local(true)
-            .serial(id);
-        if !sidebar_only {
-            offer = offer.uris(payload.uris.clone());
-        }
-        let [wx, wy] = drag.window_point();
-        let start_at = (wx - drag.dx, wy - drag.dy);
-        let origin_tab = shell::tabs::shown_tab(app);
-        set_running(Some(payload.clone()));
-        *self.0.in_window.borrow_mut() = Some(InWindowDrag {
+            .serial(id)
+            .uris(launch.payload.uris.clone());
+        InWindowDrag {
             id,
             source_key: source_key.to_owned(),
             offer,
-            payload,
-            at: [wx, wy],
+            payload: launch.payload,
+            at: [0.0, 0.0],
             landing: Landing::Nowhere,
             seq: 0,
-            origin_tab,
+            origin_tab: shell::tabs::shown_tab(app),
             tab_tail: None,
-            on_end: Some(Rc::new(on_end)),
-        });
-        self.capture_source_tail(id, origin_tab, source_key, start_at, tx);
+            on_end: Some(launch.on_end),
+        }
+    }
+
+    /// Puts `drag` under way from where the gesture `d` is now.
+    fn begin_in_window(&self, mut drag: InWindowDrag, d: &Drag, tx: &mut Tx) {
+        let [wx, wy] = d.window_point();
+        drag.at = [wx, wy];
+        let probe = TailProbe {
+            id: drag.id,
+            tab: drag.origin_tab,
+            source_key: drag.source_key.clone(),
+            at: (wx - d.dx, wy - d.dy),
+        };
+        set_running(Some(drag.payload.clone()));
+        *self.0.in_window.borrow_mut() = Some(drag);
+        self.capture_source_tail(probe, tx);
         self.move_to([wx, wy], tx);
     }
 
-    fn capture_source_tail(
-        &self,
-        id: u64,
-        origin_tab: TabKey,
-        source_key: &str,
-        at: (f32, f32),
-        tx: &mut Tx,
-    ) {
+    fn capture_source_tail(&self, probe: TailProbe, tx: &mut Tx) {
         let me = self.clone();
-        let wanted = source_key.to_owned();
-        let tab_seg = format!("tab-{}", origin_tab.0);
+        let TailProbe {
+            id,
+            tab,
+            source_key,
+            at,
+        } = probe;
+        let tab_seg = format!("tab-{}", tab.0);
         tx.element_at_in_with(
-            source_key.to_owned(),
+            source_key.clone(),
             at.0,
             at.1,
             Pick::new().transparent(true),
             move |_: &mut App, picked: Option<Picked>, _: &mut Tx| {
-                let Some(picked) = picked else {
+                let Some(tail) = picked.and_then(|p| path_tail(p.path(), &tab_seg, &source_key))
+                else {
                     return;
                 };
-                let segs: Vec<&str> = picked.path().split('/').collect();
-                let Some(start) = segs.iter().position(|s| *s == tab_seg) else {
-                    return;
-                };
-                let Some(end) = segs[start..].iter().position(|s| *s == wanted) else {
-                    return;
-                };
-                let tail = segs[start..=start + end]
-                    .iter()
-                    .map(|s| (*s).to_owned())
-                    .collect();
                 if let Some(active) = me.0.in_window.borrow_mut().as_mut().filter(|d| d.id == id) {
                     active.tab_tail = Some(tail);
                 }
@@ -542,7 +438,8 @@ impl Wiring {
             at[1],
             Pick::new().transparent(true),
             move |app: &mut App, picked: Option<Picked>, tx: &mut Tx| {
-                me.landed(seq, picked.as_ref().map(Picked::path), app, tx);
+                let path = picked.as_ref().map(Picked::path);
+                me.landed(app, Hit { serial: seq, path }, tx);
             },
         );
     }
@@ -582,13 +479,16 @@ impl Wiring {
             return;
         };
         set_running(None);
-        if let Some(key) = drag.landing.key()
-            && let Some(zone) = self.zone(key)
-        {
-            zone.hover(app, DropHover::Left, &drag.offer, tx);
-        }
+        self.leave_landing(app, &drag, tx);
         if let Some(end) = drag.on_end {
             end(app, DragOutcome::Cancelled, tx);
+        }
+    }
+
+    /// Tells the zone `drag` rests on that it left.
+    fn leave_landing(&self, app: &mut App, drag: &InWindowDrag, tx: &mut Tx) {
+        if let Some(zone) = drag.landing.key().and_then(|key| self.zone(key)) {
+            zone.hover(app, DropHover::Left, &drag.offer, tx);
         }
     }
 
@@ -608,7 +508,8 @@ impl Wiring {
             at[1],
             Pick::new().transparent(true),
             move |app: &mut App, picked: Option<Picked>, tx: &mut Tx| {
-                me.complete_drop(id, picked.as_ref().map(Picked::path), app, tx);
+                let path = picked.as_ref().map(Picked::path);
+                me.complete_drop(app, Hit { serial: id, path }, tx);
             },
         );
     }
@@ -622,120 +523,129 @@ impl Wiring {
     }
 
     fn zone(&self, key: &str) -> Option<DropZone<App>> {
-        self.0.registry.borrow().get(key).map(|e| e.zone.clone())
+        self.0.registry.borrow().zone(key)
     }
 
-    fn point(&self, key: &str, at: [f32; 2]) -> PointerEvent {
-        self.0
-            .registry
-            .borrow()
-            .get(key)
-            .map_or_else(PointerEvent::default, |e| e.point_of(at))
-    }
-
-    fn resolve_landing(&self, path: Option<&str>, app: &App, offer: &DropOffer, at: [f32; 2]) -> Landing {
-        let Some(path) = path else {
-            return Landing::Nowhere;
-        };
-        let mods = shell::held_modifiers(app);
-        let registry = self.0.registry.borrow();
-        for key in registry.along(path) {
-            let Some(entry) = registry.get(&key) else {
-                continue;
-            };
-            let stops = entry.zone.rejects();
-            if !entry.zone.accepts(offer) {
-                if stops {
-                    return Landing::Rejecting { key };
-                }
-                continue;
-            }
-            let chosen = match &entry.by_point {
-                Some(by_point) => by_point(app, offer, mods, entry.point_of(at)),
-                None => entry.zone.choose(app, offer, mods),
-            };
-            match negotiate_local(chosen, offer.actions) {
-                Some(action) => return Landing::Accepting { key, action },
-                None if stops => return Landing::Rejecting { key },
-                None => continue,
-            }
-        }
-        Landing::Nowhere
-    }
-
-    fn landed(&self, seq: u64, path: Option<&str>, app: &mut App, tx: &mut Tx) {
-        let (landing, old, offer, at) = {
+    /// Where the drag `hit` names lands now, recorded on it. The drag stays only shared-borrowed
+    /// while the zones are asked: they read whether a drag runs.
+    fn reland(&self, app: &App, hit: Hit<'_>) -> Option<Change> {
+        let change = {
             let slot = self.0.in_window.borrow();
-            let Some(drag) = slot.as_ref().filter(|d| d.seq == seq) else {
-                return;
+            let drag = slot.as_ref().filter(|d| d.seq == hit.serial)?;
+            let probe = Probe {
+                offer: &drag.offer,
+                at: drag.at,
+                mods: shell::held_modifiers(app),
             };
-            let landing = self.resolve_landing(path, app, &drag.offer, drag.at);
-            (landing, drag.landing.clone(), drag.offer.clone(), drag.at)
+            let new = self.0.registry.borrow().resolve(hit.path, app, &probe);
+            Change {
+                old: drag.landing.clone(),
+                new,
+                offer: drag.offer.clone(),
+                at: drag.at,
+            }
         };
-        if old != landing {
-            if let Some(drag) = self.0.in_window.borrow_mut().as_mut().filter(|d| d.seq == seq) {
-                drag.landing = landing.clone();
-            }
-            if old.key() != landing.key()
-                && let Some(old_zone) = old.key().and_then(|k| self.zone(k))
-            {
-                old_zone.hover(app, DropHover::Left, &offer, tx);
-            }
-            if let Some(new_zone) = landing.key().and_then(|k| self.zone(k)) {
-                new_zone.hover(app, landing.hover(), &offer, tx);
-            }
+        if let Some(drag) = self
+            .0
+            .in_window
+            .borrow_mut()
+            .as_mut()
+            .filter(|d| d.seq == hit.serial)
+        {
+            drag.landing = change.new.clone();
+        }
+        Some(change)
+    }
+
+    fn landed(&self, app: &mut App, hit: Hit<'_>, tx: &mut Tx) {
+        let Some(change) = self.reland(app, hit) else {
+            return;
+        };
+        if change.old != change.new {
+            self.announce(app, &change, tx);
         }
         // Rejecting zones also hear moves so listing/strip edge-scroll continues over same-dir panes.
-        if let Landing::Accepting { key, .. } | Landing::Rejecting { key } = &landing
+        if let Some(key) = change.new.key()
             && let Some(zone) = self.zone(key)
         {
-            zone.moved(app, self.point(key, at), tx);
+            let point = self.0.registry.borrow().point(key, change.at);
+            zone.moved(app, point, tx);
         }
     }
 
-    fn complete_drop(&self, id: u64, path: Option<&str>, app: &mut App, tx: &mut Tx) {
-        let seq = match self.0.in_window.borrow().as_ref().filter(|d| d.id == id) {
-            Some(d) => d.seq,
-            None => return,
+    /// Tells the zones a drag left and entered.
+    fn announce(&self, app: &mut App, change: &Change, tx: &mut Tx) {
+        if change.old.key() != change.new.key()
+            && let Some(old) = change.old.key().and_then(|k| self.zone(k))
+        {
+            old.hover(app, DropHover::Left, &change.offer, tx);
+        }
+        if let Some(new) = change.new.key().and_then(|k| self.zone(k)) {
+            new.hover(app, change.new.hover(), &change.offer, tx);
+        }
+    }
+
+    fn complete_drop(&self, app: &mut App, hit: Hit<'_>, tx: &mut Tx) {
+        let Some(seq) = self
+            .0
+            .in_window
+            .borrow()
+            .as_ref()
+            .filter(|d| d.id == hit.serial)
+            .map(|d| d.seq)
+        else {
+            return;
         };
-        self.landed(seq, path, app, tx);
-        let Some(drag) = self.0.in_window.borrow_mut().take_if(|d| d.id == id) else {
+        self.landed(app, Hit { serial: seq, ..hit }, tx);
+        let Some(drag) = self
+            .0
+            .in_window
+            .borrow_mut()
+            .take_if(|d| d.id == hit.serial)
+        else {
             return;
         };
         set_running(None);
-        if let Some(key) = drag.landing.key()
-            && let Some(zone) = self.zone(key)
-        {
-            zone.hover(app, DropHover::Left, &drag.offer, tx);
+        self.leave_landing(app, &drag, tx);
+        let on_end = drag.on_end.clone();
+        let outcome = self.deliver(app, drag, tx);
+        if let Some(end) = on_end {
+            end(app, outcome, tx);
         }
-        let outcome = match &drag.landing {
-            Landing::Accepting { key, action } => match self.zone(key) {
-                Some(zone) => {
-                    let mods = shell::held_modifiers(app);
-                    let point = Some(self.point(key, drag.at));
-                    let items = if drag.offer.offers(URI_LIST) {
-                        vec![DropItem::new(URI_LIST, encode_uri_list(&drag.payload.uris))]
-                    } else {
-                        Vec::new()
-                    };
-                    let data = DropData::new(items).local(drag.payload);
-                    let dropped = Dropped::new(drag.offer, data, mods).point(point);
-                    zone.deliver(app, dropped, tx);
-                    outcome_of(*action)
-                }
-                None => DragOutcome::Cancelled,
-            },
+    }
+
+    /// Gives `drag` to the zone it landed on, and says how it ended.
+    fn deliver(&self, app: &mut App, drag: InWindowDrag, tx: &mut Tx) -> DragOutcome {
+        match drag.landing.clone() {
+            Landing::Accepting { key, action } => {
+                let Some(zone) = self.zone(&key) else {
+                    return DragOutcome::Cancelled;
+                };
+                let dropped = self.dropped(app, &key, drag);
+                zone.deliver(app, dropped, tx);
+                outcome_of(action)
+            }
             Landing::Rejecting { key } => {
-                if let Some(zone) = self.zone(key) {
+                if let Some(zone) = self.zone(&key) {
                     zone.reject(app, drag.offer, tx);
                 }
                 DragOutcome::Cancelled
             }
             Landing::Nowhere => DragOutcome::Cancelled,
-        };
-        if let Some(end) = drag.on_end {
-            end(app, outcome, tx);
         }
+    }
+
+    /// `drag` as the zone `key` receives it.
+    fn dropped(&self, app: &App, key: &str, drag: InWindowDrag) -> Dropped {
+        let mods = shell::held_modifiers(app);
+        let point = Some(self.0.registry.borrow().point(key, drag.at));
+        let items = if drag.offer.offers(URI_LIST) {
+            vec![DropItem::new(URI_LIST, encode_uri_list(&drag.payload.uris))]
+        } else {
+            Vec::new()
+        };
+        let data = DropData::new(items).local(drag.payload);
+        Dropped::new(drag.offer, data, mods).point(point)
     }
 
     pub(crate) fn keep_alive(&self, app: &App) -> Option<El> {
@@ -759,32 +669,15 @@ impl Wiring {
     pub(crate) fn keep_alive_drag(&self, app: &mut App, d: &mut Drag, tx: &mut Tx) {
         match d.phase {
             Phase::Down => {}
-            Phase::Move if !self.0.swallow_until_up.get() && self.is_dragging() => {
+            Phase::Move if !self.swallowing() && self.is_dragging() => {
                 self.move_to(d.window_point(), tx);
             }
             Phase::Move => {}
             Phase::Up => {
-                if self.0.swallow_until_up.replace(false) {
-                    return;
-                }
-                if self.is_dragging() {
-                    self.finish_gesture(app, d, tx);
-                }
+                self.release(app, d, tx);
             }
         }
     }
-}
-
-fn negotiate_local(chosen: Option<DropAction>, offered: DropActions) -> Option<DropAction> {
-    let action = chosen?;
-    let allowed = match action {
-        DropAction::Copy | DropAction::Ask => {
-            offered.is_empty() || offered.contains(DropActions::COPY)
-        }
-        DropAction::Move => offered.contains(DropActions::MOVE),
-        DropAction::Link => offered.contains(DropActions::LINK),
-    };
-    allowed.then_some(action)
 }
 
 fn outcome_of(action: DropAction) -> DragOutcome {
@@ -795,17 +688,100 @@ fn outcome_of(action: DropAction) -> DragOutcome {
     }
 }
 
+/// A drag source on the offscreen host: it starts an in-window drag once the pointer has moved
+/// past the slop from where it went down.
+struct OffscreenSource {
+    wiring: Wiring,
+    key: String,
+    source: DragSource<App>,
+    pressed: Cell<Option<[f32; 2]>>,
+}
+
+impl OffscreenSource {
+    fn on_drag(&self, app: &mut App, d: &mut Drag, tx: &mut Tx) {
+        match d.phase {
+            Phase::Down => {
+                self.wiring.arm();
+                self.pressed.set(Some(d.window_point()));
+            }
+            Phase::Move => self.moved(app, d, tx),
+            Phase::Up => {
+                self.pressed.set(None);
+                self.wiring.release(app, d, tx);
+            }
+        }
+    }
+
+    fn moved(&self, app: &mut App, d: &Drag, tx: &mut Tx) {
+        let wiring = &self.wiring;
+        if wiring.swallowing() {
+            return;
+        }
+        if wiring.is_dragging() {
+            wiring.move_to(d.window_point(), tx);
+            return;
+        }
+        if !self.past_slop(d) {
+            return;
+        }
+        let Some(payload) = self.source.payload(app) else {
+            return;
+        };
+        super::on_preview_drag_start(app, tx);
+        let source = self.source.clone();
+        let launch = Launch::new(payload, move |app, outcome, tx| {
+            super::on_drag_ended(app, tx);
+            source.end(app, outcome, tx);
+        });
+        let drag = wiring.in_window_drag(app, &self.key, launch);
+        wiring.begin_in_window(drag, d, tx);
+    }
+
+    fn past_slop(&self, d: &Drag) -> bool {
+        let [wx, wy] = d.window_point();
+        self.pressed
+            .get()
+            .is_some_and(|[sx, sy]| (wx - sx).abs().max((wy - sy).abs()) > SOURCE_SLOP)
+    }
+}
+
+/// The keyed segments of `path` from the tab `tab_seg` down to the element `wanted`.
+fn path_tail(path: &str, tab_seg: &str, wanted: &str) -> Option<Vec<String>> {
+    let segs: Vec<&str> = path.split('/').collect();
+    let start = segs.iter().position(|s| *s == tab_seg)?;
+    let end = segs[start..].iter().position(|s| *s == wanted)?;
+    Some(
+        segs[start..=start + end]
+            .iter()
+            .map(|s| (*s).to_owned())
+            .collect(),
+    )
+}
+
+fn is_preview_source(source_key: &str) -> bool {
+    source_key == "preview-handle" || source_key.ends_with("-picture")
+}
+
+fn is_single_pane_source(source_key: &str) -> bool {
+    source_key == "icons" || source_key == "list"
+}
+
 fn source_still_mounted(app: &App, source_key: &str, tail: &[String]) -> bool {
-    if source_key == "preview-handle" || source_key.ends_with("-picture") {
+    if is_preview_source(source_key) {
         return crate::preview::current_entry(app).is_some();
     }
+    view_source_mounted(app, source_key, tail)
+}
+
+/// Whether the shown view still draws the view row a drag started from.
+fn view_source_mounted(app: &App, source_key: &str, tail: &[String]) -> bool {
     let Some(view) = shell::shown_view(app) else {
         return false;
     };
     if source_key.starts_with("columns-col-") {
         return (view.shows)("columns") && app.columns.has_column_key(source_key);
     }
-    if source_key == "icons" || source_key == "list" {
+    if is_single_pane_source(source_key) {
         let from_results = tail.iter().any(|seg| seg == "filter-results");
         return (view.shows)(source_key) && app.filter.pane.shows() == from_results;
     }

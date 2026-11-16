@@ -462,9 +462,11 @@ fn row_drag_outside_sidebar_reports_start_move_and_outside_release() {
     rt.frame(1.0 / 60.0);
 
     let home = ItemId::Place("home".into());
-    assert!(rt.state.intents.contains(&SidebarIntent::RowDragStart {
-        item: home.clone(),
-    }));
+    assert!(
+        rt.state
+            .intents
+            .contains(&SidebarIntent::RowDragStart { item: home.clone() })
+    );
     assert!(
         rt.state
             .intents

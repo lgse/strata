@@ -61,6 +61,12 @@ impl RenamedResult {
         self.0 = None;
     }
 
+    /// Whether a rename waits to move the result at `path`: its old path is gone on disk, and
+    /// the next batch, not a prune, takes it out ([`RenamedResult::settle`]).
+    pub(super) fn awaits(&self, path: &Path) -> bool {
+        self.0.as_ref().is_some_and(|pending| pending.from == path)
+    }
+
     /// Forgets the rename of `from` to `to` (`None` for a move to another folder), leaving a
     /// newer rename's record. Starting a rename abandons the one before it, whose cleanup then
     /// runs after the newer rename may already have registered.

@@ -314,12 +314,7 @@ struct RowDragCtx<'a, S> {
     intent: &'a std::rc::Rc<dyn Fn(usize, Landing) -> SidebarIntent>,
 }
 
-fn handle_row_drag<S: 'static>(
-    s: &mut S,
-    d: &mut Drag,
-    tx: &mut Tx,
-    ctx: &RowDragCtx<'_, S>,
-) {
+fn handle_row_drag<S: 'static>(s: &mut S, d: &mut Drag, tx: &mut Tx, ctx: &RowDragCtx<'_, S>) {
     match d.phase {
         Phase::Down => {
             let sidebar = (ctx.access)(s);
@@ -336,7 +331,13 @@ fn handle_row_drag<S: 'static>(
                 (!was && now, now, drag.target())
             };
             if started {
-                (ctx.emit)(s, SidebarIntent::RowDragStart { item: ctx.item.clone() }, tx);
+                (ctx.emit)(
+                    s,
+                    SidebarIntent::RowDragStart {
+                        item: ctx.item.clone(),
+                    },
+                    tx,
+                );
             }
             if dragging {
                 (ctx.emit)(
@@ -354,12 +355,7 @@ fn handle_row_drag<S: 'static>(
     }
 }
 
-fn finish_row_drag<S: 'static>(
-    s: &mut S,
-    d: &Drag,
-    tx: &mut Tx,
-    ctx: &RowDragCtx<'_, S>,
-) {
+fn finish_row_drag<S: 'static>(s: &mut S, d: &Drag, tx: &mut Tx, ctx: &RowDragCtx<'_, S>) {
     let (was_dragging, ended) = {
         let sidebar = (ctx.access)(s);
         let drag = ctx.block.of(sidebar);

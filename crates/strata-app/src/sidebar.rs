@@ -487,7 +487,9 @@ fn heard(app: &mut App, intent: SidebarIntent, tx: &mut Tx) {
         } => drops::pin_hover(app, serial, uris, local),
         SidebarIntent::PinDrop { gap, dropped } => drops::pin_drop(app, gap, dropped, tx),
         SidebarIntent::RowDragStart { item } => drops::row_drag_start(app, &item),
-        SidebarIntent::RowDragMove { landing, at, .. } => drops::row_drag_move(app, landing, at, tx),
+        SidebarIntent::RowDragMove { landing, at, .. } => {
+            drops::row_drag_move(app, landing, at, tx)
+        }
         SidebarIntent::RowDragEnd {
             dropped_outside, ..
         } => drops::row_drag_end(app, dropped_outside, tx),

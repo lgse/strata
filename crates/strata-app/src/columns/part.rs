@@ -47,13 +47,8 @@ impl Part for Columns {
                 .min_w(0.0)
                 .min_h(0.0)
                 .child(built);
-            let host = crate::dnd::drop_target_by_point(
-                app,
-                host,
-                "columns-host",
-                intents::strip_zone(),
-                intents::strip_action,
-            );
+            let zoned = crate::dnd::PointZone::new(intents::strip_zone(), intents::strip_action);
+            let host = crate::dnd::drop_target_by_point(app, host, "columns-host", zoned);
             Some(host.on_layout(|app: &mut App, rect| width::fit_area(app, rect)))
         },
         shows: |mode| mode == MODE,
