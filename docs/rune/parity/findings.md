@@ -167,11 +167,17 @@ closed issue is not a fixed finding: the state given here is the finding's.
   `strata-desktop`,
   `services::update_install::tests::unowned_release_binary_keeps_in_place_updates`
   (`crates/strata-desktop/src/services/update_install/tests.rs:258`, `left: Pacman, right:
-  InPlace`, its ownership probe read under load), failed once in `./scripts/quality.sh all
-  --jobs 4` (shard 0, lane 3, 79 of 80 passed) at `4bc5cd808`, and passed alone twice under
-  `./scripts/test-headless.py`. That pull request changes no `src/` and no shared crate: only
-  `crates/strata-app`, `crates/strata-components`, the QA files and Markdown, none of which
-  the GTK lane compiles.
+  InPlace`), failed in `./scripts/quality.sh all --jobs 4` and again in the one rerun of
+  `./scripts/quality.sh test --jobs 4` (shard 0, lane 3, 79 of 80 passed each time) at
+  `4bc5cd808`, and passed alone twice under `./scripts/test-headless.py`; it had passed in
+  the same image at `b7bf69ec2`, and `crates/strata-desktop` did not change between the two.
+  The likely cause is the test's own: `ownership_probe` writes a `pacman` script and
+  `update_method_for` runs it at once, so a fork on another test thread that still holds the
+  script's write descriptor makes `exec` fail with `ETXTBSY`, which `update_method_for` reads
+  as owned (its `Err(error)` arm), hence `Pacman`. That pull request changes no `src/` and no
+  shared crate: only `crates/strata-app`, `crates/strata-components`, the QA files and
+  Markdown, none of which the GTK lane compiles. It failed twice, so by the rule above the
+  agent stopped there and reported it; a fix, if taken up, lands on `main`.
 
 ### #2176: a GTK critical after a file appears during a rename on a multiple selection
 
