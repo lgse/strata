@@ -294,11 +294,18 @@ fn confirming_creates_and_selects_archive_while_collision_stops_without_overwrit
             std::fs::write(&existing, "keep original").expect("seed existing archive");
             open_fixture(&mut host, folder.path());
 
-            // Collision on an existing archive stops safely without overwriting.
+            // Collision on an existing archive opens the conflict prompt; Escape dismisses it
+            // without overwriting.
             open_compress_on_row(&mut host, &folder.path().join("readme.md"));
             select_all_and_type(&mut host, "taken.zip");
             press(&mut host, Key::Enter, Mods::default());
             assert!(!host.app().compress.open);
+            assert!(
+                host.run_until(PATIENCE, |h| crate::conflict_dialog::is_open(h.app())),
+                "collision prompt opens for taken.zip"
+            );
+            press(&mut host, Key::Escape, Mods::default());
+            assert!(!crate::conflict_dialog::is_open(host.app()));
 
             bind_compress_shortcut_and_select_pair(&mut host);
             let chord = Mods {

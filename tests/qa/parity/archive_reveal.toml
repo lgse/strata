@@ -6,22 +6,19 @@
 scenario = "distant-archive-scrolled-into-view"
 run = "columns"
 package = "A13"
-status = "pending"
-reason = "scope"
-blocker = "A13"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "distant-archive-scrolled-into-view"
 run = "icons"
 package = "A13"
-status = "pending"
-reason = "scope"
-blocker = "A13"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "distant-archive-scrolled-into-view"
 run = "list"
 package = "A13"
-status = "pending"
-reason = "scope"
-blocker = "A13"
+status = "required"
+host = "offscreen"
