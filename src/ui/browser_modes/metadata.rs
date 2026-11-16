@@ -174,4 +174,15 @@ fn update_icons_card(item: &gtk::ListItem, card: &gtk::Box, entry: &FileEntry) {
         accessibility::describe_entry(item, &entry.display_name, Some(entry));
     }
     set_icons_entry_details(card, entry);
+    if let Some(modified) = icons_cell::modified_label(card) {
+        if let crate::model::MetadataValue::Known(seconds) = entry.modified_unix_seconds {
+            let date = strata_core::util::modified_date_for_seconds(
+                seconds,
+                strata_core::util::DateDisplay::Preferred,
+            );
+            modified.set_label(&date);
+        } else {
+            modified.set_label("");
+        }
+    }
 }

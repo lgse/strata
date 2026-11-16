@@ -75,6 +75,18 @@ fn wait_for_count(footer: &ShortcutFooter, text: &str) {
     assert_eq!(footer.count.text(), text);
 }
 
+fn wait_for_count_prefix(footer: &ShortcutFooter, prefix: &str) {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    while !footer.count.text().starts_with(prefix) && std::time::Instant::now() < deadline {
+        settle();
+    }
+    assert!(
+        footer.count.text().starts_with(prefix),
+        "expected count starting with {prefix:?}, got {:?}",
+        footer.count.text()
+    );
+}
+
 fn navigation_heading(footer: &ShortcutFooter) -> gtk::Label {
     footer
         .reference
@@ -115,9 +127,17 @@ fn each_mode_names_its_reference_and_counts_the_selection(
             .find(|position| *position != folder)
             .expect("file position");
         view.browser().set_selection(depth, &[folder], Some(folder));
-        assert_eq!(footer.count.text(), "1 folder selected");
+        match mode {
+            BrowserMode::List => wait_for_count(footer, "folder"),
+            BrowserMode::Icons | BrowserMode::Columns => wait_for_count_prefix(footer, "folder — "),
+        }
         view.browser().set_selection(depth, &[file], Some(file));
-        wait_for_count(footer, "1 file selected (3 B)");
+        match mode {
+            BrowserMode::List => wait_for_count(footer, "one.txt (3 B)"),
+            BrowserMode::Icons | BrowserMode::Columns => {
+                wait_for_count_prefix(footer, "one.txt (3 B) — ")
+            }
+        }
         view.browser().set_selection(depth, &[], None);
         assert_eq!(footer.count.text(), "3 items");
     }

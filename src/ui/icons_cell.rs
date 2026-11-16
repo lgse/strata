@@ -50,12 +50,17 @@ pub(super) fn new_card(slot: i32) -> gtk::Box {
     details.set_single_line_mode(true);
     details.set_ellipsize(gtk::pango::EllipsizeMode::End);
 
+    let modified = gtk::Label::new(None);
+    modified.add_css_class("icons-card-modified");
+    modified.set_visible(false);
+
     // GtkOverlay requires its own layout-child type; this caption has a custom layout.
     let labels = gtk::Box::new(gtk::Orientation::Vertical, 0);
     labels.add_css_class("icons-card-caption");
     labels.set_hexpand(true);
     labels.append(&label);
     labels.append(&details);
+    labels.append(&modified);
 
     card.append(&icon_frame);
     card.append(&labels);
@@ -82,8 +87,20 @@ pub(super) fn details_label(card: &impl IsA<gtk::Widget>) -> Option<gtk::Label> 
     let labels = card.last_child()?.downcast::<gtk::Box>().ok()?;
     let mut sibling = labels.first_child();
     while let Some(widget) = sibling {
-        if let Ok(label) = widget.clone().downcast::<gtk::Label>() {
-            return Some(label);
+        if widget.has_css_class("icons-card-details") {
+            return widget.downcast::<gtk::Label>().ok();
+        }
+        sibling = widget.next_sibling();
+    }
+    None
+}
+
+pub(super) fn modified_label(card: &impl IsA<gtk::Widget>) -> Option<gtk::Label> {
+    let labels = card.last_child()?.downcast::<gtk::Box>().ok()?;
+    let mut sibling = labels.first_child();
+    while let Some(widget) = sibling {
+        if widget.has_css_class("icons-card-modified") {
+            return widget.downcast::<gtk::Label>().ok();
         }
         sibling = widget.next_sibling();
     }

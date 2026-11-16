@@ -277,7 +277,12 @@ impl ShortcutFooter {
         browser: &Rc<crate::app::Browser>,
         status: Option<&FilterStatus>,
     ) {
-        update_item_count(&self.count, browser, status);
+        update_item_count(
+            &self.count,
+            browser,
+            status,
+            self.reference_scope.get().mode,
+        );
         // A range over results is theirs; the hidden directory's never shows.
         let visual = match status {
             Some(status) if status.visual.is_some() => status.visual,

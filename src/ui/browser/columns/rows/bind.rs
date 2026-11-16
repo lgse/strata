@@ -129,6 +129,17 @@ impl RowBinding<'_> {
         let size_text = column_size_text(self.entry.as_ref());
         size.set_label(&size_text);
         size.set_visible(show_sizes && !editing && !size_text.is_empty());
+        if let Some(entry) = self.entry.as_ref()
+            && let crate::model::MetadataValue::Known(seconds) = entry.modified_unix_seconds
+        {
+            let date = strata_core::util::modified_date_for_seconds(
+                seconds,
+                strata_core::util::DateDisplay::Preferred,
+            );
+            self.widgets.modified.set_label(&date);
+        } else {
+            self.widgets.modified.set_label("");
+        }
         crate::ui::accessibility::describe_entry(
             self.item,
             &self.widgets.label.label(),
