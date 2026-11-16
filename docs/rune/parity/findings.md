@@ -773,6 +773,11 @@ sequence only together with the alphabet's version, so the version is part of th
   screenshot draws no cursor and its next Down lands on `diagram.txt`; Rune focuses the column
   with no entry. Shrunk to 3 steps, confirmed 3 of 3, the same in 24 of 24 GTK replays, and
   parked in `tests/qa/fuzz/corpus/location/` as `v1-000000000000000e`.
+- **Also by the preview** ([A15](packages/A15.md)'s `preview` alphabet, 2026-11-16): with a
+  folder's column opened by a click and the preview's placeholder beside it, Escape closes the
+  preview and gives the column the keyboard (`return_from_preview`, `focus_active`); GTK then
+  reports its first entry (`broken.cbz`) focused with nothing selected, and Rune focuses the
+  column with no entry. Parked in `tests/qa/fuzz/corpus/preview/` as `v4-000000000000000b`.
 - **State:** open, set aside: no Rune change. A fix that gave Rune's column a cursor
   ([#2368](https://github.com/lgse/strata/pull/2368)) was closed unmerged: it made Rune's next
   Down move on where GTK's lands on the first entry, as a list with no cursor does ([#2367](https://github.com/lgse/strata/issues/2367)).
