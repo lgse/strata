@@ -6,6 +6,5 @@
 scenario = "peek-click-reveals-column"
 run = "columns"
 package = "A15"
-status = "pending"
-reason = "scope"
-blocker = "A15"
+status = "required"
+host = "offscreen"

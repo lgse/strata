@@ -6,9 +6,10 @@
 use std::ops::Range;
 use std::rc::Rc;
 
-use rune::{Align, Color, El, Span, TextHighlight, TextStyle, Tx, col, rich, row, text};
+use rune::{Align, Color, Drag, El, Span, TextHighlight, TextStyle, Tx, col, rich, row, text};
 use strata_kit::look::Look;
 
+use super::caret::{self, GutterHit};
 use super::state::CodeState;
 
 /// How the view draws, from the look's Kit and strata-kit tokens.
@@ -56,6 +57,7 @@ impl Paint {
 /// What every row of one build shares.
 pub(crate) struct Ctx<S> {
     pub get: fn(&S) -> &CodeState,
+    pub get_mut: fn(&mut S) -> &mut CodeState,
     pub paint: Paint,
     /// The gutter's width, or none with line numbers off.
     pub gutter: Option<f32>,
@@ -131,28 +133,14 @@ pub(crate) fn build_row<S: 'static>(ctx: &Rc<Ctx<S>>, s: &S, i: usize) -> El {
     } else {
         t.single_line()
     };
-    let code = col().grow(1.0).min_w(0.0).px(p.pad).child(t);
+    let code = if ctx.gutter.is_some() {
+        col().grow(1.0).min_w(0.0).pr(p.pad).child(t)
+    } else {
+        col().grow(1.0).min_w(0.0).px(p.pad).child(t)
+    };
     let mut out = row().w_full().items_start();
     if let Some(w) = ctx.gutter {
-        let label = if r.cont {
-            "↳".to_owned()
-        } else {
-            (r.line + 1).to_string()
-        };
-        let mut n = text(label)
-            .font(p.mono)
-            .color(p.number)
-            .align(Align::End)
-            .key("n")
-            .w(w)
-            .pr(p.pad)
-            .fill(p.surface)
-            .a11y_hidden();
-        if !ctx.wrap {
-            // The numbers stay while the code scrolls sideways under them.
-            n = n.sticky_left(0.0);
-        }
-        out = out.child(n);
+        out = out.child(build_gutter_cell(ctx, i, (r.line, r.cont), w));
     }
     let out = out.child(code);
     let pos = (ctx.get)(s).position.clone();
@@ -160,4 +148,41 @@ pub(crate) fn build_row<S: 'static>(ctx: &Rc<Ctx<S>>, s: &S, i: usize) -> El {
         tx.live_only();
         pos.row(i, rect, tx);
     })
+}
+
+fn build_gutter_cell<S: 'static>(
+    ctx: &Rc<Ctx<S>>,
+    row_idx: usize,
+    (line, cont): (usize, bool),
+    w: f32,
+) -> El {
+    let p = &ctx.paint;
+    let label = if cont {
+        "↳".to_owned()
+    } else {
+        (line + 1).to_string()
+    };
+    let get_mut = ctx.get_mut;
+    let hit = GutterHit {
+        row: row_idx,
+        text_x: w + p.pad,
+        mono: p.mono,
+    };
+    let mut n = text(label)
+        .font(p.mono)
+        .color(p.number)
+        .align(Align::End)
+        .key("n")
+        .w(w + p.pad)
+        .pr(2.0 * p.pad)
+        .fill(p.surface)
+        .a11y_hidden()
+        .on_drag(move |s: &mut S, d: &mut Drag, tx: &mut Tx| {
+            caret::gutter_drag(get_mut(s), hit, d, tx);
+        });
+    if !ctx.wrap {
+        // The numbers stay while the code scrolls sideways under them.
+        n = n.sticky_left(0.0);
+    }
+    n
 }

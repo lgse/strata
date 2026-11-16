@@ -42,29 +42,7 @@ pub(super) fn shell<S: 'static>(sh: &Rc<Shared<S>>, s: &S, depth: usize) -> El {
     let key = keys::column(&st.key, c.serial);
     let scale = width::scale(look);
     let w = st.drawn_width(depth, c, scale);
-    let animated = look.animations;
-    let pair = SpringPair::new(MOTION, MOTION);
-    // The shell: a new column slides and fades in; a closed one narrows (its slot collapses)
-    // and fades out; it takes no input while it leaves (Rune's presence). Without animations
-    // both land at once.
-    let shell_motion = if !animated {
-        Transition::none()
-    } else {
-        let entrance = match c.entrance {
-            Entrance::Slide => Transition::offset(SLIDE, 0.0).combined(Transition::opacity()),
-            Entrance::Fade | Entrance::Still => Transition::none(),
-        };
-        Transition::asymmetric(entrance, Transition::opacity())
-            .hold_layout()
-            .springs(pair)
-    };
-    // The body: a sibling that takes a column's place fades in where the old one stood, and
-    // the old one goes at once (`ColumnsState::swap_from`).
-    let body_motion = if animated && c.entrance == Entrance::Fade {
-        Transition::asymmetric(Transition::opacity(), Transition::none()).springs(pair)
-    } else {
-        Transition::none()
-    };
+    let (shell_motion, body_motion) = shell_motions(look.animations, c.entrance);
     let list = collection(sh, s, c.serial).build(s);
     let body = col()
         .key(format!("{key}-body"))
@@ -91,7 +69,7 @@ pub(super) fn shell<S: 'static>(sh: &Rc<Shared<S>>, s: &S, depth: usize) -> El {
     let mut shell = col()
         .key(keys::slot(&st.key, c.slot))
         .role("group")
-        .label(title)
+        .label(title.clone())
         .description(sh.labels.pane.clone())
         .w(w)
         .h_full()
@@ -101,6 +79,9 @@ pub(super) fn shell<S: 'static>(sh: &Rc<Shared<S>>, s: &S, depth: usize) -> El {
         .child(body)
         .child(line)
         .child(edge(sh, st, depth, c.serial, &key, scale, look));
+    if let Some(slice) = st.clipped_slice(depth, look) {
+        shell = shell.child(reveal_target(sh, &title, &key, slice));
+    }
     let resizing = st.resize.as_ref().is_some_and(|r| r.depth == depth);
     if st.edge_hover == Some(depth) || resizing {
         let caption = look.resize_caption();
@@ -143,6 +124,26 @@ pub(super) fn shell<S: 'static>(sh: &Rc<Shared<S>>, s: &S, depth: usize) -> El {
         );
     }
     shell
+}
+
+fn shell_motions(animated: bool, entrance: Entrance) -> (Transition, Transition) {
+    if !animated {
+        return (Transition::none(), Transition::none());
+    }
+    let pair = SpringPair::new(MOTION, MOTION);
+    let shell_in = match entrance {
+        Entrance::Slide => Transition::offset(SLIDE, 0.0).combined(Transition::opacity()),
+        Entrance::Fade | Entrance::Still => Transition::none(),
+    };
+    let shell_motion = Transition::asymmetric(shell_in, Transition::opacity())
+        .hold_layout()
+        .springs(pair);
+    let body_motion = if entrance == Entrance::Fade {
+        Transition::asymmetric(Transition::opacity(), Transition::none()).springs(pair)
+    } else {
+        Transition::none()
+    };
+    (shell_motion, body_motion)
 }
 
 /// The resize edge over the line on a column's right: it reaches [`EDGE_REACH`] either side,
@@ -477,4 +478,27 @@ fn with_band<S: 'static>(sh: &Shared<S>, s: &S, bar: El, cx: HeaderCx) -> El {
         Some(band) => col().w_full().child(bar).child(band),
         None => bar,
     }
+}
+
+/// Accessible `"Reveal <Folder> column"` target pinned over the visible slice of a partially
+/// clipped column (`src/ui/browser/columns/append/shell.rs`). Bare `el()` with no fill or handler
+/// has `vis_flags.hit() == false`, so pointer events pass through to the column underneath while
+/// assistive technology sees an enabled `button` with the visible slice's bounds.
+fn reveal_target<S>(
+    sh: &Shared<S>,
+    title: &str,
+    key: &str,
+    (left_clipped, vis_w): (bool, f32),
+) -> El {
+    let label = sh.labels.reveal.replace("{name}", title);
+    el().key(keys::reveal(key))
+        .role("button")
+        .label(label)
+        .w(vis_w)
+        .pin(
+            (!left_clipped).then_some(0.0),
+            Some(0.0),
+            left_clipped.then_some(0.0),
+            Some(0.0),
+        )
 }

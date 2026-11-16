@@ -78,7 +78,7 @@ mod tests;
 
 use std::rc::Rc;
 
-use rune::{Cx, El, Icon, KeyEvent, Transition, Tx, col, el, row, text};
+use rune::{Cx, Drag, El, Icon, KeyEvent, Phase, Transition, Tx, col, el, row, text};
 use strata_kit::look::Look;
 
 use crate::contract::{Dnd, DragSource};
@@ -216,12 +216,14 @@ pub(crate) struct Caps {
 
 type HostedAccess<S> = Rc<dyn Fn(&mut S) -> &mut dyn HostedPreview>;
 type IntentFn<S> = Rc<dyn Fn(&mut S, DrawerIntent, &mut Tx)>;
+type BackgroundDragFn<S> = Rc<dyn Fn(&mut S, &mut Drag, bool, &mut Tx)>;
 
 /// What the parts of the drawer share while they build.
 pub(crate) struct Shared<S> {
     pub access: fn(&mut S) -> &mut DrawerState,
     pub hosted: Option<HostedAccess<S>>,
     pub intent: Option<IntentFn<S>>,
+    pub background_drag: Option<BackgroundDragFn<S>>,
     pub labels: Rc<DrawerLabels>,
     pub rules: DrawerRules,
     pub animations: bool,
@@ -233,6 +235,7 @@ impl<S> Clone for Shared<S> {
             access: self.access,
             hosted: self.hosted.clone(),
             intent: self.intent.clone(),
+            background_drag: self.background_drag.clone(),
             labels: self.labels.clone(),
             rules: self.rules,
             animations: self.animations,
@@ -270,6 +273,7 @@ pub struct PreviewDrawer<'a, S> {
     find_keys: fn(&KeyEvent) -> bool,
     drag: Option<(Dnd<S>, DragSource<S>)>,
     intent: Option<IntentFn<S>>,
+    background_drag: Option<BackgroundDragFn<S>>,
 }
 
 impl<'a, S: 'static> PreviewDrawer<'a, S> {
@@ -290,6 +294,7 @@ impl<'a, S: 'static> PreviewDrawer<'a, S> {
             find_keys: default_find_keys,
             drag: None,
             intent: None,
+            background_drag: None,
         }
     }
 
@@ -377,6 +382,17 @@ impl<'a, S: 'static> PreviewDrawer<'a, S> {
         self
     }
 
+    /// Forwards primary drags starting on the drawer's blank chrome (`clears_on_press = false`
+    /// inside an open preview, `true` in the empty reserved slot) so a drag into the listing
+    /// starts a marquee band while a plain click inside an open preview keeps selection and focus.
+    pub fn on_background_drag(
+        mut self,
+        f: impl Fn(&mut S, &mut Drag, bool, &mut Tx) + 'static,
+    ) -> Self {
+        self.background_drag = Some(Rc::new(f));
+        self
+    }
+
     /// The split: `files`, then the divider and the drawer's slot.
     pub fn build(self, files: El, look: &Look, cx: &mut Cx<S>) -> El {
         let PreviewDrawer {
@@ -394,6 +410,7 @@ impl<'a, S: 'static> PreviewDrawer<'a, S> {
             find_keys,
             drag,
             intent,
+            background_drag,
         } = self;
         let available = cx.layout_with(SPLIT_KEY, |r| r[2]).unwrap_or(0.0);
         let solved = solve(&rules, &arrangement, available, st.manual_width());
@@ -401,19 +418,12 @@ impl<'a, S: 'static> PreviewDrawer<'a, S> {
         let has_body = !matches!(body, Body::Empty);
         // The pane shows while the drawer is open, has something to show, and fits.
         let shown = st.is_open() && has_body && solved.fits;
-        // The slot holds the divider's line and the pane beside it.
-        let slot_width = if shown {
-            solved.width + rules.line
-        } else if columns && (st.is_reserved() || st.is_open()) {
-            // Columns keeps its slot, down to zero, so the columns keep their offset.
-            solved.empty_slot
-        } else {
-            0.0
-        };
+        let slot_width = compute_slot_width(solved, rules.line, shown, (columns, st));
         let shared = Shared {
             access,
             hosted,
             intent,
+            background_drag,
             labels,
             rules,
             animations: look.animations,
@@ -487,6 +497,22 @@ impl<'a, S: 'static> PreviewDrawer<'a, S> {
     }
 }
 
+fn compute_slot_width(
+    solved: Solved,
+    line: f32,
+    shown: bool,
+    (columns, st): (bool, &DrawerState),
+) -> f32 {
+    let keeps_slot = st.is_reserved() || st.is_open();
+    if shown {
+        solved.width + line
+    } else if columns && keeps_slot {
+        solved.empty_slot
+    } else {
+        0.0
+    }
+}
+
 /// The content area's key: where [`DrawerState::focus_content`] sends focus.
 pub const BODY_KEY: &str = "preview-body";
 
@@ -530,7 +556,7 @@ fn pane<S: 'static>(
     let keys = shared.clone();
     let find_keys = parts.find_keys;
     let searchable = parts.caps.searchable;
-    col()
+    let mut drawer_pane = col()
         .key("preview-drawer")
         .role("region")
         .label(shared.labels.region.clone())
@@ -538,11 +564,18 @@ fn pane<S: 'static>(
         .h_full()
         .pin(Some(shared.rules.line), Some(0.0), None, Some(0.0))
         .fill(k.c.bg_base)
+        .preserve_focus_on_press(true)
         .focus_within_ring(2.0, -2.0, k.c.border_focus)
         .transition(exit)
         .on_key(move |s: &mut S, ev: &KeyEvent, tx: &mut Tx| {
             drawer_key(&keys, s, ev, tx, find_keys, searchable)
-        })
+        });
+    if let Some(bg) = shared.background_drag.clone() {
+        drawer_pane = drawer_pane.on_drag(move |s: &mut S, d: &mut Drag, tx: &mut Tx| {
+            bg(s, d, false, tx);
+        });
+    }
+    drawer_pane
         .child(header::header(shared, st, &parts, look))
         .children(
             (st.find.open && parts.caps.searchable)
@@ -673,10 +706,20 @@ fn empty_reserved_slot<S: 'static>(
     // same with or without a preview, and a plain click there clears the columns' selection like
     // blank space beside the strip.
     let empty = shared.clone();
-    slot.on_background_press_tx(move |s: &mut S, tx: &mut Tx| {
-        empty_slot_press(&empty, s, tx);
-    })
-    .child(
+    let slot = if let Some(bg) = shared.background_drag.clone() {
+        slot.preserve_focus_on_press(true)
+            .on_drag(move |s: &mut S, d: &mut Drag, tx: &mut Tx| {
+                bg(s, d, true, tx);
+                if is_plain_slot_click(d) {
+                    empty_slot_press(&empty, s, tx);
+                }
+            })
+    } else {
+        slot.on_background_press_tx(move |s: &mut S, tx: &mut Tx| {
+            empty_slot_press(&empty, s, tx);
+        })
+    };
+    slot.child(
         el().key("preview-empty-line")
             .w(shared.rules.line)
             .h_full()
@@ -685,6 +728,13 @@ fn empty_reserved_slot<S: 'static>(
             .a11y_hidden()
             .inert(),
     )
+}
+
+fn is_plain_slot_click(d: &Drag) -> bool {
+    if d.phase != Phase::Up || d.cancelled() {
+        return false;
+    }
+    d.dx.abs() <= 4.0 && d.dy.abs() <= 4.0
 }
 
 fn empty_slot_press<S: 'static>(shared: &Shared<S>, s: &mut S, tx: &mut Tx) {

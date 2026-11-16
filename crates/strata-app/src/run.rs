@@ -3,10 +3,10 @@
 //! Running a program: "Run this program?", the confirmation GTK asks before it starts an
 //! executable file (`confirm_run_program` in `src/ui/browser/desktop.rs`), and the start.
 //!
-//! - **What asks.** Opening a regular executable file: a double click, Enter or a filter
-//!   result opened, which the browser raises as `OpenRequested`. Its target is read through
-//!   links, as GIO's `query_info` reads it, and must be a local path. And the entry menu's
-//!   Run row, shown for one regular executable entry (`entry_is_regular_executable`).
+//! - **What asks.** Opening a regular local executable file when no default application is
+//!   registered for its type ([`crate::open_with`] hands `BrowserEvent::OpenRequested` to
+//!   [`confirm`] once `resolve_default_application` finds none), and the entry menu's Run row,
+//!   shown for one regular executable entry (`entry_is_regular_executable`).
 //! - **The dialog.** GTK's message dialog on C15's [`StrataDialog`]: the Terminal icon in a
 //!   danger box, "Run this program?", the file's name under it, and why it asks. Cancel and
 //!   Run, with Run focused when it opens. Escape, a click outside, the close button and
@@ -19,13 +19,6 @@
 //!   Each starts on a thread of its own, which then waits for it, so it never lingers as a
 //!   zombie (`spawn_reaped`). If it cannot start, "Unable to run program" says why, once the
 //!   thread has answered.
-//!
-//! Left out, with what brings it back:
-//!
-//! - **Opening with an application first.** GTK asks only once its lookup finds no default
-//!   application for the file's type (`resolve_default_application`); here every executable
-//!   asks. The lookup, and opening every other file, are A14's
-//!   (`docs/rune/parity/packages/A14.md`).
 
 use std::{
     ffi::OsStr,
@@ -37,9 +30,8 @@ use rune::Tx;
 use strata_components::dialog::{Focus, MESSAGE_WIDTH, StrataDialog, Tone};
 use strata_core::{
     i18n::tr,
-    model::{EntryKind, FileEntry, Location, MetadataValue},
+    model::{EntryKind, FileEntry, MetadataValue},
 };
-use strata_fs::app::BrowserEvent;
 use strata_kit::icons::IconName;
 
 use crate::{
@@ -47,7 +39,7 @@ use crate::{
     commands::{Action, Call, Holds, On, Outcome},
     error_dialog::{self, Error},
     shell,
-    slots::{At, Frame, Later, Listener, Part, Place, Setup},
+    slots::{At, Frame, Later, Part, Place, Setup},
 };
 
 /// The program a confirmation asks about.
@@ -78,37 +70,11 @@ impl Part for Run {
         }
     }
 
-    fn listen(_: &Setup<'_>) -> Option<Listener<App>> {
-        Some(Box::new(|event, _, heard| {
-            if let BrowserEvent::OpenRequested { location } = event
-                && let Some(path) = executable(location)
-            {
-                let name = location.display_name();
-                heard.then(move |app: &mut App, _: &mut Tx| {
-                    confirm(app, path, name);
-                    true
-                });
-            }
-        }))
-    }
-
     fn keyboard(app: &App) -> Option<Holds> {
         app.run.open.then_some(Holds::Modal { field: false })
     }
 
     const COMMANDS: &'static [Action<App>] = &[Action::new("run", run_row)];
-}
-
-/// The local path of a regular executable file at `location`, read through links.
-fn executable(location: &Location) -> Option<PathBuf> {
-    let path = location.native_path()?;
-    let metadata = std::fs::metadata(path).ok()?;
-    is_executable_file(&metadata).then(|| path.to_path_buf())
-}
-
-fn is_executable_file(metadata: &std::fs::Metadata) -> bool {
-    use std::os::unix::fs::PermissionsExt;
-    metadata.is_file() && metadata.permissions().mode() & 0o111 != 0
 }
 
 /// `entry_is_regular_executable`: what the menu's Run row is shown for.
@@ -140,7 +106,7 @@ fn row_entry(app: &App, (depth, id): At) -> Option<FileEntry> {
 }
 
 /// Opens the confirmation for the program at `path`, in place of one already open.
-fn confirm(app: &mut App, path: PathBuf, name: String) {
+pub(crate) fn confirm(app: &mut App, path: PathBuf, name: String) {
     let run = &mut app.run;
     run.opened += 1;
     run.asked = Some(Asked {

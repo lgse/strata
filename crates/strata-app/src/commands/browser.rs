@@ -56,13 +56,21 @@ fn refresh(app: &mut App, call: &Call<'_>, _: &mut Tx) -> Outcome {
     Outcome::Ran
 }
 
-/// `open_context_entry` in `src/ui/browser/context_menu/item_menu.rs`: the row's entry
-/// opens as a click on it does. Return on the cursor's entry is the view's own key.
+/// `open_context_entry` / `open_with_default_app` in `src/ui/browser/context_menu/item_menu.rs`:
+/// a single row's entry opens as a click on it does; a multi-selection's shared-default Open row
+/// launches that handler across all selected entries. Return on the cursor's entry is the view's
+/// own key.
 fn open(app: &mut App, call: &Call<'_>, _: &mut Tx) -> Outcome {
-    let (On::Row(row), Some(view)) = (&call.on, shell::shown_view(app)) else {
+    let On::Row(row) = call.on else {
         return Outcome::Declined;
     };
-    (view.rows.activate)(app, *row);
+    if crate::open_with::open_selection_default(app, row.0, row.1) {
+        return Outcome::Ran;
+    }
+    let Some(view) = shell::shown_view(app) else {
+        return Outcome::Declined;
+    };
+    (view.rows.activate)(app, row);
     Outcome::Ran
 }
 

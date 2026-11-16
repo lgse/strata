@@ -1,9 +1,7 @@
 diff --git a/crates/strata-app/src/run.rs b/crates/strata-app/src/run.rs
-index 5287b165f..1a375db43 100644
 --- a/crates/strata-app/src/run.rs
 +++ b/crates/strata-app/src/run.rs
-@@ -182,7 +182,8 @@ fn start(path: PathBuf, later: Later<App>) {
-     crate::terminal::spawn_reaped(
+@@ -149,5 +149,6 @@ fn start(path: PathBuf, later: Later<App>) {
          later,
          move || {
 -            program_command(&path, crate::terminal::Emulator::resolve)
@@ -11,4 +9,3 @@ index 5287b165f..1a375db43 100644
 +            program_command(Path::new("/bin/true"), crate::terminal::Emulator::resolve)
                  .and_then(|mut command| command.spawn())
                  .map_err(|error| {
-                     tracing::warn!(%error, "unable to run program");
