@@ -49,7 +49,7 @@ fn build_single(app: &App, single: &Single, open: bool, frame: &mut Frame<'_, Ap
         .close_label(tr("Close dialog"))
         .child(general_section(look, &key, single, pin_state))
         .child(permissions_section(look, &key, single))
-        .action("open", tr("Open"), actions::open_clicked);
+        .action_tx("open", tr("Open"), actions::open_clicked);
     if !is_trash(&single.location) {
         dialog = dialog
             .action_tx("rename", tr("Rename"), actions::rename_clicked)

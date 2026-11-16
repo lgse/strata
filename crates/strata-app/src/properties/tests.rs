@@ -346,3 +346,55 @@ fn copy_path_and_rename_actions_follow_file_and_folder_rules() {
         },
     );
 }
+
+#[test]
+fn open_action_on_executable_settles_run_confirmation_immediately() {
+    hosted(
+        MODULE,
+        "open_action_on_executable_settles_run_confirmation_immediately",
+        |mut host| {
+            let folder = fixture();
+            let program = folder.path().join("tool.bin");
+            fs::write(&program, b"\x7fELF").expect("write program");
+            fs::set_permissions(&program, fs::Permissions::from_mode(0o755)).expect("chmod 755");
+            open_fixture(&mut host, folder.path());
+
+            let selected = host
+                .app()
+                .browser()
+                .select_entries_by_name_at(0, &["tool.bin".to_owned()]);
+            assert!(selected);
+            while host.turn() {}
+
+            let alt = Mods {
+                alt: true,
+                ..Mods::default()
+            };
+            press(&mut host, Key::Enter, alt);
+            let opened = host.app().properties.opened;
+            let (x, y) = center_of(&mut host, &format!("properties-{opened}-open"));
+            host.runtime().pointer_move(x, y);
+            host.runtime().pointer_down(x, y);
+            host.runtime().frame(1.0 / 60.0);
+            host.runtime().pointer_up(x, y);
+            // Render one frame without pumping `host.turn()` / `poll`, proving `open_clicked`
+            // settled `BrowserEvent::OpenRequested` in the button's own commit.
+            host.runtime().frame(1.0 / 60.0);
+            assert_eq!(
+                (
+                    host.app().properties.open,
+                    has_a11y_node(&host.tree(), "dialog", "Run this program?", None),
+                ),
+                (false, true),
+            );
+
+            press(&mut host, Key::Escape, Mods::default());
+            assert!(!has_a11y_node(
+                &host.tree(),
+                "dialog",
+                "Run this program?",
+                None,
+            ));
+        },
+    );
+}

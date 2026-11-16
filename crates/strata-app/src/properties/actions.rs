@@ -72,7 +72,7 @@ fn compact_native_path(path: &Path) -> String {
         .unwrap_or_else(|| path.to_string_lossy().into_owned())
 }
 
-pub(super) fn open_clicked(app: &mut App) {
+pub(super) fn open_clicked(app: &mut App, tx: &mut Tx) {
     let Some(Dialog::Single(single)) = app.properties.dialog.as_ref() else {
         return;
     };
@@ -96,6 +96,7 @@ pub(super) fn open_clicked(app: &mut App) {
         return;
     }
     app.browser.open_location(location);
+    shell::settle(app, tx);
 }
 
 pub(super) fn rename_clicked(app: &mut App, tx: &mut Tx) {
