@@ -6,7 +6,7 @@
 
 mod perf;
 
-use rune::{Cx, El, Env, Key, KeyEvent, Mods, PhysicalInput, Runtime, Tx, clipboard};
+use rune::{Cursor, Cx, El, Env, Key, KeyEvent, Mods, PhysicalInput, Runtime, Tx, clipboard};
 use strata_kit::look::Look;
 
 use super::copy::{all_text, range_text};
@@ -812,4 +812,23 @@ fn a_sheet_that_failed_says_why_is_not_busy_and_asks_again_on_retry() {
     rt.update(|h, _| h.grid.set_sheet(2, people(3)));
     settle(&mut rt);
     assert!(rect(&rt, "g-h0")[2] > 0.0);
+}
+
+#[test]
+fn cells_show_the_spreadsheet_cursor_while_headers_and_dividers_keep_theirs() {
+    let mut rt = single(people(6));
+    let (cx, cy) = cell(&rt, 1, 0);
+    rt.pointer_move(cx, cy);
+    step(&mut rt);
+    assert_eq!(rt.cursor(), Cursor::Cell);
+
+    let (hx, hy) = mid(rect(&rt, "g-h0"));
+    rt.pointer_move(hx, hy);
+    step(&mut rt);
+    assert_eq!(rt.cursor(), Cursor::Pointer);
+
+    let (dx, dy) = mid(rect(&rt, "g-h0-resize"));
+    rt.pointer_move(dx, dy);
+    step(&mut rt);
+    assert_eq!(rt.cursor(), Cursor::ResizeColumn);
 }

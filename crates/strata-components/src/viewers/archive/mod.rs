@@ -53,8 +53,10 @@
 //! [`ArchiveState::scope`], one focus stop, so `tx.focus(archive.scope(), ring)` moves the
 //! keyboard into it, as C9's
 //! [`DrawerState::focus_content`](crate::preview_drawer::DrawerState::focus_content) does from
-//! the listing. The prompt's field can be focused: it is a text field
-//! ([`PromptState::focus`]).
+//! the listing. Activating the Up button or a folder crumb moves focus back to
+//! [`ArchiveState::scope`], where the folder left behind is highlighted, rather than leaving
+//! focus on an earlier crumb when the pressed control unmounts. The prompt's field can be
+//! focused: it is a text field ([`PromptState::focus`]).
 
 pub mod controllers;
 mod prompt;
@@ -451,49 +453,7 @@ impl<S: 'static> ArchiveView<S> {
         let look = (self.look)(s);
         let k = &look.kit;
         let scope = a.scope.to_string();
-        let get_mut = self.get_mut;
-        let depth = a.listing.depth();
-
-        let mut crumbs = row()
-            .key(format!("{scope}-crumbs"))
-            .gap(look.space.xs)
-            .center_y();
-        if depth > 0 {
-            crumbs = crumbs.child(
-                IconButton::new(look.icon(IconName::Back))
-                    .variant(IconButtonVariant::Ghost)
-                    .label(a.labels.up.clone())
-                    .help(a.labels.up.clone())
-                    .on_press_tx(move |s: &mut S, tx: &mut Tx| {
-                        get_mut(s).up(tx);
-                    })
-                    .build(k)
-                    // The tooltip repeats the name: no description, so it isn't read twice.
-                    .description("")
-                    .key(format!("{scope}-up")),
-            );
-        }
-        let names = std::iter::once(a.labels.root.as_str()).chain(a.listing.crumbs());
-        for (level, name) in names.enumerate() {
-            if level == depth {
-                crumbs = crumbs.child(
-                    text(name.to_owned())
-                        .key(format!("{scope}-crumb-current"))
-                        .font(k.ty.ui_medium)
-                        .color(k.c.text_base)
-                        .px(look.space.sm),
-                );
-            } else {
-                crumbs = crumbs.child(
-                    Button::new(name.to_owned())
-                        .variant(ButtonVariant::Ghost)
-                        .control_size(ControlSize::Regular)
-                        .on_press_tx(move |s: &mut S, tx: &mut Tx| get_mut(s).go_to(level, tx))
-                        .build(k)
-                        .key(format!("{scope}-crumb-{level}")),
-                );
-            }
-        }
+        let crumbs = self.crumbs(a, look);
         let (files, folders) = a.listing.counts();
         let count = text((a.labels.counts)(files, folders))
             .key(format!("{scope}-count"))
@@ -518,5 +478,61 @@ impl<S: 'static> ArchiveView<S> {
                     .min_h(0.0)
                     .child((self.get)(s).bar.area(list)),
             )
+    }
+
+    fn crumbs(&self, a: &ArchiveState, look: &Look) -> El {
+        let k = &look.kit;
+        let scope = a.scope.to_string();
+        let get_mut = self.get_mut;
+        let depth = a.listing.depth();
+        let mut crumbs = row()
+            .key(format!("{scope}-crumbs"))
+            .gap(look.space.xs)
+            .center_y();
+        if depth > 0 {
+            crumbs = crumbs.child(
+                IconButton::new(look.icon(IconName::Back))
+                    .variant(IconButtonVariant::Ghost)
+                    .label(a.labels.up.clone())
+                    .help(a.labels.up.clone())
+                    .on_press_tx(move |s: &mut S, tx: &mut Tx| {
+                        let ring = tx.focus_visible() || tx.by_keys();
+                        let a = get_mut(s);
+                        a.up(tx);
+                        tx.focus(a.scope(), ring);
+                    })
+                    .build(k)
+                    // The tooltip repeats the name: no description, so it isn't read twice.
+                    .description("")
+                    .key(format!("{scope}-up")),
+            );
+        }
+        let names = std::iter::once(a.labels.root.as_str()).chain(a.listing.crumbs());
+        for (level, name) in names.enumerate() {
+            if level == depth {
+                crumbs = crumbs.child(
+                    text(name.to_owned())
+                        .key(format!("{scope}-crumb-current"))
+                        .font(k.ty.ui_medium)
+                        .color(k.c.text_base)
+                        .px(look.space.sm),
+                );
+            } else {
+                crumbs = crumbs.child(
+                    Button::new(name.to_owned())
+                        .variant(ButtonVariant::Ghost)
+                        .control_size(ControlSize::Regular)
+                        .on_press_tx(move |s: &mut S, tx: &mut Tx| {
+                            let ring = tx.focus_visible() || tx.by_keys();
+                            let a = get_mut(s);
+                            a.go_to(level, tx);
+                            tx.focus(a.scope(), ring);
+                        })
+                        .build(k)
+                        .key(format!("{scope}-crumb-{level}")),
+                );
+            }
+        }
+        crumbs
     }
 }

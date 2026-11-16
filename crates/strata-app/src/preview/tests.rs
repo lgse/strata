@@ -471,3 +471,39 @@ fn switching_code_previews_resets_scroll_to_top() {
         },
     );
 }
+
+#[test]
+fn right_during_active_preview_load_focuses_viewer_when_shown() {
+    hosted(
+        MODULE,
+        "right_during_active_preview_load_focuses_viewer_when_shown",
+        |mut host| {
+            let folder = listed(&mut host);
+            disable_auto_preview(&mut host);
+            let todo = Location::local(folder.path().join("todo.txt"));
+
+            select(&mut host, &todo);
+            focus_view(&mut host);
+            // Send Space then Right back-to-back before the async preview provider finishes.
+            send_key(
+                &mut host,
+                KeyEvent {
+                    key: Key::Text(" ".to_owned()),
+                    mods: Mods::default(),
+                },
+            );
+            host.runtime().frame(1.0 / 60.0);
+            send_key(
+                &mut host,
+                KeyEvent {
+                    key: Key::Right,
+                    mods: Mods::default(),
+                },
+            );
+            host.runtime().frame(1.0 / 60.0);
+
+            wait_for_code_preview(&mut host);
+            assert_eq!(focused_key(&mut host).as_deref(), Some("preview-code"));
+        },
+    );
+}

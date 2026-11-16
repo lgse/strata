@@ -131,6 +131,11 @@
 //!   element to resync (see `build`; Rune draft "No notification on a scale-only change",
 //!   draft, not filed, in C14a's report).
 //! - There is no repeating pattern fill; the checkerboard is a shape of squares.
+//! - `rune_kit::ImageZoom` (and its `ImageZoom::gliding` momentum query at Rune `631e8a67`,
+//!   `#685`) is a full-window modal image preview (`Scale = 1.0` = Fit, floating zoom bar,
+//!   `⌘+`/`⌘-`); C14a keeps its own [`Viewport`] for `ScaleDown`/`Fill`/`Fixed`, device-pixel
+//!   1:1 levels, [`PanDrag::WhenOverflowing`] file-drag handoff, overlays, and commit-free
+//!   `Pixels::set` frame updates.
 //!
 //! # Open items
 //!

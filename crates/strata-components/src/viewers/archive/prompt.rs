@@ -7,11 +7,9 @@
 //! The host checks the password (in Strata's sandbox) and answers with a tree or with
 //! [`PromptState::set_error`], which empties the field, as Strata's prompt comes back empty.
 //!
-//! **The error is heard** as it appears: it is a polite live region, and the field is marked
-//! invalid. It isn't the field's accessible description: rune-kit's `TextInput` gives its editor
-//! no description (`name_field(.., None, ..)` at the pinned rev), and `TextField`, which can,
-//! has no `on_submit` for Enter to unlock. (rune-kit draft R-C14b-3 in `viewers`.) Each error
-//! is a new node (`<key>-error-<n>`), so a second wrong password is heard too.
+//! **The error is heard** as it appears and when the field is focused: it is a polite live
+//! region (`<key>-error-<n>`, a new node per attempt so a second wrong password with the same
+//! words is announced too), and `TextInput::description` attaches it to the invalid field.
 //!
 //! Whether the field takes focus when the prompt shows is the host's: with the preview closed,
 //! Space on the archive focuses it, and Right does in List and Columns
@@ -127,34 +125,8 @@ impl<'a, S: 'static> ArchivePrompt<'a, S> {
 
     pub fn build(self, look: &Look) -> El {
         let k = &look.kit;
+        let controls = self.controls(look);
         let key = self.key;
-        let access = self.access;
-        let unlock = move |f: &Option<UnlockFn<S>>| {
-            let f = f.clone();
-            move |s: &mut S, tx: &mut Tx| {
-                let password = access(s).edit.text.clone();
-                if let Some(f) = &f {
-                    f(s, password, tx);
-                }
-            }
-        };
-        let field = TextInput::new(&self.state.edit)
-            .secure()
-            .invalid(self.state.error.is_some())
-            .placeholder(self.labels.placeholder.clone())
-            .label(self.labels.placeholder.clone())
-            .width(Some(look.space.xxl * 8.0))
-            .on_edit(move |s: &mut S| &mut access(s).edit)
-            .on_submit(unlock(&self.on_unlock))
-            .build(k)
-            .key(format!("{key}-field"))
-            .shrink()
-            .min_w(look.space.xxl * 3.0);
-        let button = Button::new(self.labels.unlock.clone())
-            .variant(ButtonVariant::Submit)
-            .on_press_tx(unlock(&self.on_unlock))
-            .build(k)
-            .key(format!("{key}-unlock"));
         let mut body = col()
             .key(key.clone())
             .w_full()
@@ -183,14 +155,7 @@ impl<'a, S: 'static> ArchivePrompt<'a, S> {
                     .wrap()
                     .align(rune::Align::Center),
             )
-            .child(
-                row()
-                    .gap(look.space.sm)
-                    .center_y()
-                    .max_w(look.space.xxl * 14.0)
-                    .child(field)
-                    .child(button),
-            );
+            .child(controls);
         if let Some(error) = self.state.error() {
             // AT-SPI announces a live region only when its node is added or its name changes
             // (accesskit_atspi_common), so a second error with the same words is a new node.
@@ -205,5 +170,47 @@ impl<'a, S: 'static> ArchivePrompt<'a, S> {
             );
         }
         body
+    }
+
+    fn controls(&self, look: &Look) -> El {
+        let k = &look.kit;
+        let key = &self.key;
+        let access = self.access;
+        let unlock = move |f: &Option<UnlockFn<S>>| {
+            let f = f.clone();
+            move |s: &mut S, tx: &mut Tx| {
+                let password = access(s).edit.text.clone();
+                if let Some(f) = &f {
+                    f(s, password, tx);
+                }
+            }
+        };
+        let mut field = TextInput::new(&self.state.edit)
+            .secure()
+            .invalid(self.state.error.is_some())
+            .placeholder(self.labels.placeholder.clone())
+            .label(self.labels.placeholder.clone())
+            .width(Some(look.space.xxl * 8.0))
+            .on_edit(move |s: &mut S| &mut access(s).edit)
+            .on_submit(unlock(&self.on_unlock));
+        if let Some(error) = self.state.error() {
+            field = field.description(error);
+        }
+        let field = field
+            .build(k)
+            .key(format!("{key}-field"))
+            .shrink()
+            .min_w(look.space.xxl * 3.0);
+        let button = Button::new(self.labels.unlock.clone())
+            .variant(ButtonVariant::Submit)
+            .on_press_tx(unlock(&self.on_unlock))
+            .build(k)
+            .key(format!("{key}-unlock"));
+        row()
+            .gap(look.space.sm)
+            .center_y()
+            .max_w(look.space.xxl * 14.0)
+            .child(field)
+            .child(button)
     }
 }

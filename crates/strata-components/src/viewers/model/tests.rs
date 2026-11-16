@@ -281,4 +281,45 @@ mod element {
             "the picture spills: {r:?}"
         );
     }
+
+    #[test]
+    fn the_picture_is_marked_busy_while_loading_or_rendering() {
+        let mut model = ModelState::default();
+        model.open(super::stl());
+        let app = App {
+            model,
+            pixels: Pixels::new(),
+            look: Look::fallback(false),
+        };
+        let mut rt = Runtime::new(app, view, (420.0, 640.0), Env::new(false, 1.0));
+        rt.frame(1.0 / 60.0);
+
+        let picture_busy = |rt: &Runtime<App>| {
+            rt.accessibility_tree()
+                .nodes
+                .iter()
+                .find(|(_, n)| {
+                    n.role() == rune::accesskit::Role::Image && n.label() == Some("Model preview")
+                })
+                .expect("model-picture node")
+                .1
+                .is_busy()
+        };
+
+        assert!(picture_busy(&rt), "busy during initial load");
+
+        rt.update(|s, _| {
+            s.pixels.set(8, 8, vec![200; 8 * 8 * 4]);
+            s.model
+                .image([512.0, 512.0], Some(mesh(CameraView::FrontLeft)));
+        });
+        rt.frame(1.0 / 60.0);
+        assert!(!picture_busy(&rt), "idle once the first render lands");
+
+        rt.update(|s, _| {
+            assert_eq!(s.model.step(1), Some(CameraView::BackLeft));
+        });
+        rt.frame(1.0 / 60.0);
+        assert!(picture_busy(&rt), "busy while a camera preset renders");
+    }
 }

@@ -29,8 +29,8 @@ pub(crate) enum Gesture {
     Select,
 }
 
-/// The point under the viewport's centre, kept across a zoom: a page, how far down it the
-/// centre is, and how far across the content.
+/// The point under the viewport's centre, kept across rapid zoom steps: a page, how far down
+/// it the centre is, and how far across the content.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct Anchor {
     pub page: usize,
@@ -38,21 +38,17 @@ pub(crate) struct Anchor {
     pub across: f32,
     /// The host's clock when it was taken.
     pub at: f64,
-    /// Its page has laid out and been asked to scroll into place; the scroll lands on a later
-    /// frame, so a zoom before then still uses this anchor.
-    pub placed: bool,
 }
 
-/// How long a zoom's anchor waits for its page to lay out before it's let go.
+/// How long a zoom's anchor stays cached across consecutive zoom frames before it's let go.
 const ANCHOR_WAIT: f64 = 0.25;
 
-/// A find match to bring into view: its page, and its centre as fractions of the page.
+/// A find match or restored page to bring into view: its page, and its point as fractions of
+/// the page.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct Reveal {
     pub page: usize,
     pub at: [f32; 2],
-    /// Whether the page has been asked to mount.
-    pub asked: bool,
 }
 
 /// One PDF preview. The host keeps it in its state and hands the view accessors to it.
@@ -413,38 +409,25 @@ impl PdfState {
         false
     }
 
-    /// Applies what find asked for, from the host's poll: the find calls carry no `Tx`. True
-    /// when it asked for anything.
+    /// Applies what find or [`PdfState::show_page`] asked for, from the host's poll: those calls
+    /// carry no `Tx`. True when it placed a target (`Tx::scroll_key_to` mounts and centres an
+    /// unmounted virtual row in the same frame).
     pub fn flush(&mut self, tx: &mut Tx) -> bool {
-        let Some(r) = self.reveal else {
+        if self.reveal.is_none() || self.viewport.is_none() {
             return false;
-        };
-        if self.rects.contains_key(&r.page) && self.visible.contains(&r.page) {
-            self.place_reveal(tx);
-            return true;
         }
-        if r.asked {
-            // Mounted and not visible yet, or it never mounted: ask once more, then let go.
-            self.reveal = None;
-        } else {
-            self.reveal = Some(Reveal { asked: true, ..r });
-        }
-        tx.scroll_into_view(self.row_key(r.page));
+        self.place_reveal(tx);
         true
     }
 
-    /// Scrolls the revealed match to the viewport's centre: its page is laid out.
+    /// Scrolls the revealed match or page to the viewport's centre in one step.
     pub(crate) fn place_reveal(&mut self, tx: &mut Tx) {
         let (Some(r), Some(vp)) = (self.reveal.take(), self.viewport) else {
             return;
         };
-        let Some(&rect) = self.rects.get(&r.page) else {
-            return;
-        };
-        tx.scroll_key_to(
-            self.row_key(r.page),
-            vp[3] / 2.0 - (GAP + r.at[1] * rect[3]),
-        );
+        self.anchor = None;
+        let h = self.page_height(r.page);
+        tx.scroll_key_to(self.row_key(r.page), vp[3] / 2.0 - (GAP + r.at[1] * h));
         if self.content_width() > vp[2] + 0.5 {
             let x = GAP
                 + (self.content_width() - 2.0 * GAP - self.page_width()) / 2.0
@@ -473,7 +456,6 @@ impl PdfState {
             self.reveal = Some(Reveal {
                 page,
                 at: [0.5, down.clamp(0.0, 1.0)],
-                asked: false,
             });
         }
     }
@@ -540,55 +522,50 @@ impl PdfState {
         if old.is_none() {
             // The rows mount now, at the pane's width.
             self.zoom_gen = self.zoom_gen.wrapping_add(1);
+            self.place_reveal(tx);
             self.wake = self.wake.wrapping_add(1);
             return true;
         }
         old.is_some_and(|o| (o[3] - rect[3]).abs() > 0.25)
     }
 
-    /// A page's layout, from the row built at zoom generation `zoom_gen`. Places a zoom's
-    /// anchor or a find's match once its page is laid out, and turns the I-beam on or off for
-    /// text moving under a still pointer. True when the page under the centre changed
-    /// (assistive technology reads it) or the cursor did.
+    /// A page's layout, from the row built at zoom generation `zoom_gen`. Records its laid-out
+    /// rect, clears a zoom's cached anchor once reported at the placed offset, and turns the
+    /// I-beam on or off for text moving under a still pointer. True when the page under the
+    /// centre changed (assistive technology reads it) or the cursor did.
     ///
     /// A row of an earlier generation can still report its layout after a zoom (its handler
     /// runs on the next turn): that rect is the old size, and is ignored.
-    pub(crate) fn page_laid_out(
-        &mut self,
-        page: usize,
-        zoom_gen: u32,
-        rect: [f32; 4],
-        tx: &mut Tx,
-    ) -> bool {
+    pub(crate) fn page_laid_out(&mut self, page: usize, zoom_gen: u32, rect: [f32; 4]) -> bool {
         if zoom_gen != self.zoom_gen {
             return false;
         }
         self.rects.insert(page, rect);
-        if let (Some(a), Some(vp)) = (self.anchor, self.viewport)
-            && a.page == page
-        {
-            if a.placed {
-                // Laid out again after the placing scroll: the anchor has landed.
-                self.anchor = None;
-            } else {
-                self.anchor = Some(Anchor { placed: true, ..a });
-                tx.scroll_key_to(self.row_key(page), vp[3] / 2.0 - (GAP + a.down * rect[3]));
-            }
-        }
-        if self.reveal.is_some_and(|r| r.page == page) {
-            self.place_reveal(tx);
-        }
+        self.clear_landed_anchor(page, rect);
         // Text scrolled under a still pointer, or away from it: the I-beam follows.
         let cursor = self.pointer.is_some_and(|p| self.hover(p));
         let Some(vp) = self.viewport else {
             return cursor;
         };
         let cy = vp[1] + vp[3] / 2.0;
-        if rect[1] - GAP <= cy && cy < rect[1] + rect[3] && self.current != page {
+        if row_contains(rect, cy) && self.current != page {
             self.current = page;
             return true;
         }
         cursor
+    }
+
+    fn clear_landed_anchor(&mut self, page: usize, rect: [f32; 4]) {
+        let Some(a) = self.anchor.filter(|a| a.page == page) else {
+            return;
+        };
+        let Some(vp) = self.viewport else {
+            return;
+        };
+        let placed = (rect[1] + a.down * rect[3] - (vp[1] + vp[3] / 2.0)).abs() <= 1.5;
+        if placed {
+            self.anchor = None;
+        }
     }
 
     /// The visible pages laid out, with their rects.
@@ -626,7 +603,6 @@ impl PdfState {
             down,
             across,
             at: self.clock,
-            placed: false,
         })
     }
 
@@ -646,8 +622,8 @@ impl PdfState {
         if (level - self.level).abs() < 1e-4 || self.content != Content::Pages {
             return false;
         }
-        // A notch on the frame after the last one: that one's anchor hasn't landed yet, and the
-        // pages on screen are still where its estimate put them, not where it will.
+        // A notch on the frame right after the last one can arrive before the new rows' layout
+        // reports have repopulated `rects`, so reuse the active anchor until its page reports.
         let anchor = self.pending_anchor().or_else(|| self.anchor_now());
         self.rezoom(level, anchor, tx);
         self.settle_at = Some(self.clock + SETTLE);
@@ -655,10 +631,8 @@ impl PdfState {
         true
     }
 
-    /// Every page changes size: the rows take new keys, the view jumps to where the anchor
-    /// lands if every row above were the estimate, and the anchor's page, once laid out,
-    /// places itself exactly ([`PdfState::page_laid_out`]). Rune can only place a row it has
-    /// laid out, so the jump comes first (probe P1).
+    /// Every page changes size: the rows take new keys and `Tx::scroll_key_to` mounts and places
+    /// the anchor's row in the same frame, alongside `Tx::scroll_to_x` sideways.
     fn rezoom(&mut self, level: f32, anchor: Option<Anchor>, tx: &mut Tx) {
         self.level = level;
         self.zoom_gen = self.zoom_gen.wrapping_add(1);
@@ -666,13 +640,12 @@ impl PdfState {
         let (Some(a), Some(vp)) = (anchor, self.viewport) else {
             return;
         };
-        let y = a.page as f32 * self.row_estimate() + GAP + a.down * self.page_height(a.page)
-            - vp[3] / 2.0;
+        let at = vp[3] / 2.0 - (GAP + a.down * self.page_height(a.page));
         let x = a.across * self.content_width() - vp[2] / 2.0;
-        tx.scroll_to_instant(self.scroll_key(), x.max(0.0), y.max(0.0));
+        tx.scroll_to_x(self.scroll_key(), x.max(0.0));
+        tx.scroll_key_to(self.row_key(a.page), at);
         self.anchor = Some(Anchor {
             at: self.clock,
-            placed: false,
             ..a
         });
     }
@@ -731,6 +704,7 @@ impl PdfState {
                     }
                     return true;
                 }
+                self.anchor = None;
                 self.gesture = Gesture::Pan(self.feed.get().offset);
                 self.selection.clear();
                 true
@@ -817,7 +791,6 @@ impl PdfState {
         self.reveal = Some(Reveal {
             page: h.page,
             at: at.unwrap_or([0.5, 0.0]),
-            asked: false,
         });
     }
 
@@ -847,6 +820,10 @@ impl PdfState {
         let p = self.feed.get();
         p.offset[0] < p.max[0] - 0.5
     }
+}
+
+fn row_contains(rect: [f32; 4], y: f32) -> bool {
+    rect[1] - GAP <= y && y < rect[1] + rect[3]
 }
 
 fn to_layer(layer: &Shared, r: &[f32; 4], p: [f32; 2]) -> (f32, f32) {

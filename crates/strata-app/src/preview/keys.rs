@@ -98,7 +98,7 @@ fn can_enter_preview(app: &App, at: &Situation) -> bool {
     {
         return false;
     }
-    if app.preview.viewer.is_empty() {
+    if app.preview.viewer.is_empty() && !app.preview.loader.is_active() {
         return false;
     }
     let (_, entry) = session::selected_entry(app);
@@ -209,17 +209,21 @@ fn enter_folder_from_space(app: &mut App, depth: usize, position: usize, tx: &mu
     shell::settle(app, tx);
 }
 
-fn enter_preview(app: &mut App, call: &Call<'_>, _: &mut Tx) -> Outcome {
+fn enter_preview(app: &mut App, call: &Call<'_>, tx: &mut Tx) -> Outcome {
     if let Some(press) = call.press
         && is_plain_letter_with_type_to_search(app, press)
     {
         return Outcome::Declined;
     }
-    if !app.preview.viewer.can_focus() {
-        return Outcome::Declined;
+    if app.preview.viewer.can_focus() {
+        app.preview.drawer.focus_content();
+        return Outcome::Ran;
     }
-    app.preview.drawer.focus_content();
-    Outcome::Ran
+    if app.preview.loader.is_active() {
+        app.preview.drawer.focus_content_when_shown(tx);
+        return Outcome::Ran;
+    }
+    Outcome::Declined
 }
 
 fn focus_divider(app: &mut App, _: &Call<'_>, _: &mut Tx) -> Outcome {

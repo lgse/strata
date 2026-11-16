@@ -7,7 +7,10 @@
 //! span two units. Table cells, images, rules and gaps aren't searched.
 //!
 //! The joined, folded text is built once per document ([`Index`]); each query only searches
-//! it, so typing into the find bar costs a scan of the document, not a rebuild of it.
+//! it, so typing into the find bar costs a scan of the document, not a rebuild of it. Kept
+//! over `rune_kit::search::Fold` (Rune `#790`), which strips accents asymmetrically (`"cafe"`
+//! matches `"café"`) where Strata's `match_ranges` folds case without stripping accents, and
+//! folds per call rather than indexing the document once.
 
 use std::ops::Range;
 

@@ -509,6 +509,7 @@ fn loading_view(look: &Look) -> El {
         .key("preview-loading")
         .role("progressbar")
         .label(label)
+        .busy(true)
         .w_full()
         .h_full()
         .center()

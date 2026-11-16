@@ -629,13 +629,12 @@ fn the_pointer_leaving_stops_the_i_beam_following() {
     let mut st = state(1);
     let r = st.pop().unwrap();
     st.complete(r.ticket, reply(400, Some("hello world")));
-    let mut tx = Tx::default();
     let z = st.zoom_gen;
-    st.page_laid_out(0, z, [0.0, 0.0, 400.0, 600.0], &mut tx);
+    st.page_laid_out(0, z, [0.0, 0.0, 400.0, 600.0]);
     assert!(st.hover([30.0, 18.0]), "over text: the I-beam");
     st.leave();
     // The page scrolls up: margin where the pointer was.
-    assert!(!st.page_laid_out(0, z, [0.0, -100.0, 400.0, 600.0], &mut tx));
+    assert!(!st.page_laid_out(0, z, [0.0, -100.0, 400.0, 600.0]));
     assert!(st.over_text, "unchanged until the pointer is back");
 }
 

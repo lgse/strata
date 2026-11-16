@@ -321,3 +321,62 @@ fn closing_find_keeps_the_matched_selection_for_copy() {
     assert_find_close_keeps_selection(false);
     assert_find_close_keeps_selection(true);
 }
+
+#[test]
+fn focus_content_when_shown_lands_when_the_viewer_mounts() {
+    struct DeferredHost {
+        drawer: DrawerState,
+        loaded: bool,
+        look: Look,
+    }
+
+    fn deferred_view(host: &DeferredHost, cx: &mut rune::Cx<DeferredHost>) -> El {
+        let body = if host.loaded {
+            el().key("preview-viewer").focusable(true).w_full().h_full()
+        } else {
+            el().key("preview-awaiting").w_full().h_full()
+        };
+        PreviewDrawer::new(&host.drawer, |h: &mut DeferredHost| &mut h.drawer)
+            .content(body)
+            .build(
+                el().key("files").focusable(true).w_full().h_full(),
+                &host.look,
+                cx,
+            )
+    }
+
+    let mut drawer = DrawerState::new();
+    drawer.open_at_once();
+    let mut rt = Runtime::new(
+        DeferredHost {
+            drawer,
+            loaded: false,
+            look: Look::fallback(false),
+        },
+        deferred_view,
+        (900.0, 500.0),
+        Env::default(),
+    );
+    rt.frame(0.0);
+    rt.update(|h, tx| {
+        tx.focus("files", true);
+        let _ = h;
+    });
+    rt.frame(1.0 / 60.0);
+
+    // Ask to focus the preview body while only the non-focusable placeholder is mounted.
+    rt.update(|h, tx| h.drawer.focus_content_when_shown(tx));
+    rt.frame(1.0 / 60.0);
+    let focused = |rt: &mut Runtime<DeferredHost>| {
+        rt.elements()
+            .into_iter()
+            .find(|e| e.focused && !e.exiting)
+            .and_then(|e| e.key)
+    };
+    assert_eq!(focused(&mut rt).as_deref(), Some("files"));
+
+    // Once the focusable viewer mounts, the owed focus lands on it automatically.
+    rt.update(|h, _| h.loaded = true);
+    rt.frame(1.0 / 60.0);
+    assert_eq!(focused(&mut rt).as_deref(), Some("preview-viewer"));
+}
