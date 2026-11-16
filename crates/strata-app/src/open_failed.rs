@@ -123,6 +123,9 @@ impl Part for OpenFailed {
                 // on a later visit instead.
                 if matches!(opened, Opened::ByPath) {
                     app.browser.cancel_deferred_reveal();
+                    if crate::connect_server::fail_pending(app, &error) {
+                        return true;
+                    }
                 }
                 if let Some(admin) = reported {
                     report(app, opened, &error, admin);
