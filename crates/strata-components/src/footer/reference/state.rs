@@ -83,10 +83,14 @@ impl ReferenceState {
     }
 
     /// Opens it with the query and category it had, its results from the top. Focus goes to
-    /// the search field (the panel's first focus stop). A host holding a footer prompt open
-    /// while the reference has the keyboard calls C18's `PromptState::hold_open(true)`.
+    /// the search field (the panel's first focus stop) with any kept query selected, as
+    /// GTK's `search.grab_focus()` selects the entry's text on reopen. A host holding a footer
+    /// prompt open while the reference has the keyboard calls C18's `PromptState::hold_open(true)`.
     pub fn open(&mut self) {
         self.open = true;
+        let end = self.search.text.len();
+        self.search.anchor = 0;
+        self.search.focus = end;
     }
 
     /// Closes it. Rune's modal gives the keyboard back to what had it before it opened.

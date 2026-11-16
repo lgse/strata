@@ -1145,3 +1145,64 @@ fn hiding_the_sidebar_with_the_keyboard_in_it_gives_the_keyboard_to_the_view() {
         },
     );
 }
+
+/// Dismissing a sidebar row's right-click menu — or cancelling a modal dialog opened from it —
+/// returns focus to that sidebar row rather than to the file view, matching GTK's
+/// `popover.set_parent(row)` (`sidebar_popover.rs`).
+#[test]
+fn dismissing_a_right_clicked_sidebar_menu_or_its_dialog_returns_focus_to_the_row() {
+    hosted(
+        MODULE,
+        "dismissing_a_right_clicked_sidebar_menu_or_its_dialog_returns_focus_to_the_row",
+        |mut host| {
+            let folder = fixture();
+            opened(folder.path(), &mut host);
+            shown(&mut host, "sidebar-place-network");
+
+            right_click(&mut host, "sidebar-place-network");
+            let connect = menu_lists(
+                &mut host,
+                &[
+                    "Open in New Tab",
+                    "Connect to server…",
+                    "Unpin",
+                    "Properties",
+                ],
+                "Connect to server…",
+            );
+            press(&mut host, Key::Escape, Mods::default());
+            idle(&mut host);
+            assert_eq!(
+                focused(&host.tree()).as_deref(),
+                Some("sidebar-place-network")
+            );
+
+            // Return focus to the files first, then right-click Network and cancel Connect to server.
+            press(&mut host, Key::Right, Mods::default());
+            assert!(
+                focused(&host.tree())
+                    .as_deref()
+                    .is_some_and(|key| key.starts_with(crate::columns::VIEW))
+            );
+            right_click(&mut host, "sidebar-place-network");
+            menu_lists(
+                &mut host,
+                &[
+                    "Open in New Tab",
+                    "Connect to server…",
+                    "Unpin",
+                    "Properties",
+                ],
+                "Connect to server…",
+            );
+            click(&mut host, &connect);
+            idle(&mut host);
+            press(&mut host, Key::Escape, Mods::default());
+            idle(&mut host);
+            assert_eq!(
+                focused(&host.tree()).as_deref(),
+                Some("sidebar-place-network")
+            );
+        },
+    );
+}

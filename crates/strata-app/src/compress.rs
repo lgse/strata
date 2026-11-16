@@ -389,6 +389,9 @@ fn submit(app: &mut App) {
     let archive_name = normalized_archive_name(&form.name.text, format);
     if let Err(message) = validate_basename(&archive_name) {
         form.name_error = Some(message);
+        let end = form.name.text.len();
+        form.name.anchor = 0;
+        form.name.focus = end;
         app.compress.focus_target = Some(view::name_key(form.generation));
         return;
     }

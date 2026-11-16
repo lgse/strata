@@ -201,14 +201,10 @@ fn network_menu_opens_dialog_with_named_controls_keyboard_hold_and_escape_focus_
                 Some(Holds::Modal { field: true })
             );
 
-            // Empty form dismisses on backdrop click and returns focus to Columns.
+            // Empty form dismisses on backdrop click and returns focus to the sidebar Network row.
             click_at(&mut host, 5.0, 5.0);
             assert!(!host.app().connect_server.open);
-            assert!(
-                focused_key(&host)
-                    .as_deref()
-                    .is_some_and(|key| key.starts_with(crate::columns::VIEW))
-            );
+            assert_eq!(focused_key(&host).as_deref(), Some("sidebar-place-network"));
 
             // Dirty form blocks backdrop click, while Escape closes and wipes the address.
             open_via_network_menu(&mut host);
@@ -228,11 +224,7 @@ fn network_menu_opens_dialog_with_named_controls_keyboard_hold_and_escape_focus_
                     .text,
                 ""
             );
-            assert!(
-                focused_key(&host)
-                    .as_deref()
-                    .is_some_and(|key| key.starts_with(crate::columns::VIEW))
-            );
+            assert_eq!(focused_key(&host).as_deref(), Some("sidebar-place-network"));
         },
     );
 }

@@ -216,6 +216,12 @@ fn invalid_names_password_errors_and_dirty_backdrop_keep_the_dialog_open() {
             );
             press(&mut host, Key::Enter, Mods::default());
             assert!(host.app().compress.open);
+            let rejected = host.app().compress.form.as_ref().expect("form");
+            assert_eq!(
+                (rejected.name.anchor, rejected.name.focus),
+                (0, "../escape".len()),
+                "refusal selects the invalid archive name"
+            );
             assert!(!folder.path().join("escape.zip").exists());
 
             // Dirty backdrop click leaves the modified dialog open.

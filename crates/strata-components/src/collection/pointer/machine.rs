@@ -430,12 +430,14 @@ fn secondary(
     missing_stays: bool,
     s: &mut dyn Surface,
 ) {
-    if let Some((index, _)) = entry
-        && !s.selection().is_selected_at(s.source(), index)
-    {
-        apply(s, |sel, src| {
-            sel.select_only_keeping_anchor(src, index, missing_stays)
-        });
+    if let Some((index, _)) = entry {
+        if s.selection().is_selected_at(s.source(), index) {
+            apply(s, |sel, src| sel.focus_selected_keeping_anchor(src, index));
+        } else {
+            apply(s, |sel, src| {
+                sel.select_only_keeping_anchor(src, index, missing_stays)
+            });
+        }
     }
     s.emit(Outcome::ContextMenu {
         target: entry.map(|(_, id)| id),

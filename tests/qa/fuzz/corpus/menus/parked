@@ -1,0 +1,14 @@
+# Menus, dialogs and keymap sequences parked against their findings
+# (docs/rune/parity/findings.md):
+#
+#   v<version>-<seed> <code> <issue>
+#
+# None parked on `menus v4` (20 of 20 smoke seeds agree). Kept unparked in this folder, their
+# Rune parity bugs fixed in A6's closing pull request:
+# - `v1-000000000000000f`: reopening `ShortcutReference` selects `[0, len]` of its kept query;
+# - `v2-0000000000000001`: a secondary press on a selected entry inside a multi-selection moves
+#   the cursor to that entry while preserving the selection and Shift anchor;
+# - `v2-0000000000000005`: an invalid archive name refused in `Compress` selects `[0, len]` of
+#   the rejected Archive name field;
+# - `v2-0000000000000013`: opening a sidebar row's menu focuses that row, and opening a column's
+#   menu focuses the view so dismissing the menu or its modal restores focus to the column.

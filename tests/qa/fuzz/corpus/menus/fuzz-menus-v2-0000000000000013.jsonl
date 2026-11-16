@@ -1,0 +1,6 @@
+{"scenario":"fuzz-menus-v2-0000000000000013","modes":["columns"],"prefs":{"type_to_search":false,"keymap":{"default":{"activate":["Return","o"],"escape":["Escape","<Control>bracketleft"],"rename":["<Control>e"],"actions.compress":["<Control><Shift>g"]}}}}
+{"click":{"sidebar":"Trash"},"button":3,"when":{"all":[{"present":{"sidebar":"Trash"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}
+{"key":"Escape","when":{"menu_items":{}}}
+{"click":{"entry":"pictures"},"button":3,"when":{"all":[{"present":{"entry":"pictures"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}
+{"click":{"menu_item":"Customize…"},"when":{"present":{"menu_item":"Customize…"}}}
+{"click":{"role":"button","name":"Done","within":{"dialog":true}},"when":{"any":[{"dialog":"Customize Folder"},{"dialog":"Customize File"}]}}
