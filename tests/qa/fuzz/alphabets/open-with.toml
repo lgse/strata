@@ -1,0 +1,278 @@
+# The Open With, terminal and custom actions alphabet (A14): what a user does to launch files in
+# registered or chosen desktop applications, open folders in a terminal emulator, and run custom
+# actions with background job tracking in Columns on a fixture with hidden deterministic launch
+# logging (`.launched`):
+# - activating files with a registered default handler (`Return` on `.txt` / `.md`) and activating
+#   an unassociated file (`Return` on `spreadsheet.csv`, opening the `Open With` chooser until
+#   `Always use` saves a default for `text/csv`), plus multi-selection shared-default `Open` in
+#   the context menu;
+# - opening the `Open With` chooser via `Alt+O` (`open_with` in `Map::Default`), entry/multi-item
+#   context menus, and folder background menus, filtering applications in the live search entry,
+#   stepping selection with `Down` / `Up`, clearing search or dismissing with `Escape`, toggling
+#   `Always use for this file type` / `Always use for these file types`, launching `Open`, or
+#   cancelling via `Cancel` / `Close dialog`;
+# - launching the resolved terminal (`xdg-terminal-exec` stub) in the active, targeted or parent
+#   folder via `Ctrl+Alt+T` (`Stage::FileCommands`; under an open context menu it launches
+#   nothing, as GTK's popover menu keeps the key from the window), `Alt+Shift+T`
+#   (`actions.terminal`), folder entry menus, and folder background menus;
+# - matching and running custom actions from `$config/strata/actions` (`MenuPlacement::Top` rows,
+#   the `"Actions"` submenu with `Right` / `Left` / `Down` keyboard navigation, and `Map::Default`
+#   numbered slots `Alt+1`, `Alt+2`, `Alt+4` including vacant and non-matching feedback), handling
+#   `"Run this action?"` by `Run`, and inspecting/minimising the
+#   footer `Jobs` dashboard (`Details` / `Hide`, `Minimize`, `Escape`, and reopening from the
+#   footer indicator button).
+#
+# Every desktop handler, terminal launch and custom action appends a normalized path-relative line
+# to hidden `$fixture/.launched` (`show_hidden = false`), so `observe::tree` compares every launch
+# and its working directory / arguments across GTK and Rune via SHA-256 without splicing visible
+# rows into `GtkListView` (avoiding `oracle` findings lgse/strata#2356 and lgse/strata#2361).
+#
+# Left out, with why:
+# - `Escape`, `Cancel` and `Close dialog` on `"Run this action?"`: GTK's `confirm_and_run`
+#   (`src/ui/actions.rs`) calls neither `close_on_escape` nor `remember_modal_focus`, so `Escape`
+#   leaves the dialog open and closing it leaves focus nowhere, where C15's `StrataDialog`
+#   dismisses it and returns focus to the entry (`oracle` finding lgse/strata#2547; v1 seed
+#   `0x08`, v2 seeds `0x01`, `0x0a` and `0x0d`).
+# - Clicking `Clear finished` inside `Jobs` when no active jobs remain: on GTK (`src/ui/jobs.rs`),
+#   emptying the indicator immediately hides the `GtkMenuButton`, unmapping its popover and leaving
+#   `app.focused = null`, whereas C16 keeps the open `Jobs` popover anchored on `"No background
+#   jobs."` until closed.
+# - Clicking an already-open folder column, dismissing menus/dialogs over a cursorless non-empty
+#   column, `Ctrl+click` deselecting an entry, `Up` from a column's first row, and `Right` on empty
+#   `archive` (lgse/strata#2356, lgse/strata#2353, lgse/strata#2408, `owner.md` A1 item 3).
+area = "open-with"
+version = 3
+about = "Columns with deterministic desktop handlers, xdg-terminal-exec stub and custom actions logging to hidden .launched: default and fallback file activation, Open With search, arrows, Escape, Always use and multi-selection Open, terminal shortcuts and menus, Top and Actions-submenu custom actions with confirmation and default-map slots, and the Jobs footer dashboard"
+header = '{"modes":["columns"],"prefs":{"type_to_search":false,"single_click_previews":false,"keymap":{"default":{"open_with":["<Alt>o"],"actions.terminal":["<Alt><Shift>t"],"custom_action.1":["<Alt>1"],"custom_action.2":["<Alt>2"],"custom_action.4":["<Alt>4"]}}},"env":{"PATH":"$environment/launcher-path:/usr/bin:/bin"},"setup":[{"fs":{"path":".launched","write":""}},{"fs":{"path":"$environment/launcher-path","mkdir":true}},{"fs":{"path":"$environment/launcher-path/xdg-terminal-exec","write":"#!/bin/sh\nroot=\"$fixture\"\ncwd=$$(pwd)\nrel=$${cwd#\"$$root\"}\nprintf \"term:%s\\n\" \"$${rel:-/}\" >> \"$$root/.launched\"\n"}},{"fs":{"path":"$environment/launcher-path/xdg-terminal-exec","chmod":"755"}},{"fs":{"path":"$environment/record-open","write":"#!/bin/sh\nroot=\"$fixture\"\ntag=$$1\nshift\ncwd=$$(pwd)\nrel_cwd=$${cwd#\"$$root\"}\nout=\"open:$$tag:cwd=$${rel_cwd:-/}\"\nfor arg in \"$$@\"; do\n  clean=$${arg#file://}\n  rel=$${clean#\"$$root\"}\n  out=\"$$out:$${rel:-/}\"\ndone\nprintf \"%s\\n\" \"$$out\" >> \"$$root/.launched\"\n"}},{"fs":{"path":"$environment/record-open","chmod":"755"}},{"fs":{"path":"$environment/record-action","write":"#!/bin/sh\nroot=\"$fixture\"\ntag=$$1\nshift\nout=\"action:$$tag:$$STRATA_ACTION_SOURCE\"\nfor p in \"$$@\"; do\n  rel=$${p#\"$$root\"}\n  out=\"$$out:$${rel:-/}\"\ndone\nprintf \"%s\\n\" \"$$out\" >> \"$$root/.launched\"\n"}},{"fs":{"path":"$environment/record-action","chmod":"755"}},{"fs":{"path":"$data/applications","mkdir":true}},{"fs":{"path":"$data/applications/strata-primary.desktop","write":"[Desktop Entry]\nType=Application\nName=Primary Viewer\nExec=$environment/record-open primary %U\nMimeType=text/plain;text/markdown;inode/directory;\n"}},{"fs":{"path":"$data/applications/strata-secondary.desktop","write":"[Desktop Entry]\nType=Application\nName=Secondary Viewer\nExec=$environment/record-open secondary %U\nMimeType=text/plain;text/markdown;text/csv;inode/directory;\n"}},{"fs":{"path":"$data/applications/strata-other.desktop","write":"[Desktop Entry]\nType=Application\nName=Other Viewer\nExec=$environment/record-open other %U\nMimeType=application/octet-stream;\n"}},{"fs":{"path":"$config/mimeapps.list","write":"[Default Applications]\ntext/plain=strata-primary.desktop;\ntext/markdown=strata-primary.desktop;\n[Added Associations]\ntext/plain=strata-primary.desktop;strata-secondary.desktop;\ntext/markdown=strata-primary.desktop;strata-secondary.desktop;\ntext/csv=strata-secondary.desktop;\ninode/directory=strata-primary.desktop;strata-secondary.desktop;\n"}},{"fs":{"path":"$config/strata/actions/alpha-record","mkdir":true,"parents":true}},{"fs":{"path":"$config/strata/actions/alpha-record/action.toml","write":"schema_version = 1\nid = \"alpha-record\"\nname = \"Alpha record\"\nmenu = \"top\"\n[when]\nextensions = [\"txt\", \"md\"]\n[run]\nruntime = \"command\"\nprogram = \"$environment/record-action\"\nargs = [\"alpha\", \"{paths}\"]\n"}},{"fs":{"path":"$config/strata/actions/beta-confirm","mkdir":true,"parents":true}},{"fs":{"path":"$config/strata/actions/beta-confirm/action.toml","write":"schema_version = 1\nid = \"beta-confirm\"\nname = \"Beta confirm\"\nmenu = \"submenu\"\n[when]\n[run]\nruntime = \"command\"\nprogram = \"$environment/record-action\"\nconfirm = true\nargs = [\"beta\", \"{paths}\"]\n"}},{"fs":{"path":"$config/strata/actions/gamma-folder","mkdir":true,"parents":true}},{"fs":{"path":"$config/strata/actions/gamma-folder/action.toml","write":"schema_version = 1\nid = \"gamma-folder\"\nname = \"Gamma folder\"\nmenu = \"submenu\"\n[when]\nkinds = [\"folder\"]\n[run]\nruntime = \"command\"\nprogram = \"$environment/record-action\"\nargs = [\"gamma\", \"{paths}\"]\n"}}]}'
+
+[[action]]
+name = "down"
+weight = 5
+steps = ['{"key":"<key>","when":{"all":[{"focused_pane":true},{"not":{"matches":[]}},{"editable_fields":0},{"absent":{"role":"button","name":"Minimize"}},{"not":{"dialog":"Open With"}},{"not":{"dialog":"Run this action?"}},{"menu_items":null}]}}']
+choose.key = ["Down", "j"]
+
+[[action]]
+name = "up"
+weight = 4
+steps = ['{"key":"<key>","when":{"all":[{"focused_pane":true},{"focused_in_matches":true},{"editable_fields":0},{"absent":{"role":"button","name":"Minimize"}},{"not":{"dialog":"Open With"}},{"not":{"dialog":"Run this action?"}},{"menu_items":null},{"not":{"focused":{"one_of":["archive","notes.txt","diagram.txt"]}}}]}}']
+choose.key = ["Up", "k"]
+
+[[action]]
+name = "right"
+weight = 4
+steps = ['{"key":"<key>","when":{"all":[{"focused_pane":true},{"not":{"matches":[]}},{"not":{"focused":"archive"}},{"editable_fields":0},{"absent":{"role":"button","name":"Minimize"}},{"not":{"dialog":"Open With"}},{"not":{"dialog":"Run this action?"}},{"menu_items":null}]}}']
+choose.key = ["Right", "l"]
+
+[[action]]
+name = "left"
+weight = 3
+steps = ['{"key":"<key>","when":{"all":[{"focused_pane":true},{"not":{"directory":"$root"}},{"editable_fields":0},{"absent":{"role":"button","name":"Minimize"}},{"not":{"dialog":"Open With"}},{"not":{"dialog":"Run this action?"}},{"menu_items":null}]}}']
+choose.key = ["Left", "h"]
+
+[[action]]
+name = "click-file"
+weight = 5
+steps = ['{"click":{"entry":"<entry>"},"when":{"all":[{"present":{"entry":"<entry>"}},{"editable_fields":0},{"absent":{"role":"button","name":"Minimize"}},{"not":{"dialog":"Open With"}},{"not":{"dialog":"Run this action?"}},{"menu_items":null}]}}']
+choose.entry = ["readme.md", "todo.txt", "notes.txt", "report.md", "spreadsheet.csv", "photo.txt"]
+
+[[action]]
+name = "open-folder-click"
+weight = 4
+steps = [
+  '{"click":{"entry":"<folder>","dir":"$root"},"when":{"all":[{"present":{"entry":"<folder>","dir":"$root"}},{"absent":{"pane":"<folder>"}},{"editable_fields":0},{"absent":{"role":"button","name":"Minimize"}},{"not":{"dialog":"Open With"}},{"not":{"dialog":"Run this action?"}},{"menu_items":null}]}}',
+  '{"move":{"pane":"<folder>"},"when":{"present":{"pane":"<folder>"}}}',
+]
+choose.folder = ["archive", "documents", "pictures"]
+
+[[action]]
+name = "ctrl-click-entry"
+weight = 3
+steps = ['{"click":{"entry":"<entry>"},"mods":["ctrl"],"when":{"all":[{"present":{"entry":"<entry>"}},{"not":{"all_selected":{"contains":["<entry>"]}}},{"editable_fields":0},{"absent":{"role":"button","name":"Minimize"}},{"not":{"dialog":"Open With"}},{"not":{"dialog":"Run this action?"}},{"menu_items":null}]}}']
+choose.entry = ["readme.md", "todo.txt", "notes.txt", "report.md"]
+
+# Activates a file (`Return`): `.txt`/`.md` launch their registered default handler directly, while
+# `spreadsheet.csv` opens the `Open With` fallback chooser until `Always use` sets a default.
+[[action]]
+name = "activate-file"
+weight = 5
+steps = ['{"key":"Return","when":{"all":[{"focused_pane":true},{"focused":{"one_of":["todo.txt","readme.md","notes.txt","report.md","spreadsheet.csv"]}},{"editable_fields":0},{"absent":{"role":"button","name":"Minimize"}},{"not":{"dialog":"Open With"}},{"not":{"dialog":"Run this action?"}},{"menu_items":null}]}}']
+
+# Opens the `Open With` chooser via `Alt+O` (`open_with` in `Map::Default`).
+[[action]]
+name = "open-with-shortcut"
+weight = 5
+steps = ['{"key":"alt+o","when":{"all":[{"focused_pane":true},{"focused_in_matches":true},{"editable_fields":0},{"absent":{"role":"button","name":"Minimize"}},{"not":{"dialog":"Open With"}},{"not":{"dialog":"Run this action?"}},{"menu_items":null}]}}']
+
+# Opens the `Open With` chooser from an entry's context menu once MIME lookup marks it sensitive.
+[[action]]
+name = "open-with-entry-menu"
+weight = 4
+steps = [
+  '{"click":{"entry":"<entry>"},"button":3,"when":{"all":[{"present":{"entry":"<entry>"}},{"editable_fields":0},{"absent":{"role":"button","name":"Minimize"}},{"not":{"dialog":"Open With"}},{"not":{"dialog":"Run this action?"}},{"menu_items":null}]}}',
+  '{"click":{"menu_item":"Open With…"},"when":{"all":[{"present":{"menu_item":"Open With…"}},{"state":{"target":{"menu_item":"Open With…"},"sensitive":true}}]}}',
+  '{"key":"Escape","when":{"menu_items":{}}}',
+]
+choose.entry = ["todo.txt", "readme.md", "spreadsheet.csv", "documents"]
+
+# Multi-selects `todo.txt` and `readme.md` and clicks shared-default `Open` when they still share a
+# default handler (or closes the menu via `Escape` if `Always use` split their defaults).
+[[action]]
+name = "multi-select-shared-open"
+weight = 3
+steps = [
+  '{"click":{"entry":"todo.txt","dir":"$root"},"when":{"all":[{"present":{"entry":"todo.txt","dir":"$root"}},{"editable_fields":0},{"absent":{"role":"button","name":"Minimize"}},{"not":{"dialog":"Open With"}},{"not":{"dialog":"Run this action?"}},{"menu_items":null}]}}',
+  '{"click":{"entry":"readme.md","dir":"$root"},"mods":["ctrl"],"when":{"all":[{"present":{"entry":"readme.md","dir":"$root"}},{"not":{"all_selected":{"contains":["readme.md"]}}},{"absent":{"role":"button","name":"Minimize"}},{"not":{"dialog":"Open With"}},{"not":{"dialog":"Run this action?"}},{"menu_items":null}]}}',
+  '{"key":"shift+F10","when":{"all":[{"focused_pane":true},{"absent":{"role":"button","name":"Minimize"}},{"not":{"dialog":"Open With"}},{"not":{"dialog":"Run this action?"}},{"menu_items":null}]}}',
+  '{"click":{"menu_item":"Open"},"when":{"present":{"menu_item":"Open"}}}',
+  '{"key":"Escape","when":{"menu_items":{}}}',
+]
+
+# Filters applications inside `Open With` and steps selection with `Down` / `Up`.
+[[action]]
+name = "chooser-search-and-step"
+weight = 5
+steps = [
+  '{"key":"ctrl+a","when":{"all":[{"dialog":"Open With"},{"state":{"target":{"focused_widget":true},"editable":true}}]}}',
+  '{"type":"<query>","when":{"all":[{"dialog":"Open With"},{"state":{"target":{"focused_widget":true},"editable":true}}]}}',
+  '{"key":"<step>","when":{"all":[{"dialog":"Open With"},{"state":{"target":{"focused_widget":true},"editable":true}}]}}',
+]
+choose.query = ["Secondary", "Primary", "Other", "nomatch"]
+choose.step = ["Down", "Up"]
+
+# Pressing `Escape` inside `Open With` clears a non-empty search query first, or dismisses the
+# chooser when the search query is already empty.
+[[action]]
+name = "chooser-escape"
+weight = 5
+steps = ['{"key":"Escape","when":{"dialog":"Open With"}}']
+
+# Toggles `Always use for this file type` / `Always use for these file types` inside `Open With`.
+[[action]]
+name = "chooser-toggle-always"
+weight = 4
+steps = [
+  '{"click":{"role":"check box","name":"Always use for this file type","within":{"role":"dialog","name":"Open With"}},"when":{"all":[{"dialog":"Open With"},{"present":{"role":"check box","name":"Always use for this file type","within":{"role":"dialog","name":"Open With"}}}]}}',
+  '{"click":{"role":"check box","name":"Always use for these file types","within":{"role":"dialog","name":"Open With"}},"when":{"all":[{"dialog":"Open With"},{"present":{"role":"check box","name":"Always use for these file types","within":{"role":"dialog","name":"Open With"}}}]}}',
+]
+
+# Selects an application row inside `Open With` and clicks `Open`.
+[[action]]
+name = "chooser-pick-and-open"
+weight = 5
+steps = [
+  '{"click":{"role":"list item","name":"<app>","within":{"role":"dialog","name":"Open With"}},"when":{"all":[{"dialog":"Open With"},{"present":{"role":"list item","name":"<app>","within":{"role":"dialog","name":"Open With"}}}]}}',
+  '{"click":{"role":"button","name":"Open","within":{"role":"dialog","name":"Open With"}},"when":{"all":[{"dialog":"Open With"},{"present":{"role":"button","name":"Open","within":{"role":"dialog","name":"Open With"}}},{"state":{"target":{"role":"button","name":"Open","within":{"role":"dialog","name":"Open With"}},"sensitive":true}}]}}',
+]
+choose.app = ["Primary Viewer", "Secondary Viewer", "Other Viewer"]
+
+# Cancels `Open With` via `Cancel` or `Close dialog`.
+[[action]]
+name = "chooser-cancel"
+weight = 3
+steps = ['{"click":{"role":"button","name":"<btn>","within":{"role":"dialog","name":"Open With"}},"when":{"all":[{"dialog":"Open With"},{"present":{"role":"button","name":"<btn>","within":{"role":"dialog","name":"Open With"}}}]}}']
+choose.btn = ["Cancel", "Close dialog"]
+
+# Launches a terminal in the active/targeted folder via `Ctrl+Alt+T` or `Alt+Shift+T`.
+[[action]]
+name = "terminal-shortcut"
+weight = 4
+steps = ['{"key":"<key>","when":{"all":[{"focused_pane":true},{"editable_fields":0},{"absent":{"role":"button","name":"Minimize"}},{"not":{"dialog":"Open With"}},{"not":{"dialog":"Run this action?"}},{"menu_items":null}]}}']
+choose.key = ["ctrl+alt+t", "alt+shift+t"]
+
+# Launches a terminal from a folder entry's context menu (`documents` or `pictures`).
+[[action]]
+name = "terminal-folder-menu"
+weight = 3
+steps = [
+  '{"click":{"entry":"<folder>","dir":"$root"},"button":3,"when":{"all":[{"present":{"entry":"<folder>","dir":"$root"}},{"editable_fields":0},{"absent":{"role":"button","name":"Minimize"}},{"not":{"dialog":"Open With"}},{"not":{"dialog":"Run this action?"}},{"menu_items":null}]}}',
+  '{"click":{"menu_item":"Open in Terminal"},"when":{"present":{"menu_item":"Open in Terminal"}}}',
+  '{"key":"Escape","when":{"menu_items":{}}}',
+]
+choose.folder = ["documents", "pictures"]
+
+# Presses `Ctrl+Alt+T` while a context menu is open, which launches nothing (GTK's popover menu
+# is its own surface, so the window's actions never see the key), then dismisses the menu.
+[[action]]
+name = "terminal-under-open-menu"
+weight = 3
+steps = [
+  '{"key":"shift+F10","when":{"all":[{"focused_pane":true},{"focused_in_matches":true},{"editable_fields":0},{"absent":{"role":"button","name":"Minimize"}},{"not":{"dialog":"Open With"}},{"not":{"dialog":"Run this action?"}},{"menu_items":null}]}}',
+  '{"key":"ctrl+alt+t","when":{"menu_items":{}}}',
+  '{"key":"Escape","when":{"menu_items":{}}}',
+]
+
+# Presses a `Map::Default` custom-action slot (`Alt+1` runs `alpha-record` on `.txt`/`.md` or
+# flashes `No matching actions`, `Alt+2` opens `Run this action?` for `beta-confirm`, and `Alt+4`
+# flashes `No action 4`).
+[[action]]
+name = "custom-action-slot"
+weight = 5
+steps = ['{"key":"<slot>","when":{"all":[{"focused_pane":true},{"focused_in_matches":true},{"editable_fields":0},{"absent":{"role":"button","name":"Minimize"}},{"not":{"dialog":"Open With"}},{"not":{"dialog":"Run this action?"}},{"menu_items":null}]}}']
+choose.slot = ["alt+1", "alt+2", "alt+4"]
+
+# Runs top-level custom action `Alpha record` from a `.txt` or `.md` entry's context menu.
+[[action]]
+name = "custom-top-menu"
+weight = 4
+steps = [
+  '{"click":{"entry":"<entry>"},"button":3,"when":{"all":[{"present":{"entry":"<entry>"}},{"editable_fields":0},{"absent":{"role":"button","name":"Minimize"}},{"not":{"dialog":"Open With"}},{"not":{"dialog":"Run this action?"}},{"menu_items":null}]}}',
+  '{"click":{"menu_item":"Alpha record"},"when":{"present":{"menu_item":"Alpha record"}}}',
+  '{"key":"Escape","when":{"menu_items":{}}}',
+]
+choose.entry = ["todo.txt", "readme.md"]
+
+# Navigates into the `"Actions"` submenu by keyboard (`Right` / `Left` / `Return`) to trigger
+# `Beta confirm` (`Run this action?`) or return to the parent menu cleanly.
+[[action]]
+name = "custom-actions-submenu"
+weight = 4
+steps = [
+  '{"click":{"entry":"<entry>"},"button":3,"when":{"all":[{"present":{"entry":"<entry>"}},{"editable_fields":0},{"absent":{"role":"button","name":"Minimize"}},{"not":{"dialog":"Open With"}},{"not":{"dialog":"Run this action?"}},{"menu_items":null}]}}',
+  '{"click":{"menu_item":"Actions"},"when":{"present":{"menu_item":"Actions"}}}',
+  '{"click":{"menu_item":"Beta confirm"},"when":{"present":{"menu_item":"Beta confirm"}}}',
+  '{"key":"Escape","when":{"menu_items":{}}}',
+]
+choose.entry = ["todo.txt", "readme.md", "spreadsheet.csv"]
+
+# Runs `Gamma folder` from a folder's background context menu (`Actions` -> `Gamma folder`).
+[[action]]
+name = "custom-background-folder-action"
+weight = 3
+steps = [
+  '{"click":{"background":true},"button":3,"when":{"all":[{"focused_pane":true},{"focused_in_matches":true},{"editable_fields":0},{"absent":{"role":"button","name":"Minimize"}},{"not":{"dialog":"Open With"}},{"not":{"dialog":"Run this action?"}},{"menu_items":null}]}}',
+  '{"click":{"menu_item":"Actions"},"when":{"present":{"menu_item":"Actions"}}}',
+  '{"click":{"menu_item":"Gamma folder"},"when":{"present":{"menu_item":"Gamma folder"}}}',
+  '{"key":"Escape","when":{"menu_items":{}}}',
+]
+
+# Confirms `"Run this action?"` with `Run`.
+[[action]]
+name = "confirm-action-run"
+weight = 6
+steps = ['{"click":{"role":"button","name":"Run","within":{"role":"dialog","name":"Run this action?"}},"when":{"all":[{"dialog":"Run this action?"},{"present":{"role":"button","name":"Run","within":{"role":"dialog","name":"Run this action?"}}}]}}']
+
+# Inside an open `Jobs` popover (`Minimize` present), toggles `Details`/`Hide` or closes `Jobs` via
+# `Escape` or `Minimize` and clicks `todo.txt` to return focus to the listing.
+[[action]]
+name = "jobs-details-toggle"
+weight = 4
+steps = [
+  '{"click":{"role":"button","name":"Details"},"when":{"present":{"role":"button","name":"Details"}}}',
+  '{"click":{"role":"button","name":"Hide"},"when":{"present":{"role":"button","name":"Hide"}}}',
+]
+
+[[action]]
+name = "jobs-close-escape"
+weight = 6
+steps = [
+  '{"key":"Escape","when":{"present":{"role":"button","name":"Minimize"}}}',
+  '{"click":{"entry":"todo.txt","dir":"$root"},"when":{"all":[{"absent":{"role":"button","name":"Minimize"}},{"present":{"entry":"todo.txt","dir":"$root"}},{"not":{"dialog":"Open With"}},{"not":{"dialog":"Run this action?"}},{"menu_items":null}]}}',
+]
+
+[[action]]
+name = "jobs-close-minimize"
+weight = 4
+steps = [
+  '{"click":{"role":"button","name":"Minimize"},"when":{"present":{"role":"button","name":"Minimize"}}}',
+  '{"click":{"entry":"readme.md","dir":"$root"},"when":{"all":[{"absent":{"role":"button","name":"Minimize"}},{"present":{"entry":"readme.md","dir":"$root"}},{"not":{"dialog":"Open With"}},{"not":{"dialog":"Run this action?"}},{"menu_items":null}]}}',
+]

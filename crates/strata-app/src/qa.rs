@@ -16,6 +16,7 @@ mod filter;
 mod host;
 mod input_log;
 mod invariants;
+mod jobs;
 mod keyboard;
 mod keymap;
 mod keys;

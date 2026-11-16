@@ -1874,7 +1874,13 @@ sequence only together with the alphabet's version, so the version is part of th
   `crates/strata-components/src/context_menu/view.rs`,
   `dialogs_and_menus/submenu-arrows-return-to-parent` (line 12), and `tabs.toml` (`Open in… →
   New Tab` left out until `strata-qa` reads sibling submenu surfaces).
-- **State:** open, [H3](packages/H3.md)'s and [A6](packages/A6.md)'s.
+- **State:** fixed in the Rune QA tree, `crates/strata-app/src/qa/submenus.rs`:
+  [A13](packages/A13.md)'s [#2536](https://github.com/lgse/strata/pull/2536) moved each open
+  submenu surface under its menu, and [A14](packages/A14.md)'s closing pull request under the
+  row that opens it, as GTK's nested popover is, so `app.menu` lists its rows right after their
+  trigger in GTK's order and `Target::MenuItem` reaches them.
+  `dialogs_and_menus/submenu-arrows-return-to-parent` (all three views) is `required`;
+  `tabs.toml`'s `Open in… → New Tab` is [A4](packages/A4.md)'s to put back.
 
 ### #2509: the Rune sheet preview is a table of cells where GTK's GtkColumnView is named rows under a tree table
 
@@ -1940,3 +1946,24 @@ sequence only together with the alphabet's version, so the version is part of th
   `v1-000000000000000f` is parked in `tests/qa/fuzz/corpus/clipboard/parked`; `clipboard v4` moves
   the pointer onto a clicked folder's opened column and pastes into `archive` via the
   selected-folder route from `$root`.
+
+### #2547: "Run this action?" ignores `Escape` and drops focus when closed on GTK
+
+- **Code:** `oracle`. [Issue](https://github.com/lgse/strata/issues/2547), filed on
+  2026-11-16 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** in [A14](packages/A14.md)'s `open-with` differential smoke runs. With "Run this
+  action?" open for a custom action that asks to confirm, `Escape` leaves the dialog open on GTK
+  (`v1` seed `0x08`, step 23), and Cancel or Close dialog closes it with focus nowhere
+  (`app.focused = null`; `v2` seeds `0x01`, `0x0a` and `0x0d`). Rune dismisses it on `Escape`
+  and returns focus to the entry either way.
+- **Why:** `confirm_and_run` (`src/ui/actions.rs`) builds the dialog with
+  `message_dialog_layout` and `modal_layer` and wires Close and Cancel, but calls neither
+  `close_on_escape(&layer, ...)` nor `remember_modal_focus(&layer, &overlay)`, as every other
+  modal does (`src/ui/modal/messages.rs`, `src/ui/settings/actions.rs`). C15's `StrataDialog`
+  does both.
+- **Concerns:** `src/ui/actions.rs` (`confirm_and_run`), and `fuzz-open-with-v1-0000000000000008`,
+  `fuzz-open-with-v2-0000000000000001`, `-000000000000000a` and `-000000000000000d`.
+- **State:** open, set aside: Rune behaves as intended, and any fix belongs on `main`.
+  `open-with v3` leaves `Escape`, Cancel and Close dialog on "Run this action?" out and confirms
+  only with Run; the custom actions' unit tests in `crates/strata-app/src/custom_actions/tests.rs`
+  cover Cancel.
