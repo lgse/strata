@@ -245,6 +245,15 @@ impl MountType {
         self.fs_type != "fuseblk" && is_remote_fs_type(&self.fs_type)
     }
 
+    /// Whether the daemon may move a folder entry by entry and stop partway: any FUSE daemon
+    /// over remote storage but sshfs, whose server renames the folder. rclone does once the
+    /// new name is taken, and fails while files it has yet to upload are left behind.
+    pub(crate) fn renames_folders_in_steps(&self) -> bool {
+        family(&self.fs_type) == Family::Fuse
+            && !matches!(self.fs_type.as_str(), "fuseblk" | "fuse.sshfs")
+            && !is_local_fuse_overlay(&self.fs_type)
+    }
+
     pub(crate) fn daemon_cache(&self) -> Option<Duration> {
         (self.fs_type == "fuse.sshfs").then_some(SSHFS_DAEMON_CACHE)
     }
