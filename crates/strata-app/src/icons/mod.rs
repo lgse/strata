@@ -64,11 +64,9 @@ impl Icons {
         let settings: &Preferences = setup.settings;
         // `type_to_search_active` in `src/ui/preferences/input_settings.rs`.
         let typing = settings.type_to_search && !settings.tenxer_mode;
-        let clicks = (settings.icons_file_clicks, settings.icons_folder_clicks);
         Self {
             single: Single::new(Made {
                 key: VIEW,
-                clicks,
                 keys: keys(typing),
                 described: tr("Icons view"),
                 menu_at: AnchorEdge::Right,

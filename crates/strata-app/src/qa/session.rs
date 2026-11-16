@@ -492,6 +492,16 @@ impl Host for Session {
         clicked.is_ok()
     }
 
+    async fn scroll_to(&self, key: &str, x: f32, y: f32) -> Result<(), String> {
+        let key = key.to_owned();
+        let before = self.link.frames.serial();
+        self.link
+            .change_tx(move |_, tx| tx.scroll_to_instant(key, x, y))?;
+        let _ = self.link.frames.wait_past(before, SETTLE_LIMIT);
+        self.settle().await;
+        Ok(())
+    }
+
     async fn set_clipboard(&self, content: &ClipboardContent) -> Option<Result<(), String>> {
         let before = match self.with_app(crate::clipboard::offer_serial) {
             Ok(serial) => serial,

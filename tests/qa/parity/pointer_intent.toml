@@ -8,7 +8,7 @@ run = "columns-unselected-stay"
 package = "A9"
 status = "pending"
 reason = "scope"
-blocker = "A9"
+blocker = "A19: a file drag from the view's rows onto `archive` at line 5: strata-app has no drag binder, and `Dnd::rune`'s `drag_out` starts nothing on Linux; with H4's session host if A19 needs it"
 
 [[run]]
 scenario = "ctrl-drag-copies-keeps-selection"
@@ -16,7 +16,7 @@ run = "icons-unselected-stay"
 package = "A9"
 status = "pending"
 reason = "scope"
-blocker = "A9"
+blocker = "A19: a file drag from the view's rows onto `archive` at line 5: strata-app has no drag binder, and `Dnd::rune`'s `drag_out` starts nothing on Linux; with H4's session host if A19 needs it"
 
 [[run]]
 scenario = "ctrl-drag-copies-keeps-selection"
@@ -24,7 +24,7 @@ run = "list-unselected-stay"
 package = "A9"
 status = "pending"
 reason = "scope"
-blocker = "A9"
+blocker = "A19: a file drag from the view's rows onto `archive` at line 5: strata-app has no drag binder, and `Dnd::rune`'s `drag_out` starts nothing on Linux; with H4's session host if A19 needs it"
 
 [[run]]
 scenario = "ctrl-drag-copies-keeps-selection"
@@ -32,7 +32,7 @@ run = "columns-unselected-open"
 package = "A9"
 status = "pending"
 reason = "scope"
-blocker = "A9"
+blocker = "A19: a file drag from the view's rows onto `archive` at line 5: strata-app has no drag binder, and `Dnd::rune`'s `drag_out` starts nothing on Linux; with H4's session host if A19 needs it"
 
 [[run]]
 scenario = "ctrl-drag-copies-keeps-selection"
@@ -40,7 +40,7 @@ run = "icons-unselected-open"
 package = "A9"
 status = "pending"
 reason = "scope"
-blocker = "A9"
+blocker = "A19: a file drag from the view's rows onto `archive` at line 5: strata-app has no drag binder, and `Dnd::rune`'s `drag_out` starts nothing on Linux; with H4's session host if A19 needs it"
 
 [[run]]
 scenario = "ctrl-drag-copies-keeps-selection"
@@ -48,7 +48,7 @@ run = "list-unselected-open"
 package = "A9"
 status = "pending"
 reason = "scope"
-blocker = "A9"
+blocker = "A19: a file drag from the view's rows onto `archive` at line 5: strata-app has no drag binder, and `Dnd::rune`'s `drag_out` starts nothing on Linux; with H4's session host if A19 needs it"
 
 [[run]]
 scenario = "ctrl-drag-copies-keeps-selection"
@@ -56,7 +56,7 @@ run = "columns-selected-stay"
 package = "A9"
 status = "pending"
 reason = "scope"
-blocker = "A9"
+blocker = "A19: a file drag from the view's rows onto `archive` at line 5: strata-app has no drag binder, and `Dnd::rune`'s `drag_out` starts nothing on Linux; with H4's session host if A19 needs it"
 
 [[run]]
 scenario = "ctrl-drag-copies-keeps-selection"
@@ -64,7 +64,7 @@ run = "icons-selected-stay"
 package = "A9"
 status = "pending"
 reason = "scope"
-blocker = "A9"
+blocker = "A19: a file drag from the view's rows onto `archive` at line 5: strata-app has no drag binder, and `Dnd::rune`'s `drag_out` starts nothing on Linux; with H4's session host if A19 needs it"
 
 [[run]]
 scenario = "ctrl-drag-copies-keeps-selection"
@@ -72,7 +72,7 @@ run = "list-selected-stay"
 package = "A9"
 status = "pending"
 reason = "scope"
-blocker = "A9"
+blocker = "A19: a file drag from the view's rows onto `archive` at line 5: strata-app has no drag binder, and `Dnd::rune`'s `drag_out` starts nothing on Linux; with H4's session host if A19 needs it"
 
 [[run]]
 scenario = "shift-drag-moves-file"
@@ -80,7 +80,7 @@ run = "columns"
 package = "A9"
 status = "pending"
 reason = "scope"
-blocker = "A9"
+blocker = "A19: a file drag from the view's rows onto `archive` at line 3: strata-app has no drag binder, and `Dnd::rune`'s `drag_out` starts nothing on Linux; with H4's session host if A19 needs it"
 
 [[run]]
 scenario = "shift-drag-moves-file"
@@ -88,7 +88,7 @@ run = "icons"
 package = "A9"
 status = "pending"
 reason = "scope"
-blocker = "A9"
+blocker = "A19: a file drag from the view's rows onto `archive` at line 3: strata-app has no drag binder, and `Dnd::rune`'s `drag_out` starts nothing on Linux; with H4's session host if A19 needs it"
 
 [[run]]
 scenario = "shift-drag-moves-file"
@@ -96,7 +96,7 @@ run = "list"
 package = "A9"
 status = "pending"
 reason = "scope"
-blocker = "A9"
+blocker = "A19: a file drag from the view's rows onto `archive` at line 3: strata-app has no drag binder, and `Dnd::rune`'s `drag_out` starts nothing on Linux; with H4's session host if A19 needs it"
 
 [[run]]
 scenario = "tap-drag-waits-for-release"
@@ -104,7 +104,7 @@ run = "columns-file"
 package = "A9"
 status = "pending"
 reason = "scope"
-blocker = "A9"
+blocker = "A19 and A14: a held second-press drag from the view's rows onto `archive` at line 9 (A19's drag binder, with H4's session host if needed), then opening `todo.txt` via its `.desktop` handler at line 15 (A14)"
 
 [[run]]
 scenario = "tap-drag-waits-for-release"
@@ -112,7 +112,7 @@ run = "list-file"
 package = "A9"
 status = "pending"
 reason = "scope"
-blocker = "A9"
+blocker = "A19 and A14: a held second-press drag from the view's rows onto `archive` at line 9 (A19's drag binder, with H4's session host if needed), then opening `todo.txt` via its `.desktop` handler at line 15 (A14)"
 
 [[run]]
 scenario = "tap-drag-waits-for-release"
@@ -120,7 +120,7 @@ run = "icons-file"
 package = "A9"
 status = "pending"
 reason = "scope"
-blocker = "A9"
+blocker = "A19 and A14: a held second-press drag from the view's rows onto `archive` at line 9 (A19's drag binder, with H4's session host if needed), then opening `todo.txt` via its `.desktop` handler at line 15 (A14)"
 
 [[run]]
 scenario = "tap-drag-waits-for-release"
@@ -128,7 +128,7 @@ run = "columns-folder"
 package = "A9"
 status = "pending"
 reason = "scope"
-blocker = "A9"
+blocker = "A19: a held second-press drag from the view's rows onto `archive` at line 9: strata-app has no drag binder, and `Dnd::rune`'s `drag_out` starts nothing on Linux; with H4's session host if A19 needs it"
 
 [[run]]
 scenario = "tap-drag-waits-for-release"
@@ -136,7 +136,7 @@ run = "list-folder"
 package = "A9"
 status = "pending"
 reason = "scope"
-blocker = "A9"
+blocker = "A19: a held second-press drag from the view's rows onto `archive` at line 9: strata-app has no drag binder, and `Dnd::rune`'s `drag_out` starts nothing on Linux; with H4's session host if A19 needs it"
 
 [[run]]
 scenario = "tap-drag-waits-for-release"
@@ -144,4 +144,4 @@ run = "icons-folder"
 package = "A9"
 status = "pending"
 reason = "scope"
-blocker = "A9"
+blocker = "A19: a held second-press drag from the view's rows onto `archive` at line 9: strata-app has no drag binder, and `Dnd::rune`'s `drag_out` starts nothing on Linux; with H4's session host if A19 needs it"
