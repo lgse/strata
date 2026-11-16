@@ -764,15 +764,13 @@ fn nested_submenu_tree() -> serde_json::Value {
     })
 }
 
-#[test]
-fn open_submenu_surfaces_nest_under_their_owning_menu_and_row_icons_carry_descriptions() {
-    let tree = nested_submenu_tree();
+fn row_with_badge() -> Drawn {
     let mut icon_descriptions = std::collections::HashMap::new();
     icon_descriptions.insert(
         strata_components::contract::EntryId::new(1),
         "example: Available offline".to_owned(),
     );
-    let drawn = Drawn {
+    Drawn {
         view: Some(COLUMNS),
         lists: vec!["columns-col-0".to_owned()],
         columns: vec![DrawnColumn {
@@ -794,7 +792,13 @@ fn open_submenu_surfaces_nest_under_their_owning_menu_and_row_icons_carry_descri
         }],
         icon_descriptions,
         ..Drawn::default()
-    };
+    }
+}
+
+#[test]
+fn open_submenu_surfaces_nest_under_their_owning_menu_and_row_icons_carry_descriptions() {
+    let tree = nested_submenu_tree();
+    let drawn = row_with_badge();
     let snapshot = Snapshot::read(&tree, &drawn);
 
     // Only the top-level menu remains under kit-root; each open submenu sits under its
