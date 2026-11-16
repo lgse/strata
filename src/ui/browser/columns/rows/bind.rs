@@ -129,6 +129,11 @@ impl RowBinding<'_> {
         let size_text = column_size_text(self.entry.as_ref());
         size.set_label(&size_text);
         size.set_visible(show_sizes && !editing && !size_text.is_empty());
+        crate::ui::modified_date::set_modified_date(
+            &self.widgets.modified,
+            self.entry.as_ref(),
+            "",
+        );
         crate::ui::accessibility::describe_entry(
             self.item,
             &self.widgets.label.label(),

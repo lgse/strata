@@ -555,6 +555,7 @@ fn attach_root(window: &gtk::Window, root: &gtk::Box, view: &BrowserView, accept
     overlay.set_child(Some(&blurred_root));
     window.set_child(Some(&overlay));
     view.install_inline_edit_dismissal(window);
+    view.install_location_cancellation(window);
     install_modal_focus_trap(window);
     keys::install_native_aliases(window);
     view.set_as_modal_focus_fallback(window);

@@ -531,6 +531,19 @@ fn list_name_cell() -> gtk::Box {
     name_cell.append(&icon);
     name_cell.append(&name);
     name_cell.append(&field);
+    crate::ui::entry_tooltip::EntryTooltip::install(&name_cell, {
+        let name_label = name.clone();
+        move |_, _, _| {
+            if !name_label.is_visible() {
+                return None;
+            }
+            let name = name_label.text();
+            if name.is_empty() {
+                return None;
+            }
+            crate::ui::entry_tooltip::name_text(&name, name_label.layout().is_ellipsized(), None)
+        }
+    });
     name_cell
 }
 

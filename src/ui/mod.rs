@@ -16,6 +16,7 @@ mod document_media;
 mod document_view;
 mod enter_target;
 mod entry_list_model;
+pub(crate) mod entry_tooltip;
 mod file_providers;
 mod focus_navigation;
 mod folder_picker;

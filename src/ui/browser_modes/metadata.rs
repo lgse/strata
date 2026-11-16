@@ -107,10 +107,12 @@ fn entry_icons_item_info(entry: &FileEntry) -> Option<String> {
 }
 
 pub(super) fn set_icons_entry_details(card: &gtk::Box, entry: &FileEntry) {
-    let Some(label) = icons_cell::details_label(card) else {
-        return;
-    };
-    set_label_if_changed(&label, &entry_icons_item_info(entry).unwrap_or_default());
+    if let Some(label) = icons_cell::details_label(card) {
+        set_label_if_changed(&label, &entry_icons_item_info(entry).unwrap_or_default());
+    }
+    if let Some(modified) = icons_cell::modified_label(card) {
+        crate::ui::modified_date::set_modified_date(&modified, Some(entry), "");
+    }
 }
 
 pub(super) fn update_bound_list_metadata(pane: &Pane, updates: &[(usize, FileEntry)]) {

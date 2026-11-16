@@ -95,6 +95,7 @@ impl StatusRow {
         root.add_css_class("shortcut-footer");
         let status = gtk::Box::new(gtk::Orientation::Horizontal, 12);
         let count = status_label("shortcut-footer-count");
+        count.set_ellipsize(gtk::pango::EllipsizeMode::Middle);
         let paste = paste_label();
         let tag = tenxer_tag();
         let chord = status_label("shortcut-footer-chord-pill");
