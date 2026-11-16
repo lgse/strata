@@ -26,6 +26,7 @@ mod session;
 mod sidebar;
 mod stage;
 mod staged;
+mod submenus;
 mod tenxer;
 mod tree;
 

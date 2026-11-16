@@ -142,23 +142,30 @@ fn placeholder(rcx: &RowCx<'_>, points: f32) -> El {
 /// opacity while an image is held, so a thumbnail landing, changing size or going needs no build.
 ///
 /// Versioned by the store's handles for the key and the step, never the key's state.
+fn tile_icon_version<S>(shared: &Shared<S>, key: u64, s: &S, rcx: &RowCx<'_>) -> u64 {
+    let mark = crate::thumbnails::mark_icon(rcx.state.marks);
+    let thumb = rcx.entry.thumbnail.filter(|_| rcx.entry.glyph.is_none());
+    let mut h = std::hash::DefaultHasher::new();
+    key.hash(&mut h);
+    mark.hash(&mut h);
+    if mark.is_none()
+        && let (Some(k), Some((store, _))) = (thumb, (shared.parts)(s).thumbs)
+    {
+        store.version(k).hash(&mut h);
+    }
+    shared
+        .badge
+        .as_ref()
+        .map_or(0, |(ver, _)| ver(s, rcx.entry.id))
+        .hash(&mut h);
+    h.finish()
+}
+
 pub(super) fn icon_slot<S: 'static>(shared: &Rc<Shared<S>>, b: Built) -> Slot<S> {
     let (version_shared, build_shared) = (shared.clone(), shared.clone());
     let key = b.key();
     Slot::new(
-        move |s: &S, rcx: &RowCx<'_>| {
-            let mark = crate::thumbnails::mark_icon(rcx.state.marks);
-            let thumb = rcx.entry.thumbnail.filter(|_| rcx.entry.glyph.is_none());
-            let mut h = std::hash::DefaultHasher::new();
-            key.hash(&mut h);
-            mark.hash(&mut h);
-            if mark.is_none()
-                && let (Some(k), Some((store, _))) = (thumb, (version_shared.parts)(s).thumbs)
-            {
-                store.version(k).hash(&mut h);
-            }
-            h.finish()
-        },
+        move |s: &S, rcx: &RowCx<'_>| tile_icon_version(&version_shared, key, s, rcx),
         move |s: &S, rcx: &RowCx<'_>| {
             let m = &b.m;
             let look = rcx.look;
@@ -186,6 +193,11 @@ pub(super) fn icon_slot<S: 'static>(shared: &Rc<Shared<S>>, b: Built) -> Slot<S>
                 }
                 _ => frame.child(glyph),
             };
+            let px = build_shared
+                .badge
+                .as_ref()
+                .and_then(|(_, f)| f(s, rcx.entry.id));
+            frame = crate::thumbnails::overlay_badge(frame, px, (m.frame_pad, m.slot));
             if let Some(fill) = fill {
                 frame = frame.fill(fill);
             }
