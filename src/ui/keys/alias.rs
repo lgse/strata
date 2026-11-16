@@ -10,8 +10,6 @@ use gtk::{
     prelude::*,
 };
 
-pub(super) use strata_desktop::keys::FALLBACK;
-
 use super::{Context, Map, gdk_key, gdk_modifiers, rewrite};
 
 /// What owns typing where a press lands, from the focused widget.
