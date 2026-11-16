@@ -236,7 +236,7 @@ pub(crate) fn cancel_chord(app: &mut App) -> bool {
     if std::mem::replace(&mut app.tenxer.bookmark_pending, false) {
         app.tenxer.bookmark_revision = app.tenxer.bookmark_revision.wrapping_add(1);
     }
-    app.sidebar.set_keycaps(false);
+    crate::sidebar::show_keycaps(app, false);
     app.tenxer.armed = None;
     app.tenxer.chord.clear()
 }
@@ -252,7 +252,7 @@ pub(crate) fn arm_chord(app: &mut App, kind: ChordKind, rows: Vec<(String, Strin
     if kind != ChordKind::BookmarkGo && std::mem::replace(&mut app.tenxer.bookmark_pending, false) {
         app.tenxer.bookmark_revision = app.tenxer.bookmark_revision.wrapping_add(1);
     }
-    app.sidebar.set_keycaps(kind == ChordKind::Go);
+    crate::sidebar::show_keycaps(app, kind == ChordKind::Go);
     let options = rows
         .into_iter()
         .filter(|(cap, _)| !cap.is_empty())

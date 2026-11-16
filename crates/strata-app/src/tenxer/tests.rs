@@ -273,13 +273,41 @@ fn copy_action_and_tab_chords_update_clipboard_dialogs_and_tabs() {
                 Some("beta.txt")
             );
 
-            // `; e` on a plain file flashes "Not an archive"; `; c` opens Compress.
+            // `; e` and `; E` on a plain file both flash "Not an archive"; `; c` opens Compress.
             tap(&mut host, char_key(";"), Mods::default());
             assert_eq!(node_name(&host, "footer-chord-pill").as_deref(), Some(";-"));
             tap(&mut host, char_key("e"), Mods::default());
             assert_eq!(
                 node_name(&host, "footer-flash").as_deref(),
                 Some("Not an archive")
+            );
+            tap(&mut host, char_key(";"), Mods::default());
+            tap(
+                &mut host,
+                char_key("E"),
+                Mods {
+                    shift: true,
+                    ..Mods::default()
+                },
+            );
+            assert_eq!(
+                node_name(&host, "footer-flash").as_deref(),
+                Some("Not an archive")
+            );
+
+            // `Shift+Escape` on an armed chord flashes "Unknown chord", whereas plain `Escape` cancels quietly.
+            tap(&mut host, char_key("g"), Mods::default());
+            tap(
+                &mut host,
+                Key::Escape,
+                Mods {
+                    shift: true,
+                    ..Mods::default()
+                },
+            );
+            assert_eq!(
+                node_name(&host, "footer-flash").as_deref(),
+                Some("Unknown chord")
             );
 
             tap(&mut host, char_key(";"), Mods::default());
@@ -378,6 +406,127 @@ fn tenxer_sidebar_keyboard_activation_selects_nothing_and_returns_focus_to_view(
             })
             .is_empty();
             assert!(focused_view, "focus returned to the Columns view");
+        },
+    );
+}
+
+#[test]
+fn sidebar_routes_russian_l_and_unclaimed_keys_to_escape_and_listing() {
+    hosted(
+        MODULE,
+        "sidebar_routes_russian_l_and_unclaimed_keys_to_escape_and_listing",
+        |mut host| {
+            let home = std::path::PathBuf::from(std::env::var_os("HOME").expect("test home"));
+            std::fs::write(home.join("a.txt"), "a").expect("a file at home");
+            host.runtime().update(|app, _| {
+                shell::saved(app).change(|s| {
+                    s.tenxer_mode = true;
+                    s.single_click_previews = false;
+                });
+            });
+            let _folder = open_and_focus(&mut host);
+            assert!(host.run_until(PATIENCE, |h| has_key(h, "sidebar-place-home")));
+
+            // Select an item, focus the sidebar, and verify Escape clears the selection while keeping sidebar focus.
+            host.app().browser().select(0, 1);
+            while host.turn() {}
+            host.runtime().update(|_, tx| {
+                tx.focus("sidebar-place-home", true);
+            });
+            while host.turn() {}
+
+            tap(&mut host, Key::Escape, Mods::default());
+            assert!(host.app().browser().selected_positions(0).is_empty());
+
+            // Ctrl+B is swallowed by `claims_unbound_command` instead of collapsing the sidebar.
+            tap(&mut host, Key::Command('b'), ctrl());
+            assert!(shell::preferences(host.app()).sidebar_expanded);
+
+            // Pressing `g` from the sidebar focuses the listing and arms `g-`.
+            tap(&mut host, char_key("g"), Mods::default());
+            assert_eq!(node_name(&host, "footer-chord-pill").as_deref(), Some("g-"));
+            let focused = host
+                .runtime()
+                .elements()
+                .into_iter()
+                .find(|e| e.focused)
+                .and_then(|e| e.key);
+            assert!(
+                focused
+                    .as_deref()
+                    .is_some_and(|key| key.starts_with(crate::columns::VIEW))
+            );
+            tap(&mut host, Key::Escape, Mods::default());
+
+            // Physical `L` (X keycode 46, Cyrillic 'д' on `ru`) activates the focused sidebar row.
+            host.runtime().update(|_, tx| {
+                tx.focus("sidebar-place-home", true);
+            });
+            while host.turn() {}
+            host.set_key_origin(Some(Origin::from_x(XKey {
+                keycode: 46,
+                base: Some('д'),
+            })));
+            tap(&mut host, char_key("д"), Mods::default());
+            host.set_key_origin(None);
+            assert!(host.run_until(PATIENCE, |h| {
+                h.app().browser().active_location() == Some(Location::local(&home))
+            }));
+        },
+    );
+}
+
+#[test]
+fn compress_chord_targets_keyboard_focused_column_over_hovered_column() {
+    hosted(
+        MODULE,
+        "compress_chord_targets_keyboard_focused_column_over_hovered_column",
+        |mut host| {
+            host.runtime().update(|app, _| {
+                shell::saved(app).change(|s| s.tenxer_mode = true);
+            });
+            let root = folder_of(&["root.txt"]);
+            let child = root.path().join("sub");
+            std::fs::create_dir(&child).expect("child dir");
+            std::fs::write(child.join("nested.txt"), "nested").expect("nested file");
+
+            host.app().open(Location::local(root.path()));
+            assert!(host.run_until(PATIENCE, |h| {
+                h.app()
+                    .browser()
+                    .column_entry_counts(0)
+                    .is_some_and(|counts| counts.total == 2)
+            }));
+            while host.turn() {}
+
+            // Focus depth 0 (`sub` is sorted before `root.txt`), descend into `sub` at depth 1,
+            // and hold the header target on depth 0 to simulate a hovered parent column.
+            host.runtime().update(|app, tx| {
+                let view = shell::view_focus(app).expect("a view").to_owned();
+                tx.focus(view, true);
+            });
+            while host.turn() {}
+            tap(&mut host, char_key("l"), Mods::default());
+            assert!(host.run_until(PATIENCE, |h| {
+                h.app()
+                    .browser()
+                    .column_entry_counts(1)
+                    .is_some_and(|counts| counts.total == 1)
+            }));
+            while host.turn() {}
+            host.runtime().update(|app, _| {
+                app.columns.hold_header(Some(0));
+            });
+            while host.turn() {}
+            assert_eq!(host.app().columns.targeted(), 0);
+            assert_eq!(host.app().columns.active_depth(), 1);
+
+            tap(&mut host, char_key(";"), Mods::default());
+            tap(&mut host, char_key("c"), Mods::default());
+            let tree = host.tree();
+            let field = all(&tree, &|node| node["key"] == "compress-1-name");
+            assert_eq!(field.len(), 1);
+            assert_eq!(text(field[0], "value"), "nested.txt");
         },
     );
 }

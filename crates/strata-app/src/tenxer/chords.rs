@@ -32,7 +32,7 @@ pub(super) fn handle_armed_chord(app: &mut App, press: &KeyPress, tx: &mut Tx) -
     if press.is(SETTINGS) {
         return Outcome::Declined;
     }
-    if press.is(ESCAPE_ANY) {
+    if press.is(ESCAPE) {
         return Outcome::Ran;
     }
     let completed = match kind {
@@ -188,16 +188,7 @@ pub(super) fn arm_actions(app: &mut App, folder_only: bool) {
 }
 
 fn complete_action(app: &mut App, press: &KeyPress, tx: &mut Tx) -> bool {
-    if press.is(ACTIONS_TERMINAL) {
-        open_action_terminal(app, tx);
-        return true;
-    }
-    if press.is(ACTIONS_COMPRESS) {
-        open_action_compress(app, tx);
-        return true;
-    }
-    if press.is(ACTIONS_EXTRACT) {
-        run_action_extract(app, tx);
+    if complete_lettered_action(app, press, tx) {
         return true;
     }
     if press.is(ACTIONS_FOLDER) {
@@ -205,6 +196,21 @@ fn complete_action(app: &mut App, press: &KeyPress, tx: &mut Tx) -> bool {
         return true;
     }
     complete_numbered_slot(app, press, ACTIONS_NUMBERS, tx)
+}
+
+fn complete_lettered_action(app: &mut App, press: &KeyPress, tx: &mut Tx) -> bool {
+    if press.is(ACTIONS_TERMINAL) {
+        open_action_terminal(app, tx);
+    } else if press.is(ACTIONS_COMPRESS) {
+        open_action_compress(app, tx);
+    } else if press.is(ACTIONS_EXTRACT) {
+        run_action_extract(app, tx);
+    } else if press.is(ACTIONS_EXTRACT_TO) {
+        run_action_extract_to(app, tx);
+    } else {
+        return false;
+    }
+    true
 }
 
 fn open_action_terminal(app: &mut App, tx: &mut Tx) {
@@ -225,6 +231,12 @@ fn run_action_extract(app: &mut App, tx: &mut Tx) {
     match extract_target(app) {
         Ok(entry) => archive::extract_entry(app, entry, tx),
         Err(reason) => app.tenxer.flash.show(tr(reason), tx),
+    }
+}
+
+fn run_action_extract_to(app: &mut App, tx: &mut Tx) {
+    if let Err(reason) = extract_target(app) {
+        app.tenxer.flash.show(tr(reason), tx);
     }
 }
 

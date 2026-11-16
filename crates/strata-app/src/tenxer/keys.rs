@@ -128,8 +128,10 @@ fn chrome_or_escape(
     at: &Situation,
     tx: &mut Tx,
 ) -> Option<Outcome> {
-    if at.within("sidebar") {
-        return Some(tenxer_sidebar(app, press, tx));
+    if at.within("sidebar")
+        && let Some(outcome) = tenxer_sidebar(app, press, tx)
+    {
+        return Some(outcome);
     }
     if press.is(ESCAPE_ANY_SHIFT) && at.holds() != Some(Holds::Edit) {
         escape_ladder(app, tx);
@@ -138,45 +140,62 @@ fn chrome_or_escape(
     None
 }
 
-fn tenxer_sidebar(app: &mut App, press: &KeyPress, tx: &mut Tx) -> Outcome {
+fn tenxer_sidebar(app: &mut App, press: &KeyPress, tx: &mut Tx) -> Option<Outcome> {
     let held = press.modifiers();
     if held.intersects(Modifiers::CONTROL_MASK | Modifiers::ALT_MASK | Modifiers::SUPER_MASK) {
-        return Outcome::Declined;
+        return None;
     }
-    if held.contains(Modifiers::SHIFT_MASK) || sidebar_swallows(press) {
-        return Outcome::Ran;
+    if held.contains(Modifiers::SHIFT_MASK) {
+        return Some(Outcome::Ran);
     }
-    if press.used_fallback() && sidebar_fallback_move(app, press, tx) {
-        return Outcome::Ran;
-    }
-    Outcome::Declined
+    sidebar_chord_outcome(app, press, tx)
+        .or_else(|| sidebar_swallows(press).then_some(Outcome::Ran))
 }
 
 fn sidebar_swallows(press: &KeyPress) -> bool {
     press.is(RIGHT) || press.is(MOVE_TO_TRASH.in_map(Map::Default))
 }
 
-fn sidebar_fallback_move(app: &App, press: &KeyPress, tx: &mut Tx) -> bool {
-    if press.is(DOWN.or_alternates()) {
-        tx.send_key(KeyEvent {
-            key: Key::Down,
-            mods: Mods::default(),
-        });
-        true
-    } else if press.is(UP.or_alternates()) {
-        tx.send_key(KeyEvent {
-            key: Key::Up,
-            mods: Mods::default(),
-        });
-        true
-    } else if press.is(LEFT.or_alternates()) {
+fn sidebar_chord_outcome(app: &App, press: &KeyPress, tx: &mut Tx) -> Option<Outcome> {
+    if press.is(LEFT.or_alternates()) || press.is(BACKSPACE) {
         if let Some(view) = shell::view_focus(app) {
             tx.focus(view, true);
         }
-        true
-    } else {
-        false
+        return Some(Outcome::Ran);
     }
+    if press.is(ENTER) || press.is(SPACE) {
+        return Some(Outcome::Declined);
+    }
+    if press.is(RIGHT.alternates()) {
+        send_plain(tx, Key::Enter);
+        return Some(Outcome::Ran);
+    }
+    sidebar_step_outcome(press, tx)
+}
+
+fn sidebar_step_outcome(press: &KeyPress, tx: &mut Tx) -> Option<Outcome> {
+    if press.is(DOWN.or_alternates()) {
+        return Some(step_or_yield(press, DOWN, Key::Down, tx));
+    }
+    if press.is(UP.or_alternates()) {
+        return Some(step_or_yield(press, UP, Key::Up, tx));
+    }
+    None
+}
+
+fn step_or_yield(press: &KeyPress, arrow: key_catalog::Command, key: Key, tx: &mut Tx) -> Outcome {
+    if !press.is(arrow.alternates()) {
+        return Outcome::Declined;
+    }
+    send_plain(tx, key);
+    Outcome::Ran
+}
+
+fn send_plain(tx: &mut Tx, key: Key) {
+    tx.send_key(KeyEvent {
+        key,
+        mods: Mods::default(),
+    });
 }
 
 fn listing_or_unbound(

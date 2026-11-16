@@ -337,11 +337,6 @@ impl Sidebar {
         self.state.width.auto_rail() != before
     }
 
-    /// Shows or hides 10xer's `g` place and pin keycaps on sidebar rows.
-    pub(crate) fn set_keycaps(&mut self, shown: bool) {
-        self.state.keycaps = shown;
-    }
-
     /// Pinned places in sidebar display order, excluding rows the sidebar hides
     /// (`SidebarState::visible_pins` in `src/ui/window/sidebar_places.rs`).
     pub(crate) fn visible_pins(&self) -> Vec<Location> {
@@ -465,6 +460,15 @@ fn heard(app: &mut App, intent: SidebarIntent, tx: &mut Tx) {
         }
         _ => {}
     }
+}
+
+/// Shows or hides 10xer's `g` place and pin keycaps on sidebar rows, relisting when shown so
+/// live `[keymap.tenxer]` or locale updates take effect immediately.
+pub(crate) fn show_keycaps(app: &mut App, shown: bool) {
+    if shown && app.sidebar.started {
+        relist(app);
+    }
+    app.sidebar.state.keycaps = shown;
 }
 
 /// Refreshes `app.sidebar.pins` from the shared store at once so a caller reading
