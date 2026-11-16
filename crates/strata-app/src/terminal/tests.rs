@@ -11,7 +11,7 @@ use std::{
 };
 
 use rune::{Key, KeyEvent, Mods, Tx};
-use strata_components::dialog::Tone;
+use strata_components::{contract::Rect, dialog::Tone};
 use strata_core::model::Location;
 use strata_kit::icons::IconName;
 
@@ -22,9 +22,10 @@ use super::{
 };
 use crate::{
     App,
-    commands::{self, On, Outcome},
-    error_dialog,
+    commands::{self, Holds, On, Outcome, Situation},
+    error_dialog::{self, Error},
     host::offscreen::Offscreen,
+    menus::{self, Request},
     shell,
     startup::{self, UiThread},
     test_support::{PATIENCE, fixture, in_own_process, send_key},
@@ -79,9 +80,10 @@ fn press_ctrl_alt_t(host: &mut Offscreen) {
     send_key(
         host,
         KeyEvent {
-            key: Key::Text("t".to_owned()),
+            key: Key::Command('t'),
             mods: Mods {
                 ctrl: true,
+                cmd: true,
                 alt: true,
                 ..Mods::default()
             },
@@ -343,20 +345,157 @@ fn missing_emulator_and_unsupported_places_report_terminal_errors() {
             assert_eq!(title, "Unable to open terminal");
             assert!(detail.contains("No terminal emulator"), "{detail}");
 
-            for location in [
-                Location::uri("trash:///"),
-                Location::uri("sftp://example.com/work"),
-            ] {
-                host.runtime().update(move |app: &mut App, tx: &mut Tx| {
-                    commands::run(app, "terminal", On::Place(location), tx);
-                });
-                while host.turn() {}
-                let (icon, _, title, _, message) =
-                    error_dialog::shown_details(host.app()).expect("place error");
-                assert_eq!(icon, IconName::Close);
-                assert_eq!(title, "Unable to open terminal");
-                assert_eq!(message, "This location is not a local folder");
-            }
+            send_key(
+                &mut host,
+                KeyEvent {
+                    key: Key::Escape,
+                    mods: Mods::default(),
+                },
+            );
+            while host.turn() {}
+            assert!(
+                error_dialog::shown_details(host.app()).is_none(),
+                "Escape dismisses the prior error dialog"
+            );
+
+            host.runtime().update(|app: &mut App, tx: &mut Tx| {
+                commands::run(
+                    app,
+                    "terminal",
+                    On::Place(Location::uri("sftp://example.com/work")),
+                    tx,
+                );
+            });
+            while host.turn() {}
+            let (icon, _, title, _, message) =
+                error_dialog::shown_details(host.app()).expect("place error");
+            assert_eq!(icon, IconName::Close);
+            assert_eq!(title, "Unable to open terminal");
+            assert_eq!(message, "This location is not a local folder");
+        },
+    );
+}
+
+fn current_holds(host: &mut Offscreen) -> Option<Holds> {
+    let mut holds = None;
+    host.runtime().update(|app: &mut App, tx: &mut Tx| {
+        holds = Situation::of(app, tx).holds();
+    });
+    holds
+}
+
+fn assert_location_and_modal_after_yield(host: &mut Offscreen, folder: &Path, log: &Path) {
+    send_key(
+        host,
+        KeyEvent {
+            key: Key::Escape,
+            mods: Mods::default(),
+        },
+    );
+    while host.turn() {}
+    host.runtime().update(|app: &mut App, _: &mut Tx| {
+        app.columns.hold_header(None);
+    });
+
+    send_key(
+        host,
+        KeyEvent {
+            key: Key::Command('l'),
+            mods: Mods {
+                ctrl: true,
+                cmd: true,
+                ..Mods::default()
+            },
+        },
+    );
+    while host.turn() {}
+    assert_eq!(current_holds(host), Some(Holds::Location));
+
+    press_ctrl_alt_t(host);
+    assert!(
+        host.run_until(PATIENCE, |_| launches(log).len() == 2),
+        "AfterYield launches while location bar holds focus"
+    );
+    assert_eq!(launches(log)[1].0, folder.join("documents"));
+
+    host.runtime().update(|app: &mut App, _: &mut Tx| {
+        error_dialog::show(app, Error::new("Busy", "Modal open"));
+    });
+    while host.turn() {}
+    assert!(matches!(current_holds(host), Some(Holds::Modal { .. })));
+
+    press_ctrl_alt_t(host);
+    assert_eq!(
+        launches(log).len(),
+        2,
+        "Reach::Taken swallows Ctrl+Alt+T under a modal dialog"
+    );
+}
+
+#[test]
+fn after_yield_opens_under_menu_or_location_and_skips_in_tenxer_or_modal() {
+    let launcher_dir = tempfile::tempdir().expect("launcher dir");
+    let parent_log = launcher_dir.path().join("launches.log");
+    write_stub_launcher(launcher_dir.path(), &parent_log);
+    hosted_with_env(
+        "after_yield_opens_under_menu_or_location_and_skips_in_tenxer_or_modal",
+        &[
+            ("PATH", launcher_dir.path().as_os_str()),
+            ("TERMINAL", OsStr::new("")),
+        ],
+        |mut host| {
+            let log = PathBuf::from(std::env::var_os("PATH").expect("PATH")).join("launches.log");
+            let folder = fixture();
+            open_and_list(&mut host, folder.path(), 5);
+
+            let documents = folder.path().join("documents");
+            click_row(&mut host, folder.path(), "documents");
+            assert!(
+                host.run_until(PATIENCE, |host| {
+                    host.app().browser().location_at(1).as_ref()
+                        == Some(&Location::local(&documents))
+                }),
+                "documents column open"
+            );
+
+            // Clear selection, pin targeted() to column 1 (`documents`), and open a menu on
+            // column 0 (`$root`): `Ctrl+Alt+T` in `Map::Default` runs at `Stage::AfterYield`
+            // and prefers `app.menu.depth()` (`0`) over `app.columns.targeted()` (`1`).
+            host.runtime().update(|app: &mut App, tx: &mut Tx| {
+                app.columns.clear_selection();
+                shell::publish(app);
+                app.columns.hold_header(Some(1));
+                menus::open(
+                    app,
+                    Request {
+                        depth: 0,
+                        entry: None,
+                        anchor: Rect::new(10.0, 10.0, 0.0, 0.0),
+                    },
+                    tx,
+                );
+            });
+            while host.turn() {}
+            assert_eq!(current_holds(&mut host), Some(Holds::Menu));
+
+            press_ctrl_alt_t(&mut host);
+            assert!(
+                host.run_until(PATIENCE, |_| launches(&log).len() == 1),
+                "AfterYield launches under an open context menu"
+            );
+            assert_eq!(launches(&log)[0].0, folder.path());
+
+            // In `tenxer_mode`, `Stage::AfterYield` skips `TERMINAL` under an open menu.
+            host.runtime().update(|app: &mut App, _: &mut Tx| {
+                shell::saved(app).change(|settings| settings.tenxer_mode = true);
+            });
+            press_ctrl_alt_t(&mut host);
+            assert_eq!(launches(&log).len(), 1, "skipped in tenxer_mode");
+            host.runtime().update(|app: &mut App, _: &mut Tx| {
+                shell::saved(app).change(|settings| settings.tenxer_mode = false);
+            });
+
+            assert_location_and_modal_after_yield(&mut host, folder.path(), &log);
         },
     );
 }

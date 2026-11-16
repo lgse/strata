@@ -3,17 +3,19 @@
 //! Opening a folder in a terminal emulator (`launch_terminal`, `open_terminal`, and
 //! `open_focused_folder_terminal` under `src/ui/browser/`, backed by `src/ui/terminal.rs`).
 //!
-//! - **Asking.** The `terminal` command: `Ctrl+Alt+T` (`TERMINAL` at `Stage::FileCommands`),
-//!   the folder menu's "Open in Terminal" row (`On::Column`), a folder entry's "Open in
-//!   Terminal" row (`On::Row`), or `On::Place`. In `Map::Default`, a user binding on
-//!   `ACTIONS_TERMINAL` (`Stage::DirectCommands`) opens the focused listing's folder
-//!   ([`open_focused_folder`], which 10xer's `;` -> `t` chord also calls).
+//! - **Asking.** The `terminal` command: `Ctrl+Alt+T` (`TERMINAL` at `Stage::FileCommands`,
+//!   and at `Stage::AfterYield` outside `tenxer_mode` matching `WINDOW_ACTIONS` in
+//!   `src/ui/window/keyboard.rs`), the folder menu's "Open in Terminal" row (`On::Column`), a
+//!   folder entry's "Open in Terminal" row (`On::Row`), or `On::Place`. In `Map::Default`, a
+//!   user binding on `ACTIONS_TERMINAL` (`Stage::DirectCommands`) opens the focused listing's
+//!   folder ([`open_focused_folder`], which 10xer's `;` -> `t` chord also calls).
 //! - **Which folder `Ctrl+Alt+T` opens** (`BrowserView::open_terminal` in
 //!   `src/ui/browser/view_edit.rs`). A single selected folder in the active column wins.
-//!   Otherwise single-pane views open the active column's folder, while Columns opens the
-//!   targeted pane's folder (`Columns::targeted`, GTK's `destination_depth`) unless a click in
-//!   that pane just opened its lone selected folder as the active child column beside it, in
-//!   which case that child folder wins (`columns-terminal-parent-pane-folder`).
+//!   Otherwise single-pane views open the active column's folder, while Columns opens an open
+//!   context menu's column or else the targeted pane's folder (`Columns::targeted`, GTK's
+//!   `destination_depth`) unless a click in that pane just opened its lone selected folder as
+//!   the active child column beside it, in which case that child folder wins
+//!   (`columns-terminal-parent-pane-folder`).
 //! - **Starting and reaping.** [`Emulator::resolve`] walks `$TERMINAL` and `$PATH` off the UI
 //!   thread inside [`spawn_reaped`], starts the emulator detached from stdio with the launch
 //!   environment restored, and waits on the child so launcher scripts never linger as zombies
@@ -65,10 +67,17 @@ impl Part for Terminal {
     const COMMANDS: &'static [Action<App>] = &[
         Action::new("terminal", open_terminal)
             .command(TERMINAL)
-            .keys(&[Keys::at(
-                Stage::FileCommands,
-                &[TERMINAL.ignoring(Modifiers::empty())],
-            )]),
+            .keys(&[
+                Keys::at(
+                    Stage::FileCommands,
+                    &[TERMINAL.ignoring(Modifiers::empty())],
+                ),
+                // `WINDOW_ACTIONS` in `src/ui/window/keyboard.rs`: runs under a menu or the
+                // location bar, is swallowed under a modal or inline edit (`Reach::Taken`),
+                // and is skipped in 10xer mode (`keyboard.rs:550`).
+                Keys::at(Stage::AfterYield, &[TERMINAL.ignoring(Modifiers::empty())])
+                    .when(|app, _| !shell::preferences(app).tenxer_mode),
+            ]),
         Action::new("actions-terminal", open_focused_action)
             .command(ACTIONS_TERMINAL)
             .keys(&[Keys::at(
@@ -162,7 +171,13 @@ fn focus_terminal_location(app: &App) -> Option<Location> {
             let depth = app.browser.active_depth()?;
             return app.browser.location_at(depth);
         }
-        let depth = app.columns.targeted();
+        let depth = app
+            .menu
+            .state
+            .is_open()
+            .then(|| app.menu.depth())
+            .filter(|depth| app.browser.location_at(*depth).is_some())
+            .unwrap_or_else(|| app.columns.targeted());
         let directory = app.browser.location_at(depth);
         // A click opens the folder as the active column while the pointer can
         // leave its parent as the destination; prefer the folder it opened.
