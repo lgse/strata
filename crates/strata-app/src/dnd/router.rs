@@ -14,91 +14,22 @@ use rune::{Drag, DragOutcome, El, Phase, Pick, Picked, Tx, el};
 use strata_components::contract::{
     Dnd as Binder,
     dnd::{
-        DragPayload, DragSource, DropAction, DropData, DropHover, DropItem, DropOffer, DropZone,
-        Dropped, ElementKey, URI_LIST,
+        DragSource, DropData, DropHover, DropItem, DropOffer, DropZone, Dropped, ElementKey,
+        URI_LIST,
     },
 };
-use strata_platform::dnd::{DragIcon, DropOffer as P1Offer, DropPoint, Error as P1Error};
+use strata_platform::dnd::{DropOffer as P1Offer, DropPoint, Error as P1Error};
 
 use super::{
     adapter::{
         action_to_p1, drag_item, encode_uri_list, offer_of_p1, point_of_p1, set_running, target_of,
     },
-    registry::{Landing, PointZone, Probe, Registry, scoped_id},
+    drag::{Change, Gesture, Hit, InWindowDrag, Launch, TailProbe},
+    registry::{self, Landing, PointZone, Probe, Registry, scoped_id},
 };
-use crate::{App, shell, slots::TabKey};
+use crate::{App, shell};
 
 const SOURCE_SLOP: f32 = 8.0;
-
-type EndFn = Rc<dyn Fn(&mut App, DragOutcome, &mut Tx)>;
-
-/// A pointer gesture on a drag source: the drag, and the source element's key.
-#[derive(Clone, Copy)]
-pub(crate) struct Gesture<'a> {
-    pub(crate) drag: &'a Drag,
-    pub(crate) source: &'a str,
-}
-
-/// What a drag carries, how it looks, and what runs when it ends.
-pub(crate) struct Launch {
-    payload: DragPayload,
-    icon: Option<DragIcon>,
-    on_end: EndFn,
-}
-
-impl Launch {
-    pub(crate) fn new(
-        payload: DragPayload,
-        on_end: impl Fn(&mut App, DragOutcome, &mut Tx) + 'static,
-    ) -> Self {
-        Self {
-            payload,
-            icon: None,
-            on_end: Rc::new(on_end),
-        }
-    }
-
-    pub(crate) fn icon(mut self, icon: DragIcon) -> Self {
-        self.icon = Some(icon);
-        self
-    }
-}
-
-/// An element hit-test's answer for the drag numbered `serial` (its `seq` or its `id`).
-#[derive(Clone, Copy)]
-struct Hit<'a> {
-    serial: u64,
-    path: Option<&'a str>,
-}
-
-/// A drag's landing before and after a move.
-struct Change {
-    old: Landing,
-    new: Landing,
-    offer: DropOffer,
-    at: [f32; 2],
-}
-
-struct InWindowDrag {
-    id: u64,
-    source_key: String,
-    offer: DropOffer,
-    payload: DragPayload,
-    at: [f32; 2],
-    landing: Landing,
-    seq: u64,
-    origin_tab: TabKey,
-    tab_tail: Option<Vec<String>>,
-    on_end: Option<EndFn>,
-}
-
-/// Where to look for the drag source's path in the tree, to keep it mounted while the drag runs.
-struct TailProbe {
-    id: u64,
-    tab: TabKey,
-    source_key: String,
-    at: (f32, f32),
-}
 
 #[derive(Clone)]
 pub(crate) struct Wiring(Rc<Core>);
@@ -392,24 +323,18 @@ impl Wiring {
 
     fn capture_source_tail(&self, probe: TailProbe, tx: &mut Tx) {
         let me = self.clone();
-        let TailProbe {
-            id,
-            tab,
-            source_key,
-            at,
-        } = probe;
-        let tab_seg = format!("tab-{}", tab.0);
+        let (x, y) = probe.at;
         tx.element_at_in_with(
-            source_key.clone(),
-            at.0,
-            at.1,
+            probe.source_key.clone(),
+            x,
+            y,
             Pick::new().transparent(true),
             move |_: &mut App, picked: Option<Picked>, _: &mut Tx| {
-                let Some(tail) = picked.and_then(|p| path_tail(p.path(), &tab_seg, &source_key))
-                else {
+                let Some(tail) = picked.and_then(|p| probe.tail_in(p.path())) else {
                     return;
                 };
-                if let Some(active) = me.0.in_window.borrow_mut().as_mut().filter(|d| d.id == id) {
+                let mut slot = me.0.in_window.borrow_mut();
+                if let Some(active) = slot.as_mut().filter(|d| d.id == probe.id) {
                     active.tab_tail = Some(tail);
                 }
             },
@@ -623,7 +548,7 @@ impl Wiring {
                 };
                 let dropped = self.dropped(app, &key, drag);
                 zone.deliver(app, dropped, tx);
-                outcome_of(action)
+                registry::outcome_of(action)
             }
             Landing::Rejecting { key } => {
                 if let Some(zone) = self.zone(&key) {
@@ -653,7 +578,7 @@ impl Wiring {
         let slot = self.0.in_window.borrow();
         let drag = slot.as_ref()?;
         let tail = drag.tab_tail.as_deref()?;
-        if drag.origin_tab == shown_tab && source_still_mounted(app, &drag.source_key, tail) {
+        if drag.origin_tab == shown_tab && drag.source_mounted(app) {
             return None;
         }
         Some(
@@ -677,14 +602,6 @@ impl Wiring {
                 self.release(app, d, tx);
             }
         }
-    }
-}
-
-fn outcome_of(action: DropAction) -> DragOutcome {
-    match action {
-        DropAction::Copy | DropAction::Ask => DragOutcome::Copied,
-        DropAction::Move => DragOutcome::Moved,
-        DropAction::Link => DragOutcome::Linked,
     }
 }
 
@@ -743,47 +660,4 @@ impl OffscreenSource {
             .get()
             .is_some_and(|[sx, sy]| (wx - sx).abs().max((wy - sy).abs()) > SOURCE_SLOP)
     }
-}
-
-/// The keyed segments of `path` from the tab `tab_seg` down to the element `wanted`.
-fn path_tail(path: &str, tab_seg: &str, wanted: &str) -> Option<Vec<String>> {
-    let segs: Vec<&str> = path.split('/').collect();
-    let start = segs.iter().position(|s| *s == tab_seg)?;
-    let end = segs[start..].iter().position(|s| *s == wanted)?;
-    Some(
-        segs[start..=start + end]
-            .iter()
-            .map(|s| (*s).to_owned())
-            .collect(),
-    )
-}
-
-fn is_preview_source(source_key: &str) -> bool {
-    source_key == "preview-handle" || source_key.ends_with("-picture")
-}
-
-fn is_single_pane_source(source_key: &str) -> bool {
-    source_key == "icons" || source_key == "list"
-}
-
-fn source_still_mounted(app: &App, source_key: &str, tail: &[String]) -> bool {
-    if is_preview_source(source_key) {
-        return crate::preview::current_entry(app).is_some();
-    }
-    view_source_mounted(app, source_key, tail)
-}
-
-/// Whether the shown view still draws the view row a drag started from.
-fn view_source_mounted(app: &App, source_key: &str, tail: &[String]) -> bool {
-    let Some(view) = shell::shown_view(app) else {
-        return false;
-    };
-    if source_key.starts_with("columns-col-") {
-        return (view.shows)("columns") && app.columns.has_column_key(source_key);
-    }
-    if is_single_pane_source(source_key) {
-        let from_results = tail.iter().any(|seg| seg == "filter-results");
-        return (view.shows)(source_key) && app.filter.pane.shows() == from_results;
-    }
-    true
 }

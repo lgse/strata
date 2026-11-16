@@ -6,7 +6,7 @@
 
 use std::{collections::HashMap, rc::Rc};
 
-use rune::{Live, Mods, PointerEvent};
+use rune::{DragOutcome, Live, Mods, PointerEvent};
 use strata_components::contract::dnd::{DropAction, DropActions, DropHover, DropOffer, DropZone};
 
 use crate::App;
@@ -211,4 +211,13 @@ fn negotiate_local(chosen: Option<DropAction>, offered: DropActions) -> Option<D
         DropAction::Link => offered.contains(DropActions::LINK),
     };
     allowed.then_some(action)
+}
+
+/// How a drag that dropped `action` ended, as its source hears it.
+pub(super) fn outcome_of(action: DropAction) -> DragOutcome {
+    match action {
+        DropAction::Copy | DropAction::Ask => DragOutcome::Copied,
+        DropAction::Move => DragOutcome::Moved,
+        DropAction::Link => DragOutcome::Linked,
+    }
 }

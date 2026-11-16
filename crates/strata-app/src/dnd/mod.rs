@@ -36,6 +36,7 @@ use crate::{
 };
 
 pub(crate) mod adapter;
+mod drag;
 pub(crate) mod policy;
 mod registry;
 mod router;
@@ -163,7 +164,7 @@ pub(crate) fn drag_phase(app: &mut App, d: &Drag, key: &str, tx: &mut Tx) -> boo
     let wiring = app.dnd.wiring.clone();
     wiring.drag_phase(
         app,
-        router::Gesture {
+        drag::Gesture {
             drag: d,
             source: key,
         },
@@ -235,7 +236,7 @@ pub(crate) fn begin_entries(app: &mut App, entries: Vec<FileEntry>, scale: f32, 
     let icon = adapter::drag_icon(entries.len(), all_folders, scale);
     let wiring = app.dnd.wiring.clone();
     install_active_drag(app, active, all_folders.then_some(TabOpen::AtEnd));
-    let launch = router::Launch::new(payload, |app, _, tx| on_drag_ended(app, tx)).icon(icon);
+    let launch = drag::Launch::new(payload, |app, _, tx| on_drag_ended(app, tx)).icon(icon);
     if wiring.start(app, launch, tx).is_err() {
         on_drag_ended(app, tx);
     }
@@ -273,7 +274,7 @@ pub(crate) fn sidebar_drag_start(app: &mut App, location: Location) {
         sidebar_row: true,
     };
     let wiring = app.dnd.wiring.clone();
-    let launch = router::Launch::new(payload, |app, _, tx| on_drag_ended(app, tx));
+    let launch = drag::Launch::new(payload, |app, _, tx| on_drag_ended(app, tx));
     wiring.start_sidebar_drag(app, launch);
     install_active_drag(app, active, Some(TabOpen::AtGap));
 }
