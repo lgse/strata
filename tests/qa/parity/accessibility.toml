@@ -147,25 +147,22 @@ blocker = "A17: the Properties dialog on Alt+Return (line 4)"
 scenario = "settings-choice-buttons-expose-value"
 run = "columns"
 package = "A18"
-status = "pending"
-reason = "scope"
-blocker = "A18"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "settings-choice-options-expose-chosen"
 run = "columns-date-format"
 package = "A18"
-status = "pending"
-reason = "scope"
-blocker = "A18"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "settings-choice-options-expose-chosen"
 run = "columns-drag-drop"
 package = "A18"
-status = "pending"
-reason = "scope"
-blocker = "A18"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "toolbar-controls-named"

@@ -6,6 +6,5 @@
 scenario = "custom-text-size-shortcuts-restart"
 run = "columns"
 package = "A8"
-status = "pending"
-reason = "scope"
-blocker = "A18: the Settings window, its \"Appearance settings\" page on line 32 after the header's Settings on line 31, then its text size field"
+status = "required"
+host = "offscreen"

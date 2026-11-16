@@ -147,9 +147,7 @@ impl Part for Sidebar {
     }
 
     fn customized(app: &mut App) {
-        if app.sidebar.started {
-            relist(app);
-        }
+        relist_if_started(app);
     }
 
     /// The tab is shown: what another tab changed while it was hidden (the width step, the
@@ -185,6 +183,13 @@ impl Part for Sidebar {
         }
         start(app);
         true
+    }
+}
+
+/// Rebuilds the active tab's sidebar rows when sidebar settings changed while it is shown.
+pub(crate) fn relist_if_started(app: &mut App) {
+    if app.sidebar.started {
+        relist(app);
     }
 }
 

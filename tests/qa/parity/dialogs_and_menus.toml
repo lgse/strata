@@ -42,9 +42,8 @@ host = "offscreen"
 scenario = "dismissed-overlays-return-focus"
 run = "columns"
 package = "A6"
-status = "pending"
-reason = "scope"
-blocker = "A18: Settings on Ctrl+, (line 4)"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "entry-menu-named-actions"
@@ -162,9 +161,8 @@ blocker = "docs/rune/upstream/rune/49-secondary-press-scrim.md: a secondary pres
 scenario = "settings-closes-on-an-outside-click"
 run = "columns"
 package = "A18"
-status = "pending"
-reason = "scope"
-blocker = "A18"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "shortcut-reference-search-keeps-editing-chords"

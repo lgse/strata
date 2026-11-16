@@ -48,6 +48,16 @@ use kind::Kind;
 use crate::listing::known;
 pub(crate) use viewer::Viewer;
 
+/// Whether `entry`'s thumbnail is an STL rendered model, gated by `stl_thumbnails`.
+pub(crate) fn is_rendered_model(entry: &FileEntry) -> bool {
+    !entry.is_directory()
+        && entry
+            .location
+            .native_path()
+            .and_then(kind::of)
+            .is_some_and(|kind| kind == Kind::RenderedModel)
+}
+
 /// The key of `entry`'s thumbnail: its path, modification time and size, so a change to the
 /// file is a new key. None for an entry that gets no thumbnail: not a local file, or a kind
 /// no renderer takes.

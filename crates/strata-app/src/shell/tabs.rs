@@ -223,6 +223,15 @@ impl Tabs {
         Some(self.parked.remove(at).1)
     }
 
+    pub(super) fn for_each_parked(
+        &self,
+        mut f: impl FnMut(&Rc<Browser>, Option<&'static crate::slots::View<App>>),
+    ) {
+        for (_, parked) in &self.parked {
+            f(&parked.browser, parked.here.parts.shown());
+        }
+    }
+
     /// Holds `queued` for its hidden tab. False when the tab is gone: it is dropped.
     pub(super) fn hold(&mut self, key: TabKey, queued: Queued<App>) -> bool {
         let Some(parked) = self.parked_mut(key) else {
@@ -355,6 +364,12 @@ pub(crate) fn open(app: &mut App, location: Option<Location>, at: usize, tx: &mu
         (&browser, parts),
         &setup,
         key,
+    );
+    super::sync_browser_freshness(
+        &browser,
+        parts.shown(),
+        saved.watch_network_folders,
+        window.power_saver,
     );
     here.grouped = grouped;
     let at = at.min(app.window.tabs.order.len());

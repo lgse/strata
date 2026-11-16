@@ -18,7 +18,10 @@ use strata_components::header::{
     self, Header, HeaderLabels, Shown, WindowAction, WindowButtons, WindowChrome,
 };
 use strata_components::thumbnails::{Settings, ThumbnailStore};
-use strata_core::{i18n::tr, model::Location};
+use strata_core::{
+    i18n::tr,
+    model::{Location, ViewPreferences},
+};
 use strata_desktop::{
     keys::{
         Keys,
@@ -30,10 +33,7 @@ use strata_fs::{
     adapters::{LocalFileSource, LocalOperationProvider},
     app::{Browser, BrowserEvent, FreshnessInput},
 };
-use strata_kit::{
-    icons::IconName,
-    look::{Look, LookParams},
-};
+use strata_kit::icons::IconName;
 use strata_platform::csd::{self, Csd};
 
 use crate::{
@@ -113,8 +113,58 @@ pub(crate) struct Window {
     thumbnails: ThumbnailStore,
     /// The per-folder views, one store for the process ([`crate::folder_views`]).
     folder_views: folder_views::Kept,
+    /// Theme library, Omarchy state, and system appearance monitor (`crate::theme`).
+    themes: crate::theme::ThemeEngine,
+    /// Whether the host allows motion (`Offscreen::without_animations` clears it).
+    animations_allowed: bool,
+    /// System power-saver state (`gio::PowerProfileMonitor`).
+    power_saver: bool,
+    _power_monitor: Option<PowerMonitorGuard>,
     /// Whether a modal layer was open at the last poll ([`grab`]).
     grab: grab::Grab,
+}
+
+struct PowerMonitorGuard {
+    monitor: gio::PowerProfileMonitor,
+    handler: Option<glib::SignalHandlerId>,
+}
+
+impl Drop for PowerMonitorGuard {
+    fn drop(&mut self) {
+        use gio::prelude::*;
+        if let Some(handler) = self.handler.take() {
+            self.monitor.disconnect(handler);
+        }
+    }
+}
+
+#[cfg(test)]
+fn follow_power_saver(_: Later<App>) -> (bool, Option<PowerMonitorGuard>) {
+    (false, None)
+}
+
+#[cfg(not(test))]
+fn follow_power_saver(later: Later<App>) -> (bool, Option<PowerMonitorGuard>) {
+    use gio::prelude::*;
+    let monitor = gio::PowerProfileMonitor::get_default();
+    let enabled = monitor.is_power_saver_enabled();
+    let handler = monitor.connect_power_saver_enabled_notify(move |monitor| {
+        let saving = monitor.is_power_saver_enabled();
+        later.then(move |app: &mut App, _: &mut Tx| {
+            if app.window.power_saver != saving {
+                app.window.power_saver = saving;
+                sync_freshness(app);
+            }
+            false
+        });
+    });
+    (
+        enabled,
+        Some(PowerMonitorGuard {
+            monitor,
+            handler: Some(handler),
+        }),
+    )
 }
 
 /// A browser over the local file source, as `src/ui/window/launch.rs` builds one, with the
@@ -289,10 +339,8 @@ impl App {
     ) -> Self {
         let events = Inbox::new();
         let later = events.later();
-        settings.report_to(later.clone());
+        let (themes, power_saver, power_monitor) = init_window_services(&mut settings, &later);
         let saved = settings.preferences();
-        // The saved date format, which the dates every view shows read
-        // (`src/ui/preferences.rs` sets it as it loads); a live change must set it again.
         strata_core::util::set_date_format(strata_core::util::DateFormat::parse(
             &saved.date_format,
         ));
@@ -319,11 +367,16 @@ impl App {
         };
         let folder_views = folder_views::Kept::load(later.clone());
         here.grouped = attach(&events, &folder_views, (&browser, registry), &tab, key);
+        sync_browser_freshness(
+            &browser,
+            registry.shown(),
+            saved.watch_network_folders,
+            power_saver,
+        );
         let built = Built::new(&tab, &window);
         let keys = Live::registered(saved, first_window_reports().as_deref());
         let thumbnails = thumbnail_store(saved);
-        let mut look = Look::fallback(true);
-        follow_saved_look(&mut look, saved);
+        let look = themes.build_look(saved, true);
         let window = Window {
             settings,
             events,
@@ -344,6 +397,10 @@ impl App {
             applied: (0, 0),
             thumbnails,
             folder_views,
+            themes,
+            animations_allowed: true,
+            power_saver,
+            _power_monitor: power_monitor,
             grab: grab::Grab::default(),
         };
         Self::assemble(look, browser, window, built)
@@ -448,30 +505,52 @@ pub(crate) fn saved(app: &mut App) -> &mut Saved {
     &mut app.window.settings
 }
 
-/// Sets the look's tokens from what of the saved settings this interface follows: the text
-/// size (`TextSize`, 8 to 48 px) and the Frame and Content densities
-/// ([`crate::appearance::density`]). The rest of [`LookParams`] stays at Strata's defaults
-/// until its settings are followed (roundness, the font, the desktop's text scale), and the
-/// glow and animations switches stay as the look has them, which a host may have turned off
-/// (`Offscreen::without_animations`).
-fn follow_saved_look(look: &mut Look, saved: &strata_desktop::settings::Preferences) {
-    let text_size = u16::try_from(saved.text_size.root_font_px()).unwrap_or(u16::MAX);
-    look.apply_params(&LookParams {
-        text_size,
-        frame_density: crate::appearance::density::FRAME.saved(saved),
-        content_density: crate::appearance::density::CONTENT.saved(saved),
-        element_glow: look.glow.on,
-        animations: look.animations,
-        ..LookParams::default()
-    });
+/// Turns off motion for the host (`Offscreen::without_animations`), overriding `reduce_motion`.
+#[cfg(feature = "qa")]
+pub(crate) fn disable_animations(app: &mut App) {
+    app.window.animations_allowed = false;
+    app.look.animations = false;
 }
 
 /// The look follows the saved settings as they are now: a part that changes one the look
-/// reads, the text size, calls this after `saved(app).change(…)`, as GTK's theme follows its
-/// preference (`src/ui/theme.rs`).
+/// reads calls this after `saved(app).change(…)`, as GTK's theme follows its preference.
 pub(crate) fn follow_look(app: &mut App) {
     let App { look, window, .. } = app;
-    follow_saved_look(look, window.settings.preferences());
+    window.themes.apply(
+        look,
+        window.settings.preferences(),
+        window.animations_allowed,
+    );
+}
+
+/// Updates the look with colour motion and font family switching on `tx`.
+pub(crate) fn follow_look_tx(app: &mut App, tx: &mut Tx) {
+    let App { look, window, .. } = app;
+    let next = window
+        .themes
+        .build_look(window.settings.preferences(), window.animations_allowed);
+    window.themes.apply_tx(look, next, tx);
+}
+
+fn init_window_services(
+    settings: &mut Saved,
+    later: &Later<App>,
+) -> (crate::theme::ThemeEngine, bool, Option<PowerMonitorGuard>) {
+    settings.report_to(later.clone());
+    let themes = crate::theme::ThemeEngine::load(settings, later.clone());
+    let (power_saver, power_monitor) = follow_power_saver(later.clone());
+    (themes, power_saver, power_monitor)
+}
+
+pub(crate) fn themes(app: &App) -> &crate::theme::ThemeEngine {
+    &app.window.themes
+}
+
+pub(crate) fn reload_omarchy(app: &mut App) -> bool {
+    let Window {
+        themes, settings, ..
+    } = &mut app.window;
+    themes.reload_omarchy(settings)
 }
 
 /// The saved settings as they are now, for a build or a reader that does not change them.
@@ -479,12 +558,20 @@ pub(crate) fn preferences(app: &App) -> &strata_desktop::settings::Preferences {
     app.window.settings.preferences()
 }
 
+pub(crate) fn language_restart_required(app: &App) -> bool {
+    app.window.settings.language_restart_required()
+}
+
+pub(crate) fn interface_renderer_restart_required(app: &App) -> bool {
+    app.window.settings.interface_renderer_restart_required()
+}
+
 /// The window's saved item colours and icons, indexed by [`EntryId`].
 pub(crate) fn worn(app: &App) -> &Rc<Worn> {
     &app.window.worn
 }
 
-fn refresh_worn(app: &mut App) {
+pub(crate) fn refresh_worn(app: &mut App) {
     let next = app.window.worn.version().wrapping_add(1);
     app.window.worn =
         Worn::from_preferences(app.window.settings.preferences(), &app.window.ids, next);
@@ -537,6 +624,10 @@ impl Window {
 
     pub(crate) fn folder_views_mut(&mut self) -> &mut folder_views::Kept {
         &mut self.folder_views
+    }
+
+    pub(crate) fn themes_mut(&mut self) -> &mut crate::theme::ThemeEngine {
+        &mut self.themes
     }
 }
 
@@ -638,9 +729,57 @@ fn mount(
     browser.set_type_grouping(grouped);
     browser.set_freshness(FreshnessInput {
         scope: view.rechecks,
+        watch_network_folders: saved.watch_network_folders,
         ..browser.freshness_input()
     });
     grouped
+}
+
+pub(super) fn sync_browser_freshness(
+    browser: &Rc<Browser>,
+    view: Option<&'static View<App>>,
+    watch_network_folders: bool,
+    power_saver: bool,
+) {
+    let current = browser.freshness_input();
+    browser.set_freshness(FreshnessInput {
+        scope: view.map_or(current.scope, |shown| shown.rechecks),
+        watch_network_folders,
+        power_saver,
+        ..current
+    });
+}
+
+/// Applies `watch_network_folders` and `power_saver` across every tab's browser.
+pub(crate) fn sync_freshness(app: &mut App) {
+    let watch_network = preferences(app).watch_network_folders;
+    let power_saver = app.window.power_saver;
+    let shown = shown_view(app);
+    sync_browser_freshness(&app.browser, shown, watch_network, power_saver);
+    app.window.tabs.for_each_parked(|browser, view| {
+        sync_browser_freshness(browser, view, watch_network, power_saver);
+    });
+}
+
+/// Applies `remember_folder_views` across every tab's browser and resyncs open columns' sorts.
+pub(crate) fn sync_folder_sorts(app: &mut App) {
+    let saved = preferences(app);
+    app.window.folder_views.sync_sorts(&app.browser, saved);
+    app.browser.resync_column_sorts();
+    app.window.tabs.for_each_parked(|browser, _| {
+        app.window.folder_views.sync_sorts(browser, saved);
+        browser.resync_column_sorts();
+    });
+}
+
+/// Applies default sort preferences across every tab's browser.
+pub(crate) fn sync_default_preferences(app: &mut App, sort: ViewPreferences) {
+    app.browser.apply_default_preferences(sort);
+    app.browser.resync_column_sorts();
+    app.window.tabs.for_each_parked(|browser, _| {
+        browser.apply_default_preferences(sort);
+        browser.resync_column_sorts();
+    });
 }
 
 /// The saved "Group by file type" changed: the view shown follows it, as GTK's List view

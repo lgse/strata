@@ -44,12 +44,19 @@ use std::{
 };
 
 use rune::Tx;
-use strata_core::model::{FolderSort, LoadHandle, Location, SortOptions};
+use strata_core::{
+    model::{FolderSort, LoadHandle, Location, SortOptions},
+    storage::writer,
+};
 use strata_desktop::settings::{
     FOLDER_VIEWS_SAVE_DELAY as SAVE_DELAY, FOLDER_VIEWS_USE_SAVE_DELAY as USE_SAVE_DELAY,
-    FolderViewStore, Preferences, UnreadableAtStartup, Written, folder_sort_policy,
+    FolderViewStore, Preferences, UnreadableAtStartup, Written,
+    folder_sort_policy::{self, DefaultSort},
+    folder_view_policy,
     folder_views::{FolderViews, key_for_location},
-    folder_views_path,
+    folder_views_path, parse_preferences,
+    save_notice::NoticeProblem,
+    settings_path, sort_preferences,
 };
 use strata_fs::{
     adapters::{Watched, watch},
@@ -114,7 +121,7 @@ pub(crate) struct Kept {
     /// does, a closed window can open again, and this must be cleared on reopen, or dropped.
     exiting: bool,
     /// Follows what another Strata process, such as the portal chooser, saves.
-    _monitor: LoadHandle,
+    _monitors: [LoadHandle; 2],
     /// The browser's resolver counted a folder only opened as used: a write is owed.
     used: Rc<Cell<bool>>,
     /// Moves when the folders' sorts may have changed, and what the browser's columns last
@@ -125,14 +132,14 @@ pub(crate) struct Kept {
 impl Kept {
     /// Reads the file, once in a process, and follows it through the window's queue.
     pub(crate) fn load(later: Later<App>) -> Self {
-        let monitor = follow_file(later.clone());
+        let monitors = [follow_file(later.clone()), follow_settings(later.clone())];
         Self {
             store: Rc::new(RefCell::new(FolderViewStore::load())),
             timer: Timer::default(),
             revision: 0,
             exiting: false,
             later,
-            _monitor: monitor,
+            _monitors: monitors,
             used: Rc::default(),
             sorts: (0, 0),
         }
@@ -145,6 +152,11 @@ impl Kept {
         if saved.remember_folder_views {
             browser.set_folder_sorts(Some(self.resolver()));
         }
+    }
+
+    /// Updates `browser`'s folder-sort resolver live when `remember_folder_views` changes.
+    pub(crate) fn sync_sorts(&self, browser: &Rc<Browser>, saved: &Preferences) {
+        browser.set_folder_sorts(saved.remember_folder_views.then(|| self.resolver()));
     }
 
     /// `resolve_folder_sort`: a remembered folder's own sort, or the default.
@@ -181,8 +193,15 @@ impl Kept {
         let pending = match self.store.borrow_mut().begin_write(exit) {
             Ok(pending) => pending,
             Err(UnreadableAtStartup { path, error }) => {
-                // The GTK window shows that saving is off; this interface has no notice yet.
                 tracing::warn!(%error, path = %path.display(), "folder views can't be saved");
+                let later = self.later.clone();
+                later.then(move |app: &mut App, _: &mut Tx| {
+                    crate::shell::saved(app).report_folder_views_problem(
+                        NoticeProblem::UnreadableAtStartup,
+                        &path,
+                        &error,
+                    )
+                });
                 return;
             }
         };
@@ -192,6 +211,58 @@ impl Kept {
             later.then(move |app: &mut App, tx: &mut Tx| saved(app, written, tx));
         });
     }
+}
+
+pub(crate) fn has_saved(app: &App) -> bool {
+    !views(app).is_empty()
+}
+
+pub(crate) fn set_remember(app: &mut App, enabled: bool, tx: &mut Tx) {
+    let mut prune = None;
+    crate::shell::saved(app).change(|settings| {
+        prune = folder_view_policy::set_remember_folder_views(settings, enabled);
+    });
+    if let Some(prune) = prune {
+        change_sorts(app, |views| prune.apply(views), tx);
+    }
+    crate::shell::sync_folder_sorts(app);
+    crate::shell::settle(app, tx);
+}
+
+pub(crate) fn set_default_sort(app: &mut App, options: SortOptions, tx: &mut Tx) {
+    let mut stored = None;
+    crate::shell::saved(app).mutate(
+        |settings| match folder_sort_policy::set_default_sort_options(settings, options) {
+            DefaultSort::Stored(prune) => {
+                stored = Some(prune);
+                true
+            }
+            DefaultSort::Unstorable => false,
+        },
+    );
+    let Some(prune) = stored else {
+        return;
+    };
+    crate::shell::saved(app).commit();
+    if let Some(prune) = prune {
+        change_sorts(app, |views| prune.apply(views), tx);
+    }
+    let sort = sort_preferences(crate::shell::preferences(app));
+    crate::shell::sync_default_preferences(app, sort);
+    crate::shell::settle(app, tx);
+}
+
+pub(crate) fn forget_all(app: &mut App, tx: &mut Tx) {
+    change_sorts(
+        app,
+        |views| {
+            let had = !views.is_empty();
+            views.clear();
+            had
+        },
+        tx,
+    );
+    app.window.folder_views_mut().sorts.0 += 1;
 }
 
 /// The values, as a view reads a folder's. The borrow is dropped before anything calls into
@@ -274,18 +345,22 @@ pub(crate) fn flush_at_exit(app: &mut App) {
 
 /// How a write went (`folder_views_saved`).
 fn saved(app: &mut App, written: Written, tx: &mut Tx) -> bool {
-    let kept = app.window.folder_views_mut();
     match written {
         Written::Busy => {
-            kept.schedule(SAVE_DELAY, tx);
+            app.window.folder_views_mut().schedule(SAVE_DELAY, tx);
             false
         }
         Written::Failed { path, error } => {
             tracing::warn!(%error, path = %path.display(), "unable to save the folder views");
-            false
+            crate::shell::saved(app).report_folder_views_problem(
+                NoticeProblem::WriteFailed,
+                &path,
+                &error,
+            )
         }
         Written::Saved { merged, write } => {
-            // GTK clears its notice here, then shows what it adopted, then settles the write.
+            crate::shell::saved(app).folder_views_saved();
+            let kept = app.window.folder_views_mut();
             let adopted = merged.is_some_and(|merged| kept.adopt(merged));
             kept.store.borrow_mut().finish_write(write);
             adopted
@@ -326,6 +401,41 @@ fn reread(later: &Later<App>) {
             later.then(move |app: &mut App, _: &mut Tx| app.window.folder_views_mut().adopt(saved));
         }
     });
+}
+
+fn follow_settings(later: Later<App>) -> LoadHandle {
+    let live = later.clone();
+    watch(
+        &Location::local(settings_path()),
+        Watched::File,
+        move |_, _| reread_settings(&later),
+        move || reread_settings(&live),
+    )
+}
+
+fn reread_settings(later: &Later<App>) {
+    let later = later.clone();
+    glib::MainContext::default().spawn_local(async move {
+        let reread = writer::reread(settings_path(), parse_preferences).await;
+        if let Ok(Ok(Some(saved))) = reread {
+            later.then(move |app: &mut App, tx: &mut Tx| adopt_external_defaults(app, saved, tx));
+        }
+    });
+}
+
+fn adopt_external_defaults(app: &mut App, saved: Preferences, tx: &mut Tx) -> bool {
+    if !crate::shell::saved(app).can_adopt_defaults()
+        || !crate::shell::saved(app).adopt_defaults_from_disk(saved)
+    {
+        return false;
+    }
+    let sort = sort_preferences(crate::shell::preferences(app));
+    crate::shell::sync_default_preferences(app, sort);
+    let kept = app.window.folder_views_mut();
+    kept.revision += 1;
+    kept.sorts.0 += 1;
+    crate::shell::settle(app, tx);
+    true
 }
 
 #[cfg(test)]
