@@ -63,8 +63,7 @@ pub(crate) struct List {
     menu_labels: ListTableLabels,
     /// The metadata fills of the rows near the viewport, with a folder's item count.
     fills: Fills,
-    /// The saved date format is relative ("5m ago"), whose text moves with the clock. Read
-    /// at start: a live change is A18's.
+    /// Whether the saved date format is relative ("5m ago"), whose text moves with the clock.
     relative_dates: bool,
     /// When the relative dates read again.
     dates: dates::Dates,
@@ -114,6 +113,14 @@ impl List {
 
     pub(crate) fn autoscroll(&self) -> &Autoscroll {
         &self.autoscroll
+    }
+
+    pub(crate) fn sync_date_format(&mut self, format: DateFormat) {
+        self.relative_dates = format == DateFormat::Relative;
+    }
+
+    pub(crate) fn is_relative_dates(&self) -> bool {
+        self.relative_dates
     }
 }
 

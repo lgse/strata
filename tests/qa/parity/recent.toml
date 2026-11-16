@@ -13,9 +13,8 @@ host = "offscreen"
 scenario = "recent-preference-adds-no-place"
 run = "columns"
 package = "A3"
-status = "pending"
-reason = "scope"
-blocker = "A18: the Settings window, at `activate` on the Settings button on line 2, and its Show Recent in sidebar toggle"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "recent-uri-spellings-refused"

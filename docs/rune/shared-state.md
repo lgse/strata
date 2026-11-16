@@ -540,11 +540,13 @@ Two things it keeps exactly as GTK had them, because changing either changes wha
 - **`persistence.rs`, the wrapper.** `save_preferences` records the change for the bindings,
   commits, spawns the await of the save on GLib's context, publishes to the bindings, and
   tells the notices, in the order it always did.
-- **`bindings.rs` and `save_notice.rs`, whole.** `PreferenceChanges` keeps its own snapshot
-  and revision: its notify loop re-runs on that revision and folder views bump it. The
-  bookkeeping has its own baseline and revision, for an interface without
+- **`bindings.rs`, whole, and `save_notice.rs`'s GTK dialog wrapper.** `PreferenceChanges`
+  keeps its own snapshot and revision: its notify loop re-runs on that revision and folder
+  views bump it. The bookkeeping has its own baseline and revision, for an interface without
   `PreferenceChanges`; in GTK both see the same values at the same calls, and
-  `save_preferences` asserts in debug builds that they agree.
+  `save_preferences` asserts in debug builds that they agree. Localized notice text
+  formatting moved to `strata_desktop::settings::save_notice` in A18
+  ([#2526](https://github.com/lgse/strata/pull/2526)).
 - **The process-wide effects of loading:** reduced motion, the date format and the locale
   are applied by `PreferenceManager::load`, from what the shared `load` returned.
 - **`shared()`, `existing()` and the thread-local.** `Saving` keeps no instance of itself,
@@ -568,8 +570,10 @@ is its state bookkeeping and its persistence.
 
 ### The keymap methods
 
-`src/ui/preferences/keymap.rs` stays but for resolving the saved overrides, which both
-interfaces share. Its parts, and what the Rune side does about each:
+`src/ui/preferences/keymap.rs` keeps only GTK's cached `RefCell`, revision counter and
+`PreferenceChanges` notifications, delegating resolution, start-up conflict reporting and
+override edits to `strata_desktop::settings` ([#2526](https://github.com/lgse/strata/pull/2526)).
+Its parts, and what the Rune side does about each:
 
 | Part | What it is | On the Rune side |
 | --- | --- | --- |
@@ -597,7 +601,9 @@ The edits did not move with this package, for three reasons:
   reader takes `G` as plain `g`, without Shift and without a word, and `Xkb`'s does the
   same, so the warning is owed on both interfaces. The reader itself logs nothing, as GTK's
   does not. **Their log target changed** from `strata::ui::preferences::keymap` to
-  `strata_desktop::settings::keymap_resolve`, on both interfaces; their text did not.
+  `strata_desktop::settings::keymap_resolve` (and `strata_desktop::settings::keymap_edits`
+  for `report_keymap_conflicts`, [#2526](https://github.com/lgse/strata/pull/2526)), on both
+  interfaces; their text did not.
 - **Once a process:** `shell.rs` hands the settings file to the first window's `Live` only,
   through a process-wide flag. `Live::registered` takes that choice as an argument rather
   than reading the flag itself, so the flag is set by the window that registers and by

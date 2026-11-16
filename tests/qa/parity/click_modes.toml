@@ -6,9 +6,8 @@
 scenario = "click-mode-preference-live"
 run = "list"
 package = "A9"
-status = "pending"
-reason = "scope"
-blocker = "A18: opening the Settings window from the header button at line 5; live click-mode preference reads are wired in strata-app"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "click-then-double-click-no-rename"

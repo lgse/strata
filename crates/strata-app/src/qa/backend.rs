@@ -425,6 +425,8 @@ impl<H: Host> Backend for Rune<H> {
     async fn command(&self, scope: &Scope<'_, Self>, command: &Command) -> Option<Outcome> {
         match command {
             Command::Keymap(keymap) => Some(Outcome::from(self.host.set_layout(keymap))),
+            Command::Reveal { target } => Some(self.reveal(scope, target).await),
+            Command::RevealControl { target } => Some(self.reveal_control(scope, target).await),
             Command::SetScrollbar { orientation, value } => Some(Outcome::from(
                 self.set_scrollbar(*orientation, *value).await,
             )),

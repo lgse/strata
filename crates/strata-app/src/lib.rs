@@ -36,6 +36,7 @@ mod shell;
 mod single;
 mod slots;
 mod startup;
+mod theme;
 // Thumbnails for the views: the render pool, one per process, and a view's viewer.
 #[cfg(test)]
 mod test_support;
@@ -110,6 +111,7 @@ mod preview;
 mod properties;
 mod raw_details;
 // A18 Settings and themes
+mod settings_dialog;
 // A19 Drag and drop
 // A20 Portal chooser
 // A21 Window and launch
@@ -174,6 +176,7 @@ slots::parts! {
     // A17 Properties
     properties: properties::Properties,
     // A18 Settings and themes
+    settings_dialog: settings_dialog::SettingsDialog,
     // A19 Drag and drop
     // A20 Portal chooser
     // A21 Window and launch

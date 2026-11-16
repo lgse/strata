@@ -91,8 +91,10 @@ use place::Where;
 use renamed::RenamedResult;
 use session::{Batch, Input, Scope, Session};
 pub(crate) use tenxer::{
-    current_hit_path, dismiss_filter_only, dismiss_search_only, mark as tenxer_mark, search_active,
+    current_hit_path, dismiss_filter_only, dismiss_search_only, mark as tenxer_mark,
+    reveal_search_hit, search_active,
 };
+pub(crate) use typing::reads as is_typing_key;
 
 #[cfg(test)]
 mod tests;

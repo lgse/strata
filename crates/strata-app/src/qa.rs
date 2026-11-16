@@ -21,6 +21,7 @@ mod keyboard;
 mod keymap;
 mod keys;
 mod replaced;
+mod reveal;
 mod roles;
 mod session;
 mod sidebar;

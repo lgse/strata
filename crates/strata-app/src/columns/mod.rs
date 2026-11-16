@@ -448,7 +448,7 @@ impl Columns {
         self.follow_active(active, hands.look, hands.tx);
     }
 
-    pub(super) fn follow_active(&mut self, active: Option<usize>, look: &Look, tx: &mut Tx) {
+    pub(crate) fn follow_active(&mut self, active: Option<usize>, look: &Look, tx: &mut Tx) {
         if let Some(active) = active.filter(|active| *active < self.open())
             && active != self.state.active()
         {
