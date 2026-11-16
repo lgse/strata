@@ -3,6 +3,7 @@
 use rune::{Key, KeyEvent, Mods};
 use serde_json::Value;
 use strata_core::util::{DateDisplay, modified_date_for_seconds};
+use strata_preview::sandbox::MediaPreviewBackend;
 
 use super::SettingsDialog;
 use crate::{
@@ -12,8 +13,14 @@ use crate::{
     slots::Part,
     test_support::{
         PATIENCE, hosted, send_key,
-        view::{self, idle},
+        view::{self, Shape, hosted_with, idle, open},
     },
+};
+
+const LIST: Shape = Shape {
+    described: "List view",
+    list: "list",
+    entry: "list-item",
 };
 
 const MODULE: &str = "settings_dialog::tests";
@@ -216,6 +223,115 @@ fn appearance_switches_update_thumbnails_stl_worn_and_theme_look() {
             assert!(shell::thumbnails(host.app()).enabled());
             click(&mut host, "settings-switch-show-thumbnails");
             assert!(!shell::thumbnails(host.app()).enabled());
+        },
+    );
+}
+
+fn cell_text(tree: &Value, suffix: &str) -> Option<String> {
+    let nodes = view::all(tree, &|node| {
+        node["key"]
+            .as_str()
+            .is_some_and(|key| key.ends_with(suffix))
+    });
+    let value = view::text(nodes.first()?, "name").to_owned();
+    (!value.is_empty() && value != "—").then_some(value)
+}
+
+fn pick_date_format(host: &mut Offscreen, opt_index: usize) {
+    click(host, "header-settings");
+    click(host, "settings-choice-date-format-toggle");
+    click(
+        host,
+        &format!("settings-choice-date-format-opt-{opt_index}"),
+    );
+    press(host, Key::Escape, Mods::default());
+}
+
+#[test]
+fn date_format_updates_list_modified_cells_relative_timer_and_open_preview_header() {
+    hosted_with(
+        MODULE,
+        "list",
+        "date_format = \"iso\"\n".to_owned(),
+        "date_format_updates_list_modified_cells_relative_timer_and_open_preview_header",
+        |mut host| {
+            let folder = tempfile::tempdir().expect("tempdir");
+            std::fs::write(folder.path().join("note.txt"), "hello\n").expect("write");
+            open(&mut host, LIST, folder.path());
+            assert!(!host.app().list.is_relative_dates());
+            assert!(host.run_until(PATIENCE, |h| {
+                cell_text(&h.tree(), "cell-modified").is_some()
+            }));
+
+            press(&mut host, Key::Text(" ".into()), Mods::default());
+            assert!(host.run_until(PATIENCE, |h| {
+                cell_text(&h.tree(), "preview-detail-1").is_some()
+            }));
+            let tree = host.tree();
+            let iso_cell = cell_text(&tree, "cell-modified").expect("iso cell");
+            let iso_preview = cell_text(&tree, "preview-detail-1").expect("iso preview");
+            assert!(iso_cell.contains('-'), "expected ISO cell, got {iso_cell}");
+            assert_eq!(iso_preview, iso_cell);
+
+            // Switch to Long: List cell and open Preview header update immediately.
+            pick_date_format(&mut host, 2);
+            assert!(!host.app().list.is_relative_dates());
+            let tree = host.tree();
+            let long_cell = cell_text(&tree, "cell-modified").expect("long cell");
+            let long_preview = cell_text(&tree, "preview-detail-1").expect("long preview");
+            assert_ne!(long_cell, iso_cell);
+            assert_eq!(long_preview, long_cell);
+
+            // Switch to Relative: enables relative timer and updates both surfaces.
+            pick_date_format(&mut host, 0);
+            assert!(host.app().list.is_relative_dates());
+            let tree = host.tree();
+            let rel_cell = cell_text(&tree, "cell-modified").expect("relative cell");
+            let rel_preview = cell_text(&tree, "preview-detail-1").expect("relative preview");
+            assert_ne!(rel_cell, long_cell);
+            assert_eq!(rel_preview, rel_cell);
+        },
+    );
+}
+
+#[test]
+fn video_preview_controls_sync_active_preview_media_backend() {
+    hosted_with(
+        MODULE,
+        "columns",
+        "hardware_accelerated_video_previews = true\nvideo_preview_backend = \"vaapi\"\n"
+            .to_owned(),
+        "video_preview_controls_sync_active_preview_media_backend",
+        |mut host| {
+            click(&mut host, "header-settings");
+            let _ = reveal_and_center(&mut host, "settings-switch-video");
+            let tree = host.tree();
+            let accel_on = view::all(&tree, &|n| n["key"] == "settings-switch-video")
+                .first()
+                .is_some_and(|n| has_state(n, "checked"));
+            if !accel_on {
+                // Polaris GPU unavailable on this host: effective backend stays Software.
+                assert_eq!(
+                    host.app().preview.media_backend(),
+                    MediaPreviewBackend::Software
+                );
+                return;
+            }
+            assert_eq!(
+                host.app().preview.media_backend(),
+                MediaPreviewBackend::VaApi
+            );
+            click(&mut host, "settings-choice-video-backend-toggle");
+            click(&mut host, "settings-choice-video-backend-opt-2");
+            assert_eq!(
+                host.app().preview.media_backend(),
+                MediaPreviewBackend::Vulkan
+            );
+            click(&mut host, "settings-switch-video");
+            assert_eq!(
+                host.app().preview.media_backend(),
+                MediaPreviewBackend::Software
+            );
         },
     );
 }

@@ -431,6 +431,7 @@ fn adopt_external_defaults(app: &mut App, saved: Preferences, tx: &mut Tx) -> bo
     }
     let sort = sort_preferences(crate::shell::preferences(app));
     crate::shell::sync_default_preferences(app, sort);
+    crate::shell::sync_live_preferences(app, tx);
     let kept = app.window.folder_views_mut();
     kept.revision += 1;
     kept.sorts.0 += 1;

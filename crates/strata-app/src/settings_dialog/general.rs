@@ -163,7 +163,10 @@ type BoolSwitchDef = (
     fn(&mut Preferences, bool),
 );
 
-const BROWSING_SWITCHES: [BoolSwitchDef; 6] = [
+const TENXER_UNUSED: &str = "Not used in 10xer mode.";
+const TENXER_EXPERIMENTAL: &str = "(experimental feature, under active development)";
+
+const BROWSING_SWITCHES: [BoolSwitchDef; 5] = [
     (
         "peeking",
         "Folder peeking",
@@ -199,13 +202,6 @@ const BROWSING_SWITCHES: [BoolSwitchDef; 6] = [
         |s| s.arrow_navigation_scoped,
         |s, v| s.arrow_navigation_scoped = v,
     ),
-    (
-        "tenxer",
-        "10xer mode",
-        "Modal keyboard navigation with single-key actions and prompt bars (%{tenxer_mode_keys}).",
-        |s| s.tenxer_mode,
-        |s, v| s.tenxer_mode = v,
-    ),
 ];
 
 fn browsing_section(ctx: PageCtx<'_>, menu_layer: &mut Vec<El>) -> Option<El> {
@@ -213,7 +209,12 @@ fn browsing_section(ctx: PageCtx<'_>, menu_layer: &mut Vec<El>) -> Option<El> {
     let prefs = shell::preferences(app);
     let simple = |idx: usize| {
         let (k, t, d, read, write) = BROWSING_SWITCHES[idx];
-        pref_switch(ctx, RowSpec::new(k, t, d), read(prefs), write)
+        let desc = if prefs.tenxer_mode && k == "arrow-scope" {
+            TENXER_UNUSED
+        } else {
+            d
+        };
+        pref_switch(ctx, RowSpec::new(k, t, desc), read(prefs), write)
     };
     let mut rows = vec![
         simple(0),
@@ -268,7 +269,8 @@ fn columns_and_hints_rows(ctx: PageCtx<'_>) -> Vec<Option<El>> {
         ),
         pref_switch(
             ctx,
-            RowSpec::new(BROWSING_TENXER.0, BROWSING_TENXER.1, BROWSING_TENXER.2),
+            RowSpec::new(BROWSING_TENXER.0, BROWSING_TENXER.1, BROWSING_TENXER.2)
+                .note(prefs.tenxer_mode.then_some(TENXER_EXPERIMENTAL)),
             prefs.tenxer_mode,
             |s, v| s.tenxer_mode = v,
         ),
@@ -415,25 +417,26 @@ struct LimitMenuSpec {
 fn search_section(ctx: PageCtx<'_>, menu_layer: &mut Vec<El>) -> Option<El> {
     let app = ctx.app;
     let prefs = shell::preferences(app);
+    let type_desc = if prefs.tenxer_mode {
+        TENXER_UNUSED
+    } else {
+        "Start filtering the active pane as soon as you type."
+    };
+    let sub_desc = if prefs.tenxer_mode {
+        TENXER_UNUSED
+    } else {
+        "Also match items inside nested folders."
+    };
     let mut rows = vec![
         pref_switch(
             ctx,
-            RowSpec::new(
-                "type-search",
-                "Type to search",
-                "Start filtering the active pane as soon as you type.",
-            ),
+            RowSpec::new("type-search", "Type to search", type_desc),
             prefs.type_to_search,
             |s, v| s.type_to_search = v,
         ),
         pref_switch(
             ctx,
-            RowSpec::new(
-                "subfolders",
-                "Include subfolders",
-                "Also match items inside nested folders.",
-            )
-            .indented(),
+            RowSpec::new("subfolders", "Include subfolders", sub_desc).indented(),
             prefs.filter_include_subfolders,
             |s, v| s.filter_include_subfolders = v,
         ),

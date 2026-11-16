@@ -9,7 +9,7 @@ use rune_kit::{Button, ButtonVariant};
 use strata_components::controls::number_field::NumberField;
 use strata_core::{
     i18n::tr,
-    util::{DateFormat, modified_date_example, set_date_format},
+    util::{DateFormat, modified_date_example},
 };
 use strata_desktop::settings::{
     configured_hardware_acceleration, configured_video_preview_backend,
@@ -134,9 +134,9 @@ fn date_time_section(ctx: PageCtx<'_>, menu_layer: &mut Vec<El>) -> Option<El> {
     let options = choices
         .into_iter()
         .map(|(label, fmt)| {
-            ChoiceOption::new(tr(label), current == fmt, move |app, _| {
-                set_date_format(fmt);
+            ChoiceOption::new(tr(label), current == fmt, move |app, tx| {
                 shell::saved(app).change(|s| s.date_format = fmt.as_str().to_owned());
+                shell::sync_live_preferences(app, tx);
             })
             .subtitle(modified_date_example(fmt))
         })
@@ -212,7 +212,10 @@ fn video_preview_rows(ctx: PageCtx<'_>, menu_layer: &mut Vec<El>) -> Vec<Option<
             "Decode video thumbnails on the GPU.",
         ),
         hw_accel,
-        |app, on, _| shell::saved(app).change(|s| s.set_hardware_accelerated_video_previews(on)),
+        |app, on, tx| {
+            shell::saved(app).change(|s| s.set_hardware_accelerated_video_previews(on));
+            shell::sync_live_preferences(app, tx);
+        },
     );
     let backend_row = option_row(
         ctx,
@@ -249,8 +252,8 @@ fn video_backend_menu(app: &App, hw_accel: bool, menu_layer: &mut Vec<El>) -> El
                     ChoiceOption::new(
                         tr(label),
                         backend_selected(selected, backend),
-                        move |app, _| {
-                            save_video_backend(app, backend);
+                        move |app, tx| {
+                            save_video_backend(app, backend, tx);
                         },
                     )
                 })
@@ -268,7 +271,7 @@ fn backend_selected(selected: MediaPreviewBackend, option: MediaPreviewBackend) 
     }
 }
 
-fn save_video_backend(app: &mut App, backend: MediaPreviewBackend) {
+fn save_video_backend(app: &mut App, backend: MediaPreviewBackend, tx: &mut Tx) {
     let mut changed = false;
     shell::saved(app).mutate(|s| {
         changed = s.set_video_preview_backend(backend);
@@ -276,6 +279,7 @@ fn save_video_backend(app: &mut App, backend: MediaPreviewBackend) {
     });
     if changed {
         shell::saved(app).commit();
+        shell::sync_live_preferences(app, tx);
     }
 }
 

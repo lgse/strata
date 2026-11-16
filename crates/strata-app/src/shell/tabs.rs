@@ -358,20 +358,16 @@ pub(crate) fn open(app: &mut App, location: Option<Location>, at: usize, tx: &mu
     };
     let tab_parts = TabParts::new(&setup);
     let window = &app.window;
-    let grouped = super::attach(
-        &window.events,
-        &window.folder_views,
+    here.grouped = super::attach(
+        super::TabAttach {
+            events: &window.events,
+            folder_views: &window.folder_views,
+            power_saver: window.power_saver,
+        },
         (&browser, parts),
         &setup,
         key,
     );
-    super::sync_browser_freshness(
-        &browser,
-        parts.shown(),
-        saved.watch_network_folders,
-        window.power_saver,
-    );
-    here.grouped = grouped;
     let at = at.min(app.window.tabs.order.len());
     app.window.tabs.order.insert(at, key);
     let mut parked = Parked::new(browser, here, tab_parts);

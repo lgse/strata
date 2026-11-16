@@ -112,6 +112,7 @@ pub(super) struct RowSpec<'a> {
     pub(super) key: &'a str,
     pub(super) title: &'a str,
     pub(super) description: &'a str,
+    pub(super) note: Option<&'a str>,
     pub(super) indented: bool,
     pub(super) disabled: bool,
 }
@@ -122,9 +123,15 @@ impl<'a> RowSpec<'a> {
             key,
             title,
             description,
+            note: None,
             indented: false,
             disabled: false,
         }
+    }
+
+    pub(super) const fn note(mut self, note: Option<&'a str>) -> Self {
+        self.note = note;
+        self
     }
 
     pub(super) const fn indented(mut self) -> Self {
@@ -167,6 +174,14 @@ pub(super) fn option_row(ctx: PageCtx<'_>, spec: RowSpec<'_>, control: El) -> Op
     if !desc_str.is_empty() {
         copy = copy.child(
             text(desc_str)
+                .font(look.kit.ty.small)
+                .color(c.text_muted)
+                .wrap(),
+        );
+    }
+    if let Some(extra) = spec.note.filter(|s| !s.is_empty()) {
+        copy = copy.child(
+            text(tr(extra))
                 .font(look.kit.ty.small)
                 .color(c.text_muted)
                 .wrap(),
