@@ -94,8 +94,9 @@ fn shift_click_after_a_load_selects_the_entry_alone(mode: &str, name: &str) {
 }
 
 /// A press on empty space clears the selection and leaves the Shift anchor where it was, as
-/// GTK's marquee does (`unselect_all`), so the next Shift+click ranges from it, not from the
-/// cursor (finding lgse/strata#2551).
+/// GTK's marquee does (`unselect_all`), so the next Shift+click ranges from it (finding
+/// lgse/strata#2551). The cursor is on `todo.txt` then: an anchor moved there, or dropped,
+/// would select `todo.txt` alone.
 fn shift_click_after_a_background_click_ranges_from_the_anchor(mode: &str, name: &str) {
     runs(
         mode,
@@ -106,8 +107,8 @@ fn shift_click_after_a_background_click_ranges_from_the_anchor(mode: &str, name:
             json!({ "wait": { "selected": ["readme.md", "todo.txt"] } }),
             json!({ "click": { "background": true } }),
             json!({ "wait": { "selected": [] } }),
-            json!({ "click": { "entry": "readme.md" }, "mods": ["shift"] }),
-            json!({ "wait": { "selected": ["readme.md"] }, "timeout_ms": 3000 }),
+            json!({ "click": { "entry": "todo.txt" }, "mods": ["shift"] }),
+            json!({ "wait": { "selected": ["readme.md", "todo.txt"] }, "timeout_ms": 3000 }),
         ],
     );
 }

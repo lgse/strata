@@ -706,6 +706,11 @@ sequence only together with the alphabet's version, so the version is part of th
   starts from the clicked row.
 - **Concerns:** seed `0x0d` of `columns v1` (shrunk to 5 steps) and seed `0x09` of
   `columns v3`, parked in `tests/qa/fuzz/corpus/columns/`.
+- **Also met by a deselecting Ctrl+click in List** ([A9](packages/A9.md)'s `pointer v2`, never
+  merged, seed `0x10`). After a Ctrl+click that takes `pictures` out of the selection, GTK's
+  next `j` moves from the entry before it, the cursor `pointer_selection` left, while its focus
+  is on the clicked row. Rune moves from the clicked row. `pointer v3` Ctrl+clicks only entries
+  not selected.
 - **State:** open, waiting for the owner ([`owner.md`](owner.md), F2 item 1). Meanwhile Rune
   keeps the clicked row, and the seeds stay parked.
 
