@@ -33,10 +33,10 @@
 #   leaves the dialog open and closing it leaves focus nowhere, where C15's `StrataDialog`
 #   dismisses it and returns focus to the entry (`oracle` finding lgse/strata#2547; v1 seed
 #   `0x08`, v2 seeds `0x01`, `0x0a` and `0x0d`).
-# - Clicking `Clear finished` inside `Jobs` when no active jobs remain: on GTK (`src/ui/jobs.rs`),
-#   emptying the indicator immediately hides the `GtkMenuButton`, unmapping its popover and leaving
-#   `app.focused = null`, whereas C16 keeps the open `Jobs` popover anchored on `"No background
-#   jobs."` until closed.
+# - Clicking `Clear finished` inside `Jobs` when no active jobs remain: on GTK (`refresh_indicator`
+#   in `src/ui/jobs.rs`), emptying the indicator hides the `GtkMenuButton`, unmapping its popover
+#   and leaving `app.focused = null`; Rune closes the emptied dashboard as GTK does and returns
+#   focus to the file view (`oracle` finding lgse/strata#2554).
 # - Clicking an already-open folder column, dismissing menus/dialogs over a cursorless non-empty
 #   column, `Ctrl+click` deselecting an entry, `Up` from a column's first row, and `Right` on empty
 #   `archive` (lgse/strata#2356, lgse/strata#2353, lgse/strata#2408, `owner.md` A1 item 3).

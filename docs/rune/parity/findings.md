@@ -1142,7 +1142,8 @@ sequence only together with the alphabet's version, so the version is part of th
   `open_dialog` names the first rendered `dialog` in `app.dialog`. So a screen reader hears
   "Appearance, dialog" on Rune and an unnamed panel on GTK: not a QA artifact only.
 - **Concerns:** every plain popover: the Appearance popover, the Icons header's "Thumbnail
-  size" ([A5](packages/A5.md)), and "Customize columns…"'s menu is C4's and not one. The
+  size" ([A5](packages/A5.md)), the footer's "Jobs" dashboard (C16's, [A14](packages/A14.md)),
+  and "Customize columns…"'s menu is C4's and not one. The
   `views` alphabet keeps its popover actions; its smoke tier parts there until this is ruled.
 - **Options for the owner:**
   1. Rune keeps the named `dialog`, the more useful role for assistive technology, and the
@@ -1155,7 +1156,8 @@ sequence only together with the alphabet's version, so the version is part of th
 - **State:** ruled by the owner, 2026-11-13 ([`owner.md`](owner.md#ruled)): option 1. Rune
   keeps the named `dialog`, a deliberate difference, and `tests/qa/fuzz/normalisation.map`
   excuses `app.dialog` only for GTK's `null` against a plain popover's name ("Appearance",
-  "Thumbnail size"): a rule that names its values, which the map takes since this finding.
+  "Jobs", "Thumbnail size"; "Jobs" added by [A14](packages/A14.md)'s
+  [#2550](https://github.com/lgse/strata/pull/2550)): a rule that names its values, which the map takes since this finding.
   Noted in `popover.rs`'s module docs. [A8](packages/A8.md)'s.
 
 ### #2408: Down in an empty Icons view takes GTK's keyboard to the footer
@@ -1976,11 +1978,30 @@ sequence only together with the alphabet's version, so the version is part of th
   modal does (`src/ui/modal/messages.rs`, `src/ui/settings/actions.rs`). C15's `StrataDialog`
   does both.
 - **Concerns:** `src/ui/actions.rs` (`confirm_and_run`), and `fuzz-open-with-v1-0000000000000008`,
-  `fuzz-open-with-v2-0000000000000001`, `-000000000000000a` and `-000000000000000d`.
+  `fuzz-open-with-v2-0000000000000001`, `-000000000000000a` and `-000000000000000d`, shrunk to
+  2, 4, 5 and 4 steps, each confirmed 3 of 3 GTK against Rune, and parked in
+  `tests/qa/fuzz/corpus/open-with/parked`.
 - **State:** open, set aside: Rune behaves as intended, and any fix belongs on `main`.
   `open-with v3` leaves `Escape`, Cancel and Close dialog on "Run this action?" out and confirms
   only with Run; the custom actions' unit tests in `crates/strata-app/src/custom_actions/tests.rs`
   cover Cancel.
+
+### #2554: "Clear finished" in the Jobs dashboard leaves focus nowhere on GTK
+
+- **Code:** `oracle`. [Issue](https://github.com/lgse/strata/issues/2554), filed on
+  2026-11-16 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** in [A14](packages/A14.md)'s `open-with` alphabet's drafts, which left the action out
+  for it, and in the review of [#2550](https://github.com/lgse/strata/pull/2550). With no job
+  running or queued, "Clear finished" empties the Jobs indicator; on GTK the dashboard closes with
+  focus nowhere (`app.focused = null`). Rune closed nothing and kept the popover open on "No
+  background jobs." until the review; it now closes the dashboard and its button as GTK does, and
+  returns focus to the file view.
+- **Why:** `refresh_indicator` and the service observer in `src/ui/jobs.rs` hide the whole
+  `GtkMenuButton` once `indicator_label` is empty, which unmaps the open popover holding focus,
+  and nothing hands focus back. C16 keeps an emptied list open by design; the adapter
+  (`close_when_emptied` in `crates/strata-app/src/custom_actions/jobs.rs`) closes it.
+- **Concerns:** `src/ui/jobs.rs`, and `open-with.toml`, which leaves "Clear finished" out.
+- **State:** open, set aside: Rune behaves as intended, and any fix belongs on `main`.
 
 ### #2551: Rune anchors a Shift+click at a load's cursor and at the cursor after a clear
 
