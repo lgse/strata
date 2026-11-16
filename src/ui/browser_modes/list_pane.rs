@@ -534,13 +534,14 @@ fn list_name_cell() -> gtk::Box {
     crate::ui::entry_tooltip::EntryTooltip::install(&name_cell, {
         let name_label = name.clone();
         move |_, _, _| {
-            if name_label.layout().is_ellipsized() {
-                let text = name_label.text();
-                if !text.is_empty() {
-                    return Some(text.to_string());
-                }
+            if !name_label.is_visible() {
+                return None;
             }
-            None
+            let name = name_label.text();
+            if name.is_empty() {
+                return None;
+            }
+            crate::ui::entry_tooltip::name_text(&name, name_label.layout().is_ellipsized(), None)
         }
     });
     name_cell

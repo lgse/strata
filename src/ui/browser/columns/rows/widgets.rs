@@ -123,18 +123,15 @@ impl RowWidgets {
             let modified_label = modified.clone();
             move |_, _, _| {
                 let name = name_label.text();
-                if name.is_empty() {
+                if name.is_empty() || !name_label.is_visible() {
                     return None;
                 }
-                let truncated = name_label.layout().is_ellipsized();
-                let date = modified_label.label().to_string();
-                let has_date = !date.is_empty();
-                match (truncated, has_date) {
-                    (true, true) => Some(format!("{name}\n{date}")),
-                    (true, false) => Some(name.to_string()),
-                    (false, true) => Some(format!("{name}\n{date}")),
-                    (false, false) => None,
-                }
+                let date = modified_label.text();
+                crate::ui::entry_tooltip::name_text(
+                    &name,
+                    name_label.layout().is_ellipsized(),
+                    Some(date.as_str()),
+                )
             }
         });
 

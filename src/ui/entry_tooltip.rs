@@ -1,11 +1,9 @@
 // SPDX-License-Identifier: MIT
 
-//! A shared hover tooltip for entry rows and icon cards.
+//! Hover tooltips for entry rows and icon cards.
 //!
 //! GTK's own hover delay drops to 60 ms once any tooltip is visible, which would
-//! flash popovers while browsing. This controller requires the pointer to rest
-//! for 900 ms before querying the tooltip, ignores keyboard navigation, and
-//! cancels immediately on click or pointer departure.
+//! flash popovers while browsing, so the pointer must rest first.
 
 use std::{
     cell::{Cell, RefCell},
@@ -27,9 +25,10 @@ pub(crate) struct EntryTooltip {
 impl EntryTooltip {
     /// Returns whether the pointer moved far enough to restart the rest delay.
     pub(crate) fn pointer_moved(&self, x: f64, y: f64, now: Instant) -> bool {
-        if let Some((_, rest_x, rest_y)) = self.rest.get()
-            && (x - rest_x).abs() <= REST_SLOP_PX
-            && (y - rest_y).abs() <= REST_SLOP_PX
+        if self
+            .rest
+            .get()
+            .is_some_and(|(_, rest_x, rest_y)| within_slop(x - rest_x, y - rest_y))
         {
             return false;
         }
@@ -55,7 +54,6 @@ impl EntryTooltip {
         }
     }
 
-    /// Installs rested hover-tooltip handling on `widget`.
     pub(crate) fn install<W, F>(widget: &W, provide_text: F) -> Rc<Self>
     where
         W: IsA<gtk::Widget>,
@@ -109,6 +107,18 @@ impl EntryTooltip {
     }
 }
 
+pub(crate) fn name_text(name: &str, truncated: bool, date: Option<&str>) -> Option<String> {
+    match date.filter(|date| !date.is_empty()) {
+        Some(date) => Some(format!("{name}\n{date}")),
+        None if truncated => Some(name.to_owned()),
+        None => None,
+    }
+}
+
+fn within_slop(dx: f64, dy: f64) -> bool {
+    dx.abs() <= REST_SLOP_PX && dy.abs() <= REST_SLOP_PX
+}
+
 fn schedule_requery<W: IsA<gtk::Widget>>(state: &Rc<EntryTooltip>, widget: &W) {
     let pending = state.clone();
     let target = widget.downgrade();
@@ -120,3 +130,6 @@ fn schedule_requery<W: IsA<gtk::Widget>>(state: &Rc<EntryTooltip>, widget: &W) {
     });
     state.requery.replace(Some(source));
 }
+
+#[cfg(test)]
+mod tests;

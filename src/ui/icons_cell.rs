@@ -84,22 +84,18 @@ pub(super) fn parts(
 }
 
 pub(super) fn details_label(card: &impl IsA<gtk::Widget>) -> Option<gtk::Label> {
-    let labels = card.last_child()?.downcast::<gtk::Box>().ok()?;
-    let mut sibling = labels.first_child();
-    while let Some(widget) = sibling {
-        if widget.has_css_class("icons-card-details") {
-            return widget.downcast::<gtk::Label>().ok();
-        }
-        sibling = widget.next_sibling();
-    }
-    None
+    caption_label(card, "icons-card-details")
 }
 
 pub(super) fn modified_label(card: &impl IsA<gtk::Widget>) -> Option<gtk::Label> {
+    caption_label(card, "icons-card-modified")
+}
+
+fn caption_label(card: &impl IsA<gtk::Widget>, class: &str) -> Option<gtk::Label> {
     let labels = card.last_child()?.downcast::<gtk::Box>().ok()?;
     let mut sibling = labels.first_child();
     while let Some(widget) = sibling {
-        if widget.has_css_class("icons-card-modified") {
+        if widget.has_css_class(class) {
             return widget.downcast::<gtk::Label>().ok();
         }
         sibling = widget.next_sibling();
