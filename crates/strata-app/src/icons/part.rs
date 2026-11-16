@@ -70,6 +70,12 @@ impl SinglePane for Icons {
         (&app.icons.single, &mut app.rename)
     }
 
+    fn clicks(
+        settings: &strata_desktop::settings::Preferences,
+    ) -> strata_components::collection::pointer::ClickModes {
+        crate::clicks::icons(settings)
+    }
+
     /// C3's key: the tiles a row holds at the grid's last width, and their height.
     fn layout_key(app: &App) -> u64 {
         let width = app.icons.single.pane.collection().viewport().w;
@@ -147,5 +153,12 @@ impl Part for Icons {
         Viewer::pump(app, thumbnail_parts, clock);
         fill(app);
         ticked | said
+    }
+}
+
+pub(crate) fn tick_active(app: &mut App, tx: &mut Tx) -> bool {
+    match app.filter.pane.shows() {
+        true => view::results().collection(app).tick(app, tx),
+        false => view::grid().collection(app).tick(app, tx),
     }
 }

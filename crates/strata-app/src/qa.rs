@@ -26,6 +26,7 @@ mod session;
 mod sidebar;
 mod stage;
 mod staged;
+mod tenxer;
 mod tree;
 
 use std::{

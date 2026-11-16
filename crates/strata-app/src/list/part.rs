@@ -65,6 +65,12 @@ impl SinglePane for List {
         (&app.list.single, &mut app.rename)
     }
 
+    fn clicks(
+        settings: &strata_desktop::settings::Preferences,
+    ) -> strata_components::collection::pointer::ClickModes {
+        crate::clicks::list(settings)
+    }
+
     /// The table's mode and its row height: rows of one height scroll alike at any width.
     fn layout_key(app: &App) -> u64 {
         let mut hasher = DefaultHasher::new();
@@ -133,12 +139,16 @@ impl Part for List {
     fn poll(app: &mut App, clock: f64, tx: &mut Tx) -> bool {
         let said = single::poll::<Self>(app, clock, tx);
         // A filter's results tick in the table's place, and the table waits under them.
-        let ticked = match app.filter.pane.shows() {
-            true => view::results(app).tick(app, tx),
-            false => view::ticked(app).tick(app, tx),
-        };
+        let ticked = tick_active(app, tx);
         fill(app);
         let pruned = super::thumbs::poll(app, clock);
         ticked | said | pruned | redate(app, clock, tx)
+    }
+}
+
+pub(crate) fn tick_active(app: &mut App, tx: &mut Tx) -> bool {
+    match app.filter.pane.shows() {
+        true => view::results(app).tick(app, tx),
+        false => view::ticked(app).tick(app, tx),
     }
 }

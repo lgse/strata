@@ -136,6 +136,8 @@ pub struct DrawerLabels {
     pub match_of: fn(usize, usize) -> String,
     /// The divider's name and the caption over it.
     pub divider: String,
+    /// Accessible descriptions for the three header detail labels (`Size`, `Modified`, `Type`).
+    pub detail_descriptions: [String; 3],
 }
 
 impl Default for DrawerLabels {
@@ -155,6 +157,7 @@ impl Default for DrawerLabels {
             no_matches: "No matches".into(),
             match_of: |n, total| format!("Match {n} of {total}"),
             divider: "Preview panel minimum width".into(),
+            detail_descriptions: ["Size".into(), "Modified".into(), "Type".into()],
         }
     }
 }

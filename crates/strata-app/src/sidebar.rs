@@ -72,6 +72,15 @@ pub(crate) use width::toggle_face;
 use menu::OPEN_IN_TAB;
 use places::{Environment, Listed, Navigation};
 
+/// Whether a folder can be pinned, is already pinned, or is a standard sidebar place
+/// (`PinStatus` in `src/ui/browser.rs` and `pin_status` in `src/ui/window/sidebar_pins.rs`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum PinState {
+    Available,
+    Pinned,
+    Unavailable,
+}
+
 /// The key every element of the sidebar's starts with.
 const KEY: &str = "sidebar";
 
@@ -300,6 +309,22 @@ impl Sidebar {
 
     pub(crate) fn is_started(&self) -> bool {
         self.started
+    }
+
+    pub(crate) fn pin_state(&self, location: &Location) -> PinState {
+        if Environment::current().is_standard(location) {
+            return PinState::Unavailable;
+        }
+        let pins = if self.started {
+            std::borrow::Cow::Borrowed(self.pins.as_slice())
+        } else {
+            std::borrow::Cow::Owned(bookmarks::current())
+        };
+        if pins.iter().any(|(pinned, _)| pinned == location) {
+            PinState::Pinned
+        } else {
+            PinState::Available
+        }
     }
 
     pub(crate) fn chosen_full(&self) -> bool {

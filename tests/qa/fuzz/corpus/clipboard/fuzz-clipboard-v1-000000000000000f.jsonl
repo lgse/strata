@@ -1,0 +1,5 @@
+{"scenario":"fuzz-clipboard-v1-000000000000000f","modes":["columns"],"prefs":{"type_to_search":false}}
+{"click":{"entry":"todo.txt","dir":"$root"},"when":{"all":[{"present":{"entry":"todo.txt","dir":"$root"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}
+{"key":"ctrl+c","when":{"all":[{"focused":"todo.txt"},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}
+{"click":{"entry":"archive","dir":"$root"},"when":{"all":[{"present":{"entry":"archive","dir":"$root"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}
+{"key":"ctrl+v","when":{"all":[{"directory":"archive"},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}

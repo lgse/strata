@@ -37,6 +37,10 @@ fn a_click_in_a_column_scrolled_out_of_the_strip_wheels_it_back_first() {
                 json!({ "not": { "inside": { "target": z, "of": strip, "axis": "x" } } });
             for step in [
                 json!({ "expect": out_of_view }),
+                json!({ "set_scrollbar": "horizontal", "value": 0 }),
+                json!({ "expect": { "inside": { "target": z, "of": strip, "axis": "x" } } }),
+                json!({ "set_scrollbar": "horizontal", "value": 900 }),
+                json!({ "expect": out_of_view }),
                 json!({ "select": z }),
                 json!({ "wait": { "selected": ["z"], "dir": "a" } }),
             ] {

@@ -6,9 +6,8 @@
 scenario = "enabled-tenxer-survives-restart"
 run = "columns"
 package = "A11"
-status = "pending"
-reason = "scope"
-blocker = "A11"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "language-selection-after-relaunch"

@@ -125,6 +125,7 @@ pub(super) struct Shared<S> {
     marks: Option<MarksFn<S>>,
     pointer: PointerFn<S>,
     escape_closes: FlagFn<S>,
+    pub(super) close_buttons: FlagFn<S>,
     pub(super) show_sizes: FlagFn<S>,
     pub(super) dnd: Dnd<S>,
     drop_action: Option<DropActionFn<S>>,
@@ -143,6 +144,7 @@ impl<S> Clone for Shared<S> {
             marks: self.marks.clone(),
             pointer: self.pointer.clone(),
             escape_closes: self.escape_closes.clone(),
+            close_buttons: self.close_buttons.clone(),
             show_sizes: self.show_sizes.clone(),
             dnd: self.dnd.clone(),
             drop_action: self.drop_action.clone(),
@@ -219,6 +221,7 @@ impl<S: 'static> ColumnsView<S> {
                 marks: None,
                 pointer: Rc::new(|_| PointerSettings::default()),
                 escape_closes: Rc::new(|_| true),
+                close_buttons: Rc::new(|_| true),
                 show_sizes: Rc::new(|_| true),
                 dnd: Dnd::rune(),
                 drop_action: None,
@@ -289,6 +292,12 @@ impl<S: 'static> ColumnsView<S> {
     /// default; off in 10xer mode, where Escape with nothing to dismiss does nothing.
     pub fn escape_closes(self, f: impl Fn(&S) -> bool + 'static) -> Self {
         self.with(|sh| sh.escape_closes = Rc::new(f))
+    }
+
+    /// Whether columns after the first show their close button in the header: on by default;
+    /// off in 10xer mode (`hide_while_enabled(&close)` in `src/ui/browser/columns/append/header.rs`).
+    pub fn close_buttons(self, f: impl Fn(&S) -> bool + 'static) -> Self {
+        self.with(|sh| sh.close_buttons = Rc::new(f))
     }
 
     /// Whether rows show their size badge ([`ColumnSources::badge`]): Strata's "Show sizes in
@@ -604,6 +613,7 @@ fn column_intent<S: 'static>(
         Intent::Activate { id, .. } if reopens(sh, s, depth, id) => {
             let p = (sh.parts_mut)(s);
             p.state.set_active(depth + 1, p.look, tx);
+            sh.emit(s, ColumnsIntent::Active { depth: depth + 1 }, tx);
         }
         Intent::Other(any) if any.downcast_ref::<Rested>().is_some() => {
             let p = (sh.parts)(s);

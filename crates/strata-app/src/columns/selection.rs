@@ -9,7 +9,7 @@
 use std::rc::Rc;
 
 use strata_components::{
-    collection::selection::AnchorRule,
+    collection::{keyboard::KeyHandle, selection::AnchorRule},
     contract::{EntryId, EntrySource},
 };
 use strata_fs::app::Browser;
@@ -129,25 +129,52 @@ impl Columns {
         if self.listings.hits_at(depth) {
             return;
         }
-        // Shift says a range moved. Without it (a key fed in with no modifier held), a range
-        // still shows: its anchor stays behind the cursor, in the column the cursor was in.
-        let same_column = before.is_some_and(|(earlier, _)| earlier == depth);
-        let anchored_behind = same_column
-            && self
-                .state
+        let ranging = if self.tenxer.get() {
+            self.state
                 .column(depth)
-                .is_some_and(|column| column.collection.selection.anchor() != Some(id));
-        let extending = matches!(
-            input,
-            Some(Input::Keys {
-                extending: true,
-                ..
-            })
-        );
-        let ranging = extending || anchored_behind;
+                .is_some_and(|column| column.key_handle().range().is_some())
+        } else {
+            // Shift says a range moved. Without it (a key fed in with no modifier held), a range
+            // still shows: its anchor stays behind the cursor, in the column the cursor was in.
+            let same_column = before.is_some_and(|(earlier, _)| earlier == depth);
+            let anchored_behind = same_column
+                && self
+                    .state
+                    .column(depth)
+                    .is_some_and(|column| column.collection.selection.anchor() != Some(id));
+            let extending = matches!(
+                input,
+                Some(Input::Keys {
+                    extending: true,
+                    ..
+                })
+            );
+            extending || anchored_behind
+        };
         if let Some(position) = self.position(depth, id).filter(|_| !ranging) {
             self.mirror.follow(browser, depth, position, false);
         }
+    }
+
+    pub(crate) fn active_depth(&self) -> usize {
+        self.state.active()
+    }
+
+    pub(crate) fn active_key_handle(&self) -> Option<KeyHandle> {
+        let depth = self.state.active();
+        self.state
+            .column(depth)
+            .map(|column| column.key_handle().clone())
+    }
+
+    pub(crate) fn end_ranges(&self) -> bool {
+        let mut ended = false;
+        for depth in 0..self.state.len() {
+            if let Some(column) = self.state.column(depth) {
+                ended |= column.key_handle().end_range();
+            }
+        }
+        ended
     }
 
     /// Selects every row of column `depth`, as the menu's Select All does: Ctrl+A in the
