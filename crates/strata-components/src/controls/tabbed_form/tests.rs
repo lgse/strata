@@ -60,6 +60,7 @@ fn body(h: &Host, i: usize) -> El {
         }
         _ => col().child(
             el().key("behavior-button")
+                .label("Behavior")
                 .size(40.0, 20.0)
                 .focusable(true)
                 .on_press(|_: &mut Host| {}),
@@ -71,6 +72,7 @@ fn view(h: &Host, _: &mut Cx<Host>) -> El {
     let f = form(h);
     let save = el()
         .key("save")
+        .label("Save")
         .size(60.0, 20.0)
         .focusable(true)
         .on_press_tx(|h: &mut Host, tx: &mut Tx| {
@@ -338,6 +340,7 @@ fn ctrl_page_keys_carry_the_keyboard_out_of_the_hidden_page() {
             Key::PageDown,
             Key::PageDown,
             Key::PageUp,
+            Key::PageUp,
         ] {
             press(&mut rt, key, ctrl());
             seen.push((rt.state.tabs.selected(), focused(&rt)));
@@ -348,18 +351,19 @@ fn ctrl_page_keys_carry_the_keyboard_out_of_the_hidden_page() {
             (1, "f-tab-1"),
             (2, "f-tab-2"),
             (1, "f-tab-1"),
+            (0, "f-tab-0"),
         ]
         .map(|(i, k)| (i, Some(k.to_owned())));
         assert_eq!(seen, want, "{mounting:?}");
         tap(&mut rt, "save");
         press(&mut rt, Key::PageDown, ctrl());
-        assert_eq!(rt.state.tabs.selected(), 2, "{mounting:?}");
+        assert_eq!(rt.state.tabs.selected(), 1, "{mounting:?}");
         assert_eq!(
             focused(&rt).as_deref(),
             Some("save"),
             "{mounting:?}: a keyboard outside the form stays"
         );
-        assert_eq!(rt.state.heard, [2, 0, 1, 2, 1, 2], "{mounting:?}");
+        assert_eq!(rt.state.heard, [2, 0, 1, 2, 1, 0, 1], "{mounting:?}");
     }
 }
 

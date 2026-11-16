@@ -82,9 +82,10 @@
 //!
 //! # Rune
 //!
-//! Rune 2a44156: partly. It has the searchbox and status roles, polite live regions,
+//! Rune 631e8a67: partly. It has the searchbox and status roles, polite live regions,
 //! `scroll_into_view` (which lands on a row mounted by the same commit, probe P3), `Sequence`
-//! and `Tx::focus` (the jump's, resolved against the page it shows); nothing on listboxes.
+//! and `Tx::focus_when_shown` (the jump's, resolved once the target row shows); nothing on
+//! listboxes.
 //!
 //! # Rune drafts (not filed)
 //!

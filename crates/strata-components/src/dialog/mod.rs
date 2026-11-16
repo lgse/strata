@@ -16,9 +16,10 @@
 //!   (C17), the shortcut reference (C19) and Settings draw their own panel in it.
 //!
 //! Both push into the overlay layer `rune_kit::root(base, layer)` mounts, as rune-kit's
-//! overlays do, and take the look as `&Look` at build time. Handlers are `Fn(&mut S)`
-//! closures; the component holds no state of its own. Strata's policy (which form counts as
-//! dirty, where focus goes after a dialog that changes the listing) stays with the caller.
+//! overlays do, and take the look as `&Look` at build time. Handlers are `Fn(&mut S)` or
+//! `Fn(&mut S, &mut Tx)` closures; the component holds no state of its own. Strata's policy
+//! (which form counts as dirty, where focus goes after a dialog that changes the listing) stays
+//! with the caller.
 //!
 //! # Why not rune-kit's `Dialog`
 //!
@@ -83,9 +84,13 @@
 //!
 //! # Known gaps
 //!
-//! - A chained dialog opened by a keyboard close shows its default button's focus ring
-//!   (`app/dialogs`: "Closing a dialog by keyboard as a dialog chained on it opens…", the
-//!   no-ring half, unverified in Strata). Rune has no way to clear keyboard focus mode.
+//! - A chained dialog opened from a keyboard close keeps the keyboard focus ring unless the
+//!   caller clears it (`app/dialogs`: "Closing a dialog by keyboard as a dialog chained on it
+//!   opens…"): with [`StrataDialog::primary_tx`] / [`StrataDialog::on_dismiss_tx`], a caller that
+//!   chains a second dialog in the same commit can pass `.return_focus(opener)` on the chained
+//!   dialog and `tx.focus_when_shown(format!("{next}-primary"), false)` (Rune 631e8a67's
+//!   `ring = false` clears `focus_visible`; unit
+//!   `primary_tx_can_chain_a_dialog_with_the_focus_ring_cleared`).
 //! - Rune doesn't clamp a long frame's step in presence motion to 33 ms (`app/dialogs`: "A
 //!   frame longer than 33 ms…", unverified in Strata). Since Rune `aea4606`, motion that a late
 //!   frame starts holds its first pose for the overrun instead of jumping, but motion already

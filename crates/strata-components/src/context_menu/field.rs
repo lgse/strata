@@ -375,8 +375,7 @@ impl<S: 'static, F: Copy + PartialEq + 'static> FieldMenu<S, F> {
                     select.run(s, field, c, tx);
                 }
             }),
-            on_submenu: Rc::new(|_: &mut S, _, _| false),
-            entering: Rc::new(|_: &mut S| false),
+            on_submenu: Rc::new(|_: &mut S, _| {}),
             close_to: Rc::new(|_: &mut S, _| {}),
             on_dismiss: Rc::new(move |s: &mut S| dismiss.finish(s, field)),
         }

@@ -47,6 +47,14 @@ fn records() -> &'static [Record] {
     RECORDS.get_or_init(|| parse(include_str!("emoji.tsv")))
 }
 
+/// The fully-qualified spelling of an unqualified text-default emoji (`"❤"` -> `"❤\u{fe0f}"`),
+/// when the bundled table carries it with a trailing `U+FE0F`.
+pub(super) fn qualified(glyph: &str) -> Option<&'static str> {
+    records()
+        .iter()
+        .find_map(|r| (r.glyph.strip_suffix('\u{fe0f}') == Some(glyph)).then_some(r.glyph))
+}
+
 fn parse(tsv: &'static str) -> Vec<Record> {
     let mut group = None;
     let mut out = Vec::new();
