@@ -163,6 +163,15 @@ closed issue is not a fixed finding: the state given here is the finding's.
   the five item-customization getters/setters in `src/ui/preferences/file_settings.rs` and
   the two emoji/choice helpers in `src/assets.rs` to `strata_desktop::settings`, which
   `minimization::deletion` never calls.
+- **Sighting on [#2550](https://github.com/lgse/strata/pull/2550):** a tenth, in
+  `strata-desktop`, `services::update_install::tests::repository_probe_selects_strata_instead_of_a_dependency`
+  (`crates/strata-desktop/src/services/update_install/tests.rs:185`), failed once in
+  `./scripts/quality.sh all` (shard 0, lane 3) at `cca75e9ac` with `Err("could not query the
+  package repository: The file is running and cannot be changed")`: `ETXTBSY` on the probe
+  script it had just written and made executable, as when another thread's fork holds the
+  file open for writing. It passed 3 times of 3 alone under `./scripts/test-headless.py`,
+  and the whole `./scripts/quality.sh test` passed on rerun. That pull request touches no
+  shared crate and no `src/`.
 
 ### #2176: a GTK critical after a file appears during a rename on a multiple selection
 
@@ -1876,7 +1885,7 @@ sequence only together with the alphabet's version, so the version is part of th
   New Tab` left out until `strata-qa` reads sibling submenu surfaces).
 - **State:** fixed in the Rune QA tree, `crates/strata-app/src/qa/submenus.rs`:
   [A13](packages/A13.md)'s [#2536](https://github.com/lgse/strata/pull/2536) moved each open
-  submenu surface under its menu, and [A14](packages/A14.md)'s closing pull request under the
+  submenu surface under its menu, and [A14](packages/A14.md)'s [#2550](https://github.com/lgse/strata/pull/2550) under the
   row that opens it, as GTK's nested popover is, so `app.menu` lists its rows right after their
   trigger in GTK's order and `Target::MenuItem` reaches them.
   `dialogs_and_menus/submenu-arrows-return-to-parent` (all three views) is `required`;
