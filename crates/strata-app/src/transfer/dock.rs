@@ -11,21 +11,21 @@ use strata_components::progress_dock::{
     Transfer as TransferCounts, reveal_after,
 };
 use strata_core::{
-    i18n::{capitalize_first, count, list, quoted, tr},
+    i18n::{capitalize_first, count, integer, list, quoted, tr},
     model::Location,
 };
 use strata_fs::{
     app::{Browser, BrowserEvent},
     services::{
-        Holder, KeptCause, KeptItem, OperationRequestId, RenameCause, RenamedItem, SkippedItem,
-        SpecialKind, TransferReport, io_error_detail,
+        Holder, KeptCause, KeptItem, OperationRequestId, PasswordFailure, RenameCause, RenamedItem,
+        SkippedItem, SpecialKind, TransferReport, io_error_detail,
     },
 };
 use strata_kit::icons::IconName;
 
 use super::words;
 use crate::{
-    App, clipboard,
+    App, archive, clipboard,
     conflict_dialog::shown_name,
     error_dialog::{self, Error},
     shell,
@@ -36,10 +36,13 @@ const NOTICE_SECONDS: f64 = 6.0;
 const NOTICE_CHARS: usize = 120;
 const LISTED_ITEMS: usize = 8;
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 struct TrackedOp {
     op_id: OpId,
     request_id: Option<OperationRequestId>,
+    docked: bool,
+    compressing: bool,
+    archive_destination: Option<Location>,
     total_items: usize,
     flushing: bool,
     last_transfer: TransferCounts,
@@ -50,6 +53,7 @@ pub(super) struct Ops {
     next_id: OpId,
     foreground: Option<TrackedOp>,
     background: HashMap<OperationRequestId, TrackedOp>,
+    pub(super) just_docked: Option<OperationRequestId>,
     pub(super) queued_cancels: Vec<OpId>,
 }
 
@@ -62,6 +66,7 @@ impl Default for Ops {
             next_id: 0,
             foreground: None,
             background: HashMap::new(),
+            just_docked: None,
             queued_cancels: Vec::new(),
         }
     }
@@ -74,7 +79,7 @@ impl Ops {
     }
 
     pub(super) fn foreground_op_id(&self) -> Option<OpId> {
-        self.foreground.map(|op| op.op_id)
+        self.foreground.as_ref().map(|op| op.op_id)
     }
 
     pub(super) fn dialog_holds_keyboard(&self) -> bool {
@@ -87,7 +92,7 @@ impl Ops {
     }
 
     fn request_for_op(&self, op_id: OpId) -> Option<OperationRequestId> {
-        if let Some(fg) = self.foreground
+        if let Some(fg) = &self.foreground
             && fg.op_id == op_id
         {
             return fg.request_id;
@@ -98,17 +103,28 @@ impl Ops {
     }
 
     fn tracked_mut(&mut self, bg: Option<OperationRequestId>) -> Option<&mut TrackedOp> {
-        match bg {
-            Some(req_id) => self.background.get_mut(&req_id),
-            None => self.foreground.as_mut(),
+        if let Some(req_id) = bg {
+            return self.background.get_mut(&req_id);
         }
+        if self.foreground.is_some() {
+            return self.foreground.as_mut();
+        }
+        self.just_docked
+            .and_then(|req_id| self.background.get_mut(&req_id))
     }
 
     fn take_tracked(&mut self, bg: Option<OperationRequestId>) -> Option<TrackedOp> {
-        match bg {
-            Some(req_id) => self.background.remove(&req_id),
-            None => self.foreground.take(),
+        if let Some(req_id) = bg {
+            if self.just_docked == Some(req_id) {
+                self.just_docked = None;
+            }
+            return self.background.remove(&req_id);
         }
+        if let Some(fg) = self.foreground.take() {
+            return Some(fg);
+        }
+        let req_id = self.just_docked.take()?;
+        self.background.remove(&req_id)
     }
 }
 
@@ -138,6 +154,32 @@ impl StartedTransfer {
 }
 
 #[derive(Clone)]
+pub(super) struct StartedArchive {
+    total: usize,
+    compressing: bool,
+    info: String,
+    destination: String,
+    destination_description: String,
+    request_id: Option<OperationRequestId>,
+    backgroundable: Option<OperationRequestId>,
+}
+
+impl StartedArchive {
+    pub(super) fn capture(browser: &Browser, total: usize) -> Self {
+        let backgroundable = browser.backgroundable_operation();
+        Self {
+            total,
+            compressing: backgroundable.is_some(),
+            info: browser.operation_description(),
+            destination: browser.operation_destination_label(),
+            destination_description: browser.operation_destination_description(),
+            request_id: browser.last_started_operation(),
+            backgroundable,
+        }
+    }
+}
+
+#[derive(Clone)]
 pub(super) struct ProgressUpdate {
     pub(super) completed_items: usize,
     pub(super) completed_files: usize,
@@ -145,6 +187,13 @@ pub(super) struct ProgressUpdate {
     pub(super) current_file: Option<String>,
     pub(super) transferred_bytes: u64,
     pub(super) total_bytes: Option<u64>,
+}
+
+#[derive(Clone)]
+pub(super) struct FailedOutcome {
+    pub(super) message: String,
+    pub(super) password_failure: Option<PasswordFailure>,
+    pub(super) report: TransferReport,
 }
 
 #[derive(Clone)]
@@ -210,6 +259,7 @@ pub(super) fn on_transfer_started(app: &mut App, start: StartedTransfer, tx: &mu
     let docked = start
         .backgroundable
         .filter(|req_id| app.browser.background_file_operation(*req_id));
+    app.transfer.ops.just_docked = docked;
     let op_id = app.transfer.ops.allocate_id();
     let placement = if docked.is_some() {
         Placement::Dock
@@ -238,6 +288,9 @@ pub(super) fn on_transfer_started(app: &mut App, start: StartedTransfer, tx: &mu
     let tracked = TrackedOp {
         op_id,
         request_id: docked.or(start.request_id),
+        docked: docked.is_some(),
+        compressing: false,
+        archive_destination: None,
         total_items: start.total,
         flushing: false,
         last_transfer: counts,
@@ -328,6 +381,130 @@ pub(super) fn on_transfer_completed(
         .complete(tracked.op_id, tr("Copy complete"), tx)
 }
 
+pub(super) fn on_archive_started(app: &mut App, start: StartedArchive, tx: &mut Tx) {
+    if let Some(previous) = app.transfer.ops.foreground.take() {
+        app.transfer.ops.dock.remove(previous.op_id);
+    }
+    let docked = start
+        .backgroundable
+        .filter(|req_id| app.browser.background_file_operation(*req_id));
+    app.transfer.ops.just_docked = docked;
+    let archive_destination = docked.and_then(|_| archive::take_pending_destination(app));
+    let op_id = app.transfer.ops.allocate_id();
+    let (title, cancel_label, placement) = if start.compressing {
+        (
+            tr("Compressing items"),
+            tr("Cancel compressing"),
+            Placement::Dock,
+        )
+    } else {
+        (
+            tr("Processing archive…"),
+            tr("Cancel archive processing"),
+            Placement::Dialog,
+        )
+    };
+    let mut spec = OpSpec::new(IconName::Archive, title, start.info);
+    spec.subtitle = Some(tr("Cancelling will not undo completed changes"));
+    spec.destination = (!start.destination.is_empty()).then_some(start.destination);
+    spec.destination_description =
+        (!start.destination_description.is_empty()).then_some(start.destination_description);
+    spec.cancel_label = cancel_label;
+    spec.placement = placement;
+    spec.reveal_after = reveal_after((start.total > 0).then_some(start.total));
+
+    let tracked = TrackedOp {
+        op_id,
+        request_id: docked.or(start.request_id),
+        docked: docked.is_some(),
+        compressing: start.compressing,
+        archive_destination,
+        total_items: start.total,
+        flushing: false,
+        last_transfer: TransferCounts::default(),
+    };
+    match docked {
+        Some(req_id) => {
+            app.transfer.ops.background.insert(req_id, tracked);
+        }
+        None => app.transfer.ops.foreground = Some(tracked),
+    }
+    let now = tx.clock();
+    let sample = archive_sample(0, start.total, start.compressing);
+    app.transfer.ops.dock.start(op_id, spec, tx);
+    app.transfer.ops.dock.progress(op_id, sample, now, tx);
+}
+
+pub(super) fn on_archive_progress(
+    app: &mut App,
+    bg: Option<OperationRequestId>,
+    (completed, total): (usize, usize),
+    tx: &mut Tx,
+) -> bool {
+    let now = tx.clock();
+    let Some(tracked) = app.transfer.ops.tracked_mut(bg) else {
+        return false;
+    };
+    let op_id = tracked.op_id;
+    let sample = archive_sample(completed, total, tracked.compressing);
+    app.transfer.ops.dock.progress(op_id, sample, now, tx)
+}
+
+fn archive_sample(completed: usize, total: usize, compressing: bool) -> Sample {
+    if completed == 0 {
+        let key = if total == 0 {
+            "Preparing…"
+        } else if compressing {
+            "Compressing…"
+        } else {
+            "Processing archive…"
+        };
+        return Sample::new(Progress::Unknown).status(tr(key));
+    }
+    if total == 0 {
+        return Sample::new(Progress::Count(completed)).status(count("files", completed));
+    }
+    let status = rust_i18n::t!(
+        "%{completed} / %{items}",
+        completed = integer(completed as u64),
+        items = count("files", total)
+    )
+    .into_owned();
+    Sample::new(Progress::Items {
+        done: completed,
+        total,
+    })
+    .status(status)
+}
+
+pub(super) fn on_archive_completed(
+    app: &mut App,
+    bg: Option<OperationRequestId>,
+    select_name: String,
+    tx: &mut Tx,
+) -> bool {
+    let tracked = app.transfer.ops.take_tracked(bg);
+    let from_background = bg.is_some() || tracked.as_ref().is_some_and(|op| op.docked);
+    if from_background {
+        let Some(tracked) = tracked else {
+            return false;
+        };
+        let completed =
+            app.transfer
+                .ops
+                .dock
+                .complete(tracked.op_id, tr("Compression complete"), tx);
+        let revealed =
+            archive::on_background_completed(app, tracked.archive_destination, select_name, tx);
+        return completed || revealed;
+    }
+    if let Some(tracked) = tracked {
+        app.transfer.ops.dock.remove(tracked.op_id);
+    }
+    archive::on_completed(app, select_name, tx);
+    true
+}
+
 pub(super) fn on_items_reported(app: &mut App, report: &TransferReport, tx: &mut Tx) -> bool {
     present_report(app, report, tx)
 }
@@ -335,16 +512,21 @@ pub(super) fn on_items_reported(app: &mut App, report: &TransferReport, tx: &mut
 pub(super) fn on_operation_failed(
     app: &mut App,
     bg: Option<OperationRequestId>,
-    message: String,
-    report: &TransferReport,
+    outcome: FailedOutcome,
+    tx: &mut Tx,
 ) -> bool {
-    if bg.is_none() {
-        app.transfer.pending_reveal = None;
-    }
-    if let Some(tracked) = app.transfer.ops.take_tracked(bg) {
+    let tracked = app.transfer.ops.take_tracked(bg);
+    let from_background = bg.is_some() || tracked.as_ref().is_some_and(|op| op.docked);
+    if let Some(tracked) = tracked {
         app.transfer.ops.dock.remove(tracked.op_id);
     }
-    let detail = outcome_detail(message, report);
+    if !from_background {
+        app.transfer.pending_reveal = None;
+        if archive::on_operation_failed(app, outcome.password_failure, tx) {
+            return true;
+        }
+    }
+    let detail = outcome_detail(outcome.message, &outcome.report);
     error_dialog::show(app, Error::new(tr("Unable to complete operation"), detail));
     true
 }
@@ -354,10 +536,13 @@ pub(super) fn on_operation_cancelled(
     bg: Option<OperationRequestId>,
     outcome: CancelledOutcome,
 ) -> bool {
-    if bg.is_none() {
+    let tracked = app.transfer.ops.take_tracked(bg);
+    let from_background = bg.is_some() || tracked.as_ref().is_some_and(|op| op.docked);
+    if !from_background {
         app.transfer.pending_reveal = None;
+        archive::abandon_follow_ups(app);
     }
-    if let Some(tracked) = app.transfer.ops.take_tracked(bg) {
+    if let Some(tracked) = tracked {
         app.transfer.ops.dock.remove(tracked.op_id);
     }
     app.browser
@@ -409,6 +594,15 @@ pub(super) fn on_background_event(
             tx,
         ),
         BrowserEvent::FlushingToDevice => on_flushing(app, Some(request_id), tx),
+        BrowserEvent::ArchiveStarted { total } => {
+            on_archive_progress(app, Some(request_id), (0, total), tx)
+        }
+        BrowserEvent::ArchiveProgress { completed, total } => {
+            on_archive_progress(app, Some(request_id), (completed, total), tx)
+        }
+        BrowserEvent::ArchiveCompleted { select_name } => {
+            on_archive_completed(app, Some(request_id), select_name, tx)
+        }
         BrowserEvent::TransferFinished { moved_locations } => {
             on_transfer_finished(app, Some(request_id), &moved_locations);
             true
@@ -427,8 +621,19 @@ fn on_background_outcome(
 ) -> bool {
     match event {
         BrowserEvent::OperationFailed {
-            message, report, ..
-        } => on_operation_failed(app, Some(request_id), message, &report),
+            message,
+            password_failure,
+            report,
+        } => on_operation_failed(
+            app,
+            Some(request_id),
+            FailedOutcome {
+                message,
+                password_failure,
+                report,
+            },
+            tx,
+        ),
         BrowserEvent::OperationCancelled {
             completed,
             failed,

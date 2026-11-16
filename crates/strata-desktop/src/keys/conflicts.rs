@@ -34,14 +34,14 @@ use super::{
 
 /// What the checker cannot read from the table.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) struct Policy {
+pub struct Policy {
     /// Type-to-search is on, so the default map's file list types plain
     /// printable keys.
-    pub(crate) type_to_search: bool,
+    pub type_to_search: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum Severity {
+pub enum Severity {
     /// The key never fires where it is bound, or fires and stops another key
     /// or a fixed role from working; Settings refuses it.
     Error,
@@ -50,7 +50,7 @@ pub(crate) enum Severity {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum Kind {
+pub enum Kind {
     /// Another command the same surface matches holds the key. Chord steps
     /// count only against steps of their group and the keys an armed chord
     /// reads before its steps.
@@ -90,7 +90,7 @@ pub(crate) enum Kind {
 
 /// A role that keeps its keys whatever the keymap says.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum Fixed {
+pub enum Fixed {
     /// Space selects the item under the 10xer cursor.
     SelectionToggle,
     /// Space plays and pauses a media preview, and the page keys, Home and
@@ -104,7 +104,7 @@ pub(crate) enum Fixed {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum FieldLimit {
+pub enum FieldLimit {
     /// A plain printable key, which a focused text field or popover types.
     Typing,
     /// A key text fields bind themselves, such as Ctrl+A.
@@ -112,7 +112,7 @@ pub(crate) enum FieldLimit {
 }
 
 impl Kind {
-    pub(crate) const fn severity(self) -> Severity {
+    pub const fn severity(self) -> Severity {
         match self {
             Self::Duplicate(_)
             | Self::ShadowsChordGroup(_)
@@ -132,15 +132,15 @@ impl Kind {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct Finding {
-    pub(crate) severity: Severity,
-    pub(crate) kind: Kind,
+pub struct Finding {
+    pub severity: Severity,
+    pub kind: Kind,
     /// The alternate the finding is about.
-    pub(crate) binding: Binding,
+    pub binding: Binding,
 }
 
 impl Finding {
-    fn new(kind: Kind, binding: Binding) -> Self {
+    pub fn new(kind: Kind, binding: Binding) -> Self {
         Self {
             severity: kind.severity(),
             kind,
@@ -150,7 +150,7 @@ impl Finding {
 
     /// Whether the binding never fires in the state checked, so a row shows
     /// it inactive.
-    pub(crate) fn inactive(self) -> bool {
+    pub fn inactive(self) -> bool {
         matches!(
             self.kind,
             Kind::TypeToSearchShadowed | Kind::NeverMatches | Kind::NoPath
@@ -160,7 +160,7 @@ impl Finding {
 
 /// Findings for adding `candidate`, in its saved form, to `map`'s entry for
 /// `command`.
-pub(crate) fn check(
+pub fn check(
     keymap: &Keymap,
     map: Map,
     command: Command,
@@ -272,13 +272,13 @@ fn needs_input_method(candidate: Binding, shipped: bool) -> bool {
 }
 
 /// Every finding for every binding of `map`'s table.
-pub(crate) fn audit(keymap: &Keymap, map: Map, policy: Policy) -> Vec<(Command, Finding)> {
+pub fn audit(keymap: &Keymap, map: Map, policy: Policy) -> Vec<(Command, Finding)> {
     audit_where(keymap, map, policy, |_, _| true)
 }
 
 /// The findings for the keys `map`'s entries hold beyond their shipped ones,
 /// as a hand-edited settings file adds them.
-pub(crate) fn audit_added(keymap: &Keymap, map: Map, policy: Policy) -> Vec<(Command, Finding)> {
+pub fn audit_added(keymap: &Keymap, map: Map, policy: Policy) -> Vec<(Command, Finding)> {
     audit_where(keymap, map, policy, |command, binding| {
         !command.defaults(map).contains(&binding)
     })
@@ -309,7 +309,7 @@ fn audit_where(
 /// leave it out: no press reaches the command with it, or, while `typing`
 /// (type-to-search is active), it is a plain printable key a user added to the
 /// default map.
-pub(super) fn never_fires(map: Map, command: Command, binding: Binding, typing: bool) -> bool {
+pub fn never_fires(map: Map, command: Command, binding: Binding, typing: bool) -> bool {
     let binding = binding.normalized();
     let side = Side {
         command,
@@ -327,7 +327,7 @@ pub(super) fn never_fires(map: Map, command: Command, binding: Binding, typing: 
 
 /// Which of two commands on one key acts, for a [`Kind::Duplicate`] finding.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum Outcome {
+pub enum Outcome {
     /// The other command reads the key first; this binding never fires.
     Loses,
     /// This binding reads the key first, and the other command stops working.
@@ -337,12 +337,7 @@ pub(crate) enum Outcome {
 }
 
 /// The outcome of `command` and `other` both holding `binding` in `map`.
-pub(crate) fn duplicate_outcome(
-    map: Map,
-    command: Command,
-    binding: Binding,
-    other: Command,
-) -> Outcome {
+pub fn duplicate_outcome(map: Map, command: Command, binding: Binding, other: Command) -> Outcome {
     let binding = binding.normalized();
     let side = |command| Side {
         command,
@@ -982,7 +977,7 @@ fn known_overlap(first: Command, second: Command) -> bool {
 /// a 10xer verb or chord step in the default map, or a default-map command in
 /// 10xer, that the direct stage does not run either. The direct stage also
 /// runs the default map's custom action slots.
-pub(crate) fn no_path(command: Command, map: Map) -> bool {
+pub fn no_path(command: Command, map: Map) -> bool {
     command.defaults(map).is_empty()
         && !is_trigger(command)
         && !direct_commands(map).contains(&command)
@@ -1173,6 +1168,3 @@ fn overlaps(first: Binding, second: Binding) -> bool {
         .difference(second.ignored);
     same_key && first.modifiers & compared == second.modifiers & compared
 }
-
-#[cfg(test)]
-mod tests;

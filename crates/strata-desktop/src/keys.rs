@@ -13,6 +13,7 @@ mod alias;
 mod backend;
 pub mod bindings;
 mod command;
+pub mod conflicts;
 mod key;
 mod key_constants;
 mod label;

@@ -6,38 +6,33 @@
 scenario = "archive-activation-extracts-subfolder"
 run = "list"
 package = "A13"
-status = "pending"
-reason = "scope"
-blocker = "A13"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "archive-double-click-extracts-subfolder"
 run = "columns-zip-double-click"
 package = "A13"
-status = "pending"
-reason = "scope"
-blocker = "A13"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "archive-double-click-extracts-subfolder"
 run = "columns-targz-double-click"
 package = "A13"
-status = "pending"
-reason = "scope"
-blocker = "A13"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "single-root-archive-extracts-verbatim"
 run = "columns-keyboard"
 package = "A13"
-status = "pending"
-reason = "scope"
-blocker = "A13"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "single-root-archive-extracts-verbatim"
 run = "columns-double-click"
 package = "A13"
-status = "pending"
-reason = "scope"
-blocker = "A13"
+status = "required"
+host = "offscreen"
