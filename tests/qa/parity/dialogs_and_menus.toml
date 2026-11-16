@@ -94,9 +94,8 @@ host = "offscreen"
 scenario = "modal-dialog-blocks-window-shortcuts"
 run = "columns"
 package = "A6"
-status = "pending"
-reason = "scope"
-blocker = "A17: the Properties dialog on Alt+Return (line 31); passes through line 30 on Rune"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "pane-menu-directory-actions"
@@ -109,25 +108,22 @@ host = "offscreen"
 scenario = "properties-copy-path-slashes-only-folders"
 run = "columns-file"
 package = "A6"
-status = "pending"
-reason = "scope"
-blocker = "A17: the Properties dialog (line 8)"
+status = "required"
+host = "session"
 
 [[run]]
 scenario = "properties-copy-path-slashes-only-folders"
 run = "columns-directory"
 package = "A6"
-status = "pending"
-reason = "scope"
-blocker = "A17: the Properties dialog (line 8)"
+status = "required"
+host = "session"
 
 [[run]]
 scenario = "properties-pins-and-unpins-folder"
 run = "columns"
 package = "A6"
-status = "pending"
-reason = "scope"
-blocker = "A17: the Properties dialog (line 8)"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "rename-onto-existing-rejected"

@@ -94,6 +94,13 @@ impl Offscreen {
         });
     }
 
+    /// Sets or clears the physical origin the offscreen QA host attaches to the queued key
+    /// press while `Runtime::physical_key_input` is private (Rune packet entry 97).
+    #[cfg(any(test, feature = "qa"))]
+    pub(crate) fn set_key_origin(&mut self, origin: Option<commands::Origin>) {
+        shell::live_keys(self.app()).set_qa_origin(origin);
+    }
+
     /// The accessibility tree, as an assistive client and the QA harness read it.
     pub(crate) fn tree(&self) -> serde_json::Value {
         self.runtime.accessibility_json()

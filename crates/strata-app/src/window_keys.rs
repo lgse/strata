@@ -97,7 +97,8 @@ pub(crate) const COMMANDS: &[Action<App>] = &[
         .keys(&[Keys::at(Stage::Dismissal, &[ESCAPE_ANY_SHIFT]).when(|_, at| !at.text())]),
     Action::new("escape", escaped)
         .command(ESCAPE)
-        .keys(&[Keys::at(Stage::ItemNavigation, &[ESCAPE_ANY_SHIFT]).when(from_the_listing)]),
+        .keys(&[Keys::at(Stage::ItemNavigation, &[ESCAPE_ANY_SHIFT])
+            .when(|app, at| from_the_listing(app, at) && !shell::preferences(app).tenxer_mode)]),
     Action::new("activate", activated)
         .command(ENTER)
         .keys(&[Keys::at(Stage::ItemNavigation, &[ENTER_ANY_SHIFT]).when(from_the_listing)]),

@@ -20,6 +20,7 @@ use rune::{El, Tx};
 use strata_components::{
     collection::{
         element::{CollectionState, Intent, RowMarks},
+        keyboard::{KeyHandle, NothingToSelect},
         selection::{Listing, Position, Selection},
     },
     contract::{Direction, EntryId, EntrySource},
@@ -37,6 +38,7 @@ pub(crate) const SEARCH_RESULTS: &str = "Search results";
 pub(crate) struct PaneHits {
     hits: Option<Column>,
     collection: CollectionState,
+    pub(crate) keys_handle: KeyHandle,
     /// The Icons results' grid.
     pub(crate) grid: IconsGridState,
     /// Moves each time results are shown or dropped, so two sets never share a version.
@@ -71,6 +73,7 @@ impl PaneHits {
         Self {
             hits: None,
             collection: CollectionState::new(),
+            keys_handle: KeyHandle::new(),
             grid: IconsGridState::new(),
             swaps: 0,
             recursive: false,
@@ -139,7 +142,9 @@ impl PaneHits {
         self.swaps = self.swaps.wrapping_add(1);
         let hits = self.hits.insert(update.hits);
         if first {
-            self.collection = crate::single::results_state(place == Where::List);
+            let handle = KeyHandle::new();
+            self.collection = crate::single::results_state(place == Where::List, handle.clone());
+            self.keys_handle = handle;
             let _ = self
                 .collection
                 .enter(scope, &*hits, None, Listing::Complete, tx);
@@ -165,6 +170,7 @@ impl PaneHits {
 
     /// Gives the listing its place back.
     pub(crate) fn drop_hits(&mut self) {
+        self.keys_handle.end_range();
         if self.hits.take().is_some() {
             self.swaps = self.swaps.wrapping_add(1);
         }
@@ -172,6 +178,7 @@ impl PaneHits {
 
     /// The results taken out, with their selection, for the view a switch shows.
     pub(crate) fn take(&mut self) -> Option<(Column, Position)> {
+        self.keys_handle.end_range();
         let position = self.collection.selection.position(self.hits.as_ref()?);
         let hits = self.hits.take()?;
         self.swaps = self.swaps.wrapping_add(1);
@@ -280,7 +287,18 @@ pub(crate) fn heard(app: &mut App, intent: Intent, tx: &mut Tx) {
             // A slow second click on a result's name.
             Intent::BeginRename { id } => crate::rename::begin_on(app, depth, id, tx),
             Intent::Edge(Direction::Left) => {
-                shell::leave_view_at_start(app, tx);
+                if !shell::preferences(app).tenxer_mode
+                    || !app
+                        .filter
+                        .open_in
+                        .as_ref()
+                        .is_some_and(|open| open.place == Where::List)
+                {
+                    shell::leave_view_at_start(app, tx);
+                }
+            }
+            Intent::Other(other) if other.downcast_ref::<NothingToSelect>().is_some() => {
+                crate::tenxer::flash_nothing_to_select(app, tx);
             }
             // Drags and new tabs are not yet here.
             _ => {}

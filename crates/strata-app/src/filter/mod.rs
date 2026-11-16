@@ -82,6 +82,7 @@ mod renamed;
 pub(crate) mod session;
 mod switch;
 pub(crate) mod targets;
+mod tenxer;
 mod typing;
 
 pub(crate) use hits::HitsUpdate;
@@ -89,6 +90,9 @@ use pane::PaneHits;
 use place::Where;
 use renamed::RenamedResult;
 use session::{Batch, Input, Scope, Session};
+pub(crate) use tenxer::{
+    current_hit_path, dismiss_filter_only, dismiss_search_only, mark as tenxer_mark, search_active,
+};
 
 #[cfg(test)]
 mod tests;
@@ -744,6 +748,9 @@ pub(crate) fn column_actions(app: &App, depth: usize) -> Vec<El> {
 /// the column, as GTK's revealer under the header (`column_header` in
 /// `src/ui/browser/columns/append/header.rs`).
 pub(crate) fn column_band(app: &App, depth: usize) -> Option<El> {
+    if shell::preferences(app).tenxer_mode {
+        return None;
+    }
     let open = app.filter.open_in.as_ref()?;
     let here = open.place == Where::Columns && open.depth == depth && app.filter.state.is_open();
     if !here {
@@ -915,8 +922,10 @@ impl Part for Filter {
     const PLACE: Place<App> = Place::Overlays(|_, _| None);
 
     fn new(setup: &Setup<'_>) -> Self {
+        let mut state = FilterState::new();
+        state.set_tenxer(setup.settings.tenxer_mode);
         Self {
-            state: FilterState::new(),
+            state,
             open_in: None,
             session: Session::default(),
             found: HashMap::new(),
@@ -953,6 +962,8 @@ impl Part for Filter {
     }
 
     fn poll(app: &mut App, _clock: f64, tx: &mut Tx) -> bool {
+        let tenxer = shell::preferences(app).tenxer_mode;
+        app.filter.state.set_tenxer(tenxer);
         let blurred = blur::follow(app, tx);
         let refocused = refocus(app, tx);
         let polled = app.filter.state.tick();
@@ -970,10 +981,15 @@ impl Part for Filter {
                 Stage::FilterAndLocationCommands,
                 &[FILTER.in_map(Map::Default)],
             )
-            .when(|_, at| !at.within("preview"))]),
+            .when(|app, at| !shell::preferences(app).tenxer_mode && !at.within("preview"))]),
         Action::new("filter-dismiss", dismiss)
             .command(ESCAPE)
             .keys(&[Keys::at(Stage::FilterAndLocationCommands, &[ESCAPE_ANY]).when(on_results)]),
+        Action::new("filter-result-vim", tenxer::result_vim_arrow).keys(&[Keys {
+            stage: Stage::SearchResultKeys,
+            reads: Reads::Press(|press| tenxer::fallback_vim_arrow(press).is_some()),
+            when: on_results,
+        }]),
         Action::new("filter-result-keys", leave_result_key).keys(&[Keys {
             stage: Stage::SearchResultKeys,
             reads: Reads::Press(search_rows_own_key),
@@ -1000,6 +1016,8 @@ impl Part for Filter {
     }
 
     fn tab_shown(app: &mut App, _: &mut Tx) {
+        let tenxer = shell::preferences(app).tenxer_mode;
+        app.filter.state.set_tenxer(tenxer);
         let worn = shell::worn(app).clone();
         app.filter.pane.set_worn(&worn);
         switch::tab_shown(app);

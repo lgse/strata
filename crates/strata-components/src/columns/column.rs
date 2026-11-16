@@ -397,46 +397,58 @@ pub(super) fn header<S: 'static>(sh: &Rc<Shared<S>>, s: &S, depth: usize, serial
                 ),
         );
     }
-    let mut controls = row().gap(look.space.xxs).items_center();
-    let mut any = false;
     let cx = HeaderCx {
         depth,
         active,
         targeted,
         loading,
     };
-    if targeted {
-        if let Some(actions) = sh.actions.as_ref().and_then(|f| f(s, cx)) {
-            controls = controls.child(actions);
-            any = true;
-        }
-        if depth > 0 {
-            let close = sh.clone();
-            controls = controls.child(
-                IconButton::new(look.icon(IconName::Close))
-                    .variant(IconButtonVariant::GhostMuted)
-                    .control_size(ControlSize::Small)
-                    .label(sh.labels.close.clone())
-                    .on_press_tx(move |s: &mut S, tx: &mut Tx| {
-                        if let Some(depth) = depth_of(&close, s, serial) {
-                            close.emit(s, ColumnsIntent::CloseFrom(depth), tx);
-                        }
-                    })
-                    .build(k)
-                    // Not a focus stop: a press on it focuses the strip, which keeps the
-                    // keyboard when the button goes with its column.
-                    .focusable(false)
-                    .key(keys::close(&key)),
-            );
-            any = true;
-        }
-    }
-    if any {
+    if let Some(controls) = header_controls(sh, s, cx, serial) {
         // A secondary press on a control is the control's: no folder menu.
         bar = bar.child(controls.on_secondary_press(|_: &mut S, _, tx: &mut Tx| tx.live_only()));
     }
-    let menu = sh.clone();
-    let bar = bar.on_secondary_press(move |s: &mut S, at, tx: &mut Tx| {
+    let bar = with_header_menu(bar, sh.clone(), serial);
+    with_band(sh, s, bar, cx)
+}
+
+fn header_controls<S: 'static>(sh: &Rc<Shared<S>>, s: &S, cx: HeaderCx, serial: u64) -> Option<El> {
+    if !cx.targeted {
+        return None;
+    }
+    let p = (sh.parts)(s);
+    let look = p.look;
+    let key = keys::column(&p.state.key, serial);
+    let mut controls = row().gap(look.space.xxs).items_center();
+    let mut any = false;
+    if let Some(actions) = sh.actions.as_ref().and_then(|f| f(s, cx)) {
+        controls = controls.child(actions);
+        any = true;
+    }
+    if cx.depth > 0 && (sh.close_buttons)(s) {
+        let close = sh.clone();
+        controls = controls.child(
+            IconButton::new(look.icon(IconName::Close))
+                .variant(IconButtonVariant::GhostMuted)
+                .control_size(ControlSize::Small)
+                .label(sh.labels.close.clone())
+                .on_press_tx(move |s: &mut S, tx: &mut Tx| {
+                    if let Some(depth) = depth_of(&close, s, serial) {
+                        close.emit(s, ColumnsIntent::CloseFrom(depth), tx);
+                    }
+                })
+                .build(&look.kit)
+                // Not a focus stop: a press on it focuses the strip, which keeps the
+                // keyboard when the button goes with its column.
+                .focusable(false)
+                .key(keys::close(&key)),
+        );
+        any = true;
+    }
+    any.then_some(controls)
+}
+
+fn with_header_menu<S: 'static>(bar: El, menu: Rc<Shared<S>>, serial: u64) -> El {
+    bar.on_secondary_press(move |s: &mut S, at, tx: &mut Tx| {
         let Some(depth) = depth_of(&menu, s, serial) else {
             return;
         };
@@ -455,8 +467,7 @@ pub(super) fn header<S: 'static>(sh: &Rc<Shared<S>>, s: &S, depth: usize, serial
             },
             tx,
         );
-    });
-    with_band(sh, s, bar, cx)
+    })
 }
 
 /// The header row, and the host's band under it when there is one

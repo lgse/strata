@@ -6,6 +6,5 @@
 scenario = "panel-wheel-routing"
 run = "columns"
 package = "A9"
-status = "pending"
-reason = "scope"
-blocker = "A9"
+status = "required"
+host = "offscreen"

@@ -66,42 +66,47 @@ fn number(app: &mut App, call: &Call<'_>, tx: &mut Tx) -> Outcome {
     let Some(index) = call.press.and_then(numbered) else {
         return Outcome::Declined;
     };
+    crate::tenxer::cancel_chord(app);
     if let Some(&key) = tabs(app).get(index) {
         select(app, key, tx);
     }
     Outcome::Ran
 }
 
-/// What a tab command did, as its key: taken either way.
-fn ran(act: impl FnOnce()) -> Outcome {
-    act();
+/// What a tab command did, as its key: taken either way, cancelling any armed 10xer chord
+/// first (`TabWindow::handle_key` in `src/ui/window/composition/tabs.rs`).
+fn ran(app: &mut App, act: impl FnOnce(&mut App)) -> Outcome {
+    crate::tenxer::cancel_chord(app);
+    act(app);
     Outcome::Ran
 }
 
 pub(super) const COMMANDS: &[Action<App>] = &[
-    Action::new("tab-new", |app, _, tx| ran(|| new_tab(app, tx)))
+    Action::new("tab-new", |app, _, tx| ran(app, |app| new_tab(app, tx)))
         .command(TAB_NEW)
         .keys(&[at(&[TAB_NEW.ignoring(Modifiers::empty())])]),
     Action::new("tab-close", |app, _, tx| {
-        ran(|| {
+        ran(app, |app| {
             close(app, shown_tab(app), tx);
         })
     })
     .command(TAB_CLOSE)
     .keys(&[at(&[TAB_CLOSE.ignoring(Modifiers::empty())])]),
-    Action::new("tab-reopen", |app, _, tx| ran(|| reopen(app, tx)))
+    Action::new("tab-reopen", |app, _, tx| ran(app, |app| reopen(app, tx)))
         .command(TAB_REOPEN)
         .keys(&[at(&[TAB_REOPEN.ignoring(Modifiers::empty())])]),
-    Action::new("tab-next", |app, _, tx| ran(|| cycle(app, 1, tx)))
+    Action::new("tab-next", |app, _, tx| ran(app, |app| cycle(app, 1, tx)))
         .command(TAB_NEXT)
         .keys(&[at(&[TAB_NEXT.ignoring(Modifiers::empty())])]),
-    Action::new("tab-previous", |app, _, tx| ran(|| cycle(app, -1, tx)))
-        .command(TAB_PREVIOUS)
-        .keys(&[at(&[TAB_PREVIOUS.ignoring(Modifiers::empty())])]),
-    Action::new("tab-move-left", |app, _, _| ran(|| shift(app, -1)))
+    Action::new("tab-previous", |app, _, tx| {
+        ran(app, |app| cycle(app, -1, tx))
+    })
+    .command(TAB_PREVIOUS)
+    .keys(&[at(&[TAB_PREVIOUS.ignoring(Modifiers::empty())])]),
+    Action::new("tab-move-left", |app, _, _| ran(app, |app| shift(app, -1)))
         .command(TAB_MOVE_LEFT)
         .keys(&[at(&[TAB_MOVE_LEFT.ignoring(Modifiers::empty())])]),
-    Action::new("tab-move-right", |app, _, _| ran(|| shift(app, 1)))
+    Action::new("tab-move-right", |app, _, _| ran(app, |app| shift(app, 1)))
         .command(TAB_MOVE_RIGHT)
         .keys(&[at(&[TAB_MOVE_RIGHT.ignoring(Modifiers::empty())])]),
     Action::new("tab-number", number).keys(&[Keys {

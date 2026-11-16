@@ -1,11 +1,12 @@
-diff --git a/crates/strata-app/src/icons/mod.rs b/crates/strata-app/src/icons/mod.rs
---- a/crates/strata-app/src/icons/mod.rs
-+++ b/crates/strata-app/src/icons/mod.rs
-@@ -57,6 +57,6 @@ fn keys(typing: bool) -> KeySettings {
-     let keys = KeySettings::default().wrap_rows(true);
-     match typing {
-         true => keys,
--        false => keys.letters(Letters::Arrows),
-+        false => keys.letters(Letters::Pass),
-     }
- }
+diff --git a/crates/strata-app/src/single/mod.rs b/crates/strata-app/src/single/mod.rs
+--- a/crates/strata-app/src/single/mod.rs
++++ b/crates/strata-app/src/single/mod.rs
+@@ -233,7 +233,7 @@ fn live_keys(app: &App, single: &Single) -> KeySettings {
+     } else if settings.type_to_search {
+         KeySettings::default()
+     } else {
+-        KeySettings::default().letters(Letters::Arrows)
++        KeySettings::default().letters(Letters::Pass)
+     };
+     keys.wrap_rows = single.wrap_rows;
+     keys.left_leaves_without_cursor = single.left_leaves;

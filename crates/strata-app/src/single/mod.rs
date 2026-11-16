@@ -33,15 +33,16 @@ use rune::{El, Tx, WheelEvent, col};
 use strata_components::{
     collection::{
         element::{Activation, Collection, CollectionState, Describe, Intent},
-        keyboard::{KeySettings, Keyboard},
+        keyboard::{KeyHandle, KeySettings, Keyboard, Letters, NothingToSelect},
         marquee::Marquee,
-        pointer::{ClickCount, ClickModes, PointerIntent, PointerSettings},
+        pointer::{ClickModes, PointerIntent, PointerSettings},
     },
     context_menu::AnchorEdge,
     contract::{Direction, EntryId, EntrySource},
     rename::{By, Initial, Polled},
 };
 use strata_core::i18n::tr;
+use strata_desktop::settings::Preferences;
 
 use self::first_visit::FirstVisit;
 use crate::{
@@ -60,9 +61,9 @@ use crate::{
 /// A single-pane view's state that is not its component's.
 pub(crate) struct Single {
     pub(crate) pane: Pane,
-    clicks: ClickModes,
-    /// The keys the component reads other than by its default.
-    keys: KeySettings,
+    pub(crate) keys_handle: KeyHandle,
+    wrap_rows: bool,
+    left_leaves: bool,
     words: Words,
     /// `view_name` in `src/ui/accessibility.rs`: what the pane is described as, and how the
     /// QA harness finds it.
@@ -75,18 +76,11 @@ pub(crate) struct Single {
     first_visit: FirstVisit,
 }
 
-fn clicks(count: u8) -> ClickCount {
-    match count {
-        1 => ClickCount::One,
-        _ => ClickCount::Two,
-    }
-}
-
 /// The collection's controllers: the pointer's clicks, the keyboard and the marquee.
-fn controlled() -> CollectionState {
+fn controlled(handle: KeyHandle) -> CollectionState {
     let mut collection = CollectionState::new();
     collection.controllers.pointer = Some(Box::new(PointerIntent::new()));
-    collection.controllers.keyboard = Some(Box::new(Keyboard::default()));
+    collection.controllers.keyboard = Some(Box::new(Keyboard::new(handle)));
     collection.controllers.marquee = Some(Box::new(Marquee::new()));
     collection
 }
@@ -94,8 +88,8 @@ fn controlled() -> CollectionState {
 /// The state of a filter's results in the pane (A10's [`crate::filter`]), with the controllers
 /// and the keys the pane's listing has, the Menu key's menu where the view opens it: the
 /// centre in List, the right edge in Icons.
-pub(crate) fn results_state(list: bool) -> CollectionState {
-    let mut collection = controlled();
+pub(crate) fn results_state(list: bool, handle: KeyHandle) -> CollectionState {
+    let mut collection = controlled(handle);
     let menu_at = match list {
         true => AnchorEdge::Center,
         false => AnchorEdge::Right,
@@ -108,9 +102,8 @@ pub(crate) fn results_state(list: bool) -> CollectionState {
 pub(crate) struct Made {
     /// The view's collection's key ([`SinglePane::KEY`]).
     pub(crate) key: &'static str,
-    /// How many clicks open a file and a folder.
-    pub(crate) clicks: (u8, u8),
-    pub(crate) keys: KeySettings,
+    pub(crate) wrap_rows: bool,
+    pub(crate) left_leaves: bool,
     /// The view's translated `view_name`.
     pub(crate) described: String,
     /// Where on the cursor's entry the Menu key opens its menu (`item_menu_target` in
@@ -123,28 +116,26 @@ impl Single {
     pub(crate) fn new(made: Made) -> Self {
         let Made {
             key,
-            clicks: (file, folder),
-            keys,
+            wrap_rows,
+            left_leaves,
             described,
             menu_at,
             worn,
         } = made;
-        let mut collection = controlled();
+        let keys_handle = KeyHandle::new();
+        let mut collection = controlled(keys_handle.clone());
         commands::view_keys(&mut collection, menu_at);
         Self {
             pane: Pane::new(key, collection).with_worn(worn),
-            clicks: ClickModes::new(clicks(file), clicks(folder)),
-            keys,
+            keys_handle,
+            wrap_rows,
+            left_leaves,
             words: Words::translated(),
             described,
             entries: tr("Files"),
             surface: Surface::translated(),
             first_visit: FirstVisit::default(),
         }
-    }
-
-    pub(crate) fn one_click_files(&self) -> bool {
-        self.clicks.files == ClickCount::One
     }
 
     pub(crate) fn in_band(&self) -> bool {
@@ -169,6 +160,9 @@ pub(crate) trait SinglePane: 'static {
 
     /// The view's state and the rename editor's, borrowed together.
     fn renaming(app: &mut App) -> (&Single, &mut rename::Rename);
+
+    /// The view's live click-activation modes, read from `settings`.
+    fn clicks(settings: &Preferences) -> ClickModes;
 
     /// The view's layout, as C1e keys a remembered scroll offset: the mode and anything that
     /// changes wrapping. An offset comes back only in the layout it was measured in, as GTK's
@@ -220,6 +214,20 @@ fn source<V: SinglePane>(app: &App) -> (&dyn EntrySource, &CollectionState) {
     (pane.source(), pane.collection())
 }
 
+fn live_keys(app: &App, single: &Single) -> KeySettings {
+    let settings = shell::preferences(app);
+    let mut keys = if settings.tenxer_mode {
+        KeySettings::tenxer()
+    } else if settings.type_to_search {
+        KeySettings::default()
+    } else {
+        KeySettings::default().letters(Letters::Arrows)
+    };
+    keys.wrap_rows = single.wrap_rows;
+    keys.left_leaves_without_cursor = single.left_leaves;
+    keys
+}
+
 /// The collection under the view's component: what the host sets on it, before the
 /// component adds its own parts.
 pub(crate) fn collection<V: SinglePane>(app: &App) -> Collection<App> {
@@ -237,8 +245,8 @@ pub(crate) fn collection<V: SinglePane>(app: &App) -> Collection<App> {
     )
     .name(title::<V>(app))
     .description(described::<V>(app))
-    .settings(single.keys.clone())
-    .settings(PointerSettings::default().modes(single.clicks))
+    .settings(live_keys(app, single))
+    .settings(PointerSettings::default().modes(V::clicks(shell::preferences(app))))
     .describe(Describe::pure(|app: &App, row| {
         let single = V::single(app);
         let description = single
@@ -278,12 +286,12 @@ pub(crate) fn results<V: SinglePane>(app: &App) -> Collection<App> {
         |app: &App| app.filter.pane.version(),
     ))
     .name(tr(filter::pane::SEARCH_RESULTS))
-    .settings(single.keys.clone())
+    .settings(live_keys(app, single))
     // GTK's results keep an anchor of their own, which neither a right-click nor a
     // Shift+press sets (findings lgse/strata#2375 and #2431).
     .settings(
         PointerSettings::default()
-            .modes(single.clicks)
+            .modes(V::clicks(shell::preferences(app)))
             .missing_anchor_stays(true),
     )
     .marks(|app: &App, id| crate::clipboard::with_marks(app, id, filter::pane::marks(app, id)))
@@ -302,19 +310,23 @@ pub(crate) fn results<V: SinglePane>(app: &App) -> Collection<App> {
 /// the header's, and the component's.
 pub(crate) fn group<V: SinglePane>(app: &App, component: El, actions: Option<El>) -> El {
     let title = title::<V>(app);
-    col()
+    let tenxer = shell::preferences(app).tenxer_mode;
+    let mut group = col()
         .key(format!("{}-pane", V::KEY))
         .role("group")
         .label(title.clone())
         .description(V::single(app).described.clone())
         .w_full()
         .grow(1.0)
-        .min_h(0.0)
-        .child(pane_header::bar(app, V::KEY, &title, actions))
-        // The filter's field, under the header as GTK's revealer is.
-        .children(filter::pane::band(app))
-        // What is left under the header: the component fills its parent's height.
-        .child(body(app).child(component))
+        .min_h(0.0);
+    if !tenxer {
+        group = group
+            .child(pane_header::bar(app, V::KEY, &title, actions))
+            // The filter's field, under the header as GTK's revealer is.
+            .children(filter::pane::band(app));
+    }
+    // What is left under the header: the component fills its parent's height.
+    group.child(body(app).child(component))
 }
 
 /// The box under the header the component fills. A filter's results take the view's key, so
@@ -483,7 +495,12 @@ fn heard<V: SinglePane>(app: &mut App, intent: Intent, tx: &mut Tx) {
         // component decides where its start is, from the view's keys (the first tile in Icons,
         // any row in List); only that Left reaches here.
         Intent::Edge(Direction::Left) => {
-            shell::leave_view_at_start(app, tx);
+            if !shell::preferences(app).tenxer_mode || V::KEY == crate::icons::VIEW {
+                shell::leave_view_at_start(app, tx);
+            }
+        }
+        Intent::Other(other) if other.downcast_ref::<NothingToSelect>().is_some() => {
+            crate::tenxer::flash_nothing_to_select(app, tx);
         }
         // Drags and the pane header an edge moves to are other packages' parts.
         _ => {}
@@ -494,7 +511,8 @@ fn heard<V: SinglePane>(app: &mut App, intent: Intent, tx: &mut Tx) {
 /// A plain click on a file previews it when single-click previews are enabled and two clicks
 /// open files (`PendingActivationKind::Standard { preview: true }`).
 fn clicked<V: SinglePane>(app: &App, depth: usize, id: EntryId) {
-    if V::single(app).one_click_files() || !shell::preferences(app).single_click_previews {
+    let settings = shell::preferences(app);
+    if crate::clicks::one_click_files(V::clicks(settings)) || !settings.single_click_previews {
         return;
     }
     let Some(position) = pane::<V>(app).position(depth, id) else {

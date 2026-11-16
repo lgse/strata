@@ -901,9 +901,11 @@ fn bar(app: &App, chrome: &WindowChrome, location: Option<El>) -> El {
         .strip()
         .and_then(|strip| strip.new_tab);
     let in_strip = strip_shows(app).then_some(NEW_TAB);
+    let tenxer = preferences(app).tenxer_mode;
     let trailing = TRAILING
         .iter()
-        .filter(|button| Some(button.key) != in_strip);
+        .filter(|button| Some(button.key) != in_strip)
+        .filter(|button| !(tenxer && button.key == "search"));
     let header = trailing.fold(header, |header, button| {
         let built = (button.key == NEW_TAB)
             .then(|| strip_new_tab.map(|new_tab| new_tab(app, "header-new-tab")))
