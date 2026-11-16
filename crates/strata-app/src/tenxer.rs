@@ -152,6 +152,11 @@ pub(crate) fn flash_nothing_to_select(app: &mut App, tx: &mut Tx) {
     app.tenxer.flash.show(tr("Nothing to select"), tx);
 }
 
+/// Shows `message` in the footer flash.
+pub(crate) fn show_flash(app: &mut App, message: String, tx: &mut Tx) {
+    app.tenxer.flash.show(message, tx);
+}
+
 /// The `KeyHandle` of whichever collection currently shows.
 pub(crate) fn active_key_handle(app: &App) -> Option<KeyHandle> {
     if app.filter.pane.shows() {

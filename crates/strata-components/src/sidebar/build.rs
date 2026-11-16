@@ -44,6 +44,7 @@ pub struct PlacesSidebar<'a, S> {
     tenxer: bool,
     footer: Option<Box<dyn FnOnce(Step) -> El + 'a>>,
     trash: Option<Box<dyn FnOnce(El) -> El + 'a>>,
+    background_drag: Option<Rc<dyn Fn(&mut S, &mut Drag, bool, &mut Tx)>>,
     emit: Emit<S>,
 }
 
@@ -66,6 +67,7 @@ impl<'a, S: 'static> PlacesSidebar<'a, S> {
             tenxer: false,
             footer: None,
             trash: None,
+            background_drag: None,
             emit: Rc::new(|_, _, _| {}),
         }
     }
@@ -133,6 +135,16 @@ impl<'a, S: 'static> PlacesSidebar<'a, S> {
         self
     }
 
+    /// Forwards primary drags starting on the sidebar's blank chrome (`clears_on_press = true`)
+    /// so a drag into the listing starts a marquee band.
+    pub fn on_background_drag(
+        mut self,
+        f: impl Fn(&mut S, &mut Drag, bool, &mut Tx) + 'static,
+    ) -> Self {
+        self.background_drag = Some(Rc::new(f));
+        self
+    }
+
     pub fn build(self, look: &Look) -> El {
         let shown = self.state.width.shown();
         let root = col()
@@ -178,28 +190,32 @@ impl<'a, S: 'static> PlacesSidebar<'a, S> {
         } else {
             self.state.width.pane.width()
         };
-        let mut root = root.w(width).child(
-            col()
-                .key(format!("{}-scroll", self.key))
-                .w_full()
-                .grow(1.0)
-                .min_h(0.0)
-                .scroll(ScrollSpec {
-                    stick_bottom: false,
-                })
-                .child(list)
-                .on_secondary_press({
-                    let emit = self.emit.clone();
-                    move |s: &mut S, point: PointerPress, tx: &mut Tx| {
-                        emit(s, SidebarIntent::ContextMenu { item: None, point }, tx)
-                    }
-                }),
-        );
+        let mut scroll = col()
+            .key(format!("{}-scroll", self.key))
+            .w_full()
+            .grow(1.0)
+            .min_h(0.0)
+            .scroll(ScrollSpec {
+                stick_bottom: false,
+            })
+            .child(list)
+            .on_secondary_press({
+                let emit = self.emit.clone();
+                move |s: &mut S, point: PointerPress, tx: &mut Tx| {
+                    emit(s, SidebarIntent::ContextMenu { item: None, point }, tx)
+                }
+            });
+        if let Some(bg) = self.background_drag {
+            scroll = scroll.on_drag(move |s: &mut S, d: &mut Drag, tx: &mut Tx| {
+                bg(s, d, true, tx);
+            });
+        }
+        let mut root = root.w(width).child(scroll);
         if let Some(f) = self.footer {
             root = root.child(f(shown));
         }
         if !rail {
-            root = root.child(grip(&self.key, look, self.access, width));
+            root = root.child(grip(&self.key, self.access, width));
         }
         self.dnd
             .drop_zone_keyed(root, self.key.clone(), drops::background(self.access))
@@ -443,17 +459,12 @@ fn separator<S>(ctx: &Ctx<'_, S>) -> El {
         .a11y_hidden()
 }
 
-/// The full sidebar's resize grip on its trailing edge. A double click resets the width.
-fn grip<S: 'static>(
-    key: &str,
-    look: &Look,
-    access: fn(&mut S) -> &mut SidebarState,
-    width: f32,
-) -> El {
-    let reach = look.space.xs;
+/// The full sidebar's 1 pt resize grip on its trailing border (`sidebar-split > separator.wide`
+/// in `src/style.css`), leaving adjacent sidebar and file-area whitespace free for marquee drags.
+fn grip<S: 'static>(key: &str, access: fn(&mut S) -> &mut SidebarState, width: f32) -> El {
     el().key(format!("{key}-grip"))
-        .absolute(width - reach, 0.0)
-        .w(2.0 * reach)
+        .absolute(width - 1.0, 0.0)
+        .w(1.0)
         .h_full()
         .cursor(rune::Cursor::ResizeColumn)
         .a11y_hidden()

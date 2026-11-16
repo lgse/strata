@@ -95,6 +95,7 @@ fn environment(recent: bool) -> Environment {
         home: PathBuf::from("/home/user"),
         special,
         recent,
+        local_only: false,
     }
 }
 

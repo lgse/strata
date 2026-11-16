@@ -28,6 +28,7 @@ mod listing;
 mod surface;
 // The one folder a single-pane view shows: the Icons and List views'.
 mod pane;
+mod portal;
 #[cfg(feature = "qa")]
 mod qa;
 mod settings;
@@ -111,6 +112,7 @@ mod raw_details;
 // A18 Settings and themes
 // A19 Drag and drop
 // A20 Portal chooser
+mod chooser;
 // A21 Window and launch
 
 // The order of these lines is the order of the parts: within a slot, and wherever the shell
@@ -174,6 +176,8 @@ slots::parts! {
     // A18 Settings and themes
     // A19 Drag and drop
     // A20 Portal chooser
+    chooser: chooser::Chooser,
+    chooser_dialog: chooser::ChooserDialog,
     // A21 Window and launch
 }
 

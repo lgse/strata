@@ -209,7 +209,7 @@ fn wrap(app: &App, files: El, frame: &mut Frame<'_, App>) -> El {
         .on_layout_tx(layout::on_split_layout)
 }
 
-fn on_background_drag(app: &mut App, d: &mut rune::Drag, clears: bool, tx: &mut Tx) {
+pub(crate) fn on_background_drag(app: &mut App, d: &mut rune::Drag, clears: bool, tx: &mut Tx) {
     if session::browsing_columns(app) {
         crate::columns::view(app).origin_drag(app, (d, clears), tx);
     } else if session::browsing_icons(app) {
@@ -365,6 +365,9 @@ pub(crate) fn show_entry(app: &mut App, entry: FileEntry, depth: Option<usize>, 
 
 /// Whether single clicks open files in the currently shown view.
 pub(crate) fn one_click_files_in_shown_view(app: &App) -> bool {
+    if app.browser.is_chooser_mode() {
+        return false;
+    }
     let settings = shell::preferences(app);
     let modes = if session::browsing_columns(app) {
         crate::clicks::columns(settings)

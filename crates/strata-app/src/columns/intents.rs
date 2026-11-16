@@ -32,10 +32,13 @@ impl App {
             })
     }
 
-    fn activate(&self, depth: usize, id: EntryId, how: Activation) {
+    fn activate(&mut self, (depth, id): At, how: Activation, tx: &mut Tx) {
         let Some(position) = self.columns.position(depth, id) else {
             return;
         };
+        if crate::chooser::confirm_key_activation(self, (depth, position), how, tx) {
+            return;
+        }
         match how {
             // Return opens a folder with the cursor on its first entry: `activate_focused`
             // in `src/ui/browser/view_navigation.rs`.
@@ -63,9 +66,11 @@ impl App {
 
     fn previewable_click_position(&self, depth: usize, id: EntryId) -> Option<usize> {
         let preferences = shell::preferences(self);
-        if crate::clicks::one_click_files(crate::clicks::columns(preferences))
-            || !preferences.single_click_previews
-        {
+        let modes = crate::clicks::for_chooser(
+            crate::clicks::columns(preferences),
+            self.browser.is_chooser_mode(),
+        );
+        if crate::clicks::one_click_files(modes) || !preferences.single_click_previews {
             return None;
         }
         let position = self.columns.position(depth, id)?;
@@ -147,8 +152,11 @@ impl App {
             return;
         }
         match intent {
-            Intent::Activate { id, how } => self.activate(depth, id, how),
-            Intent::Clicked { id } => self.clicked(depth, id),
+            Intent::Activate { id, how } => self.activate((depth, id), how, tx),
+            Intent::Clicked { id } => {
+                crate::chooser::clicked_entry_in_chooser(self);
+                self.clicked(depth, id);
+            }
             Intent::OpenInNew { id, window } => self.open_in_new((depth, id), window, tx),
             Intent::Reveal { id } => self.reveal((depth, id), tx),
             // A slow second click on the entry.
@@ -228,5 +236,7 @@ pub(super) fn clicked_open(app: &mut App, (depth, id): At) {
         filter::open_hit(app, depth, id);
         return;
     }
-    app.activate(depth, id, Activation::Click);
+    if let Some(position) = app.columns.position(depth, id) {
+        app.browser.activate(depth, position);
+    }
 }

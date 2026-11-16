@@ -112,9 +112,62 @@ fn can_create_in_pane(app: &App, depth: usize, id: EntryId) -> bool {
     })
 }
 
+fn chooser_entry_menu(app: &App, depth: usize, id: EntryId) -> Option<Opening> {
+    let (entry, entries) = context_entries(app, depth, id)?;
+    let single = entries.len() == 1;
+    let typing = app.menu.typing;
+    let mut items = vec![RENAME.item(typing).disabled(!single)];
+    if single && crate::preview::entry_supports_quick_preview(&entry) {
+        items.push(PREVIEW.item(typing));
+    }
+    items.push(PROPERTIES.item(typing));
+    if entry.location.native_path().is_some() {
+        items.push(COMPRESS.item(typing));
+    }
+    let in_trash = app
+        .browser
+        .location_at(depth)
+        .as_ref()
+        .is_some_and(crate::clipboard::paths::is_trash);
+    let can_trash = app.browser.can_trash_at(depth) != Some(false);
+    let can_delete = app.browser.can_delete_at(depth) != Some(false);
+    if !in_trash && can_trash {
+        items.push(TRASH.item(typing));
+    }
+    if can_delete {
+        items.push(DELETE.item(typing).danger());
+    }
+    Some(Opening {
+        name: entry.display_name,
+        target: MenuTarget::Entry(id),
+        model: MenuModel::from_sections(vec![Section::items(items)]),
+        provider_slot: 0,
+        provider_paths: None,
+        background: false,
+    })
+}
+
+fn chooser_folder_menu(app: &App, depth: usize) -> Option<Opening> {
+    let location = app.browser.location_at(depth)?;
+    let item = NEW_FOLDER
+        .item(app.menu.typing)
+        .disabled(!app.chooser.allows_create());
+    Some(Opening {
+        name: location.display_name(),
+        target: MenuTarget::Background,
+        model: MenuModel::from_sections(vec![Section::items(vec![item])]),
+        provider_slot: 0,
+        provider_paths: None,
+        background: true,
+    })
+}
+
 /// The menu of entry `id` in column `depth` of the shown view, or of the selection it is
 /// part of.
 fn entry_menu(app: &App, depth: usize, id: EntryId) -> Option<Opening> {
+    if app.browser.is_chooser_mode() {
+        return chooser_entry_menu(app, depth, id);
+    }
     let (entry, entries) = context_entries(app, depth, id)?;
     let can_create = can_create_in_pane(app, depth, id);
     let model = self::entry(&EntryTarget {
@@ -150,6 +203,9 @@ fn entry_menu(app: &App, depth: usize, id: EntryId) -> Option<Opening> {
 /// The menu of column `depth`'s folder: a press on its empty space or its header, or the
 /// Menu key with no selected cursor.
 fn folder_menu(app: &App, depth: usize) -> Option<Opening> {
+    if app.browser.is_chooser_mode() {
+        return chooser_folder_menu(app, depth);
+    }
     // The name the pane has: `src/ui/browser/columns/append.rs`.
     let location = app.browser.location_at(depth)?;
     let name = location.display_name();

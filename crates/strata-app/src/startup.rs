@@ -31,6 +31,7 @@ pub(crate) fn load_settings() -> Saved {
 
 /// Proof that the calling thread ran the start-up sequence and owns the default GLib context,
 /// which `Browser` schedules on. Building the application state takes one.
+#[derive(Clone, Copy)]
 pub(crate) struct UiThread {
     _thread: PhantomData<*const ()>,
 }

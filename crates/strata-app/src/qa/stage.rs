@@ -340,6 +340,7 @@ pub(super) fn drawn_with_busy(
 }
 
 pub(super) struct Stage {
+    root_key: String,
     host: Offscreen,
     /// The tree as of the last turn, read when first asked for.
     seen: Option<Rc<Snapshot>>,
@@ -347,7 +348,15 @@ pub(super) struct Stage {
 
 impl Stage {
     pub(super) fn new(host: Offscreen) -> Self {
-        Self { host, seen: None }
+        Self::named("window".to_owned(), host)
+    }
+
+    pub(super) fn named(root_key: String, host: Offscreen) -> Self {
+        Self {
+            root_key,
+            host,
+            seen: None,
+        }
     }
 
     pub(super) fn app(&self) -> &App {
@@ -362,11 +371,12 @@ impl Stage {
 
     pub(super) fn snapshot(&mut self) -> Rc<Snapshot> {
         let host = &mut self.host;
+        let root_key = &self.root_key;
         self.seen
             .get_or_insert_with(|| {
                 let update = host.runtime().accessibility_tree();
                 let drawn = drawn_with_busy(&host.elements(), host.app(), &update);
-                Rc::new(Snapshot::read(&host.tree(), &drawn))
+                Rc::new(Snapshot::read_named(root_key, &host.tree(), &drawn))
             })
             .clone()
     }

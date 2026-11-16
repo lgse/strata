@@ -453,15 +453,14 @@ fn primary(
     settings: &PointerSettings,
     s: &mut dyn Surface,
 ) -> Gesture {
-    let (ctrl, shift) = (press.mods.ctrl, press.mods.shift);
-    let range = if ctrl {
-        settings.ctrl_shift
+    let default_plan = if settings.multiple {
+        Plan::Marquee
     } else {
-        Extend::Replace
+        Plan::Nothing
     };
-    let mut g = Gesture::new(*press, entry, count, Plan::Marquee);
+    let mut g = Gesture::new(*press, entry, count, default_plan);
     let Some((index, _)) = entry else {
-        if !ctrl && !shift {
+        if !press.mods.ctrl && !press.mods.shift {
             apply(s, |sel, _| sel.clear());
         }
         return g;
@@ -471,10 +470,43 @@ fn primary(
     g.sole_before = selected && len == 1;
     // The entry itself, or blank space on a selected one, is where a drag drags files.
     let on_entry = press.spot != Spot::Gutter || selected;
+    if !settings.multiple {
+        return primary_single(g, (index, on_entry), settings, s);
+    }
+    primary_multi(g, (index, selected, len, on_entry), settings, s)
+}
+
+fn primary_single(
+    mut g: Gesture,
+    (index, on_entry): (usize, bool),
+    settings: &PointerSettings,
+    s: &mut dyn Surface,
+) -> Gesture {
+    apply(s, |sel, src| sel.select_only(src, index));
+    g.plan = if on_entry && settings.drags && !g.press.mods.alt {
+        Plan::Drag
+    } else {
+        Plan::Nothing
+    };
+    g
+}
+
+fn primary_multi(
+    mut g: Gesture,
+    (index, selected, len, on_entry): (usize, bool, usize, bool),
+    settings: &PointerSettings,
+    s: &mut dyn Surface,
+) -> Gesture {
+    let (ctrl, shift) = (g.press.mods.ctrl, g.press.mods.shift);
+    let range = if ctrl {
+        settings.ctrl_shift
+    } else {
+        Extend::Replace
+    };
     // A file drag carries the selection the press makes, so it is made now. A band applies
     // Ctrl or Shift to the selection as it was before the press (Strata takes it at the band's
     // press, `marquee/state.rs`), so where a drag is a band they wait for the release.
-    let now = on_entry && !press.mods.alt;
+    let now = on_entry && !g.press.mods.alt;
     if shift {
         if now {
             let stays = settings.missing_anchor_stays;
@@ -495,7 +527,7 @@ fn primary(
     } else {
         apply(s, |sel, src| sel.select_only(src, index));
     }
-    g.plan = if press.mods.alt || !on_entry {
+    g.plan = if g.press.mods.alt || !on_entry {
         Plan::Marquee
     } else if settings.drags {
         Plan::Drag

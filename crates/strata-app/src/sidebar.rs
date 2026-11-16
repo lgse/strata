@@ -109,8 +109,18 @@ pub(crate) struct Sidebar {
 impl Part for Sidebar {
     const PLACE: Place<App> = Place::Sidebar(slots::Sidebar {
         build,
-        focus: |app| app.sidebar.focus_key(),
-        held_back: |app| app.sidebar.held_back(&app.look),
+        focus: |app| {
+            if app.chooser.is_confined() {
+                return None;
+            }
+            app.sidebar.focus_key()
+        },
+        held_back: |app| {
+            if app.chooser.is_confined() {
+                return 0.0;
+            }
+            app.sidebar.held_back(&app.look)
+        },
     });
 
     const COMMANDS: &'static [Action<App>] = &[
@@ -268,7 +278,7 @@ fn relist(app: &mut App) {
     let listed = places::listed(
         shell::preferences(app),
         &app.sidebar.pins,
-        &Environment::current(),
+        &Environment::current().local_only(app.browser.is_chooser_mode()),
     );
     app.sidebar.listed = listed;
     // A drag held across the change would carry a row that may no longer be where it was.
@@ -375,7 +385,7 @@ impl Sidebar {
 
 fn build(app: &App, frame: &mut Frame<'_, App>) -> Option<El> {
     let sidebar = &app.sidebar;
-    if !sidebar.started {
+    if !sidebar.started || app.chooser.is_confined() {
         return None;
     }
     // GTK's headings and their count (`append_section_header`, `set_item_count` in
@@ -405,8 +415,9 @@ fn element(app: &App, look: &Look, data: SidebarData<'_>) -> El {
     .key(KEY)
     .reorder(true)
     // A middle click opens a row in a new tab once a part registers the command.
-    .open_in_new_tab(commands::has(app, OPEN_IN_TAB.id))
+    .open_in_new_tab(!app.browser.is_chooser_mode() && commands::has(app, OPEN_IN_TAB.id))
     .tenxer(shell::preferences(app).tenxer_mode)
+    .on_background_drag(crate::preview::on_background_drag)
     .on_intent(heard)
     .build(look)
 }

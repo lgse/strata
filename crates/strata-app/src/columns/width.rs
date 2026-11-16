@@ -26,12 +26,25 @@ pub(super) fn saved(settings: &Preferences) -> f32 {
         .map_or(STANDARD, |width| width as f32)
 }
 
+pub(super) fn chooser_saved(settings: &Preferences) -> f32 {
+    settings
+        .chooser_column_width
+        .map_or(STANDARD, |width| width as f32)
+}
+
 /// A resize or an autofit ended at `width` base points: new columns open at it, and it is
 /// saved.
 pub(super) fn keep(app: &mut App, width: f32) {
     app.columns.state.set_default_width(width);
     let kept = width.round().max(STANDARD) as i32;
-    shell::saved(app).change(|settings| settings.browser_column_width = Some(kept));
+    let chooser = app.browser.is_chooser_mode();
+    shell::saved(app).change(|settings| {
+        if chooser {
+            settings.chooser_column_width = Some(kept);
+        } else {
+            settings.browser_column_width = Some(kept);
+        }
+    });
 }
 
 /// The view was laid out `rect` wide: when no preview drawer wraps the view, its columns stay

@@ -65,7 +65,18 @@ fn escaped(app: &mut App, _: &Call<'_>, _: &mut Tx) -> Outcome {
 
 /// `directory_enter_or_escape`'s Enter: the cursor's entry opens, in a child column in
 /// Columns and in place in a view that shows one folder (`BrowserView::activate_focused`).
-fn activated(app: &mut App, _: &Call<'_>, _: &mut Tx) -> Outcome {
+fn activated(app: &mut App, _: &Call<'_>, tx: &mut Tx) -> Outcome {
+    if app.browser.is_chooser_mode()
+        && let Some((depth, position, _)) = app.browser.focused_item()
+        && crate::chooser::confirm_key_activation(
+            app,
+            (depth, position),
+            strata_components::collection::element::Activation::Key,
+            tx,
+        )
+    {
+        return Outcome::Ran;
+    }
     let browser = app.browser.clone();
     if shows_columns(app) {
         browser.activate_focused();
@@ -94,11 +105,15 @@ pub(crate) const COMMANDS: &[Action<App>] = &[
     // `!event.text_has_focus()`.
     Action::new("dismiss", dismissed)
         .command(ESCAPE)
-        .keys(&[Keys::at(Stage::Dismissal, &[ESCAPE_ANY_SHIFT]).when(|_, at| !at.text())]),
+        .keys(&[Keys::at(Stage::Dismissal, &[ESCAPE_ANY_SHIFT])
+            .when(|app, at| !app.browser.is_chooser_mode() && !at.text())]),
     Action::new("escape", escaped)
         .command(ESCAPE)
-        .keys(&[Keys::at(Stage::ItemNavigation, &[ESCAPE_ANY_SHIFT])
-            .when(|app, at| from_the_listing(app, at) && !shell::preferences(app).tenxer_mode)]),
+        .keys(&[Keys::at(Stage::ItemNavigation, &[ESCAPE_ANY_SHIFT]).when(|app, at| {
+            !app.browser.is_chooser_mode()
+                && from_the_listing(app, at)
+                && !shell::preferences(app).tenxer_mode
+        })]),
     Action::new("activate", activated)
         .command(ENTER)
         .keys(&[Keys::at(Stage::ItemNavigation, &[ENTER_ANY_SHIFT]).when(from_the_listing)]),

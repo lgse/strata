@@ -37,10 +37,14 @@ pub(super) struct Staged {
 
 impl Staged {
     pub(super) fn new(host: Offscreen, log: InputLog) -> Self {
+        Self::named("window".to_owned(), host, log)
+    }
+
+    pub(super) fn named(root_key: String, host: Offscreen, log: InputLog) -> Self {
         let replacements = Replacements::watch(host.app());
         Self {
             replacements,
-            stage: RefCell::new(Stage::new(host)),
+            stage: RefCell::new(Stage::named(root_key, host)),
             keyboard: RefCell::default(),
             pointer: Cell::new((0, 0)),
             log,
@@ -118,6 +122,10 @@ impl Staged {
 }
 
 impl Host for Staged {
+    fn idle_turn(&self) -> bool {
+        self.turn()
+    }
+
     fn snapshot(&self) -> Rc<Snapshot> {
         self.stage.borrow_mut().snapshot()
     }

@@ -250,12 +250,37 @@ impl KeyMachine {
         }
     }
 
+    fn dispatch_single(
+        &mut self,
+        command: Command,
+        edge_before: Option<(Direction, Option<EntryId>)>,
+        s: &mut dyn Surface,
+    ) -> Option<bool> {
+        match command {
+            Command::Extend(target) => {
+                self.select(target, edge_before, s);
+                Some(true)
+            }
+            Command::Toggle
+            | Command::ToggleAdvance
+            | Command::SelectAll
+            | Command::Invert
+            | Command::Range(_) => Some(false),
+            _ => None,
+        }
+    }
+
     fn dispatch(
         &mut self,
         command: Command,
         edge_before: Option<(Direction, Option<EntryId>)>,
         s: &mut dyn Surface,
     ) -> bool {
+        if !s.settings().multiple
+            && let Some(handled) = self.dispatch_single(command, edge_before, s)
+        {
+            return handled;
+        }
         let len = s.source().len();
         match command {
             Command::Select(target) => {

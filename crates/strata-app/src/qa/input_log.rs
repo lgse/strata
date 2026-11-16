@@ -4,13 +4,14 @@
 //! `.agents/skills/qa-scenarios/reference.md` defines. Coordinates are window points. A key
 //! is written by its name: Rune has no keycodes.
 
-use std::{cell::RefCell, fs::File, io::Write as _};
+use std::{cell::RefCell, fs::File, io::Write as _, rc::Rc};
 
 use strata_qa::Modifier;
 
 const VARIABLE: &str = "STRATA_INPUT_LOG";
 
-pub(super) struct InputLog(Option<RefCell<File>>);
+#[derive(Clone)]
+pub(super) struct InputLog(Option<Rc<RefCell<File>>>);
 
 /// A modifier as the log names it.
 pub(super) fn modifier_name(modifier: Modifier) -> &'static str {
@@ -36,7 +37,7 @@ impl InputLog {
             .append(true)
             .open(&path)
             .map_err(|error| format!("cannot open {VARIABLE} {}: {error}", path.display()))?;
-        Ok(Self(Some(RefCell::new(file))))
+        Ok(Self(Some(Rc::new(RefCell::new(file)))))
     }
 
     fn line(&self, line: &str) {

@@ -68,6 +68,9 @@ pub struct KeySettings {
     /// whether or not the column has a cursor: a click on a folder gives its column the
     /// keyboard and no cursor, and Left then goes back to the folder. Off elsewhere.
     pub left_leaves_without_cursor: bool,
+    /// Whether multi-selection keys (Shift ranges, Ctrl+Space, Space, `v`/`V`, Ctrl+A, Ctrl+R)
+    /// may select more than one entry. True by default; false in single-selection file choosers.
+    pub multiple: bool,
 }
 
 impl Default for KeySettings {
@@ -81,6 +84,7 @@ impl Default for KeySettings {
             reselects_in_place: false,
             select_all_to_last: false,
             left_leaves_without_cursor: false,
+            multiple: true,
         }
     }
 }
@@ -104,6 +108,12 @@ impl KeySettings {
     /// The same settings, wrapping Left and Right at row ends or not.
     pub fn wrap_rows(mut self, wrap: bool) -> Self {
         self.wrap_rows = wrap;
+        self
+    }
+
+    /// The same settings with multiple selection on or off.
+    pub fn multiple(mut self, multiple: bool) -> Self {
+        self.multiple = multiple;
         self
     }
 }

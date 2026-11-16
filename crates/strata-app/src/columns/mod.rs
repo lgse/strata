@@ -94,14 +94,21 @@ pub(crate) struct Columns {
 
 /// With 10xer mode on, C1c's 10xer map moves the cursor without changing the selection; with
 /// "Type to search" off, `h j k l` alias the arrows (`Context::of` in `src/ui/keys/alias.rs`).
-pub(super) fn live_keys(settings: &Preferences) -> Option<KeySettings> {
+pub(super) fn live_keys(settings: &Preferences, multiple: bool) -> Option<KeySettings> {
     if settings.tenxer_mode {
-        Some(KeySettings::tenxer())
+        Some(KeySettings::tenxer().multiple(multiple))
     } else if !settings.type_to_search {
-        Some(KeySettings::default().letters(Letters::Arrows))
+        Some(KeySettings::default().letters(Letters::Arrows).multiple(multiple))
+    } else if !multiple {
+        Some(KeySettings::default().multiple(false))
     } else {
         None
     }
+}
+
+pub(crate) fn use_chooser_widths(app: &mut crate::App) {
+    let width = width::chooser_saved( crate::shell::preferences(app));
+    app.columns.state.set_default_width(width);
 }
 
 impl Columns {

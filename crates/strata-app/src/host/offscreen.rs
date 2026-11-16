@@ -42,6 +42,10 @@ impl Offscreen {
     fn over(parts: &'static [Entry<App>], ui: UiThread, settings: Saved, size: (f32, f32)) -> Self {
         let csd = Csd::new(Policy::Auto.frame(), Backend::Headless);
         let app = App::over(parts, &ui, csd, settings);
+        Self::from_app(ui, app, size)
+    }
+
+    pub(crate) fn from_app(ui: UiThread, app: App, size: (f32, f32)) -> Self {
         let mut runtime = Runtime::with_text(
             app,
             shell::view,

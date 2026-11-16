@@ -96,6 +96,14 @@ impl<H: Host> Rune<H> {
         self.quitting.get()
     }
 
+    pub(super) fn idle_turn(&self) -> bool {
+        self.host.idle_turn()
+    }
+
+    pub(super) fn pause(&self, limit: Duration) {
+        self.host.pause(limit);
+    }
+
     fn snapshot(&self) -> Rc<Snapshot> {
         self.host.snapshot()
     }
