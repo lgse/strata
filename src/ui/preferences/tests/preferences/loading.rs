@@ -384,26 +384,37 @@ fn saved_date_format_renders_before_settings_and_updates_bound_labels() {
 
 #[test]
 fn window_buttons_default_visible_on_gnome_even_with_a_close_only_layout() {
-    gtk_test_with_env(
-        "ui::preferences::tests::preferences::loading::window_buttons_default_visible_on_gnome_even_with_a_close_only_layout",
-        [("XDG_CURRENT_DESKTOP", "GNOME")],
-        || {
-            let settings = gtk::Settings::default().expect("GTK settings");
-            settings.set_gtk_decoration_layout(Some("appmenu:close"));
-            assert_window_button_preferences(true);
-        },
+    assert_desktop_window_button_defaults(
+        "window_buttons_default_visible_on_gnome_even_with_a_close_only_layout",
+        "GNOME",
+        "appmenu:close",
+        true,
     );
 }
 
 #[test]
 fn window_buttons_default_hidden_on_tilers_even_with_a_full_button_layout() {
+    assert_desktop_window_button_defaults(
+        "window_buttons_default_hidden_on_tilers_even_with_a_full_button_layout",
+        "KDE: hYpRlAnD ",
+        "icon:minimize,maximize,close",
+        false,
+    );
+}
+
+fn assert_desktop_window_button_defaults(
+    test: &str,
+    desktop: &str,
+    decoration_layout: &str,
+    default_visible: bool,
+) {
     gtk_test_with_env(
-        "ui::preferences::tests::preferences::loading::window_buttons_default_hidden_on_tilers_even_with_a_full_button_layout",
-        [("XDG_CURRENT_DESKTOP", "KDE: hYpRlAnD ")],
+        &format!("ui::preferences::tests::preferences::loading::{test}"),
+        [("XDG_CURRENT_DESKTOP", desktop)],
         || {
             let settings = gtk::Settings::default().expect("GTK settings");
-            settings.set_gtk_decoration_layout(Some("icon:minimize,maximize,close"));
-            assert_window_button_preferences(false);
+            settings.set_gtk_decoration_layout(Some(decoration_layout));
+            assert_window_button_preferences(default_visible);
         },
     );
 }
