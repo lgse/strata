@@ -170,6 +170,12 @@ impl Fills {
         self.fresh = true;
     }
 
+    /// Re-admits rows near the viewport at the next poll after `FolderCountsInvalidated`.
+    pub(crate) fn invalidate(&mut self) {
+        self.asked.clear();
+        self.fresh = true;
+    }
+
     /// The view's visible range changed. Nothing is asked until the next poll.
     pub(crate) fn see(&mut self, range: Range<usize>) {
         if range != self.range {

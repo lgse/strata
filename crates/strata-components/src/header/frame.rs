@@ -19,10 +19,36 @@ pub fn frame(key: &str, content: El, look: &Look, chrome: &WindowChrome) -> El {
     if !chrome.framed() {
         return root;
     }
+    let line = look.kit.c.border_base;
+    // Four 1 px edge strips rather than one full-window pinned box: `Tx::element_at_with` tests
+    // box geometry in paint order and ignores `El::inert`, so a full-window overlay would mask
+    // every drop target underneath it.
     root.child(
         el().key(format!("{key}-line"))
-            .pin(Some(0.0), Some(0.0), Some(0.0), Some(0.0))
-            .border(1.0, look.kit.c.border_base)
+            .pin(Some(0.0), Some(0.0), Some(0.0), None)
+            .h(1.0)
+            .fill(line)
+            .inert()
+            .a11y_hidden(),
+    )
+    .child(
+        el().pin(Some(0.0), None, Some(0.0), Some(0.0))
+            .h(1.0)
+            .fill(line)
+            .inert()
+            .a11y_hidden(),
+    )
+    .child(
+        el().pin(Some(0.0), Some(1.0), None, Some(1.0))
+            .w(1.0)
+            .fill(line)
+            .inert()
+            .a11y_hidden(),
+    )
+    .child(
+        el().pin(None, Some(1.0), Some(0.0), Some(1.0))
+            .w(1.0)
+            .fill(line)
             .inert()
             .a11y_hidden(),
     )

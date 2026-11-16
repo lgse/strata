@@ -1,0 +1,8 @@
+# The pointer alphabet's sequences parked against their findings (docs/rune/parity/findings.md):
+#
+#   v<version>-<seed> <code> <issue>
+#
+# Each line is a finding's sequence shrunk GTK against Rune, named for the smoke seed that met
+# it. Versions 1 and 2 were A9's drafts, never merged.
+v3-000000000000000c oracle lgse/strata#2552
+v3-000000000000000d oracle lgse/strata#2552

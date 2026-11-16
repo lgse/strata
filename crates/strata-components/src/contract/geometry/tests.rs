@@ -228,3 +228,26 @@ fn index_ranges_merge_touching_ranges_and_answer_membership() {
         assert_eq!(set.contains(i), inside, "{i}");
     }
 }
+
+#[test]
+fn vertical_row_inset_leaves_a_gap_between_rows_for_presses_and_bands() {
+    let g = UniformRows::new(10, 26.0, 400.0).inset_y(1.0);
+    // Row 3 spans [79, 103) and row 4 spans [105, 129), leaving [103, 105) as inter-row gap.
+    for (row, y) in [(3, 79.0), (4, 105.0)] {
+        assert_eq!(g.rect_of(row), Rect::new(0.0, y, 400.0, 24.0));
+    }
+    for (y, expected) in [
+        (102.9, Some(3)),
+        (103.0, None),
+        (104.9, None),
+        (105.0, Some(4)),
+    ] {
+        assert_eq!(g.index_at(Point::new(20.0, y)), expected, "y={y}");
+    }
+    assert_eq!(
+        ranges(&g.range_in(band(g.rect_of(4).y - 2.0, 140.0))),
+        only(4..6),
+        "a band anchored 2 pt above row 4's card excludes row 3"
+    );
+    assert!(g.range_in(band(103.2, 104.8)).is_empty());
+}

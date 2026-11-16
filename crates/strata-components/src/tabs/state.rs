@@ -22,8 +22,9 @@ pub const HOVER_DELAY: f64 = 0.45;
 struct Spring {
     id: TabId,
     delay: f64,
-    /// When the wait began, on `Tx::clock`.
-    since: f64,
+    /// When the wait began, on `Tx::clock`, or `None` until the next `tick` when armed from a
+    /// pick callback whose `Tx::clock` is `0.0` (packet entry 108).
+    since: Option<f64>,
 }
 
 /// The gap's slot after the zone holding it left. Both real binders report a zone's leave
@@ -167,7 +168,8 @@ impl BrowserTabsState {
             if data.get(spring.id).is_none() || data.active == Some(spring.id) {
                 self.spring = None;
             } else {
-                let left = spring.delay - (now - spring.since);
+                let since = *spring.since.get_or_insert(now);
+                let left = spring.delay - (now - since);
                 if left <= 1e-6 {
                     let id = spring.id;
                     self.spring = None;
@@ -262,7 +264,7 @@ impl BrowserTabsState {
                 self.spring = Some(Spring {
                     id,
                     delay,
-                    since: now,
+                    since: (now > 0.0).then_some(now),
                 });
                 true
             }

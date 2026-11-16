@@ -13,11 +13,14 @@ use std::{
 use rune::ElementInfo;
 use strata_components::{
     collection::element::{ICON, LABEL},
+    columns::keys::BADGE,
     thumbnails::GLYPH,
 };
 use strata_qa::Rect;
 
-use super::tree::{Drawn, DrawnButton, DrawnColumn, DrawnRow, NameLabel, RowIcon, Shape, Snapshot};
+use super::tree::{
+    Drawn, DrawnButton, DrawnColumn, DrawnRow, NameLabel, RowIcon, Seen, Shape, Snapshot,
+};
 use crate::{App, host::offscreen::Offscreen, shell};
 
 /// How long one settle keeps turning a host that never comes to rest. The GTK harness waits
@@ -81,19 +84,29 @@ fn label_bounds(elements: &[ElementInfo], element: &ElementInfo, app: &App) -> R
     bounds
 }
 
-/// The names the view draws in rows, each with the keys of the elements around it.
+/// The names and Columns size/count badges the view draws in rows, each with its outer keys.
 fn name_labels(elements: &[ElementInfo], app: &App) -> Vec<NameLabel> {
-    let drawn = |element: &&ElementInfo| !element.exiting && element.key.as_deref() == Some(LABEL);
-    let label = |element: &ElementInfo| {
-        Some(NameLabel {
-            above: above(elements, element)
-                .filter_map(|outer| outer.key.clone())
-                .collect(),
-            text: element.text.clone()?,
-            bounds: label_bounds(elements, element, app),
-        })
+    let collect = |badge: bool| {
+        let wanted = if badge { BADGE } else { LABEL };
+        elements
+            .iter()
+            .filter(move |element| !element.exiting && element.key.as_deref() == Some(wanted))
+            .filter_map(move |element| {
+                Some(NameLabel {
+                    above: above(elements, element)
+                        .filter_map(|outer| outer.key.clone())
+                        .collect(),
+                    text: element.text.clone()?,
+                    bounds: if badge {
+                        rect(element)
+                    } else {
+                        label_bounds(elements, element, app)
+                    },
+                    badge,
+                })
+            })
     };
-    elements.iter().filter(drawn).filter_map(label).collect()
+    collect(false).chain(collect(true)).collect()
 }
 
 /// The icons the view draws in rows, each with the keys of the elements around it.
@@ -136,24 +149,41 @@ fn list_and_pane(elements: &[ElementInfo], list: &str) -> Option<(usize, usize)>
     Some((at, pane))
 }
 
+/// A row's drawn card box: for list/column rows, the inner card child inside the padded
+/// virtual line (matching GTK's `GtkListItemWidget` border-box inside its CSS `margin`); for
+/// bare grid cells, the tile itself.
+fn row_card_bounds(elements: &[ElementInfo], row_index: usize) -> Rect {
+    let element = &elements[row_index];
+    if element.role == "grid-cell" {
+        return rect(element);
+    }
+    elements
+        .iter()
+        .find(|child| !child.exiting && !child.inert && child.parent == Some(row_index))
+        .map_or_else(|| rect(element), rect)
+}
+
 /// The column whose list is keyed `list`, as drawn: its rows are the keyed, named elements
 /// directly under the list's rows, and its pane the nearest named element around the list.
 fn drawn_column(elements: &[ElementInfo], list: &str) -> Option<DrawnColumn> {
     let (at, pane) = list_and_pane(elements, list)?;
     let pane = &elements[pane];
-    let inside = |element: &&ElementInfo| {
+    let inside = |(_, element): &(usize, &ElementInfo)| {
         above(elements, element).any(|outer| std::ptr::eq(outer, &elements[at]))
     };
-    let row = |element: &ElementInfo| {
+    let row = |(index, element): (usize, &ElementInfo)| {
         let key = element.key.clone().filter(|key| key.starts_with("row-"))?;
         Some(DrawnRow {
             key,
             name: element.label.clone()?,
             selected: element.item_selected,
-            bounds: rect(element),
+            bounds: row_card_bounds(elements, index),
         })
     };
-    let rows = elements.iter().filter(|element| !element.exiting);
+    let rows = elements
+        .iter()
+        .enumerate()
+        .filter(|(_, element)| !element.exiting);
     Some(DrawnColumn {
         list: list.to_owned(),
         name: elements[at].label.clone().unwrap_or_default(),
@@ -161,6 +191,24 @@ fn drawn_column(elements: &[ElementInfo], list: &str) -> Option<DrawnColumn> {
         pane: rect(pane),
         rows: rows.filter(inside).filter_map(row).collect(),
     })
+}
+
+/// Replaces `seen.bounds` with the inner card bounds drawn for its row in `list`, if present.
+/// Grid cells (`Icons`) keep AccessKit's union bounds across their icon, caption, and details.
+pub(super) fn sync_entry_bounds(columns: &[DrawnColumn], list: &str, seen: &mut Seen) {
+    if seen.role == "grid-cell" {
+        return;
+    }
+    let Some(key) = seen.key.as_deref() else {
+        return;
+    };
+    let row = columns
+        .iter()
+        .find(|column| column.list == list)
+        .and_then(|column| column.rows.iter().find(|row| row.key == key));
+    if let Some(row) = row {
+        seen.bounds = Some(row.bounds);
+    }
 }
 
 /// What [`drawn_buttons`] reads of one drawn element.

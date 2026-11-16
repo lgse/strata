@@ -69,6 +69,12 @@ impl ColumnFills {
         }
     }
 
+    pub(crate) fn invalidate(&mut self) {
+        for column in &mut self.columns {
+            column.fills.invalidate();
+        }
+    }
+
     /// Column `depth`'s view shows `range` now; it is asked for once it settles. A range
     /// reported before the poll that counts the column open is kept.
     pub(super) fn see(&mut self, depth: usize, range: Range<usize>) {

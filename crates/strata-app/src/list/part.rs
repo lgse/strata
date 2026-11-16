@@ -61,6 +61,10 @@ impl SinglePane for List {
         &mut app.list.single
     }
 
+    fn fills_mut(app: &mut App) -> &mut crate::fills::Fills {
+        &mut app.list.fills
+    }
+
     fn renaming(app: &mut App) -> (&Single, &mut Rename) {
         (&app.list.single, &mut app.rename)
     }
@@ -127,8 +131,10 @@ impl Part for List {
     fn tab_shown(app: &mut App, _: &mut Tx) {
         let saved = shell::preferences(app);
         let (layout, widths) = (super::columns::layout(saved), super::columns::widths(saved));
+        let format = strata_core::util::DateFormat::parse(&saved.date_format);
         app.list.layout = layout;
         app.list.widths = widths;
+        app.list.sync_date_format(format);
         single::sync_worn::<Self>(app);
     }
 

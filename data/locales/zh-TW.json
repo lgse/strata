@@ -117,6 +117,7 @@
   "Autoplay media previews": "自動播放媒體預覽",
   "Video preview start": "影片預覽起始位置",
   "Percent of a video's length to open it at; 0 starts at the beginning. A video you already previewed resumes where you left it.": "依影片長度的百分比設定開啟位置；0 表示從頭開始。已預覽過的影片會從上次停止的位置繼續。",
+  "Autoscroll": "自動捲動",
   "Available release": "可用版本",
   "BACK TO": "返回至",
   "BITRATE": "位元率",

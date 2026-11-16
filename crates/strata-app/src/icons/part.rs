@@ -66,6 +66,10 @@ impl SinglePane for Icons {
         &mut app.icons.single
     }
 
+    fn fills_mut(app: &mut App) -> &mut crate::fills::Fills {
+        &mut app.icons.fills
+    }
+
     fn renaming(app: &mut App) -> (&Single, &mut Rename) {
         (&app.icons.single, &mut app.rename)
     }

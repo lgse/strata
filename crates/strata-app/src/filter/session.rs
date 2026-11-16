@@ -17,15 +17,21 @@
 
 use std::{
     cell::{Cell, RefCell},
+    collections::HashSet,
     path::PathBuf,
     rc::Rc,
     sync::mpsc::{Receiver, TryRecvError},
     time::Duration,
 };
 
-use strata_fs::services::{
-    NavigationHistory, RefusedFolders, SearchCoverage, SearchEvent, SearchHandle, SearchItem,
-    SearchLimits, index_filter, index_folder_paths, index_paths, index_trees_with_exclusions,
+use gio::prelude::CancellableExt;
+use strata_core::model::Location;
+use strata_fs::{
+    adapters::probes::{self, Presence},
+    services::{
+        NavigationHistory, RefusedFolders, SearchCoverage, SearchEvent, SearchHandle, SearchItem,
+        SearchLimits, index_filter, index_folder_paths, index_paths, index_trees_with_exclusions,
+    },
 };
 
 /// How often GTK reads the worker's channel, and how many events at a time.
@@ -123,6 +129,7 @@ struct State {
     query: RefCell<String>,
     generation: Cell<u64>,
     source: RefCell<Option<glib::SourceId>>,
+    pruning: RefCell<Option<gio::Cancellable>>,
     /// A query was asked and no batch for it has come.
     awaiting: Cell<bool>,
 }
@@ -131,6 +138,9 @@ impl Drop for State {
     fn drop(&mut self) {
         if let Some(source) = self.source.get_mut().take() {
             source.remove();
+        }
+        if let Some(pruning) = self.pruning.get_mut().take() {
+            pruning.cancel();
         }
     }
 }
@@ -162,9 +172,50 @@ impl Session {
         if let Some(source) = state.source.take() {
             source.remove();
         }
+        if let Some(pruning) = state.pruning.take() {
+            pruning.cancel();
+        }
         state.worker.take();
         state.awaiting.set(false);
         state.query.borrow_mut().clear();
+    }
+
+    /// Probes `paths` on `strata-fs`'s mount lanes and calls `apply` with the subset proven
+    /// absent (`SearchSession::prune_missing` in `src/ui/search_session.rs`).
+    pub(crate) fn prune_missing(
+        &self,
+        paths: Vec<PathBuf>,
+        apply: impl FnOnce(HashSet<PathBuf>) + 'static,
+    ) {
+        if paths.is_empty() {
+            return;
+        }
+        let cancellable = gio::Cancellable::new();
+        if let Some(previous) = self.0.pruning.replace(Some(cancellable.clone())) {
+            previous.cancel();
+        }
+        let generation = self.0.generation.get();
+        let weak = Rc::downgrade(&self.0);
+        glib::MainContext::default().spawn_local(async move {
+            let locations: Vec<_> = paths.iter().map(Location::local).collect();
+            let found = probes::presence(&locations, &cancellable).await;
+            let Some(state) = weak.upgrade() else {
+                return;
+            };
+            if cancellable.is_cancelled() || state.generation.get() != generation {
+                return;
+            }
+            state.pruning.take();
+            let gone: HashSet<PathBuf> = paths
+                .into_iter()
+                .zip(found)
+                .filter(|(_, presence)| matches!(presence, Presence::Absent))
+                .map(|(path, _)| path)
+                .collect();
+            if !gone.is_empty() {
+                apply(gone);
+            }
+        });
     }
 
     /// Asks for `query`'s results over `input`, joining the running index when it is the

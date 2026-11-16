@@ -13,8 +13,10 @@
 
 use rune::Tx;
 use strata_components::{
+    collection::pointer::PointerIntent,
     context_menu::AnchorEdge,
     list_table::{ColumnLayout, ColumnWidths, ListTableLabels, ListTableState, MenuAt},
+    scroll::{Autoscroll, AutoscrollPointer, Target},
 };
 use strata_core::{i18n::tr, util::DateFormat};
 use strata_desktop::settings::Preferences;
@@ -30,7 +32,7 @@ mod columns;
 mod dates;
 mod part;
 mod thumbs;
-mod view;
+pub(crate) mod view;
 
 pub(crate) use part::tick_active;
 
@@ -50,6 +52,7 @@ pub(crate) fn origin_drag(app: &mut App, d: &mut rune::Drag, clears: bool, tx: &
 pub(crate) struct List {
     pub(crate) single: Single,
     table: ListTableState,
+    autoscroll: Autoscroll,
     /// The columns shown, in order: the saved `list_column_order` and `list_hidden_columns`.
     layout: ColumnLayout,
     /// The column widths set by hand: the saved `browser_list_columns`.
@@ -60,8 +63,7 @@ pub(crate) struct List {
     menu_labels: ListTableLabels,
     /// The metadata fills of the rows near the viewport, with a folder's item count.
     fills: Fills,
-    /// The saved date format is relative ("5m ago"), whose text moves with the clock. Read
-    /// at start: a live change is A18's.
+    /// Whether the saved date format is relative ("5m ago"), whose text moves with the clock.
     relative_dates: bool,
     /// When the relative dates read again.
     dates: dates::Dates,
@@ -72,16 +74,32 @@ pub(crate) struct List {
 impl List {
     fn with_setup(setup: &Setup<'_>) -> Self {
         let settings: &Preferences = setup.settings;
+        let table = ListTableState::new();
+        let autoscroll = Autoscroll::new();
+        let mut single = Single::new(Made {
+            key: VIEW,
+            wrap_rows: false,
+            left_leaves: true,
+            described: tr("List view"),
+            menu_at: AnchorEdge::Center,
+            worn: setup.worn.clone(),
+        });
+        single.pane.parts_mut().1.controllers.pointer = Some(Box::new(
+            AutoscrollPointer::new(
+                Some(Box::new(PointerIntent::new())),
+                autoscroll.clone(),
+                VIEW,
+                table.feed().clone(),
+            )
+            .sideways(Target::horizontal(
+                format!("{VIEW}-scroll"),
+                table.sideways_feed().clone(),
+            )),
+        ));
         Self {
-            single: Single::new(Made {
-                key: VIEW,
-                wrap_rows: false,
-                left_leaves: true,
-                described: tr("List view"),
-                menu_at: AnchorEdge::Center,
-                worn: setup.worn.clone(),
-            }),
-            table: ListTableState::new(),
+            single,
+            table,
+            autoscroll,
             layout: columns::layout(settings),
             widths: columns::widths(settings),
             headings: columns::Headings::translated(),
@@ -91,6 +109,18 @@ impl List {
             dates: dates::Dates::default(),
             thumbs: thumbs::Thumbs::new(setup.later.clone()),
         }
+    }
+
+    pub(crate) fn autoscroll(&self) -> &Autoscroll {
+        &self.autoscroll
+    }
+
+    pub(crate) fn sync_date_format(&mut self, format: DateFormat) {
+        self.relative_dates = format == DateFormat::Relative;
+    }
+
+    pub(crate) fn is_relative_dates(&self) -> bool {
+        self.relative_dates
     }
 }
 

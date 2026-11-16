@@ -16,10 +16,11 @@ use std::{cell::Cell, rc::Rc};
 use rune::Tx;
 use strata_components::{
     collection::{
+        element::DropOver,
         keyboard::{KeySettings, Letters},
         selection::Listing,
     },
-    columns::{ColumnsState, Focus, Opening},
+    columns::{ColumnSources, ColumnsState, Focus, Opening},
     context_menu::AnchorEdge,
     contract::{EntryId, EntrySource},
     scroll::Autoscroll,
@@ -49,6 +50,7 @@ pub(crate) mod thumbs;
 mod view;
 mod width;
 
+pub(crate) use intents::spring_open;
 pub(crate) use selection::Input;
 pub(crate) use view::view;
 
@@ -90,6 +92,10 @@ pub(crate) struct Columns {
     /// Set by `Reset` or a root `Added(0)` until the rebuilt strip builds: keeps replay and
     /// return-follow additions in that transaction instant (`ColumnsState::replace`).
     pub(super) rebuilding: Cell<bool>,
+    /// The window's display scale at the last build, for drag preview icons.
+    pub(super) scale: Cell<f32>,
+    /// Whether the drag over `columns-host` is refused (`Some(has_uris)`), or accepted (`None`).
+    pub(super) strip_refused: Option<bool>,
 }
 
 /// With 10xer mode on, C1c's 10xer map moves the cursor without changing the selection; with
@@ -129,6 +135,8 @@ impl Columns {
             thumbs: Thumbs::new(setup.later.clone()),
             fills: ColumnFills::new(settings.columns_show_sizes),
             rebuilding: Cell::new(true),
+            scale: Cell::new(1.0),
+            strip_refused: None,
         }
     }
 
@@ -173,6 +181,62 @@ impl Columns {
 
     pub(crate) fn clear_selection(&mut self) {
         self.state.clear_selection(&self.listings);
+    }
+
+    pub(crate) fn has_column_key(&self, key: &str) -> bool {
+        (0..self.open()).any(|depth| self.state.column_key(depth).as_deref() == Some(key))
+    }
+
+    pub(crate) fn clear_drag_over(&mut self) {
+        self.strip_refused = None;
+        self.state.drag_over(None);
+        for depth in 0..self.state.len() {
+            if let Some(column) = self.state.column_mut(depth) {
+                column.collection.set_drop_over(None);
+            }
+        }
+    }
+
+    pub(crate) fn hovered_folder_drop(&self) -> Option<(usize, EntryId)> {
+        for depth in 0..self.open() {
+            if self.shows_hits(depth) {
+                continue;
+            }
+            if let Some(DropOver::Row(id)) = self
+                .state
+                .column(depth)
+                .and_then(|column| column.collection.drop_over())
+                && self.listings.open_child(depth) != Some(id)
+            {
+                return Some((depth, id));
+            }
+        }
+        None
+    }
+
+    pub(crate) fn autoscroll(&self) -> &Autoscroll {
+        self.state.autoscroll()
+    }
+
+    /// Column 0's source, collection state, and viewport path, for a leading marquee origin.
+    pub(crate) fn leading_marquee_parts(
+        &mut self,
+    ) -> Option<(
+        &dyn EntrySource,
+        &mut strata_components::collection::element::CollectionState,
+        String,
+    )> {
+        let key = self.state.column_key(0)?;
+        let source = self.listings.shown(0)?;
+        let column = self.state.column_mut(0)?;
+        let viewport = strata_components::collection::element::viewport_path(&key);
+        Some((source, &mut column.collection, viewport))
+    }
+
+    pub(crate) fn activate_leading(&mut self, look: &Look, tx: &mut Tx) {
+        if self.state.active() != 0 && !self.state.is_empty() {
+            self.state.set_active(0, look, tx);
+        }
     }
 
     pub(crate) fn in_band(&self) -> bool {

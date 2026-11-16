@@ -163,6 +163,8 @@ pub(crate) struct Row {
     /// hash, so a row holds eight bytes for it and no path. A view finds the file again
     /// through the browser.
     thumbnail: Option<ThumbKey>,
+    /// Whether `thumbnail` is an STL model gated by `stl_thumbnails`.
+    rendered_model: bool,
     /// The browser's kind of entry: what its file type is read from with its name.
     entry_kind: Kind,
     /// Its file type, as the List view groups by it: read only while its folder is grouped
@@ -213,6 +215,7 @@ impl Row {
             described,
             hidden: entry.is_hidden,
             thumbnail: crate::thumbnails::key_of(entry),
+            rendered_model: crate::thumbnails::is_rendered_model(entry),
             entry_kind: entry.kind,
             group: None,
             facts: Facts::of(entry),
@@ -581,8 +584,10 @@ impl EntrySource for Column {
         let entry = Entry::new(row.id, &row.name, row.kind, "")
             .maybe_color(color)
             .maybe_glyph(glyph);
-        // A custom icon or emoji stands in place of a file's thumbnail (`shows_icon_instead`).
-        match row.thumbnail.filter(|_| !has_glyph) {
+        // A custom icon or emoji stands in place of a file's thumbnail (`shows_icon_instead`),
+        // and STL models render only while `stl_thumbnails` is enabled.
+        let allow_thumbnail = !has_glyph && (!row.rendered_model || self.worn.stl_thumbnails());
+        match row.thumbnail.filter(|_| allow_thumbnail) {
             Some(key) => entry.thumbnail(key),
             None => entry,
         }

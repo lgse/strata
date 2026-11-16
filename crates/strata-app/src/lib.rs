@@ -36,6 +36,7 @@ mod shell;
 mod single;
 mod slots;
 mod startup;
+mod theme;
 // Thumbnails for the views: the render pool, one per process, and a view's viewer.
 #[cfg(test)]
 mod test_support;
@@ -86,6 +87,7 @@ mod undo;
 mod appearance;
 // A9 Pointer and click modes
 mod clicks;
+mod pointer;
 // A10 Search, filter and sort
 mod filter;
 mod palette;
@@ -109,7 +111,10 @@ mod preview;
 mod properties;
 mod raw_details;
 // A18 Settings and themes
+mod settings_dialog;
 // A19 Drag and drop
+mod dnd;
+mod drop_dialog;
 // A20 Portal chooser
 // A21 Window and launch
 
@@ -148,6 +153,7 @@ slots::parts! {
     // A8 View switching and appearance
     appearance: appearance::Appearance,
     // A9 Pointer and click modes
+    pointer: pointer::Pointer,
     // A10 Search, filter and sort
     filter: filter::Filter,
     palette: palette::Palette,
@@ -172,7 +178,10 @@ slots::parts! {
     // A17 Properties
     properties: properties::Properties,
     // A18 Settings and themes
+    settings_dialog: settings_dialog::SettingsDialog,
     // A19 Drag and drop
+    dnd: dnd::Dnd,
+    drop_dialog: drop_dialog::DropDialog,
     // A20 Portal chooser
     // A21 Window and launch
 }
