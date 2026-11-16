@@ -37,7 +37,7 @@ use crate::{
     App,
     commands::{Action, Call, Holds, Outcome},
     shell,
-    slots::{Frame, Listener, Part, Place, Setup},
+    slots::{Frame, Later, Listener, Part, Place, Setup},
 };
 
 /// Minimum duration an asynchronous failure stays in **Connecting…** (`network_location.rs`).
@@ -62,7 +62,6 @@ pub(super) struct Form {
     pub(super) connecting: bool,
     pub(super) error: Option<String>,
     pub(super) attempt: u64,
-    pub(super) return_focus: Option<String>,
     pending: Option<Pending>,
 }
 
@@ -75,7 +74,6 @@ impl Form {
             connecting: false,
             error: None,
             attempt: 0,
-            return_focus: None,
             pending: None,
         }
     }
@@ -90,21 +88,25 @@ impl Form {
 }
 
 pub(crate) struct ConnectServer {
+    later: Later<App>,
     opened: u64,
     open: bool,
     form: Option<Form>,
     focus_address: Option<String>,
+    focus_view: Option<String>,
 }
 
 impl Part for ConnectServer {
     const PLACE: Place<App> = Place::Dialogs(build);
 
-    fn new(_: &Setup<'_>) -> Self {
+    fn new(setup: &Setup<'_>) -> Self {
         Self {
+            later: setup.later.clone(),
             opened: 0,
             open: false,
             form: None,
             focus_address: None,
+            focus_view: None,
         }
     }
 
@@ -119,6 +121,9 @@ impl Part for ConnectServer {
 
     fn poll(app: &mut App, clock: f64, tx: &mut Tx) -> bool {
         let mut changed = poll_pending(app, clock, tx);
+        if focus_pending_view(app, tx) {
+            changed = true;
+        }
         let ready = app
             .connect_server
             .form
@@ -193,6 +198,7 @@ fn connect_to_server(app: &mut App, _: &Call<'_>, _: &mut Tx) -> Outcome {
     state.form = Some(Form::new(state.opened));
     state.open = true;
     state.focus_address = None;
+    state.focus_view = None;
     Outcome::Ran
 }
 
@@ -250,6 +256,14 @@ fn settle_column(app: &mut App, column: &Location, tx: &mut Tx) -> bool {
     true
 }
 
+fn focus_pending_view(app: &mut App, tx: &mut Tx) -> bool {
+    let Some(view) = app.connect_server.focus_view.take() else {
+        return false;
+    };
+    tx.focus(view, true);
+    true
+}
+
 fn complete_open(app: &mut App, location: Location, pin: bool, tx: Option<&mut Tx>) {
     if pin {
         pin_location(location);
@@ -257,14 +271,20 @@ fn complete_open(app: &mut App, location: Location, pin: bool, tx: Option<&mut T
     let view = shell::view_focus(app).map(str::to_owned);
     app.connect_server.open = false;
     app.connect_server.focus_address = None;
+    app.connect_server.focus_view = None;
     if let Some(form) = app.connect_server.form.as_mut() {
         form.connecting = false;
         form.pending = None;
-        form.return_focus = view.clone();
         form.clear_address();
     }
-    if let (Some(tx), Some(view)) = (tx, view) {
-        tx.focus(view, true);
+    match (tx, view) {
+        (Some(tx), Some(view)) => tx.focus(view, true),
+        (None, Some(view)) => {
+            app.connect_server.focus_view = Some(view);
+            let later = app.connect_server.later.clone();
+            later.then(focus_pending_view);
+        }
+        _ => {}
     }
 }
 
@@ -300,6 +320,7 @@ pub(super) fn cancel(app: &mut App) {
     }
     app.connect_server.open = false;
     app.connect_server.focus_address = None;
+    app.connect_server.focus_view = None;
     if let Some(form) = app.connect_server.form.as_mut() {
         form.connecting = false;
         form.pending = None;

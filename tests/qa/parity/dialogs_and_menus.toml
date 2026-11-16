@@ -111,7 +111,7 @@ run = "columns-file"
 package = "A6"
 status = "pending"
 reason = "scope"
-blocker = "A17: the Properties dialog (line 8); then the clipboard it copies to (line 11)"
+blocker = "A17: the Properties dialog (line 8)"
 
 [[run]]
 scenario = "properties-copy-path-slashes-only-folders"
@@ -119,7 +119,7 @@ run = "columns-directory"
 package = "A6"
 status = "pending"
 reason = "scope"
-blocker = "A17: the Properties dialog (line 8); then the clipboard it copies to (line 11)"
+blocker = "A17: the Properties dialog (line 8)"
 
 [[run]]
 scenario = "properties-pins-and-unpins-folder"

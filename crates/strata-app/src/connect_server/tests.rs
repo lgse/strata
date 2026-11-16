@@ -64,15 +64,19 @@ fn right_click(host: &mut Offscreen, key: &str) {
     idle(host);
 }
 
+fn node_bounds_center(node: &serde_json::Value) -> Option<(f32, f32)> {
+    let [x, y, w, h] = node["bounds"].as_array()?.as_slice() else {
+        return None;
+    };
+    Some((
+        (x.as_f64()? + w.as_f64()? / 2.0) as f32,
+        (y.as_f64()? + h.as_f64()? / 2.0) as f32,
+    ))
+}
+
 fn a11y_center(node: &serde_json::Value, role: &str, name: &str) -> Option<(f32, f32)> {
-    if node["role"].as_str() == Some(role)
-        && node["name"].as_str() == Some(name)
-        && let Some([x, y, w, h]) = node["bounds"].as_array().map(Vec::as_slice)
-    {
-        return Some((
-            (x.as_f64()? + w.as_f64()? / 2.0) as f32,
-            (y.as_f64()? + h.as_f64()? / 2.0) as f32,
-        ));
+    if node["role"].as_str() == Some(role) && node["name"].as_str() == Some(name) {
+        return node_bounds_center(node);
     }
     node["children"]
         .as_array()?
@@ -80,20 +84,21 @@ fn a11y_center(node: &serde_json::Value, role: &str, name: &str) -> Option<(f32,
         .find_map(|child| a11y_center(child, role, name))
 }
 
-fn has_a11y_node(node: &serde_json::Value, role: &str, name: &str, state: Option<&str>) -> bool {
-    let matches_self = node["role"].as_str() == Some(role)
+fn node_matches(node: &serde_json::Value, role: &str, name: &str, state: Option<&str>) -> bool {
+    node["role"].as_str() == Some(role)
         && node["name"].as_str() == Some(name)
         && state.is_none_or(|want| {
             node["states"]
                 .as_array()
                 .is_some_and(|states| states.iter().any(|s| s.as_str() == Some(want)))
-        });
-    if matches_self {
-        return true;
-    }
-    node["children"]
-        .as_array()
-        .is_some_and(|children| children.iter().any(|c| has_a11y_node(c, role, name, state)))
+        })
+}
+
+fn has_a11y_node(node: &serde_json::Value, role: &str, name: &str, state: Option<&str>) -> bool {
+    node_matches(node, role, name, state)
+        || node["children"]
+            .as_array()
+            .is_some_and(|children| children.iter().any(|c| has_a11y_node(c, role, name, state)))
 }
 
 fn focused_key(host: &Offscreen) -> Option<String> {
@@ -240,25 +245,28 @@ fn form_error(host: &Offscreen) -> Option<&str> {
         .and_then(|form| form.error.as_deref())
 }
 
+fn open_from_focused_network_row(host: &mut Offscreen) {
+    host.runtime()
+        .update(|_: &mut App, tx: &mut Tx| tx.focus("sidebar-place-network", true));
+    idle(host);
+    press(host, Key::ContextMenu, Mods::default());
+    let (mx, my) = a11y_center(&host.tree(), "menu-item", "Connect to server…")
+        .expect("Connect to server… row");
+    click_at(host, mx, my);
+    assert!(host.app().connect_server.open);
+}
+
 #[test]
-fn inline_validation_clears_on_edit_and_cancel_aborts_in_flight_connect() {
+fn inline_validation_clears_on_edit_and_cancel_or_reopen_transfers_focus() {
     hosted(
         MODULE,
-        "inline_validation_clears_on_edit_and_cancel_aborts_in_flight_connect",
+        "inline_validation_clears_on_edit_and_cancel_or_reopen_transfers_focus",
         |mut host| {
             let folder = fixture();
             open_fixture(&mut host, folder.path());
 
             // Opening via the Menu key on focused Network row returns focus to Network on Escape.
-            host.runtime()
-                .update(|_: &mut App, tx: &mut Tx| tx.focus("sidebar-place-network", true));
-            idle(&mut host);
-            press(&mut host, Key::ContextMenu, Mods::default());
-            let (mx, my) = a11y_center(&host.tree(), "menu-item", "Connect to server…")
-                .expect("Connect to server… row");
-            click_at(&mut host, mx, my);
-            assert!(host.app().connect_server.open);
-
+            open_from_focused_network_row(&mut host);
             select_all_and_type(&mut host, "user@host:path");
             press(&mut host, Key::Enter, Mods::default());
             assert!(host.app().connect_server.open);
@@ -281,7 +289,81 @@ fn inline_validation_clears_on_edit_and_cancel_aborts_in_flight_connect() {
             assert!(!host.app().connect_server.open);
             assert!(host.app().browser().navigation_generation() > generation_before);
             assert_eq!(focused_key(&host).as_deref(), Some("sidebar-place-network"));
+
+            // Submitting the already-active folder from Network row transfers focus to the view.
+            open_from_focused_network_row(&mut host);
+            select_all_and_type(&mut host, &folder.path().to_string_lossy());
+            press(&mut host, Key::Enter, Mods::default());
+            assert!(!host.app().connect_server.open);
+            assert!(
+                focused_key(&host)
+                    .as_deref()
+                    .is_some_and(|key| key.starts_with(crate::columns::VIEW))
+            );
         },
+    );
+}
+
+fn assert_unreachable_attempt_fails_inline(
+    host: &mut Offscreen,
+    generation: u64,
+    pins_before: &str,
+) {
+    let clicked = Instant::now();
+    click(host, &view::primary_key(generation));
+    assert!(
+        host.app()
+            .connect_server
+            .form
+            .as_ref()
+            .is_some_and(|form| form.connecting)
+    );
+    let failed = host.run_until(PATIENCE, |h| {
+        h.app()
+            .connect_server
+            .form
+            .as_ref()
+            .is_some_and(|form| !form.connecting && form.error.is_some())
+    });
+    assert!(failed, "failed connection shows inline error");
+    assert!(clicked.elapsed() >= MIN_CONNECTING);
+    assert!(!has_a11y_node(
+        &host.tree(),
+        "dialog",
+        "Unable to open location",
+        None
+    ));
+    assert_eq!(
+        std::fs::read_to_string(pinned_places_path()).unwrap_or_default(),
+        pins_before
+    );
+    assert_eq!(
+        focused_key(host).as_deref(),
+        Some(view::address_key(generation).as_str())
+    );
+}
+
+fn assert_retry_connects_and_pins(host: &mut Offscreen, target: &Path) {
+    let opened = Location::local(target);
+    select_all_and_type(host, &target.to_string_lossy());
+    press(host, Key::Enter, Mods::default());
+
+    let connected = host.run_until(PATIENCE, |h| {
+        let bookmarks = std::fs::read_to_string(pinned_places_path()).unwrap_or_default();
+        !h.app().connect_server.open
+            && h.app().browser().active_location().as_ref() == Some(&opened)
+            && parse_pinned_places(bookmarks.as_bytes())
+                .iter()
+                .any(|(loc, _)| *loc == opened)
+            && h.elements()
+                .iter()
+                .any(|el| el.key.as_deref() == Some("sidebar-pin-0"))
+    });
+    assert!(connected, "connected folder opens and is pinned to sidebar");
+    assert!(
+        focused_key(host)
+            .as_deref()
+            .is_some_and(|key| key.starts_with(crate::columns::VIEW))
     );
 }
 
@@ -305,63 +387,10 @@ fn connecting_holds_spinner_shows_inline_error_and_pins_only_on_success() {
             select_all_and_type(&mut host, "smb://unreachable.invalid/share");
             click(&mut host, &view::pin_key(generation));
             let pins_before = std::fs::read_to_string(pinned_places_path()).unwrap_or_default();
-            let clicked = Instant::now();
-            click(&mut host, &view::primary_key(generation));
+            assert_unreachable_attempt_fails_inline(&mut host, generation, &pins_before);
 
-            assert!(
-                host.app()
-                    .connect_server
-                    .form
-                    .as_ref()
-                    .is_some_and(|form| form.connecting)
-            );
-            let failed = host.run_until(PATIENCE, |h| {
-                h.app()
-                    .connect_server
-                    .form
-                    .as_ref()
-                    .is_some_and(|form| !form.connecting && form.error.is_some())
-            });
-            assert!(failed, "failed connection shows inline error");
-            assert!(clicked.elapsed() >= MIN_CONNECTING);
-            assert!(!has_a11y_node(
-                &host.tree(),
-                "dialog",
-                "Unable to open location",
-                None
-            ));
-            assert_eq!(
-                std::fs::read_to_string(pinned_places_path()).unwrap_or_default(),
-                pins_before
-            );
-            assert_eq!(
-                focused_key(&host).as_deref(),
-                Some(view::address_key(generation).as_str())
-            );
-
-            // Retry with a reachable folder: closes dialog, navigates, focuses view, and pins.
             let target = tempfile::tempdir().expect("target folder");
-            let opened = Location::local(target.path());
-            select_all_and_type(&mut host, &target.path().to_string_lossy());
-            press(&mut host, Key::Enter, Mods::default());
-
-            let connected = host.run_until(PATIENCE, |h| {
-                let bookmarks = std::fs::read_to_string(pinned_places_path()).unwrap_or_default();
-                !h.app().connect_server.open
-                    && h.app().browser().active_location().as_ref() == Some(&opened)
-                    && parse_pinned_places(bookmarks.as_bytes())
-                        .iter()
-                        .any(|(loc, _)| *loc == opened)
-                    && h.elements()
-                        .iter()
-                        .any(|el| el.key.as_deref() == Some("sidebar-pin-0"))
-            });
-            assert!(connected, "connected folder opens and is pinned to sidebar");
-            assert!(
-                focused_key(&host)
-                    .as_deref()
-                    .is_some_and(|key| key.starts_with(crate::columns::VIEW))
-            );
+            assert_retry_connects_and_pins(&mut host, target.path());
         },
     );
 }

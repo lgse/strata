@@ -4,7 +4,7 @@
 
 use rune::{El, LiveRegion, Tx, col, row, text, text_input};
 use rune_kit::Checkbox;
-use strata_components::dialog::StrataDialog;
+use strata_components::dialog::{StrataDialog, keep_words_whole};
 use strata_core::i18n::tr;
 use strata_kit::{icons::IconName, look::Look};
 
@@ -37,7 +37,7 @@ pub(super) fn primary_key(generation: u64) -> String {
 pub(super) fn build_dialog(app: &App, form: &Form, open: bool, layer: &mut Vec<El>) {
     let look = &app.look;
     let key = dialog_key(form.generation);
-    let mut dialog = StrataDialog::new(key, tr("Connect to server"), cancel)
+    StrataDialog::new(key, tr("Connect to server"), cancel)
         .open(open)
         .subtitle(tr("Connect to a share or remote server"))
         .icon(IconName::Network)
@@ -49,11 +49,8 @@ pub(super) fn build_dialog(app: &App, form: &Form, open: bool, layer: &mut Vec<E
         .secondary(tr("Cancel"), cancel)
         .primary_enabled(!form.connecting)
         .primary(tr("Connect"), submit)
-        .close_label(tr("Close dialog"));
-    if let Some(target) = &form.return_focus {
-        dialog = dialog.return_focus(target.clone());
-    }
-    dialog.build(look, layer);
+        .close_label(tr("Close dialog"))
+        .build(look, layer);
 }
 
 fn address_section(look: &Look, form: &Form) -> El {
@@ -68,7 +65,7 @@ fn address_section(look: &Look, form: &Form) -> El {
         .child(field);
     if let Some(message) = &form.error {
         group = group.child(
-            text(message.clone())
+            text(keep_words_whole(message))
                 .key(format!(
                     "{}-error-{}",
                     dialog_key(form.generation),
