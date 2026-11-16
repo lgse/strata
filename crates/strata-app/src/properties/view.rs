@@ -12,10 +12,10 @@ use strata_kit::{icons::IconName, look::Look};
 use super::{
     Dialog, Notice, Selection, Single,
     actions::{self, PinAction},
-    close_notice, dismiss,
+    close_notice, dismiss, media,
     permissions::{self, BitSpec, GROUPS, GroupSpec},
 };
-use crate::{App, clipboard::paths::is_trash, sidebar::PinState, slots::Frame};
+use crate::{App, clipboard::paths::is_trash, raw_details, sidebar::PinState, slots::Frame};
 
 const LABEL_WIDTH: f32 = 128.0;
 const BIT_WIDTH: f32 = 28.0;
@@ -47,7 +47,11 @@ fn build_single(app: &App, single: &Single, open: bool, frame: &mut Frame<'_, Ap
         .default_button(false)
         .initial_focus(Focus::Close)
         .close_label(tr("Close dialog"))
-        .child(general_section(look, &key, single, pin_state))
+        .child(general_section(look, &key, single, pin_state));
+    if let Some(media) = media_section(look, &key, &single.media) {
+        dialog = dialog.child(media);
+    }
+    dialog = dialog
         .child(permissions_section(look, &key, single))
         .action_tx("open", tr("Open"), actions::open_clicked);
     if !is_trash(&single.location) {
@@ -124,6 +128,33 @@ fn build_notice(look: &Look, notice: &Notice, open: bool, frame: &mut Frame<'_, 
     .close_label(tr("Close dialog"))
     .width(MESSAGE_WIDTH)
     .build(look, frame.layer);
+}
+
+fn media_section(look: &Look, key: &str, section: &media::Section) -> Option<El> {
+    let body = match section {
+        media::Section::None => return None,
+        media::Section::Media(rows) => {
+            let mut list = col()
+                .key(format!("{key}-media-rows"))
+                .w_full()
+                .gap(look.space.xs);
+            for (heading, value) in rows {
+                list = list.child(DetailRow::new(&tr(heading), value).build(look));
+            }
+            list
+        }
+        media::Section::Raw(rows) => {
+            raw_details::section_el(look, &format!("{key}-raw-rows"), rows, LABEL_WIDTH)
+        }
+    };
+    Some(
+        col()
+            .key(format!("{key}-media"))
+            .w_full()
+            .pt(look.space.xs)
+            .border_sides([1.0, 0.0, 0.0, 0.0], look.kit.c.border_muted)
+            .child(body),
+    )
 }
 
 fn general_section(look: &Look, key: &str, single: &Single, pin_state: PinState) -> El {
