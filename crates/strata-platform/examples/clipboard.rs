@@ -399,6 +399,7 @@ mod demo {
                 stdin_handle.update(move |s, tx| command(s, &cmd, tx));
             }
         });
+        rune::orderly_exit();
         static DRAWN: AtomicBool = AtomicBool::new(false);
         let result = app
             .on_window(move |w: &WindowHandle| {

@@ -121,6 +121,7 @@ pub fn run(options: Options) -> i32 {
             return status;
         }
     };
+    rune::orderly_exit();
     rune::set_app_id(APP_ID);
 
     let theme_id = options.theme.as_deref().unwrap_or(DEFAULT_ID);

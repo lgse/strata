@@ -550,6 +550,7 @@ mod probe {
         let _ = WANTS.set(wants);
         let host = flag("--host");
         static DRAWN: AtomicBool = AtomicBool::new(false);
+        rune::orderly_exit();
         let result = app
             .on_window(move |w: &WindowHandle| {
                 if !host {

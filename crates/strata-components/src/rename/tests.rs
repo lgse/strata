@@ -266,7 +266,8 @@ fn a_held_enter_ends_one_edit() {
 #[test]
 fn keys_stay_the_input_methods_while_it_composes() {
     let mut st = typed("Notes.md", "x.md");
-    st.edit.ime(&rune::Ime::Preedit("か".into(), None));
+    st.edit
+        .ime(&rune::Ime::Preedit("か".into(), None, Vec::new()));
     for key in [Key::Enter, Key::Escape, Key::Tab] {
         assert!(press(&mut st, key, Mods::default(), false).is_none());
     }
@@ -938,7 +939,7 @@ fn a_composition_ending_in_a_blur_keeps_only_the_committed_text() {
     begin(&mut rt, 1);
     rt.ime(rune::Ime::Commit("か".into()));
     frames(&mut rt, 1);
-    rt.ime(rune::Ime::Preedit("き".into(), Some((0, 3))));
+    rt.ime(rune::Ime::Preedit("き".into(), Some((0, 3)), Vec::new()));
     frames(&mut rt, 1);
     rt.key(KeyEvent {
         key: Key::Escape,

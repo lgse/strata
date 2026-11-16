@@ -53,7 +53,7 @@ Each release tag supports exactly one Rune rev. Pin that rev, in full, beside th
 
 | Tag | Rune rev | Rust | Released |
 | --- | --- | --- | --- |
-| Unreleased (`main`) | [`2a44156b21d63b0342a366b26d9222a6edd4622c`](https://github.com/anomalyco/rune/commit/2a44156b21d63b0342a366b26d9222a6edd4622c) | 1.99.1 | — |
+| Unreleased (`main`) | [`631e8a67cb3c40225efa3f6c4f57b80e7b18f190`](https://github.com/anomalyco/rune/commit/631e8a67cb3c40225efa3f6c4f57b80e7b18f190) | 1.99.1 | — |
 
 ## Pinning a release
 
@@ -63,8 +63,8 @@ digits of the Rune rev the release supports. Pin the tag, and pin Rune at that s
 
 ```toml
 [dependencies]
-rune = { git = "https://github.com/anomalyco/rune", rev = "2a44156b21d63b0342a366b26d9222a6edd4622c" }
-strata-platform = { git = "https://github.com/wmfeht/strata-components", tag = "strata-platform-v0.1.0+rune.2a44156", features = ["glib-bridge"] }
+rune = { git = "https://github.com/anomalyco/rune", rev = "631e8a67cb3c40225efa3f6c4f57b80e7b18f190" }
+strata-platform = { git = "https://github.com/wmfeht/strata-components", tag = "strata-platform-v0.1.0+rune.631e8a6", features = ["glib-bridge"] }
 ```
 
 The tag shown is an example; take a real one from [Supported Rune revs](#supported-rune-revs).

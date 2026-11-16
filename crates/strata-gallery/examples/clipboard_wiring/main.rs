@@ -154,6 +154,7 @@ fn main() {
             stdin_handle.update(move |w, tx| command(w, &cmd, tx));
         }
     });
+    rune::orderly_exit();
     static DRAWN: AtomicBool = AtomicBool::new(false);
     let result = app
         .on_window(move |w: &WindowHandle| match attach.attach(w, &handle) {

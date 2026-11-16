@@ -28,7 +28,7 @@ sections below are amended where they state them, and otherwise stand as written
 | Input | Version |
 | --- | --- |
 | Strata | `lgse/strata` at `5738aad808ea4cc4671516bc569d85f862664809`, the feature map's watermark (151 nodes, release v1.1.1) |
-| Rune | `anomalyco/rune` `dev` at `2a44156b21d63b0342a366b26d9222a6edd4622c` (2026-11-10), crates `rune`, `rune-kit`, `rune-motion`, `rune-fx` |
+| Rune | `anomalyco/rune` `dev` at `631e8a67cb3c40225efa3f6c4f57b80e7b18f190` (2026-11-15), crates `rune`, `rune-kit`, `rune-motion`, `rune-fx` |
 | Feature map | `wmfeht/strata-feature-map`. Node ids below (`browser/view-modes/columns`) are its ids. |
 
 Rune is pre-release: pin a `dev` rev and move it on purpose. Rune takes no pull requests;

@@ -189,6 +189,7 @@ fn main() {
             }
         }
     });
+    rune::orderly_exit();
     static DRAWN: AtomicBool = AtomicBool::new(false);
     let result = app
         .on_ready(|w: &WindowHandle| log("main", "ready", json!({ "key": w.key() })))

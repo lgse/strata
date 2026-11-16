@@ -54,6 +54,11 @@ allow = ["BSL-1.0"]
 name = "error-code"
 allow = ["BSL-1.0"]
 
+# Rune names this for wasm32 only (spell/web.rs); no Linux build compiles or links it.
+[[licenses.exceptions]]
+name = "spellbook"
+allow = ["MPL-2.0"]
+
 [bans]
 multiple-versions = "warn"
 wildcards = "deny"
