@@ -38,6 +38,13 @@ pub(super) const COMMANDS: &[Action<App>] = &[
         .keys(&[
             Keys::at(Stage::DirectCommands, &[PREVIEW.in_map(Map::Tenxer)])
                 .when(in_tenxer_preview_outside_find),
+            // The divider grip, unlike the header's buttons and the body, takes no Space of its
+            // own, so GTK's window toggles the preview closed.
+            Keys::at(
+                Stage::FilterAndLocationCommands,
+                &[PREVIEW.in_map(Map::Default)],
+            )
+            .when(on_preview_grip),
         ]),
     Action::new("preview", space_preview)
         .command(PREVIEW)
@@ -86,6 +93,10 @@ fn in_preview_outside_find(app: &App, at: &Situation) -> bool {
 
 fn in_tenxer_preview_outside_find(app: &App, at: &Situation) -> bool {
     shell::preferences(app).tenxer_mode && in_preview_outside_find(app, at)
+}
+
+fn on_preview_grip(app: &App, at: &Situation) -> bool {
+    app.preview.enabled && at.within("preview-grip")
 }
 
 fn in_preview_body_outside_find(app: &App, at: &Situation) -> bool {

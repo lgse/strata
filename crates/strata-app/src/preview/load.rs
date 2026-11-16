@@ -24,7 +24,7 @@ use strata_components::{
 };
 use strata_core::{
     i18n::{file_size, tr},
-    model::{FileEntry, MetadataValue},
+    model::FileEntry,
     util::modified_date,
 };
 use strata_desktop::settings::{
@@ -263,8 +263,6 @@ pub(super) fn reload_rendered(app: &mut App, entry: FileEntry) {
 }
 
 fn start_request(app: &mut App, entry: FileEntry, render_document: bool) {
-    let entry = freshest_browser_entry(app, entry);
-    app.preview.current = Some(entry.clone());
     app.preview.header_source = Some((entry.clone(), None));
     app.preview.header = identity_for(&app.look, &entry, None);
     let later = app.preview.loader.later.clone();
@@ -360,70 +358,10 @@ fn on_event(app: &mut App, expected: PreviewRequestId, event: PreviewEvent, tx: 
     }
 }
 
-/// The listing's copy of the previewed entry, whose metadata may have been filled since the
-/// preview asked for it. A filter's result keeps its own, as GTK's header shows it.
-fn freshest_browser_entry(app: &App, fallback: FileEntry) -> FileEntry {
-    let Some(depth) = app
-        .preview
-        .current_depth
-        .filter(|&depth| !shows_results(app, depth))
-    else {
-        return fallback;
-    };
-    (0..)
-        .map_while(|pos| app.browser.entry_at(depth, pos))
-        .find(|entry| entry.location == fallback.location)
-        .unwrap_or(fallback)
-}
-
-fn lacks_header_metadata(entry: &FileEntry) -> bool {
-    entry.size == MetadataValue::Unknown || entry.modified_unix_seconds == MetadataValue::Unknown
-}
-
-fn shows_results(app: &App, depth: usize) -> bool {
-    crate::filter::targets::shows_results_at(app, depth)
-}
-
-/// Whether the preview shows an entry of column `depth`'s listing, not a filter's result.
-fn previews_listing_at(app: &App, depth: usize) -> bool {
-    app.preview.enabled && app.preview.current_depth == Some(depth) && !shows_results(app, depth)
-}
-
-pub(super) fn on_metadata_filled(app: &mut App, depth: usize, entries: &[FileEntry]) -> bool {
-    if !previews_listing_at(app, depth) {
-        return false;
-    }
-    let Some(current) = app.preview.current.as_ref() else {
-        return false;
-    };
-    if !lacks_header_metadata(current) {
-        return false;
-    }
-    let Some(updated) = entries
-        .iter()
-        .find(|e| e.location == current.location)
-        .cloned()
-    else {
-        return false;
-    };
-    let content_type = app
-        .preview
-        .header_source
-        .take()
-        .filter(|(shown, _)| shown.location == updated.location)
-        .and_then(|(_, content_type)| content_type);
-    app.preview.header = identity_for(&app.look, &updated, content_type.as_deref());
-    app.preview.header_source = Some((updated.clone(), content_type));
-    app.preview.current = Some(updated);
-    true
-}
-
 pub(super) fn render_ready(app: &mut App, loaded: Preview, tx: &mut Tx) {
     app.preview.viewer.stop();
-    let entry = freshest_browser_entry(app, loaded.entry.clone());
-    app.preview.current = Some(entry.clone());
-    app.preview.header = identity_for(&app.look, &entry, Some(&loaded.content_type));
-    app.preview.header_source = Some((entry, Some(loaded.content_type.clone())));
+    app.preview.header_source = Some((loaded.entry.clone(), Some(loaded.content_type.clone())));
+    app.preview.header = identity_for(&app.look, &loaded.entry, Some(&loaded.content_type));
     let wrap = shell::preferences(app).preview_text_wrap;
     let highlighter = app.preview.loader.highlighter(&app.look);
     let file_name = loaded.entry.native_name.to_string_lossy().into_owned();

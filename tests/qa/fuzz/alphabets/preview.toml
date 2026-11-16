@@ -29,9 +29,14 @@
 #   3 `-rune` twins).
 # - Clicking `Open in default application` (`EXTERNAL_LINK`): with no desktop handler installed in
 #   the test image, `BrowserEvent::OpenRequested` opens `Open With` (A14's Slice 2, `properties.toml`).
-# - Opening a context menu while the preview drawer is already open: Rune's context menu is a
-#   modal layer that hides background `app.preview` while open (`qa/tree.rs`), as modal dialogs do
-#   (`properties.toml`). `context-menu-preview` opens Quick Preview from `preview: null`.
+# - Opening a context menu while the preview is enabled: Rune's context menu is a modal layer that
+#   hides background `app.preview` while open (`qa/tree.rs`), as modal dialogs do
+#   (`properties.toml`), and a menu opened on another file selects it, which an enabled preview
+#   whose slot a folder's column holds then shows. `context-menu-preview` opens Quick Preview from
+#   `preview: null` on the focused file selected alone, whose menu moves no selection.
+# - Filtering outside Columns: in Icons and List, `Down` from the field into "Search results"
+#   fills `app.panes` on Rune and leaves it empty on GTK (lgse/strata#2499, A10's `filter`
+#   alphabet, whose corpus parks it). `filter-space-preview` filters in Columns.
 # - `Up` off a folder's first row and `Icons` vertical arrows (`owner.md` A1 item 3, `views.toml`),
 #   `Right` on empty `archive` (lgse/strata#2408), cursorless folder opens in `Icons`/`List`
 #   (lgse/strata#2415, lgse/strata#2361), clicking an already-open folder column, dismissing a
@@ -48,10 +53,14 @@
 # context menu (`browser-view` invariant), `extension_label` uppercasing fallback extensions
 # (`"CBZ"` vs `"cbz"`), and `Preview` requesting unasked metadata fills on filtered results (all
 # three fixed), plus wall-clock ZIP timestamps in `ZipEntry::Image`, modal context menus hiding
-# `app.preview`, and lgse/strata#2415 / lgse/strata#2356 on cursorless columns. Version 3 writes
-# deterministic `.cbz` archives via `hex` and guards those three cases.
+# `app.preview`, and lgse/strata#2415 / lgse/strata#2356 on cursorless columns. Version 3 wrote
+# deterministic `.cbz` archives via `hex` and guarded those three cases; its smoke tier caught the
+# header's metadata refreshed past GTK's (GTK keeps what the request carried), a view switch
+# lending the slot, a clicked folder lending it, Left into the parent column and a closed filter
+# not followed (all fixed), and met lgse/strata#2499 and menus opened on another file with the
+# preview enabled. Version 4 guards those two.
 area = "preview"
-version = 3
+version = 4
 about = "Columns, Icons and List with cover archives, RAW/archive failure cards and binary files, type to search off: Space, context-menu Quick preview and Appearance Preview panel toggles, selection-following previews and placeholders, Right/Left/F8/Escape focus transitions, blocked file keys inside preview, filtered-result Space preview, view switches and live file removal"
 header = '{"modes":["columns"],"prefs":{"type_to_search":false},"tree":{"archive":{},"covers":{"broken.cbz":"not a comic archive\n"},"samples":{"broken.NEF":"not a RAW image","package.deb":"!<arch>\n"},"corrupt.cbz":"corrupt archive\n"},"setup":[{"fs":{"path":"album.cbz","hex":"504b030414000000000000006e5776078e9e4a0000004a000000070000003030312e706e6789504e470d0a1a0a0000000d4948445200000008000000060802000000716748ac000000114944415478da6350ea388315310ca404006d42462158a01e3a0000000049454e44ae426082504b0102140314000000000000006e5776078e9e4a0000004a000000070000000000000000000000a401000000003030312e706e67504b05060000000001000100350000006f0000000000"}},{"fs":{"path":"binary.dat","hex":"0001020304"}},{"fs":{"path":"covers/comic.cbz","hex":"504b030414000000000000006e5722e378954a0000004a000000070000003030312e706e6789504e470d0a1a0a0000000d494844520000000a0000000808020000004f98f9e1000000114944415478da637059958607310c57690070556a41152d86f40000000049454e44ae426082504b0102140314000000000000006e5722e378954a0000004a000000070000000000000000000000a401000000003030312e706e67504b05060000000001000100350000006f0000000000"}},{"fs":{"path":"covers/issue-2.cbz","hex":"504b030414000000000000006e579a3765d34c0000004c000000070000003030312e706e6789504e470d0a1a0a0000000d494844520000000c00000009080200000089da5a03000000134944415478da633893664c10318c2a224a11003c0d969dbff4967a0000000049454e44ae426082504b0102140314000000000000006e579a3765d34c0000004c000000070000000000000000000000a401000000003030312e706e67504b0506000000000100010035000000710000000000"}},{"fs":{"path":"samples/opaque.dat","hex":"00ff00ff"}}]}'
 
@@ -98,7 +107,7 @@ steps = ['{"key":"space","when":{"all":[{"focused_pane":true},{"focused_in_match
 name = "context-menu-preview"
 weight = 4
 steps = [
-  '{"click":{"entry":"<entry>"},"button":3,"when":{"all":[{"preview":null},{"present":{"entry":"<entry>"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}',
+  '{"click":{"entry":"<entry>"},"button":3,"when":{"all":[{"preview":null},{"focused":"<entry>"},{"selected":["<entry>"]},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}',
   '{"click":{"menu_item":"Quick preview"},"when":{"present":{"menu_item":"Quick preview"}}}',
 ]
 choose.entry = ["album.cbz", "binary.dat", "corrupt.cbz", "comic.cbz", "issue-2.cbz", "broken.cbz", "broken.NEF", "opaque.dat"]
@@ -166,7 +175,7 @@ choose.key = ["F2", "Delete", "shift+Delete", "ctrl+x", "ctrl+v", "ctrl+d"]
 name = "filter-space-preview"
 weight = 3
 steps = [
-  '{"key":"ctrl+f","when":{"all":[{"focused_pane":true},{"focused_in_matches":true},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}',
+  '{"key":"ctrl+f","when":{"all":[{"view_mode":"Columns"},{"focused_pane":true},{"focused_in_matches":true},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}',
   '{"type":"<query>","when":{"all":[{"field":{"focused":true}},{"not":{"field":{"name":"Rename"}}}]}}',
   '{"key":"Down","when":{"all":[{"field":{"focused":true}},{"not":{"matches":[]}}]}}',
   '{"key":"space","when":{"all":[{"focused_pane":true},{"editable_fields":1},{"not":{"dialog":true}},{"menu_items":null}]}}',

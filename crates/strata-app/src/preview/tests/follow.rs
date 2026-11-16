@@ -28,24 +28,18 @@ fn ctrl() -> Mods {
     }
 }
 
-fn type_text(host: &mut Offscreen, text: &str) {
-    for ch in text.chars() {
-        press(host, Key::Text(ch.to_string()), Mods::default());
-    }
-}
-
 fn shows_placeholder(host: &Offscreen) -> bool {
     host.app().preview.current.is_none()
         && host.app().preview.reserves_empty_preview(host.app())
         && tree_has_name(&host.tree(), PLACEHOLDER)
 }
 
-fn previews(host: &Offscreen, name: &str) -> bool {
+fn previews(host: &Offscreen, location: &Location) -> bool {
     host.app()
         .preview
         .current
         .as_ref()
-        .is_some_and(|entry| entry.display_name == name)
+        .is_some_and(|entry| &entry.location == location)
 }
 
 fn row_key(node: &serde_json::Value, name: &str) -> Option<String> {
@@ -58,8 +52,7 @@ fn row_key(node: &serde_json::Value, name: &str) -> Option<String> {
         .find_map(|child| row_key(child, name))
 }
 
-/// Clicks the row named `name`, as a scenario's `click` step does.
-fn click_row(host: &mut Offscreen, name: &str) {
+fn row_centre(host: &mut Offscreen, name: &str) -> (f32, f32) {
     let key = row_key(&host.tree(), name).expect("the row is in the tree");
     let elements = host.runtime().elements();
     let row = elements
@@ -67,11 +60,30 @@ fn click_row(host: &mut Offscreen, name: &str) {
         .find(|el| !el.exiting && el.key.as_deref() == Some(key.as_str()))
         .expect("the row is mounted");
     let [x, y, w, h] = row.visible;
-    let (x, y) = (x + w / 2.0, y + h / 2.0);
+    (x + w / 2.0, y + h / 2.0)
+}
+
+/// Which button a click presses.
+#[derive(Clone, Copy)]
+enum Button {
+    Primary,
+    Secondary,
+}
+
+/// Clicks the row named `name`, as a scenario's `click` step does (`button: 3` for
+/// [`Button::Secondary`]).
+fn click_row(host: &mut Offscreen, name: &str, button: Button) {
+    let (x, y) = row_centre(host, name);
     host.runtime().pointer_move(x, y);
-    host.runtime().pointer_down(x, y);
+    match button {
+        Button::Primary => host.runtime().pointer_down(x, y),
+        Button::Secondary => host.runtime().secondary_down(x, y),
+    }
     host.turn();
-    host.runtime().pointer_up(x, y);
+    match button {
+        Button::Primary => host.runtime().pointer_up(x, y),
+        Button::Secondary => host.runtime().secondary_up(x, y),
+    }
     while host.turn() {}
 }
 
@@ -126,7 +138,7 @@ fn clicking_a_folder_in_columns_keeps_the_slot_for_the_placeholder() {
             space(&mut host);
             wait_for_code_preview(&mut host);
 
-            click_row(&mut host, "archive");
+            click_row(&mut host, "archive", Button::Primary);
             let shown = host.run_until(PATIENCE, shows_placeholder);
             assert!(shown, "the opened folder's placeholder");
         },
@@ -145,21 +157,22 @@ fn left_into_the_parent_column_follows_its_open_folder() {
             disable_auto_preview(&mut host);
             let report = Location::local(folder.path().join("documents/report.md"));
 
-            click_row(&mut host, "documents");
+            click_row(&mut host, "documents", Button::Primary);
             let opened = host.run_until(PATIENCE, |host| {
                 host.app().browser().column_entry_counts(1).is_some()
             });
             assert!(opened, "the documents column");
             while host.turn() {}
+            let shown = report.clone();
             host.runtime().update(move |app: &mut App, tx: &mut Tx| {
-                let id = crate::shell::id_of(app, &report);
+                let id = crate::shell::id_of(app, &shown);
                 let view = crate::shell::shown_view(app).expect("a view");
                 (view.rows.select_only)(app, (1, id), tx);
             });
             while host.turn() {}
             focus_view(&mut host);
             space(&mut host);
-            let loaded = host.run_until(PATIENCE, |host| previews(host, "report.md"));
+            let loaded = host.run_until(PATIENCE, |host| previews(host, &report));
             assert!(loaded, "the report's preview");
 
             press(&mut host, Key::Left, Mods::default());
@@ -184,11 +197,14 @@ fn closing_a_filter_previews_the_restored_cursor() {
                 crate::shell::saved(app).change(|settings| settings.type_to_search = false);
             });
             let todo = Location::local(folder.path().join("todo.txt"));
+            let readme = Location::local(folder.path().join("readme.md"));
 
             select(&mut host, &todo);
             focus_view(&mut host);
             press(&mut host, Key::Text("f".to_owned()), ctrl());
-            type_text(&mut host, "readme");
+            for ch in "readme".chars() {
+                press(&mut host, Key::Text(ch.to_string()), Mods::default());
+            }
             let found = host.run_until(PATIENCE, |host| {
                 crate::filter::targets::under_cursor(host.app()).is_none()
                     && crate::filter::status(host.app()).is_none()
@@ -197,12 +213,63 @@ fn closing_a_filter_previews_the_restored_cursor() {
             host.wait(std::time::Duration::from_millis(300));
             press(&mut host, Key::Down, Mods::default());
             space(&mut host);
-            let hit = host.run_until(PATIENCE, |host| previews(host, "readme.md"));
+            let hit = host.run_until(PATIENCE, |host| previews(host, &readme));
             assert!(hit, "the result's preview");
 
             press(&mut host, Key::Escape, Mods::default());
-            let followed = host.run_until(PATIENCE, |host| previews(host, "todo.txt"));
+            let followed = host.run_until(PATIENCE, |host| previews(host, &todo));
             assert!(followed, "the restored cursor's preview");
+        },
+    );
+}
+
+/// A row's context menu selects it, and an enabled preview follows the selection there as it
+/// does a click, even while its slot is lent to a folder's column.
+#[test]
+fn a_context_menu_on_a_child_column_file_previews_it() {
+    hosted(
+        MODULE,
+        "a_context_menu_on_a_child_column_file_previews_it",
+        |mut host| {
+            let folder = listed(&mut host);
+            disable_auto_preview(&mut host);
+            let todo = Location::local(folder.path().join("todo.txt"));
+            let documents = Location::local(folder.path().join("documents"));
+            let notes = Location::local(folder.path().join("documents/notes.txt"));
+
+            select(&mut host, &todo);
+            focus_view(&mut host);
+            space(&mut host);
+            wait_for_code_preview(&mut host);
+            select(&mut host, &documents);
+            let lent = host.run_until(PATIENCE, |host| {
+                host.app().preview.current.is_none()
+                    && host.app().browser().column_entry_counts(1).is_some()
+            });
+            assert!(lent, "the documents column has the slot");
+            while host.turn() {}
+
+            click_row(&mut host, "notes.txt", Button::Secondary);
+            let followed = host.run_until(PATIENCE, |host| previews(host, &notes));
+            assert!(followed, "the right-clicked file's preview");
+            press(&mut host, Key::Escape, Mods::default());
+
+            // The parent column's file, with the next folder's column open beside it.
+            press(&mut host, Key::Left, Mods::default());
+            press(&mut host, Key::Down, Mods::default());
+            let lent = host.run_until(PATIENCE, |host| {
+                host.app().preview.current.is_none()
+                    && host
+                        .app()
+                        .browser()
+                        .location_at(1)
+                        .is_some_and(|at| at.display_name().ends_with("pictures"))
+            });
+            assert!(lent, "the pictures column has the slot");
+            while host.turn() {}
+            click_row(&mut host, "todo.txt", Button::Secondary);
+            let followed = host.run_until(PATIENCE, |host| previews(host, &todo));
+            assert!(followed, "the parent column's right-clicked file's preview");
         },
     );
 }

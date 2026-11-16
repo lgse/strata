@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-//! What the preview follows: `Browser` focus, selection, metadata and removal events
+//! What the preview follows: `Browser` focus, selection and removal events
 //! (`PreviewDrawer::handle_browser_event` in `src/ui/preview/drawer.rs`), and the moves the
 //! views make without the browser's cursor moving, which GTK's views raise `FocusChanged` for.
 
@@ -8,7 +8,7 @@ use rune::Tx;
 use strata_core::model::FileEntry;
 use strata_fs::app::{Browser, BrowserEvent, EntrySplice};
 
-use super::{load, preview_target, session};
+use super::{preview_target, session};
 use crate::{App, filter, slots::Heard};
 
 pub(super) fn hear(event: &BrowserEvent, browser: &Browser, heard: &mut Heard<'_, App>) {
@@ -45,13 +45,6 @@ pub(super) fn hear(event: &BrowserEvent, browser: &Browser, heard: &mut Heard<'_
         } => {
             let depth = *depth;
             heard.then(move |app: &mut App, tx: &mut Tx| follow_focus(app, depth, None, tx));
-        }
-        BrowserEvent::MetadataFilled { depth, updates } => {
-            let depth = *depth;
-            let entries: Vec<FileEntry> = updates.iter().map(|(_, entry)| entry.clone()).collect();
-            heard.then(move |app: &mut App, _: &mut Tx| {
-                load::on_metadata_filled(app, depth, &entries)
-            });
         }
         BrowserEvent::LoadFinished { depth, .. } | BrowserEvent::LoadFailed { depth, .. } => {
             let depth = *depth;
@@ -148,13 +141,15 @@ pub(crate) fn follow_active_column(app: &mut App, tx: &mut Tx) {
 
 /// A click in Columns is opening the folder at `position` of column `depth`: until its column
 /// has loaded, the focus on it and in its column keeps the preview's slot (GTK's
-/// `TabLocationHold::opening`, which `lend_slot_to_child` reads).
+/// `TabLocationHold::opening`, which `lend_slot_to_child` reads). A folder whose column is
+/// open already loads nothing, and GTK's hold ends with the click.
 pub(crate) fn note_click_opening(app: &mut App, depth: usize, position: usize) {
     app.preview.click_opening = app
         .browser
         .entry_at(depth, position)
         .filter(FileEntry::is_directory)
-        .map(|entry| entry.location);
+        .map(|entry| entry.location)
+        .filter(|folder| !app.browser.is_open_child(depth, folder));
 }
 
 /// A closed filter puts the listing's cursor back without the browser's moving: the preview

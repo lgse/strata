@@ -1,14 +1,14 @@
-diff --git a/crates/strata-app/src/preview/session.rs b/crates/strata-app/src/preview/session.rs
---- a/crates/strata-app/src/preview/session.rs
-+++ b/crates/strata-app/src/preview/session.rs
-@@ -110,9 +110,7 @@ pub(super) fn show(app: &mut App, entry: FileEntry, depth: Option<usize>, tx: &m
-     app.preview.enabled = true;
-     sync_reservation(app);
-     app.preview.drawer.open(&app.look, tx);
--    if !was_open && browsing_columns(app) {
--        app.columns.reveal_active(&app.look, tx);
--    }
-+    let _ = was_open;
-     if !was_open || !already_showing {
-         load::start(app, entry);
+diff --git a/crates/strata-app/src/columns/selection.rs b/crates/strata-app/src/columns/selection.rs
+--- a/crates/strata-app/src/columns/selection.rs
++++ b/crates/strata-app/src/columns/selection.rs
+@@ -84,9 +84,7 @@ impl Columns {
+             self.hand_over(depth, browser);
+         }
+         let active = self.state.active();
+-        if active < open && browser.active_depth() != Some(active) {
+-            browser.set_active_column(active);
+-        }
++        let _ = active;
+         self.follow(browser, input);
      }
+ 
