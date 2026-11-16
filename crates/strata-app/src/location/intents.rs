@@ -7,8 +7,11 @@
 //! `open-in-window` (`commands::On::Place`), as GTK's crumbs open a new tab or window. Neither
 //! does anything until a part registers it.
 
-use rune::{TextEdit, Tx};
-use strata_components::location_bar::{LocationIntent, Polled, Via};
+use rune::{Mods, TextEdit, Tx};
+use strata_components::{
+    contract::dnd::{DropAction, DropOffer},
+    location_bar::{LocationIntent, Polled, Via},
+};
 use strata_core::model::Location;
 use strata_fs::services::{LocationValidationError, sanitize_uri_credentials};
 
@@ -39,8 +42,24 @@ pub(super) fn heard(app: &mut App, intent: LocationIntent, tx: &mut Tx) {
                 commands::run(app, "copy-path", On::Place(folder), tx);
             }
         }
+        LocationIntent::DropInto { id, dropped } => {
+            if let Some(folder) = crumb(app, &id) {
+                crate::dnd::commit_file_drop(app, folder, &dropped, tx);
+            }
+        }
+        LocationIntent::DropHover { .. } => {}
         other => tracing::debug!(?other, "the location bar asked for what is not ported yet"),
     }
+}
+
+pub(super) fn drop_action(
+    app: &App,
+    id: &str,
+    offer: &DropOffer,
+    mods: Mods,
+) -> Option<DropAction> {
+    let folder = crumb(app, id)?;
+    crate::dnd::drop_action(app, &folder, offer, mods)
 }
 
 /// Routes what a call into the bar's state raised, as the bar routes its own.

@@ -69,6 +69,8 @@ pub(crate) fn view(app: &App) -> ColumnsView<App> {
         },
     )
     .labels(app.columns.labels.0.clone())
+    .dnd(crate::dnd::binder(app))
+    .drop_action(intents::drop_action)
     // "Show sizes in Columns view", read at each build: the popover's row changes it live.
     .show_sizes(|app: &App| shell::preferences(app).columns_show_sizes)
     .escape_closes(|app: &App| !shell::preferences(app).tenxer_mode)
@@ -77,6 +79,7 @@ pub(crate) fn view(app: &App) -> ColumnsView<App> {
         let collection = collection
             .empty(move |app: &App| shown_status(app, depth))
             .icon(app.columns.thumbs.icon(&app.look))
+            .on_drag_phase(|app: &mut App, d, key, tx| crate::dnd::drag_phase(app, d, key, tx))
             .on_visible(move |app: &mut App, range| {
                 // Recorded only: the part syncs the store and asks for fills once a poll.
                 app.columns.thumbs.see(depth, range.clone());
@@ -109,9 +112,13 @@ pub(crate) fn view(app: &App) -> ColumnsView<App> {
     .header_actions(|app: &App, cx| pane_header::actions::column(app, &cx))
     // The filter's field, in a band under the header of the column it is open in.
     .header_band(|app: &App, cx| filter::column_band(app, cx.depth))
-    // The filter's Enter target among its results, plus copied and cut marks.
+    // The filter's Enter target among its results, plus copied, cut, and dragging marks.
     .marks(|app: &App, depth, id| {
-        crate::clipboard::with_marks(app, id, filter::marks(app, depth, id))
+        crate::dnd::with_marks(
+            app,
+            id,
+            crate::clipboard::with_marks(app, id, filter::marks(app, depth, id)),
+        )
     })
     .on_intent(intents::heard)
 }

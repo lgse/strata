@@ -114,6 +114,8 @@ mod raw_details;
 // A18 Settings and themes
 mod settings_dialog;
 // A19 Drag and drop
+mod dnd;
+mod drop_dialog;
 // A20 Portal chooser
 // A21 Window and launch
 
@@ -180,6 +182,8 @@ slots::parts! {
     // A18 Settings and themes
     settings_dialog: settings_dialog::SettingsDialog,
     // A19 Drag and drop
+    dnd: dnd::Dnd,
+    drop_dialog: drop_dialog::DropDialog,
     // A20 Portal chooser
     // A21 Window and launch
 }

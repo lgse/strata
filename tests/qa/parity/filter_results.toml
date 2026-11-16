@@ -216,9 +216,8 @@ host = "offscreen"
 scenario = "filtered-control-selection-group"
 run = "list"
 package = "A10"
-status = "pending"
-reason = "scope"
-blocker = "A19: dragging the results to the sidebar, at line 14"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "filtered-file-click-previews"

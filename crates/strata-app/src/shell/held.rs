@@ -32,6 +32,7 @@ pub(crate) fn modifiers(app: &mut App, mods: Mods, tx: &mut Tx) {
         return;
     }
     app.window.held = mods;
+    crate::dnd::modifiers_changed(app, tx);
 }
 
 /// The modifiers held down in the window as of the last change heard, none while the window

@@ -22,6 +22,7 @@ fn label(above: &[&str], text: &str, x: f64) -> NameLabel {
             width: 50.0,
             height: 18.0,
         },
+        badge: false,
     }
 }
 
@@ -868,6 +869,7 @@ fn archive_preview_rows_present_drawn_labels_without_marking_as_browser_entries(
             ],
             text: "docs/".to_owned(),
             bounds: bounds(84.0),
+            badge: false,
         }],
         ..Drawn::default()
     };

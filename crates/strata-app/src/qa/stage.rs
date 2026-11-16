@@ -13,6 +13,7 @@ use std::{
 use rune::ElementInfo;
 use strata_components::{
     collection::element::{ICON, LABEL},
+    columns::keys::BADGE,
     thumbnails::GLYPH,
 };
 use strata_qa::Rect;
@@ -83,19 +84,29 @@ fn label_bounds(elements: &[ElementInfo], element: &ElementInfo, app: &App) -> R
     bounds
 }
 
-/// The names the view draws in rows, each with the keys of the elements around it.
+/// The names and Columns size/count badges the view draws in rows, each with its outer keys.
 fn name_labels(elements: &[ElementInfo], app: &App) -> Vec<NameLabel> {
-    let drawn = |element: &&ElementInfo| !element.exiting && element.key.as_deref() == Some(LABEL);
-    let label = |element: &ElementInfo| {
-        Some(NameLabel {
-            above: above(elements, element)
-                .filter_map(|outer| outer.key.clone())
-                .collect(),
-            text: element.text.clone()?,
-            bounds: label_bounds(elements, element, app),
-        })
+    let collect = |badge: bool| {
+        let wanted = if badge { BADGE } else { LABEL };
+        elements
+            .iter()
+            .filter(move |element| !element.exiting && element.key.as_deref() == Some(wanted))
+            .filter_map(move |element| {
+                Some(NameLabel {
+                    above: above(elements, element)
+                        .filter_map(|outer| outer.key.clone())
+                        .collect(),
+                    text: element.text.clone()?,
+                    bounds: if badge {
+                        rect(element)
+                    } else {
+                        label_bounds(elements, element, app)
+                    },
+                    badge,
+                })
+            })
     };
-    elements.iter().filter(drawn).filter_map(label).collect()
+    collect(false).chain(collect(true)).collect()
 }
 
 /// The icons the view draws in rows, each with the keys of the elements around it.

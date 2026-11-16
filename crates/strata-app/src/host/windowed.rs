@@ -90,6 +90,8 @@ fn run_initial(
     let clip =
         strata_platform::clipboard::Clipboard::<App>::new().on_change(crate::clipboard::changed);
     let clip_for_init = clip.clone();
+    let dnd = strata_platform::dnd::Dnd::<App>::new();
+    let dnd_for_init = dnd.clone();
     let app = rune::App::new(AppSpec {
         poll: Some(poll),
         on_key: Some(commands::on_key),
@@ -100,10 +102,12 @@ fn run_initial(
     // The last write of the per-folder views, before the writer is flushed below. A quit runs
     // no `on_close`, so both ask for it; it is written once.
     .on_close(|app: &mut App, _: &mut Tx| {
+        crate::dnd::shutdown();
         crate::clipboard::shutdown();
         folder_views::flush_at_exit(app);
     })
     .on_quit(|app: &mut App, _: &mut Tx| {
+        crate::dnd::shutdown();
         crate::clipboard::shutdown();
         folder_views::flush_at_exit(app);
     })
@@ -111,6 +115,7 @@ fn run_initial(
     .init(move || {
         let mut app = App::new(&ui, Csd::new(frame, Backend::from_env()), settings);
         crate::clipboard::bind(&mut app, clip_for_init);
+        crate::dnd::bind(&mut app, dnd_for_init);
         app.start(initial);
         app
     })
@@ -133,6 +138,7 @@ fn run_initial(
     let ran = app
         .on_window(move |window: &WindowHandle| {
             crate::clipboard::attach(&clip, window, &handle);
+            crate::dnd::attach(&dnd, window, &handle);
             csd::attach(window, &handle, shell::csd_of);
         })
         .try_run();
