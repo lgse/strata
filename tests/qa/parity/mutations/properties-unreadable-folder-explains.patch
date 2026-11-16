@@ -1,0 +1,14 @@
+diff --git a/crates/strata-app/src/properties/measure.rs b/crates/strata-app/src/properties/measure.rs
+index 6d59e7592..cbaad9eb2 100644
+--- a/crates/strata-app/src/properties/measure.rs
++++ b/crates/strata-app/src/properties/measure.rs
+@@ -44,7 +44,8 @@ impl SizeProgressThrottle {
+ }
+ 
+ pub(super) fn size_label(summary: &DirectorySummary) -> String {
+-    let prefix = if summary.truncated() { "≥ " } else { "" };
++    let _ = summary.truncated();
++    let prefix = "";
+     format!("{prefix}{}", file_size(summary.total_size))
+ }
+ 
