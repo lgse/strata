@@ -360,3 +360,16 @@ fn words_names_each_tabs_close_button() {
         .collect();
     assert_eq!(close_buttons, ["Fermer l’onglet", "Fermer l’onglet"]);
 }
+
+// Packet entry 108: a `Tx::element_at` callback inside `Runtime::frame` sees `tx.clock() == 0.0`
+// even when the window's clock is seconds ahead; the spring stamps its start on the next tick.
+#[test]
+fn a_zero_clock_pick_hover_waits_the_full_delay_from_next_tick() {
+    let t = tabs(3);
+    let d = TabsData::new(&t, Some(TabId(1)));
+    let mut st = BrowserTabsState::default();
+    assert!(st.hover_tab(TabId(2), DropHover::Accepting, Some(HOVER_DELAY), 0.0));
+    assert!(tick(&mut st, 2.5, &d).is_empty());
+    assert!(tick(&mut st, 2.8, &d).is_empty());
+    assert_eq!(tick(&mut st, 2.5 + HOVER_DELAY, &d), sprung(2));
+}

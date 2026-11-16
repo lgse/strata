@@ -91,6 +91,8 @@ fn build(app: &App, frame: &mut Frame<'_, App>) -> Option<El> {
         |app: &mut App| &mut app.location.state,
         intents::heard,
     )
+    .dnd(crate::dnd::binder(app))
+    .drop_action(intents::drop_action)
     .labels(&labels)
     .build(frame.cx, frame.layer);
     Some(element)

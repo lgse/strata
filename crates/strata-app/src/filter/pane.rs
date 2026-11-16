@@ -302,6 +302,10 @@ pub(crate) fn heard(app: &mut App, intent: Intent, tx: &mut Tx) {
         return;
     };
     shell::publish(app);
+    if let Intent::BeginDrag { ids, .. } = intent {
+        begin_drag(app, depth, ids, tx);
+        return;
+    }
     if !super::hit_intent(app, depth, &intent, tx) {
         match intent {
             Intent::ContextMenu { target, anchor } => {
@@ -332,6 +336,21 @@ pub(crate) fn heard(app: &mut App, intent: Intent, tx: &mut Tx) {
             _ => {}
         }
     }
+    shell::settle(app, tx);
+}
+
+/// A drag from the results carries the entries they stand for, drawn at the shown view's scale.
+fn begin_drag(app: &mut App, depth: usize, ids: Vec<EntryId>, tx: &mut Tx) {
+    let entries: Vec<_> = ids
+        .into_iter()
+        .filter_map(|id| super::targets::at(app, depth, id))
+        .collect();
+    let scale = match Where::shown(app) {
+        Some(Where::Icons) => app.icons.single.scale(),
+        Some(Where::List) => app.list.single.scale(),
+        _ => 1.0,
+    };
+    crate::dnd::begin_entries(app, entries, scale, tx);
     shell::settle(app, tx);
 }
 

@@ -61,6 +61,10 @@ impl SinglePane for List {
         &mut app.list.single
     }
 
+    fn fills_mut(app: &mut App) -> &mut crate::fills::Fills {
+        &mut app.list.fills
+    }
+
     fn renaming(app: &mut App) -> (&Single, &mut Rename) {
         (&app.list.single, &mut app.rename)
     }

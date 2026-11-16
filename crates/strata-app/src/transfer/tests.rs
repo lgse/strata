@@ -195,7 +195,9 @@ fn duplicate_stops_on_filter_results_in_default_map_and_runs_in_tenxer_direct_st
         || {
             let file = strata_core::storage::config_directory().join("settings.toml");
             std::fs::create_dir_all(file.parent().expect("folder")).expect("settings folder");
-            let saved = "tenxer_mode = false\n[keymap.tenxer]\nduplicate = [\"<Control>d\"]\n";
+            // 10xer's half page down ships on Ctrl+D, and its stage reads the key before the
+            // direct stage, as GTK's does.
+            let saved = "tenxer_mode = false\n[keymap.tenxer]\nduplicate = [\"<Control>d\"]\nhalf_page_down = []\n";
             std::fs::write(file, saved).expect("settings");
         },
         |mut host| {

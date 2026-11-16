@@ -6,7 +6,9 @@ use std::time::Duration;
 
 use strata_components::columns::ColumnsIntent;
 
-use super::{MODULE, PATIENCE, fixture, open, press, save_settings, seen, settings_file, wait};
+use super::{
+    MODULE, PATIENCE, find, fixture, open, press, save_settings, seen, settings_file, wait,
+};
 use crate::test_support::hosted_after;
 
 fn saved_show_hidden() -> Option<bool> {
@@ -83,6 +85,7 @@ fn a_salvaged_file_is_saved_with_what_loading_filled_in() {
 }
 
 /// A file that was there and could not be read is the user's to repair: nothing replaces it.
+/// The first change says so in a dialog, which hides the listing from the tree until it closes.
 #[test]
 fn an_unreadable_settings_file_is_never_saved_over() {
     const BROKEN: &str = "show_hidden = [unclosed\n";
@@ -96,6 +99,15 @@ fn an_unreadable_settings_file_is_never_saved_over() {
 
             press(&mut host, "ctrl+period");
 
+            let told = host.run_until(PATIENCE, |host| {
+                let tree = host.tree();
+                let dialogs = find(&tree, &|node| node["role"] == "dialog");
+                dialogs
+                    .iter()
+                    .any(|dialog| dialog["name"] == "Settings file can't be read")
+            });
+            assert!(told, "the change says the file is not saved over");
+            press(&mut host, "Escape");
             wait(&mut host, "the hidden entries", |seen| {
                 seen.panes[0].names().contains(&".hidden.txt")
             });
