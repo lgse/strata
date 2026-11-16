@@ -127,6 +127,7 @@
   "Autoplay media previews": "Médiaelőnézetek automatikus lejátszása",
   "Video preview start": "Videóelőnézet kezdőpontja",
   "Percent of a video's length to open it at; 0 starts at the beginning. A video you already previewed resumes where you left it.": "Videó megnyitása a teljes hosszának ennyi százalékánál. Ha 0, akkor az elejéről indul a videó. A korábban már előnézetben megnyitott videó ott folytatódik, ahol abbahagyta.",
+  "Autoscroll": "Automatikus görgetés",
   "Available release": "Elérhető kiadás",
   "BACK TO": "VISSZA IDE",
   "BITRATE": "BITSEBESSÉG",

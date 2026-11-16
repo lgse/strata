@@ -1,0 +1,10 @@
+diff --git a/crates/strata-app/src/pointer/marquee.rs b/crates/strata-app/src/pointer/marquee.rs
+--- a/crates/strata-app/src/pointer/marquee.rs
++++ b/crates/strata-app/src/pointer/marquee.rs
+@@ -172,4 +172,4 @@ fn with_marquee(
+     let points = StepPoints {
+-        anchor: st.content_point(spec.start),
+-        current: st.content_point(spec.now),
++        anchor: Point::new(spec.start.x - st.viewport().x, spec.start.y - st.viewport().y),
++        current: Point::new(spec.now.x - st.viewport().x, spec.now.y - st.viewport().y),
+     };

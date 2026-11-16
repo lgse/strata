@@ -25,7 +25,8 @@ use strata_components::{
     },
     contract::{Direction, EntryId, EntrySource},
     filter_bar::filter::status as status_line,
-    icons_grid::IconsGridState,
+    icons_grid::{IconsGridState, autoscroll_background},
+    scroll::{Autoscroll, AutoscrollPointer, ScrollFeed},
 };
 
 use super::{hits::HitsUpdate, place::Where};
@@ -41,6 +42,8 @@ pub(crate) struct PaneHits {
     pub(crate) keys_handle: KeyHandle,
     /// The Icons results' grid.
     pub(crate) grid: IconsGridState,
+    autoscroll: Autoscroll,
+    list_feed: ScrollFeed,
     /// Moves each time results are shown or dropped, so two sets never share a version.
     swaps: u64,
     /// Whether the results come from the subfolders too: each then shows its path.
@@ -75,9 +78,19 @@ impl PaneHits {
             collection: CollectionState::new(),
             keys_handle: KeyHandle::new(),
             grid: IconsGridState::new(),
+            autoscroll: Autoscroll::new(),
+            list_feed: ScrollFeed::new(),
             swaps: 0,
             recursive: false,
         }
+    }
+
+    pub(crate) fn autoscroll(&self) -> &Autoscroll {
+        &self.autoscroll
+    }
+
+    pub(crate) fn list_feed(&self) -> &ScrollFeed {
+        &self.list_feed
     }
 
     /// Whether results show.
@@ -142,9 +155,22 @@ impl PaneHits {
         self.swaps = self.swaps.wrapping_add(1);
         let hits = self.hits.insert(update.hits);
         if first {
+            let is_list = place == Where::List;
             let handle = KeyHandle::new();
-            self.collection = crate::single::results_state(place == Where::List, handle.clone());
+            let mut collection = crate::single::results_state(is_list, handle.clone());
             self.keys_handle = handle;
+            let inner = collection.controllers.pointer.take();
+            let feed = if is_list {
+                self.list_feed.clone()
+            } else {
+                self.grid.feed().clone()
+            };
+            let mut pointer = AutoscrollPointer::new(inner, self.autoscroll.clone(), scope, feed);
+            if !is_list {
+                pointer = pointer.background(autoscroll_background);
+            }
+            collection.controllers.pointer = Some(Box::new(pointer));
+            self.collection = collection;
             let _ = self
                 .collection
                 .enter(scope, &*hits, None, Listing::Complete, tx);
@@ -170,6 +196,7 @@ impl PaneHits {
 
     /// Gives the listing its place back.
     pub(crate) fn drop_hits(&mut self) {
+        self.autoscroll.stop_gone(None);
         self.keys_handle.end_range();
         if self.hits.take().is_some() {
             self.swaps = self.swaps.wrapping_add(1);
@@ -178,6 +205,7 @@ impl PaneHits {
 
     /// The results taken out, with their selection, for the view a switch shows.
     pub(crate) fn take(&mut self) -> Option<(Column, Position)> {
+        self.autoscroll.stop_gone(None);
         self.keys_handle.end_range();
         let position = self.collection.selection.position(self.hits.as_ref()?);
         let hits = self.hits.take()?;

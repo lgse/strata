@@ -378,6 +378,7 @@ pub(super) struct Frame {
     /// What the builder's settings make every row: see [`config_key`].
     pub config_key: u64,
     pub row_height: f32,
+    pub row_gap_y: f32,
     pub per_line: usize,
     /// The space left and right of a line of several entries (`Lines::inset`).
     pub inset: f32,
@@ -430,6 +431,9 @@ pub(super) fn config_key<S>(cfg: &Config<S>) -> u64 {
     // Hashed only when set, so every collection without bare items keeps its rows' versions.
     if cfg.bare_items {
         true.hash(&mut h);
+    }
+    if cfg.row_gap_y > 0.0 {
+        cfg.row_gap_y.to_bits().hash(&mut h);
     }
     if cfg.rest.is_some() {
         "rest".hash(&mut h);
@@ -647,6 +651,7 @@ fn item<S: 'static>(cfg: &Rc<Config<S>>, frame: &Frame, s: &S, rcx: &RowCx<'_>) 
         .focus_selected(state.selected)
         .h(frame.row_height)
         .px(tokens::row_inset(look))
+        .py(frame.row_gap_y)
         .child(inner);
     finish_item(cfg, frame, s, rcx, outer)
 }
