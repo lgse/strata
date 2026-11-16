@@ -44,8 +44,8 @@ mod router;
 mod tests;
 
 pub(crate) use policy::{
-    apply_drop_action, commit_file_drop, commit_trash_drop, drop_action, locations_from_uris,
-    trash_action,
+    FileDrop, commit, commit_file_drop, commit_trash_drop, drop_action, dropped_locations,
+    locations_from_uris, trash_action,
 };
 pub(crate) use registry::PointZone;
 

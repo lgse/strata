@@ -99,7 +99,6 @@ impl Part for TabStrip {
         tabs_of::forget_arrived(app);
         if drops::blocked(app) {
             app.tab_strip.state.end_drag();
-            app.tab_strip.drops.clear_hover();
         }
         let tabs = named(app);
         let data = TabsData::new(&tabs, Some(id(shown_tab(app))));
@@ -130,7 +129,6 @@ pub(crate) fn set_open_drag(app: &mut App, open: Option<TabOpen>) {
         .set_open_drag(open.is_some() && !drops::blocked(app));
     if open.is_none() {
         app.tab_strip.state.end_drag();
-        app.tab_strip.drops.clear_hover();
     }
 }
 
@@ -304,7 +302,8 @@ fn route(app: &mut App, intent: TabsIntent, tx: &mut Tx) -> bool {
         TabsIntent::Reorder { id, to, .. } => tabs_of::move_to(app, key(id), to),
         // The shell titles the window for the tab shown.
         TabsIntent::Title(_) => false,
-        TabsIntent::DropHover { site, hover, offer } => drops::hover(app, site, hover, offer),
+        // The volumes a hovered drop needs are looked up as its action is asked (`dnd::policy`).
+        TabsIntent::DropHover { .. } => false,
         TabsIntent::DropInto { id, dropped } => drops::drop_into(app, id, dropped, tx),
         TabsIntent::OpenTabs { at, dropped } => drops::open_tabs(app, at, dropped, tx),
         TabsIntent::TearOut { .. } | TabsIntent::TearMove { .. } => false,

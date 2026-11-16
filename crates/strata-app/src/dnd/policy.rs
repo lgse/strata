@@ -194,12 +194,60 @@ impl Choices {
     }
 }
 
+/// What runs once a drop is known to commit, before it does: a tab drop selects its tab.
+pub(crate) type BeforeCommit = Box<dyn FnOnce(&mut App, &mut Tx)>;
+
+/// A file drop onto `destination`.
+pub(crate) struct FileDrop {
+    destination: Location,
+    before: Option<BeforeCommit>,
+}
+
+impl FileDrop {
+    pub(crate) fn to(destination: Location) -> Self {
+        Self {
+            destination,
+            before: None,
+        }
+    }
+
+    pub(crate) fn before(mut self, before: impl FnOnce(&mut App, &mut Tx) + 'static) -> Self {
+        self.before = Some(Box::new(before));
+        self
+    }
+}
+
+/// A drop that will commit, with the files it moves or copies.
+struct Commit {
+    destination: Location,
+    sources: Vec<Location>,
+    before: Option<BeforeCommit>,
+}
+
+impl Commit {
+    fn begin(&mut self, app: &mut App, tx: &mut Tx) {
+        if let Some(before) = self.before.take() {
+            before(app, tx);
+        }
+    }
+}
+
 pub(crate) fn commit_file_drop(
     app: &mut App,
     destination: Location,
     dropped: &Dropped,
     tx: &mut Tx,
 ) -> bool {
+    commit(app, FileDrop::to(destination), dropped, tx)
+}
+
+/// Commits `drop`: at once when the volumes cannot change what it does, else once they are
+/// looked up. True when it will commit.
+pub(crate) fn commit(app: &mut App, drop: FileDrop, dropped: &Dropped, tx: &mut Tx) -> bool {
+    let FileDrop {
+        destination,
+        before,
+    } = drop;
     if refuses_file_drop(app, &destination) {
         return false;
     }
@@ -210,43 +258,51 @@ pub(crate) fn commit_file_drop(
     if sources.is_empty() {
         return false;
     }
+    let commit = Commit {
+        destination,
+        sources,
+        before,
+    };
     let choices = Choices::of(app, dropped);
     if choices.settled() {
-        return commit_unknown_volume(app, (destination, sources), choices.unknown, tx);
+        return commit_unknown_volume(app, commit, choices.unknown, tx);
     }
-    if !choices.possible(&sources) {
+    if !choices.possible(&commit.sources) {
         return false;
     }
-    resolve_with_volume_lookup(app, (destination, sources), choices.same, tx);
+    resolve_with_volume_lookup(app, commit, choices.same, tx);
     true
 }
 
 /// Commits a drop whose action the volumes cannot change, without looking them up.
 fn commit_unknown_volume(
     app: &mut App,
-    (destination, sources): (Location, Vec<Location>),
+    mut commit: Commit,
     unknown: ActionInput,
     tx: &mut Tx,
 ) -> bool {
-    let Some(action) = choose_action(unknown).filter(|&a| can_commit_action(a, &sources)) else {
+    let Some(action) = choose_action(unknown).filter(|&a| can_commit_action(a, &commit.sources))
+    else {
         return false;
     };
+    commit.begin(app, tx);
     apply_drop_action(
         app,
-        destination,
-        sources,
+        commit.destination,
+        commit.sources,
         (action, FsVolumeRelation::Unknown),
     );
     shell::settle(app, tx);
     true
 }
 
-fn resolve_with_volume_lookup(
-    app: &mut App,
-    (destination, sources): (Location, Vec<Location>),
-    base: ActionInput,
-    tx: &mut Tx,
-) {
+fn resolve_with_volume_lookup(app: &mut App, mut commit: Commit, base: ActionInput, tx: &mut Tx) {
+    commit.begin(app, tx);
+    let Commit {
+        destination,
+        sources,
+        ..
+    } = commit;
     let query = DropVolumeQuery::new(&destination, &sources);
     let volumes = app
         .dnd
@@ -256,7 +312,6 @@ fn resolve_with_volume_lookup(
     match volumes {
         DropVolumes::Ready(lookup) => {
             apply_resolved_lookup(app, (destination, sources), base, lookup.relation);
-            shell::settle(app, tx);
         }
         DropVolumes::Pending(pending) => {
             let later = transfer::later(app);
@@ -269,6 +324,7 @@ fn resolve_with_volume_lookup(
             });
         }
     }
+    shell::settle(app, tx);
 }
 
 fn apply_resolved_lookup(
