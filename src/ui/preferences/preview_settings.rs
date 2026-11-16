@@ -24,7 +24,7 @@ impl PreferenceManager {
     pub fn set_hardware_accelerated_video_previews(&self, enabled: bool) {
         self.preferences
             .borrow_mut()
-            .hardware_accelerated_video_previews = Some(enabled);
+            .set_hardware_accelerated_video_previews(enabled);
         self.save_preferences();
     }
 
@@ -33,14 +33,13 @@ impl PreferenceManager {
     }
 
     pub fn set_video_preview_backend(&self, backend: MediaPreviewBackend) {
-        let backend = match backend {
-            MediaPreviewBackend::Automatic => "automatic",
-            MediaPreviewBackend::VaApi => "vaapi",
-            MediaPreviewBackend::Vulkan => "vulkan",
-            MediaPreviewBackend::Software => return,
-        };
-        self.preferences.borrow_mut().video_preview_backend = backend.to_owned();
-        self.save_preferences();
+        let changed = self
+            .preferences
+            .borrow_mut()
+            .set_video_preview_backend(backend);
+        if changed {
+            self.save_preferences();
+        }
     }
 
     pub(crate) fn media_preview_backend(&self) -> MediaPreviewBackend {

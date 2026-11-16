@@ -8,21 +8,9 @@ use std::{
 };
 
 use gtk::{glib, prelude::*};
-
-#[derive(Clone, Copy, Debug)]
-enum SaveProblem {
-    /// Writing failed; each later change tries again.
-    WriteFailed,
-    /// The file could not be read at startup, so saving stays off to keep it.
-    UnreadableAtStartup,
-}
-
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-enum SaveSubject {
-    #[default]
-    Settings,
-    FolderViews,
-}
+use strata_desktop::settings::save_notice::{
+    NoticeProblem as SaveProblem, SaveSubject, save_notice_summary, save_notice_text,
+};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 enum Streak {
@@ -89,7 +77,7 @@ impl SaveNotices {
             return;
         };
         self.streak.set(Streak::Pending);
-        let (title, detail) = notice_text(
+        let (title, detail) = save_notice_text(
             self.subject,
             problem,
             path,
@@ -113,54 +101,10 @@ impl SaveNotices {
             crate::ui::modal::show_error_dialog_with_summary(
                 &window,
                 &title,
-                &crate::i18n::tr("Changes last only until Strata closes"),
+                &save_notice_summary(),
                 &detail,
                 Rc::new(|| {}),
             );
         });
-    }
-}
-
-/// `reason` is already localized for the slot after a colon.
-fn notice_text(
-    subject: SaveSubject,
-    problem: SaveProblem,
-    path: &Path,
-    reason: &str,
-) -> (String, String) {
-    // The error text may carry a multi-line source excerpt; the log keeps it whole.
-    let reason = reason
-        .lines()
-        .next()
-        .unwrap_or_default()
-        .trim_end_matches('.');
-    let path = path.display();
-    let title = crate::i18n::tr(match (subject, problem) {
-        (SaveSubject::Settings, SaveProblem::WriteFailed) => "Settings can't be saved",
-        (SaveSubject::Settings, SaveProblem::UnreadableAtStartup) => "Settings file can't be read",
-        (SaveSubject::FolderViews, SaveProblem::WriteFailed) => "Folder settings can't be saved",
-        (SaveSubject::FolderViews, SaveProblem::UnreadableAtStartup) => {
-            "Folder settings file can't be read"
-        }
-    });
-    match problem {
-        SaveProblem::WriteFailed => (
-            title,
-            rust_i18n::t!(
-                "Strata couldn't write “%{path}”: %{reason}. It tries again with each change.",
-                path = path,
-                reason = reason
-            )
-            .into_owned(),
-        ),
-        SaveProblem::UnreadableAtStartup => (
-            title,
-            rust_i18n::t!(
-                "Strata couldn't read “%{path}” when it started: %{reason}. To keep the file as it is, Strata won't save over it. Fix or remove the file, then restart Strata.",
-                path = path,
-                reason = reason
-            )
-            .into_owned(),
-        ),
     }
 }

@@ -22,8 +22,8 @@ the files on disk keep their format and their place.
 | --- | --- | --- | --- |
 | Per-folder views | Moved: the model, the file code, the store that holds the values and the bookkeeping of a write, the size's policy (the gate, where a changed size is kept, what a new default prunes) and the sort's (what a folder resolves to, where a chosen sort is kept, what a new default sort prunes). When a write is scheduled, the monitors, the values of folders in the trash, the manager's methods and the notices have not | `strata_desktop::settings::folder_views`, `settings::folder_view_file`, `settings::FolderViewStore`, `settings::folder_view_policy` and `settings::folder_sort_policy` | `src/ui/preferences/folder_view_settings.rs`: a wrapper around the store with the timer, the monitors and the trashed values, and the manager's methods |
 | Tab sessions | Moved, whole | `strata_desktop::tabs_session` | One import in `src/ui/mod.rs`. When to save and how to restore stay in `src/ui/window/composition/tabs.rs` |
-| Key catalog | Moved, behind a backend seam: the key and modifier types, the catalog, the command registry and `Keymap`, `KeyPress` and its normalizer, the alias rewrite and the labels. Reading a GDK event, GTK's own effect for an alias, capture, composition and the conflict check have not | `strata_desktop::keys` | `src/ui/keys/`: the reader and the old names (`mod.rs`), the GDK backend, and `alias.rs`, `capture.rs`, `composition.rs` and `conflicts.rs` with every test |
-| `PreferenceManager` | The save bookkeeping moved, resolving the saved keymap, and `TrashedValues` (`settings::trashed`, A6). The manager, its getters and setters, its bindings and its notices have not, by the owner's ruling of 2026-11-12 ([`parity/owner.md`](parity/owner.md#ruled)), but for the bodies that a Rune package first needed, by the rule below: the density conversions (`settings::density`, A8) and an item's saved colour and icon and how operations carry, trash and restore them (`settings::item_customization`, A6) | The schema, from V5b, `strata_desktop::settings::Saving`, `settings::resolve_keymap` and `settings::trashed` | `src/ui/preferences.rs` and the files under it, with `persistence.rs` as the wrapper around `Saving` and `keymap.rs` calling `resolve_keymap` |
+| Key catalog | Moved, behind a backend seam: the key and modifier types, the catalog, the command registry and `Keymap`, `KeyPress` and its normalizer, the alias rewrite, the labels and the conflict check (A18). Reading a GDK event, GTK's own effect for an alias, capture and composition have not | `strata_desktop::keys` | `src/ui/keys/`: the reader and the old names (`mod.rs`), the GDK backend, `alias.rs`, `capture.rs` and `composition.rs`, and every test |
+| `PreferenceManager` | The save bookkeeping moved, resolving and editing the saved keymap, and `TrashedValues` (`settings::trashed`, A6). The manager, its getters and setters, its bindings and its notices have not, by the owner's ruling of 2026-11-12 ([`parity/owner.md`](parity/owner.md#ruled)), but for the bodies that a Rune package first needed, by the rule below: the density conversions (`settings::density`, A8), an item's saved colour and icon and how operations carry, trash and restore them (`settings::item_customization`, A6), and the theme/Omarchy/preview/channel/adoption setter rules and save-notice text (`settings::edits`, `settings::keymap_edits` and `settings::save_notice`, A18) | The schema, from V5b, `strata_desktop::settings::Saving`, `settings::resolve_keymap`, `settings::trashed`, `settings::keymap_edits`, `settings::edits` and `settings::save_notice` | `src/ui/preferences.rs` and the files under it, with `persistence.rs` as the wrapper around `Saving` and `keymap.rs` calling `resolve_keymap` and `KeymapOverrides` edits |
 
 Until a row says a store moved, its code stays where `main` has it, and a change to it is
 made as on `main`.
@@ -298,6 +298,7 @@ that the Rune interface matches the same catalog through the same tables.
 | `keys/bindings.rs` and the eight files under `keys/bindings/` | The catalog: every shortcut as a named constant |
 | `keys/command.rs` | `Command`, `Map`, `registry()`, `Keymap` with reading and writing a saved entry, and `active_keymap()` |
 | `keys/label.rs` | `Keys`, `Shown`, `Digits`, `Letters`, `label` and the functions beside it |
+| `keys/conflicts.rs` | `check`, `audit`, `audit_added`, `never_fires`, `duplicate_outcome`, `no_path` and the conflict findings (moved in A18) |
 
 The moved files changed in visibility, in paths, and where they called GDK or the
 preference manager, which are the three seams below. Six new files hold what is new:
@@ -433,11 +434,8 @@ with which library read it.
 
 `install` takes a second answer that is also the interface's own: `NeverFires`, whether a
 binding in a map's entry can ever fire there, which `label` uses to leave such a binding
-out. The GTK application's answer is `ui::keys::conflicts::never_fires`, from its own key
-stages. The Rune interface answers that every binding fires. For the shipped keys the two
-agree: GTK's check leaves out none of them, in either map, with type-to-search on or off.
-They differ only for a key a user added in a saved keymap, which GTK's check may leave out
-of a label and the Rune side always shows
+out. Since A18 moved `conflicts.rs` into `strata_desktop::keys::conflicts`, both interfaces
+install `conflicts::never_fires`
 ([`parity/owner.md`](parity/owner.md#b2-shared-state-out-of-the-gtk-package)).
 
 ### The settings that are read at each press: `Active`
@@ -489,15 +487,12 @@ cannot read a press as GDK does is in
 - **`alias.rs`, the GTK half:** what owns typing where a press lands, read from the focused
   widget, and GTK's own effect for an alias nothing claimed.
 - **`capture.rs` and `composition.rs`,** unchanged.
-- **`conflicts.rs`,** with three import lines changed. It knows which keys GTK's widgets
-  and input methods take, so it is GTK's. What the Rune settings report as a conflict is an
-  open question for the owner (lgse/strata#2133, lgse/strata#2150).
-- **`PreferenceManager`'s keymap methods** (`src/ui/preferences/keymap.rs`), unchanged.
-  "The keymap methods", under `PreferenceManager` below, says what each is and why none
-  moved.
-- **Every test.** `src/ui/keys/command/tests.rs` kept its path, through a test-only module
-  in `mod.rs`, so its test names and the names its GTK tests re-run themselves by did not
-  change.
+- **`PreferenceManager`'s keymap wrapper** (`src/ui/preferences/keymap.rs`), keeping the
+  cached `Rc<Keymap>` and `keymap_revision` and calling the shared resolve, conflict-report
+  and override-edit functions ("The keymap methods", under `PreferenceManager` below).
+- **Every test.** `src/ui/keys/command/tests.rs` and `src/ui/keys/conflicts/tests.rs` kept
+  their paths, through modules in `mod.rs`, so their test names and the names their GTK
+  tests re-run themselves by did not change.
 
 Outside `ui::keys`, a file that named `gdk::Key` or `gdk::ModifierType` for a binding or a
 press now names `ui::keys::Key` and `ui::keys::Modifiers`: an import line in most, and a
@@ -578,9 +573,9 @@ interfaces share. Its parts, and what the Rune side does about each:
 
 | Part | What it is | On the Rune side |
 | --- | --- | --- |
-| `keymap()` | The resolved tables, built on first use and kept. Building them logs the file's entries that cannot apply, an uppercase letter written without `<Shift>`, and what the conflict check finds about the keys the file adds | The helper that applies both maps' entries and logs those that cannot apply moved as text, with `report_capital_letters`, to `strata_desktop::settings::resolve_keymap` in a new file beside `settings/keymap.rs` (`settings/keymap_resolve.rs`); `keymap()` calls it. `commands::Live` calls it too, when the window registers it, and is given the settings file for the process's first window only, so the file's entries are logged once a process, as on GTK. The conflict report stays the conflict check's, which is GTK's (`src/ui/keys/conflicts.rs`): the Rune side logs no conflict |
+| `keymap()` | The resolved tables, built on first use and kept. Building them logs the file's entries that cannot apply, an uppercase letter written without `<Shift>`, and what the conflict check finds about the keys the file adds | `strata_desktop::settings::resolve_keymap` (`settings/keymap_resolve.rs`) and `report_keymap_conflicts` (`settings/keymap_edits.rs`, moved in A18) run on both interfaces; `commands::Live::registered` runs both for the process's first window only, so the file's entries and conflicts are logged once a process, as on GTK |
 | `keymap_revision()`, `shown_keys()` | What a GTK binding compares to know that a key label must be drawn again | Nothing. This interface draws from its state, and its `Active` holds the tables |
-| `set_bindings`, `reset_binding`, `reset_map` | The edits Settings makes to the saved overrides, a few lines each over `KeymapOverrides`. They hold the file's rules: bindings are saved in their normalized form with repeats dropped, the shipped bindings remove the entry, an empty list unbinds, and resetting a map keeps the entries whose ids this version does not know | Needed by the package that builds this interface's keyboard settings. They move then, by the rule above: methods on `KeymapOverrides` in a new file beside `settings/keymap.rs`, in that package's `contract` pull request, with the GTK methods calling them |
+| `set_bindings`, `reset_binding`, `reset_map` | The edits Settings makes to the saved overrides, a few lines each over `KeymapOverrides`. They hold the file's rules: bindings are saved in their normalized form with repeats dropped, the shipped bindings remove the entry, an empty list unbinds, and resetting a map keeps the entries whose ids this version does not know | Moved in A18 onto `KeymapOverrides` in `settings/keymap_edits.rs`, with the GTK methods calling them |
 | `edit_keymap` | Rebuilds the kept tables, bumps the revision and saves | `shell::saved(app).change(…)` saves. `commands::Live::follow`, which runs before each press is read and each view is built, resolves the tables again, logging nothing, when the saved overrides differ from the ones it resolved. A change another process saves is not followed, on this interface as for every other setting there yet ("What still differs", below) |
 
 The edits did not move with this package, for three reasons:
@@ -654,7 +649,6 @@ What still differs, with the package that will meet each:
 | A sort chosen in a folder | Stored for that folder while per-folder settings are on, and as the default otherwise | Always stored as the default | A8, lgse/strata#2140, and A10, lgse/strata#2142 |
 | A file that could not be read at start-up | A notice on the first change, and nothing saved over it | Nothing saved over it, and no notice after the warning in the log | A18, lgse/strata#2150 |
 | The old global `omarchy_variant` | Moved into the per-theme map when an Omarchy theme is active (`set_active_omarchy_theme`), and the old key is then removed by each save | Neither: nothing reads the old key, and it stays in the file | A18, lgse/strata#2150 |
-| A saved keymap's conflicts at start-up | `PreferenceManager::keymap` logs what the conflict check finds about the keys the file adds | Logs nothing: the conflict check is GTK's (`src/ui/keys/conflicts.rs`) | A6 and A18, with the owner's question on which conflicts Rune reports |
 | A recency sort handed to the save | `set_sort_preferences` returns early and stores nothing | `Saved::store_view` has no such guard | A3, lgse/strata#2130. Not observable today: `Browser::record_sort` returns early at the Recent root, so neither interface is ever handed one |
 
 ### Tests
@@ -720,11 +714,14 @@ Where each file is:
 | In `src/ui/preferences/file_settings.rs` on `main`: the bodies of `folder_color`, `set_folder_colors`, `custom_icon`, `set_custom_icon` and `clear_item_customization` | `crates/strata-desktop/src/settings/item_customization.rs` (`Preferences::item_color`, `set_item_colors`, `item_icon`, `set_item_icon` and `clear_item_customization`), which both interfaces call; the five methods now call it and keep GTK's save and `refresh_customized_icons`. A change from `main` to what is saved or which icon a path may wear conflicts in `file_settings.rs` and is applied to the new file by hand; a change to what GTK does around it stays in the method |
 | In `src/ui/preferences/item_customizations.rs` on `main`: `TrashedCustomizations`, the bodies of `relocate_item_customizations`, `forget_item_customizations` and `restore_item_customizations`, `key_path`, `take_within`, `relocate` and `rebased_key` | `crates/strata-desktop/src/settings/item_customization.rs` (`TrashedCustomizations`, `Preferences::relocate_item_customizations`, `forget_item_customizations` and `restore_item_customizations`, and `key_path`), which both interfaces call; the three methods now call it and keep GTK's `finish_item_customization_change` (`refresh_customized_icons_within` and the coalesced idle save). A change from `main` to how keys rebase, clear or come back conflicts in `item_customizations.rs` and is applied to the new file by hand; a change to GTK's save scheduling or icon refresh stays in `item_customizations.rs` |
 | In `src/assets.rs` on `main`: the bodies of `icons::custom_emoji` and `icons::is_customization_choice` | `crates/strata-desktop/src/settings/item_customization.rs` (`custom_emoji`, `is_icon_choice` and `ICON_CHOICES`); the two functions now call it. `CUSTOMIZATION_CHOICES` stays in `src/assets.rs`, and `assets::tests::customization_choices_are_unique_and_whitelisted` holds it equal to `ICON_CHOICES`: a choice added or changed on `main` is copied into the new file by hand, or that test fails |
-| In `src/ui/preferences/keymap.rs` on `main`: `KeymapOverrides::resolve`, `entries` and `report_capital_letters` | `crates/strata-desktop/src/settings/keymap_resolve.rs`, as `resolve_keymap` and the two helpers, which both interfaces call. A change from `main` to them conflicts in `keymap.rs`, against lines that are gone, and is applied to the new file by hand; a change to what GTK does around them (the conflict report, the kept tables, the revision) stays in `keymap.rs` |
+| In `src/ui/preferences/keymap.rs` on `main`: `KeymapOverrides::resolve`, `entries` and `report_capital_letters` | `crates/strata-desktop/src/settings/keymap_resolve.rs`, as `resolve_keymap` and the two helpers, which both interfaces call. A change from `main` to them conflicts in `keymap.rs`, against lines that are gone, and is applied to the new file by hand; a change to what GTK does around them (the kept tables, the revision) stays in `keymap.rs` |
+| In `src/ui/preferences/keymap.rs` on `main`: `report_findings`, `set_bindings`, `reset_binding` and `reset_map` | `crates/strata-desktop/src/settings/keymap_edits.rs` (`report_keymap_conflicts` and the three methods on `KeymapOverrides`), which both interfaces call. A change from `main` to what is logged or saved conflicts in `keymap.rs` and is applied to `keymap_edits.rs` by hand |
+| In `src/ui/preferences.rs`, `appearance_settings.rs`, `preview_settings.rs`, `file_settings.rs`, `input_settings.rs` and `folder_view_settings.rs` on `main`: `normalize_loaded_theme_selection`, `omarchy_variant`, `set_omarchy_variant`, `set_active_omarchy_theme`, `set_hardware_accelerated_video_previews`, `set_video_preview_backend`, `release_channel`, `set_release_channel`, `search_limits` and `adopt_defaults` | `crates/strata-desktop/src/settings/edits.rs` (`ADOPTED_DEFAULT_KEYS`, `ThemeAvailability` and the methods on `Preferences`), which both interfaces call; the GTK methods call them and keep GTK's `save_preferences`, `rebase`, `record_adopted` and `changes` calls |
+| In `src/ui/preferences/save_notice.rs` on `main`: `SaveSubject`, `SaveProblem` and `notice_text` | `crates/strata-desktop/src/settings/save_notice.rs` (`SaveSubject`, `NoticeProblem`, `save_notice_summary` and `save_notice_text`), which both interfaces call; `SaveNotices` and its GTK window/idle scheduling stay in `src/ui/preferences/save_notice.rs` |
 | `src/ui/keys.rs` | `crates/strata-desktop/src/keys.rs`, less the reader. A change from `main` to `on_press`, `on_release`, `read_event`, `signals`, `read`, `normalize_event` or `Event::read` conflicts there, against lines that are gone, and is applied by hand to `src/ui/keys/mod.rs` |
-| `src/ui/keys/bindings.rs`, the files under `bindings/`, `command.rs`, `label.rs` | The file of the same name under `crates/strata-desktop/src/keys/` |
+| `src/ui/keys/bindings.rs`, the files under `bindings/`, `command.rs`, `label.rs`, `conflicts.rs` | The file of the same name under `crates/strata-desktop/src/keys/` |
 | `src/ui/keys/alias.rs` | The same file as on `main`, less the rewrite. A change from `main` to `FALLBACK`, `Context`'s fields, `Aliasing`, `Alias`, `structural` or `rewrite` conflicts there, against lines that are gone, and is applied by hand to `crates/strata-desktop/src/keys/alias.rs`. `Context::of` and `Context::of_controller` are the free functions `context_of` and `context_of_controller` |
-| `src/ui/keys/capture.rs`, `composition.rs`, `conflicts.rs` and every test under `src/ui/keys/` | The same file as on `main` |
+| `src/ui/keys/capture.rs`, `composition.rs` and every test under `src/ui/keys/` | The same file as on `main` |
 | A change to `Matcher`'s fields in `command.rs` | It merges clean. `keys/command/matcher.rs`, which is new on this branch and reads `command`, `map` and `ignored` by name, then does not build, or builds and answers for a field that no longer says it: carry the change into its three accessors by hand |
 | A new item in a moved key file | It merges clean. `pub(crate)` builds in `strata-desktop` and fails where the application names the item: make it `pub`, and re-export it from `src/ui/keys/mod.rs` |
 | A new `#[cfg(test)]` item in a moved key file, such as a test's helper or a listing | It merges clean and compiles in `strata-desktop`, where the application's tests cannot see it: they are another crate's, and `cfg(test)` is on only for the crate under test. Make it `#[cfg(any(test, feature = "test-support"))]` and `pub`, as the move did for every such item, and re-export it from `src/ui/keys/mod.rs` under `#[cfg(test)]`. A new name that `src/ui/keys/command/tests.rs` takes from `super::` is added to the test-only `mod command` in `src/ui/keys/mod.rs` |
