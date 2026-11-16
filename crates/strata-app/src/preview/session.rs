@@ -99,6 +99,7 @@ pub(super) fn show(app: &mut App, entry: FileEntry, depth: Option<usize>, tx: &m
         app.preview.content_focus = super::ContentFocus::None;
     }
     cancel_focus_timer(app);
+    app.preview.click_opening = None;
     let was_open = app.preview.drawer.is_open();
     let already_showing = app.preview.current.as_ref() == Some(&entry)
         && (app.preview.loader.is_active() || !app.preview.viewer.is_empty());
@@ -158,25 +159,36 @@ pub(super) fn show_after_focus_change(
 pub(super) fn lend_slot_to_child(app: &mut App, depth: usize, entry: Option<&FileEntry>) {
     let active = app.browser.active_depth();
     let opening = click_opens(app, depth, entry);
+    if !opening {
+        // Any other focus ends the click's hold, as GTK's ends with its navigation.
+        app.preview.click_opening = None;
+    }
     app.preview.child_pane = browsing_columns(app)
         && !opening
         && (entry.is_some_and(FileEntry::is_directory) || active.is_some_and(|a| depth > a));
 }
 
-/// Whether the focus at `depth` on `entry` is the folder a click is opening, or its column's.
+/// Whether the focus at `depth` on `entry` is on the folder a click is opening in its column,
+/// or in the column that folder opens.
 fn click_opens(app: &App, depth: usize, entry: Option<&FileEntry>) -> bool {
-    let Some(folder) = app.preview.click_opening.as_ref() else {
+    let Some(opening) = app.preview.click_opening.as_ref() else {
         return false;
     };
     match entry {
-        Some(entry) => &entry.location == folder,
-        None => app.browser.location_at(depth).as_ref() == Some(folder),
+        Some(entry) => opening.depth == depth && entry.location == opening.folder,
+        None => {
+            opening.depth + 1 == depth
+                && app.browser.location_at(depth).as_ref() == Some(&opening.folder)
+        }
     }
 }
 
-/// The click's folder is open once its column has loaded, or failed to.
 pub(super) fn click_opened(app: &mut App, depth: usize) {
-    if app.preview.click_opening.as_ref() == app.browser.location_at(depth).as_ref() {
+    let opened = app.preview.click_opening.as_ref().is_some_and(|opening| {
+        opening.depth + 1 == depth
+            && app.browser.location_at(depth).as_ref() == Some(&opening.folder)
+    });
+    if opened {
         app.preview.click_opening = None;
     }
 }

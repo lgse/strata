@@ -1997,3 +1997,36 @@ sequence only together with the alphabet's version, so the version is part of th
   `pointer v1`, never merged. Not driven by hand on GTK.
 - **State:** open, set aside: no Rune change. `pointer v3` sends no keyboard cursor moves, and
   any fix belongs on `main`.
+
+### #2557: the Rune still-image preview names its picture for the file where GTK's is unnamed
+
+- **Code:** `divergence`, a `deviation` if the owner rules it so. [Issue](https://github.com/lgse/strata/issues/2557),
+  filed on 2026-11-16 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** in [A15](packages/A15.md)'s Slice 4, comparing the settled `app.preview` of a
+  previewed `pic.png` on both targets. GTK's picture (`render_sandboxed_media`,
+  `src/ui/preview/media_render.rs`) has no accessible name: `rasterized_label`
+  (`src/ui/preview/render.rs`) names only covers and models. Rune's C14b `ImageView` is an
+  `image` named for the file (`image_label`, `crates/strata-app/src/preview/image.rs`), with a
+  drawn caption of the name and dimensions that assistive technology does not read.
+- **Why:** C14b's work package asks for the name and dimensions
+  (`docs/rune/work/phase-3-views/C14b-viewers.md`; `docs/rune/work/STATUS.md`, "image caption
+  new"), a coordinator's choice, not an owner's ruling.
+- **Concerns:** A15's `preview` fuzz alphabet, which leaves non-cover still images out.
+- **State:** open, for the owner ([`owner.md`](owner.md), A15).
+
+### #2558: the Rune text and document previews name their body and split the text where GTK reads one buffer string
+
+- **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2558), filed on
+  2026-11-16 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** in [A15](packages/A15.md)'s Slice 4, comparing the settled `app.preview` on both
+  targets. For `notes.txt` GTK's `GtkSourceView` reads its buffer as one string, newlines
+  included (`"the quick brown fox\n"`); Rune's C10b `CodeView` is a `document` named
+  `"Source"` followed by each line's text. For a rendered `page.md` both read the blocks
+  (`"Heading"`, `"Body text."`), and Rune's C11 `DocumentView` adds a `document` named
+  `"Document"` before them. The names come from `labels::code` and `labels::document`
+  (`crates/strata-app/src/preview/labels.rs`).
+- **Concerns:** A15's `preview` fuzz alphabet, which leaves text and document bodies out while
+  open at step boundaries; `quick_preview/rendered-document-word-selection-rune`, which finds
+  the rendered document by its `"Document"` name.
+- **State:** open. Dropping the two names, and reading a code view's lines as one string,
+  would match GTK; the twin would then find the document another way.

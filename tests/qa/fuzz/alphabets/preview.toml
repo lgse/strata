@@ -20,20 +20,23 @@
 # Type to search is off (`prefs`), so `h`, `j`, `k` and `l` navigate outside text fields.
 #
 # Left out, with why:
-# - Leaving text (`CodeView`), rendered Markdown (`DocumentView`), CSV (`SheetGrid`,
-#   lgse/strata#2509), or non-cover still images (`ImageView` caption/name ruling) open at step
-#   boundaries: `open_preview` (`app.preview`) flattens every presented descendant's accessible
-#   name and text, where GTK's `GtkSourceView` reports one `\n`-joined buffer string, GTK's
-#   `GtkListView` omits Rune's `"Document"`/`"Source"` container names, and C11b uses `table`
-#   instead of `GtkColumnView`'s `tree table` (covered by the 50 `quick_preview` parity runs and
-#   3 `-rune` twins).
+# - Leaving text (`CodeView`), rendered Markdown (`DocumentView`), CSV (`SheetGrid`) or non-cover
+#   still images (`ImageView`) open at step boundaries: `app.preview` reads every presented
+#   descendant's accessible name and text, and the bodies differ there. GTK's `GtkSourceView`
+#   reads one buffer string where Rune reads a `"Source"` document and its lines, and Rune names
+#   the rendered document `"Document"` (lgse/strata#2558); C11b's `table` stands for
+#   `GtkColumnView`'s `tree table` (lgse/strata#2509); Rune names a still image's picture for the
+#   file where GTK's has no name (lgse/strata#2557, for the owner). The bodies are covered by the
+#   `quick_preview` parity runs and their `-rune` twins.
 # - Clicking `Open in default application` (`EXTERNAL_LINK`): with no desktop handler installed in
 #   the test image, `BrowserEvent::OpenRequested` opens `Open With` (A14's Slice 2, `properties.toml`).
-# - Opening a context menu while the preview is enabled: Rune's context menu is a modal layer that
-#   hides background `app.preview` while open (`qa/tree.rs`), as modal dialogs do
-#   (`properties.toml`), and a menu opened on another file selects it, which an enabled preview
-#   whose slot a folder's column holds then shows. `context-menu-preview` opens Quick Preview from
-#   `preview: null` on the focused file selected alone, whose menu moves no selection.
+# - Opening a context menu while the preview is enabled: behind a modal menu Rune's tree holds
+#   only the menu, and the QA backend presents the panes from what is drawn (`DrawnColumn`,
+#   `crates/strata-app/src/qa/tree.rs`) but not the preview, so `app.preview` reads `null` where
+#   GTK's tree keeps it, as `properties.toml` leaves out the preview behind a modal dialog. A menu
+#   opened on another file also selects it, which an enabled preview whose slot a folder's
+#   column holds then shows. `context-menu-preview` opens Quick Preview from `preview: null` on
+#   the focused file selected alone, whose menu moves no selection.
 # - Filtering outside Columns: in Icons and List, `Down` from the field into "Search results"
 #   fills `app.panes` on Rune and leaves it empty on GTK (lgse/strata#2499, A10's `filter`
 #   alphabet, whose corpus parks it). `filter-space-preview` filters in Columns.
@@ -46,8 +49,9 @@
 # Versions 1 and 2 were A15's drafts, never merged: version 1 caught `Map::Tenxer` `i` firing with
 # `tenxer_mode` off, default-mode `Space` inside the drawer closing the preview instead of
 # activating header buttons, `Open in default application` hiding instead of disabling on a
-# placeholder, `.a11y_hidden()` omitting the header's `"·"` separators, and stale `"—"` metadata
-# when `MetadataFilled` raced `PreviewEvent::Ready` in `List` (all five fixed), and met
+# placeholder and `.a11y_hidden()` omitting the header's `"·"` separators (all four fixed), and
+# stale `"—"` metadata when `MetadataFilled` raced `PreviewEvent::Ready` in `List` (a refresh
+# version 3 showed GTK does not make, so the header keeps what the request carried), and met
 # `CodeView`/`DocumentView`/`SheetGrid` body `app.preview` differences (lgse/strata#2509);
 # version 2 caught `handover::adopt` skipping `anchor`-only updates after `Quick preview` from a
 # context menu (`browser-view` invariant), `extension_label` uppercasing fallback extensions

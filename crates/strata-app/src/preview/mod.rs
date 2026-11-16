@@ -68,12 +68,19 @@ pub(crate) struct Preview {
     header_source: Option<(FileEntry, Option<String>)>,
     content_focus: ContentFocus,
     tab_shown: bool,
-    click_opening: Option<Location>,
+    click_opening: Option<ClickOpening>,
     focus_timer: Rc<RefCell<Option<glib::SourceId>>>,
     released_from: Option<Option<usize>>,
     operations: Option<file_activity::Subscription>,
     last_split_width: Option<f32>,
     was_in_band: bool,
+}
+
+/// The folder a click in Columns is opening, at `depth`, until its column has loaded.
+#[derive(Clone, Debug, PartialEq)]
+pub(super) struct ClickOpening {
+    pub(super) depth: usize,
+    pub(super) folder: Location,
 }
 
 /// Whether a `No visual preview` card has the keyboard: asked for until it shows, then owned

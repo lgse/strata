@@ -149,7 +149,8 @@ pub(crate) fn note_click_opening(app: &mut App, depth: usize, position: usize) {
         .entry_at(depth, position)
         .filter(FileEntry::is_directory)
         .map(|entry| entry.location)
-        .filter(|folder| !app.browser.is_open_child(depth, folder));
+        .filter(|folder| !app.browser.is_open_child(depth, folder))
+        .map(|folder| super::ClickOpening { depth, folder });
 }
 
 /// A closed filter puts the listing's cursor back without the browser's moving: the preview

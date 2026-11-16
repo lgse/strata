@@ -54,9 +54,10 @@ pointer v3 e4a464d3bf25d6d6
 # preview: version 1 was A15's draft, never merged: its smoke tier caught Map::Tenxer `i` firing
 # with tenxer_mode off, default-mode Space inside the drawer closing the preview instead of
 # activating header buttons, `Open in default application` hiding instead of disabling on a
-# placeholder, `.a11y_hidden()` omitting the header's `·` separators, and stale `—` metadata when
-# MetadataFilled raced PreviewEvent::Ready in List (all five fixed), and met CodeView/DocumentView/
-# SheetGrid body app.preview differences (lgse/strata#2509). Version 2, also a draft, previewed
+# placeholder and `.a11y_hidden()` omitting the header's `·` separators (all four fixed), and met
+# stale `—` metadata when MetadataFilled raced PreviewEvent::Ready in List (a refresh GTK does not
+# make, version 3 showed) and CodeView/DocumentView/SheetGrid body app.preview differences
+# (lgse/strata#2558, lgse/strata#2509). Version 2, also a draft, previewed
 # cover archives, RAW/archive failure cards, binary unsupported cards and folder/empty
 # placeholders: its smoke tier caught a context-menu Quick preview keeping the old anchor, the
 # extension label upper-cased, and `No visual preview` refusing focus on Right (all fixed), and
