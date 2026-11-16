@@ -15,7 +15,7 @@ use super::intent::ColumnsIntent;
 use super::keys;
 use super::pointer::{BackgroundClick, PeekClick, PeekGate};
 use super::sources::ColumnSources;
-use super::state::{ColumnsState, HeaderPeek};
+use super::state::{ColumnState, ColumnsState, HeaderPeek};
 use crate::collection::element::{
     Activation, Collection, Intent, KeyTaken, PointerInput, RowMarks, viewport_path,
 };
@@ -494,7 +494,7 @@ pub(super) fn collection<S: 'static>(sh: &Rc<Shared<S>>, s: &S, serial: u64) -> 
     let depth = p.state.depth_of(serial).unwrap_or(0);
     let key = keys::column(&p.state.key, serial);
     let c = new_column_collection(sh, serial, key.clone()).description(sh.labels.list.clone());
-    let mut c = hosted(sh, s, depth, c);
+    let c = hosted(sh, s, depth, c);
     let look = p.look;
     let column = &p.state.columns[depth.min(p.state.columns.len().saturating_sub(1))];
     let title = if depth < p.sources.len() {
@@ -511,9 +511,7 @@ pub(super) fn collection<S: 'static>(sh: &Rc<Shared<S>>, s: &S, serial: u64) -> 
         margin: strata_kit::slots::collection::row_inset(look),
         ..AutoscrollSettings::STRATA
     };
-    let (marks, intents, press, hdr_click, cursor, selection, drops, over) = (
-        sh.clone(),
-        sh.clone(),
+    let (marks, intents, press, hdr_click, cursor, selection) = (
         sh.clone(),
         sh.clone(),
         sh.clone(),
@@ -521,21 +519,12 @@ pub(super) fn collection<S: 'static>(sh: &Rc<Shared<S>>, s: &S, serial: u64) -> 
         sh.clone(),
         sh.clone(),
     );
-    let header = column::header(sh, s, depth, serial);
-    let header = std::cell::RefCell::new(Some(header));
-    let (feed, bar) = (column.feed.clone(), column.bar.clone());
-    let edge_bar = column.bar.clone();
-    let bar_key = format!("{key}-bar");
-    let bar_target = viewport_path(&key);
-    if let Some(f) = sh.drop_action.clone() {
-        let act = sh.clone();
-        c = c.drop_action(move |s: &S, target, offer, mods| {
-            f(s, Some((depth_of(&act, s, serial)?, target)), offer, mods)
-        });
-    }
+    let header = std::cell::RefCell::new(Some(column::header(sh, s, depth, serial)));
     let tall = sh.clone();
-    c.name(title)
+    let c = c
+        .name(title)
         .row_height(move |s: &S, l: &Look| row_height(&tall, s, serial, l))
+        .row_gap_y(1.0)
         .keys_by_host()
         .settings(pointer)
         .settings(autoscroll)
@@ -557,7 +546,25 @@ pub(super) fn collection<S: 'static>(sh: &Rc<Shared<S>>, s: &S, serial: u64) -> 
                 selection.emit(s, ColumnsIntent::Selection { depth }, tx);
             }
         })
-        .dnd(sh.dnd.clone())
+        .content(super::badge::content(sh, serial))
+        .describe(super::badge::describe(sh, serial));
+    let c = attach_column_dnd(sh, serial, c);
+    attach_column_scroll(sh, column, &key, c)
+}
+
+fn attach_column_dnd<S: 'static>(
+    sh: &Rc<Shared<S>>,
+    serial: u64,
+    mut c: Collection<S>,
+) -> Collection<S> {
+    if let Some(f) = sh.drop_action.clone() {
+        let act = sh.clone();
+        c = c.drop_action(move |s: &S, target, offer, mods| {
+            f(s, Some((depth_of(&act, s, serial)?, target)), offer, mods)
+        });
+    }
+    let (drops, over) = (sh.clone(), sh.clone());
+    c.dnd(sh.dnd.clone())
         .on_drop(move |s: &mut S, target, dropped, tx| {
             (drops.parts_mut)(s).state.drag_over(None);
             if let Some(depth) = depth_of(&drops, s, serial) {
@@ -573,19 +580,26 @@ pub(super) fn collection<S: 'static>(sh: &Rc<Shared<S>>, s: &S, serial: u64) -> 
             }
         })
         .on_drag_over(move |s: &mut S, at, tx| drag_over(&over, s, at, tx))
-        .content(super::badge::content(sh, serial))
-        .describe(super::badge::describe(sh, serial))
-        .on_scroll(move |p| {
-            feed.set(p);
-            bar.follow(p);
-        })
-        .edge({
-            let lk = sh.clone();
-            move |s: &S| {
-                let look = (lk.parts)(s).look;
-                Some(edge_bar.build::<S>(&bar_key, &bar_target, BarLook::column(look)))
-            }
-        })
+}
+
+fn attach_column_scroll<S: 'static>(
+    sh: &Rc<Shared<S>>,
+    column: &ColumnState,
+    key: &str,
+    c: Collection<S>,
+) -> Collection<S> {
+    let (feed, bar, edge_bar) = (column.feed.clone(), column.bar.clone(), column.bar.clone());
+    let bar_key = format!("{key}-bar");
+    let bar_target = viewport_path(key);
+    let lk = sh.clone();
+    c.on_scroll(move |p| {
+        feed.set(p);
+        bar.follow(p);
+    })
+    .edge(move |s: &S| {
+        let look = (lk.parts)(s).look;
+        Some(edge_bar.build::<S>(&bar_key, &bar_target, BarLook::column(look)))
+    })
 }
 
 fn new_column_collection<S: 'static>(

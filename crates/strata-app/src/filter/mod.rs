@@ -132,6 +132,10 @@ impl OpenIn {
                 app.columns.show_hits(self.depth, update, tx);
             }
             place if place.depth_shown(app, self.depth) => {
+                if !app.filter.pane.shows() {
+                    app.icons.autoscroll().stop_gone(None);
+                    app.list.autoscroll().stop_gone(None);
+                }
                 app.filter.pane.show(place, update, tx);
             }
             _ => {}

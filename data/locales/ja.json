@@ -127,6 +127,7 @@
   "Autoplay media previews": "メディアプレビューを自動再生",
   "Video preview start": "動画プレビューの開始位置",
   "Percent of a video's length to open it at; 0 starts at the beginning. A video you already previewed resumes where you left it.": "動画を開く位置を長さに対するパーセントで指定します。0 は最初から再生します。プレビュー済みの動画は前回止めた位置から再開します。",
+  "Autoscroll": "オートスクロール",
   "Available release": "利用可能なリリース",
   "BACK TO": "戻る先",
   "BITRATE": "ビットレート",

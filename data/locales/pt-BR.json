@@ -127,6 +127,7 @@
   "Autoplay media previews": "Reproduzir prévias de mídia automaticamente",
   "Video preview start": "Início das prévias de vídeo",
   "Percent of a video's length to open it at; 0 starts at the beginning. A video you already previewed resumes where you left it.": "Porcentagem da duração do vídeo em que ele abre; 0 começa do início. Um vídeo que você já visualizou continua de onde parou.",
+  "Autoscroll": "Rolagem automática",
   "Available release": "Versão disponível",
   "BACK TO": "VOLTAR PARA",
   "BITRATE": "TAXA DE BITS",

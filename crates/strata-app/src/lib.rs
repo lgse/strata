@@ -87,6 +87,7 @@ mod undo;
 mod appearance;
 // A9 Pointer and click modes
 mod clicks;
+mod pointer;
 // A10 Search, filter and sort
 mod filter;
 mod palette;
@@ -152,6 +153,7 @@ slots::parts! {
     // A8 View switching and appearance
     appearance: appearance::Appearance,
     // A9 Pointer and click modes
+    pointer: pointer::Pointer,
     // A10 Search, filter and sort
     filter: filter::Filter,
     palette: palette::Palette,
