@@ -1577,5 +1577,17 @@
   "Line %{line} of %{lines}": "Zeile %{line} von %{lines}",
   "Blank": "Leer",
   "Show password": "Passwort anzeigen",
-  "Hide password": "Passwort ausblenden"
+  "Hide password": "Passwort ausblenden",
+  "Document": "Dokument",
+  "Sheets": "Tabellenblätter",
+  "Table": "Tabelle",
+  "Row": "Zeile",
+  "Resize %{column}": "%{column} skalieren",
+  "Sort key %{index}": "Sortierschlüssel %{index}",
+  "ascending": "aufsteigend",
+  "descending": "absteigend",
+  "Table preview reached its text, column, or value budget; open the file to see all data.": "Die Tabellenvorschau hat das Limit für Text, Spalten oder Werte erreicht; öffnen Sie die Datei, um alle Daten anzuzeigen.",
+  "Loading sheet…": "Tabellenblatt wird geladen…",
+  "Try again": "Erneut versuchen",
+  "This sheet is empty": "Dieses Tabellenblatt ist leer"
 }

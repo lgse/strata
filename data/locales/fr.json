@@ -1577,5 +1577,17 @@
   "Line %{line} of %{lines}": "Ligne %{line} sur %{lines}",
   "Blank": "Vide",
   "Show password": "Afficher le mot de passe",
-  "Hide password": "Masquer le mot de passe"
+  "Hide password": "Masquer le mot de passe",
+  "Document": "Document",
+  "Sheets": "Feuilles",
+  "Table": "Tableau",
+  "Row": "Ligne",
+  "Resize %{column}": "Redimensionner %{column}",
+  "Sort key %{index}": "Clé de tri %{index}",
+  "ascending": "croissant",
+  "descending": "décroissant",
+  "Table preview reached its text, column, or value budget; open the file to see all data.": "L’aperçu du tableau a atteint sa limite de texte, de colonnes ou de valeurs ; ouvrez le fichier pour voir toutes les données.",
+  "Loading sheet…": "Chargement de la feuille…",
+  "Try again": "Réessayer",
+  "This sheet is empty": "Cette feuille est vide"
 }

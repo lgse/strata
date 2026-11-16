@@ -1577,5 +1577,17 @@
   "Line %{line} of %{lines}": "Line %{line} of %{lines}",
   "Blank": "Blank",
   "Show password": "Show password",
-  "Hide password": "Hide password"
+  "Hide password": "Hide password",
+  "Document": "Document",
+  "Sheets": "Sheets",
+  "Table": "Table",
+  "Row": "Row",
+  "Resize %{column}": "Resize %{column}",
+  "Sort key %{index}": "Sort key %{index}",
+  "ascending": "ascending",
+  "descending": "descending",
+  "Table preview reached its text, column, or value budget; open the file to see all data.": "Table preview reached its text, column, or value budget; open the file to see all data.",
+  "Loading sheet…": "Loading sheet…",
+  "Try again": "Try again",
+  "This sheet is empty": "This sheet is empty"
 }

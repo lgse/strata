@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: MIT
 
+use std::time::Duration;
+
 use rune::{Key, KeyEvent, Mods, Tx};
 use strata_core::model::Location;
 
-use super::{panel_pressed, viewer::Viewer};
+use super::{load::live_highlight_waiter_count, panel_pressed, show_document_view, viewer::Viewer};
 use crate::{
     App,
     commands::{On, Outcome, run},
@@ -11,6 +13,7 @@ use crate::{
     shell,
     test_support::{PATIENCE, fixture, hosted, send_key},
 };
+use strata_components::preview_drawer::{DocumentView, HostedPreview};
 
 const MODULE: &str = "preview::tests";
 
@@ -339,6 +342,132 @@ fn clicking_empty_reserved_slot_beside_columns_clears_selection() {
                 host.app().browser().selected_entries().is_empty(),
                 "plain click in empty reserved slot clears selection"
             );
+        },
+    );
+}
+
+fn has_element_key(host: &mut Offscreen, key: &str) -> bool {
+    host.runtime()
+        .elements()
+        .iter()
+        .any(|el| el.key.as_deref() == Some(key))
+}
+
+#[test]
+fn markdown_and_csv_render_as_document_and_sheet_and_switch_views() {
+    hosted(
+        MODULE,
+        "markdown_and_csv_render_as_document_and_sheet_and_switch_views",
+        |mut host| {
+            let folder = tempfile::tempdir().expect("tempdir");
+            std::fs::write(
+                folder.path().join("notes.md"),
+                "# Heading\n\nBody prose.\n\n```rust\nlet x = 1;\n```\n",
+            )
+            .expect("write md");
+            std::fs::write(folder.path().join("table.csv"), "name,value\nalpha,1\n")
+                .expect("write csv");
+            host.app().open(Location::local(folder.path()));
+            let counted = |host: &Offscreen| host.app().browser().column_entry_counts(0).is_some();
+            assert!(host.run_until(PATIENCE, counted));
+            while host.turn() {}
+            disable_auto_preview(&mut host);
+
+            let md = Location::local(folder.path().join("notes.md"));
+            select(&mut host, &md);
+            focus_view(&mut host);
+            space(&mut host);
+            let loaded = host.run_until(PATIENCE, |host| {
+                matches!(host.app().preview.viewer, Viewer::Document(_))
+            });
+            assert!(loaded, "Markdown loads into Viewer::Document");
+            while host.turn() {}
+            assert!(tree_has_name(&host.tree(), "View source"));
+            assert!(has_element_key(&mut host, "preview-document"));
+
+            host.runtime().update(|app: &mut App, tx: &mut Tx| {
+                show_document_view(app, DocumentView::Source, tx);
+            });
+            while host.turn() {}
+            assert!(tree_has_name(&host.tree(), "View rendered"));
+            assert!(has_element_key(&mut host, "preview-code"));
+
+            host.runtime().update(|app: &mut App, tx: &mut Tx| {
+                show_document_view(app, DocumentView::Rendered, tx);
+            });
+            while host.turn() {}
+            assert!(tree_has_name(&host.tree(), "View source"));
+
+            let csv = Location::local(folder.path().join("table.csv"));
+            select(&mut host, &csv);
+            let sheet_loaded =
+                host.run_until(PATIENCE, |host| host.app().preview.viewer.is_sheet());
+            assert!(sheet_loaded, "CSV renders in SheetGrid");
+            while host.turn() {}
+            assert!(has_element_key(&mut host, "preview-sheet"));
+            focus_view(&mut host);
+            press(&mut host, Key::Right, Mods::default());
+            assert_eq!(focused_key(&mut host).as_deref(), Some("preview-sheet"));
+        },
+    );
+}
+
+#[test]
+fn dropping_host_releases_highlight_waiters() {
+    let before = live_highlight_waiter_count();
+    hosted(
+        MODULE,
+        "dropping_host_releases_highlight_waiters",
+        |mut host| {
+            let folder = listed(&mut host);
+            let todo = Location::local(folder.path().join("todo.txt"));
+            select(&mut host, &todo);
+            wait_for_code_preview(&mut host);
+            assert!(live_highlight_waiter_count() > before);
+        },
+    );
+    assert_eq!(live_highlight_waiter_count(), before);
+}
+
+#[test]
+fn switching_code_previews_resets_scroll_to_top() {
+    hosted(
+        MODULE,
+        "switching_code_previews_resets_scroll_to_top",
+        |mut host| {
+            let folder = fixture();
+            let mut first = String::from("first top line\n");
+            let mut second = String::from("second top line\n");
+            for _ in 0..400 {
+                first.push_str("padding line\n");
+                second.push_str("padding line\n");
+            }
+            first.push_str("first bottom needle\n");
+            second.push_str("second bottom line\n");
+            std::fs::write(folder.path().join("a.txt"), first).expect("write a.txt");
+            std::fs::write(folder.path().join("b.txt"), second).expect("write b.txt");
+            host.app().open(Location::local(folder.path()));
+            let counted = |host: &Offscreen| host.app().browser().column_entry_counts(0).is_some();
+            assert!(host.run_until(PATIENCE, counted));
+            while host.turn() {}
+
+            let a = Location::local(folder.path().join("a.txt"));
+            select(&mut host, &a);
+            wait_for_code_preview(&mut host);
+            host.runtime().update(|app: &mut App, tx: &mut Tx| {
+                app.preview.drawer.start_find("needle");
+                app.preview.viewer.find("needle");
+                tx.wake_after(Duration::ZERO);
+            });
+            while host.turn() {}
+            assert!(tree_has_name(&host.tree(), "first bottom needle"));
+
+            let b = Location::local(folder.path().join("b.txt"));
+            select(&mut host, &b);
+            let loaded_top = host.run_until(PATIENCE, |host| {
+                tree_has_name(&host.tree(), "second top line")
+            });
+            assert!(loaded_top, "new preview starts scrolled to the top");
         },
     );
 }

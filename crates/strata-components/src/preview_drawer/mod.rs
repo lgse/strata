@@ -569,7 +569,7 @@ fn pane<S: 'static>(
         )
 }
 
-pub(super) fn return_as_space<S: 'static>(_: &mut S, ev: &KeyEvent, tx: &mut Tx) -> bool {
+pub(crate) fn return_as_space<S: 'static>(_: &mut S, ev: &KeyEvent, tx: &mut Tx) -> bool {
     if ev.key != rune::Key::Enter || ev.mods != rune::Mods::default() {
         return false;
     }
@@ -598,12 +598,13 @@ fn drawer_key<S: 'static>(
         find::close(shared, s, tx);
         return true;
     }
-    // A key typed in the find field is the field's (10xer's `/` is literal there).
-    if (shared.access)(s).find.query.focused {
+    // A plain key typed in the find field is the field's (10xer's `/` is literal there);
+    // modified chords such as Ctrl+F still re-select the query.
+    if (shared.access)(s).find.query.focused && !(ev.mods.ctrl || ev.mods.cmd || ev.mods.alt) {
         return false;
     }
     if searchable && find_keys(ev) {
-        find::open(shared, s);
+        find::open(shared, s, tx);
         return true;
     }
     false

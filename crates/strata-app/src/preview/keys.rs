@@ -14,7 +14,7 @@
 //!   in default mode, `/` in 10xer mode outside the find field).
 
 use rune::{Key, KeyEvent, Tx};
-use strata_components::{contract::EntryId, preview_drawer::HostedPreview};
+use strata_components::contract::EntryId;
 use strata_core::model::FileEntry;
 use strata_desktop::keys::{
     Active, Binding, Key as DesktopKey, KeyPress, Map, Modifiers,
@@ -33,11 +33,13 @@ const PREVIEW_IGNORED: Modifiers = Modifiers::SHIFT_MASK.union(Modifiers::SUPER_
 
 pub(super) const COMMANDS: &[Action<App>] = &[
     Action::new("preview-panel", toggle_panel),
-    Action::new("preview-close", close_from_preview).keys(&[Keys::at(
-        Stage::FilterAndLocationCommands,
-        &[PREVIEW.ignoring(Modifiers::empty())],
-    )
-    .when(in_preview_outside_find)]),
+    Action::new("preview-close", close_from_preview)
+        .command(PREVIEW)
+        .keys(&[Keys::at(
+            Stage::FilterAndLocationCommands,
+            &[PREVIEW.ignoring(Modifiers::empty())],
+        )
+        .when(in_preview_outside_find)]),
     Action::new("preview", space_preview)
         .command(PREVIEW)
         .keys(&[
@@ -213,7 +215,7 @@ fn enter_preview(app: &mut App, call: &Call<'_>, _: &mut Tx) -> Outcome {
     {
         return Outcome::Declined;
     }
-    if !app.preview.viewer.searchable() && app.preview.viewer.is_empty() {
+    if !app.preview.viewer.can_focus() {
         return Outcome::Declined;
     }
     app.preview.drawer.focus_content();

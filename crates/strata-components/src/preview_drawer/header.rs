@@ -54,7 +54,7 @@ pub(super) fn header<S: 'static>(
                     if (sh.access)(s).find.open {
                         find::close(&sh, s, tx);
                     } else {
-                        find::open(&sh, s);
+                        find::open(&sh, s, tx);
                     }
                 })
                 .build(k)

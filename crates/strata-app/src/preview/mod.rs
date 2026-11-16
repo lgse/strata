@@ -12,7 +12,7 @@ use std::{cell::RefCell, path::Path, rc::Rc};
 
 use rune::{El, Tx};
 use strata_components::preview_drawer::{
-    DrawerIntent, DrawerRules, DrawerState, HeaderInfo, PreviewDrawer,
+    DocumentView, DrawerIntent, DrawerRules, DrawerState, HeaderInfo, HostedPreview, PreviewDrawer,
 };
 use strata_core::{
     i18n::tr,
@@ -26,11 +26,13 @@ use strata_fs::{
     },
 };
 
+mod document;
 mod keys;
 mod labels;
 mod layout;
 mod load;
 mod session;
+mod sheet;
 pub(crate) mod viewer;
 
 #[cfg(test)]
@@ -51,6 +53,7 @@ pub(crate) struct Preview {
     viewer: Viewer,
     header: HeaderInfo,
     loader: Loader,
+    document_view: DocumentView,
     enabled: bool,
     reserve_columns: bool,
     dismissed: bool,
@@ -95,6 +98,7 @@ impl Part for Preview {
             viewer: Viewer::Empty,
             header: HeaderInfo::default(),
             loader,
+            document_view: DocumentView::Rendered,
             enabled: false,
             reserve_columns: true,
             dismissed: false,
@@ -116,15 +120,17 @@ impl Part for Preview {
         Some(Box::new(hear))
     }
 
-    fn poll(app: &mut App, _clock: f64, tx: &mut Tx) -> bool {
+    fn poll(app: &mut App, clock: f64, tx: &mut Tx) -> bool {
         ensure_operations_watch(app);
         app.preview.loader.sync_theme(&app.look);
+        let blocks = app.preview.loader.poll_blocks();
         app.columns
             .refresh_mirror_preferences(shell::preferences(app));
         let lit = session::browsing_columns(app) && app.columns.last_edge_lit();
         let lit_changed = app.preview.drawer.line_lit() != lit;
         app.preview.drawer.light_line(lit);
-        app.preview.viewer.poll(tx) | lit_changed
+        let viewer = app.preview.viewer.poll(clock, &app.look, tx);
+        blocks | viewer | lit_changed
     }
 
     fn switched(app: &mut App, tx: &mut Tx) {
@@ -198,6 +204,7 @@ fn on_intent(app: &mut App, intent: DrawerIntent, tx: &mut Tx) {
             session::clear_target(app, tx);
         }
         DrawerIntent::Open => open_current(app),
+        DrawerIntent::ShowView(view) => show_document_view(app, view, tx),
         DrawerIntent::SetWrap(wrap) => {
             app.preview.viewer.set_wrap(wrap);
             shell::saved(app).change(|settings| settings.preview_text_wrap = wrap);
@@ -208,6 +215,23 @@ fn on_intent(app: &mut App, intent: DrawerIntent, tx: &mut Tx) {
             tx.focus(crate::columns::VIEW, false);
         }
         _ => {}
+    }
+}
+
+fn show_document_view(app: &mut App, view: DocumentView, tx: &mut Tx) {
+    if view == DocumentView::Rendered && app.preview.viewer.take_render_pending() {
+        if let Some(entry) = app.preview.current.clone() {
+            load::reload_rendered(app, entry);
+        }
+        return;
+    }
+    if app.preview.viewer.show_view(view) {
+        app.preview.document_view = view;
+        if app.preview.drawer.is_finding() {
+            let query = app.preview.drawer.find_query().to_owned();
+            app.preview.viewer.find(&query);
+            tx.wake_after(std::time::Duration::ZERO);
+        }
     }
 }
 

@@ -419,7 +419,17 @@ impl<H: Host> Backend for Rune<H> {
                 mime,
                 message,
             } => {
-                let result = self.host.read_clipboard(mime.as_deref()).await?;
+                let mut result = self.host.read_clipboard(mime.as_deref()).await?;
+                if matches!(&result, Ok(Some(got)) if !text.matches(got)) {
+                    let deadline = Instant::now() + Duration::from_secs(1);
+                    while Instant::now() < deadline {
+                        self.host.sleep(Duration::from_millis(20)).await;
+                        result = self.host.read_clipboard(mime.as_deref()).await?;
+                        if !matches!(&result, Ok(Some(got)) if !text.matches(got)) {
+                            break;
+                        }
+                    }
+                }
                 let check = ClipboardCheck {
                     text,
                     mime: mime.as_deref(),

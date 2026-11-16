@@ -1577,5 +1577,17 @@
   "Line %{line} of %{lines}": "Riga %{line} di %{lines}",
   "Blank": "Vuota",
   "Show password": "Mostra password",
-  "Hide password": "Nascondi password"
+  "Hide password": "Nascondi password",
+  "Document": "Documento",
+  "Sheets": "Fogli",
+  "Table": "Tabella",
+  "Row": "Riga",
+  "Resize %{column}": "Ridimensiona %{column}",
+  "Sort key %{index}": "Chiave di ordinamento %{index}",
+  "ascending": "crescente",
+  "descending": "decrescente",
+  "Table preview reached its text, column, or value budget; open the file to see all data.": "L’anteprima della tabella ha raggiunto il limite di testo, colonne o valori; apri il file per vedere tutti i dati.",
+  "Loading sheet…": "Caricamento foglio…",
+  "Try again": "Riprova",
+  "This sheet is empty": "Questo foglio è vuoto"
 }

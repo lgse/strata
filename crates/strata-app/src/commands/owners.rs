@@ -69,8 +69,25 @@ pub(crate) struct Situation {
     holds: Option<(Holds, &'static str)>,
     /// The key of the element that has the keyboard.
     focused: Option<String>,
+    /// When no element has the keyboard, the path of an active text selection (for example,
+    /// selectable prose or source lines clicked inside the preview drawer).
+    selected: Option<String>,
     /// The key of the shown view's element that takes the keyboard.
     view: Option<&'static str>,
+}
+
+fn selected_path(tx: &Tx) -> Option<String> {
+    let selection = tx.text_selection()?;
+    selection
+        .texts()
+        .iter()
+        .find(|text| text.is_selected())
+        .map(|text| text.path().to_owned())
+}
+
+fn key_within_part(key: &str, part: &str) -> bool {
+    key.strip_prefix(part)
+        .is_some_and(|rest| !rest.starts_with(char::is_alphanumeric))
 }
 
 impl Situation {
@@ -80,9 +97,16 @@ impl Situation {
         let owners = parts
             .active()
             .filter_map(|part| Some(((part.keyboard)(app)?, part.name)));
+        let focused = tx.focused().map(str::to_owned);
+        let selected = if focused.is_none() {
+            selected_path(tx)
+        } else {
+            None
+        };
         Self {
             holds: owners.max_by_key(|(holds, _)| *holds),
-            focused: tx.focused().map(str::to_owned),
+            focused,
+            selected,
             view: shell::view_focus(app),
         }
     }
@@ -127,14 +151,16 @@ impl Situation {
     }
 
     /// Whether an element of the part whose keys start with `part` has it (`slots`, "Rules
-    /// for a part"): GTK's `sidebar.contains(focused)`. `part` is the name alone, and the key
-    /// is that name or goes on from it at a separator: `tabs-strip` is not within `tab`.
+    /// for a part"), or holds an active text selection while no element has keyboard focus:
+    /// GTK's `sidebar.contains(focused)`. `part` is the name alone, and the key is that name
+    /// or goes on from it at a separator: `tabs-strip` is not within `tab`.
     pub(crate) fn within(&self, part: &str) -> bool {
-        let rest = self
-            .focused
+        if let Some(key) = self.focused.as_deref() {
+            return key_within_part(key, part);
+        }
+        self.selected
             .as_deref()
-            .and_then(|key| key.strip_prefix(part));
-        rest.is_some_and(|rest| !rest.starts_with(char::is_alphanumeric))
+            .is_some_and(|path| path.split('/').any(|seg| key_within_part(seg, part)))
     }
 
     /// What owns typing where the press lands, for the aliases (`context_of` in

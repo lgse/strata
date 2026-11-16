@@ -1577,5 +1577,17 @@
   "Line %{line} of %{lines}": "%{lines}줄 중 %{line}번째 줄",
   "Blank": "빈 줄",
   "Show password": "비밀번호 표시",
-  "Hide password": "비밀번호 숨기기"
+  "Hide password": "비밀번호 숨기기",
+  "Document": "문서",
+  "Sheets": "시트",
+  "Table": "표",
+  "Row": "행",
+  "Resize %{column}": "%{column} 크기 조절",
+  "Sort key %{index}": "정렬 기준 %{index}",
+  "ascending": "오름차순",
+  "descending": "내림차순",
+  "Table preview reached its text, column, or value budget; open the file to see all data.": "표 미리보기가 텍스트, 열 또는 값 한도에 도달했습니다. 모든 데이터를 보려면 파일을 여세요.",
+  "Loading sheet…": "시트 불러오는 중…",
+  "Try again": "다시 시도",
+  "This sheet is empty": "이 시트는 비어 있습니다"
 }
