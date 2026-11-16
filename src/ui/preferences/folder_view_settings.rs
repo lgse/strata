@@ -20,7 +20,7 @@ use strata_desktop::settings::{
 pub(in crate::ui) use strata_desktop::settings::folder_views_path;
 
 use super::{
-    MAX_ICONS_THUMBNAIL_SIZE, MIN_ICONS_THUMBNAIL_SIZE, PreferenceManager, SHARED_MANAGER,
+    ADOPTED_DEFAULT_KEYS, PreferenceManager, SHARED_MANAGER,
     folder_views::{FolderKey, FolderViews, TakenViews, key_for_location},
     parse_preferences, settings_path,
     trashed::TrashedValues,
@@ -340,15 +340,9 @@ impl PreferenceManager {
         let this = self.this.clone();
         glib::MainContext::default().spawn_local(async move {
             if let (Ok(Ok(Some(saved))), Some(manager)) = (saved.await, this.upgrade())
-                && ![
-                    "sort_key",
-                    "sort_direction",
-                    "natural_sort",
-                    "case_sensitive_sort",
-                    "icons_thumbnail_size",
-                ]
-                .iter()
-                .any(|key| manager.setting_unsaved(key))
+                && !ADOPTED_DEFAULT_KEYS
+                    .iter()
+                    .any(|key| manager.setting_unsaved(key))
             {
                 manager.adopt_defaults(saved);
             }
@@ -356,34 +350,14 @@ impl PreferenceManager {
     }
 
     fn adopt_defaults(&self, saved: super::Preferences) {
-        let size = saved
-            .icons_thumbnail_size
-            .clamp(MIN_ICONS_THUMBNAIL_SIZE, MAX_ICONS_THUMBNAIL_SIZE);
         {
             let mut preferences = self.preferences.borrow_mut();
-            if preferences.sort_key == saved.sort_key
-                && preferences.sort_direction == saved.sort_direction
-                && preferences.natural_sort == saved.natural_sort
-                && preferences.case_sensitive_sort == saved.case_sensitive_sort
-                && preferences.icons_thumbnail_size == size
-            {
+            if !preferences.adopt_defaults(saved) {
                 return;
             }
-            preferences.sort_key = saved.sort_key;
-            preferences.sort_direction = saved.sort_direction;
-            preferences.natural_sort = saved.natural_sort;
-            preferences.case_sensitive_sort = saved.case_sensitive_sort;
-            preferences.icons_thumbnail_size = size;
-            self.saving.borrow_mut().record_adopted(
-                &preferences,
-                &[
-                    "sort_key",
-                    "sort_direction",
-                    "natural_sort",
-                    "case_sensitive_sort",
-                    "icons_thumbnail_size",
-                ],
-            );
+            self.saving
+                .borrow_mut()
+                .record_adopted(&preferences, &ADOPTED_DEFAULT_KEYS);
         }
         if self.changes.record(&self.preferences.borrow()) {
             self.changes.notify(self);

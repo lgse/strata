@@ -174,22 +174,13 @@ impl PreferenceManager {
     }
 
     pub fn release_channel(&self) -> Channel {
-        crate::services::InstallSource::detect()
-            .managed()
-            .and_then(crate::services::ManagedInstall::tracked_channel)
-            .unwrap_or_else(|| Channel::parse(&self.preferences.borrow().release_channel))
+        self.preferences.borrow().release_channel()
     }
 
     pub fn set_release_channel(&self, channel: Channel) {
-        if crate::services::InstallSource::detect()
-            .managed()
-            .and_then(crate::services::ManagedInstall::tracked_channel)
-            .is_some()
-        {
-            return;
+        if self.preferences.borrow_mut().set_release_channel(channel) {
+            self.save_preferences();
         }
-        self.preferences.borrow_mut().release_channel = channel.as_str().to_owned();
-        self.save_preferences();
     }
 
     pub fn on_release_channel_changed(

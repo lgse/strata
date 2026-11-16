@@ -6,7 +6,7 @@
 //!
 //! The catalog, the tables and `KeyPress` itself are `strata_desktop::keys`, re-exported
 //! here at the names they always had. What stays is what reads a GDK event or a widget:
-//! this reader, the native aliases, shortcut capture, composition, the conflict check, and
+//! this reader, the native aliases, shortcut capture, composition, and
 //! the backend that answers the shared code's key questions with GDK and GTK.
 
 use gtk::{
@@ -15,19 +15,26 @@ use gtk::{
     prelude::*,
 };
 pub(crate) use strata_desktop::keys::{
-    Binding, CUSTOM_ACTIONS, Command, CommandKind, DIRECT_IN_TENXER, Digits, Group, Key, KeyPress,
-    Keymap, Keys, Map, Match, Matcher, Modifiers, SHORTCUT_MODIFIERS, Shown, TEXT_EDITING,
-    bindings, custom_action_slot, digit_label, digit_value, direct_commands, label, label_in,
-    label_in_map, modifiers_label, modifiers_label_in, registry, search_text, shown,
+    Binding, CUSTOM_ACTIONS, Command, CommandKind, Digits, Group, Key, KeyPress, Keymap, Keys, Map,
+    Match, Matcher, Modifiers, SHORTCUT_MODIFIERS, Shown, TEXT_EDITING, bindings,
+    custom_action_slot, digit_label, direct_commands, label, label_in, label_in_map,
+    modifiers_label, modifiers_label_in, registry, search_text, shown,
 };
 use strata_desktop::keys::{Context, Event, normalize, rewrite};
 #[cfg(test)]
-pub(crate) use strata_desktop::keys::{DIRECT_IN_DEFAULT, Letters, main_key, use_keymap};
+pub(crate) use strata_desktop::keys::{
+    DIRECT_IN_DEFAULT, DIRECT_IN_TENXER, Letters, main_key, use_keymap,
+};
 
 mod alias;
 mod capture;
 mod composition;
-pub(crate) mod conflicts;
+pub(crate) mod conflicts {
+    pub(crate) use strata_desktop::keys::conflicts::*;
+
+    #[cfg(test)]
+    mod tests;
+}
 mod gdk_backend;
 
 /// The command registry's tests read key names and accelerators, so they stay with the

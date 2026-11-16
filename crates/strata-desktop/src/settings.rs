@@ -37,6 +37,7 @@ use crate::{
 mod corner_roundness;
 mod defaults;
 mod density;
+mod edits;
 pub mod folder_sort_policy;
 mod folder_view_file;
 pub mod folder_view_policy;
@@ -44,9 +45,11 @@ mod folder_view_store;
 pub mod folder_views;
 pub mod item_customization;
 mod keymap;
+mod keymap_edits;
 mod keymap_resolve;
 mod list_columns;
 mod persistence;
+pub mod save_notice;
 mod saving;
 mod stored;
 mod text_size;
@@ -63,6 +66,7 @@ use defaults::{
     default_video_preview_backend,
 };
 pub use density::{DensityPresets, store_density_px, stored_density_px};
+pub use edits::{ADOPTED_DEFAULT_KEYS, ThemeAvailability};
 pub use folder_view_file::{
     FolderViewsSave, folder_views_path, load_folder_views, save_folder_views,
 };
@@ -74,6 +78,7 @@ pub use item_customization::{
     EMOJI_PREFIX, ICON_CHOICES, TrashedCustomizations, custom_emoji, is_icon_choice,
 };
 pub use keymap::KeymapOverrides;
+pub use keymap_edits::report_keymap_conflicts;
 pub use keymap_resolve::resolve_keymap;
 use list_columns::is_default_list_column_order;
 pub use list_columns::{

@@ -385,6 +385,7 @@ fn the_rows_with_a_command_act_and_the_rest_are_inert() {
                     "preview",
                     "run",
                     "open-in-tab",
+                    "extract",
                     "cut",
                     "copy",
                     "duplicate",
