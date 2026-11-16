@@ -104,6 +104,9 @@ fn maybe_start_marquee<S: 'static>(
         return;
     }
     (cfg.get_mut)(s).1.origin_press = None;
+    if !cfg.keys_by_host {
+        tx.focus(&*cfg.key, false);
+    }
     let (anchor, now_pt) = {
         let st = (cfg.get)(s).1;
         (st.content_point(start), st.content_point(window))

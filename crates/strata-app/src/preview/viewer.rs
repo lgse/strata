@@ -552,7 +552,7 @@ fn message_view(look: &Look, title: &str, detail: Option<&str>, can_open: bool) 
         );
     }
     if can_open {
-        let open_label = tr("Open Externally");
+        let open_label = tr("Open");
         let button = Button::new(&open_label)
             .on_press(|app: &mut App| super::open_current(app))
             .build(&look.kit);

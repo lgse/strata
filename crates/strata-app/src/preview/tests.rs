@@ -570,6 +570,33 @@ fn image_preview_decodes_png_and_supports_enter_and_leave_keys() {
             );
             press(&mut host, Key::Left, Mods::default());
             assert_eq!(focused_key(&mut host).as_deref(), Some("columns"));
+            assert_blank_preview_click_and_marquee(&mut host);
         },
     );
+}
+
+fn assert_blank_preview_click_and_marquee(host: &mut Offscreen) {
+    press(host, Key::Right, Mods::default());
+    assert_eq!(focused_key(host).as_deref(), Some("preview-image-picture"));
+    let slot = host
+        .runtime()
+        .elements()
+        .into_iter()
+        .find(|el| el.key.as_deref() == Some("preview-slot"))
+        .expect("open preview slot");
+    let x = slot.rect[0] + slot.rect[2] - 24.0;
+    let y = slot.rect[1] + slot.rect[3] - 24.0;
+    host.runtime().pointer_down(x, y);
+    host.turn();
+    host.runtime().pointer_up(x, y);
+    while host.turn() {}
+    assert_eq!(focused_key(host).as_deref(), Some("preview-image-picture"));
+
+    host.runtime().pointer_down(x, y);
+    host.turn();
+    host.runtime().pointer_move(x - 64.0, y);
+    while host.turn() {}
+    assert_eq!(focused_key(host).as_deref(), Some("columns"));
+    host.runtime().pointer_up(x - 64.0, y);
+    while host.turn() {}
 }

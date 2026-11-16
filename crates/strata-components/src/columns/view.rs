@@ -363,7 +363,7 @@ impl<S: 'static> ColumnsView<S> {
     /// Routes a primary drag starting on an external marquee origin surface (such as the preview
     /// drawer) into the rightmost open column's collection.
     pub fn origin_drag(&self, s: &mut S, (d, clears_on_press): (&mut Drag, bool), tx: &mut Tx) {
-        let serial = {
+        let (serial, last, was_in_band, press_mods) = {
             let p = (self.sh.parts_mut)(s);
             let n = p.sources.len().min(p.state.columns.len());
             if n == 0 {
@@ -373,9 +373,45 @@ impl<S: 'static> ColumnsView<S> {
             if clears_selection_on_press(d.phase, clears_on_press, tx.mods()) {
                 p.state.clear_selection(p.sources);
             }
-            p.state.columns[n - 1].serial
+            let last = n - 1;
+            let col = &p.state.columns[last];
+            (
+                col.serial,
+                last,
+                col.collection.selection.in_band(),
+                col.collection.origin_press.map(|(_, m)| m),
+            )
         };
         collection(&self.sh, s, serial).origin_drag(s, (d, clears_on_press), tx);
+        if !was_in_band {
+            let plain = is_plain_mods(press_mods.unwrap_or_else(|| tx.mods()));
+            self.finish_origin_marquee_start(s, (last, plain), tx);
+        }
+    }
+
+    fn finish_origin_marquee_start(&self, s: &mut S, (last, plain): (usize, bool), tx: &mut Tx) {
+        let started = {
+            let p = (self.sh.parts_mut)(s);
+            let in_band = p
+                .state
+                .columns
+                .get(last)
+                .is_some_and(|c| c.collection.selection.in_band());
+            if in_band {
+                p.state.targeted = Some(last);
+                p.state.set_active_quiet(last);
+                if plain {
+                    p.state.clear_before(last, p.sources);
+                }
+                Some(p.state.key.clone())
+            } else {
+                None
+            }
+        };
+        if let Some(key) = started {
+            tx.focus(key, false);
+            self.sh.emit(s, ColumnsIntent::Active { depth: last }, tx);
+        }
     }
 
     /// What the strip tells C9's drawer about itself, for `PreviewDrawer::arrangement` in
@@ -420,8 +456,12 @@ impl<S: 'static> ColumnsView<S> {
     }
 }
 
+fn is_plain_mods(m: Mods) -> bool {
+    !(m.ctrl || m.shift || m.cmd)
+}
+
 fn clears_selection_on_press(phase: Phase, clears: bool, m: Mods) -> bool {
-    phase == Phase::Down && clears && !(m.ctrl || m.shift || m.cmd)
+    phase == Phase::Down && clears && is_plain_mods(m)
 }
 
 /// Column `serial`'s row height: one line, or the name and a two-line detail under it while

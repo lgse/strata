@@ -565,14 +565,16 @@ fn key_in<S: 'static>(
     if copy_shortcut(st, ev, plain, tx) {
         return true;
     }
-    if let Some(handled) = caret::on_key(st, ev, tx) {
-        return handled;
-    }
+    // In a hosted preview (`intent` set), plain Left returns to the listing on the first press
+    // even when text is selected, matching GTK's capture-phase `PreviewSurface::Document`.
     if is_plain_left(ev)
         && let Some(f) = intent.clone()
     {
         f(s, CodeIntent::Leave, tx);
         return true;
+    }
+    if let Some(handled) = caret::on_key(st, ev, tx) {
+        return handled;
     }
     false
 }

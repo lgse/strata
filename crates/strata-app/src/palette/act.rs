@@ -33,12 +33,13 @@ pub(super) fn open(app: &mut App, id: &str, tx: &mut Tx) {
 }
 
 /// Alt+Return or the result's menu on `id`: its folder, with it selected; the palette has
-/// closed.
+/// closed (`src/ui/window/composition/search.rs`).
 pub(super) fn reveal(app: &mut App, id: &str, tx: &mut Tx) {
     let Some(found) = app.palette.found.get(id).cloned() else {
         return;
     };
     shell::publish(app);
+    preview::clear_search_target(app, tx);
     reveal_location(app, Location::local(found.path), tx);
     shell::settle(app, tx);
 }

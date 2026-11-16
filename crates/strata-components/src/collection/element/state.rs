@@ -94,7 +94,7 @@ pub struct CollectionState {
     pub(super) deferred: Option<super::seam::PointerInput>,
     /// A press on an external marquee origin (`Collection::origin_drag`) waiting to cross the
     /// drag threshold.
-    pub(super) origin_press: Option<(Point, rune::Mods)>,
+    pub(crate) origin_press: Option<(Point, rune::Mods)>,
     /// Reveals move only this collection's viewport
     /// ([`CollectionState::set_own_viewport_reveals`]).
     pub(super) own_viewport_reveals: bool,

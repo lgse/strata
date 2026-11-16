@@ -763,6 +763,20 @@ impl ColumnsState {
         self.clear_all(sources);
     }
 
+    /// Clears the selection in every column before `limit` (the cursors stay) and resets their
+    /// pending click gestures when a plain marquee starts in column `limit`.
+    pub(super) fn clear_before(&mut self, limit: usize, sources: &dyn ColumnSources) {
+        for (depth, c) in self.columns.iter_mut().enumerate().take(limit) {
+            if let Some(ctl) = c.collection.controllers.pointer.as_mut() {
+                ctl.reset();
+            }
+            if depth < sources.len() && !c.collection.selection.is_empty() {
+                c.collection.selection.clear();
+                c.collection.note_selection(sources.source(depth));
+            }
+        }
+    }
+
     /// Clears the selection in every column (the cursors stay).
     pub(super) fn clear_all(&mut self, sources: &dyn ColumnSources) {
         for (depth, c) in self.columns.iter_mut().enumerate() {

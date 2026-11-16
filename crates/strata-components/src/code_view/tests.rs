@@ -410,3 +410,79 @@ fn gutter_drag_selects_into_line() {
         .expect("gutter drag selects into line");
     assert!(copied.contains("quick"), "copied {copied:?}");
 }
+
+#[test]
+fn line_break_and_blank_line_shift_selection_survive_frames_and_hosted_left_leaves() {
+    use std::cell::Cell;
+    use std::rc::Rc;
+
+    use rune::{Cx, El, Env, Key, KeyEvent, Mods, Runtime};
+    use strata_kit::look::Look;
+
+    use super::{CodeIntent, CodeView};
+
+    struct Host {
+        code: CodeState,
+        look: Look,
+        left_count: Rc<Cell<usize>>,
+    }
+    fn view(s: &Host, cx: &mut Cx<Host>) -> El {
+        let sink = s.left_count.clone();
+        CodeView::new(|h: &Host| &h.code, |h: &mut Host| &mut h.code)
+            .on_intent(move |_, intent, _| {
+                if intent == CodeIntent::Leave {
+                    sink.set(sink.get() + 1);
+                }
+            })
+            .build(s, &s.look, cx)
+    }
+
+    let left_seen = Rc::new(Cell::new(0usize));
+    let mut rt = Runtime::new(
+        Host {
+            code: CodeState::new("\ndef\nghi\njkl\n"),
+            look: Look::fallback(false),
+            left_count: left_seen.clone(),
+        },
+        view,
+        (320.0, 200.0),
+        Env::new(false, 1.0),
+    );
+    for _ in 0..4 {
+        rt.frame(1.0 / 60.0);
+    }
+    rt.update(|_, tx| {
+        tx.focus("code", true);
+    });
+    rt.frame(1.0 / 60.0);
+
+    let send = |rt: &mut Runtime<Host>, key: Key, mods: Mods| {
+        rt.key(KeyEvent { key, mods });
+        rt.frame(1.0 / 60.0);
+    };
+    let ctrl = Mods {
+        ctrl: true,
+        ..Mods::default()
+    };
+    let shift = Mods {
+        shift: true,
+        ..Mods::default()
+    };
+    send(&mut rt, Key::Home, ctrl);
+    send(&mut rt, Key::Down, shift);
+    assert_eq!(rt.state.code.copy_keyboard().as_deref(), Some("\n"));
+    send(&mut rt, Key::End, shift);
+    assert_eq!(rt.state.code.copy_keyboard().as_deref(), Some("\ndef"));
+
+    send(&mut rt, Key::End, Mods::default());
+    send(&mut rt, Key::Down, shift);
+    assert_eq!(rt.state.code.copy_keyboard().as_deref(), Some("\nghi"));
+    send(&mut rt, Key::End, Mods::default());
+    send(&mut rt, Key::Right, shift);
+    assert_eq!(rt.state.code.copy_keyboard().as_deref(), Some("\n"));
+    send(&mut rt, Key::Down, shift);
+    assert_eq!(rt.state.code.copy_keyboard().as_deref(), Some("\njkl\n"));
+
+    send(&mut rt, Key::Left, Mods::default());
+    assert_eq!(left_seen.get(), 1);
+}

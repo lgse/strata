@@ -411,16 +411,32 @@ impl CodeState {
         let (lo, hi) = (anchor.min(head), anchor.max(head));
         if lo < hi {
             self.content.keyboard_range.set(Some((lo, hi)));
-            let r = self.content.rows.row_at(lo);
-            let row = self.content.rows.row(r);
-            let range = (lo - row.start)..(hi.min(row.end) - row.start);
-            self.expected_select = Some(Some((r, range.clone())));
-            tx.select_text(format!("{}/t", self.row_key(r)), range);
+            if let Some((r, range)) = self.first_nonempty_row_slice(lo, hi) {
+                self.expected_select = Some(Some((r, range.clone())));
+                tx.select_text(format!("{}/t", self.row_key(r)), range);
+            } else {
+                self.expected_select = Some(None);
+                tx.clear_text_selection();
+            }
         } else {
             self.content.keyboard_range.set(None);
             self.expected_select = Some(None);
             tx.clear_text_selection();
         }
+    }
+
+    fn first_nonempty_row_slice(&self, lo: usize, hi: usize) -> Option<(usize, Range<usize>)> {
+        let start_row = self.content.rows.row_at(lo);
+        let end_row = self.content.rows.row_at(hi);
+        for r in start_row..=end_row {
+            let row = self.content.rows.row(r);
+            let a = lo.max(row.start);
+            let b = hi.min(row.end);
+            if a < b {
+                return Some((r, (a - row.start)..(b - row.start)));
+            }
+        }
+        None
     }
 
     pub(crate) fn copy_keyboard(&self) -> Option<String> {
