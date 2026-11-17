@@ -447,15 +447,8 @@ the orchestrating session, 2026-11-12):
    size (`for_tenxer_key`), which call A1's commands too. Sources:
    `src/ui/browser_modes/thumbnail_size.rs`, `src/ui/window/keyboard/wheel_zoom.rs`,
    `src/ui/preferences/folder_view_settings.rs`.
-10. **Who owns the window-level zoom wheel, and the text size?** GTK's Ctrl+wheel steps the
-   interface's text size and Ctrl+Shift+wheel the Icons thumbnail size from anywhere in the
-   window except the PDF preview, which zooms itself (`zoom_controller` and `claims_zoom` in
-   `src/ui/window/keyboard/wheel_zoom.rs`, a capture-phase controller on the window's root).
-   Rune's Icons view takes Ctrl+Shift+wheel only over its grid (C3's `WheelSteps`), and no
-   package has the text size (Ctrl+plus, Ctrl+minus, Ctrl+0, `text_size().for_shortcut` at the
-   same `zoom_shortcut` stage). The coordinator suggests [A6](packages/A6.md) or a window
-   package take both, the wheel calling A1's thumbnail commands. Meanwhile: the wheel works
-   over the grid only, and the text size does not change on Rune.
+10. *Ruled on 2026-11-17, with A16's item: [A16](packages/A16.md) builds the window-level zoom
+   wheel (see [Ruled](#ruled)). The number is kept, since other files cite items 11 and 12.*
 11. **Down in an empty Icons view** (finding
    [#2408](https://github.com/lgse/strata/issues/2408)). On the canonical fixture, type to
    search off: Right on `archive` in Columns (the fixture's one empty folder), Ctrl+2, Down.
@@ -813,6 +806,15 @@ Rulings of the owner on the parity work, oldest first.
   comes from a separate reviewer session; a re-review of a small, test-only or docs-only fixup
   after it may be the coordinator's, and the coordinator may make docs-only touch-ups to a
   package's file before merging. Source: the owner, 2026-11-16.
+- **2026-11-17: A16 builds the window-level zoom wheel** (A1's item 10, "Who owns the
+  window-level zoom wheel, and the text size?", and A16's item 1, the two
+  `pdf-zoom-keeps-text-size` runs it held). GTK's Ctrl+wheel steps the interface's text size,
+  and Ctrl+Shift+wheel the Icons tile size, from anywhere in the window but the PDF preview,
+  which zooms itself (`zoom_controller` and `claims_zoom`, `src/ui/window/keyboard/wheel_zoom.rs`).
+  [A16](packages/A16.md) builds it in the pull request that mounts the PDF preview, since the two
+  share the zoom stage: the wheel calls the text size's commands ([A8](packages/A8.md)) and the
+  tile size's ([A1](packages/A1.md)), and the PDF's reset follows the key map. Source: the owner,
+  2026-11-17.
 
 ## Housekeeping
 

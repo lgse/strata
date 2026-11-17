@@ -1591,5 +1591,9 @@
   "Table preview reached its text, column, or value budget; open the file to see all data.": "La vista previa de la tabla alcanzó el límite de texto, columnas o valores; abra el archivo para ver todos los datos.",
   "Loading sheet…": "Cargando hoja…",
   "Try again": "Intentar de nuevo",
-  "This sheet is empty": "Esta hoja está vacía"
+  "This sheet is empty": "Esta hoja está vacía",
+  "PDF document": "Documento PDF",
+  "Page %{page} of %{pages}": "Página %{page} de %{pages}",
+  "Page %{page} of %{pages}, %{zoom}%": "Página %{page} de %{pages}, %{zoom} %",
+  "Loading page": "Cargando página"
 }

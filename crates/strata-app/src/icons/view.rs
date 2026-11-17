@@ -46,7 +46,7 @@ pub(crate) fn grid() -> IconsGrid<App> {
         app.icons.fills.see(range);
         false
     })
-    .on_wheel(single::wheeled::<Icons>)
+    .on_wheel(single::wheeled_over_grid::<Icons>)
     .on_size(size::resized)
 }
 
@@ -97,6 +97,7 @@ pub(crate) fn results() -> IconsGrid<App> {
         crate::file_providers::badge_version,
         crate::file_providers::badge_pixels,
     )
+    .on_wheel(|app: &mut App, e, tx| crate::appearance::wheel::over_grid(app, e, tx))
     .on_size(size::resized)
 }
 

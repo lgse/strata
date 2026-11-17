@@ -79,41 +79,36 @@ host = "offscreen"
 scenario = "password-protected-pdf-reports-reason"
 run = "columns"
 package = "A16"
-status = "pending"
-reason = "scope"
-blocker = "A16"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "pdf-preview-copies-text"
 run = "columns"
 package = "A16"
-status = "pending"
-reason = "scope"
-blocker = "A16"
+status = "required"
+host = "session"
 
 [[run]]
 scenario = "pdf-zoom-keeps-text-size"
 run = "columns-wheel"
 package = "A16"
-status = "pending"
-reason = "scope"
-blocker = "A16"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "pdf-zoom-keeps-text-size"
 run = "columns-reset"
 package = "A16"
-status = "pending"
-reason = "scope"
-blocker = "A16"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "pdf-zoom-keeps-text-size"
 run = "columns-reset-tenxer"
 package = "A11"
-status = "pending"
-reason = "scope"
-blocker = "A16: the PDF viewer (line 6 waits for the preview drawer's `PDF page text` image), and its window-level Ctrl+wheel zoom (A16's open #2569)"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "preview-boundary-resizes-grabbed-side"
@@ -168,9 +163,8 @@ host = "offscreen"
 scenario = "preview-focus-ignores-file-commands"
 run = "columns-pdf"
 package = "A16"
-status = "pending"
-reason = "scope"
-blocker = "A16"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "preview-focus-ignores-file-commands"

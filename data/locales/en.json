@@ -1591,5 +1591,9 @@
   "Table preview reached its text, column, or value budget; open the file to see all data.": "Table preview reached its text, column, or value budget; open the file to see all data.",
   "Loading sheet…": "Loading sheet…",
   "Try again": "Try again",
-  "This sheet is empty": "This sheet is empty"
+  "This sheet is empty": "This sheet is empty",
+  "PDF document": "PDF document",
+  "Page %{page} of %{pages}": "Page %{page} of %{pages}",
+  "Page %{page} of %{pages}, %{zoom}%": "Page %{page} of %{pages}, %{zoom}%",
+  "Loading page": "Loading page"
 }

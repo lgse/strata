@@ -1591,5 +1591,9 @@
   "Table preview reached its text, column, or value budget; open the file to see all data.": "表格預覽已達到文字、欄數或儲存格數量上限；請開啟檔案以檢視完整資料。",
   "Loading sheet…": "正在載入工作表…",
   "Try again": "重試",
-  "This sheet is empty": "此工作表為空白"
+  "This sheet is empty": "此工作表為空白",
+  "PDF document": "PDF 文件",
+  "Page %{page} of %{pages}": "第 %{page} 頁，共 %{pages} 頁",
+  "Page %{page} of %{pages}, %{zoom}%": "第 %{page} 頁，共 %{pages} 頁，%{zoom}%",
+  "Loading page": "正在載入頁面"
 }

@@ -287,3 +287,4 @@ mod density;
 mod first_visit;
 mod popover;
 mod text_size;
+mod wheel;

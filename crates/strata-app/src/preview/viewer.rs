@@ -34,7 +34,9 @@ use super::{
     archive,
     document::{self, DecodedMedia, MediaTask, RenderedDocument},
     image::{self, ImageViewer},
-    labels, sheet,
+    labels,
+    pdf::{self, PdfViewer},
+    sheet,
 };
 use crate::{App, buttons};
 
@@ -62,6 +64,7 @@ pub(super) enum Viewer {
     Code(Box<CodeState>),
     Document(DocumentViewer),
     Image(Box<ImageViewer>),
+    Pdf(Box<PdfViewer>),
     Archive(Box<ArchiveState>),
     ArchivePrompt(Box<PromptState>),
     Message {
@@ -101,6 +104,7 @@ impl Viewer {
             Self::Code(_)
             | Self::Document(_)
             | Self::Image(_)
+            | Self::Pdf(_)
             | Self::Archive(_)
             | Self::ArchivePrompt(_) => true,
             Self::Message { can_open, .. } => *can_open,
@@ -183,8 +187,10 @@ impl Viewer {
     }
 
     pub(super) fn stop(&mut self) {
-        if let Self::Document(doc) = self {
-            doc.stop();
+        match self {
+            Self::Document(doc) => doc.stop(),
+            Self::Pdf(pdf) => pdf.stop(),
+            _ => {}
         }
     }
 
@@ -281,6 +287,7 @@ impl Viewer {
             Self::Code(_) => Some(code_view(app, cx, code_ref, code_mut)),
             Self::Document(doc) => doc.build(app, cx),
             Self::Image(img) => Some(image::build_view(img, app, cx, image_viewport_mut)),
+            Self::Pdf(_) => Some(pdf::build_view(app, cx)),
             Self::Archive(_) => Some(archive::build_archive_view(app, archive_ref, archive_mut)),
             Self::ArchivePrompt(prompt) => {
                 Some(archive::build_prompt_view(prompt, &app.look, prompt_mut))

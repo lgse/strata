@@ -38,6 +38,7 @@ const RETURN_IGNORED: Modifiers = Modifiers::CONTROL_MASK
 pub(super) const TENXER_RETURN: Matcher = FOCUS_PREVIOUS.ignoring(RETURN_IGNORED);
 
 pub(super) const COMMANDS: &[Action<App>] = &[
+    super::pdf::RESET,
     Action::new("preview-panel", toggle_panel),
     Action::new("preview-close", close_from_preview)
         .command(PREVIEW)
