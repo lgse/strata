@@ -153,7 +153,8 @@ closed issue is not a fixed finding: the state given here is the finding's.
   `ui::media::tests::reopening_resumes_where_the_preview_closed`
   (`src/ui/media/tests.rs:99`, `assertion failed: media.imp().first_frame.get()`), failed once
   in `./scripts/quality.sh all` in the pinned image at `17d3fa87d` on a loaded host, and 1
-  time in 3 alone (`./scripts/test-headless.py`). That change touches no `src/`.
+  time in 3 alone (`./scripts/test-headless.py`). At `60c062c9a`, with `strata-next` merged
+  again, the ninth failed once more there, with its message. That change touches no `src/`.
 - **State:** open, set aside. Whoever meets one of these in a red shard reads the failure
   first: if the change could reach the test, it is the change's; if not, say why on the pull
   request, rerun the whole workflow once, and stop if the same test fails twice. A new flaky
@@ -2132,3 +2133,21 @@ sequence only together with the alphabet's version, so the version is part of th
   archive opens, the header named its kind `ZIP` (`extension_label`,
   `crates/strata-app/src/preview/load.rs`) where GTK writes the extension as it is, `zip`.
   `archives` v4 keeps the drawer closed, and the nine `archive_preview` runs hold the preview.
+
+### #2562: `keyboard-open-selects-first-child/columns` did not open `documents` once in a full Rune run
+
+- **Code:** none of the plan's: a flaky Rune run, labelled `testing`.
+  [Issue](https://github.com/lgse/strata/issues/2562), filed on 2026-11-16 as the finding's
+  reference and closed at once: its state is kept here.
+- **Seen:** in a full `./scripts/qa-parity.sh all` for
+  [#2561](https://github.com/lgse/strata/pull/2561)'s gate at `60c062c9a`, on a loaded host
+  (rune offscreen 617 of 618). The run failed at line 4: after `select_with_keyboard` reached
+  `documents` and Return was sent, the browser still worked in the fixture's root after
+  15 s. Alone, it passed 3 of 3 on both targets right afterwards, and those rounds overwrote the
+  failing run's artifacts. #2561 changes nothing in Columns or the keyboard.
+- **Concerns:** `click_modes/keyboard-open-selects-first-child/columns`, `required`,
+  [A9](packages/A9.md)'s.
+- **Resembles:** [#2322](#2322-scrolled-away-crumbs-and-columns-stay-reachablecolumns-left-focus-nowhere-once-in-a-full-rune-run)
+  (a Rune Columns keyboard step left undone after 15 s in a full run) and
+  [#2162](#2162-new-folder-with-selection-groupscolumns-is-flaky) on GTK. Not traced.
+- **State:** open, unowned. The ledger is unchanged: the run stays `required`.
