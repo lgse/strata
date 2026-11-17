@@ -98,6 +98,9 @@ pub struct JobRow {
     pub output_truncated: bool,
     /// The failure's message, shown before the output.
     pub error: Option<String>,
+    /// What the job reported it created, as the host words it ("Reported 2 items created."),
+    /// shown under the output in Details.
+    pub created: Option<String>,
 }
 
 impl JobRow {
@@ -117,6 +120,7 @@ impl JobRow {
             output: String::new(),
             output_truncated: false,
             error: None,
+            created: None,
         }
     }
 }
@@ -566,27 +570,7 @@ impl<S: 'static> Jobs<S> {
             content = content.child(bar.key(format!("{key}-bar")));
         }
         if expanded {
-            let mut output = rune::text(text::details(r, words))
-                .key(format!("{key}-output"))
-                .font(k.ty.mono)
-                .color(c.text_base)
-                .wrap()
-                .w_full()
-                .selectable(true)
-                .selection_color(k.selection());
-            if r.output_truncated {
-                output = output.description(words.truncated.clone());
-            }
-            content = content.child(
-                col()
-                    .w_full()
-                    .max_h(OUTPUT_MAX_HEIGHT)
-                    .min_h(0.0)
-                    // Follows the output as it arrives until scrolled up, and again once
-                    // scrolled back to the end (Rune's stick_bottom, Strata's follow_log_output).
-                    .scroll(ScrollSpec { stick_bottom: true })
-                    .child(output),
-            );
+            content = content.child(details(r, &key, words, look));
         }
         let mut row_el = row()
             .key(key)
@@ -626,6 +610,45 @@ fn bezel(look: &Look, name: IconName) -> El {
         .center()
         .a11y_hidden()
         .child(icon(look.icon(name), look.icon_size.md).color(c.icon_accent))
+}
+
+/// What Details opens under a row: the output, following new lines as Strata's
+/// `follow_log_output` does, then what the job reported it created.
+fn details(r: &JobRow, key: &str, words: &JobsWords, look: &Look) -> El {
+    let k = &look.kit;
+    let c = &k.c;
+    let mut output = rune::text(text::details(r, words))
+        .key(format!("{key}-output"))
+        .font(k.ty.mono)
+        .color(c.text_base)
+        .wrap()
+        .w_full()
+        .selectable(true)
+        .selection_color(k.selection());
+    if r.output_truncated {
+        output = output.description(words.truncated.clone());
+    }
+    let mut details = col().w_full().gap(look.space.sm).child(
+        col()
+            .w_full()
+            .max_h(OUTPUT_MAX_HEIGHT)
+            .min_h(0.0)
+            // Follows the output as it arrives until scrolled up, and again once
+            // scrolled back to the end (Rune's stick_bottom, Strata's follow_log_output).
+            .scroll(ScrollSpec { stick_bottom: true })
+            .child(output),
+    );
+    if let Some(created) = &r.created {
+        details = details.child(
+            rune::text(created.clone())
+                .key(format!("{key}-created"))
+                .font(k.ty.small)
+                .color(c.text_muted)
+                .wrap()
+                .w_full(),
+        );
+    }
+    details
 }
 
 /// A row action: an icon button named and tooltipped by `label` (Strata's `job_button`).

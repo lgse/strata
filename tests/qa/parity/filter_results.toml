@@ -223,25 +223,22 @@ host = "offscreen"
 scenario = "filtered-file-click-previews"
 run = "columns-two-clicks"
 package = "A10"
-status = "pending"
-reason = "scope"
-blocker = "A14: opening a file (`BrowserEvent::OpenRequested`), at line 13"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "filtered-file-click-previews"
 run = "icons-two-clicks"
 package = "A10"
-status = "pending"
-reason = "scope"
-blocker = "A14: opening a file (`BrowserEvent::OpenRequested`), at line 13"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "filtered-file-click-previews"
 run = "list-two-clicks"
 package = "A10"
-status = "pending"
-reason = "scope"
-blocker = "A14: opening a file (`BrowserEvent::OpenRequested`), at line 13"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "filtered-file-click-previews"
