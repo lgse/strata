@@ -1,0 +1,235 @@
+// SPDX-License-Identifier: MIT
+
+//! What each keyboard settings row is called: GTK's `NAMES`, `title`, `slot_action` and
+//! `search_names` (`src/ui/settings/keyboard.rs`), word for word.
+
+use strata_core::i18n::tr;
+use strata_desktop::keys::{self, Command, bindings::*};
+use strata_fs::services::ActionCatalog;
+
+use crate::shortcuts::CUSTOM_ACTION;
+
+pub(super) fn title(command: Command) -> String {
+    title_in(command, &rust_i18n::locale())
+}
+
+fn title_in(command: Command, locale: &str) -> String {
+    match keys::custom_action_slot(command) {
+        Some(number) => rust_i18n::t!(name(command), locale = locale, number = number),
+        None => rust_i18n::t!(name(command), locale = locale),
+    }
+    .into_owned()
+}
+
+/// The action a custom action slot runs, as Settings → Actions names it.
+pub(super) fn slot_action(command: Command, catalog: Option<&ActionCatalog>) -> Option<String> {
+    let number = keys::custom_action_slot(command)?;
+    let action = catalog.and_then(|catalog| catalog.actions().get(number - 1).cloned());
+    Some(action.map_or_else(|| tr("No action"), |action| action.name().to_owned()))
+}
+
+/// The names the page filter matches, lowercased: the row's name in the interface language
+/// and in English, and a slot's action.
+pub(super) fn search_names(command: Command, catalog: Option<&ActionCatalog>) -> String {
+    let mut names = vec![title(command), title_in(command, "en")];
+    names.extend(slot_action(command, catalog));
+    names.join("\n").to_lowercase()
+}
+
+/// The message key of a row's name. Commands whose reference row describes several keys at
+/// once have their own.
+pub(super) fn name(command: Command) -> &'static str {
+    NAMES
+        .iter()
+        .find(|(named, _)| *named == command)
+        .map_or(command.id(), |(_, name)| name)
+}
+
+const NAMES: &[(Command, &str)] = &[
+    (UP, "Move up"),
+    (DOWN, "Move down"),
+    (LEFT, "Move left"),
+    (RIGHT, "Move right"),
+    (FIRST_ITEM, "First item"),
+    (LAST_ITEM, "Last item"),
+    (FIRST_ITEM_UP, "Jump to the first item"),
+    (LAST_ITEM_DOWN, "Jump to the last item"),
+    (PAGE_UP, "Page up"),
+    (PAGE_DOWN, "Page down"),
+    (HALF_PAGE_UP, "Half a page up"),
+    (HALF_PAGE_DOWN, "Half a page down"),
+    (ENTER, "Open or activate the focused item"),
+    (ESCAPE, "Close preview or cancel the current interaction"),
+    (FOCUS_NEXT, "Next interface control"),
+    (FOCUS_PREVIOUS, "Previous interface control"),
+    (HISTORY_BACK, "Back"),
+    (HISTORY_FORWARD, "Forward"),
+    (PARENT_FOLDER, "Go to the parent folder"),
+    (HOME_FOLDER, "Go to Home"),
+    (OPEN_IN_NEW_TAB, "Open in a new tab"),
+    (OPEN_IN_NEW_WINDOW, "Open in a new window"),
+    (MAKE_FIRST_COLUMN, "Make the focused pane the first pane"),
+    (PREVIEW, "Preview a file, or open a folder"),
+    (COMPLETE, "Write the chosen folder into the prompt"),
+    (OPEN, "Open the focused item"),
+    (CLOSE_WINDOW, "Close the current window"),
+    (COPY, "Copy"),
+    (CUT, "Cut"),
+    (PASTE, "Paste"),
+    (SELECT_ALL, "Select all"),
+    (UNDO, "Undo"),
+    (REDO, "Redo"),
+    (NEW_FOLDER, "Create a folder"),
+    (
+        NEW_FOLDER_WITH_SELECTION,
+        "Create a folder containing the selection",
+    ),
+    (RENAME, "Rename"),
+    (PROPERTIES, "Show item properties"),
+    (CONTEXT_MENU, "Open the context menu"),
+    (MOVE_TO_TRASH, "Move to Trash"),
+    (DELETE_PERMANENTLY, "Permanently delete selected items"),
+    (TENXER_DELETE_CONFIRM, "Confirm Move to Trash"),
+    (DUPLICATE, "Duplicate selected items"),
+    (COPY_PATH, "Copy path"),
+    (PIN, "Pin a folder"),
+    (YANK, "Yank to copy"),
+    (YANK_CUT, "Yank to cut"),
+    (UNYANK, "Clear copy and cut marks"),
+    (PASTE_KEEP_BOTH, "Paste; Keep Both is focused on conflicts"),
+    (PASTE_REPLACE, "Paste; Replace is focused on conflicts"),
+    (CREATE, "Create a file; end with / for a folder"),
+    (OPEN_WITH, "Open With…"),
+    (MOVE_TO, "Move to…"),
+    (COPY_TO, "Copy to…"),
+    (RESTORE, "Restore from Trash"),
+    (VISUAL_SELECT, "Visual select"),
+    (VISUAL_UNSET, "Visual unset"),
+    (INVERT_SELECTION, "Invert the selection"),
+    (SEARCH, "Open global search"),
+    (LOCATION, "Edit the location"),
+    (REFRESH, "Refresh"),
+    (HIDDEN_FILES, "Show or hide hidden files"),
+    (FILTER, "Filter the current pane"),
+    (FILTER_SLASH, "Filter while type-to-search is on"),
+    (VIEW_COLUMNS, "Switch to Columns"),
+    (VIEW_ICONS, "Switch to Icons"),
+    (VIEW_LIST, "Switch to List"),
+    (TEXT_LARGER, "Increase text size"),
+    (TEXT_SMALLER, "Decrease text size"),
+    (TEXT_RESET, "Reset text size"),
+    (THUMBNAILS_LARGER, "Increase thumbnail size"),
+    (THUMBNAILS_SMALLER, "Decrease thumbnail size"),
+    (THUMBNAILS_RESET, "Reset thumbnail size"),
+    (SIDEBAR, "Show or hide the sidebar"),
+    (SIDEBAR_FOCUS, "Switch focus between sidebar and browser"),
+    (SETTINGS, "Open Settings"),
+    (REFERENCE, "Show or hide the shortcut reference"),
+    (TENXER_MODE, "Toggle 10xer mode"),
+    (TAB_NEW, "New tab"),
+    (TAB_CLOSE, "Close tab"),
+    (TAB_REOPEN, "Reopen the last closed tab"),
+    (TAB_NEXT, "Next tab"),
+    (TAB_PREVIOUS, "Previous tab"),
+    (TAB_MOVE_LEFT, "Move tab left"),
+    (TAB_MOVE_RIGHT, "Move tab right"),
+    (JUMP_TO_FOLDER, "Jump to a folder"),
+    (JUMP_VISITED, "Jump to a visited folder"),
+    (JUMP_RECENT, "Jump to a recent folder"),
+    (TERMINAL, "Open a terminal"),
+    (ARROW_SCOPE, "Keep arrows in the file list on or off"),
+    (
+        OPEN_CONTAINING_FOLDER,
+        "Open containing folder (global search)",
+    ),
+    (FIND, "Find a name in this listing"),
+    (FIND_BACKWARD, "Find a name backward"),
+    (REPEAT_FIND, "Repeat the last find"),
+    (REPEAT_FIND_REVERSED, "Repeat the last find in reverse"),
+    (SEARCH_SUBFOLDERS, "Search this folder and its subfolders"),
+    (CHOOSE_FOLDER, "Choose a folder, as Accept does"),
+    (REFERENCE_CATEGORIES, "Focus the reference categories"),
+    (REFERENCE_SEARCH, "Search the shortcut reference"),
+    (REFERENCE_LIST, "Focus the reference list"),
+    (GO, "Go chord"),
+    (GO_FIRST, "Go to the first item"),
+    (GO_FOLLOW, "Follow search result"),
+    (GO_PROMPT, "Go to a folder, typed path, or URI"),
+    (GO_HOME, "Home"),
+    (GO_CONFIG, "Configuration folder"),
+    (GO_DOWNLOADS, "Downloads"),
+    (GO_DOCUMENTS, "Documents"),
+    (GO_MUSIC, "Music"),
+    (GO_PICTURES, "Pictures"),
+    (GO_VIDEOS, "Videos"),
+    (GO_TRASH, "Trash"),
+    (GO_NETWORK, "Network"),
+    (GO_RECENT, "Recent"),
+    (GO_PIN, "Pin a folder (go chord)"),
+    (GO_UNPIN, "Unpin a folder"),
+    (BOOKMARK_SET, "Save current folder under a letter"),
+    (BOOKMARK_GO, "Jump to a bookmarked folder by letter"),
+    (SORT_BY, "Sort chord"),
+    (SORT_BY_NAME, "Sort by name"),
+    (SORT_BY_MODIFIED, "Sort by modified date"),
+    (SORT_BY_SIZE, "Sort by size"),
+    (SORT_BY_TYPE, "Sort by type"),
+    (SORT_BY_EXTENSION, "Extension"),
+    (SORT_BY_CREATED, "Created"),
+    (SORT_BY_UNSORTED, "Unsorted"),
+    (SORT_BY_NATURAL, "Natural"),
+    (SORT_BY_ALPHABETICAL, "Alphabetical"),
+    (SORT_BY_CASE_SENSITIVE, "Case-sensitive names"),
+    (SORT_BY_FOLDERS_FIRST, "Folders first"),
+    (COPY_AS, "Copy chord"),
+    (COPY_AS_PATH, "Copy path (copy chord)"),
+    (COPY_AS_NAME, "Copy name"),
+    (ACTIONS, "Action chord"),
+    (ACTIONS_TERMINAL, "Open a terminal in the focused folder"),
+    (
+        ACTIONS_COMPRESS,
+        "Compress the selection, or the focused item",
+    ),
+    (ACTIONS_EXTRACT, "Extract here"),
+    (ACTIONS_EXTRACT_TO, "Extract to a typed folder"),
+    (ACTIONS_FOLDER, "Actions for the focused folder"),
+    (TAB_CHORD, "Tab chord"),
+    (TAB_CHORD_NEW, "New tab (tab chord)"),
+    (TAB_CHORD_CLOSE, "Close tab (tab chord)"),
+    (TAB_CHORD_PREVIOUS, "Previous tab (tab chord)"),
+    (MEDIA_PLAY_PAUSE, "Play / pause"),
+    (MEDIA_SEEK_BACK, "Seek back 5 seconds"),
+    (MEDIA_SEEK_FORWARD, "Seek forward 5 seconds"),
+    (MEDIA_VOLUME_UP, "Volume up"),
+    (MEDIA_VOLUME_DOWN, "Volume down"),
+    (MEDIA_MUTE, "Mute / unmute"),
+    (MEDIA_PREVIOUS, "Previous file of the same type"),
+    (MEDIA_NEXT, "Next file of the same type"),
+    (TENXER_MEDIA_MUTE, "Mute or unmute the open preview"),
+    (
+        TENXER_MEDIA_PREVIOUS,
+        "Previous media file in the open preview",
+    ),
+    (TENXER_MEDIA_NEXT, "Next media file in the open preview"),
+    (MEDIA_SEEK_BACK_PAGE, "Seek back 30 seconds"),
+    (MEDIA_SEEK_FORWARD_PAGE, "Seek forward 30 seconds"),
+    (MEDIA_SEEK_START, "Seek to the start"),
+    (MEDIA_SEEK_END, "Seek to the end"),
+    (MEDIA_VOLUME_STEP_UP, "Volume up in the preview"),
+    (MEDIA_VOLUME_STEP_DOWN, "Volume down in the preview"),
+    (SCROLL_PREVIEW_DOWN, "Scroll the preview down"),
+    (SCROLL_PREVIEW_UP, "Scroll the preview up"),
+    (FIND_IN_PREVIEW, "Find in preview"),
+    (PDF_ZOOM_RESET, "Reset zoom"),
+    (PREVIOUS_MATCH, "Previous match"),
+    (CUSTOM_ACTION_1, CUSTOM_ACTION),
+    (CUSTOM_ACTION_2, CUSTOM_ACTION),
+    (CUSTOM_ACTION_3, CUSTOM_ACTION),
+    (CUSTOM_ACTION_4, CUSTOM_ACTION),
+    (CUSTOM_ACTION_5, CUSTOM_ACTION),
+    (CUSTOM_ACTION_6, CUSTOM_ACTION),
+    (CUSTOM_ACTION_7, CUSTOM_ACTION),
+    (CUSTOM_ACTION_8, CUSTOM_ACTION),
+    (CUSTOM_ACTION_9, CUSTOM_ACTION),
+    (CUSTOM_ACTION_10, CUSTOM_ACTION),
+];

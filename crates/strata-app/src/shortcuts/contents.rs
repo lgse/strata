@@ -128,7 +128,7 @@ fn custom_action_rows() -> Vec<Shortcut> {
 }
 
 /// `CUSTOM_ACTION`: a custom action slot's name.
-const CUSTOM_ACTION: &str = "Custom action %{number}";
+pub(crate) const CUSTOM_ACTION: &str = "Custom action %{number}";
 
 fn navigation_title(mode: Mode) -> &'static str {
     match mode {

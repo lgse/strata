@@ -458,6 +458,12 @@ pub(crate) fn read(app: &App, event: &KeyEvent, at: &Situation, tx: &Tx) -> KeyP
     keys::rewrite(press, Context { typing })
 }
 
+/// The press `event` is, as pressed and before the aliases: what Settings records as a new
+/// shortcut, as GTK's `keys::capture` takes a press ahead of `rewrite`.
+pub(crate) fn read_pressed(app: &App, event: &KeyEvent, tx: &Tx) -> KeyPress {
+    press::read(event, origin_of(shell::live_keys(app), tx))
+}
+
 fn origin_of(live: &Live, tx: &Tx) -> press::Origin {
     let origin = press::Origin::of(tx);
     #[cfg(any(test, feature = "qa"))]
