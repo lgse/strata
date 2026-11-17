@@ -369,16 +369,16 @@ impl App {
     }
 
     /// Names the window for the shown tab's location, or the one it waits on. False when it
-    /// has not changed.
+    /// has not changed. A chooser keeps its request's title, which its window takes here: the
+    /// host opens it under a fixed one.
     pub(super) fn retitle(&mut self, tx: &mut Tx) -> bool {
-        if self.browser.is_chooser_mode() {
-            return false;
-        }
         let location = tabs::located(self, self.window.here.key);
         if location == self.window.location {
             return false;
         }
-        self.window.title = title_for(location.as_ref());
+        if !self.browser.is_chooser_mode() {
+            self.window.title = title_for(location.as_ref());
+        }
         tx.set_title(self.window.title.clone());
         self.window.location = location;
         true

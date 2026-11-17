@@ -31,7 +31,9 @@ mod stage;
 mod staged;
 mod submenus;
 mod tenxer;
+mod toplevel;
 mod tree;
+mod windows;
 
 use std::{
     ffi::{OsStr, OsString},

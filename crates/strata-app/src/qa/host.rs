@@ -20,6 +20,8 @@ use crate::App;
 
 /// What `activate` presses: the element's key, and where it is drawn.
 pub(super) struct Activated {
+    /// The node pressed, which tells a host with more than one window which one has it.
+    pub(super) node: Node,
     pub(super) key: String,
     pub(super) bounds: Option<Rect>,
 }
@@ -67,8 +69,8 @@ pub(super) trait Host {
     /// Waits up to `limit` for the host to have work.
     fn pause(&self, limit: Duration);
 
-    /// Where the window's corner is on the screen.
-    fn origin(&self) -> Result<(f64, f64), String>;
+    /// Where the corner of the window that draws `node` is on the screen.
+    fn origin(&self, node: &Node) -> Result<(f64, f64), String>;
     async fn resize(&self, width: f32, height: f32) -> Result<(), String>;
     fn set_layout(&self, keymap: &Keymap) -> Result<(), String>;
 

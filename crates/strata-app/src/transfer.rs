@@ -101,6 +101,9 @@ impl Part for Transfer {
             &[PASTE.ignoring(Modifiers::empty())],
         )
         .when(|_, at| !at.text() && !at.within("preview"))]),
+        // The entry menu's rows, which open the floating chooser (`crate::chooser::floating`).
+        Action::new("move-to", crate::chooser::floating::move_to),
+        Action::new("copy-to", crate::chooser::floating::copy_to),
         Action::new("duplicate", duplicate)
             .command(DUPLICATE)
             .keys(&[
@@ -509,6 +512,18 @@ pub(crate) fn move_into_group_folder(app: &mut App, destination: Location, sourc
             reveal: false,
         },
     );
+}
+
+/// Copies or moves `sources` into the folder chosen in the floating Copy to or Move to chooser,
+/// revealing what lands there (`finish_copy_move_to` in
+/// `src/ui/browser/transfer/destination_dialog.rs`).
+pub(crate) fn transfer_to_chosen(
+    app: &mut App,
+    destination: Location,
+    sources: Vec<Location>,
+    move_sources: bool,
+) {
+    begin_transfer(app, destination, sources, move_sources);
 }
 
 /// Whether a transfer targeting `destination` is still resolving target names.

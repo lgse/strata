@@ -52,7 +52,7 @@ use super::{
     input_log::{InputLog, modifier_name},
     keymap,
     replaced::Replacements,
-    tree::Snapshot,
+    tree::{Node, Snapshot},
 };
 use crate::{
     App,
@@ -379,7 +379,7 @@ impl Host for Session {
         std::thread::sleep(limit);
     }
 
-    fn origin(&self) -> Result<(f64, f64), String> {
+    fn origin(&self, _node: &Node) -> Result<(f64, f64), String> {
         let window = self.window()?;
         Ok((window.x, window.y))
     }
