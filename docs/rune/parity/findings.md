@@ -2367,9 +2367,24 @@ sequence only together with the alphabet's version, so the version is part of th
   runs on clean `strata-next` at `1370c6f7b`, and in the re-gate at `cad74ce7e` (`columns-docx`,
   session host 34 of 35). Alone it passed each time on both targets. Filed again at the same
   time as [#2581](https://github.com/lgse/strata/issues/2581), a duplicate.
-- **Not traced.** One reading to check: under the larger batch's load, the compositor's pointer
-  motion reaches the document after the press, so the drag's anchor lands past its start.
-- **State:** open, unowned.
+- **Cause** (traced by [A15](packages/A15.md), 2026-11-17): the twin, not Rune. Line 17 of
+  `rendered-document-word-selection-rune` clicked 17 points into C11's first text `label`, where
+  GTK's original clicks 17 points into the row's `panel`, whose padding puts the point at the
+  text's start. On the label, 17 points is two glyphs into `alpha` (one into `Quarterly`), so a
+  plain click there puts the caret at `al|pha`, and line 18's Shift+click selects
+  `pha bravo charlie delta`. The run passed only while that click came within Rune's
+  double-click interval (`Runtime::double_click_interval`, 0.5 s) and `CLICK_SLOP` (4 points) of
+  line 14's double-click at the same point: a third press there selects the paragraph, from its
+  start. Ctrl+C and the clipboard wait between them take longer than 0.5 s under load. Shown both
+  ways with a 700 ms `sleep` before line 17: all three Rune runs failed with the reported text,
+  while GTK's original passed 3 of 3 with the same sleep, its click landing at the text's start.
+  Under 24 busy loops (load average 21 to 39), the old twin passed 1 of 9.
+- **Fix:** line 17 clicks 1 point into the label, the text's start, as GTK's click lands; 16
+  points from the double-click, it is a single click whatever the timing. What the twin checks is
+  unchanged. With the 700 ms sleep the fixed twin passed 3 of 3; under the same load it passed
+  10 rounds in a row, 30 of 30, and two full `./scripts/qa-parity.sh all` runs had no failure of
+  it ([#2584](https://github.com/lgse/strata/pull/2584)).
+- **State:** fixed in the twin. #2581 is its duplicate.
 
 ### #2572: Settings is a named dialog with menus on Rune and unnamed panels on GTK
 
