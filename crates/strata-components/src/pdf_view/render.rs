@@ -13,7 +13,8 @@ use rune::{
 use rune_kit::Spinner;
 use strata_kit::look::Look;
 
-use super::model::Content;
+use super::model::{Content, Shared};
+use super::queue::Slot;
 use super::state::{Gesture, PdfState};
 use super::zoom::GAP;
 use super::{PdfIntent, PdfLabels};
@@ -250,66 +251,89 @@ fn page_row<S: 'static>(ctx: &Rc<Ctx<S>>, st: &PdfState, i: usize) -> El {
                 tx.live_only();
             }
         });
+    page = page_body(ctx, page, slot, [w, h]);
+    if let Some(layer) = &slot.layer {
+        page = page.children(layer_children(ctx, st, (i, layer), [w, h]));
+    }
+    if !labels.page_text.is_empty() {
+        page = page.child(
+            el().key("text-area")
+                .role("image")
+                .label(labels.page_text.clone())
+                .pin(Some(0.0), Some(0.0), None, None)
+                .size(w, h),
+        );
+    }
+    col().w_full().h(h + GAP).pt(GAP).items_center().child(page)
+}
+
+/// The page's image once it holds one, else its spinner or its failure.
+fn page_body<S>(ctx: &Ctx<S>, page: El, slot: &Slot, [w, h]: [f32; 2]) -> El {
+    let labels = &ctx.labels;
     match (&slot.pixels, slot.held) {
         // On a child hidden from assistive technology: Rune makes an element with pixels an
         // image, and the page is a group around its text.
-        (Some(px), Some(_)) => {
-            page = page.child(
-                el().key("image")
-                    .pin(Some(0.0), Some(0.0), None, None)
-                    .size(w, h)
-                    .pixels_fit(px, SurfaceFit::Fill)
-                    .a11y_hidden(),
-            )
-        }
-        _ if slot.failed => page = page.description(labels.failed_page.clone()),
-        _ => {
-            page = page.description(labels.loading.clone()).child(
-                Spinner::new()
-                    .color(p.spinner)
-                    .build(&ctx.kit)
-                    .a11y_hidden(),
-            )
-        }
+        (Some(px), Some(_)) => page.child(
+            el().key("image")
+                .pin(Some(0.0), Some(0.0), None, None)
+                .size(w, h)
+                .pixels_fit(px, SurfaceFit::Fill)
+                .a11y_hidden(),
+        ),
+        _ if slot.failed => page.description(labels.failed_page.clone()),
+        _ => page.description(labels.loading.clone()).child(
+            Spinner::new()
+                .color(ctx.paint.spinner)
+                .build(&ctx.kit)
+                .a11y_hidden(),
+        ),
     }
-    if let Some(layer) = &slot.layer {
-        let k = w / layer.width;
-        let band = |r: [f32; 4], fill: Color, key: String| {
-            let (x, y, bw, bh) = (r[0] * k, r[1] * k, (r[2] - r[0]) * k, (r[3] - r[1]) * k);
-            let pad = bh * 0.06;
-            el().key(key)
-                .role("presentation")
-                .pin(Some(x - pad), Some(y - pad), None, None)
-                .size(bw + 2.0 * pad, bh + 2.0 * pad)
-                .radius((bh * 0.16).min(3.0))
-                .fill(fill)
-        };
-        for (m, hit) in st.hits_on(i).iter().enumerate() {
-            for (j, r) in layer
-                .selection_runs(hit.start, hit.end)
-                .into_iter()
-                .enumerate()
-            {
-                page = page.child(band(r, p.hit, format!("hit-{m}-{j}")));
-            }
-        }
-        if let Some(&(start, end)) = st.selection.ranges.get(&i) {
-            for (j, r) in layer.selection_runs(start, end).into_iter().enumerate() {
-                page = page.child(band(r, p.selection, format!("sel-{j}")));
-            }
-        }
-        if layer.has_text() {
-            // The page's text, for assistive technology (Strata exposes none; deviation D7).
-            page = page.child(
-                el().key("text")
-                    .role("paragraph")
-                    .label(layer.text.clone())
-                    .pin(Some(0.0), Some(0.0), None, None)
-                    .size(w, h),
-            );
-        }
-    }
-    col().w_full().h(h + GAP).pt(GAP).items_center().child(page)
+}
+
+/// Page `i`'s find hits and its selection as bands over `layer`, then its text.
+fn layer_children<S>(
+    ctx: &Ctx<S>,
+    st: &PdfState,
+    (i, layer): (usize, &Shared),
+    [w, h]: [f32; 2],
+) -> Vec<El> {
+    let p = &ctx.paint;
+    let k = w / layer.width;
+    let band = |r: [f32; 4], fill: Color, key: String| {
+        let (x, y, bw, bh) = (r[0] * k, r[1] * k, (r[2] - r[0]) * k, (r[3] - r[1]) * k);
+        let pad = bh * 0.06;
+        el().key(key)
+            .role("presentation")
+            .pin(Some(x - pad), Some(y - pad), None, None)
+            .size(bw + 2.0 * pad, bh + 2.0 * pad)
+            .radius((bh * 0.16).min(3.0))
+            .fill(fill)
+    };
+    let band = &band;
+    let hits = st.hits_on(i).iter().enumerate().flat_map(|(m, hit)| {
+        let runs = layer.selection_runs(hit.start, hit.end).into_iter();
+        runs.enumerate()
+            .map(move |(j, r)| band(r, p.hit, format!("hit-{m}-{j}")))
+    });
+    let selected = st
+        .selection
+        .ranges
+        .get(&i)
+        .into_iter()
+        .flat_map(|&(start, end)| {
+            let runs = layer.selection_runs(start, end).into_iter();
+            runs.enumerate()
+                .map(move |(j, r)| band(r, p.selection, format!("sel-{j}")))
+        });
+    // The page's text, for assistive technology (Strata exposes none; deviation D7).
+    let text = layer.has_text().then(|| {
+        el().key("text")
+            .role("paragraph")
+            .label(layer.text.clone())
+            .pin(Some(0.0), Some(0.0), None, None)
+            .size(w, h)
+    });
+    hits.chain(selected).chain(text).collect()
 }
 
 /// The view's keys, with focus in it.

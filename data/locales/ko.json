@@ -1590,5 +1590,9 @@
   "Table preview reached its text, column, or value budget; open the file to see all data.": "표 미리보기가 텍스트, 열 또는 값 한도에 도달했습니다. 모든 데이터를 보려면 파일을 여세요.",
   "Loading sheet…": "시트 불러오는 중…",
   "Try again": "다시 시도",
-  "This sheet is empty": "이 시트는 비어 있습니다"
+  "This sheet is empty": "이 시트는 비어 있습니다",
+  "PDF document": "PDF 문서",
+  "Page %{page} of %{pages}": "%{pages}페이지 중 %{page}페이지",
+  "Page %{page} of %{pages}, %{zoom}%": "%{pages}페이지 중 %{page}페이지, %{zoom}%",
+  "Loading page": "페이지 불러오는 중"
 }

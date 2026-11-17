@@ -15,6 +15,7 @@ use super::state::PdfState;
 use crate::preview_drawer::HostedPreview;
 use rune::Tx;
 
+mod identity;
 mod perf;
 
 /// A layer of `lines`, each character a 10 × 16 box on a 20-point line, from (10, 10), every

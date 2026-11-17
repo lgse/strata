@@ -18,6 +18,7 @@ use strata_components::preview_drawer::{DocumentView, HostedPreview};
 const MODULE: &str = "preview::tests";
 
 mod follow;
+mod pdf;
 
 fn listed(host: &mut Offscreen) -> tempfile::TempDir {
     let folder = fixture();

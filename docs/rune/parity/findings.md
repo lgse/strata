@@ -2271,14 +2271,37 @@ sequence only together with the alphabet's version, so the version is part of th
   643): the same first wait, the `archive` row's `No items` label, timed out after 15 s. The
   scenario passed alone three times in a row (6 of 6 runs each). #2566 changes the portal
   chooser and leaves the browser's listing, item counts and drag and drop as they were.
-- **Concerns:** `drag_and_drop/drag-file-onto-folder/columns-copy` and `list-copy`, `required`,
-  [A19](packages/A19.md)'s.
 - **Seen again:** as `drag-file-onto-folder/list-move`, in round 3 of
   [#2571](https://github.com/lgse/strata/pull/2571)'s three rounds of `drag_and_drop` at
   `815298327`: the same first wait, the `archive` row's `No items` label, timed out after
   15 s. The run passed in that pull request's `qa-parity.sh all`. #2571 changes the views'
   keyboard handover after a move out of the folder, not the listing or its item counts.
+- **Seen in [#2569](https://github.com/lgse/strata/pull/2569)'s gate too:** as
+  `drag-file-onto-folder/list-move`, in its review round at `f14ea347d` (rune offscreen 663 of
+  664), at the same first wait. The scenario then passed alone three times in a row (6 of 6 runs
+  each). #2569 adds the window's zoom wheel and the PDF preview, and leaves the listing, item
+  counts and drag and drop as they were.
+- **Concerns:** `drag_and_drop/drag-file-onto-folder/columns-copy`, `list-copy` and `list-move`,
+  `required`, [A19](packages/A19.md)'s.
 - **State:** open, unowned. The ledger is unchanged: the run stays `required`. Not traced.
+
+### #2568: `undo-restores-completed-move/columns` did not put the file back once in a full Rune run
+
+- **Code:** none of the plan's: a flaky required Rune run, labelled `testing`.
+  [Issue](https://github.com/lgse/strata/issues/2568), filed on 2026-11-16 as the finding's
+  reference and closed at once: its state is kept here.
+- **Seen:** in [A16](packages/A16.md)'s gate for its first pull request,
+  `./scripts/qa-parity.sh all` with `strata-next` at `a5563b5a2` merged in. On Rune the run
+  failed at line 11: after Ctrl+X on `todo.txt`, Ctrl+V into `archive` and
+  `archive/todo.txt` on disk (line 10), Ctrl+Z left `todo.txt` absent for the step's wait.
+  Every other run of it passed: the gate before the merge, and the run alone on Rune 3 of 3.
+  The solo rounds overwrote the failing run's artifacts.
+- **Concerns:** `entry_management/undo-restores-completed-move/columns`, [A7](packages/A7.md)'s,
+  `required`. The branch mounts the PDF preview, and its QA backend change leaves a PDF row's
+  zoom generation out of node paths. The run opens no preview, and its fixture holds no PDF.
+- **Not traced.** One reading to check: line 10 waits only for the moved file on disk, so under
+  load Ctrl+Z can arrive before the move is recorded as the operation to undo.
+- **State:** open, unowned.
 
 ### #2570: 10xer's find and filter highlights are not drawn in Rune's rows
 
@@ -2312,7 +2335,32 @@ sequence only together with the alphabet's version, so the version is part of th
   the preview's loading path.
 - **Concerns:** `background_selection/preview-blank-click-keeps-selection/columns`,
   `required`, [A15](packages/A15.md)'s (done).
+- **Also seen** in the gate of [#2573](https://github.com/lgse/strata/pull/2573) (A18), in the
+  rerun of `./scripts/qa-parity.sh all`: `preview-blank-click-keeps-selection/columns` and
+  `/icons` both showed "Loading…" at line 6 (rune offscreen 661 of 663). Both passed in the run
+  before. #2573 changes Settings and the QA snapshot's nested dialogs, not the preview.
 - **State:** open, unowned. The ledger is unchanged: the run stays `required`. Not traced.
+
+### #2580: `rendered-document-word-selection-rune` lost the selection's first characters twice in a full session-host run
+
+- **Code:** none of the plan's: a flaky Rune run, labelled `testing`.
+  [Issue](https://github.com/lgse/strata/issues/2580), filed on 2026-11-17 as the finding's
+  reference and closed at once: its state is kept here.
+- **Seen:** in the re-gate of [#2569](https://github.com/lgse/strata/pull/2569) at `0914908a8`,
+  `./scripts/qa-parity.sh all` with `strata-next` at `5e6c05568` merged in. The session-host
+  batch now has 33 runs, since A19's content drops (#2577), and two of them failed (31 of 33).
+  `columns-docx` failed at line 21: the clipboard held `uarterly Report`. `columns-md` failed
+  at line 20: it held `pha bravo charlie delta`. Each selection started a character or two past
+  the drag's start. Alone on the session host the twin then passed four rounds, 12 of 12.
+- **Concerns:** `quick_preview/rendered-document-word-selection-rune`, [A15](packages/A15.md)'s
+  `parallel` twin. #2569 changes no pointer drag or document selection.
+- **Also seen** in the gate of [#2573](https://github.com/lgse/strata/pull/2573) (A18): in two
+  full runs (`columns-md` and `columns-docx`, then `columns-docx`), and once in two full Rune
+  runs on clean `strata-next` at `1370c6f7b`. Alone it passed 2 of 2 on both targets. Filed
+  again at the same time as [#2581](https://github.com/lgse/strata/issues/2581), a duplicate.
+- **Not traced.** One reading to check: under the larger batch's load, the compositor's pointer
+  motion reaches the document after the press, so the drag's anchor lands past its start.
+- **State:** open, unowned.
 
 ### #2572: Settings is a named dialog with menus on Rune and unnamed panels on GTK
 
