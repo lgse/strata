@@ -142,9 +142,8 @@ host = "session"
 scenario = "preview-find-navigates-content"
 run = "columns-tenxer"
 package = "A11"
-status = "pending"
-reason = "scope"
-blocker = "A11"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "preview-focus-ignores-file-commands"

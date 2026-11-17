@@ -294,9 +294,13 @@ impl Snapshot {
     /// Reads `tree`, the nested JSON of `Runtime::accessibility_json`, and what the view
     /// draws that the tree leaves out.
     pub(super) fn read(tree: &Value, drawn: &Drawn) -> Self {
+        Self::read_named("window", tree, drawn)
+    }
+
+    pub(super) fn read_named(root_key: &str, tree: &Value, drawn: &Drawn) -> Self {
         let mut snapshot = Self::default();
         if tree.is_object() {
-            snapshot.add(tree, None, "window".to_owned());
+            snapshot.add(tree, None, root_key.to_owned());
             super::submenus::nest(&mut snapshot.nodes);
         }
         snapshot.focus = snapshot.keyboard_focus();

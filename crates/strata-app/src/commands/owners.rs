@@ -27,6 +27,9 @@ pub(crate) enum Holds {
     Location,
     /// An inline edit: after `inline_editing` every key is the field's (`commands.rs:85`).
     Edit,
+    /// A 10xer footer prompt: `input_owner` gives it every key after `F1` and `TENXER_MODE`
+    /// (`input_owner.rs:72`, `prompts.rs:241`).
+    Prompt,
     /// A menu: `input_owner` gives it every key (`input_owner.rs:21`), and what follows a
     /// key the chain left still runs.
     Menu,
@@ -56,6 +59,7 @@ impl Holds {
             // Never read: `reach` cuts every stage for a popover first.
             Self::Popover => Stage::TabStrip,
             Self::Modal { .. } | Self::Menu => Stage::ZoomShortcut,
+            Self::Prompt => Stage::TenxerKeys,
             Self::Edit => Stage::InlineEditing,
             Self::Location => Stage::TextInput,
             Self::Filter | Self::Field => Stage::ItemNavigation,
@@ -125,6 +129,7 @@ impl Situation {
                     | Holds::Filter
                     | Holds::Location
                     | Holds::Edit
+                    | Holds::Prompt
                     | Holds::Modal { field: true }
             )
         )
@@ -200,7 +205,7 @@ pub(super) fn reach(at: &Situation, stage: Stage, part: &str) -> Reach {
         // lets through the action that owns the layer on top, so that it can close it.
         Stage::AfterYield => match holds {
             Holds::Modal { .. } if part != owner => return Reach::Taken,
-            Holds::Edit => return Reach::Taken,
+            Holds::Edit | Holds::Prompt => return Reach::Taken,
             _ => true,
         },
         chain => chain <= holds.last(),

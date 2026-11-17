@@ -49,6 +49,10 @@ pub(crate) fn origin_drag(app: &mut App, d: &mut rune::Drag, clears: bool, tx: &
     c.origin_drag(app, (d, clears), tx);
 }
 
+pub(crate) fn use_chooser_widths(app: &mut App) {
+    app.list.widths = columns::chooser_widths(crate::shell::preferences(app));
+}
+
 pub(crate) struct List {
     pub(crate) single: Single,
     table: ListTableState,

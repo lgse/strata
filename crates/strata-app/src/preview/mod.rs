@@ -436,6 +436,9 @@ pub(crate) fn show_entry(app: &mut App, entry: FileEntry, depth: Option<usize>, 
 
 /// Whether single clicks open files in the currently shown view.
 pub(crate) fn one_click_files_in_shown_view(app: &App) -> bool {
+    if app.browser.is_chooser_mode() {
+        return false;
+    }
     let settings = shell::preferences(app);
     let modes = if session::browsing_columns(app) {
         crate::clicks::columns(settings)

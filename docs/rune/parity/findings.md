@@ -204,6 +204,16 @@ closed issue is not a fixed finding: the state given here is the finding's.
   Markdown, none of which the GTK lane compiles. It failed twice, so by the rule above the
   agent stopped chasing it and reported it; after `strata-next` was merged again it passed in
   `./scripts/quality.sh all --jobs 4` at `c3dcb8917`. A fix, if taken up, lands on `main`.
+- **Cross-reference from the Rune lane, on [#2567](https://github.com/lgse/strata/pull/2567):**
+  the same `ETXTBSY` pattern in [A14](packages/A14.md)'s
+  `terminal::tests::ghostty_opens_directories_through_new_window_only_from_1_3`
+  (`crates/strata-app/src/terminal/tests.rs:206`, `"Ghostty 1.3.1" via "ghostty"`: `left:
+  ["--working-directory=/tmp/work"]`, without `+new-window`). It failed once in a full
+  `mise run test-rune` at `731c24b50` and passed alone. The test writes a `#!/bin/sh` probe and
+  runs it at once to read the version (`terminal/tests.rs:194-203`); a fork on another test
+  thread holding the write descriptor fails the probe, and the legacy arguments are chosen.
+  #2567 does not touch `terminal/`. The fix, if taken up, is A14's: write the script under a
+  temporary name and rename it, or retry on `ETXTBSY`.
 
 ### #2176: a GTK critical after a file appears during a rename on a multiple selection
 
@@ -2246,7 +2256,12 @@ sequence only together with the alphabet's version, so the version is part of th
   `No items` label did not show within 15 s, and the kept tree has the row with its name label
   alone, after two loads of the folder and before any drag. The same run passed in the set's
   first round. #2561 changes nothing in the listing, item counts or drag and drop.
-- **Concerns:** `drag_and_drop/drag-file-onto-folder/columns-copy`, `required`,
+- **Seen again:** as `drag-file-onto-folder/list-copy`, in the re-gate of
+  [#2566](https://github.com/lgse/strata/pull/2566) at `fe1b8a077` (rune offscreen 642 of
+  643): the same first wait, the `archive` row's `No items` label, timed out after 15 s. The
+  scenario passed alone three times in a row (6 of 6 runs each). #2566 changes the portal
+  chooser and leaves the browser's listing, item counts and drag and drop as they were.
+- **Concerns:** `drag_and_drop/drag-file-onto-folder/columns-copy` and `list-copy`, `required`,
   [A19](packages/A19.md)'s.
 - **State:** open, unowned. The ledger is unchanged: the run stays `required`. Not traced.
 
@@ -2267,3 +2282,23 @@ sequence only together with the alphabet's version, so the version is part of th
 - **Not traced.** One reading to check: line 10 waits only for the moved file on disk, so under
   load Ctrl+Z can arrive before the move is recorded as the operation to undo.
 - **State:** open, unowned.
+
+### #2570: 10xer's find and filter highlights are not drawn in Rune's rows
+
+- **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2570), filed on
+  2026-11-16 as the finding's reference and closed at once: its state is kept here.
+- **What differs:** in 10xer mode GTK draws the matched ranges of each displayed name in the
+  accent: a `/` or `?` find's until Escape dismisses them (`src/ui/browser/find.rs`:
+  `find_highlight`, `refresh_name_highlights`), and an `f` filter's terms and a search's hit
+  ranges (`highlight_listing_name`, `highlight_hit_name`). Rune draws none. Since
+  [#2567](https://github.com/lgse/strata/pull/2567) the find's highlight is kept as state
+  (`FindState::highlighted`, `crates/strata-app/src/tenxer/prompts/find.rs`) and the Escape
+  ladder dismisses it before the selection, as GTK's does (`src/ui/window/keyboard/escape.rs`),
+  so only the look differs.
+- **Why:** the rows of C1, C3 and the Columns view take a name as plain text
+  (`strata_components::contract::Entry::name`, `RowMarks`). Drawing ranges needs a row
+  contract field and spans in all three views' name cells, coloured from the Kit's tokens.
+- **Concerns:** no ledger run; found in the review of #2567. [A11](packages/A11.md)'s fuzz
+  alphabet (Slice 5) should exercise `/` then Escape with a selection.
+- **State:** open, [A11](packages/A11.md#open)'s, for Slice 4 or 5 or a `contract` change to
+  the row components.

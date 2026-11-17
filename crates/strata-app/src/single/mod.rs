@@ -251,7 +251,16 @@ fn live_keys(app: &App, single: &Single) -> KeySettings {
     };
     keys.wrap_rows = single.wrap_rows;
     keys.left_leaves_without_cursor = single.left_leaves;
-    keys
+    keys.multiple(app.chooser.allows_multiple())
+}
+
+fn live_pointer<V: SinglePane>(app: &App) -> PointerSettings {
+    let chooser = app.browser.is_chooser_mode();
+    let modes = crate::clicks::for_chooser(V::clicks(shell::preferences(app)), chooser);
+    PointerSettings::default()
+        .modes(modes)
+        .rename(!chooser)
+        .multiple(app.chooser.allows_multiple())
 }
 
 /// The collection under the view's component: what the host sets on it, before the
@@ -272,7 +281,7 @@ pub(crate) fn collection<V: SinglePane>(app: &App) -> Collection<App> {
     .name(title::<V>(app))
     .description(described::<V>(app))
     .settings(live_keys(app, single))
-    .settings(PointerSettings::default().modes(V::clicks(shell::preferences(app))))
+    .settings(live_pointer::<V>(app))
     .settings(autoscroll_settings(app))
     .describe(Describe::pure(|app: &App, row| {
         let single = V::single(app);
@@ -288,7 +297,10 @@ pub(crate) fn collection<V: SinglePane>(app: &App) -> Collection<App> {
     .drop_action(drop_action::<V>)
     .marks(|app: &App, id| crate::dnd::with_marks(app, id, crate::clipboard::marks(app, id)))
     .empty(shown_status::<V>)
-    .on_press(|app: &mut App, _, _| interrupted::<V>(app))
+    .on_press(|app: &mut App, _, _| {
+        interrupted::<V>(app);
+        crate::chooser::clicked_entry_in_chooser(app);
+    })
     // C3 replaces this with its own, which asks the Icons view's `IconsGrid::on_wheel` first.
     .on_wheel(wheeled::<V>)
     .on_intent(heard::<V>)
@@ -320,11 +332,7 @@ pub(crate) fn results<V: SinglePane>(app: &App) -> Collection<App> {
     .settings(live_keys(app, single))
     // GTK's results keep an anchor of their own, which neither a right-click nor a
     // Shift+press sets (findings lgse/strata#2375 and #2431).
-    .settings(
-        PointerSettings::default()
-            .modes(V::clicks(shell::preferences(app)))
-            .missing_anchor_stays(true),
-    )
+    .settings(live_pointer::<V>(app).missing_anchor_stays(true))
     .settings(autoscroll_settings(app))
     .on_drag_phase(|app: &mut App, d, key, tx| crate::dnd::drag_phase(app, d, key, tx))
     .marks(|app: &App, id| {
@@ -468,10 +476,13 @@ pub(crate) fn publish<V: SinglePane>(app: &mut App) {
 /// becomes the folder shown. Return opens the browser's focused item (`activate_focused` in
 /// `src/ui/browser/view_navigation.rs`), a click the entry clicked (`activate_in_place` in
 /// `src/ui/browser_modes/clicks.rs`).
-fn open_in_place<V: SinglePane>(app: &App, depth: usize, id: EntryId, how: Activation) {
+fn open_in_place<V: SinglePane>(app: &mut App, (depth, id): At, how: Activation, tx: &mut Tx) {
     let Some(position) = pane::<V>(app).position(depth, id) else {
         return;
     };
+    if crate::chooser::confirm_key_activation(app, (depth, position), how, tx) {
+        return;
+    }
     let focused = app
         .browser
         .focused_item()
@@ -529,7 +540,7 @@ fn heard<V: SinglePane>(app: &mut App, intent: Intent, tx: &mut Tx) {
         return;
     };
     match intent {
-        Intent::Activate { id, how } => open_in_place::<V>(app, depth, id, how),
+        Intent::Activate { id, how } => open_in_place::<V>(app, (depth, id), how, tx),
         // A slow second click on the name.
         Intent::BeginRename { id } => rename::begin_on(app, depth, id, tx),
         Intent::Clicked { id } => clicked::<V>(app, depth, id),
@@ -626,7 +637,8 @@ pub(crate) fn spring_open(app: &mut App, depth: usize, id: EntryId, tx: &mut Tx)
 /// open files (`PendingActivationKind::Standard { preview: true }`).
 fn clicked<V: SinglePane>(app: &App, depth: usize, id: EntryId) {
     let settings = shell::preferences(app);
-    if crate::clicks::one_click_files(V::clicks(settings)) || !settings.single_click_previews {
+    let modes = crate::clicks::for_chooser(V::clicks(settings), app.browser.is_chooser_mode());
+    if crate::clicks::one_click_files(modes) || !settings.single_click_previews {
         return;
     }
     let Some(position) = pane::<V>(app).position(depth, id) else {
@@ -658,7 +670,11 @@ pub(crate) const fn rows<V: SinglePane>() -> Rows<App> {
         // filter's result.
         activate: |app, (depth, id)| match filter::targets::at(app, depth, id) {
             Some(_) => filter::open_hit(app, depth, id),
-            None => open_in_place::<V>(app, depth, id, Activation::Click),
+            None => {
+                if let Some(position) = pane::<V>(app).position(depth, id) {
+                    app.browser.activate_in_place(depth, position);
+                }
+            }
         },
         // The keyboard is the editor's that opens next (Tab's `advance` and the menu's Rename
         // both open one on the row): focusing the list here would take it from the field, as

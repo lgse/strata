@@ -301,13 +301,46 @@ impl App {
         Self::over(PARTS, ui, csd, settings)
     }
 
+    pub(crate) fn new_chooser(
+        ui: &UiThread,
+        csd: Csd,
+        settings: Saved,
+        spec: (
+            crate::portal::ChooserRequest,
+            Rc<crate::chooser::source::ChooserFileSource>,
+            Option<crate::chooser::state::DestinationHost>,
+            crate::portal::Completion,
+        ),
+    ) -> Self {
+        let (request, source, destination_host, completion) = spec;
+        let saved = settings.preferences();
+        let browser = Browser::with_preferences(source.clone(), sort_preferences(saved));
+        browser.set_chooser_mode(true);
+        browser.set_operation_provider(Rc::new(LocalOperationProvider));
+        let title = request.title.clone();
+        let mut app = Self::over_browser(PARTS, csd, settings, (browser, title));
+        let _ = ui;
+        crate::chooser::mount_request(&mut app, request, source, (destination_host, completion));
+        app
+    }
+
     /// The window over the table `parts`: the registered parts, or a test's made-up ones. The
     /// state of every registered part is built either way, and only the table's hooks run.
     pub(crate) fn over(
         parts: &'static [Entry<App>],
         _ui: &UiThread,
         csd: Csd,
+        settings: Saved,
+    ) -> Self {
+        let browser = browser_for(settings.preferences());
+        Self::over_browser(parts, csd, settings, (browser, title_for(None)))
+    }
+
+    fn over_browser(
+        parts: &'static [Entry<App>],
+        csd: Csd,
         mut settings: Saved,
+        (browser, title): (Rc<Browser>, String),
     ) -> Self {
         let events = Inbox::new();
         let services = WindowServices::load(&mut settings, &events.later());
@@ -315,9 +348,9 @@ impl App {
         strata_core::util::set_date_format(strata_core::util::DateFormat::parse(
             &saved.date_format,
         ));
-        let browser = browser_for(saved);
-        let (built, window, look) =
+        let (built, mut window, look) =
             Window::build(parts, csd, settings, (events, &browser, services));
+        window.title = title;
         Self::assemble(look, browser, window, built)
     }
 
@@ -338,6 +371,9 @@ impl App {
     /// Names the window for the shown tab's location, or the one it waits on. False when it
     /// has not changed.
     pub(super) fn retitle(&mut self, tx: &mut Tx) -> bool {
+        if self.browser.is_chooser_mode() {
+            return false;
+        }
         let location = tabs::located(self, self.window.here.key);
         if location == self.window.location {
             return false;
@@ -906,6 +942,9 @@ fn strip_close(app: &App, chrome: &WindowChrome) -> Option<El> {
 /// header finds nothing (`TopBarNavigation::move_focus`): the last window button shown, else
 /// the last action.
 pub(crate) fn header_last(app: &App) -> String {
+    if app.browser.is_chooser_mode() {
+        return "header-chooser-close".to_owned();
+    }
     let shown = Shown::new(window_buttons(app), &app.chrome());
     let buttons = [
         (shown.close, "close"),
@@ -926,29 +965,66 @@ pub(crate) fn header_commands() -> impl Iterator<Item = &'static str> {
     buttons.map(|button| button.command)
 }
 
+fn build_header_action(app: &App, button: &Button) -> El {
+    let look = &app.look;
+    let command = button.command;
+    let face = (button.face)(app);
+    let action = match &face.tooltip {
+        Some(tooltip) => header::action(look, button.icon, tooltip).label(face.name),
+        None => header::action(look, button.icon, &face.name),
+    };
+    let action = action
+        .on_press_tx(move |app: &mut App, tx: &mut Tx| {
+            commands::run(app, command, On::Focus, tx);
+        })
+        .build(&look.kit);
+    let action = match face.checked {
+        Some(on) => action.checked(on),
+        None => action,
+    };
+    buttons::on_return(format!("header-{}", button.key), action)
+}
+
+fn chooser_bar(app: &App, location: Option<El>) -> El {
+    let look = &app.look;
+    let mut header = Header::new("header", look);
+    if !app.chooser.is_confined() {
+        header = header.leading(build_header_action(app, &LEADING));
+    }
+    if let Some(location) = location {
+        header = header.center(location);
+    }
+    let appearance = TRAILING
+        .iter()
+        .find(|button| button.key == "appearance")
+        .expect("appearance action");
+    let cancel_label = with_keys(
+        "Cancel file selection (%{keys})",
+        Some("Cancel file selection"),
+        Keys::One(strata_desktop::keys::bindings::ESCAPE.shown()),
+    );
+    let close = buttons::on_return(
+        "header-chooser-close".to_owned(),
+        header::action(look, IconName::Close, &cancel_label)
+            .on_press_tx(|app: &mut App, tx: &mut Tx| {
+                crate::chooser::cancel(app, tx);
+            })
+            .build(&look.kit),
+    );
+    header
+        .action(build_header_action(app, appearance))
+        .action(close)
+        .build()
+}
+
 /// The header, with the location slot's element in its middle.
 fn bar(app: &App, chrome: &WindowChrome, location: Option<El>) -> El {
+    if app.browser.is_chooser_mode() {
+        return chooser_bar(app, location);
+    }
     let look = &app.look;
     let labels = &app.window.labels;
-    let action = |button: &Button| {
-        let command = button.command;
-        let face = (button.face)(app);
-        let action = match &face.tooltip {
-            Some(tooltip) => header::action(look, button.icon, tooltip).label(face.name),
-            None => header::action(look, button.icon, &face.name),
-        };
-        let action = action
-            .on_press_tx(move |app: &mut App, tx: &mut Tx| {
-                commands::run(app, command, On::Focus, tx);
-            })
-            .build(&look.kit);
-        let action = match face.checked {
-            Some(on) => action.checked(on),
-            None => action,
-        };
-        buttons::on_return(format!("header-{}", button.key), action)
-    };
-    let header = Header::new("header", look).leading(action(&LEADING));
+    let header = Header::new("header", look).leading(build_header_action(app, &LEADING));
     let header = match location {
         Some(location) => header.center(location),
         None => header,
@@ -970,7 +1046,7 @@ fn bar(app: &App, chrome: &WindowChrome, location: Option<El>) -> El {
         let built = (button.key == NEW_TAB)
             .then(|| strip_new_tab.map(|new_tab| new_tab(app, "header-new-tab")))
             .flatten()
-            .unwrap_or_else(|| action(button));
+            .unwrap_or_else(|| build_header_action(app, button));
         header.action(built)
     });
     header

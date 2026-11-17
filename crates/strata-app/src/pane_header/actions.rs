@@ -22,11 +22,53 @@
 //! A new action goes in its place in [`pane`] and [`column`]. In the pane header a button takes
 //! `buttons::on_return`; in a column's it is not a focus stop, as C2's slot asks.
 
-use rune::{El, row};
-use strata_components::columns::HeaderCx;
+use rune::{El, Tx, row};
+use strata_components::{columns::HeaderCx, header};
+use strata_core::i18n::tr;
+use strata_desktop::keys::{Keys, bindings::NEW_FOLDER};
+use strata_kit::icons::IconName;
 
 use super::{empty_trash, refresh};
-use crate::{App, buttons, shell};
+use crate::{
+    App, buttons,
+    commands::{self, On},
+    location::labels::with_keys,
+    shell,
+};
+
+fn chooser_new_folder(app: &App, depth: usize) -> Option<El> {
+    if !app.browser.is_chooser_mode() || !app.chooser.allows_create() {
+        return None;
+    }
+    let look = &app.look;
+    let tooltip = with_keys(
+        "New Folder (%{keys})",
+        Some("New Folder"),
+        Keys::One(NEW_FOLDER.shown()),
+    );
+    let button = header::action(look, IconName::FolderPlus, &tooltip)
+        .label(tr("New Folder"))
+        .on_press_tx(move |app: &mut App, tx: &mut Tx| {
+            commands::run(app, "new-folder", On::Column(depth), tx);
+        })
+        .build(&look.kit);
+    Some(button)
+}
+
+/// A chooser's New Folder: first in Icons, after Empty Trash in List, as GTK's chooser header
+/// places it.
+fn insert_chooser_new_folder(
+    app: &App,
+    (view, depth): (&str, usize),
+    list: bool,
+    actions: &mut Vec<El>,
+) {
+    let Some(button) = chooser_new_folder(app, depth) else {
+        return;
+    };
+    let at = if list { actions.len() } else { 0 };
+    actions.insert(at, buttons::on_return(format!("{view}-new-folder"), button));
+}
 
 /// The actions before the thumbnail size in the header over the single-pane view keyed `view`.
 /// In List, GTK's Sort by leads them, and its direction button follows Refresh in the Recent
@@ -43,6 +85,7 @@ pub(super) fn pane(app: &App, view: &str) -> Vec<El> {
     if let Some(button) = empty_trash::built(app, depth) {
         actions.push(buttons::on_return(format!("{view}-empty-trash"), button));
     }
+    insert_chooser_new_folder(app, (view, depth), list, &mut actions);
     actions.push(buttons::on_return(
         format!("{view}-refresh"),
         refresh::built(app, depth),
@@ -61,6 +104,11 @@ pub(crate) fn column(app: &App, cx: &HeaderCx) -> Option<El> {
     let mut any = false;
     if let Some(button) = empty_trash::built(app, depth) {
         let key = format!("columns-empty-trash-{depth}");
+        actions = actions.child(button.key(key).focusable(false));
+        any = true;
+    }
+    if !tenxer && let Some(button) = chooser_new_folder(app, depth) {
+        let key = format!("columns-new-folder-{depth}");
         actions = actions.child(button.key(key).focusable(false));
         any = true;
     }

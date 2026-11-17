@@ -62,7 +62,8 @@ struct Opening {
     name: String,
     target: MenuTarget,
     model: MenuModel,
-    custom_slot: usize,
+    /// Where the custom actions go; none in a chooser's menus, as in GTK's.
+    custom_slot: Option<usize>,
     provider_slot: usize,
     provider_paths: Option<Vec<std::path::PathBuf>>,
     background: bool,
@@ -113,9 +114,64 @@ fn can_create_in_pane(app: &App, depth: usize, id: EntryId) -> bool {
     })
 }
 
+fn chooser_entry_menu(app: &App, depth: usize, id: EntryId) -> Option<Opening> {
+    let (entry, entries) = context_entries(app, depth, id)?;
+    let single = entries.len() == 1;
+    let typing = app.menu.typing;
+    let mut items = vec![RENAME.item(typing).enabled(single)];
+    if single && crate::preview::entry_supports_quick_preview(&entry) {
+        items.push(PREVIEW.item(typing));
+    }
+    items.push(PROPERTIES.item(typing));
+    if entry.location.native_path().is_some() {
+        items.push(COMPRESS.item(typing));
+    }
+    let in_trash = app
+        .browser
+        .location_at(depth)
+        .as_ref()
+        .is_some_and(crate::clipboard::paths::is_trash);
+    let can_trash = app.browser.can_trash_at(depth) != Some(false);
+    let can_delete = app.browser.can_delete_at(depth) != Some(false);
+    if !in_trash && can_trash {
+        items.push(TRASH.item(typing));
+    }
+    if can_delete {
+        items.push(DELETE.item(typing).danger(true));
+    }
+    Some(Opening {
+        name: entry.display_name,
+        target: MenuTarget::Entry(id),
+        model: MenuModel::new().section(Section::new(items)),
+        custom_slot: None,
+        provider_slot: 0,
+        provider_paths: None,
+        background: false,
+    })
+}
+
+fn chooser_folder_menu(app: &App, depth: usize) -> Option<Opening> {
+    let location = app.browser.location_at(depth)?;
+    let item = NEW_FOLDER
+        .item(app.menu.typing)
+        .enabled(app.chooser.allows_create());
+    Some(Opening {
+        name: location.display_name(),
+        target: MenuTarget::Background,
+        model: MenuModel::new().section(Section::new([item])),
+        custom_slot: None,
+        provider_slot: 0,
+        provider_paths: None,
+        background: true,
+    })
+}
+
 /// The menu of entry `id` in column `depth` of the shown view, or of the selection it is
 /// part of.
 fn entry_menu(app: &App, depth: usize, id: EntryId) -> Option<Opening> {
+    if app.browser.is_chooser_mode() {
+        return chooser_entry_menu(app, depth, id);
+    }
     let (entry, entries) = context_entries(app, depth, id)?;
     let can_create = can_create_in_pane(app, depth, id);
     let model = self::entry(&EntryTarget {
@@ -143,7 +199,7 @@ fn entry_menu(app: &App, depth: usize, id: EntryId) -> Option<Opening> {
         name: entry.display_name,
         target: MenuTarget::Entry(id),
         model,
-        custom_slot,
+        custom_slot: Some(custom_slot),
         provider_slot: custom_slot + 1,
         provider_paths,
         background: false,
@@ -153,6 +209,9 @@ fn entry_menu(app: &App, depth: usize, id: EntryId) -> Option<Opening> {
 /// The menu of column `depth`'s folder: a press on its empty space or its header, or the
 /// Menu key with no selected cursor.
 fn folder_menu(app: &App, depth: usize) -> Option<Opening> {
+    if app.browser.is_chooser_mode() {
+        return chooser_folder_menu(app, depth);
+    }
     // The name the pane has: `src/ui/browser/columns/append.rs`.
     let location = app.browser.location_at(depth)?;
     let name = location.display_name();
@@ -169,7 +228,7 @@ fn folder_menu(app: &App, depth: usize) -> Option<Opening> {
         name,
         target: MenuTarget::Background,
         model,
-        custom_slot: 2,
+        custom_slot: Some(2),
         provider_slot: 3,
         provider_paths,
         background: true,
@@ -220,8 +279,7 @@ pub(crate) fn open(app: &mut App, request: Request, tx: &mut Tx) {
         None => folder_menu(app, depth),
     };
     if let Some(mut opening) = opening {
-        opening.model.sections[opening.custom_slot] =
-            crate::custom_actions::begin_menu(app, depth, entry);
+        fill_custom_slot(app, &mut opening, depth, entry);
         let sections = crate::file_providers::begin_menu(
             app,
             opening.provider_paths.take(),
@@ -236,6 +294,13 @@ pub(crate) fn open(app: &mut App, request: Request, tx: &mut Tx) {
         app.menu
             .show(depth, opening, Point::new(anchor.x, anchor.y));
         crate::open_with::prepare_menu(app, depth, entry);
+    }
+}
+
+/// Puts the custom actions that match into the menu's slot for them, when it has one.
+fn fill_custom_slot(app: &mut App, opening: &mut Opening, depth: usize, entry: Option<EntryId>) {
+    if let Some(slot) = opening.custom_slot {
+        opening.model.sections[slot] = crate::custom_actions::begin_menu(app, depth, entry);
     }
 }
 

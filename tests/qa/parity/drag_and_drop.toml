@@ -148,25 +148,22 @@ host = "offscreen"
 scenario = "escape-cancels-file-drag"
 run = "columns-tenxer"
 package = "A11"
-status = "pending"
-reason = "scope"
-blocker = "A11"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "escape-cancels-file-drag"
 run = "icons-tenxer"
 package = "A11"
-status = "pending"
-reason = "scope"
-blocker = "A11"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "escape-cancels-file-drag"
 run = "list-tenxer"
 package = "A11"
-status = "pending"
-reason = "scope"
-blocker = "A11"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "escape-cancels-file-drag"
