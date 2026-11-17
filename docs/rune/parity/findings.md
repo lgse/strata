@@ -2153,3 +2153,21 @@ sequence only together with the alphabet's version, so the version is part of th
 - **State:** the names are ruled: Rune keeps `"Source"` and `"Document"` (the owner,
   2026-11-16). Open for the line split, which the QA backend may absorb by reading a code
   view's lines as one string.
+
+### #2568: `undo-restores-completed-move/columns` did not put the file back once in a full Rune run
+
+- **Code:** none of the plan's: a flaky required Rune run, labelled `testing`.
+  [Issue](https://github.com/lgse/strata/issues/2568), filed on 2026-11-16 as the finding's
+  reference and closed at once: its state is kept here.
+- **Seen:** in [A16](packages/A16.md)'s gate for its first pull request,
+  `./scripts/qa-parity.sh all` with `strata-next` at `a5563b5a2` merged in. On Rune the run
+  failed at line 11: after Ctrl+X on `todo.txt`, Ctrl+V into `archive` and
+  `archive/todo.txt` on disk (line 10), Ctrl+Z left `todo.txt` absent for the step's wait.
+  Every other run of it passed: the gate before the merge, and the run alone on Rune 3 of 3.
+  The solo rounds overwrote the failing run's artifacts.
+- **Concerns:** `entry_management/undo-restores-completed-move/columns`, [A7](packages/A7.md)'s,
+  `required`. The branch mounts the PDF preview, and its QA backend change leaves a PDF row's
+  zoom generation out of node paths. The run opens no preview, and its fixture holds no PDF.
+- **Not traced.** One reading to check: line 10 waits only for the moved file on disk, so under
+  load Ctrl+Z can arrive before the move is recorded as the operation to undo.
+- **State:** open, unowned.
