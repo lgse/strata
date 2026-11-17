@@ -4,8 +4,8 @@
 //! `open_focused_folder_terminal` under `src/ui/browser/`, backed by `src/ui/terminal.rs`).
 //!
 //! - **Asking.** The `terminal` command: `Ctrl+Alt+T` (`TERMINAL` at `Stage::FileCommands`,
-//!   and at `Stage::AfterYield` outside `tenxer_mode` matching `WINDOW_ACTIONS` in
-//!   `src/ui/window/keyboard.rs`), the folder menu's "Open in Terminal" row (`On::Column`), a
+//!   and at `Stage::AfterYield` outside `tenxer_mode` and an open context menu, matching
+//!   `WINDOW_ACTIONS` in `src/ui/window/keyboard.rs`), the folder menu's "Open in Terminal" row (`On::Column`), a
 //!   folder entry's "Open in Terminal" row (`On::Row`), or `On::Place`. In `Map::Default`, a
 //!   user binding on `ACTIONS_TERMINAL` (`Stage::DirectCommands`) opens the focused listing's
 //!   folder ([`open_focused_folder`], which 10xer's `;` -> `t` chord also calls).
@@ -72,11 +72,13 @@ impl Part for Terminal {
                     Stage::FileCommands,
                     &[TERMINAL.ignoring(Modifiers::empty())],
                 ),
-                // `WINDOW_ACTIONS` in `src/ui/window/keyboard.rs`: runs under a menu or the
-                // location bar, is swallowed under a modal or inline edit (`Reach::Taken`),
-                // and is skipped in 10xer mode (`keyboard.rs:550`).
+                // `WINDOW_ACTIONS` in `src/ui/window/keyboard.rs`: runs under the location
+                // bar, is swallowed under a modal or inline edit (`Reach::Taken`), and is
+                // skipped in 10xer mode (`keyboard.rs:550`). An open context menu is a
+                // `GtkPopoverMenu`, its own surface, whose keys never reach the window's
+                // controller, so the key does nothing there.
                 Keys::at(Stage::AfterYield, &[TERMINAL.ignoring(Modifiers::empty())])
-                    .when(|app, _| !shell::preferences(app).tenxer_mode),
+                    .when(|app, _| reaches_window_actions(app)),
             ]),
         Action::new("actions-terminal", open_focused_action)
             .command(ACTIONS_TERMINAL)
@@ -86,6 +88,10 @@ impl Part for Terminal {
             )
             .when(|app, at| !shell::preferences(app).tenxer_mode && !at.text() && at.in_view())]),
     ];
+}
+
+fn reaches_window_actions(app: &App) -> bool {
+    !shell::preferences(app).tenxer_mode && !app.menu.state.is_open()
 }
 
 /// `can_open_terminal` (`src/ui/browser/desktop.rs`): local folders outside Trash.

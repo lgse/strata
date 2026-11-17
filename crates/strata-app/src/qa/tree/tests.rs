@@ -750,10 +750,12 @@ fn nested_submenu_tree() -> serde_json::Value {
             { "role": "group", "key": "kit-root", "children": [
                 { "role": "menu", "key": "menu-menu", "name": "todo.txt", "states": ["modal"], "children": [
                     { "role": "menu-item", "key": "menu-item1", "name": "Offline availability", "bounds": [10.0, 20.0, 160.0, 28.0] },
+                    { "role": "menu-item", "key": "menu-item2", "name": "Properties", "bounds": [10.0, 48.0, 160.0, 28.0] },
                 ] },
                 { "role": "menu", "key": "menu-item1-sub-menu", "name": "Offline availability", "children": [
                     { "role": "menu-item", "key": "menu-item1-sub-item0", "name": "Keep test pin", "bounds": [170.0, 20.0, 160.0, 28.0] },
                     { "role": "menu-item", "key": "menu-item1-sub-item1", "name": "Details", "bounds": [170.0, 48.0, 160.0, 28.0] },
+                    { "role": "menu-item", "key": "menu-item1-sub-item2", "name": "Release pin", "bounds": [170.0, 76.0, 160.0, 28.0] },
                 ] },
                 { "role": "menu", "key": "menu-item1-sub-item1-sub-menu", "name": "Details", "children": [
                     { "role": "menu-item", "key": "menu-item1-sub-item1-sub-item0", "name": "Inspect nested state", "bounds": [330.0, 48.0, 160.0, 28.0] },
@@ -763,15 +765,13 @@ fn nested_submenu_tree() -> serde_json::Value {
     })
 }
 
-#[test]
-fn open_submenu_surfaces_nest_under_their_owning_menu_and_row_icons_carry_descriptions() {
-    let tree = nested_submenu_tree();
+fn row_with_badge() -> Drawn {
     let mut icon_descriptions = std::collections::HashMap::new();
     icon_descriptions.insert(
         strata_components::contract::EntryId::new(1),
         "example: Available offline".to_owned(),
     );
-    let drawn = Drawn {
+    Drawn {
         view: Some(COLUMNS),
         lists: vec!["columns-col-0".to_owned()],
         columns: vec![DrawnColumn {
@@ -793,10 +793,17 @@ fn open_submenu_surfaces_nest_under_their_owning_menu_and_row_icons_carry_descri
         }],
         icon_descriptions,
         ..Drawn::default()
-    };
+    }
+}
+
+#[test]
+fn open_submenu_surfaces_nest_under_their_owning_menu_and_row_icons_carry_descriptions() {
+    let tree = nested_submenu_tree();
+    let drawn = row_with_badge();
     let snapshot = Snapshot::read(&tree, &drawn);
 
-    // Only the top-level menu remains under kit-root; nested submenus sit inside it.
+    // Only the top-level menu remains under kit-root; each open submenu sits under its
+    // trigger, so its rows come right after the trigger, before the trigger's siblings.
     let kit_root = snapshot.at(1).expect("kit-root");
     let root_menus: Vec<_> = kit_root
         .children
@@ -826,7 +833,9 @@ fn open_submenu_surfaces_nest_under_their_owning_menu_and_row_icons_carry_descri
             "Offline availability",
             "Keep test pin",
             "Details",
-            "Inspect nested state"
+            "Inspect nested state",
+            "Release pin",
+            "Properties"
         ]
     );
 
