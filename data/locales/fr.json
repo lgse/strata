@@ -1121,6 +1121,7 @@
   "This archive has no parent directory.": "Cette archive n’a pas de dossier parent.",
   "This archive uses a compression method or feature that Strata does not support.": "Cette archive utilise une méthode de compression ou une fonctionnalité que Strata ne prend pas en charge.",
   "This directory is empty": "Ce dossier est vide",
+  "Unable to read this directory": "Impossible de lire ce dossier",
   "This download is not a supported image. Choose a JPEG, BMP, static WebP, GIF or PNG image.": "Ce téléchargement n’est pas une image prise en charge. Choisissez une image JPEG, BMP, WebP statique, GIF ou PNG.",
   "This exclusion has already been added.": "Cette exclusion a déjà été ajoutée.",
   "This folder is empty": "Ce dossier est vide",

@@ -40,6 +40,11 @@ enum GoTarget {
     Missing(String),
 }
 
+/// Whether `press` completes a `g` chord.
+pub(super) fn is_target(app: &App, press: &KeyPress) -> bool {
+    go_target(press, &app.sidebar.visible_pins()).is_some()
+}
+
 fn go_target(press: &KeyPress, pins: &[Location]) -> Option<GoTarget> {
     if press.is(GO_FIRST) {
         Some(GoTarget::FirstItem)

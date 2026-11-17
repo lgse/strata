@@ -1121,6 +1121,7 @@
   "This archive has no parent directory.": "Tệp nén này không có thư mục cha.",
   "This archive uses a compression method or feature that Strata does not support.": "Tệp nén này dùng phương thức nén hoặc tính năng mà Strata không hỗ trợ.",
   "This directory is empty": "Thư mục này trống",
+  "Unable to read this directory": "Không thể đọc thư mục này",
   "This download is not a supported image. Choose a JPEG, BMP, static WebP, GIF or PNG image.": "Tệp tải xuống này không phải là hình ảnh được hỗ trợ. Hãy chọn hình ảnh JPEG, BMP, WebP tĩnh, GIF hoặc PNG.",
   "This exclusion has already been added.": "Mục loại trừ này đã được thêm.",
   "This folder is empty": "Thư mục này trống",

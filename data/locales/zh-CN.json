@@ -1121,6 +1121,7 @@
   "This archive has no parent directory.": "此压缩文件没有上级目录。",
   "This archive uses a compression method or feature that Strata does not support.": "此压缩文件使用了 Strata 不支持的压缩方法或功能。",
   "This directory is empty": "此文件夹为空",
+  "Unable to read this directory": "无法读取此文件夹",
   "This download is not a supported image. Choose a JPEG, BMP, static WebP, GIF or PNG image.": "下载的文件不是受支持的图片。请选择 JPEG、BMP、静态 WebP、GIF 或 PNG 图片。",
   "This exclusion has already been added.": "已添加过此排除项。",
   "This folder is empty": "此文件夹为空",

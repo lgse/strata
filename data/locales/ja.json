@@ -1121,6 +1121,7 @@
   "This archive has no parent directory.": "このアーカイブには親ディレクトリがありません。",
   "This archive uses a compression method or feature that Strata does not support.": "このアーカイブは Strata が対応していない圧縮方式または機能を使用しています。",
   "This directory is empty": "このディレクトリは空です",
+  "Unable to read this directory": "このディレクトリを読み込めません",
   "This download is not a supported image. Choose a JPEG, BMP, static WebP, GIF or PNG image.": "このダウンロードは対応している画像ではありません。JPEG、BMP、静止画 WebP、GIF、PNG のいずれかの画像を選択してください。",
   "This exclusion has already been added.": "この除外項目はすでに追加されています。",
   "This folder is empty": "このフォルダーは空です",

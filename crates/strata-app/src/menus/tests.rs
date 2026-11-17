@@ -9,7 +9,7 @@ use strata_components::{
 };
 use strata_core::model::{EntryKind, FileEntry, Location, MetadataValue};
 
-use super::{EntryTarget, FolderTarget, Menu, ROWS, Request};
+use super::{EntryTarget, FolderTarget, Hints, Menu, ROWS, Request};
 use crate::{
     App, commands,
     host::offscreen::Offscreen,
@@ -66,7 +66,7 @@ fn of(entry: &FileEntry, entries: &[FileEntry], typing: bool) -> EntryTarget<'st
         can_create: true,
         can_trash: None,
         can_delete: None,
-        typing,
+        typing: Hints::default_map(typing),
     }
 }
 
@@ -295,7 +295,7 @@ fn a_saved_keymap_moves_the_hints_with_the_keys() {
                 can_paste: false,
                 can_open_terminal: true,
                 hidden_shown: false,
-                typing: true,
+                typing: Hints::default_map(true),
             });
 
             assert_eq!(hint(&menu, "Rename"), Some("Ctrl+E"));
@@ -313,7 +313,7 @@ fn a_panes_menu_lists_the_gtk_menus_rows_with_paste_greyed() {
         can_paste: false,
         can_open_terminal: true,
         hidden_shown: false,
-        typing: true,
+        typing: Hints::default_map(true),
     });
 
     assert!(menu.header.is_empty());
@@ -340,7 +340,7 @@ fn a_panes_menu_lists_the_gtk_menus_rows_with_paste_greyed() {
         can_paste: true,
         can_open_terminal: true,
         hidden_shown: false,
-        typing: true,
+        typing: Hints::default_map(true),
     });
     let paste = items(&pasteable).find(|item| item.label == "Paste");
     assert!(paste.is_some_and(|item| item.enabled));
@@ -350,7 +350,7 @@ fn a_panes_menu_lists_the_gtk_menus_rows_with_paste_greyed() {
         can_paste: false,
         can_open_terminal: false,
         hidden_shown: true,
-        typing: true,
+        typing: Hints::default_map(true),
     });
     let select_all = items(&empty).find(|item| item.label == "Select All");
     assert!(select_all.is_some_and(|item| !item.enabled));
@@ -713,6 +713,55 @@ fn filter_menus_keep_field_focus_on_background_and_focus_view_on_result_row() {
                 current_focus(&mut host).as_deref(),
                 shell::view_focus(host.app())
             );
+        },
+    );
+}
+
+/// 10xer mode's rows hint its verbs where it has one for the row, and nothing where its map
+/// binds no key of the row's own (`tenxer_hint` in `src/ui/shortcut_reference.rs`).
+#[test]
+fn tenxer_rows_hint_the_tenxer_verbs() {
+    hosted(
+        "menus::tests",
+        "tenxer_rows_hint_the_tenxer_verbs",
+        |mut host| {
+            use strata_desktop::keys::{Keys, bindings as key, label};
+            host.runtime().update(|app: &mut App, _: &mut Tx| {
+                shell::saved(app).change(|settings| settings.tenxer_mode = true);
+                shell::live_keys(app).follow(shell::preferences(app));
+            });
+            while host.turn() {}
+            let shows = |shown: strata_desktop::keys::Shown| Some(label(&Keys::One(shown)));
+            let tenxer = |entry: &FileEntry| EntryTarget {
+                typing: Hints::TENXER,
+                ..one(entry, false)
+            };
+            let todo = file("todo.txt");
+            let documents = directory("documents");
+            let on_file = entry(&tenxer(&todo));
+            let on_folder = entry(&tenxer(&documents));
+            for (label, expected) in [
+                ("Cut", shows(key::YANK_CUT.shown())),
+                ("Copy", shows(key::YANK.shown())),
+                ("Rename", shows(key::RENAME.alternate(0).shown())),
+                ("Move to…", shows(key::MOVE_TO.shown())),
+                ("Copy to…", shows(key::COPY_TO.shown())),
+                (
+                    "Move to Trash",
+                    shows(key::MOVE_TO_TRASH.alternate(0).shown()),
+                ),
+                ("Duplicate", None),
+                ("Copy path", None),
+            ] {
+                assert!(expected.as_ref().is_none_or(|shown| !shown.is_empty()));
+                assert_eq!(
+                    hint(&on_file, label).map(str::to_owned),
+                    expected,
+                    "{label}"
+                );
+            }
+            assert_eq!(hint(&on_folder, "Pin to sidebar"), None);
+            assert_eq!(hint(&on_folder, "Open in Terminal"), None);
         },
     );
 }

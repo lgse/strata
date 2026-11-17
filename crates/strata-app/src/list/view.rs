@@ -36,7 +36,7 @@ pub(super) fn table(app: &App) -> ListTable<App> {
 
 /// The pane's collection, with the rows the viewport shows recorded for the fills.
 fn base(app: &App) -> Collection<App> {
-    single::collection::<List>(app)
+    crate::peek::rows(single::collection::<List>(app))
         .icon(app.list.thumbs.icon(&app.look))
         .on_visible(|app: &mut App, range| {
             // Recorded only: the part asks for the fills and syncs the thumbnails once a poll.

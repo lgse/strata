@@ -1121,6 +1121,7 @@
   "This archive has no parent directory.": "Ennek az archívumnak nincs szülőkönyvtára.",
   "This archive uses a compression method or feature that Strata does not support.": "Ez az archívum olyan tömörítési módszert vagy funkciót használ, amelyet a Strata nem támogat.",
   "This directory is empty": "Ez a könyvtár üres",
+  "Unable to read this directory": "Ez a könyvtár nem olvasható",
   "This download is not a supported image. Choose a JPEG, BMP, static WebP, GIF or PNG image.": "A letöltött fájl nem támogatott képformátum. Válasszon JPEG, BMP, statikus WebP, GIF vagy PNG formátumú képet.",
   "This exclusion has already been added.": "Ez a kizárás már hozzá lett adva.",
   "This folder is empty": "Ez a mappa üres",

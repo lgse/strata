@@ -1121,6 +1121,7 @@
   "This archive has no parent directory.": "This archive has no parent directory.",
   "This archive uses a compression method or feature that Strata does not support.": "This archive uses a compression method or feature that Strata does not support.",
   "This directory is empty": "This directory is empty",
+  "Unable to read this directory": "Unable to read this directory",
   "This download is not a supported image. Choose a JPEG, BMP, static WebP, GIF or PNG image.": "This download is not a supported image. Choose a JPEG, BMP, static WebP, GIF or PNG image.",
   "This exclusion has already been added.": "This exclusion has already been added.",
   "This folder is empty": "This folder is empty",

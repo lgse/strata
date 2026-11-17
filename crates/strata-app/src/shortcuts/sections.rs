@@ -2,14 +2,14 @@
 
 //! The commands each reference section names, for the keyboard settings' tables: GTK's
 //! `command_sections` (`src/ui/shortcut_reference.rs`), over the ported tables in
-//! `contents.rs`. The 10xer map's tables are not ported yet ([A11]), so it has no sections of
-//! its own and the settings file its commands under the default map's.
+//! `contents.rs` and `tenxer.rs`. The 10xer map's sections are the window's in every view; the
+//! portal chooser's scopes (`tenxer_scopes`) join them with [A20]'s chooser rows.
 //!
 //! **A copy:** `src/ui` does not move, so this is kept beside GTK's by hand. A change to `command_sections` or its helpers
 //! on `main` merges clean and changes nothing here: make the same change in the merge
 //! (`docs/rune/shared-state.md`, "Merging from `main`").
 //!
-//! [A11]: ../../../../docs/rune/parity/packages/A11.md
+//! [A20]: ../../../../docs/rune/parity/packages/A20.md
 
 use strata_desktop::keys::{Command, Map};
 
@@ -24,12 +24,13 @@ const NAVIGATION_TITLES: [&str; 3] = ["Columns navigation", "Icons navigation", 
 /// sections merged in the order their views give them.
 pub(crate) fn command_sections(map: Map) -> Vec<(&'static str, Vec<Command>)> {
     let mut merged: Vec<(&'static str, Vec<Command>)> = Vec::new();
-    if map == Map::Tenxer {
-        return merged;
-    }
     for mode in [Mode::Columns, Mode::Icons, Mode::List] {
         let mut previous = None;
-        for section in contents::default_sections(mode) {
+        let sections = match map {
+            Map::Tenxer => super::tenxer::tenxer_sections(mode),
+            Map::Default => contents::default_sections(mode),
+        };
+        for section in sections {
             let index = merged_section(&mut merged, merged_title(section.title), previous);
             previous = Some(index);
             add_section_commands(&mut merged[index].1, &section);

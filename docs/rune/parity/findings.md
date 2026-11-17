@@ -2354,6 +2354,11 @@ sequence only together with the alphabet's version, so the version is part of th
   the drag's start. Alone on the session host the twin then passed four rounds, 12 of 12.
 - **Concerns:** `quick_preview/rendered-document-word-selection-rune`, [A15](packages/A15.md)'s
   `parallel` twin. #2569 changes no pointer drag or document selection.
+- **Sighting on [#2578](https://github.com/lgse/strata/pull/2578):** in its re-gate at
+  `32db8aa4d`, the full session-host batch (35 runs) failed all three of the twin's runs,
+  `columns-md` and `columns-rtf` at line 20 (`pha bravo charlie delta`) and `columns-docx` at
+  line 21 (`uarterly Report`); alone on the session host it then passed three rounds, 9 of 9.
+  #2578 changes no pointer drag or document selection.
 - **Also seen** in the gate of [#2573](https://github.com/lgse/strata/pull/2573) (A18): in two
   full runs (`columns-md` and `columns-docx`, then `columns-docx`), and once in two full Rune
   runs on clean `strata-next` at `1370c6f7b`. Alone it passed 2 of 2 on both targets. Filed

@@ -5,8 +5,8 @@ use serde_json::Value;
 use strata_desktop::keys::{
     Active, Binding, Command, Map,
     bindings::{
-        ACTIONS_FOLDER, COPY, DUPLICATE, FILTER_SLASH, FIND, GO_HOME, RENAME, SEARCH_SUBFOLDERS,
-        SORT_BY_NAME, YANK,
+        ACTIONS_FOLDER, COPY, DUPLICATE, FILTER_SLASH, FIND, GO_HOME, RENAME, SCROLL_PREVIEW_DOWN,
+        SEARCH_SUBFOLDERS, SORT_BY_NAME, TENXER_MODE, YANK,
     },
     registry,
 };
@@ -266,6 +266,7 @@ fn the_keybind_search_filters_the_shown_table_only() {
 
 #[test]
 fn tables_list_only_what_their_map_can_run() {
+    crate::startup::install_key_library().expect("the key library");
     let has = |map: Map, command: Command| {
         sections(map)
             .iter()
@@ -286,10 +287,20 @@ fn tables_list_only_what_their_map_can_run() {
         has(Map::Tenxer, FIND) && has(Map::Tenxer, GO_HOME) && has(Map::Tenxer, ACTIONS_FOLDER)
     );
     assert!(has(Map::Tenxer, DUPLICATE));
+    // The 10xer table files its rows under the 10xer reference's headings.
+    let under = |map: Map, title: &str, command: Command| {
+        sections(map)
+            .iter()
+            .any(|(heading, commands)| *heading == title && commands.contains(&command))
+    };
+    assert!(under(Map::Tenxer, "Places", GO_HOME));
+    assert!(under(Map::Tenxer, "Preview", SCROLL_PREVIEW_DOWN));
+    assert!(under(Map::Tenxer, "10xer mode", TENXER_MODE));
 }
 
 #[test]
 fn every_row_is_listed_once_and_has_its_own_name() {
+    crate::startup::install_key_library().expect("the key library");
     for map in [Map::Default, Map::Tenxer] {
         let listed: Vec<Command> = sections(map)
             .into_iter()

@@ -53,8 +53,7 @@ pub(super) fn sections(map: Map) -> Sections {
         .collect()
 }
 
-/// Adds `title` to the order of the sections once: the 10xer tables are not ported, so the
-/// headings no reference section gives, which GTK's 10xer tables do, come after the others.
+/// Adds `title` to the order of the sections once.
 fn push_new(order: &mut Vec<&'static str>, title: &'static str) {
     if !order.contains(&title) {
         order.push(title);
