@@ -36,8 +36,10 @@ const RESET_ALL_KEY: &str = "settings-keymap-reset-all";
 const MAPS_KEY: &str = "settings-keymap-maps";
 
 /// The page's own state: the table shown, the keybind search, the armed capture and the
-/// open Reset all confirmation.
+/// open Reset all confirmation. It outlives closing Settings, as GTK's page does.
 pub(crate) struct KeyboardState {
+    /// Whether the page has shown yet, which sets the table it shows first.
+    built: bool,
     shown: Map,
     pub(super) query: TextEdit,
     capture: Option<capture::Capturing>,
@@ -47,6 +49,7 @@ pub(crate) struct KeyboardState {
 impl Default for KeyboardState {
     fn default() -> Self {
         Self {
+            built: false,
             shown: Map::Default,
             query: TextEdit::default(),
             capture: None,
@@ -56,16 +59,23 @@ impl Default for KeyboardState {
 }
 
 impl KeyboardState {
-    /// The state Settings opens with: the table of the mode in force.
-    pub(super) fn opened(tenxer_mode: bool) -> Self {
-        Self {
-            shown: if tenxer_mode {
+    /// The first time the page shows, it shows the table of the mode in force.
+    pub(super) fn build_once(&mut self, tenxer_mode: bool) {
+        if !self.built {
+            self.built = true;
+            self.shown = if tenxer_mode {
                 Map::Tenxer
             } else {
                 Map::Default
-            },
-            ..Self::default()
+            };
         }
+    }
+
+    /// Settings closed: a capture and Reset all's confirmation end with it, and the rest stays.
+    pub(super) fn closed(&mut self) {
+        self.capture = None;
+        self.confirm = None;
+        self.query.focused = false;
     }
 
     pub(super) fn confirm_open(&self) -> bool {
@@ -236,7 +246,6 @@ fn keybind_search(app: &App) -> El {
             edit: |app| &app.settings_dialog.keyboard.query,
             edit_mut: |app| &mut app.settings_dialog.keyboard.query,
             width: None,
-            on_change: follow_search,
         },
     )
 }
@@ -246,24 +255,6 @@ fn show(app: &mut App, map: Map) {
     let state = &mut app.settings_dialog.keyboard;
     state.end_capture();
     state.shown = map;
-}
-
-/// Shows the other table when the search leaves no row in the shown one but matches some
-/// there, at each change of the query: GTK's `follow_search`.
-fn follow_search(app: &mut App) {
-    let shown = app.settings_dialog.keyboard.shown;
-    let other = match shown {
-        Map::Default => Map::Tenxer,
-        Map::Tenxer => Map::Default,
-    };
-    let follow = {
-        let page = Page::of(app);
-        let rows_in = |map| !page.filtered(&sections::sections(map)).is_empty();
-        !rows_in(shown) && rows_in(other)
-    };
-    if follow {
-        show(app, other);
-    }
 }
 
 /// The page's turn: a capture whose button lost the keyboard ends.

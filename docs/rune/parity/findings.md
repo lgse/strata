@@ -2305,6 +2305,9 @@ sequence only together with the alphabet's version, so the version is part of th
   zoom generation out of node paths. The run opens no preview, and its fixture holds no PDF.
 - **Not traced.** One reading to check: line 10 waits only for the moved file on disk, so under
   load Ctrl+Z can arrive before the move is recorded as the operation to undo.
+- **Also seen** in the gate of [#2573](https://github.com/lgse/strata/pull/2573) (A18): once in
+  a full Rune run on clean `strata-next` at `1370c6f7b`, and once in the re-gate at `cad74ce7e`
+  (rune offscreen 674 of 675). Alone it then passed on both targets.
 - **State:** open, unowned.
 
 ### #2570: 10xer's find and filter highlights are not drawn in Rune's rows
@@ -2339,6 +2342,10 @@ sequence only together with the alphabet's version, so the version is part of th
   the preview's loading path.
 - **Concerns:** `background_selection/preview-blank-click-keeps-selection/columns`,
   `required`, [A15](packages/A15.md)'s (done).
+- **Also seen** in the gate of [#2573](https://github.com/lgse/strata/pull/2573) (A18), in the
+  rerun of `./scripts/qa-parity.sh all`: `preview-blank-click-keeps-selection/columns` and
+  `/icons` both showed "Loading…" at line 6 (rune offscreen 661 of 663). Both passed in the run
+  before. #2573 changes Settings and the QA snapshot's nested dialogs, not the preview.
 - **State:** open, unowned. The ledger is unchanged: the run stays `required`. Not traced.
 
 ### #2580: `rendered-document-word-selection-rune` lost the selection's first characters twice in a full session-host run
@@ -2359,12 +2366,85 @@ sequence only together with the alphabet's version, so the version is part of th
   `columns-md` and `columns-rtf` at line 20 (`pha bravo charlie delta`) and `columns-docx` at
   line 21 (`uarterly Report`); alone on the session host it then passed three rounds, 9 of 9.
   #2578 changes no pointer drag or document selection.
-- **Sighting in [A16](packages/A16.md)'s Slice 2 gate** at `0d38d2eb8`: the same three runs at
-  the same lines, in the full 35-run session batch (32 of 35). Alone on the session host the
-  twin then passed three rounds, 9 of 9. The slice changes no pointer drag or document
-  selection. Three gates in a row now fail all three runs in the full batch and pass alone, so
-  it is no longer once in a while: something an earlier session run leaves, or the batch's
-  load, is worth tracing.
-- **Not traced.** One reading to check: under the larger batch's load, the compositor's pointer
-  motion reaches the document after the press, so the drag's anchor lands past its start.
-- **State:** open, unowned.
+- **Sighting in [A16](packages/A16.md)'s Slice 2 gate** at `0d38d2eb8`, before #2584 merged:
+  the same three runs at the same lines, in the full 35-run session batch (32 of 35). Alone on
+  the session host the twin then passed three rounds, 9 of 9.
+- **Also seen** in the gate of [#2573](https://github.com/lgse/strata/pull/2573) (A18): in two
+  full runs (`columns-md` and `columns-docx`, then `columns-docx`), and once in two full Rune
+  runs on clean `strata-next` at `1370c6f7b`, and in the re-gate at `cad74ce7e` (`columns-docx`,
+  session host 34 of 35). Alone it passed each time on both targets. Filed again at the same
+  time as [#2581](https://github.com/lgse/strata/issues/2581), a duplicate.
+- **Cause** (traced by [A15](packages/A15.md), 2026-11-17): the twin, not Rune. Line 17 of
+  `rendered-document-word-selection-rune` clicked 17 points into C11's first text `label`, where
+  GTK's original clicks 17 points into the row's `panel`, whose padding puts the point at the
+  text's start. On the label, 17 points is two glyphs into `alpha` (one into `Quarterly`), so a
+  plain click there puts the caret at `al|pha`, and line 18's Shift+click selects
+  `pha bravo charlie delta`. The run passed only while that click came within Rune's
+  double-click interval (`Runtime::double_click_interval`, 0.5 s) and `CLICK_SLOP` (4 points) of
+  line 14's double-click at the same point: a third press there selects the paragraph, from its
+  start. Ctrl+C and the clipboard wait between them take longer than 0.5 s under load. Shown both
+  ways with a 700 ms `sleep` before line 17: all three Rune runs failed with the reported text,
+  while GTK's original passed 3 of 3 with the same sleep, its click landing at the text's start.
+  Under 24 busy loops (load average 21 to 39), the old twin passed 1 of 9.
+- **Fix:** line 17 clicks 1 point into the label, the text's start, as GTK's click lands; 16
+  points from the double-click, it is a single click whatever the timing. What the twin checks is
+  unchanged. With the 700 ms sleep the fixed twin passed 3 of 3; under the same load it passed
+  10 rounds in a row, 30 of 30, and two full `./scripts/qa-parity.sh all` runs had no failure of
+  it ([#2584](https://github.com/lgse/strata/pull/2584)).
+- **State:** fixed in the twin. #2581 is its duplicate.
+
+### #2572: Settings is a named dialog with menus on Rune and unnamed panels on GTK
+
+- **Code:** `deviation`, ruled by the owner on 2026-11-17 ([`owner.md`](owner.md#ruled)). [Issue](https://github.com/lgse/strata/issues/2572), filed on
+  2026-11-17 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** in [A18](packages/A18.md)'s `settings` alphabet's smoke tier (v3), in all 20
+  sequences. It has three facets of `app.*`, all from one cause:
+  - While Settings is open, `app.dialog` reads `null` on GTK and `"Settings"` on Rune.
+  - While a choice menu ("Modified date format") is open, `app.menu` reads `null` on GTK and
+    `[]` on Rune (63 steps).
+  - While "Reset all keybinds?" is open, `app.dialog` reads `"Reset all keybinds?"` on GTK and
+    `"Settings"` on Rune, since strata-qa's `open_dialog` names the first rendered dialog.
+
+  With `app.dialog` and `app.menu` set aside, all 20 sequences agree at every step: focus,
+  panes, the text field, `settings.toml` and the tree. The shrunk sequence, one step that opens
+  Settings from the header, confirmed 3 of 3:
+  `tests/qa/fuzz/corpus/settings/fuzz-settings-v3-0000000000000001.jsonl`, unparked once ruled.
+- **Why:**
+  - **GTK.** Its Settings is a `gtk::Box` overlaid on the browser and kept between openings
+    (`build_layer` in `src/ui/settings.rs`, added by `SettingsLauncher` in
+    `src/ui/window/composition/settings.rs`), with no accessible role or name. Its choice
+    menus are plain `gtk::Popover`s (`choice_menu` in `src/ui/settings/bindings.rs`), role
+    `generic`, holding `MenuItemRadio` rows.
+  - **Rune.** Its Settings is C15's `DialogShell`, a `dialog` named "Settings", and its choice
+    menus are `menu`s owning their `menuitemradio` rows (`settings_dialog/controls.rs`).
+
+  A screen reader hears "Settings, dialog" and a menu on Rune, and unnamed panels on GTK. GTK's
+  own message layers inside Settings, such as "Reset all keybinds?", do report as dialogs. It
+  is the pattern of [#2405](https://github.com/lgse/strata/issues/2405), whose ruling covers
+  plain popovers only. [A9](packages/A9.md)'s `pointer` drafts met the first facet and read
+  GTK's Settings as a window of its own; it is a layer in the browser's window.
+- **Concerns:** the `settings` alphabet, and any alphabet that opens Settings.
+- **Options for the owner:**
+  1. Rune keeps the named dialog and the menus, and the normalisation map gains rules that name
+     their values. For `app.dialog`: GTK's `null`, or a message layer's name such as "Reset all
+     keybinds?", against Rune's "Settings". For `app.menu`: GTK's `null` against Rune's `[]`.
+     The map takes one rule for each field and code, so a `deviation` rule's values go on
+     #2405's line; an `a11y` code needs a line of its own. Trial, not committed: with the
+     first two value pairs, 9 of 20 v3 sequences agree, and the other 11 differ only at the
+     third facet.
+  2. Rune's Settings drops to an unnamed group and its menus to plain groups, matching GTK's
+     AT-SPI. Assistive technology then loses "Settings" and the menus' roles.
+  3. The QA snapshot names the innermost open dialog rather than the first. That is a change
+     to strata-qa for both targets, and it leaves the first two facets.
+- **State:** ruled by the owner, 2026-11-17: option 1. Rune keeps the named dialog and the
+  menus, and `tests/qa/fuzz/normalisation.map` names exactly their values:
+  - `app.dialog deviation lgse/strata#2572 {"gtk":null,"rune":["Settings"]}`;
+  - `app.menu deviation lgse/strata#2572 {"gtk":null,"rune":[[]]}`.
+
+  The map takes a rule of one code for each ruling on a field, each citing its own issue
+  (`tests/qa/fuzz/rules.rs`), so the first sits beside #2405's. The third facet is fixed in the
+  QA backend, by the owner's second ruling of 2026-11-17: Rune's snapshot names the topmost
+  open dialog, the message drawn inside Settings, as GTK's does (`Backend::nests_dialogs` in
+  `crates/strata-qa`, on for the Rune backend only), with no map rule. Under the two rules the
+  `settings` alphabet's v5 smoke tier, Reset all included, agrees in 20 of 20, and the unparked
+  v3 sequence replays clean. [A18](packages/A18.md)'s.
