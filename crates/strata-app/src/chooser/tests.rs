@@ -35,12 +35,34 @@ fn file_entry(path: &str, kind: EntryKind) -> FileEntry {
 }
 
 #[test]
-fn glob_and_mime_filters_match_files_and_keep_directories() {
-    assert!(glob_matches("*.rs", "main.rs"));
-    assert!(!glob_matches("*.rs", "main.txt"));
-    assert!(glob_matches("report-[0-9]?.csv", "report-1a.csv"));
-    assert!(!glob_matches("report-[!0-9].csv", "report-3.csv"));
+fn glob_patterns_match_as_the_portal_spells_them() {
+    for (pattern, name, matches) in [
+        ("*.rs", "main.rs", true),
+        ("*.rs", "main.txt", false),
+        ("**.rs", "main.rs", true),
+        ("*", "", true),
+        ("?", "", false),
+        ("report-[0-9]?.csv", "report-1a.csv", true),
+        ("report-[!0-9].csv", "report-3.csv", false),
+        ("report-[^0-9].csv", "report-x.csv", true),
+        ("[a-c]x", "bx", true),
+        ("[a-c]x", "dx", false),
+        ("[x-]", "-", true),
+        ("[]]", "]", true),
+        ("[abc", "[abc", true),
+        ("[abc", "a", false),
+        ("[ü]", "ü", true),
+    ] {
+        assert_eq!(
+            glob_matches(pattern, name),
+            matches,
+            "{pattern:?} on {name:?}"
+        );
+    }
+}
 
+#[test]
+fn glob_and_mime_filters_match_files_and_keep_directories() {
     let png_filter = CompiledFilter::new(PortalFileFilter {
         label: "PNG images".into(),
         rules: vec![FilterRule::MimeType("image/png".into())],

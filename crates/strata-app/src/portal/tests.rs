@@ -58,8 +58,62 @@ fn hyprland_window_size_matches_single_mapped_visible_client() {
         window_geometry::application_window_size(duplicate, "zen"),
         None
     );
+    for (reply, why) in [
+        (
+            &br#"[{"class":"zen","initialClass":"zen","mapped":true,"hidden":true,"size":[960,1000]}]"#[..],
+            "a hidden client",
+        ),
+        (
+            br#"[{"class":"zen","initialClass":"zen","mapped":false,"hidden":false,"size":[960,1000]}]"#,
+            "an unmapped client",
+        ),
+        (
+            br#"[{"class":"zen","initialClass":"zen","mapped":true,"hidden":false,"size":[0,1000]}]"#,
+            "a client with no width",
+        ),
+        (
+            br#"[{"class":"zen","mapped":true,"hidden":false,"size":[960,1000]}]"#,
+            "a client without an initial class",
+        ),
+        (
+            br#"[{"class":"zen","initialClass":"zen","mapped":true,"hidden":false,"size":[960]}]"#,
+            "a size that is not a pair",
+        ),
+        (
+            br#"[{"class":"x","initialClass":"x","mapped":1,"hidden":false,"size":[9,9]},{"class":"zen","initialClass":"zen","mapped":true,"hidden":false,"size":[960,1000]}]"#,
+            "a reply with a malformed client",
+        ),
+        (br#"{"class":"zen"}"#, "a reply that is not a list"),
+    ] {
+        assert_eq!(
+            window_geometry::application_window_size(reply, "zen"),
+            None,
+            "{why}"
+        );
+    }
+    let by_initial_class = br#"[{"class":"other","initialClass":"Zen","mapped":true,"hidden":false,"size":[800,600]}]"#;
     assert_eq!(
-        window_geometry::socket_path(Path::new("/run/user/1000"), "../bad"),
-        None
+        window_geometry::application_window_size(by_initial_class, "zen"),
+        Some((800, 600))
     );
+}
+
+#[test]
+fn hyprland_socket_needs_an_absolute_runtime_and_a_plain_signature() {
+    let runtime = Path::new("/run/user/1000");
+    assert_eq!(
+        window_geometry::socket_path(runtime, "abc_12-x"),
+        Some(runtime.join("hypr/abc_12-x/.socket.sock"))
+    );
+    for (runtime, signature) in [
+        ("/run/user/1000", "../bad"),
+        ("/run/user/1000", ""),
+        ("run/user/1000", "abc"),
+    ] {
+        assert_eq!(
+            window_geometry::socket_path(Path::new(runtime), signature),
+            None,
+            "{runtime:?} {signature:?}"
+        );
+    }
 }
