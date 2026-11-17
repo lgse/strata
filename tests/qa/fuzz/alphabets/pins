@@ -45,12 +45,36 @@ location v2 c074595ff2aab0b4
 # while bundle.zip or bundle.tar exists and met Right/l on created archives opening A15's Quick
 # Preview on GTK. Version 4 keeps Right/l off created archives.
 menus v4 389c2a5b99f176f3
+# open-with: versions 1 and 2 were A14's drafts, never merged: version 1 met lgse/strata#2547
+# (`Escape` leaving "Run this action?" open on GTK, seed `0x08`), guarded the Open With search on
+# `editable_fields`, which GTK's `gtk::SearchEntry` never counts, and expected `Ctrl+Alt+T` under
+# an open context menu to launch, which GTK's popover keeps from the window; version 2 left that
+# `Escape` out and guarded the search on the focused editable widget, and met lgse/strata#2547
+# again: Cancel and Close dialog on "Run this action?" leave focus nowhere on GTK. Version 3
+# confirms only with Run.
+open-with v3 f764b759e0adf95c
 # pointer: versions 1 and 2 were A9's drafts, never merged: version 1 met GTK's Settings window
 # (`app.dialog`), lgse/strata#2414, lgse/strata#2551 (fixed) and lgse/strata#2552 on arrows after
 # a marquee; version 2 met name-space drags from a selected row (A19's) and a deselecting
 # Ctrl+click (as in lgse/strata#2353). Version 3 sends no keyboard cursor moves and guards both;
 # its seeds name the shrunk sequences of lgse/strata#2552, parked in tests/qa/fuzz/corpus/pointer.
 pointer v3 e4a464d3bf25d6d6
+# preview: version 1 was A15's draft, never merged: its smoke tier caught Map::Tenxer `i` firing
+# with tenxer_mode off, default-mode Space inside the drawer closing the preview instead of
+# activating header buttons, `Open in default application` hiding instead of disabling on a
+# placeholder and `.a11y_hidden()` omitting the header's `·` separators (all four fixed), and met
+# stale `—` metadata when MetadataFilled raced PreviewEvent::Ready in List (a refresh GTK does not
+# make, version 3 showed) and CodeView/DocumentView/SheetGrid body app.preview differences
+# (lgse/strata#2558, lgse/strata#2509). Version 2, also a draft, previewed
+# cover archives, RAW/archive failure cards, binary unsupported cards and folder/empty
+# placeholders: its smoke tier caught a context-menu Quick preview keeping the old anchor, the
+# extension label upper-cased, and `No visual preview` refusing focus on Right (all fixed), and
+# met cover archives written with wall-clock ZIP timestamps. Version 3, also a draft, wrote the
+# archives as fixed bytes: its smoke tier caught the header's metadata refreshed past GTK's, a
+# view switch or a folder click lending the slot, and Left into the parent column and a closed
+# filter left unfollowed (all fixed), and met lgse/strata#2499 and menus opened on another file
+# with the preview enabled, which version 4 leaves out.
+preview v4 8de1587317366095
 # properties: versions 1 and 2 were A17's drafts, never merged: version 1 met `Open` on fixture
 # folders opening GTK's Open With chooser (`BrowserEvent::OpenRequested`, A14's Slice 2) and
 # lgse/strata#2356 on already-open folder clicks and cursorless background-menu Escape; version 2

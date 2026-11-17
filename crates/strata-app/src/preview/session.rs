@@ -96,8 +96,10 @@ pub(super) fn show(app: &mut App, entry: FileEntry, depth: Option<usize>, tx: &m
         app.preview.drawer.reset_find();
         app.preview.viewer.stop();
         app.preview.viewer = Viewer::Empty;
+        app.preview.content_focus = super::ContentFocus::None;
     }
     cancel_focus_timer(app);
+    app.preview.click_opening = None;
     let was_open = app.preview.drawer.is_open();
     let already_showing = app.preview.current.as_ref() == Some(&entry)
         && (app.preview.loader.is_active() || !app.preview.viewer.is_empty());
@@ -151,10 +153,57 @@ pub(super) fn show_after_focus_change(
     app.preview.focus_timer.replace(Some(source));
 }
 
+/// Mirroring also raises focus for the child beyond the active depth. A folder a click is
+/// opening becomes the focused column, so lending to it, or to its column, would only flicker
+/// (`lend_slot_to_child` and `pointer_opens` in `src/ui/preview/lifecycle.rs`).
 pub(super) fn lend_slot_to_child(app: &mut App, depth: usize, entry: Option<&FileEntry>) {
     let active = app.browser.active_depth();
+    let opening = click_opens(app, depth, entry);
+    if !opening {
+        // Any other focus ends the click's hold, as GTK's ends with its navigation.
+        app.preview.click_opening = None;
+    }
     app.preview.child_pane = browsing_columns(app)
+        && !opening
         && (entry.is_some_and(FileEntry::is_directory) || active.is_some_and(|a| depth > a));
+}
+
+/// Whether the focus at `depth` on `entry` is on the folder a click is opening in its column,
+/// or in the column that folder opens.
+fn click_opens(app: &App, depth: usize, entry: Option<&FileEntry>) -> bool {
+    let Some(opening) = app.preview.click_opening.as_ref() else {
+        return false;
+    };
+    match entry {
+        Some(entry) => opening.depth == depth && entry.location == opening.folder,
+        None => {
+            opening.depth + 1 == depth
+                && app.browser.location_at(depth).as_ref() == Some(&opening.folder)
+        }
+    }
+}
+
+pub(super) fn click_opened(app: &mut App, depth: usize) {
+    let opened = app.preview.click_opening.as_ref().is_some_and(|opening| {
+        opening.depth + 1 == depth
+            && app.browser.location_at(depth).as_ref() == Some(&opening.folder)
+    });
+    if opened {
+        app.preview.click_opening = None;
+    }
+}
+
+/// The view shown changed with no file previewed. A view switch lends no slot it did not
+/// (`view_mode_changed` in `src/ui/preview/layout.rs`); another tab's folder may want it lent.
+pub(super) fn show_empty_slot_after_switch(app: &mut App, tab_shown: bool, tx: &mut Tx) {
+    let (_, entry) = selected_entry(app);
+    let lend = browsing_columns(app) && entry.as_ref().is_some_and(FileEntry::is_directory);
+    app.preview.child_pane = lend && (tab_shown || app.preview.child_pane);
+    if app.preview.reserves_empty_preview(app) {
+        app.preview.drawer.open(&app.look, tx);
+    } else {
+        app.preview.drawer.close(&app.look, tx);
+    }
 }
 
 pub(super) fn clear_target(app: &mut App, tx: &mut Tx) {
@@ -166,6 +215,7 @@ pub(super) fn clear_target(app: &mut App, tx: &mut Tx) {
     app.preview.current = None;
     app.preview.current_depth = None;
     app.preview.header_source = None;
+    app.preview.content_focus = super::ContentFocus::None;
     app.preview.viewer.stop();
     app.preview.viewer = Viewer::Empty;
     app.preview.header = HeaderInfo::default();

@@ -78,6 +78,7 @@ pub(crate) fn adopt(column: &Column, collection: &mut CollectionState, marks: &M
     // when it has none.
     let anchor = marks.anchor.filter(listed).or(cursor);
     let shown = selection.cursor() == cursor
+        && selection.anchor() == anchor
         && selection.is_provisional() == provisional
         && selection.len() == selected.len()
         && selected.iter().all(|id| selection.contains(column, *id));

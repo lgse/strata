@@ -64,6 +64,11 @@ const SHORTCUTS: &str = "footer-shortcuts";
 fn build(app: &App, frame: &mut Frame<'_, App>) -> Option<El> {
     let prefs = shell::preferences(app);
     let shows = prefs.show_keybinding_hints;
+    let prompt = tenxer::prompt_el(app, frame.cx, frame.layer);
+    let jobs = prompt
+        .is_none()
+        .then(|| crate::custom_actions::jobs_el(app, frame.layer))
+        .flatten();
     let footer = Bar::new("footer")
         .shortcuts(shows.then_some((
             |app: &App| &app.shortcuts.reference,
@@ -76,7 +81,8 @@ fn build(app: &App, frame: &mut Frame<'_, App>) -> Option<El> {
         .range(tenxer::active_range(app))
         .flash(tenxer::flash_el(app))
         .chord(tenxer::chord_pill_el(app))
-        .prompt(tenxer::prompt_el(app, frame.cx, frame.layer))
+        .jobs(jobs)
+        .prompt(prompt)
         .count(count::shown(app))
         .labels(labels());
     debug_assert_eq!(footer.shortcuts_key(), SHORTCUTS);

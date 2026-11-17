@@ -1,0 +1,12 @@
+# Quick Preview sequences parked against their findings (docs/rune/parity/findings.md):
+#
+#   v<version>-<seed> <code> <issue>
+#
+# Each line is a finding's sequence shrunk GTK against Rune, named for the smoke seed that met
+# it. Versions 1 to 3 were A15's drafts, never merged.
+#
+# v4, 0x0b: with a folder's column opened by a click and the preview's placeholder beside it,
+# Escape closes the preview and gives the cursorless column the keyboard; GTK reports its first
+# entry focused with nothing selected and no cursor drawn, Rune the column with no entry. Shrunk
+# from 69 steps to 6 and confirmed three times out of three.
+v4-000000000000000b oracle lgse/strata#2356
