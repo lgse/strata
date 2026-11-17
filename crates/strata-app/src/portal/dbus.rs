@@ -641,3 +641,6 @@ fn ok_reply(result: SelectedResult) -> glib::Variant {
     }
     glib::Variant::tuple_from_iter([0u32.to_variant(), dict.end()])
 }
+
+#[cfg(test)]
+mod tests;
