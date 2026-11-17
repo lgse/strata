@@ -21,7 +21,7 @@ use strata_desktop::keys::{
     bindings::{ENTER, ESCAPE, ESCAPE_ANY_SHIFT, LEFT, PREVIEW, RIGHT, SPACE},
 };
 
-use super::{archive, session};
+use super::{ContentFocus, archive, session};
 use crate::{
     App,
     commands::{Action, Call, Keys, On, Outcome, Reads, Situation, Stage},
@@ -35,11 +35,17 @@ pub(super) const COMMANDS: &[Action<App>] = &[
     Action::new("preview-panel", toggle_panel),
     Action::new("preview-close", close_from_preview)
         .command(PREVIEW)
-        .keys(&[Keys::at(
-            Stage::FilterAndLocationCommands,
-            &[PREVIEW.ignoring(Modifiers::empty())],
-        )
-        .when(in_preview_outside_find)]),
+        .keys(&[
+            Keys::at(Stage::DirectCommands, &[PREVIEW.in_map(Map::Tenxer)])
+                .when(in_tenxer_preview_outside_find),
+            // The divider grip, unlike the header's buttons and the body, takes no Space of its
+            // own, so GTK's window toggles the preview closed.
+            Keys::at(
+                Stage::FilterAndLocationCommands,
+                &[PREVIEW.in_map(Map::Default)],
+            )
+            .when(on_preview_grip),
+        ]),
     Action::new("preview", space_preview)
         .command(PREVIEW)
         .keys(&[
@@ -48,12 +54,11 @@ pub(super) const COMMANDS: &[Action<App>] = &[
                 &[PREVIEW.in_map(Map::Default)],
             )
             .when(on_filtered_result),
+            Keys::at(Stage::DirectCommands, &[PREVIEW.in_map(Map::Tenxer)])
+                .when(in_tenxer_listing_for_preview),
             Keys::at(
                 Stage::ItemNavigation,
-                &[
-                    PREVIEW.in_map(Map::Default).ignoring(PREVIEW_IGNORED),
-                    PREVIEW.in_map(Map::Tenxer),
-                ],
+                &[PREVIEW.in_map(Map::Default).ignoring(PREVIEW_IGNORED)],
             )
             .when(in_listing_for_preview),
         ]),
@@ -121,21 +126,26 @@ fn in_preview_outside_find(app: &App, at: &Situation) -> bool {
         && !app.preview.viewer.is_prompt_focused()
 }
 
+fn in_tenxer_preview_outside_find(app: &App, at: &Situation) -> bool {
+    shell::preferences(app).tenxer_mode && in_preview_outside_find(app, at)
+}
+
+fn on_preview_grip(app: &App, at: &Situation) -> bool {
+    app.preview.enabled && at.within("preview-grip")
+}
+
 fn in_preview_body_outside_find(app: &App, at: &Situation) -> bool {
     in_preview_outside_find(app, at)
         && !at.within("preview-grip")
         && app.preview.viewer.leaves_on_left()
 }
 
-fn in_listing_for_preview(app: &App, at: &Situation) -> bool {
-    if !at.in_view() {
-        return false;
-    }
-    // In default mode with type-to-search on, `PREVIEW` is Space (not a letter); in 10xer mode
-    // `PREVIEW` is `i` and type-to-search is inactive. Guard against plain-letter bindings when
-    // type-to-search is active, just like `navigation_keys_active`.
-    let _ = app;
-    true
+fn in_tenxer_listing_for_preview(app: &App, at: &Situation) -> bool {
+    shell::preferences(app).tenxer_mode && at.in_view()
+}
+
+fn in_listing_for_preview(_: &App, at: &Situation) -> bool {
+    at.in_view()
 }
 
 fn can_enter_preview(app: &App, at: &Situation) -> bool {
@@ -299,6 +309,11 @@ fn focus_loaded_or_pending(app: &mut App, tx: &mut Tx) -> bool {
     }
     if app.preview.viewer.can_focus() {
         app.preview.drawer.focus_content();
+        return true;
+    }
+    if app.preview.viewer.needs_body_focus_owner() {
+        app.preview.content_focus = ContentFocus::Pending;
+        app.preview.drawer.focus_content_when_shown(tx);
         return true;
     }
     if let Some(request_id) = app.preview.loader.current_request {

@@ -213,6 +213,12 @@ fn return_on_a_drawer_button_fires_its_intent() {
     rt.frame(0.0);
     rt.settle_all();
     rt.frame(0.0);
+    let open = rt
+        .elements()
+        .into_iter()
+        .find(|e| e.key.as_deref() == Some("preview-open"))
+        .expect("Open button stays visible on placeholder");
+    assert!(!open.focusable, "Open button is disabled on placeholder");
     rt.update(|_, tx| tx.focus("preview-close", true));
     rt.frame(0.0);
     rt.key(KeyEvent {

@@ -182,6 +182,22 @@ closed issue is not a fixed finding: the state given here is the finding's.
   file open for writing. It passed 3 times of 3 alone under `./scripts/test-headless.py`,
   and the whole `./scripts/quality.sh test` passed on rerun. That pull request touches no
   shared crate and no `src/`.
+- **Sighting on [#2548](https://github.com/lgse/strata/pull/2548):** an eleventh, the tenth's
+  sibling in `strata-desktop`,
+  `services::update_install::tests::unowned_release_binary_keeps_in_place_updates`
+  (`crates/strata-desktop/src/services/update_install/tests.rs:258`, `left: Pacman, right:
+  InPlace`), failed in `./scripts/quality.sh all --jobs 4` and again in the one rerun of
+  `./scripts/quality.sh test --jobs 4` (shard 0, lane 3, 79 of 80 passed each time) at
+  `4bc5cd808`, and passed alone twice under `./scripts/test-headless.py`; it had passed in
+  the same image at `b7bf69ec2`, and `crates/strata-desktop` did not change between the two.
+  The likely cause is the tenth's, in the test itself: `ownership_probe` writes a `pacman` script and
+  `update_method_for` runs it at once, so a fork on another test thread that still holds the
+  script's write descriptor makes `exec` fail with `ETXTBSY`, which `update_method_for` reads
+  as owned (its `Err(error)` arm), hence `Pacman`. That pull request changes no `src/` and no
+  shared crate: only `crates/strata-app`, `crates/strata-components`, the QA files and
+  Markdown, none of which the GTK lane compiles. It failed twice, so by the rule above the
+  agent stopped chasing it and reported it; after `strata-next` was merged again it passed in
+  `./scripts/quality.sh all --jobs 4` at `c3dcb8917`. A fix, if taken up, lands on `main`.
 
 ### #2176: a GTK critical after a file appears during a rename on a multiple selection
 
@@ -797,6 +813,11 @@ sequence only together with the alphabet's version, so the version is part of th
   screenshot draws no cursor and its next Down lands on `diagram.txt`; Rune focuses the column
   with no entry. Shrunk to 3 steps, confirmed 3 of 3, the same in 24 of 24 GTK replays, and
   parked in `tests/qa/fuzz/corpus/location/` as `v1-000000000000000e`.
+- **Also by the preview** ([A15](packages/A15.md)'s `preview` alphabet, 2026-11-16): with a
+  folder's column opened by a click and the preview's placeholder beside it, Escape closes the
+  preview and gives the column the keyboard (`return_from_preview`, `focus_active`); GTK then
+  reports its first entry (`broken.cbz`) focused with nothing selected, and Rune focuses the
+  column with no entry. Parked in `tests/qa/fuzz/corpus/preview/` as `v4-000000000000000b`.
 - **State:** open, set aside: no Rune change. A fix that gave Rune's column a cursor
   ([#2368](https://github.com/lgse/strata/pull/2368)) was closed unmerged: it made Rune's next
   Down move on where GTK's lands on the first entry, as a list with no cursor does ([#2367](https://github.com/lgse/strata/issues/2367)).
@@ -2083,3 +2104,36 @@ sequence only together with the alphabet's version, so the version is part of th
   cursor GTK's browser never gets: in Columns a browser cursor on a folder opens it. Any
   other move out of the shown folder (a cut and paste, A12's) likely shows the same.
 - **State:** open. The three runs stay `pending` on it in `tests/qa/parity/cross_volume_drop.toml`.
+
+### #2557: the Rune still-image preview names its picture for the file where GTK's is unnamed
+
+- **Code:** `divergence`, a `deviation` if the owner rules it so. [Issue](https://github.com/lgse/strata/issues/2557),
+  filed on 2026-11-16 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** in [A15](packages/A15.md)'s Slice 4, comparing the settled `app.preview` of a
+  previewed `pic.png` on both targets. GTK's picture (`render_sandboxed_media`,
+  `src/ui/preview/media_render.rs`) has no accessible name: `rasterized_label`
+  (`src/ui/preview/render.rs`) names only covers and models. Rune's C14b `ImageView` is an
+  `image` named for the file (`image_label`, `crates/strata-app/src/preview/image.rs`), with a
+  drawn caption of the name and dimensions that assistive technology does not read.
+- **Why:** C14b's work package asks for the name and dimensions
+  (`docs/rune/work/phase-3-views/C14b-viewers.md`; `docs/rune/work/STATUS.md`, "image caption
+  new"), a coordinator's choice, not an owner's ruling.
+- **Concerns:** A15's `preview` fuzz alphabet, which leaves non-cover still images out.
+- **State:** open, for the owner ([`owner.md`](owner.md), A15).
+
+### #2558: the Rune text and document previews name their body and split the text where GTK reads one buffer string
+
+- **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2558), filed on
+  2026-11-16 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** in [A15](packages/A15.md)'s Slice 4, comparing the settled `app.preview` on both
+  targets. For `notes.txt` GTK's `GtkSourceView` reads its buffer as one string, newlines
+  included (`"the quick brown fox\n"`); Rune's C10b `CodeView` is a `document` named
+  `"Source"` followed by each line's text. For a rendered `page.md` both read the blocks
+  (`"Heading"`, `"Body text."`), and Rune's C11 `DocumentView` adds a `document` named
+  `"Document"` before them. The names come from `labels::code` and `labels::document`
+  (`crates/strata-app/src/preview/labels.rs`).
+- **Concerns:** A15's `preview` fuzz alphabet, which leaves text and document bodies out while
+  open at step boundaries; `quick_preview/rendered-document-word-selection-rune`, which finds
+  the rendered document by its `"Document"` name.
+- **State:** open. Dropping the two names, and reading a code view's lines as one string,
+  would match GTK; the twin would then find the document another way.

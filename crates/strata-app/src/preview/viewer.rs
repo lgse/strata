@@ -53,6 +53,9 @@ pub(super) struct DocumentViewer {
     render_pending: bool,
 }
 
+/// The key of a feedback card, such as `No visual preview`, that takes the keyboard on Right.
+pub(super) const MESSAGE_KEY: &str = "preview-message";
+
 pub(super) enum Viewer {
     Empty,
     Loading,
@@ -103,6 +106,16 @@ impl Viewer {
             Self::Message { can_open, .. } => *can_open,
             Self::Empty | Self::Loading => false,
         }
+    }
+
+    pub(super) fn needs_body_focus_owner(&self) -> bool {
+        matches!(
+            self,
+            Self::Message {
+                can_open: false,
+                ..
+            }
+        )
     }
 
     pub(super) fn is_prompt_focused(&self) -> bool {
@@ -266,7 +279,7 @@ impl Viewer {
                 title,
                 detail,
                 can_open,
-            } => Some(message_view(&app.look, title, detail.as_deref(), *can_open)),
+            } => Some(message_view(app, title, detail.as_deref(), *can_open)),
         }
     }
 }
@@ -595,9 +608,10 @@ fn loading_view(look: &Look) -> El {
         .child(Spinner::new().build(&look.kit))
 }
 
-fn message_view(look: &Look, title: &str, detail: Option<&str>, can_open: bool) -> El {
+fn message_view(app: &App, title: &str, detail: Option<&str>, can_open: bool) -> El {
+    let look = &app.look;
     let mut card = col()
-        .key("preview-message")
+        .key(MESSAGE_KEY)
         .w_full()
         .h_full()
         .px(look.space.xl)
@@ -609,6 +623,9 @@ fn message_view(look: &Look, title: &str, detail: Option<&str>, can_open: bool) 
                 .font(look.kit.ty.ui_medium)
                 .color(look.kit.c.text_base),
         );
+    if !can_open && app.preview.content_focus != super::ContentFocus::None {
+        card = card.focusable(true);
+    }
     if let Some(detail) = detail.filter(|detail| !detail.is_empty()) {
         card = card.child(
             text(detail.to_owned())
