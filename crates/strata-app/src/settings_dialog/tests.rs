@@ -335,3 +335,32 @@ fn video_preview_controls_sync_active_preview_media_backend() {
         },
     );
 }
+
+/// An open choice menu is a second modal, which leaves only the menu in the tree: Settings then
+/// holds the keyboard as a popover, so the window's chain hears no key past it, as GTK's popover
+/// in the Settings layer keeps every key (the `settings` fuzz alphabet's `keyboard` invariant).
+#[test]
+fn an_open_choice_menu_holds_the_keyboard_as_a_popover() {
+    hosted(
+        MODULE,
+        "an_open_choice_menu_holds_the_keyboard_as_a_popover",
+        |mut host| {
+            click(&mut host, "header-settings");
+            click(&mut host, "settings-choice-date-format-toggle");
+            assert_eq!(host.app().settings_dialog.open_choice, Some("date-format"));
+            let tree = host.tree();
+            let iso = view::all(&tree, &|node| {
+                node["role"] == "menu-item-radio" && view::text(node, "name") == "ISO 8601"
+            });
+            assert_eq!(iso.len(), 1, "the date format's options show");
+            assert_eq!(SettingsDialog::keyboard(host.app()), Some(Holds::Popover));
+
+            press(&mut host, Key::Escape, Mods::default());
+            assert_eq!(host.app().settings_dialog.open_choice, None);
+            assert_eq!(
+                SettingsDialog::keyboard(host.app()),
+                Some(Holds::Modal { field: false })
+            );
+        },
+    );
+}

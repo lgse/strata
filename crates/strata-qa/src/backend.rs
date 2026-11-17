@@ -85,6 +85,12 @@ pub trait Backend {
     fn windowless(&self) -> bool {
         false
     }
+    /// True for a toolkit that draws a dialog inside another, the inner one on top: Rune
+    /// draws a message inside Settings, where GTK lays every modal layer beside the others. The
+    /// open dialog is then the innermost (`open_dialog`).
+    fn nests_dialogs(&self) -> bool {
+        false
+    }
     /// The warnings and criticals the toolkit logged since the last call.
     fn criticals(&self) -> Vec<String>;
 

@@ -1,0 +1,2 @@
+{"scenario":"fuzz-settings-v3-0000000000000001","modes":["columns"],"prefs":{"type_to_search":false}}
+{"activate":{"role":"button","name":"Settings"},"when":{"absent":{"role":"button","name":"Close settings"}}}

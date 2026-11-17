@@ -816,6 +816,21 @@ Rulings of the owner on the parity work, oldest first.
   tile size's ([A1](packages/A1.md)), and the PDF's reset follows the key map. Source: the owner,
   2026-11-17.
 
+- **2026-11-17: Settings' dialog and menus are a ruled `deviation`** (finding
+  [#2572](https://github.com/lgse/strata/issues/2572)). GTK's Settings is an unnamed layer over
+  the browser, and its choice menus are unnamed popovers. Rune keeps its `dialog` named
+  "Settings" and its real `menu`s, as for [#2405](https://github.com/lgse/strata/issues/2405)'s
+  plain popovers. The fuzz map's rules name exactly their values: `app.dialog`'s "Settings"
+  against GTK's none, and an open choice menu's `app.menu` `[]` against GTK's none. Built in
+  [A18](packages/A18.md)'s `settings` alphabet pull request. Source: the owner, 2026-11-17.
+- **2026-11-17: while a message is open over Settings, Rune's QA snapshot reports the topmost
+  dialog, as GTK's does** (finding [#2572](https://github.com/lgse/strata/issues/2572), its third
+  facet). GTK's snapshot names "Reset all keybinds?" or the save notice over its unnamed
+  Settings layer; Rune drew them inside its "Settings" dialog, which the snapshot named. So
+  `app.dialog` names the innermost open dialog on Rune (`Backend::nests_dialogs` in
+  `crates/strata-qa`, which the GTK backend leaves off), and no map rule covers it. Built in
+  [A18](packages/A18.md)'s `settings` alphabet pull request. Source: the owner, 2026-11-17.
+
 ## Housekeeping
 
 - Merged branches still on `lgse/strata`: H1's `feat/2122-h1-whole-corpus-ledger` and
