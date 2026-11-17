@@ -27,25 +27,22 @@ host = "offscreen"
 scenario = "cross-volume-enter-choice"
 run = "columns-move"
 package = "A19"
-status = "pending"
-reason = "component"
-blocker = "finding lgse/strata#2546: after the prompt's Move takes `todo.txt` out of the folder, GTK gives the keyboard to the neighbouring row and Rune to none, so line 25 waits on `focused: readme.md` and reads null. A change to the shared handover rule (`handover::sync_rule`, `CursorGone::Clear`)"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "cross-volume-enter-choice"
 run = "icons-move"
 package = "A19"
-status = "pending"
-reason = "component"
-blocker = "finding lgse/strata#2546: after the prompt's Move takes `todo.txt` out of the folder, GTK gives the keyboard to the neighbouring row and Rune to none, so line 25 waits on `focused: readme.md` and reads null. A change to the shared handover rule (`handover::sync_rule`, `CursorGone::Clear`)"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "cross-volume-enter-choice"
 run = "list-move"
 package = "A19"
-status = "pending"
-reason = "component"
-blocker = "finding lgse/strata#2546: after the prompt's Move takes `todo.txt` out of the folder, GTK gives the keyboard to the neighbouring row and Rune to none, so line 25 waits on `focused: readme.md` and reads null. A change to the shared handover rule (`handover::sync_rule`, `CursorGone::Clear`)"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "cross-volume-enter-choice"
