@@ -2,6 +2,8 @@
 
 use std::{path::Path, rc::Rc};
 
+use rune::{Key, Mods};
+
 use strata_components::collection::{
     element::CollectionState,
     selection::{Extend, Position},
@@ -11,9 +13,28 @@ use strata_fs::{adapters::LocalFileSource, app::Browser, app::BrowserEvent};
 
 use super::{Moving, adopt, sync_rule};
 use crate::{
+    App,
     events::{self, Change, Marks},
     listing::{Column, Edit, Load, Row},
     slots::Ids,
+    test_support::{
+        PATIENCE, fixture,
+        view::{Shape, browser_holds, hosted_in, idle, open, press, wait},
+    },
+};
+
+const MODULE: &str = "handover::tests";
+
+const ICONS: Shape = Shape {
+    described: "Icons view",
+    list: "grid",
+    entry: "grid-cell",
+};
+
+const LIST: Shape = Shape {
+    described: "List view",
+    list: "list",
+    entry: "list-item",
 };
 
 fn file_entry(path: &Path) -> FileEntry {
@@ -252,4 +273,111 @@ fn adopt_updates_anchor_when_cursor_and_selection_already_match() {
         },
     );
     assert_eq!(collection.selection.anchor(), Some(id_b));
+}
+
+/// A move out of the folder in a view in a saved mode: the keys that put the keyboard on the
+/// entry moved, the row expected to take it, and an arrow and the row it then reaches.
+struct Moved {
+    mode: &'static str,
+    shape: Shape,
+    reach: &'static [Key],
+    moved: &'static str,
+    neighbour: &'static str,
+    arrow: Key,
+    arrowed: &'static str,
+    name: &'static str,
+}
+
+/// After the entry with the keyboard moves out of the folder, a selectionless removal, the
+/// keyboard is on the row beside it with nothing selected, and the browser holds no cursor,
+/// as GTK's list views leave it (finding lgse/strata#2546): the row now at its position, or
+/// the last row when it was the last. The next arrow goes on from that row, and the browser
+/// follows it.
+fn a_move_out_leaves_the_keyboard_on_the_neighbour(case: Moved) {
+    let shape = case.shape;
+    hosted_in(MODULE, case.mode, case.name, move |mut host| {
+        let folder = fixture();
+        let root = folder.path().to_owned();
+        open(&mut host, shape, &root);
+        for key in case.reach {
+            press(&mut host, key.clone(), Mods::default());
+        }
+        wait(
+            &mut host,
+            shape,
+            "the keyboard on the entry to move",
+            |seen| seen.focused.as_deref() == Some(case.moved),
+        );
+        let (from, into) = (root.join(case.moved), root.join("archive"));
+        host.runtime().update(move |app: &mut App, _| {
+            let sources = vec![Location::local(&from)];
+            crate::transfer::start_drop_transfer(app, Location::local(&into), sources, true);
+        });
+        let arrived = root.join("archive").join(case.moved);
+        assert!(
+            host.run_until(PATIENCE, |_| arrived.exists()),
+            "the entry moved"
+        );
+        let seen = wait(&mut host, shape, "the keyboard on the neighbour", |seen| {
+            seen.focused.as_deref() == Some(case.neighbour)
+        });
+        assert!(seen.selected.is_empty(), "nothing selected: {seen:#?}");
+        idle(&mut host);
+        assert_eq!(
+            browser_holds(&host),
+            (Vec::new(), None),
+            "the browser holds no cursor"
+        );
+
+        press(&mut host, case.arrow, Mods::default());
+        let seen = wait(&mut host, shape, "the arrow to go on", |seen| {
+            seen.focused.as_deref() == Some(case.arrowed)
+        });
+        assert_eq!(seen.selected, [case.arrowed]);
+        let holds = (vec![case.arrowed.to_owned()], Some(case.arrowed.to_owned()));
+        assert_eq!(browser_holds(&host), holds, "the browser follows the arrow");
+    });
+}
+
+/// The last entry, `todo.txt`, moved out: `readme.md` before it takes the keyboard, and
+/// `arrow` goes on to `pictures`.
+fn last_row(mode: &'static str, shape: Shape, arrow: Key, name: &'static str) -> Moved {
+    Moved {
+        mode,
+        shape,
+        reach: &[Key::End],
+        moved: "todo.txt",
+        neighbour: "readme.md",
+        arrow,
+        arrowed: "pictures",
+        name,
+    }
+}
+
+#[test]
+fn a_move_out_leaves_the_keyboard_on_the_neighbour_in_icons() {
+    let name = "a_move_out_leaves_the_keyboard_on_the_neighbour_in_icons";
+    a_move_out_leaves_the_keyboard_on_the_neighbour(last_row("icons", ICONS, Key::Left, name));
+}
+
+#[test]
+fn a_move_out_leaves_the_keyboard_on_the_neighbour_in_list() {
+    let name = "a_move_out_leaves_the_keyboard_on_the_neighbour_in_list";
+    a_move_out_leaves_the_keyboard_on_the_neighbour(last_row("list", LIST, Key::Up, name));
+}
+
+/// Mid-list, the row after the one that went takes the keyboard: the row now at its position,
+/// as GTK's `GtkListBase` keeps its focus.
+#[test]
+fn a_move_out_mid_list_leaves_the_keyboard_on_the_row_now_at_its_position() {
+    a_move_out_leaves_the_keyboard_on_the_neighbour(Moved {
+        mode: "list",
+        shape: LIST,
+        reach: &[Key::End, Key::Up],
+        moved: "readme.md",
+        neighbour: "todo.txt",
+        arrow: Key::Up,
+        arrowed: "pictures",
+        name: "a_move_out_mid_list_leaves_the_keyboard_on_the_row_now_at_its_position",
+    });
 }

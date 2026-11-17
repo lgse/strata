@@ -28,7 +28,7 @@ pub(super) fn zone<S: 'static>(cx: &Ctx<'_, S>, index: usize, id: &str) -> DropZ
     .on_hover(move |s: &mut S, hover, _: &DropOffer, tx: &mut Tx| {
         access(s).drag_over(index, &hover_id, hover, delay, tx.clock());
         if let (DropHover::Accepting, Some(delay)) = (hover, delay) {
-            tx.wake_after(spring_wake(tx.clock(), delay));
+            tx.wake_after(crate::contract::dnd::spring_wake(tx.clock(), delay));
         }
         let id = hover_id.clone();
         hover_emit(s, LocationIntent::DropHover { id, hover }, tx);
@@ -40,16 +40,4 @@ pub(super) fn zone<S: 'static>(cx: &Ctx<'_, S>, index: usize, id: &str) -> DropZ
         zone = zone.action(move |s: &S, offer, mods| action(s, &id, offer, mods));
     }
     zone
-}
-
-/// How long a hover that armed a spring asks to wait: its delay, or, under a clock that reads
-/// zero (Rune packet entry 108), only until the next frame, whose tick stamps the spring's
-/// start and asks for the rest. Waiting the whole delay there would stretch the spring to
-/// about twice its length when nothing else draws a frame.
-fn spring_wake(clock: f64, delay: f64) -> std::time::Duration {
-    if clock > 0.0 {
-        std::time::Duration::from_secs_f64(delay)
-    } else {
-        std::time::Duration::ZERO
-    }
 }
