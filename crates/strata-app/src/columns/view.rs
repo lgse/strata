@@ -103,7 +103,8 @@ pub(crate) fn view(app: &App) -> ColumnsView<App> {
     .on_intent(intents::heard)
 }
 
-/// One column's collection, as the part dresses it: its status, keys, rename and commands.
+/// One column's collection, as the part dresses it: its status, thumbnails, fills, drags, the
+/// window's zoom wheel, its keys, rename and commands.
 fn column_collection(app: &App, depth: usize, collection: Collection<App>) -> Collection<App> {
     let collection = collection
         .empty(move |app: &App| shown_status(app, depth))
@@ -114,7 +115,8 @@ fn column_collection(app: &App, depth: usize, collection: Collection<App>) -> Co
             app.columns.thumbs.see(depth, range.clone());
             app.columns.fills.see(depth, range);
             false
-        });
+        })
+        .on_wheel(crate::appearance::wheel::heard);
     // A column with no rows is described as GTK's directory surface is then.
     let collection = match status(app, depth) {
         Some((said, _)) => collection.description(said.into_owned()),

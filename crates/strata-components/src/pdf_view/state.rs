@@ -287,7 +287,8 @@ impl PdfState {
         format!("{}-pages", self.key)
     }
 
-    /// Page `page`'s row key: it carries the zoom generation ([`PdfState::zoom_gen`]).
+    /// Page `page`'s row key: it carries the zoom generation ([`PdfState::zoom_gen`]), so Rune
+    /// measures every row afresh after a zoom (it keeps a row's height while its key stays).
     pub(crate) fn row_key(&self, page: usize) -> String {
         format!("{}-z{}-p{page}", self.key, self.zoom_gen)
     }
@@ -612,8 +613,10 @@ impl PdfState {
         self.zoom_to(next, tx)
     }
 
-    /// Ctrl+0: back to fitted width on the same page. Already there, nothing moves.
-    pub(crate) fn reset_zoom(&mut self, tx: &mut Tx) -> bool {
+    /// Back to fitted width on the same page, as Ctrl+0 does: for a host that reads the reset
+    /// from its own key map ([`PdfView::reset_key`](super::PdfView::reset_key) off). Already
+    /// there, nothing moves. True when the zoom changed.
+    pub fn reset_zoom(&mut self, tx: &mut Tx) -> bool {
         self.zoom_to(LIMITS.min, tx)
     }
 
@@ -879,4 +882,13 @@ impl HostedPreview for PdfState {
         let want = self.want();
         self.queue.reconcile(&self.doc, &want);
     }
+}
+
+/// The same page's row at every zoom: `key` without the zoom generation when it is a page
+/// row's key ([`PdfState::row_key`]), for a harness that follows one page across zooms.
+pub fn page_row_identity(key: &str) -> Option<String> {
+    let (head, page) = key.rsplit_once("-p")?;
+    let (base, generation) = head.rsplit_once("-z")?;
+    let digits = |s: &str| !s.is_empty() && s.bytes().all(|b| b.is_ascii_digit());
+    (digits(page) && digits(generation)).then(|| format!("{base}-p{page}"))
 }

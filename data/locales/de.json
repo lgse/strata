@@ -1590,5 +1590,9 @@
   "Table preview reached its text, column, or value budget; open the file to see all data.": "Die Tabellenvorschau hat das Limit für Text, Spalten oder Werte erreicht; öffnen Sie die Datei, um alle Daten anzuzeigen.",
   "Loading sheet…": "Tabellenblatt wird geladen…",
   "Try again": "Erneut versuchen",
-  "This sheet is empty": "Dieses Tabellenblatt ist leer"
+  "This sheet is empty": "Dieses Tabellenblatt ist leer",
+  "PDF document": "PDF-Dokument",
+  "Page %{page} of %{pages}": "Seite %{page} von %{pages}",
+  "Page %{page} of %{pages}, %{zoom}%": "Seite %{page} von %{pages}, %{zoom} %",
+  "Loading page": "Seite wird geladen"
 }

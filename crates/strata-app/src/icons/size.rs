@@ -9,8 +9,8 @@
 //!   reads them, and Ctrl+Alt+0 resets it. Ctrl+Shift+wheel over the grid steps it too: C3
 //!   claims the wheel (`WheelSteps`, the steps of GTK's `WheelZoom`) and hands the step to
 //!   [`resized`]. GTK's wheel reaches the size from anywhere in the window but the PDF
-//!   preview (`zoom_controller` in `src/ui/window/keyboard/wheel_zoom.rs`); a window-level
-//!   wheel is not this module's (`docs/rune/parity/packages/A1.md`, "Open").
+//!   preview (`zoom_controller` in `src/ui/window/keyboard/wheel_zoom.rs`): the window's zoom
+//!   wheel (`appearance::wheel`) steps it elsewhere with [`step`].
 //! - **A step** moves along C3's ladder (`Look::tiles`, GTK's `STEPS`), which keeps it between
 //!   32 and 256. **A reset** goes back to the size the folder follows: the saved default, or
 //!   GTK's 64 while folders' views are not remembered.
@@ -81,6 +81,12 @@ fn apply(app: &mut App, command: SizeCommand, tx: &mut Tx) -> Outcome {
     crate::tenxer::cancel_chord(app);
     view::grid().apply_size(app, command, tx);
     Outcome::Ran
+}
+
+/// Steps the tile size by `steps`, as the window's zoom wheel does outside the grid (GTK's
+/// `zoom_by`): the keys' route, so the size is kept as theirs is.
+pub(crate) fn step(app: &mut App, steps: i32, tx: &mut Tx) {
+    let _ = apply(app, SizeCommand::Step(steps), tx);
 }
 
 /// C3's request: a step's size, or the one a reset goes back to, kept as GTK keeps it.
