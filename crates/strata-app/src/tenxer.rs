@@ -156,6 +156,8 @@ pub(crate) struct Tenxer {
     pub(crate) flash: Flash,
     pub(crate) chord: ChordState<()>,
     pub(crate) armed: Option<ChordKind>,
+    /// What `;` or `; .` listed as it armed, which its digit is checked against.
+    pub(crate) armed_actions: Option<chords::ArmedActions>,
     pub(crate) prompt: PromptState<prompts::PromptKind>,
     pub(crate) prompt_state: prompts::State,
     pub(crate) later: Later<App>,
@@ -174,6 +176,7 @@ impl Part for Tenxer {
             flash: Flash::new(),
             chord: ChordState::new(),
             armed: None,
+            armed_actions: None,
             prompt: PromptState::new(),
             prompt_state: prompts::State::default(),
             later: setup.later.clone(),

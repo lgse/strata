@@ -6,11 +6,12 @@
 use rune::Tx;
 use strata_core::{
     i18n::tr,
-    model::{ArchiveFormat, FileEntry, SortDirection, SortKey},
+    model::{ArchiveFormat, FileEntry, Location, SortDirection, SortKey},
 };
 use strata_desktop::keys::{
     self as key_catalog, Binding, Command, KeyPress, Keys, Modifiers, bindings::*,
 };
+use strata_fs::services::InvocationSource;
 
 use super::{
     ChordKind, arm_chord, bookmarks, cancel_chord, command_targets, focused_listing_depth, go,
@@ -19,6 +20,7 @@ use crate::{
     App, archive, clipboard,
     commands::{self, On, Outcome},
     compress::{self, CompressAttempt},
+    custom_actions,
     shell::tabs::{shown_tab, tabs},
     tab_strip, terminal,
 };
@@ -165,11 +167,43 @@ fn complete_tab(app: &mut App, press: &KeyPress, tx: &mut Tx) -> bool {
     true
 }
 
+/// The targets and the action ids `;` or `; .` listed as it armed (`ArmedActions` in
+/// `src/ui/window/keyboard/files.rs`).
+pub(crate) struct ArmedActions {
+    targets: Vec<Location>,
+    ids: Vec<String>,
+}
+
+/// `;` (`folder_only` false) or `; .`: lists the actions that run on the selection or on the
+/// folder by number, and the lettered ones after them (`arm_actions`).
 pub(super) fn arm_actions(app: &mut App, folder_only: bool) {
-    let mut rows = vec![(
-        key_catalog::label(&Keys::Digits(ACTIONS_NUMBERS.step())),
-        tr("No matching actions"),
-    )];
+    let source = if folder_only {
+        InvocationSource::Background
+    } else {
+        InvocationSource::Selection
+    };
+    let numbered = custom_actions::numbered_actions(app, source);
+    let mut rows = if numbered.actions.is_empty() {
+        vec![(
+            key_catalog::label(&Keys::Digits(ACTIONS_NUMBERS.step())),
+            tr("No matching actions"),
+        )]
+    } else {
+        numbered
+            .actions
+            .iter()
+            .enumerate()
+            .map(|(index, action)| (slot_key(index), action.name().to_owned()))
+            .collect()
+    };
+    app.tenxer.armed_actions = Some(ArmedActions {
+        ids: numbered
+            .actions
+            .iter()
+            .map(|action| action.id().to_owned())
+            .collect(),
+        targets: numbered.targets,
+    });
     let kind = if folder_only {
         ChordKind::FolderAction
     } else {
@@ -196,7 +230,7 @@ fn complete_action(app: &mut App, press: &KeyPress, tx: &mut Tx) -> bool {
         arm_actions(app, true);
         return true;
     }
-    complete_numbered_slot(app, press, ACTIONS_NUMBERS, tx)
+    complete_numbered_slot(app, press, InvocationSource::Selection, tx)
 }
 
 fn complete_lettered_action(app: &mut App, press: &KeyPress, tx: &mut Tx) -> bool {
@@ -243,21 +277,50 @@ fn run_action_extract_to(app: &mut App, tx: &mut Tx) {
 }
 
 fn complete_folder_action(app: &mut App, press: &KeyPress, tx: &mut Tx) -> bool {
-    complete_numbered_slot(app, press, ACTIONS_FOLDER_NUMBERS, tx)
+    complete_numbered_slot(app, press, InvocationSource::Background, tx)
 }
 
+/// The key `index`'s action is listed on: `1` to `9`, then `0` (`slot_key`).
+fn slot_key(index: usize) -> String {
+    let digit = u8::try_from((index + 1) % 10).unwrap_or(0);
+    key_catalog::digit_label(ACTIONS_NUMBERS.step(), digit)
+}
+
+/// A digit after `;` or `; .` runs the action listed on it, once the targets and the actions
+/// are still the ones listed (`complete_numbered_action`); `0` is the tenth.
 fn complete_numbered_slot(
     app: &mut App,
     press: &KeyPress,
-    digits: strata_desktop::keys::Digits,
+    source: InvocationSource,
     tx: &mut Tx,
 ) -> bool {
+    let (digits, changed) = match source {
+        InvocationSource::Selection => (ACTIONS_NUMBERS, "Selection changed"),
+        InvocationSource::Background => (ACTIONS_FOLDER_NUMBERS, "Folder changed"),
+    };
     let Some(digit) = press.digit_in(digits) else {
         return false;
     };
-    app.tenxer
-        .flash
-        .show(rust_i18n::t!("No action %{digit}", digit = digit), tx);
+    let Some(armed) = app.tenxer.armed_actions.take() else {
+        return false;
+    };
+    let slot = if digit == 0 { 10 } else { usize::from(digit) };
+    let numbered = custom_actions::numbered_actions(app, source);
+    if numbered.targets != armed.targets {
+        app.tenxer.flash.show(tr(changed), tx);
+        return true;
+    }
+    let Some(action) = numbered.actions.get(slot - 1).cloned() else {
+        app.tenxer
+            .flash
+            .show(rust_i18n::t!("No action %{digit}", digit = digit), tx);
+        return true;
+    };
+    if armed.ids.get(slot - 1).map(String::as_str) != Some(action.id()) {
+        app.tenxer.flash.show(tr("Actions changed"), tx);
+        return true;
+    }
+    custom_actions::run_numbered(app, numbered, action);
     true
 }
 

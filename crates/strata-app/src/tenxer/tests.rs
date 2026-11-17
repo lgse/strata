@@ -9,7 +9,7 @@ use crate::{
     host::offscreen::Offscreen,
     preview, shell,
     test_support::{
-        PATIENCE, folder_of, hosted, send_key,
+        PATIENCE, folder_of, hosted, hosted_after, send_key,
         view::{all, text},
     },
 };
@@ -563,6 +563,58 @@ fn toggling_tenxer_mode_keeps_the_keyboard_in_the_listing() {
                 assert_eq!(shell::preferences(host.app()).tenxer_mode, enabled);
                 assert_eq!(focus(&mut host).as_deref(), Some("icons"));
             }
+        },
+    );
+}
+
+/// `;` lists the actions by number; its digit runs the one listed, unless the selection moved
+/// since it armed ("Selection changed") or the slot is empty (`complete_numbered_action`).
+#[test]
+fn numbered_action_chords_run_the_listed_action_on_the_armed_targets() {
+    let ran = || strata_core::storage::config_directory().join("ran.txt");
+    hosted_after(
+        MODULE,
+        "numbered_action_chords_run_the_listed_action_on_the_armed_targets",
+        move || {
+            let dir = strata_core::storage::config_directory()
+                .join("actions")
+                .join("record");
+            std::fs::create_dir_all(&dir).expect("action folder");
+            let body = format!(
+                "schema_version = 1\nid = \"record\"\nname = \"Record\"\nmenu = \"top\"\n\n\
+                 [when]\nextensions = [\"txt\"]\n\n[run]\nruntime = \"command\"\n\
+                 program = \"/bin/sh\"\n\
+                 args = [\"-c\", \"printf '%s\\\\n' \\\"$@\\\" >> '{}'\", \"sh\", \"{{paths}}\"]\n",
+                ran().display()
+            );
+            std::fs::write(dir.join("action.toml"), body).expect("action.toml");
+        },
+        move |mut host| {
+            host.runtime().update(|app, _| {
+                shell::saved(app).change(|s| s.tenxer_mode = true);
+            });
+            let folder = open_and_focus(&mut host);
+            let flash = |host: &Offscreen| node_name(host, "footer-flash");
+            host.app().browser().select(0, 0);
+            while host.turn() {}
+
+            tap(&mut host, char_key(";"), Mods::default());
+            host.app().browser().select(0, 1);
+            while host.turn() {}
+            tap(&mut host, char_key("1"), Mods::default());
+            assert_eq!(flash(&host).as_deref(), Some("Selection changed"));
+
+            tap(&mut host, char_key(";"), Mods::default());
+            tap(&mut host, char_key("2"), Mods::default());
+            assert_eq!(flash(&host).as_deref(), Some("No action 2"));
+            assert!(!ran().exists(), "no action ran yet");
+
+            tap(&mut host, char_key(";"), Mods::default());
+            tap(&mut host, char_key("1"), Mods::default());
+            assert!(host.run_until(PATIENCE, |_| ran().exists()), "slot 1 ran");
+            let beta = folder.path().join("beta.txt");
+            let recorded = std::fs::read_to_string(ran()).expect("recorded");
+            assert_eq!(recorded, format!("{}\n", beta.display()));
         },
     );
 }
