@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 
 //! The route preview's host (`preview::route`): the route shows once decoded, with its place
-//! among the folder's routes and its duration; the media key plays and pauses it; and the
-//! view follows the saved units.
+//! among the folder's routes and its duration; the media key plays and pauses it, but not from
+//! the sidebar, the header or a text field; and the view follows the saved units.
 
 use rune::{Key, Mods, Tx};
 use strata_components::viewers::route::{RouteState, Units};
@@ -20,8 +20,10 @@ use super::{
 };
 use crate::{
     App,
+    commands::Holds,
     host::offscreen::Offscreen,
     shell,
+    slots::Part,
     test_support::{PATIENCE, hosted},
 };
 
@@ -57,6 +59,47 @@ fn route() -> PreviewContent {
             points: 2,
             samples: vec![sample(10.0, 0.0, 5.0), sample(70.0, 600.0, 2.0)],
         },
+    }
+}
+
+/// Where a test puts the keyboard before a media key that must not reach the route: GTK's
+/// `video_controls` skips the sidebar, the header and text fields.
+enum Reach {
+    Focus(&'static str),
+    /// The filter's field, opened by Ctrl+F from the listing.
+    Filter,
+}
+
+impl Reach {
+    fn go(&self, host: &mut Offscreen) {
+        match *self {
+            Reach::Focus(key) => {
+                host.runtime()
+                    .update(move |_: &mut App, tx: &mut Tx| tx.focus(key, true));
+                while host.turn() {}
+            }
+            Reach::Filter => {
+                let ctrl = Mods {
+                    ctrl: true,
+                    cmd: true,
+                    ..Mods::default()
+                };
+                press(host, Key::Command('f'), ctrl);
+                let typing = |host: &Offscreen| {
+                    <crate::filter::Filter as Part>::keyboard(host.app()) == Some(Holds::Filter)
+                };
+                assert!(host.run_until(PATIENCE, typing), "the filter's field");
+            }
+        }
+    }
+
+    /// Back to the listing, the preview left open: Escape closes the filter, where from the
+    /// listing it would close the preview.
+    fn leave(&self, host: &mut Offscreen) {
+        if let Reach::Filter = self {
+            press(host, Key::Escape, Mods::default());
+        }
+        focus_view(host);
     }
 }
 
@@ -103,6 +146,20 @@ fn a_route_plays_on_the_media_key_and_follows_the_saved_units() {
             shows(&mut host, RouteState::playing, "playing on Ctrl+Alt+Space");
             press(&mut host, space(), ctrl_alt());
             shows(&mut host, |s| !s.playing(), "paused on Ctrl+Alt+Space");
+
+            for (place, reach) in [
+                ("the sidebar", Reach::Focus("sidebar-place-home")),
+                ("the header", Reach::Focus("header-sidebar-toggle")),
+                ("a text field", Reach::Filter),
+            ] {
+                reach.go(&mut host);
+                press(&mut host, space(), ctrl_alt());
+                for _ in 0..5 {
+                    host.turn();
+                }
+                assert!(state(&host).is_some_and(|s| !s.playing()), "from {place}");
+                reach.leave(&mut host);
+            }
 
             host.runtime().update(|app: &mut App, _: &mut Tx| {
                 shell::saved(app).change(|settings| settings.unit_system = UnitSystem::Imperial);

@@ -187,6 +187,15 @@ fn in_listing_for_preview(_: &App, at: &Situation) -> bool {
     at.in_view()
 }
 
+/// Where the preview's media keys reach (`video_controls` in
+/// `src/ui/window/keyboard/commands.rs`, with the drawer's `has_video`): an open drawer, not
+/// set aside in a narrow window, and the keyboard in no text field, not in the sidebar and not
+/// in the header. The route's keys read it, and audio and video are to.
+pub(super) fn media_keys_reach(app: &App, at: &Situation) -> bool {
+    let showing = app.preview.drawer.is_open() && !app.preview.drawer.is_suspended();
+    showing && !at.text() && !at.within("sidebar") && !at.in_top_bar()
+}
+
 fn can_enter_preview(app: &App, at: &Situation) -> bool {
     if !at.in_view()
         || session::browsing_icons(app)

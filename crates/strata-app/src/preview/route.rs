@@ -9,8 +9,8 @@
 //!   `Later`; a reply for a preview that has moved on is dropped.
 //! - **Playback** runs on the poll's clock ([`poll`]). The media keys (`media_play_pause`,
 //!   `media_seek_back`, `media_seek_forward`) play, pause and seek it at the dispatcher's
-//!   `video_controls` stage ([`PLAY_PAUSE`], GTK's `handle_video_key`), outside the sidebar and text
-//!   fields.
+//!   `video_controls` stage ([`PLAY_PAUSE`], GTK's `handle_video_key`), outside the sidebar, the
+//!   header and text fields (`keys::media_keys_reach`).
 //! - **Units** follow Settings → Units live: each poll gives the view the saved
 //!   `unit_system`, as GTK binds the preference.
 //!
@@ -38,7 +38,7 @@ use strata_desktop::{
 };
 use strata_fs::services::route_preview::{RouteFormat, RoutePreview};
 
-use super::{labels, viewer::Viewer};
+use super::{keys, labels, viewer::Viewer};
 use crate::{
     App,
     commands::{Action, Call, Keys, Outcome, Situation, Stage},
@@ -195,11 +195,9 @@ pub(super) const SEEK_FORWARD: Action<App> =
         )
         .when(plays_here)]);
 
-/// A route shows in an open drawer, and the keyboard is in no text field and not in the
-/// sidebar (`video_controls` in `src/ui/window/keyboard/commands.rs`).
+/// A route shows, where the preview's media keys reach ([`keys::media_keys_reach`]).
 fn plays_here(app: &App, at: &Situation) -> bool {
-    let showing = app.preview.drawer.is_open() && !app.preview.drawer.is_suspended();
-    showing && matches!(app.preview.viewer, Viewer::Route(_)) && !at.text() && !at.within("sidebar")
+    matches!(app.preview.viewer, Viewer::Route(_)) && keys::media_keys_reach(app, at)
 }
 
 fn play_pause(app: &mut App, _: &Call<'_>, _: &mut Tx) -> Outcome {

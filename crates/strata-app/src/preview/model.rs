@@ -191,6 +191,8 @@ fn rendered(app: &mut App, id: u64, event: PreviewEvent) -> bool {
             decode(app, id, png, mesh);
             return false;
         }
+        // The provider's messages are catalog keys, as GTK reads them: a new one goes into the
+        // 13 catalogs, or this shows it in English.
         PreviewEvent::Failed { message, .. } => model.state.view_failed(tr(&message)),
         _ => model.state.view_failed(tr("Preview unavailable")),
     }
