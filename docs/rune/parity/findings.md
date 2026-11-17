@@ -2320,8 +2320,8 @@ sequence only together with the alphabet's version, so the version is part of th
   contract field and spans in all three views' name cells, coloured from the Kit's tokens.
 - **Concerns:** no ledger run; found in the review of #2567. [A11](packages/A11.md)'s fuzz
   alphabet (Slice 5) should exercise `/` then Escape with a selection.
-- **State:** fixed by [A11](packages/A11.md)'s `contract` change for #2570, on
-  `feat/2143-a11-name-highlights`. `RowMarks::name_matches` carries a name's matched
+- **State:** fixed by [A11](packages/A11.md)'s `contract` change for #2570,
+  [#2582](https://github.com/lgse/strata/pull/2582). `RowMarks::name_matches` carries a name's matched
   byte ranges, which C1e's default label (the Columns view's names), C3's caption and C4's name
   cell paint in the Kit's accent. The app fills them as GTK's `refresh_name_highlights` does
   (`crates/strata-app/src/tenxer/highlight.rs`): a highlighted 10xer find marks its query,
@@ -2364,7 +2364,7 @@ sequence only together with the alphabet's version, so the version is part of th
   `columns-md` and `columns-rtf` at line 20 (`pha bravo charlie delta`) and `columns-docx` at
   line 21 (`uarterly Report`); alone on the session host it then passed three rounds, 9 of 9.
   #2578 changes no pointer drag or document selection.
-- **Sighting on A11's #2570 branch** (`feat/2143-a11-name-highlights` at `5a37f26d0`): the
+- **Sighting on [#2582](https://github.com/lgse/strata/pull/2582)** (at `5a37f26d0`): the
   same three runs failed in the full session-host batch, with the same messages; alone on the
   session host the twin then passed three rounds, 9 of 9. The change draws name highlights
   only.
