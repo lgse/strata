@@ -62,7 +62,8 @@ struct Opening {
     name: String,
     target: MenuTarget,
     model: MenuModel,
-    custom_slot: usize,
+    /// Where the custom actions go; none in a chooser's menus, as in GTK's.
+    custom_slot: Option<usize>,
     provider_slot: usize,
     provider_paths: Option<Vec<std::path::PathBuf>>,
     background: bool,
@@ -142,6 +143,7 @@ fn chooser_entry_menu(app: &App, depth: usize, id: EntryId) -> Option<Opening> {
         name: entry.display_name,
         target: MenuTarget::Entry(id),
         model: MenuModel::new().section(Section::new(items)),
+        custom_slot: None,
         provider_slot: 0,
         provider_paths: None,
         background: false,
@@ -157,6 +159,7 @@ fn chooser_folder_menu(app: &App, depth: usize) -> Option<Opening> {
         name: location.display_name(),
         target: MenuTarget::Background,
         model: MenuModel::new().section(Section::new([item])),
+        custom_slot: None,
         provider_slot: 0,
         provider_paths: None,
         background: true,
@@ -196,7 +199,7 @@ fn entry_menu(app: &App, depth: usize, id: EntryId) -> Option<Opening> {
         name: entry.display_name,
         target: MenuTarget::Entry(id),
         model,
-        custom_slot,
+        custom_slot: Some(custom_slot),
         provider_slot: custom_slot + 1,
         provider_paths,
         background: false,
@@ -225,7 +228,7 @@ fn folder_menu(app: &App, depth: usize) -> Option<Opening> {
         name,
         target: MenuTarget::Background,
         model,
-        custom_slot: 2,
+        custom_slot: Some(2),
         provider_slot: 3,
         provider_paths,
         background: true,
@@ -276,8 +279,9 @@ pub(crate) fn open(app: &mut App, request: Request, tx: &mut Tx) {
         None => folder_menu(app, depth),
     };
     if let Some(mut opening) = opening {
-        opening.model.sections[opening.custom_slot] =
-            crate::custom_actions::begin_menu(app, depth, entry);
+        if let Some(slot) = opening.custom_slot {
+            opening.model.sections[slot] = crate::custom_actions::begin_menu(app, depth, entry);
+        }
         let sections = crate::file_providers::begin_menu(
             app,
             opening.provider_paths.take(),
