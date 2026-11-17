@@ -82,6 +82,16 @@ preview v4 8de1587317366095
 # lgse/strata#2356 on `fs-write` into an open cursorless `sized-folder` column, and `Ctrl+click`
 # deselecting `readme.md` before `j` (as in lgse/strata#2353). Version 3 guards those three cases.
 properties v3 103535e459c8641e
+# settings: version 1 was A18's draft, never merged: its smoke tier caught Settings holding the
+# keyboard for a dialog while its choice menu left only the menu in the tree, and the keybind
+# search and table not kept across closing Settings (both fixed), and met GTK's `activate`
+# pressing an insensitive Reset all, reaching General's "10xer mode" switch from Keyboard, and
+# opening nothing on the date format's outer menu button. Version 2, also a draft, clicked pages
+# and toggles, opened the menu from its inner toggle and pressed Reset all only while sensitive:
+# its smoke tier caught the keybind search moving to the other table, which GTK's never does
+# (fixed), and met GTK's activate of "Reset" reaching General's Reset button. Version 3 looks for
+# Reset all's answer within its dialog.
+settings v3 56b25c119bf09e0d
 sidebar v1 4acfcd20a194fff5
 # tabs: versions 1 and 2 were A4's drafts, never merged: version 1 caught the hidden-tab
 # view-switch focus and tab_shown bug (fixed in shell/tabs.rs) and met lgse/strata#2507;

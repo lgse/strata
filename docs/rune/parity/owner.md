@@ -643,6 +643,19 @@ Found by the package's agent, 2026-11-12, against A1's five items above.
    change in `roots.rs` by hand (`docs/rune/shared-state.md`, "Merging from `main`"). Should
    the rule move to a shared crate later, with GTK calling it? Source: A10, 2026-11-14.
 
+### A18: Settings and themes
+
+1. **Settings' roles to assistive technology** (finding
+   [#2572](https://github.com/lgse/strata/issues/2572), `divergence`). GTK's Settings is an
+   unnamed layer over the browser, and its choice menus unnamed popovers. Rune's is a `dialog`
+   named "Settings", and its menus are `menu`s. So every fuzz sequence that opens Settings
+   parts on `app.dialog`, and on `app.menu` when a menu opens, though nothing else differs in
+   20 of 20 sequences. Should Rune keep the dialog and menus, with map rules that name their
+   values (as for [#2405](https://github.com/lgse/strata/issues/2405)'s plain popovers), or
+   present GTK's unnamed panels? Meanwhile: Rune keeps them, the `settings` alphabet's
+   sequence is parked, and its smoke tier is not clean, so A18's done-when items 6 and 7 wait
+   on this. Source: A18's `settings` alphabet, 2026-11-17.
+
 ### Packages added later
 
 - **A branch name for a package with no archived issue.** Branch names keep the package's

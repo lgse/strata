@@ -271,6 +271,11 @@ impl SettingsDialog {
             || self.keyboard.query.focused
     }
 
+    /// Whether one of the pages' choice menus is open over Settings, with no message over it.
+    fn choice_menu_open(&self) -> bool {
+        self.open && !self.message_open() && self.open_choice.is_some()
+    }
+
     /// Whether a message over the pages has the keyboard: the save notice or Reset all's
     /// confirmation.
     fn message_open(&self) -> bool {
@@ -350,7 +355,7 @@ impl Part for SettingsDialog {
         if !dialog.open && !dialog.notice.is_open() {
             return None;
         }
-        if dialog.open && !dialog.message_open() && dialog.open_choice.is_some() {
+        if dialog.choice_menu_open() {
             // A choice menu is a second modal, which leaves only the menu in the tree. Its keys
             // stay in it, as GTK's popover in the Settings window keeps them from the browser.
             return Some(Holds::Popover);

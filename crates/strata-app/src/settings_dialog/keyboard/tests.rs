@@ -339,9 +339,16 @@ fn the_page_reopens_as_it_was_left_but_a_capture_ends() {
             assert!(!host.app().settings_dialog.is_open());
             click(&mut host, "header-settings");
             let state = &host.app().settings_dialog.keyboard;
-            assert_eq!(state.query.text, "Rename");
-            assert_eq!(state.shown, Map::Tenxer);
-            assert!(state.capture.is_none());
+            let kept = (
+                state.query.text.as_str(),
+                state.shown,
+                state.capture.is_none(),
+            );
+            assert_eq!(
+                kept,
+                ("Rename", Map::Tenxer, true),
+                "query, table, no capture"
+            );
             assert!(!named(&host.tree(), "Add a key for “Rename”").is_empty());
             assert!(named(&host.tree(), "Add a key for “Copy”").is_empty());
         },

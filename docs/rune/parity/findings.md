@@ -2153,3 +2153,49 @@ sequence only together with the alphabet's version, so the version is part of th
 - **State:** the names are ruled: Rune keeps `"Source"` and `"Document"` (the owner,
   2026-11-16). Open for the line split, which the QA backend may absorb by reading a code
   view's lines as one string.
+
+### #2572: Settings is a named dialog with menus on Rune and unnamed panels on GTK
+
+- **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2572), filed on
+  2026-11-17 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** in [A18](packages/A18.md)'s `settings` alphabet's smoke tier (v3), in all 20
+  sequences. It has three facets of `app.*`, all from one cause:
+  - While Settings is open, `app.dialog` reads `null` on GTK and `"Settings"` on Rune.
+  - While a choice menu ("Modified date format") is open, `app.menu` reads `null` on GTK and
+    `[]` on Rune (63 steps).
+  - While "Reset all keybinds?" is open, `app.dialog` reads `"Reset all keybinds?"` on GTK and
+    `"Settings"` on Rune, since strata-qa's `open_dialog` names the first rendered dialog.
+
+  With `app.dialog` and `app.menu` set aside, all 20 sequences agree at every step: focus,
+  panes, the text field, `settings.toml` and the tree. The shrunk sequence, one step that opens
+  Settings from the header, confirmed 3 of 3:
+  `tests/qa/fuzz/corpus/settings/fuzz-settings-v3-0000000000000001.jsonl`, parked.
+- **Why:**
+  - **GTK.** Its Settings is a `gtk::Box` overlaid on the browser and kept between openings
+    (`build_layer` in `src/ui/settings.rs`, added by `SettingsLauncher` in
+    `src/ui/window/composition/settings.rs`), with no accessible role or name. Its choice
+    menus are plain `gtk::Popover`s (`choice_menu` in `src/ui/settings/bindings.rs`), role
+    `generic`, holding `MenuItemRadio` rows.
+  - **Rune.** Its Settings is C15's `DialogShell`, a `dialog` named "Settings", and its choice
+    menus are `menu`s owning their `menuitemradio` rows (`settings_dialog/controls.rs`).
+
+  A screen reader hears "Settings, dialog" and a menu on Rune, and unnamed panels on GTK. GTK's
+  own message layers inside Settings, such as "Reset all keybinds?", do report as dialogs. It
+  is the pattern of [#2405](https://github.com/lgse/strata/issues/2405), whose ruling covers
+  plain popovers only. [A9](packages/A9.md)'s `pointer` drafts met the first facet and read
+  GTK's Settings as a window of its own; it is a layer in the browser's window.
+- **Concerns:** the `settings` alphabet, whose smoke tier parts at the step that opens Settings
+  until this is ruled; any alphabet that opens Settings.
+- **Options for the owner:**
+  1. Rune keeps the named dialog and the menus, and the normalisation map gains rules that name
+     their values. For `app.dialog`: GTK's `null`, or a message layer's name such as "Reset all
+     keybinds?", against Rune's "Settings". For `app.menu`: GTK's `null` against Rune's `[]`.
+     The map takes one rule for each field and code, so a `deviation` rule's values go on
+     #2405's line; an `a11y` code needs a line of its own. Trial, not committed: with the
+     first two value pairs, 9 of 20 v3 sequences agree, and the other 11 differ only at the
+     third facet.
+  2. Rune's Settings drops to an unnamed group and its menus to plain groups, matching GTK's
+     AT-SPI. Assistive technology then loses "Settings" and the menus' roles.
+  3. The QA snapshot names the innermost open dialog rather than the first. That is a change
+     to strata-qa for both targets, and it leaves the first two facets.
+- **State:** open, for the owner (`owner.md`, A18).
