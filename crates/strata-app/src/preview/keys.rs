@@ -33,6 +33,7 @@ const PREVIEW_IGNORED: Modifiers = Modifiers::SHIFT_MASK.union(Modifiers::SUPER_
 
 pub(super) const COMMANDS: &[Action<App>] = &[
     super::pdf::RESET,
+    super::route::MEDIA,
     Action::new("preview-panel", toggle_panel),
     Action::new("preview-close", close_from_preview)
         .command(PREVIEW)

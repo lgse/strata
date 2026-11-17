@@ -50,7 +50,7 @@ use super::{
     archive,
     document::{DocumentSpec, RenderedDocument},
     image::ImageViewer,
-    pdf, sheet,
+    model, pdf, route, sheet,
     viewer::{CodeSource, RenderedBody, Viewer, build_code_state},
 };
 use crate::{
@@ -62,7 +62,7 @@ use crate::{
 
 pub(super) const TEXT_BYTE_LIMIT: usize = 1024 * 1024;
 const PREVIEW_SPINNER_DELAY: Duration = Duration::from_millis(120);
-const DEFAULT_MEDIA_EDGE: i32 = 520;
+pub(super) const DEFAULT_MEDIA_EDGE: i32 = 520;
 
 thread_local! {
     static HIGHLIGHTER: RefCell<Option<Highlighter>> = const { RefCell::new(None) };
@@ -328,6 +328,10 @@ fn start_request(
     let emit = Rc::new(move |event: PreviewEvent| {
         later.then(move |app: &mut App, tx: &mut Tx| on_event(app, request_id, event, tx));
     });
+    if let Some(frame) = model::opening(app, &entry) {
+        app.preview.viewer.stop();
+        app.preview.viewer = frame;
+    }
     let request = PreviewRequest {
         id: request_id,
         entry,
@@ -335,7 +339,7 @@ fn start_request(
         render_document,
         pdf_page: 0,
         media_size: MediaPreviewSize::for_viewport(DEFAULT_MEDIA_EDGE, DEFAULT_MEDIA_EDGE, 1),
-        model_palette: Default::default(),
+        model_palette: model::palette(&app.look),
         model_view: Default::default(),
         archive_password,
     };
@@ -375,7 +379,10 @@ pub(super) fn on_event(
         timer.remove();
     }
     match event {
-        PreviewEvent::Progress { .. } => {
+        PreviewEvent::Progress { stage, .. } => {
+            if model::progress(app, stage) {
+                return true;
+            }
             if app.preview.viewer.is_empty() {
                 app.preview.viewer = Viewer::Loading;
                 return true;
@@ -506,6 +513,8 @@ fn build_ready_viewer(app: &mut App, loaded: Preview, focus_archive: bool, tx: &
             Viewer::rendered_only(body)
         }
         PreviewContent::Rasterized { png } => build_rasterized_viewer(&loaded.entry, &png),
+        PreviewContent::Model { png, mesh } => model::ready(app, loaded.entry, png, mesh),
+        PreviewContent::Route { preview } => route::ready(app, loaded.entry, preview),
         PreviewContent::Pdf {
             png,
             page,
