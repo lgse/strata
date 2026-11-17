@@ -210,7 +210,11 @@ copies out of `Browser` what each event changed.
 - **From `Browser`.** `FocusChanged` and `SelectionSetChanged` always win: the cursor a
   load places, a reveal, the neighbour a deletion moves the cursor to. After a listing
   change the view first lets go of entries that left (`CursorGone::Clear`: where a cursor
-  goes is `Browser`'s to say), and then takes `Browser`'s selection if it differs.
+  goes is `Browser`'s to say), and then takes `Browser`'s selection if it differs. (Since
+  [#2571](https://github.com/lgse/strata/pull/2571), finding
+  [#2546](https://github.com/lgse/strata/issues/2546): after a move out of the folder, where
+  `Browser` places no cursor, the view keeps the keyboard on the neighbour, unselected, as GTK
+  does; `crate::handover::kept_neighbour`.)
 - **One exception.** A cursor the view was waiting to place until a folder was listed
   (Right into a column still loading) is the user's, and goes to `Browser`.
 - **No echo.** `SelectionSynced` is ignored. A write that changes nothing in the view is

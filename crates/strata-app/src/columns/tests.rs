@@ -23,6 +23,7 @@ mod filter;
 mod history;
 mod keys;
 mod letters;
+mod moved;
 mod rename;
 mod saved;
 mod thumbs;

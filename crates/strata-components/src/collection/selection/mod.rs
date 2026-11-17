@@ -227,14 +227,19 @@ pub enum Listing {
 ///   [`NeighborSelected`](Self::NeighborSelected) in the default map, as Strata's
 ///   `preserve_fill_on_removal` (on in 10xer mode) chooses.
 /// - A plain move out, such as a drag-move to another folder, is one of Strata's
-///   selectionless removals: [`Clear`](Self::Clear).
+///   selectionless removals: [`Neighbor`](Self::Neighbor). The browser places no cursor and
+///   selects nothing, and GTK's list view still moves its keyboard focus to the row beside
+///   the one that went (finding lgse/strata#2546), so the keyboard stays there, unselected.
+///   A host that keeps the cursor with another owner, as Strata's browser, keeps this one
+///   from it: that owner holds no cursor here.
 /// - A reload that dropped the cursor's entry: [`Neighbor`](Self::Neighbor), without
 ///   `before_removal`.
 ///
 /// Used by: C1e, C2, and hosts.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub enum CursorGone {
-    /// The neighbour takes the cursor, unselected: a reload, a 10xer `d` or `M`.
+    /// The neighbour takes the cursor, unselected: a reload, a 10xer `d` or `M`, a plain move
+    /// out of the folder.
     #[default]
     Neighbor,
     /// The neighbour takes the cursor and joins the selection: a delete in the default map.
@@ -243,8 +248,7 @@ pub enum CursorGone {
     /// still applies over it. During an [`Extend::Replace`] run, whose base each step
     /// replaces, the next step drops it unless its range covers it.
     NeighborSelected,
-    /// No entry takes the cursor: a Columns column whose child column is open, or a plain
-    /// move out of the folder (a drag-move).
+    /// No entry takes the cursor: a Columns column whose child column is open.
     Clear,
 }
 

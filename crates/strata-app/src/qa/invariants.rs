@@ -16,7 +16,10 @@
 //!   is the browser's; each listing shows the browser's entries that are not hidden, each row
 //!   at its entry's position under its entry's id, none twice; and each column shown has the
 //!   browser's cursor, selection, Shift anchor, and whether the selection is the cursor a load
-//!   placed ([`crate::handover`], whose `adopt` and `hand_over` keep the two in step).
+//!   placed ([`crate::handover`], whose `adopt` and `hand_over` keep the two in step). The
+//!   one cursor the browser does not hold is a neighbour kept after a move out of the folder
+//!   ([`crate::handover::Kept`]): while the browser holds no cursor and selects nothing, the
+//!   view's cursor may be that row, as GTK's list view keeps its focus there.
 //! - **`browser`:** the browser lists no entry twice, and selects none it does not list.
 //! - **`tree-view`:** each pane the snapshot reads out of the accessibility tree is a column
 //!   the view shows, by its name and in order, every column shown has one, and each has the
@@ -121,7 +124,11 @@ pub(super) fn check(app: &App, observation: &Observation, focused: bool) -> Vec<
     let marked = presented.shown.iter();
     for shown in marked.filter(|shown| !presented.results.contains(&shown.depth)) {
         if let Some(browsed) = columns.get(shown.depth) {
-            marks(shown, browsed, &mut failures);
+            let kept = presented
+                .kept
+                .iter()
+                .find_map(|(depth, id)| (*depth == shown.depth).then_some(*id));
+            marks(shown, browsed, kept, &mut failures);
         }
     }
     tree(&presented, &observation.panes, &mut failures);
@@ -408,9 +415,17 @@ impl Marked {
 }
 
 /// A column shown against the browser's cursor, selection, anchor and provisional flag.
-fn marks(shown: &Shown<'_>, browsed: &Browsed, failures: &mut Failures) {
+fn marks(shown: &Shown<'_>, browsed: &Browsed, kept: Option<EntryId>, failures: &mut Failures) {
     let depth = shown.depth;
-    let (view, browser) = (Marked::of(shown), Marked::adopted(browsed));
+    let (view, mut browser) = (Marked::of(shown), Marked::adopted(browsed));
+    let unplaced = browser.cursor.is_none() && browser.selected.is_empty();
+    if unplaced && let Some(id) = kept.filter(|id| shown.collection.selection.cursor() == Some(*id))
+    {
+        // The kept neighbour reads as the browser's cursor would, as `adopt` was given it; the
+        // browser's own anchor, if it has one, is still compared.
+        browser.cursor = shown.column.position_of(id);
+        browser.anchor = browsed.anchor.or(browser.cursor);
+    }
     let one = |position: Option<usize>| position.map(|position| browsed.name(position));
     let mut differs = |mark: &str, view: String, browser: String| {
         failures.fail(
