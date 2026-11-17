@@ -32,6 +32,7 @@ mod controls;
 mod general;
 mod general_more;
 mod keyboard;
+mod message;
 mod notice;
 mod pages;
 mod search_index;

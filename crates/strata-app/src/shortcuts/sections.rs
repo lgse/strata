@@ -5,6 +5,10 @@
 //! `contents.rs`. The 10xer map's tables are not ported yet ([A11]), so it has no sections of
 //! its own and the settings file its commands under the default map's.
 //!
+//! **A copy:** `src/ui` does not move, so this is kept beside GTK's by hand. A change to `command_sections` or its helpers
+//! on `main` merges clean and changes nothing here: make the same change in the merge
+//! (`docs/rune/shared-state.md`, "Merging from `main`").
+//!
 //! [A11]: ../../../../docs/rune/parity/packages/A11.md
 
 use strata_desktop::keys::{Command, Map};

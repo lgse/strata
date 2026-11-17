@@ -223,6 +223,7 @@ fn each_table_edits_its_own_map_and_reset_all_asks_first() {
 
             click(&mut host, super::RESET_ALL_KEY);
             assert!(!named(&host.tree(), "Reset all keybinds?").is_empty());
+            // GTK leaves it open on Escape: `oracle` finding #2547 (`findings.md`).
             press(&mut host, Key::Escape, Mods::default());
             assert!(host.app().settings_dialog.is_open());
             assert!(named(&host.tree(), "Reset all keybinds?").is_empty());

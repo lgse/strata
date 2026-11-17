@@ -4,8 +4,10 @@
 
 use std::rc::Rc;
 
-use rune::{El, Key, KeyEvent, ScrollSpec, Tx, col, el, icon, row, text};
-use rune_kit::{Button, ButtonVariant, Placement, Switch, popover};
+use rune::{El, Key, KeyEvent, ScrollSpec, TextEdit, Tx, col, el, icon, row, text};
+use rune_kit::{
+    Button, ButtonVariant, IconButton, IconButtonVariant, Placement, Switch, TextInput, popover,
+};
 use strata_components::controls::{
     number_field::{NumberField, NumberFieldState},
     settings_search::{Navigate, SearchIndex, SearchLabels, SettingsSearch},
@@ -458,6 +460,51 @@ fn choice_menu_key(
     };
     tx.focus(stops[next].clone(), true);
     true
+}
+
+/// A page's own search field and its Clear search button: GTK's `settings::search_field`
+/// (`src/ui/settings.rs`), which the theme library and the keybind search share.
+pub(super) struct SearchField {
+    pub(super) key: &'static str,
+    pub(super) clear_key: &'static str,
+    pub(super) label: String,
+    pub(super) edit: fn(&App) -> &TextEdit,
+    pub(super) edit_mut: fn(&mut App) -> &mut TextEdit,
+    /// A fixed width, or none to fill the row.
+    pub(super) width: Option<f32>,
+    pub(super) on_change: fn(&mut App),
+}
+
+pub(super) fn search_field(app: &App, spec: SearchField) -> El {
+    let look = &app.look;
+    let edit = (spec.edit)(app);
+    let (key, edit_mut, on_change) = (spec.key, spec.edit_mut, spec.on_change);
+    let mut input = TextInput::new(edit)
+        .label(spec.label.clone())
+        .placeholder(spec.label)
+        .width(spec.width)
+        .on_edit(edit_mut)
+        .on_change(move |app: &mut App, _: &mut Tx| on_change(app))
+        .build(&look.kit)
+        .key(key);
+    let mut field = row().gap(look.space.xs).items_center();
+    if spec.width.is_none() {
+        input = input.grow(1.0);
+        field = field.w_full();
+    }
+    field = field.child(input);
+    if !edit.text.is_empty() {
+        let clear = IconButton::new(look.icon(IconName::Close))
+            .variant(IconButtonVariant::Ghost)
+            .label(tr("Clear search"))
+            .on_press_tx(move |app: &mut App, tx: &mut Tx| {
+                edit_mut(app).replace_text("");
+                tx.focus(key, true);
+            })
+            .build(&look.kit);
+        field = field.child(buttons::on_return(spec.clear_key, clear));
+    }
+    field
 }
 
 pub(super) fn segmented_toggles(

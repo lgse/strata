@@ -8,15 +8,14 @@
 use std::rc::Rc;
 
 use rune::{El, TextEdit, Tx, col, row, text};
-use rune_kit::{Button, ButtonVariant, IconButton, IconButtonVariant, TextInput};
+use rune_kit::{Button, ButtonVariant};
 use strata_components::controls::settings_search::SettingsSearch;
 use strata_core::i18n::tr;
 use strata_desktop::keys::{Active, Command, Keymap, Map, conflicts::Policy};
 use strata_fs::services::ActionCatalog;
-use strata_kit::icons::IconName;
 
 use super::{
-    controls::{group_card, segmented_toggles},
+    controls::{SearchField, group_card, search_field, segmented_toggles},
     search_index::KEYBOARD_SHORTCUTS,
 };
 use crate::{App, buttons, shell};
@@ -184,7 +183,7 @@ fn controls(page: &Page<'_>, no_match: bool, overridden: bool) -> El {
         .gap(look.space.md)
         .pb(look.space.lg)
         .child(toolbar)
-        .child(search_field(app));
+        .child(keybind_search(app));
     if no_match {
         controls = controls.child(
             text(tr("No matching shortcuts"))
@@ -227,34 +226,19 @@ fn reset_all_button(app: &App, overridden: bool) -> El {
     buttons::on_return(RESET_ALL_KEY, button)
 }
 
-fn search_field(app: &App) -> El {
-    let look = &app.look;
-    let label = tr("Search keybinds");
-    let input = TextInput::new(&app.settings_dialog.keyboard.query)
-        .label(label.clone())
-        .placeholder(label)
-        .on_edit(|app: &mut App| &mut app.settings_dialog.keyboard.query)
-        .on_change(|app: &mut App, _: &mut Tx| follow_search(app))
-        .build(&look.kit)
-        .key(SEARCH_KEY)
-        .grow(1.0);
-    let mut field = row()
-        .w_full()
-        .gap(look.space.xs)
-        .items_center()
-        .child(input);
-    if !app.settings_dialog.keyboard.query.text.is_empty() {
-        let clear = IconButton::new(look.icon(IconName::Close))
-            .variant(IconButtonVariant::Ghost)
-            .label(tr("Clear search"))
-            .on_press_tx(|app: &mut App, tx: &mut Tx| {
-                app.settings_dialog.keyboard.query.replace_text("");
-                tx.focus(SEARCH_KEY, true);
-            })
-            .build(&look.kit);
-        field = field.child(buttons::on_return("settings-keymap-search-clear", clear));
-    }
-    field
+fn keybind_search(app: &App) -> El {
+    search_field(
+        app,
+        SearchField {
+            key: SEARCH_KEY,
+            clear_key: "settings-keymap-search-clear",
+            label: tr("Search keybinds"),
+            edit: |app| &app.settings_dialog.keyboard.query,
+            edit_mut: |app| &mut app.settings_dialog.keyboard.query,
+            width: None,
+            on_change: follow_search,
+        },
+    )
 }
 
 /// Shows `map`'s table, ending any capture.

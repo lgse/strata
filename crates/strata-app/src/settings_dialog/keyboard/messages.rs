@@ -2,6 +2,10 @@
 
 //! What a conflict finding means for the user, naming the side that loses the key where the
 //! checker knows it: GTK's `message` (`src/ui/settings/keyboard.rs`), word for word.
+//!
+//! **A copy:** `src/ui` does not move, so this is kept beside GTK's by hand. A change to a finding's message or its case
+//! on `main` merges clean and changes nothing here: make the same change in the merge
+//! (`docs/rune/shared-state.md`, "Merging from `main`").
 
 use strata_core::i18n::tr;
 use strata_desktop::keys::{

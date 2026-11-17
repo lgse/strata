@@ -2,6 +2,10 @@
 
 //! What each keyboard settings row is called: GTK's `NAMES`, `title`, `slot_action` and
 //! `search_names` (`src/ui/settings/keyboard.rs`), word for word.
+//!
+//! **A copy:** `src/ui` does not move, so this is kept beside GTK's by hand. A change to a row's name in `NAMES`
+//! on `main` merges clean and changes nothing here: make the same change in the merge
+//! (`docs/rune/shared-state.md`, "Merging from `main`").
 
 use strata_core::i18n::tr;
 use strata_desktop::keys::{self, Command, bindings::*};

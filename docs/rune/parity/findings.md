@@ -2008,10 +2008,21 @@ sequence only together with the alphabet's version, so the version is part of th
   `close_on_escape(&layer, ...)` nor `remember_modal_focus(&layer, &overlay)`, as every other
   modal does (`src/ui/modal/messages.rs`, `src/ui/settings/actions.rs`). C15's `StrataDialog`
   does both.
+- **Also seen (2026-11-17), the same fault in Settings → Keyboard's "Reset all keybinds?":** in
+  the review of [#2564](https://github.com/lgse/strata/pull/2564) ([A18](packages/A18.md)), driving
+  the pinned GTK build with `./scripts/qa-drive.sh`: with the confirmation open, `Escape` leaves
+  it open and focus on Reset (`app.dialog = "Reset all keybinds?"`). Cancel and Close dialog
+  close it and give "Reset all" the keyboard back, as on Rune, so only the `Escape` half applies.
+  `confirm_reset_all` (`src/ui/settings/keyboard.rs`) builds `message_dialog_layout` and
+  `modal_layer` and never calls `close_on_escape`. Rune's confirmation closes on `Escape`
+  (`crates/strata-app/src/settings_dialog/keyboard/reset_all.rs`, and the unit test
+  `each_table_edits_its_own_map_and_reset_all_asks_first`).
 - **Concerns:** `src/ui/actions.rs` (`confirm_and_run`), and `fuzz-open-with-v1-0000000000000008`,
   `fuzz-open-with-v2-0000000000000001`, `-000000000000000a` and `-000000000000000d`, shrunk to
   2, 4, 5 and 4 steps, each confirmed 3 of 3 GTK against Rune, and parked in
-  `tests/qa/fuzz/corpus/open-with/parked`.
+  `tests/qa/fuzz/corpus/open-with/parked`. `src/ui/settings/keyboard.rs` (`confirm_reset_all`):
+  no run or seed reads it yet; A18's `settings` alphabet leaves `Escape` on that confirmation
+  out.
 - **State:** open, set aside: Rune behaves as intended, and any fix belongs on `main`.
   `open-with v3` leaves `Escape`, Cancel and Close dialog on "Run this action?" out and confirms
   only with Run; the custom actions' unit tests in `crates/strata-app/src/custom_actions/tests.rs`

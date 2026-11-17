@@ -2,6 +2,10 @@
 
 //! Which rows each table lists, and under which heading: GTK's `sections` and `trigger`
 //! (`src/ui/settings/keyboard.rs`).
+//!
+//! **A copy:** `src/ui` does not move, so this is kept beside GTK's by hand. A change to `sections` or `FALLBACK_SECTIONS`
+//! on `main` merges clean and changes nothing here: make the same change in the merge
+//! (`docs/rune/shared-state.md`, "Merging from `main`").
 
 use strata_desktop::keys::{self, Command, CommandKind, Group, Map, bindings::*, conflicts};
 
