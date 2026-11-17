@@ -9,9 +9,9 @@ use strata_platform::csd::{self, Frame};
 
 use crate::{App, commands, shell};
 
-/// What a chooser's window is called until its state names it: `App::retitle` gives it the
-/// request's title once the chooser lists its folder.
-const OPENING_TITLE: &str = "Strata File Chooser";
+/// What a chooser's window is called until its state names it, as the browser window's is:
+/// `App::retitle` gives it the request's title once the chooser lists its folder.
+const OPENING_TITLE: &str = "Strata";
 
 /// How a chooser's window runs.
 pub(crate) struct ChooserWindow {
