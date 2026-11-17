@@ -2359,6 +2359,12 @@ sequence only together with the alphabet's version, so the version is part of th
   `columns-md` and `columns-rtf` at line 20 (`pha bravo charlie delta`) and `columns-docx` at
   line 21 (`uarterly Report`); alone on the session host it then passed three rounds, 9 of 9.
   #2578 changes no pointer drag or document selection.
+- **Sighting in [A16](packages/A16.md)'s Slice 2 gate** at `0d38d2eb8`: the same three runs at
+  the same lines, in the full 35-run session batch (32 of 35). Alone on the session host the
+  twin then passed three rounds, 9 of 9. The slice changes no pointer drag or document
+  selection. Three gates in a row now fail all three runs in the full batch and pass alone, so
+  it is no longer once in a while: something an earlier session run leaves, or the batch's
+  load, is worth tracing.
 - **Not traced.** One reading to check: under the larger batch's load, the compositor's pointer
   motion reaches the document after the press, so the drag's anchor lands past its start.
 - **State:** open, unowned.
