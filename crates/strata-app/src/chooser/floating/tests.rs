@@ -95,6 +95,37 @@ fn answer(host: &mut Offscreen, request: FloatingRequest, folder: Option<&Path>)
     idle(host);
 }
 
+/// `request` asks for one folder, under `title` with `accept` on its button, opening on `base`,
+/// and sized against the browser window.
+fn assert_folder_chooser(
+    host: &Offscreen,
+    request: &FloatingRequest,
+    (title, accept): (&str, &str),
+    base: &Path,
+) {
+    let asked = &request.request;
+    let browser = host.app().window_size();
+    assert!(browser.is_some(), "the browser window has been laid out");
+    assert_eq!(
+        asked.parent_size_hint, browser,
+        "{title}: sized against the browser"
+    );
+    assert_eq!(
+        (asked.title.as_str(), asked.accept_label.as_str()),
+        (title, accept)
+    );
+    assert_eq!(
+        (&asked.kind, asked.initial_directory.as_path()),
+        (
+            &ChooserKind::Open {
+                directory: true,
+                multiple: false
+            },
+            base
+        )
+    );
+}
+
 #[test]
 fn the_destination_rows_ask_for_a_folder_chooser_and_act_on_its_answer() {
     hosted(
@@ -115,27 +146,7 @@ fn the_destination_rows_ask_for_a_folder_chooser_and_act_on_its_answer() {
                 open_listing(&mut host, temp.path(), name);
                 let source = temp.path().join(name);
                 let request = ask(&mut host, command, &source).expect(command);
-                let asked = &request.request;
-                let browser = host.app().window_size();
-                assert!(browser.is_some(), "the browser window has been laid out");
-                assert_eq!(
-                    asked.parent_size_hint, browser,
-                    "{command}: sized against the browser"
-                );
-                assert_eq!(
-                    (asked.title.as_str(), asked.accept_label.as_str()),
-                    (title, accept)
-                );
-                assert_eq!(
-                    (&asked.kind, asked.initial_directory.as_path()),
-                    (
-                        &ChooserKind::Open {
-                            directory: true,
-                            multiple: false
-                        },
-                        temp.path()
-                    )
-                );
+                assert_folder_chooser(&host, &request, (title, accept), temp.path());
                 assert!(
                     ask(&mut host, command, &source).is_none(),
                     "{command}: one chooser at a time"
