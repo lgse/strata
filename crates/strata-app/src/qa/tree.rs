@@ -292,6 +292,7 @@ impl Snapshot {
             snapshot.add_label(label);
         }
         snapshot.unname_archive_members();
+        snapshot.label_archive_text_buttons();
         for icon in &drawn.icons {
             snapshot.add_icon(icon, &drawn.icon_descriptions);
         }
@@ -476,6 +477,36 @@ impl Snapshot {
             .collect();
         for index in members {
             self.nodes[index].name.clear();
+        }
+    }
+
+    /// GTK's text buttons in the archive preview, its crumbs and `Unlock`, each hold a `GtkLabel`
+    /// with the button's text; a Rune button is one node. The snapshot presents that label
+    /// under each of them. The icon-only `Go up one level` button has none on either target.
+    fn label_archive_text_buttons(&mut self) {
+        let crumb = format!("{}-crumb-", crate::preview::ARCHIVE_KEY);
+        let unlock = format!("{}-unlock", crate::preview::PROMPT_KEY);
+        let is_text_button = |seen: &Seen| {
+            seen.role == "button"
+                && !seen.name.is_empty()
+                && seen.key.as_deref().is_some_and(|key| {
+                    key == unlock
+                        || key
+                            .strip_prefix(&crumb)
+                            .is_some_and(|level| level.parse::<usize>().is_ok())
+                })
+        };
+        let buttons: Vec<usize> = (0..self.nodes.len())
+            .filter(|&index| is_text_button(&self.nodes[index]))
+            .collect();
+        for index in buttons {
+            let seen = Seen {
+                role: "label".to_owned(),
+                name: self.nodes[index].name.clone(),
+                bounds: self.nodes[index].bounds,
+                ..Seen::default()
+            };
+            self.push(index, "@label", seen);
         }
     }
 

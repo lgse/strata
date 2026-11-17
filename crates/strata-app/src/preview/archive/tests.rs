@@ -228,6 +228,46 @@ fn tenxer_columns_space_marks_and_enter_activates_an_archive_without_previewing(
     );
 }
 
+#[test]
+fn space_in_the_archive_tree_closes_the_preview_and_returns_to_the_listing() {
+    hosted(
+        MODULE,
+        "space_in_the_archive_tree_closes_the_preview_and_returns_to_the_listing",
+        |mut host| {
+            let (_folder, entry) = setup_folder_with_archive(&mut host, "bundle.zip");
+            press_without_draining(&mut host, Key::Right);
+            host.runtime().update(move |app: &mut App, tx: &mut Tx| {
+                let req = app.preview.loader.current_request.expect("active request");
+                load::on_event(
+                    app,
+                    req,
+                    PreviewEvent::Ready(Preview {
+                        request_id: req,
+                        entry,
+                        content_type: "application/zip".to_owned(),
+                        content: PreviewContent::Archive {
+                            tree: sample_tree(),
+                        },
+                    }),
+                    tx,
+                );
+            });
+            while host.turn() {}
+            assert_eq!(focused_key(&mut host).as_deref(), Some(ARCHIVE_KEY));
+
+            press(&mut host, Key::Text(" ".to_owned()));
+            assert!(
+                !host.app().preview.enabled,
+                "Space closes the preview, as on GTK"
+            );
+            assert_eq!(
+                focused_key(&mut host).as_deref(),
+                Some(crate::columns::VIEW)
+            );
+        },
+    );
+}
+
 fn deliver_wrong_password(host: &mut Offscreen, entry: FileEntry) {
     host.runtime().update(move |app: &mut App, tx: &mut Tx| {
         if let Viewer::ArchivePrompt(prompt) = &mut app.preview.viewer {

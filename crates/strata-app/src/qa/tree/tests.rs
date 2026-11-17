@@ -904,6 +904,41 @@ fn archive_preview_rows_present_drawn_labels_without_marking_as_browser_entries(
 }
 
 #[test]
+fn archive_preview_text_buttons_hold_their_label_and_its_icon_button_none() {
+    let tree = json!({
+        "role": "window",
+        "children": [
+            { "role": "region", "key": "preview-pane", "name": "Preview", "children": [
+                { "role": "button", "key": "preview-archive-up", "name": "Go up one level" },
+                { "role": "button", "key": "preview-archive-crumb-0", "name": "Contents" },
+                { "role": "button", "key": "preview-archive-prompt-unlock", "name": "Unlock" },
+            ] },
+        ],
+    });
+    let snapshot = Snapshot::read(&tree, &Drawn::default());
+    let labels_of = |key: &str| -> Vec<String> {
+        let button = (0..)
+            .map_while(|i| snapshot.at(i))
+            .find(|s| s.key.as_deref() == Some(key))
+            .expect("button");
+        button
+            .children
+            .iter()
+            .filter_map(|&c| snapshot.at(c))
+            .filter(|s| s.role() == "label")
+            .map(|s| s.name.clone())
+            .collect()
+    };
+    for (key, labels) in [
+        ("preview-archive-up", vec![]),
+        ("preview-archive-crumb-0", vec!["Contents".to_owned()]),
+        ("preview-archive-prompt-unlock", vec!["Unlock".to_owned()]),
+    ] {
+        assert_eq!(labels_of(key), labels, "{key}");
+    }
+}
+
+#[test]
 fn recall_finds_remembered_entry_when_modal_hides_column() {
     let drawn = drawn_folder();
     let live_tree = json!({
