@@ -2151,3 +2151,18 @@ sequence only together with the alphabet's version, so the version is part of th
   (a Rune Columns keyboard step left undone after 15 s in a full run) and
   [#2162](#2162-new-folder-with-selection-groupscolumns-is-flaky) on GTK. Not traced.
 - **State:** open, unowned. The ledger is unchanged: the run stays `required`.
+
+### #2563: `drag-file-onto-folder/columns-copy` did not show the `archive` row's count once in a full Rune run
+
+- **Code:** none of the plan's: a flaky Rune run, labelled `testing`.
+  [Issue](https://github.com/lgse/strata/issues/2563), filed on 2026-11-16 as the finding's
+  reference and closed at once: its state is kept here.
+- **Seen:** in the rerun of `./scripts/qa-parity.sh all` for
+  [#2561](https://github.com/lgse/strata/pull/2561)'s gate at `fa4c1e64a`, on a loaded host
+  (rune offscreen 617 of 618). It failed at line 2, its first wait: the `archive` folder row's
+  `No items` label did not show within 15 s, and the kept tree has the row with its name label
+  alone, after two loads of the folder and before any drag. The same run passed in the set's
+  first round. #2561 changes nothing in the listing, item counts or drag and drop.
+- **Concerns:** `content_drops/drag-file-onto-folder/columns-copy`, `required`,
+  [A19](packages/A19.md)'s.
+- **State:** open, unowned. The ledger is unchanged: the run stays `required`. Not traced.
