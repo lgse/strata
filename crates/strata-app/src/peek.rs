@@ -8,17 +8,24 @@
 //! - **The browser lists it.** As GTK's does, the peek asks the shared browser
 //!   (`Browser::begin_peek`) and hears its `Peek*` events, so a close from anywhere
 //!   (`Browser::close_peek`: Escape, a drag, a navigation) closes the card too.
+//! - **Any move closes it.** GTK closes a peek on every cursor or selection move, through
+//!   `keyboard_navigation` (`src/ui/browser/view_selection.rs`, `view_navigation.rs`): the keys,
+//!   Select All, Invert Selection, find, a filter, a search. Here the part notes the view's
+//!   selection revision as the peek opens, and closes the peek on the next settle once that
+//!   moved or results took the listing's place, whatever moved it (`Part::publish`).
 //! - **Keyboard peeks only, for now.** C22's state opens nothing while it is off, and peeking
 //!   from a resting pointer is the `folder_peeking` preference's, which [A19](../../../docs/rune/parity/packages/A19.md)
 //!   wires with the drag rules. Here the state is on while a keyboard peek is open, and off
-//!   again as it closes.
+//!   again as it closes ([`ended`]).
 //! - **Columns never peeks:** its `i` on a folder opens the folder's column.
 
 use rune::{El, Tx};
 use strata_components::{
     collection::element::{Collection, RowMarks},
     contract::{EntryId, Rect},
-    folder_peek::{Change, FolderPeek, More, PeekContents, PeekLabels, PeekState, PeekStatus},
+    folder_peek::{
+        Change, FolderPeek, More, Origin, PeekContents, PeekLabels, PeekState, PeekStatus,
+    },
 };
 use strata_core::{
     i18n::tr,
@@ -41,6 +48,8 @@ mod tests;
 
 pub(crate) struct Peek {
     state: PeekState,
+    /// The view a keyboard peek is open in, and its selection's revision as it opened.
+    opened: Option<Opened>,
     title: String,
     status: PeekStatus,
     entries: Vec<FileEntry>,
@@ -54,6 +63,7 @@ impl Part for Peek {
     fn new(setup: &Setup<'_>) -> Self {
         Self {
             state: PeekState::new(),
+            opened: None,
             title: String::new(),
             status: PeekStatus::Loading,
             entries: Vec::new(),
@@ -75,6 +85,12 @@ impl Part for Peek {
         }))
     }
 
+    /// Every settle comes here: after each command, and after each cursor or selection move the
+    /// views hear (`single::moved`).
+    fn publish(app: &mut App) {
+        close_once_moved(app);
+    }
+
     fn switched(app: &mut App, _: &mut Tx) {
         close(app);
     }
@@ -82,6 +98,40 @@ impl Part for Peek {
     fn tab_hidden(app: &mut App, _: &mut Tx) {
         close(app);
     }
+}
+
+#[derive(Clone, Copy)]
+struct Opened {
+    scope: &'static str,
+    revision: u64,
+}
+
+/// The selection's revision of the view keyed `scope`, while it shows its listing.
+fn revision(app: &App, scope: &str) -> Option<u64> {
+    if app.filter.pane.shows() {
+        return None;
+    }
+    let pane = match scope {
+        Icons::KEY => &Icons::single(app).pane,
+        List::KEY => &List::single(app).pane,
+        _ => return None,
+    };
+    Some(pane.collection().selection.revision())
+}
+
+/// Closes the peek once the cursor or the selection moved, or results replaced the listing.
+fn close_once_moved(app: &mut App) -> bool {
+    let Some(opened) = app.peek.opened else {
+        return false;
+    };
+    revision(app, opened.scope) != Some(opened.revision) && close(app)
+}
+
+/// The peek has gone, however it went: C22's state turns off with it, since only a keyboard
+/// peek turns it on. A19's pointer peeking makes this the `folder_peeking` preference's value.
+fn ended(app: &mut App) {
+    app.peek.opened = None;
+    app.peek.state.set_enabled(false);
 }
 
 /// What the browser said of the peek's listing.
@@ -102,7 +152,7 @@ fn hear(app: &mut App, event: Heard) -> bool {
         Heard::Failed(message) => app.peek.status = PeekStatus::Error(message),
         Heard::Closed => {
             app.peek.state.close();
-            app.peek.state.set_enabled(false);
+            ended(app);
         }
     }
     true
@@ -144,7 +194,7 @@ fn peek() -> FolderPeek<App> {
     .on_change(|app: &mut App, change, _| {
         if change == Change::Closed {
             app.browser.close_peek();
-            app.peek.state.set_enabled(false);
+            ended(app);
         }
     })
     .on_open(|app: &mut App, _, tx| {
@@ -174,13 +224,13 @@ pub(crate) fn with_marks(app: &App, scope: &str, id: EntryId, mut marks: RowMark
 /// Escape stops there.
 pub(crate) fn close(app: &mut App) -> bool {
     let card = app.peek.state.close();
-    app.peek.state.set_enabled(false);
+    ended(app);
     app.browser.close_peek() | card
 }
 
-/// 10xer's `i` on the cursor's folder in Icons or List: opens its peek, or closes the one open
-/// from it (`toggle_folder_peek`). False when the view shown is neither, or the cursor is on no
-/// folder, so the key goes on to the file preview.
+/// 10xer's `i` on the cursor's folder in Icons or List (`toggle_folder_peek`): closes an open
+/// peek, whichever folder it is of, or else opens the folder's. False when the view shown is
+/// neither, or the cursor is on no folder, so the key goes on to the file preview.
 pub(crate) fn toggle_at_cursor(app: &mut App) -> bool {
     shell::publish(app);
     let Some((depth, _, entry)) = app.browser.focused_item() else {
@@ -192,19 +242,27 @@ pub(crate) fn toggle_at_cursor(app: &mut App) -> bool {
     let Some(spot) = cursor_spot(app, &entry) else {
         return false;
     };
+    if app.peek.state.target().is_some() {
+        close(app);
+        return true;
+    }
     app.peek.state.set_enabled(true);
-    let change = app
-        .peek
-        .state
-        .toggle(spot.scope, spot.id, spot.item, spot.viewport);
+    let change = app.peek.state.open(
+        spot.scope,
+        spot.id,
+        Origin::Keyboard,
+        spot.item,
+        spot.viewport,
+    );
     match change {
-        Change::Opened => listen_to(app, depth, entry),
-        Change::Closed => {
-            close(app);
+        Change::Opened => {
+            app.peek.opened = revision(app, spot.scope).map(|revision| Opened {
+                scope: spot.scope,
+                revision,
+            });
+            listen_to(app, depth, entry);
         }
-        Change::None => {
-            app.peek.state.set_enabled(false);
-        }
+        _ => ended(app),
     }
     true
 }

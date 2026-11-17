@@ -3,7 +3,11 @@
 //! What the shortcut reference lists in 10xer mode: GTK's `tenxer_sections` and its tables,
 //! ported from `src/ui/shortcut_reference.rs` with the rows, their order and their words
 //! unchanged, as `contents.rs` ports the default map's. Each table and function keeps the name
-//! of the GTK item it copies; a change to one of them on `main` comes here by hand.
+//! of the GTK item it copies.
+//!
+//! **A copy:** `src/ui` does not move, so this is kept beside GTK's by hand. A change to
+//! `tenxer_sections` or its tables on `main` merges clean and changes nothing here: make the same
+//! change in the merge (`docs/rune/shared-state.md`, "Merging from `main`").
 //!
 //! The portal chooser's 10xer sections (`chooser_requests`, `chooser_files`, the `chooser`
 //! branches) are [A20]'s: the helpers keep GTK's `chooser` flag, and the window passes `false`.

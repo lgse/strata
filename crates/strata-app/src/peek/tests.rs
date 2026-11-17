@@ -18,14 +18,16 @@ use crate::{
 const MODULE: &str = "peek::tests";
 
 fn press(host: &mut Offscreen, key: Key) {
-    send_key(
-        host,
-        KeyEvent {
-            key,
-            mods: Mods::default(),
-        },
-    );
+    press_with(host, key, Mods::default());
+}
+
+fn press_with(host: &mut Offscreen, key: Key, mods: Mods) {
+    send_key(host, KeyEvent { key, mods });
     while host.turn() {}
+}
+
+fn letter(host: &mut Offscreen, letter: &str) {
+    press(host, Key::Text(letter.to_owned()));
 }
 
 fn peek_shown(host: &Offscreen) -> bool {
@@ -37,11 +39,23 @@ fn open(host: &Offscreen) -> bool {
     host.app().peek.state.target().is_some()
 }
 
-/// A 10xer window in `mode` on a folder holding `documents` (two files) and `readme.md`,
-/// with the cursor on the folder at `index`.
-fn on_folder(host: &mut Offscreen, index: usize) -> tempfile::TempDir {
+/// Selects the entry named `name` in `root` alone, the cursor on it, as a click does.
+fn select(host: &mut Offscreen, root: &std::path::Path, name: &str) {
+    let location = Location::local(root.join(name));
+    host.runtime().update(move |app: &mut App, tx: &mut Tx| {
+        let id = shell::id_of(app, &location);
+        let view = shell::shown_view(app).expect("a view");
+        (view.rows.select_only)(app, (0, id), tx);
+    });
+    while host.turn() {}
+}
+
+/// A 10xer window in `mode` on a folder holding `documents` (two files), `pictures` and
+/// `readme.md`, with the cursor on `name`.
+fn on_folder(host: &mut Offscreen, name: &str) -> tempfile::TempDir {
     let root = tempfile::tempdir().expect("folder");
     std::fs::create_dir(root.path().join("documents")).expect("folder");
+    std::fs::create_dir(root.path().join("pictures")).expect("folder");
     for name in ["a.txt", "b.txt"] {
         std::fs::write(root.path().join("documents").join(name), name).expect("file");
     }
@@ -56,8 +70,7 @@ fn on_folder(host: &mut Offscreen, index: usize) -> tempfile::TempDir {
         tx.focus(view, true);
     });
     while host.turn() {}
-    host.app().browser().select(0, index);
-    while host.turn() {}
+    select(host, root.path(), name);
     root
 }
 
@@ -77,7 +90,7 @@ fn in_mode(mode: &'static str, name: &str, run: impl FnOnce(Offscreen)) {
 
 fn i_toggles_the_peek_and_escape_closes_it_first(mode: &'static str, name: &str) {
     in_mode(mode, name, |mut host| {
-        let _root = on_folder(&mut host, 0);
+        let _root = on_folder(&mut host, "documents");
         press(&mut host, Key::Text("i".to_owned()));
         assert!(
             open(&host) && peek_shown(&host),
@@ -125,7 +138,7 @@ fn i_peeks_only_folders_in_icons_and_list() {
         "list",
         "i_peeks_only_folders_in_icons_and_list",
         |mut host| {
-            let _root = on_folder(&mut host, 1);
+            let _root = on_folder(&mut host, "readme.md");
             press(&mut host, Key::Text("i".to_owned()));
             assert!(!open(&host), "a file has no peek");
         },
@@ -134,9 +147,68 @@ fn i_peeks_only_folders_in_icons_and_list() {
         "columns",
         "i_peeks_only_folders_in_icons_and_list",
         |mut host| {
-            let _root = on_folder(&mut host, 0);
+            let _root = on_folder(&mut host, "documents");
             press(&mut host, Key::Text("i".to_owned()));
             assert!(!open(&host), "Columns never peeks");
         },
     );
+}
+
+/// The keys that move the cursor one entry on in `mode`: `j` down a List, `l` along the grid.
+fn step(mode: &str) -> &'static str {
+    if mode == "icons" { "l" } else { "j" }
+}
+
+/// Any cursor or selection move closes the peek, as GTK's `keyboard_navigation` does: a key,
+/// Invert Selection, a click, a find. Then `i` peeks the folder the cursor reached, and `i`
+/// while a peek is open only closes it (`toggle_folder_peek`).
+fn moves_close_the_peek(mode: &'static str, name: &str) {
+    in_mode(mode, name, |mut host| {
+        let root = on_folder(&mut host, "documents");
+        letter(&mut host, "i");
+        assert!(open(&host));
+        letter(&mut host, step(mode));
+        assert!(
+            !open(&host) && !peek_shown(&host),
+            "a cursor move closes it"
+        );
+
+        letter(&mut host, "i");
+        assert!(open(&host), "i peeks the second folder");
+        let ctrl = Mods {
+            ctrl: true,
+            cmd: true,
+            ..Mods::default()
+        };
+        press_with(&mut host, Key::Command('r'), ctrl);
+        assert!(!open(&host), "a selection change closes it too");
+
+        letter(&mut host, "i");
+        assert!(open(&host));
+        select(&mut host, root.path(), "documents");
+        assert!(!open(&host), "a click's selection closes it");
+        letter(&mut host, "i");
+        assert!(open(&host), "i peeks the folder selected");
+        letter(&mut host, "i");
+        assert!(!open(&host), "i while a peek is open closes it");
+
+        letter(&mut host, "i");
+        assert!(open(&host));
+        letter(&mut host, "/");
+        for typed in ["r", "e", "a", "d"] {
+            letter(&mut host, typed);
+        }
+        press(&mut host, Key::Enter);
+        assert!(!open(&host), "a find that moves the cursor closes it");
+    });
+}
+
+#[test]
+fn list_moves_close_the_peek() {
+    moves_close_the_peek("list", "list_moves_close_the_peek");
+}
+
+#[test]
+fn icons_moves_close_the_peek() {
+    moves_close_the_peek("icons", "icons_moves_close_the_peek");
 }
