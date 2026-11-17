@@ -50,7 +50,7 @@ use super::{
     archive,
     document::{DocumentSpec, RenderedDocument},
     image::ImageViewer,
-    sheet,
+    pdf, sheet,
     viewer::{CodeSource, RenderedBody, Viewer, build_code_state},
 };
 use crate::{
@@ -60,7 +60,7 @@ use crate::{
     slots::{Ids, Later},
 };
 
-const TEXT_BYTE_LIMIT: usize = 1024 * 1024;
+pub(super) const TEXT_BYTE_LIMIT: usize = 1024 * 1024;
 const PREVIEW_SPINNER_DELAY: Duration = Duration::from_millis(120);
 const DEFAULT_MEDIA_EDGE: i32 = 520;
 
@@ -158,6 +158,10 @@ impl Loader {
             focus_archive_on_ready: false,
             focus_archive_request: None,
         }
+    }
+
+    pub(super) fn provider(&self) -> Rc<dyn PreviewProvider> {
+        self.provider.clone()
     }
 
     pub(super) fn set_media_backend(&self, backend: MediaPreviewBackend) {
@@ -495,6 +499,12 @@ fn build_ready_viewer(app: &mut App, loaded: Preview, focus_archive: bool, tx: &
             Viewer::rendered_only(body)
         }
         PreviewContent::Rasterized { png } => build_rasterized_viewer(&loaded.entry, &png),
+        PreviewContent::Pdf {
+            png,
+            page,
+            pages,
+            text_layer,
+        } => pdf::viewer(loaded.entry, (&png, page, pages), text_layer),
         PreviewContent::Image | PreviewContent::Media => {
             unavailable_viewer(Some("The sandboxed renderer returned no preview"))
         }

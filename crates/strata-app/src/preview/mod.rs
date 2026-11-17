@@ -31,6 +31,7 @@ mod keys;
 mod labels;
 mod layout;
 mod load;
+mod pdf;
 mod raw;
 mod session;
 mod sheet;
@@ -212,7 +213,8 @@ impl Part for Preview {
         let msg_focus = app.preview.sync_message_focus(tx);
         let viewer = app.preview.viewer.poll(clock, &app.look, tx);
         let archive = viewer::tick_archive_if_active(app, tx);
-        blocks | viewer | archive | lit_changed | band_synced | msg_focus
+        let pdf = pdf::poll(app, clock, tx);
+        blocks | viewer | archive | pdf | lit_changed | band_synced | msg_focus
     }
 
     fn switched(app: &mut App, tx: &mut Tx) {

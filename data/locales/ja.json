@@ -1590,5 +1590,9 @@
   "Table preview reached its text, column, or value budget; open the file to see all data.": "表のプレビューがテキスト、列、または値の上限に達しました。すべてのデータを表示するにはファイルを開いてください。",
   "Loading sheet…": "シートを読み込み中…",
   "Try again": "再試行",
-  "This sheet is empty": "このシートは空です"
+  "This sheet is empty": "このシートは空です",
+  "PDF document": "PDF 文書",
+  "Page %{page} of %{pages}": "%{page} / %{pages} ページ",
+  "Page %{page} of %{pages}, %{zoom}%": "%{page} / %{pages} ページ、%{zoom}%",
+  "Loading page": "ページを読み込み中"
 }

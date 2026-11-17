@@ -234,7 +234,7 @@ pub use model::{
     Ticket,
 };
 pub use queue::{IMAGE_BUDGET, Landed, TEXT_BUDGET};
-pub use state::PdfState;
+pub use state::{PdfState, page_row_identity};
 
 use render::{Ctx, IntentFn, Paint};
 
@@ -265,6 +265,10 @@ pub struct PdfLabels {
     pub unavailable: String,
     pub locked: String,
     pub open: String,
+    /// When set, each page also holds an `image` of its size with this name: Strata's GTK view
+    /// names the drawing area over a page's text "PDF page text" (`page_widget` in
+    /// `src/ui/preview/pdf/pages.rs`). Empty by default: none.
+    pub page_text: String,
 }
 
 impl Default for PdfLabels {
@@ -278,6 +282,7 @@ impl Default for PdfLabels {
             unavailable: "Preview unavailable".into(),
             locked: "This PDF is password protected.".into(),
             open: "Open".into(),
+            page_text: String::new(),
         }
     }
 }
