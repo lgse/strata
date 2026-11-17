@@ -39,7 +39,7 @@ tracking moved here. The issues stay as an archive: each package file links its 
 | [A7](packages/A7.md) | Entry management and undo | done | B3 | [#2272](https://github.com/lgse/strata/pull/2272), [#2276](https://github.com/lgse/strata/pull/2276), [#2278](https://github.com/lgse/strata/pull/2278), [#2280](https://github.com/lgse/strata/pull/2280), [#2283](https://github.com/lgse/strata/pull/2283), [#2285](https://github.com/lgse/strata/pull/2285), [#2287](https://github.com/lgse/strata/pull/2287), [#2289](https://github.com/lgse/strata/pull/2289), [#2292](https://github.com/lgse/strata/pull/2292), [#2295](https://github.com/lgse/strata/pull/2295), [#2297](https://github.com/lgse/strata/pull/2297) |
 | [H3](packages/H3.md) | Backend reach | done | H1 | [#2301](https://github.com/lgse/strata/pull/2301), [#2306](https://github.com/lgse/strata/pull/2306), [#2308](https://github.com/lgse/strata/pull/2308), [#2309](https://github.com/lgse/strata/pull/2309), [#2312](https://github.com/lgse/strata/pull/2312), [#2316](https://github.com/lgse/strata/pull/2316), [#2317](https://github.com/lgse/strata/pull/2317), [#2319](https://github.com/lgse/strata/pull/2319), [#2323](https://github.com/lgse/strata/pull/2323), [#2329](https://github.com/lgse/strata/pull/2329), [#2332](https://github.com/lgse/strata/pull/2332) |
 | [H4](packages/H4.md) | Session host | done | H1 | [#2447](https://github.com/lgse/strata/pull/2447), [#2455](https://github.com/lgse/strata/pull/2455) |
-| [H5](packages/H5.md) | Coverage-gap scenarios | held | H0 | None |
+| [H5](packages/H5.md) | Coverage-gap scenarios | not started | H0 | None |
 | [F2](packages/F2.md) | Differential mode and Columns pilot | done | F1, H2 | [#2348](https://github.com/lgse/strata/pull/2348), [#2359](https://github.com/lgse/strata/pull/2359), [#2363](https://github.com/lgse/strata/pull/2363), [#2369](https://github.com/lgse/strata/pull/2369), [#2371](https://github.com/lgse/strata/pull/2371), [#2378](https://github.com/lgse/strata/pull/2378) |
 | [F3](packages/F3.md) | Rune-side invariants | done | F1 | [#2391](https://github.com/lgse/strata/pull/2391), [#2398](https://github.com/lgse/strata/pull/2398), [#2409](https://github.com/lgse/strata/pull/2409), [#2432](https://github.com/lgse/strata/pull/2432), [#2444](https://github.com/lgse/strata/pull/2444) |
 
@@ -48,23 +48,23 @@ tracking moved here. The issues stay as an archive: each package file links its 
 | ID | Package | State | Depends on | Pull requests |
 | --- | --- | --- | --- | --- |
 | [A8](packages/A8.md) | View switching and appearance | done | A1, A2, B2 | [#2333](https://github.com/lgse/strata/pull/2333), [#2335](https://github.com/lgse/strata/pull/2335), [#2343](https://github.com/lgse/strata/pull/2343), [#2349](https://github.com/lgse/strata/pull/2349), [#2352](https://github.com/lgse/strata/pull/2352), [#2364](https://github.com/lgse/strata/pull/2364), [#2372](https://github.com/lgse/strata/pull/2372), [#2373](https://github.com/lgse/strata/pull/2373), [#2374](https://github.com/lgse/strata/pull/2374), [#2384](https://github.com/lgse/strata/pull/2384), [#2390](https://github.com/lgse/strata/pull/2390), [#2393](https://github.com/lgse/strata/pull/2393), [#2394](https://github.com/lgse/strata/pull/2394), [#2402](https://github.com/lgse/strata/pull/2402), [#2399](https://github.com/lgse/strata/pull/2399), [#2413](https://github.com/lgse/strata/pull/2413), [#2433](https://github.com/lgse/strata/pull/2433), [#2438](https://github.com/lgse/strata/pull/2438), [#2440](https://github.com/lgse/strata/pull/2440), [#2458](https://github.com/lgse/strata/pull/2458), [#2463](https://github.com/lgse/strata/pull/2463) |
-| [A9](packages/A9.md) | Pointer and click modes | not started | A1, A2 | None |
+| [A9](packages/A9.md) | Pointer and click modes | done | A1, A2 | [#2531](https://github.com/lgse/strata/pull/2531), [#2541](https://github.com/lgse/strata/pull/2541), [#2553](https://github.com/lgse/strata/pull/2553) |
 | [A10](packages/A10.md) | Search, filter and sort | done | A1, A2, B3 | [#2388](https://github.com/lgse/strata/pull/2388), [#2396](https://github.com/lgse/strata/pull/2396), [#2416](https://github.com/lgse/strata/pull/2416), [#2424](https://github.com/lgse/strata/pull/2424), [#2428](https://github.com/lgse/strata/pull/2428), [#2430](https://github.com/lgse/strata/pull/2430), [#2434](https://github.com/lgse/strata/pull/2434), [#2436](https://github.com/lgse/strata/pull/2436), [#2439](https://github.com/lgse/strata/pull/2439), [#2442](https://github.com/lgse/strata/pull/2442), [#2465](https://github.com/lgse/strata/pull/2465), [#2467](https://github.com/lgse/strata/pull/2467), [#2472](https://github.com/lgse/strata/pull/2472), [#2481](https://github.com/lgse/strata/pull/2481), [#2485](https://github.com/lgse/strata/pull/2485), [#2487](https://github.com/lgse/strata/pull/2487), [#2491](https://github.com/lgse/strata/pull/2491), [#2502](https://github.com/lgse/strata/pull/2502) |
-| [A11](packages/A11.md) | 10xer mode | not started | A6, A10 | None |
-| [A12](packages/A12.md) | Clipboard and conflicts | in progress | A7; H4 for some runs | [#2490](https://github.com/lgse/strata/pull/2490), [#2493](https://github.com/lgse/strata/pull/2493), [#2495](https://github.com/lgse/strata/pull/2495), [#2503](https://github.com/lgse/strata/pull/2503), [#2511](https://github.com/lgse/strata/pull/2511) |
-| [A13](packages/A13.md) | Archives and providers | not started | A6, A7 | None |
-| [A14](packages/A14.md) | Open with, terminal and custom actions | not started | A6 | None |
-| [A15](packages/A15.md) | Preview drawer, text and documents | in progress | B1 | [#2501](https://github.com/lgse/strata/pull/2501), [#2515](https://github.com/lgse/strata/pull/2515) |
+| [A11](packages/A11.md) | 10xer mode | in progress | A6, A10 | [#2532](https://github.com/lgse/strata/pull/2532), [#2540](https://github.com/lgse/strata/pull/2540) |
+| [A12](packages/A12.md) | Clipboard and conflicts | done | A7; H4 for some runs | [#2490](https://github.com/lgse/strata/pull/2490), [#2493](https://github.com/lgse/strata/pull/2493), [#2495](https://github.com/lgse/strata/pull/2495), [#2503](https://github.com/lgse/strata/pull/2503), [#2511](https://github.com/lgse/strata/pull/2511), [#2530](https://github.com/lgse/strata/pull/2530) |
+| [A13](packages/A13.md) | Archives and providers | in progress | A6, A7 | [#2528](https://github.com/lgse/strata/pull/2528), [#2536](https://github.com/lgse/strata/pull/2536), [#2545](https://github.com/lgse/strata/pull/2545) |
+| [A14](packages/A14.md) | Open with, terminal and custom actions | done | A6 | [#2527](https://github.com/lgse/strata/pull/2527), [#2537](https://github.com/lgse/strata/pull/2537), [#2550](https://github.com/lgse/strata/pull/2550) |
+| [A15](packages/A15.md) | Preview drawer, text and documents | done | B1 | [#2501](https://github.com/lgse/strata/pull/2501), [#2515](https://github.com/lgse/strata/pull/2515), [#2534](https://github.com/lgse/strata/pull/2534), [#2548](https://github.com/lgse/strata/pull/2548) |
 | [A16](packages/A16.md) | Media, PDF and model viewers | not started | A15 | None |
-| [A17](packages/A17.md) | Properties | not started | A6 | None |
-| [A18](packages/A18.md) | Settings and themes | not started | A6, B2 | None |
+| [A17](packages/A17.md) | Properties | done | A6 | [#2529](https://github.com/lgse/strata/pull/2529), [#2535](https://github.com/lgse/strata/pull/2535), [#2538](https://github.com/lgse/strata/pull/2538) |
+| [A18](packages/A18.md) | Settings and themes | in progress | A6, B2 | [#2526](https://github.com/lgse/strata/pull/2526), [#2539](https://github.com/lgse/strata/pull/2539) |
 | [F4](packages/F4.md) | Fuzz rotation | not started | F2 | None |
 
 ### Wave 3: bound to a real window
 
 | ID | Package | State | Depends on | Pull requests |
 | --- | --- | --- | --- | --- |
-| [A19](packages/A19.md) | Drag and drop | not started | H4, A1 to A5 | None |
+| [A19](packages/A19.md) | Drag and drop | in progress | H4, A1 to A5 | [#2549](https://github.com/lgse/strata/pull/2549) |
 | [A20](packages/A20.md) | Portal chooser | not started | H4, A1, A2, A5 | None |
 | [A21](packages/A21.md) | Window and launch | not started | H4 | None |
 | [F5](packages/F5.md) | Session-host fuzzing | not started | H4, F2 | None |
@@ -110,7 +110,7 @@ Every active wave 1 package is done: [A1](packages/A1.md), [A2](packages/A2.md),
 [F3](packages/F3.md). [A6](packages/A6.md) was the last, with
 [#2520](https://github.com/lgse/strata/pull/2520) (merged as `9bfe7a03b`).
 [H5](packages/H5.md) remains `held` for the owner because its scenarios land on `main` first
-([`owner.md`](owner.md#h5-coverage-gap-scenarios)). The plan's three conditions, each checked at
+(released by the owner's ruling of 2026-11-16, [`owner.md`](owner.md#ruled)). The plan's three conditions, each checked at
 `9bfe7a03b`:
 
 | Condition | Passes | Evidence |

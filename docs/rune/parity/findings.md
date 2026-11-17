@@ -2103,11 +2103,13 @@ sequence only together with the alphabet's version, so the version is part of th
   handover contract. Giving the neighbour the keyboard unselected must not hand the browser a
   cursor GTK's browser never gets: in Columns a browser cursor on a folder opens it. Any
   other move out of the shown folder (a cut and paste, A12's) likely shows the same.
-- **State:** open. The three runs stay `pending` on it in `tests/qa/parity/cross_volume_drop.toml`.
+- **State:** open; the owner ruled on 2026-11-16 that Rune matches GTK ([`owner.md`](owner.md#ruled)).
+  [A19](packages/A19.md) changes the shared handover rule in its own `contract` pull request. The
+  three runs stay `pending` on it in `tests/qa/parity/cross_volume_drop.toml` until then.
 
 ### #2557: the Rune still-image preview names its picture for the file where GTK's is unnamed
 
-- **Code:** `divergence`, a `deviation` if the owner rules it so. [Issue](https://github.com/lgse/strata/issues/2557),
+- **Code:** `deviation`, ruled by the owner on 2026-11-16 ([`owner.md`](owner.md#ruled)). [Issue](https://github.com/lgse/strata/issues/2557),
   filed on 2026-11-16 as the finding's reference and closed at once: its state is kept here.
 - **Seen:** in [A15](packages/A15.md)'s Slice 4, comparing the settled `app.preview` of a
   previewed `pic.png` on both targets. GTK's picture (`render_sandboxed_media`,
@@ -2119,11 +2121,13 @@ sequence only together with the alphabet's version, so the version is part of th
   (`docs/rune/work/phase-3-views/C14b-viewers.md`; `docs/rune/work/STATUS.md`, "image caption
   new"), a coordinator's choice, not an owner's ruling.
 - **Concerns:** A15's `preview` fuzz alphabet, which leaves non-cover still images out.
-- **State:** open, for the owner ([`owner.md`](owner.md), A15).
+- **State:** ruled: Rune keeps the name and the caption (the owner, 2026-11-16). A run or fuzz
+  step that reads it takes a `deviation` twin or a cited rule.
 
 ### #2558: the Rune text and document previews name their body and split the text where GTK reads one buffer string
 
-- **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2558), filed on
+- **Code:** `deviation` for the two names, ruled by the owner on 2026-11-16
+  ([`owner.md`](owner.md#ruled)); the line split stays a `divergence` for the QA backend. [Issue](https://github.com/lgse/strata/issues/2558), filed on
   2026-11-16 as the finding's reference and closed at once: its state is kept here.
 - **Seen:** in [A15](packages/A15.md)'s Slice 4, comparing the settled `app.preview` on both
   targets. For `notes.txt` GTK's `GtkSourceView` reads its buffer as one string, newlines
@@ -2135,5 +2139,6 @@ sequence only together with the alphabet's version, so the version is part of th
 - **Concerns:** A15's `preview` fuzz alphabet, which leaves text and document bodies out while
   open at step boundaries; `quick_preview/rendered-document-word-selection-rune`, which finds
   the rendered document by its `"Document"` name.
-- **State:** open. Dropping the two names, and reading a code view's lines as one string,
-  would match GTK; the twin would then find the document another way.
+- **State:** the names are ruled: Rune keeps `"Source"` and `"Document"` (the owner,
+  2026-11-16). Open for the line split, which the QA backend may absorb by reading a code
+  view's lines as one string.
