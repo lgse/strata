@@ -99,8 +99,9 @@ use session::{Batch, Input, Scope, Session};
 pub(crate) use tenxer::{
     begin_listing_search, clear_listing_filter, commit_listing_filter, commit_listing_search,
     current_hit_path, dismiss_filter_only, dismiss_search_only, end_tenxer_filters,
-    focus_visible_results, listing_filter_query, mark as tenxer_mark, reveal_search_hit,
-    search_active, set_listing_filter, set_listing_search, settled_descent_folder,
+    focus_visible_results, listing_filter_query, mark as tenxer_mark, results_shown,
+    reveal_search_hit, search_active, set_listing_filter, set_listing_search,
+    settled_descent_folder,
 };
 pub(crate) use typing::reads as is_typing_key;
 

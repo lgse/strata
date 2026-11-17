@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: MIT
 
 //! 10xer's `/` and `?` listing find and `n` / `N` repeat (`src/ui/browser/find.rs`).
+//!
+//! A find keeps its matches highlighted until Escape dismisses them, which the Escape ladder
+//! does before it touches the selection; `n` repeats the query after that. The rows do not
+//! draw the highlight yet (see `docs/rune/parity/findings.md`), but the ladder already reads it.
 
 use rune::Tx;
 use strata_components::{
@@ -15,12 +19,14 @@ use crate::{App, icons::Icons, list::List, shell, single::SinglePane};
 pub(crate) struct FindState {
     query: String,
     backward: bool,
+    highlighted: bool,
 }
 
 impl FindState {
     pub(crate) fn clear(&mut self) {
         self.query.clear();
         self.backward = false;
+        self.highlighted = false;
     }
 
     pub(crate) fn query(&self) -> Option<&str> {
@@ -128,8 +134,10 @@ pub(super) fn submit(app: &mut App, query: &str, backward: bool, tx: &mut Tx) ->
     if query.is_empty() {
         return true;
     }
-    app.tenxer.prompt_state.find.query = query.to_owned();
-    app.tenxer.prompt_state.find.backward = backward;
+    let find = &mut app.tenxer.prompt_state.find;
+    find.query = query.to_owned();
+    find.backward = backward;
+    find.highlighted = true;
     search_shown(app, query, backward, tx)
 }
 
@@ -138,10 +146,17 @@ pub(crate) fn repeat(app: &mut App, reverse: bool, tx: &mut Tx) {
         app.tenxer.flash.show(tr("No previous find"), tx);
         return;
     };
+    app.tenxer.prompt_state.find.highlighted = true;
     let backward = app.tenxer.prompt_state.find.backward != reverse;
     if !search_shown(app, &query, backward, tx) {
         report_miss(app, &query, tx);
     }
+}
+
+/// `dismiss_find_highlight`: drops the matches' highlight and keeps the query for `n`. Whether
+/// one was showing.
+pub(crate) fn dismiss_highlight(app: &mut App) -> bool {
+    std::mem::replace(&mut app.tenxer.prompt_state.find.highlighted, false)
 }
 
 pub(super) fn report_miss(app: &mut App, query: &str, tx: &mut Tx) {

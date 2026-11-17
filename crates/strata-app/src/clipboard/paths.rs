@@ -20,7 +20,7 @@ pub(crate) fn is_trash(location: &Location) -> bool {
         .is_some_and(|uri| uri.starts_with("trash:"))
 }
 
-fn is_trash_item(location: &Location) -> bool {
+pub(crate) fn is_trash_item(location: &Location) -> bool {
     is_trash(location) && location.parent().as_ref().is_some_and(is_trash_root)
 }
 

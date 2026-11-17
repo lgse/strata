@@ -13,7 +13,7 @@ use strata_desktop::keys::{Command, KeyPress, bindings::*};
 use super::prompts::{self, find};
 use crate::{
     App,
-    clipboard::{self, Yank},
+    clipboard::{self, Yank, paths},
     commands::Outcome,
     conflict_dialog::ConflictFocus,
     open_with, transfer, trash,
@@ -53,6 +53,7 @@ const FILE_VERBS: &[(Command, Verb)] = &[
     (PASTE_REPLACE, |app, tx| {
         paste(app, ConflictFocus::Replace, tx)
     }),
+    (RESTORE, restore_targets),
 ];
 
 pub(super) fn prompt_keys(app: &mut App, press: &KeyPress, tx: &mut Tx) -> Option<Outcome> {
@@ -94,6 +95,23 @@ fn paste(app: &mut App, focus: ConflictFocus, tx: &mut Tx) {
         }),
         tx,
     );
+}
+
+/// `restore_targets`'s refusals. Restoring items that are in the Trash waits on the Rune side's
+/// restore from the Trash (GTK's `request_restore`), which is not ported yet.
+fn restore_targets(app: &mut App, tx: &mut Tx) {
+    let entries = super::command_targets(app);
+    let refusal = if entries.is_empty() {
+        "Nothing to restore"
+    } else if !entries
+        .iter()
+        .all(|entry| paths::is_trash_item(&entry.location))
+    {
+        "Only items in Trash can be restored"
+    } else {
+        return;
+    };
+    app.tenxer.flash.show(tr(refusal), tx);
 }
 
 fn delete_targets(app: &mut App, permanent: bool, tx: &mut Tx) {

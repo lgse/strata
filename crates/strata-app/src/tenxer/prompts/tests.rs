@@ -15,7 +15,7 @@ use crate::{
     shell,
     tenxer::tests::{char_key, node_name, tap},
     test_support::{
-        PATIENCE, hosted,
+        PATIENCE, hosted, hosted_after,
         view::{all, text},
     },
 };
@@ -279,6 +279,12 @@ fn yank_fills_the_clipboard_unyank_empties_it_and_an_empty_paste_says_so() {
             );
             shifted(&mut host, "Y");
             assert!(!clipboard::has_files(host.app()), "Y releases them");
+
+            shifted(&mut host, "R");
+            assert_eq!(
+                flash(&host).as_deref(),
+                Some("Only items in Trash can be restored")
+            );
         },
     );
 }
@@ -307,6 +313,56 @@ fn leaving_tenxer_mode_closes_the_prompt_and_its_filter() {
             assert!(!shell::preferences(host.app()).tenxer_mode);
             assert_eq!(prompt(&host), None);
             assert!(!shows_hits(&host), "10xer's filter goes too");
+        },
+    );
+}
+
+/// In List, where no preview follows the selection, so each Escape has one thing to dismiss.
+#[test]
+fn escape_dismisses_the_find_highlight_before_the_selection() {
+    hosted_after(
+        MODULE,
+        "escape_dismisses_the_find_highlight_before_the_selection",
+        || {
+            let file = strata_core::storage::config_directory().join("settings.toml");
+            std::fs::create_dir_all(file.parent().expect("a folder")).expect("settings folder");
+            std::fs::write(file, "browser_mode = \"list\"\n").expect("settings");
+        },
+        |mut host| {
+            let _root = tenxer_on(&mut host, &["alpha.txt", "beta.txt", "gamma.txt"], &[]);
+            let selected = |host: &Offscreen| host.app().browser().selected_positions(0);
+            host.app().browser().select(0, 2);
+            while host.turn() {}
+            press(&mut host, char_key("/"));
+            type_text(&mut host, "alpha");
+            press(&mut host, Key::Enter);
+            press(&mut host, Key::Escape);
+            assert_eq!(
+                selected(&host),
+                vec![2],
+                "the first Escape takes the highlight"
+            );
+            press(&mut host, Key::Escape);
+            assert!(
+                selected(&host).is_empty(),
+                "the second clears the selection"
+            );
+
+            host.app().browser().select(0, 2);
+            while host.turn() {}
+            press(&mut host, char_key("n"));
+            press(&mut host, Key::Escape);
+            assert_eq!(selected(&host), vec![2], "n highlights the matches again");
+
+            press(&mut host, char_key("n"));
+            press(&mut host, char_key("/"));
+            press(&mut host, Key::Escape);
+            assert_eq!(prompt(&host), None, "Escape closes the find prompt");
+            press(&mut host, Key::Escape);
+            assert!(
+                selected(&host).is_empty(),
+                "the prompt's Escape took the highlight"
+            );
         },
     );
 }

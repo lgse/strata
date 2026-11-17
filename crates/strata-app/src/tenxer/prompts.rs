@@ -418,6 +418,10 @@ fn on_dismissed(app: &mut App, kind: PromptKind, (text, by): (String, By), tx: &
             }
         }
         PromptKind::Search => filter::commit_listing_search(app, &text, tx),
+        PromptKind::Find | PromptKind::FindBackward => {
+            find::dismiss_highlight(app);
+            focus_listing_or_results(app, tx);
+        }
         _ => focus_listing_or_results(app, tx),
     }
 }

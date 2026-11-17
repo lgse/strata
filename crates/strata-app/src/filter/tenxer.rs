@@ -282,6 +282,14 @@ pub(crate) fn end_tenxer_filters(app: &mut App, tx: &mut Tx) {
     }
 }
 
+/// Whether filter or search results show in place of the listing.
+pub(crate) fn results_shown(app: &App) -> bool {
+    app.filter
+        .open_in
+        .as_ref()
+        .is_some_and(|open| open.place.shows_hits(app, open.depth))
+}
+
 /// Focuses visible filter/search results in the shown view, returning `false` when none show.
 pub(crate) fn focus_visible_results(app: &App, tx: &mut Tx) -> bool {
     let Some(open) = app.filter.open_in.as_ref() else {
