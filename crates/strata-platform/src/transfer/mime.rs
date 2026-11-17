@@ -23,6 +23,17 @@ pub const GNOME_COPIED_FILES: &str = "x-special/gnome-copied-files";
 pub const KDE_CUT_SELECTION: &str = "application/x-kde-cutselection";
 pub const TEXT_UTF8: &str = "text/plain;charset=utf-8";
 
+/// Whether the offered type `offered` is the type a reader `listed`: the same type, or, when
+/// `listed` names no parameters, that type with any (`application/octet-stream` names
+/// `application/octet-stream;name="a.jpg"`, the form a browser drags an image's bytes in).
+pub fn names(listed: &str, offered: &str) -> bool {
+    offered == listed
+        || (!listed.contains(';')
+            && offered
+                .strip_prefix(listed)
+                .is_some_and(|rest| rest.trim_start().starts_with(';')))
+}
+
 /// Bytes a path keeps unescaped in a `file://` URI: RFC 3986's unreserved characters plus the
 /// sub-delimiters GLib allows in a path (`G_URI_RESERVED_CHARS_ALLOWED_IN_PATH` without `;`,
 /// which `g_filename_to_uri` escapes).

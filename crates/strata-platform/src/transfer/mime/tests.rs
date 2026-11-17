@@ -174,3 +174,30 @@ fn pixmap_is_data_and_meta_targets_match_by_exact_name() {
         assert!(!super::is_x11_meta(name), "{name}");
     }
 }
+
+/// A type listed without parameters names its forms with parameters, as a browser offers an
+/// image's bytes (`application/octet-stream;name="…"`); one listed with parameters names only
+/// itself, and a longer type is no form of a shorter one.
+#[test]
+fn a_type_without_parameters_names_its_forms_with_parameters() {
+    let cases = [
+        ("application/octet-stream", "application/octet-stream", true),
+        (
+            "application/octet-stream",
+            "application/octet-stream;name=\"a.jpg\"",
+            true,
+        ),
+        ("text/plain", "text/plain;charset=utf-8", true),
+        ("text/plain;charset=utf-8", "text/plain", false),
+        (
+            "text/plain;charset=utf-8",
+            "text/plain;charset=latin1",
+            false,
+        ),
+        ("text/plain", "text/plainer", false),
+        ("text/uri-list", "text/plain", false),
+    ];
+    for (listed, offered, named) in cases {
+        assert_eq!(names(listed, offered), named, "{listed} names {offered}");
+    }
+}

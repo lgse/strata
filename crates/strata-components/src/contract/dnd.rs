@@ -308,9 +308,22 @@ impl DropOffer {
     }
 
     /// Whether the drag offers `mime`.
+    /// Whether the drag offers `mime`, or, when `mime` names no parameters, that type with
+    /// some: `application/octet-stream` is offered by `application/octet-stream;name="a.jpg"`,
+    /// the form a browser drags an image's bytes in (P1's `transfer::mime::names`).
     pub fn offers(&self, mime: &str) -> bool {
-        self.mime_types.iter().any(|m| m == mime)
+        self.mime_types.iter().any(|m| names(mime, m))
     }
+}
+
+/// Whether the offered type `offered` is the type `listed`: the same, or `listed` with
+/// parameters when it names none.
+pub fn names(listed: &str, offered: &str) -> bool {
+    offered == listed
+        || (!listed.contains(';')
+            && offered
+                .strip_prefix(listed)
+                .is_some_and(|rest| rest.trim_start().starts_with(';')))
 }
 
 /// One MIME type's data, as read from a drop.
@@ -523,6 +536,20 @@ impl<S: 'static> DropZone<S> {
     /// The same zone, reading `preference` instead: the MIME types it takes, most wanted first.
     pub fn mime_types(mut self, preference: &[&'static str]) -> Self {
         self.mime_types = preference.iter().map(|&m| Cow::Borrowed(m)).collect();
+        self
+    }
+
+    /// The same zone, taking `content` from other apps besides files: text, images, web
+    /// addresses, as the host's content-drops policy lists them, most wanted first. Files stay
+    /// first. With none, the zone is unchanged. The host tells files from content at the drop.
+    pub fn takes_content(mut self, content: &[&'static str]) -> Self {
+        if !content.is_empty() {
+            let files = std::iter::once(URI_LIST);
+            self.mime_types = files
+                .chain(content.iter().copied())
+                .map(Cow::Borrowed)
+                .collect();
+        }
         self
     }
 
