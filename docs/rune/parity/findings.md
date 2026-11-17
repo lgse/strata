@@ -2320,8 +2320,17 @@ sequence only together with the alphabet's version, so the version is part of th
   contract field and spans in all three views' name cells, coloured from the Kit's tokens.
 - **Concerns:** no ledger run; found in the review of #2567. [A11](packages/A11.md)'s fuzz
   alphabet (Slice 5) should exercise `/` then Escape with a selection.
-- **State:** open, [A11](packages/A11.md#open)'s, for Slice 4 or 5 or a `contract` change to
-  the row components.
+- **State:** fixed by [A11](packages/A11.md)'s `contract` change for #2570, on
+  `feat/2143-a11-name-highlights`. `RowMarks::name_matches` carries a name's matched
+  byte ranges, which C1e's default label (the Columns view's names), C3's caption and C4's name
+  cell paint in the Kit's accent. The app fills them as GTK's `refresh_name_highlights` does
+  (`crates/strata-app/src/tenxer/highlight.rs`): a highlighted 10xer find marks its query,
+  case folded, in every name, the listing's and the results', until Escape or the find
+  prompt's Escape dismisses it, and it goes with 10xer mode. Without one, a fuzzy `f` or `s`
+  marks what its query matched in each result (`PathMatcher::name_highlight`, GTK's
+  `search_hit_ranges`; for a direct child the same ranges as GTK's in-place
+  `filter_term_ranges`). Covered by `tenxer::highlight::tests` (Columns, List and Icons) and
+  the component's `collection::element::matches::tests`.
 
 ### #2575: `preview-blank-click-keeps-selection/columns` was still loading its preview once in a full Rune run
 
