@@ -107,7 +107,7 @@ run = "list-tenxer"
 package = "A11"
 status = "pending"
 reason = "scope"
-blocker = "A11"
+blocker = "A16: the PDF viewer (line 30 waits for the chooser preview's `PDF page text` image), then the session host for `--qa --portal` (A20's)"
 
 [[run]]
 scenario = "chooser-sidebar-drops-survive-resize"
