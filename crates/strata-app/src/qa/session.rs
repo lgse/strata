@@ -22,6 +22,8 @@ mod devices;
 mod guard;
 mod link;
 mod sway;
+#[cfg(test)]
+mod tests;
 
 use std::{
     cell::{Cell, OnceCell, RefCell},
@@ -70,7 +72,8 @@ const SETTLE_LIMIT: Duration = Duration::from_millis(250);
 const DISPATCH_LIMIT: Duration = Duration::from_millis(500);
 const DISPATCH_POLL: Duration = Duration::from_millis(2);
 /// How long a motion is given while a drag runs that this window does not follow through its
-/// pointer: one it started, or a press another client took, a drag from another process.
+/// pointer: one it started, or one the runner started from another client's window (the
+/// foreign drag source), with a press outside this one.
 /// Under the compositor's drag grab a motion reaches the data device, not the pointer, so Rune
 /// records no input for it and [`DISPATCH_LIMIT`] would run out at every step; a drag paced so
 /// slowly rests on each folder it crosses past the 750 ms spring, and opens it.
@@ -182,8 +185,8 @@ pub(super) struct Session {
     /// The private Wayland client owning the clipboard from `clipboard_set`, kept alive until
     /// replaced or closed by `clipboard`.
     clipboard: RefCell<Option<clipboard::ClipboardOwner>>,
-    /// A button is held whose press the window never took: another client has the pointer,
-    /// such as a drag source in another process.
+    /// A button is held that was pressed outside this window, on another client: the drag the
+    /// runner starts from the foreign drag source (`presses_elsewhere`).
     held_elsewhere: Cell<bool>,
 }
 
@@ -309,6 +312,25 @@ impl Session {
 
     fn window(&self) -> Result<sway::Area, String> {
         self.sway.window(std::process::id())
+    }
+}
+
+/// Whether a press at `at` lands outside this window, shown at `window`: on another client,
+/// such as the foreign drag source the runner drags from. A press inside it is the window's,
+/// however slow the window is to take it, and `taken` waits for it. When sway does not say
+/// where the window is, a press the window never took (`taken` false) is another client's.
+fn presses_elsewhere(
+    window: Option<sway::Area>,
+    at: (i16, i16),
+    taken: impl FnOnce() -> bool,
+) -> bool {
+    match window {
+        Some(window) if !window.contains(at) => true,
+        Some(_) => {
+            let _ = taken();
+            false
+        }
+        None => !taken(),
     }
 }
 
@@ -484,11 +506,24 @@ impl Host for Session {
     }
 
     async fn button(&self, number: u8, pressed: bool) -> Result<(), String> {
+        let at = self.devices.position();
+        let window = if pressed { self.window().ok() } else { None };
         self.devices.button(number, pressed)?;
-        self.log.button(self.devices.position(), number, pressed);
+        self.log.button(at, number, pressed);
         let direction = if pressed { "press" } else { "release" };
-        let taken = self.dispatched(&format!("the {direction} of button {number}"));
-        self.held_elsewhere.set(pressed && !taken);
+        let what = format!("the {direction} of button {number}");
+        // Another client's press, or the release ending the drag it started: this window's
+        // pointer hears neither, so neither is waited for.
+        let elsewhere = if pressed {
+            presses_elsewhere(window, at, || self.dispatched(&what))
+        } else {
+            let held = self.held_elsewhere.get();
+            if !held {
+                let _ = self.dispatched(&what);
+            }
+            held
+        };
+        self.held_elsewhere.set(pressed && elsewhere);
         Ok(())
     }
 

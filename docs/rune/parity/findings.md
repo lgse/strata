@@ -2284,6 +2284,11 @@ sequence only together with the alphabet's version, so the version is part of th
   664), at the same first wait. The scenario then passed alone three times in a row (6 of 6 runs
   each). #2569 adds the window's zoom wheel and the PDF preview, and leaves the listing, item
   counts and drag and drop as they were.
+- **Seen in [#2583](https://github.com/lgse/strata/pull/2583)'s gate too:** as
+  `drag-file-onto-folder/list-copy`, in its re-gate at `32b544323` (rune offscreen 673 of 675),
+  at the same first wait. The scenario then passed alone three times in a row (6 of 6 runs
+  each). #2583 changes how a drop from another application is read, not the listing or its item
+  counts, and this run's drags come from the window itself.
 - **Concerns:** `drag_and_drop/drag-file-onto-folder/columns-copy`, `list-copy` and `list-move`,
   `required`, [A19](packages/A19.md)'s.
 - **State:** open, unowned. The ledger is unchanged: the run stays `required`. Not traced.
@@ -2307,6 +2312,10 @@ sequence only together with the alphabet's version, so the version is part of th
 - **Also seen** in the gate of [#2573](https://github.com/lgse/strata/pull/2573) (A18): once in
   a full Rune run on clean `strata-next` at `1370c6f7b`, and once in the re-gate at `cad74ce7e`
   (rune offscreen 674 of 675). Alone it then passed on both targets.
+- **Also seen** in the re-gate of [#2583](https://github.com/lgse/strata/pull/2583) at
+  `32b544323` (rune offscreen 673 of 675), at line 11 again. Alone on Rune it then passed three
+  times in a row. #2583 changes drops from other applications; this run cuts, pastes and undoes
+  with keys.
 - **State:** open, unowned.
 
 ### #2570: 10xer's find and filter highlights are not drawn in Rune's rows
@@ -2369,6 +2378,12 @@ sequence only together with the alphabet's version, so the version is part of th
   drag or document selection.
 - **Concerns:** `quick_preview/rendered-document-word-selection-rune`, [A15](packages/A15.md)'s
   `parallel` twin. #2569 changes no pointer drag or document selection.
+- **Sighting on [#2577](https://github.com/lgse/strata/pull/2577):** in its gate at
+  `1ba2778c1909325066429fdf368128030d2ddea1`, `./scripts/qa-parity.sh all`: the session host
+  passed 31 of 32, and `columns-docx` failed at line 21 with `uarterly Report`, as above. Alone
+  it then passed three rounds, 3 of 3 each (`md`, `rtf`, `docx`). That run's selection comes
+  from `click` steps (a double click at line 14, a click and a Shift-click at lines 17 and 18),
+  each a press and release at one point, with no drag between them.
 - **Sighting on [#2578](https://github.com/lgse/strata/pull/2578):** in its re-gate at
   `32db8aa4d`, the full session-host batch (35 runs) failed all three of the twin's runs,
   `columns-md` and `columns-rtf` at line 20 (`pha bravo charlie delta`) and `columns-docx` at
@@ -2379,6 +2394,11 @@ sequence only together with the alphabet's version, so the version is part of th
   runs on clean `strata-next` at `1370c6f7b`, and in the re-gate at `cad74ce7e` (`columns-docx`,
   session host 34 of 35). Alone it passed each time on both targets. Filed again at the same
   time as [#2581](https://github.com/lgse/strata/issues/2581), a duplicate.
+- **Sighting on [#2583](https://github.com/lgse/strata/pull/2583):** in its gate at
+  `90a405bbc`, the session-host batch passed 33 of 35: `columns-md` failed at line 20
+  (`pha bravo charlie delta`) and `columns-docx` at line 21 (`uarterly Report`). Alone on the
+  session host the twin then passed three rounds, 9 of 9. #2583's session-host change paces
+  only motions after a press outside the window; these clicks are inside it.
 - **Cause** (traced by [A15](packages/A15.md), 2026-11-17): the twin, not Rune. Line 17 of
   `rendered-document-word-selection-rune` clicked 17 points into C11's first text `label`, where
   GTK's original clicks 17 points into the row's `panel`, whose padding puts the point at the
