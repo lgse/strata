@@ -6,118 +6,103 @@
 scenario = "foreign-content-reaches-every-drop-target"
 run = "columns-background"
 package = "A19"
-status = "pending"
-reason = "scope"
-blocker = "A19"
+status = "required"
+host = "session"
 
 [[run]]
 scenario = "foreign-content-reaches-every-drop-target"
 run = "columns-sidebar"
 package = "A19"
-status = "pending"
-reason = "scope"
-blocker = "A19"
+status = "required"
+host = "session"
 
 [[run]]
 scenario = "foreign-content-reaches-every-drop-target"
 run = "columns-tab"
 package = "A19"
-status = "pending"
-reason = "scope"
-blocker = "A19"
+status = "required"
+host = "session"
 
 [[run]]
 scenario = "foreign-content-reaches-every-drop-target"
 run = "columns-breadcrumb"
 package = "A19"
-status = "pending"
-reason = "scope"
-blocker = "A19"
+status = "required"
+host = "session"
 
 [[run]]
 scenario = "foreign-content-saves-new-files"
 run = "columns-text"
 package = "A19"
-status = "pending"
-reason = "scope"
-blocker = "A19"
+status = "required"
+host = "session"
 
 [[run]]
 scenario = "foreign-content-saves-new-files"
 run = "icons-text"
 package = "A19"
-status = "pending"
-reason = "scope"
-blocker = "A19"
+status = "required"
+host = "session"
 
 [[run]]
 scenario = "foreign-content-saves-new-files"
 run = "list-text"
 package = "A19"
-status = "pending"
-reason = "scope"
-blocker = "A19"
+status = "required"
+host = "session"
 
 [[run]]
 scenario = "foreign-content-saves-new-files"
 run = "columns-image"
 package = "A19"
-status = "pending"
-reason = "scope"
-blocker = "A19"
+status = "required"
+host = "session"
 
 [[run]]
 scenario = "foreign-content-saves-new-files"
 run = "columns-contents"
 package = "A19"
-status = "pending"
-reason = "scope"
-blocker = "A19"
+status = "required"
+host = "session"
 
 [[run]]
 scenario = "foreign-content-saves-new-files"
 run = "columns-link"
 package = "A19"
-status = "pending"
-reason = "scope"
-blocker = "A19"
+status = "required"
+host = "session"
 
 [[run]]
 scenario = "foreign-content-saves-new-files"
 run = "columns-image_file"
 package = "A19"
-status = "pending"
-reason = "scope"
-blocker = "A19"
+status = "required"
+host = "session"
 
 [[run]]
 scenario = "foreign-content-saves-new-files"
 run = "columns-contents_fallback"
 package = "A19"
-status = "pending"
-reason = "scope"
-blocker = "A19"
+status = "required"
+host = "session"
 
 [[run]]
 scenario = "foreign-content-saves-new-files"
 run = "columns-contents_unreadable"
 package = "A19"
-status = "pending"
-reason = "scope"
-blocker = "A19"
+status = "required"
+host = "session"
 
 [[run]]
 scenario = "foreign-content-saves-new-files"
 run = "columns-open"
 package = "A19"
-status = "pending"
-reason = "scope"
-blocker = "A19"
+status = "required"
+host = "session"
 
 [[run]]
 scenario = "foreign-content-saves-new-files"
 run = "columns-unwritable"
 package = "A19"
-status = "pending"
-reason = "scope"
-blocker = "A19"
+status = "required"
+host = "session"

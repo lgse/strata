@@ -20,28 +20,22 @@ host = "offscreen"
 scenario = "foreign-folder-drags-validate"
 run = "columns-False-False"
 package = "A3"
-status = "pending"
+status = "required"
 host = "session"
-reason = "platform"
-blocker = "A19: a drag from another process (a GTK window on X11, `tests/qa/foreign_drag_source.py`) onto the sidebar, on H4's session host with Xwayland turned on for the peer; A19 wires foreign drops in its third slice"
 
 [[run]]
 scenario = "foreign-folder-drags-validate"
 run = "columns-True-False"
 package = "A3"
-status = "pending"
+status = "required"
 host = "session"
-reason = "platform"
-blocker = "A19: a drag from another process (a GTK window on X11, `tests/qa/foreign_drag_source.py`) onto the sidebar, on H4's session host with Xwayland turned on for the peer; A19 wires foreign drops in its third slice"
 
 [[run]]
 scenario = "foreign-folder-drags-validate"
 run = "columns-False-True"
 package = "A3"
-status = "pending"
+status = "required"
 host = "session"
-reason = "platform"
-blocker = "A19: a drag from another process (a GTK window on X11, `tests/qa/foreign_drag_source.py`) onto the sidebar, on H4's session host with Xwayland turned on for the peer; A19 wires foreign drops in its third slice"
 
 [[run]]
 scenario = "pinned-rows-transfer-and-remote-gaps"
