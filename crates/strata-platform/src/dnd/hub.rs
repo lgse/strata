@@ -15,7 +15,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 use rune::raw_window_handle::RawWindowHandle;
 use rune::{DragOutcome, Mods, WindowHandle};
 
-use crate::transfer::{self, Subscription, Transfer, Turn, Wants};
+use crate::transfer::{self, ReadError, Subscription, Transfer, Turn, Wants};
 
 use super::api::{Actions, DragAction, DragItem, Error, Status};
 use super::icon::{self, DragImage};
@@ -88,7 +88,7 @@ pub(crate) trait InPort {
     /// What the target takes at the current point: a type and an action, or nothing.
     fn status(&self, accept: Option<&str>, action: Option<DragAction>);
     /// Reads a type, during the drag or after the drop. `done` runs once, on any thread.
-    fn read(&self, mime: &str, done: Box<dyn FnOnce(Result<Vec<u8>, String>) + Send>);
+    fn read(&self, mime: &str, done: Box<dyn FnOnce(Result<Vec<u8>, ReadError>) + Send>);
     /// The action the drop took, given what the target chose: on Wayland the compositor's.
     fn dropped_action(&self, chosen: DragAction) -> DragAction;
     /// Ends the drop with `action`, or refuses it.

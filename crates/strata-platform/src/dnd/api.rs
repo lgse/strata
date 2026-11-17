@@ -11,7 +11,7 @@ use std::sync::Arc;
 use rune::{DragOutcome, Mods, Tx};
 
 use crate::transfer::mime;
-use crate::transfer::{SourceSpec, Writer};
+use crate::transfer::{ReadError, SourceSpec, Writer};
 
 use super::icon::DragIcon;
 
@@ -279,8 +279,8 @@ pub struct DropData {
     pub offer: DropOffer,
     /// Each type read, with its bytes.
     pub items: Vec<(String, Vec<u8>)>,
-    /// The types whose read failed, and why.
-    pub failed: Vec<(String, String)>,
+    /// The types whose read failed, and why: [`ReadError::TooLarge`] past the read's bound.
+    pub failed: Vec<(String, ReadError)>,
     /// The action the drop took. [`DragAction::Ask`] only in [`DropTarget::on_ask`].
     pub action: DragAction,
     pub point: Option<DropPoint>,
@@ -451,6 +451,7 @@ pub(crate) type ActionFn<S> = Rc<dyn Fn(&S, &DropOffer, Option<Mods>) -> Option<
 pub(crate) type ActionAtFn<S> =
     Rc<dyn Fn(&S, &DropOffer, Option<Mods>, DropPoint) -> Option<DragAction>>;
 pub(crate) type AskFn<S> = Rc<dyn Fn(&mut S, DropData, AskReply, &mut Tx)>;
+pub(crate) type NextReadFn = Rc<dyn Fn(&DropData) -> Option<String>>;
 
 /// A drop target: the MIME types it reads, and its callbacks. Mirrors Rune's
 /// `on_drop_files`, `on_drop_hover`, `on_drop_move` and `on_drop_rejected`, for any type.
@@ -464,6 +465,7 @@ pub(crate) type AskFn<S> = Rc<dyn Fn(&mut S, DropData, AskReply, &mut Tx)>;
 pub struct DropTarget<S> {
     pub(crate) mimes: Vec<String>,
     pub(crate) read_all: bool,
+    pub(crate) next: Option<NextReadFn>,
     pub(crate) peek: Vec<String>,
     pub(crate) local: Option<std::any::TypeId>,
     pub(crate) on_drop: DropFn<S>,
@@ -480,6 +482,7 @@ impl<S> Clone for DropTarget<S> {
         DropTarget {
             mimes: self.mimes.clone(),
             read_all: self.read_all,
+            next: self.next.clone(),
             peek: self.peek.clone(),
             local: self.local,
             on_drop: self.on_drop.clone(),
@@ -499,6 +502,7 @@ impl<S: 'static> DropTarget<S> {
         DropTarget {
             mimes: vec![mime::URI_LIST.to_owned()],
             read_all: false,
+            next: None,
             peek: Vec::new(),
             local: None,
             on_drop: Rc::new(on_drop),
@@ -521,6 +525,17 @@ impl<S: 'static> DropTarget<S> {
     /// At the drop, read every one of its types the drag offers, not just the first.
     pub fn read_all(mut self) -> Self {
         self.read_all = true;
+        self
+    }
+
+    /// At the drop, read one type at a time, as `next` chooses: given what was read so far
+    /// (none at first; [`DropData::failed`] says why a read failed), the offered type to
+    /// read next, or `None` to deliver the drop. A type the drag does not offer, or one read
+    /// already, delivers it too. For a target that uses one type of several and falls back
+    /// on another only when that one is no use, so it reads no more than it needs. Overrides
+    /// [`DropTarget::read_all`].
+    pub fn read_next(mut self, next: impl Fn(&DropData) -> Option<String> + 'static) -> Self {
+        self.next = Some(Rc::new(next));
         self
     }
 

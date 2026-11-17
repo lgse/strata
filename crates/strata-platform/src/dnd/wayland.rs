@@ -27,7 +27,7 @@ use wayland_client::protocol::wl_surface::WlSurface;
 use wayland_client::{Connection, Dispatch, Proxy, QueueHandle, WEnum};
 
 use crate::transfer::wayland::{Conn, State};
-use crate::transfer::{self, DragOffer, ReadLimits, SourceSpec};
+use crate::transfer::{self, DragOffer, ReadError, ReadLimits, SourceSpec};
 
 use super::api::{Actions, DragAction, Error};
 use super::hub::{self, InPort};
@@ -413,10 +413,8 @@ impl InPort for WlIn {
         }
     }
 
-    fn read(&self, mime: &str, done: Box<dyn FnOnce(Result<Vec<u8>, String>) + Send>) {
-        self.offer.read(mime, ReadLimits::default(), move |r| {
-            done(r.map_err(|e| e.to_string()))
-        });
+    fn read(&self, mime: &str, done: Box<dyn FnOnce(Result<Vec<u8>, ReadError>) + Send>) {
+        self.offer.read(mime, ReadLimits::default(), done);
     }
 
     fn dropped_action(&self, chosen: DragAction) -> DragAction {

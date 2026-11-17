@@ -14,13 +14,14 @@ use rune::{AppHandle, Drag, DragOutcome, El, Key, KeyEvent, Mods, Pick, Picked, 
 
 use super::api::{
     AskReply, DragAction, DragItem, DragSource, DropData, DropOffer, DropPoint, DropTarget, EndFn,
-    Error, Hover, Status,
+    Error, Hover, NextReadFn, Status,
 };
 use super::hub::{self, InEvent, InPort, Job, Poster, Routed, Sink};
 use super::local;
 use super::negotiate;
 use super::registry::Registry;
 use super::session::{self, Decision, Guard, Landing, Release, Step};
+use crate::transfer::{ReadError, mime};
 
 /// One window's drag and drop: create it with the window's state, attach it from
 /// `App::on_window`, and build drop targets and drag sources through it in the view.
@@ -58,14 +59,62 @@ struct InDrag {
 }
 
 /// Each type a drop read, as the reads finish.
-type Results = Arc<Mutex<Vec<(String, Result<Vec<u8>, String>)>>>;
+type Results = Arc<Mutex<Vec<(String, Result<Vec<u8>, ReadError>)>>>;
 
 /// A drop whose reads are running.
 struct Pending<S> {
     target: DropTarget<S>,
     data: DropData,
+    reader: Reader,
+}
+
+/// What reads a drop's types: the drag's port, and the reads' results as they come in.
+#[derive(Clone)]
+struct Reader {
     port: Rc<dyn InPort>,
     results: Results,
+}
+
+impl Reader {
+    /// Reads `reads` for drop `id`, posting [`Job::Dropped`] to `poster` once they are all in.
+    fn start(&self, id: u64, poster: Option<Poster>, reads: Vec<String>) {
+        let left = Arc::new(AtomicUsize::new(reads.len()));
+        for mime in reads {
+            let (results, left, poster, m) = (
+                self.results.clone(),
+                left.clone(),
+                poster.clone(),
+                mime.clone(),
+            );
+            self.port.read(
+                &mime,
+                Box::new(move |r| {
+                    results
+                        .lock()
+                        .unwrap_or_else(PoisonError::into_inner)
+                        .push((m, r));
+                    if left.fetch_sub(1, Ordering::AcqRel) == 1
+                        && let Some(p) = poster
+                    {
+                        p(Job::Dropped(id));
+                    }
+                }),
+            );
+        }
+    }
+
+    /// The reads that are in, into `data`, in the order of `preference`.
+    fn take_into(&self, data: &mut DropData, preference: &[String]) {
+        let mut results =
+            std::mem::take(&mut *self.results.lock().unwrap_or_else(PoisonError::into_inner));
+        results.sort_by_key(|(m, _)| preference.iter().position(|t| mime::names(t, m)));
+        for (mime, r) in results {
+            match r {
+                Ok(bytes) => data.items.push((mime, bytes)),
+                Err(e) => data.failed.push((mime, e)),
+            }
+        }
+    }
 }
 
 pub(crate) struct Core<S: 'static> {
@@ -407,6 +456,34 @@ impl<S: 'static> Dnd<S> {
     #[cfg(test)]
     pub(crate) fn run_job_for_test(&self, job: Job, s: &mut S, tx: &mut Tx) -> bool {
         self.0.run_job(job, s, tx)
+    }
+
+    /// For the headless tests: `drop`, dropped at once, with no hit test, to reach the reads
+    /// of [`Core::dropped`].
+    #[cfg(test)]
+    pub(crate) fn drop_on_for_test(&self, drop: TestDrop, s: &mut S, tx: &mut Tx) -> bool {
+        let TestDrop { port, mimes, key } = drop;
+        let offer = DropOffer {
+            mimes,
+            actions: super::api::Actions::COPY,
+            local: false,
+            mods: None,
+            serial: hub::next_id(),
+            peeked: Vec::new(),
+        };
+        *self.0.drag.borrow_mut() = Some(InDrag {
+            port,
+            offer,
+            local: None,
+            landing: Landing::Accepting {
+                key,
+                action: DragAction::Copy,
+                accept: String::new(),
+            },
+            at: (0.0, 0.0),
+            peeks: HashSet::new(),
+        });
+        self.0.dropped(s, tx)
     }
 
     /// For the headless tests: the drag this window started, if any.
@@ -764,11 +841,7 @@ impl<S: 'static> Core<S> {
             .as_ref()
             .filter(|(_, p)| target.takes_local(Some(p)))
             .map(|(_, p)| p.clone());
-        let reads = if local.is_some() {
-            Vec::new()
-        } else {
-            target.reads(&d.offer)
-        };
+        let reads_nothing = local.is_some();
         let data = DropData {
             offer: d.offer.clone(),
             items: Vec::new(),
@@ -777,62 +850,53 @@ impl<S: 'static> Core<S> {
             point,
             local,
         };
+        let reads = match &target.next {
+            _ if reads_nothing => Vec::new(),
+            Some(next) => next_read(next, &data).into_iter().collect(),
+            None => target.reads(&d.offer),
+        };
         let id = hub::next_id();
-        let results: Results = Arc::default();
-        self.pending.borrow_mut().insert(
-            id,
-            Pending {
-                target,
-                data,
-                port: d.port.clone(),
-                results: results.clone(),
-            },
-        );
+        let reader = Reader {
+            port: d.port.clone(),
+            results: Arc::default(),
+        };
+        let pending = Pending {
+            target,
+            data,
+            reader: reader.clone(),
+        };
+        self.pending.borrow_mut().insert(id, pending);
         if reads.is_empty() {
             return self.deliver(id, s, tx) || changed;
         }
-        let left = Arc::new(AtomicUsize::new(reads.len()));
-        let poster = self.poster.borrow().clone();
-        for mime in reads {
-            let (results, left, poster, m) =
-                (results.clone(), left.clone(), poster.clone(), mime.clone());
-            d.port.read(
-                &mime,
-                Box::new(move |r| {
-                    results
-                        .lock()
-                        .unwrap_or_else(PoisonError::into_inner)
-                        .push((m, r));
-                    if left.fetch_sub(1, Ordering::AcqRel) == 1
-                        && let Some(p) = poster
-                    {
-                        p(Job::Dropped(id));
-                    }
-                }),
-            );
-        }
+        reader.start(id, self.poster.borrow().clone(), reads);
         changed
     }
 
-    /// The reads of drop `id` are in: the target hears the drop, and the source its end.
+    /// The reads of drop `id` are in: the target reads the next type it chooses
+    /// ([`DropTarget::read_next`]), or hears the drop.
     fn deliver(&self, id: u64, s: &mut S, tx: &mut Tx) -> bool {
-        let Some(p) = self.pending.borrow_mut().remove(&id) else {
+        let Some(mut p) = self.pending.borrow_mut().remove(&id) else {
             return false;
         };
-        let mut data = p.data;
-        let mut results =
-            std::mem::take(&mut *p.results.lock().unwrap_or_else(PoisonError::into_inner));
-        // In the order the target prefers.
-        results.sort_by_key(|(m, _)| p.target.mimes.iter().position(|t| t == m));
-        for (mime, r) in results {
-            match r {
-                Ok(bytes) => data.items.push((mime, bytes)),
-                Err(e) => data.failed.push((mime, e)),
-            }
+        p.reader.take_into(&mut p.data, &p.target.mimes);
+        let next = p.target.next.as_ref();
+        if let Some(mime) = next.and_then(|next| next_read(next, &p.data)) {
+            let reader = p.reader.clone();
+            self.pending.borrow_mut().insert(id, p);
+            reader.start(id, self.poster.borrow().clone(), vec![mime]);
+            return false;
         }
+        Self::hand_over(p, s, tx)
+    }
+
+    /// The target hears drop `p`, every read in, and the source its end.
+    fn hand_over(p: Pending<S>, s: &mut S, tx: &mut Tx) -> bool {
+        let port = &p.reader.port;
+        let mut data = p.data;
         if data.action == DragAction::Ask {
             if let Some(f) = &p.target.on_ask {
-                let port = p.port.clone();
+                let port = port.clone();
                 let reply = AskReply(Some(Box::new(move |a| port.finish(a))));
                 f(s, data, reply, tx);
                 return true;
@@ -841,14 +905,33 @@ impl<S: 'static> Core<S> {
             match negotiate::drop_action(None, session::allowed(&data.offer), data.offer.mods) {
                 Some(a) => data.action = a,
                 None => {
-                    p.port.finish(None);
+                    port.finish(None);
                     return false;
                 }
             }
         }
         let action = data.action;
         (p.target.on_drop)(s, data, tx);
-        p.port.finish(Some(action));
+        port.finish(Some(action));
         true
     }
+}
+
+/// For the headless tests: a drag from another client, over target `key`, offering `mimes`
+/// through `port`.
+#[cfg(test)]
+pub(crate) struct TestDrop {
+    pub(crate) port: Rc<dyn InPort>,
+    pub(crate) mimes: Vec<String>,
+    pub(crate) key: String,
+}
+
+/// The type `next` chooses to read for `data`'s drop, if the drag offers it and it was not
+/// read already: anything else ends the reads.
+fn next_read(next: &NextReadFn, data: &DropData) -> Option<String> {
+    let mime = next(data)?;
+    let read = data.items.iter().map(|(m, _)| m);
+    let failed = data.failed.iter().map(|(m, _)| m);
+    let unread = !read.chain(failed).any(|m| *m == mime);
+    (unread && data.offer.mimes.contains(&mime)).then_some(mime)
 }
