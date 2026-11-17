@@ -411,12 +411,24 @@ fn assert_location_and_modal_after_yield(host: &mut Offscreen, folder: &Path, lo
     while host.turn() {}
     assert_eq!(current_holds(host), Some(Holds::Location));
 
+    host.runtime().update(|app: &mut App, _: &mut Tx| {
+        shell::saved(app).change(|settings| settings.tenxer_mode = true);
+    });
+    press_ctrl_alt_t(host);
+    host.runtime().update(|app: &mut App, _: &mut Tx| {
+        shell::saved(app).change(|settings| settings.tenxer_mode = false);
+    });
+    while host.turn() {}
+    assert_eq!(current_holds(host), Some(Holds::Location));
+
+    // The first launch is the location bar's: neither the open menu's nor 10xer's press
+    // above launched one.
     press_ctrl_alt_t(host);
     assert!(
-        host.run_until(PATIENCE, |_| launches(log).len() == 2),
+        host.run_until(PATIENCE, |_| !launches(log).is_empty()),
         "AfterYield launches while location bar holds focus"
     );
-    assert_eq!(launches(log)[1].0, folder.join("documents"));
+    assert_eq!(launches(log)[0].0, folder.join("documents"));
 
     host.runtime().update(|app: &mut App, _: &mut Tx| {
         error_dialog::show(app, Error::new("Busy", "Modal open"));
@@ -425,20 +437,21 @@ fn assert_location_and_modal_after_yield(host: &mut Offscreen, folder: &Path, lo
     assert!(matches!(current_holds(host), Some(Holds::Modal { .. })));
 
     press_ctrl_alt_t(host);
+    while host.turn() {}
     assert_eq!(
         launches(log).len(),
-        2,
+        1,
         "Reach::Taken swallows Ctrl+Alt+T under a modal dialog"
     );
 }
 
 #[test]
-fn after_yield_opens_under_menu_or_location_and_skips_in_tenxer_or_modal() {
+fn after_yield_opens_under_location_and_skips_under_menu_tenxer_or_modal() {
     let launcher_dir = tempfile::tempdir().expect("launcher dir");
     let parent_log = launcher_dir.path().join("launches.log");
     write_stub_launcher(launcher_dir.path(), &parent_log);
     hosted_with_env(
-        "after_yield_opens_under_menu_or_location_and_skips_in_tenxer_or_modal",
+        "after_yield_opens_under_location_and_skips_under_menu_tenxer_or_modal",
         &[
             ("PATH", launcher_dir.path().as_os_str()),
             ("TERMINAL", OsStr::new("")),
@@ -459,8 +472,8 @@ fn after_yield_opens_under_menu_or_location_and_skips_in_tenxer_or_modal() {
             );
 
             // Clear selection, pin targeted() to column 1 (`documents`), and open a menu on
-            // column 0 (`$root`): `Ctrl+Alt+T` in `Map::Default` runs at `Stage::AfterYield`
-            // and prefers `app.menu.depth()` (`0`) over `app.columns.targeted()` (`1`).
+            // column 0 (`$root`). GTK's context menu is its own popover surface, so
+            // `Ctrl+Alt+T` there never reaches the window's actions and launches nothing.
             host.runtime().update(|app: &mut App, tx: &mut Tx| {
                 app.columns.clear_selection();
                 shell::publish(app);
@@ -479,21 +492,12 @@ fn after_yield_opens_under_menu_or_location_and_skips_in_tenxer_or_modal() {
             assert_eq!(current_holds(&mut host), Some(Holds::Menu));
 
             press_ctrl_alt_t(&mut host);
-            assert!(
-                host.run_until(PATIENCE, |_| launches(&log).len() == 1),
-                "AfterYield launches under an open context menu"
+            while host.turn() {}
+            assert_eq!(
+                current_holds(&mut host),
+                Some(Holds::Menu),
+                "the menu stays open"
             );
-            assert_eq!(launches(&log)[0].0, folder.path());
-
-            // In `tenxer_mode`, `Stage::AfterYield` skips `TERMINAL` under an open menu.
-            host.runtime().update(|app: &mut App, _: &mut Tx| {
-                shell::saved(app).change(|settings| settings.tenxer_mode = true);
-            });
-            press_ctrl_alt_t(&mut host);
-            assert_eq!(launches(&log).len(), 1, "skipped in tenxer_mode");
-            host.runtime().update(|app: &mut App, _: &mut Tx| {
-                shell::saved(app).change(|settings| settings.tenxer_mode = false);
-            });
 
             assert_location_and_modal_after_yield(&mut host, folder.path(), &log);
         },

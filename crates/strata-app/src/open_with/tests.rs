@@ -262,12 +262,16 @@ fn chooser_filters_clears_on_escape_and_saves_default_on_open() {
             });
             press_key(&mut host, Key::Enter);
             assert!(!host.app().open_with.open);
+            // The launcher writes its line after creating the log: wait for the line itself.
+            let launched = |_: &Offscreen| {
+                std::fs::read_to_string(&log)
+                    .is_ok_and(|opened| opened.contains("strata-beta.desktop"))
+            };
             assert!(
-                host.run_until(PATIENCE, |_| log.exists()),
-                "Beta Editor launched todo.txt"
+                host.run_until(PATIENCE, launched),
+                "Beta Editor launched todo.txt: {:?}",
+                std::fs::read_to_string(&log)
             );
-            let opened = std::fs::read_to_string(&log).expect("log");
-            assert!(opened.contains("strata-beta.desktop"), "{opened}");
             let info = gio::File::for_path(folder.path().join("todo.txt"))
                 .query_info(
                     "standard::content-type",
@@ -327,16 +331,15 @@ fn multi_selection_menu_adds_shared_open_and_refuses_trash_open() {
                     Outcome::Ran
                 );
             });
+            let lines = |log: &Path| {
+                std::fs::read_to_string(log).map_or(0, |opened| opened.lines().count())
+            };
             assert!(
-                host.run_until(PATIENCE, |_| log.exists()),
+                host.run_until(PATIENCE, |_| lines(&log) >= 3),
                 "shared default launched"
             );
-            let lines: Vec<_> = std::fs::read_to_string(&log)
-                .expect("log")
-                .lines()
-                .map(str::to_owned)
-                .collect();
-            assert_eq!(lines.len(), 3, "{lines:?}");
+            while host.turn() {}
+            assert_eq!(lines(&log), 3, "{:?}", std::fs::read_to_string(&log));
 
             // Trash locations are refused synchronously with an error dialog.
             let trash = Location::uri("trash:///todo.txt");

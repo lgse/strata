@@ -122,6 +122,7 @@ pub(super) struct Drawn {
     pub(super) icon_descriptions: HashMap<EntryId, String>,
     pub(super) buttons: Vec<DrawnButton>,
     pub(super) sidebar: super::sidebar::Gaps,
+    pub(super) jobs: super::jobs::Labels,
     pub(super) tenxer: super::tenxer::Labels,
     /// The entry the filter's Enter would open (`qa::filter`).
     pub(super) outlined: Option<EntryId>,
@@ -174,6 +175,9 @@ impl Seen {
 
     /// The AT-SPI role name the scenarios use.
     pub(super) fn role(&self) -> &'static str {
+        if roles::is_search_box(&self.role, self.key.as_deref()) {
+            return roles::SEARCH_BOX;
+        }
         let toggled = self.has_state("checked") || self.has_state("unchecked");
         roles::at_spi_toggled(&self.role, !self.name.is_empty(), toggled)
     }
@@ -298,6 +302,7 @@ impl Snapshot {
             snapshot.add_hidden_button(button, &panes);
         }
         drawn.sidebar.present(&mut snapshot);
+        drawn.jobs.present(&mut snapshot);
         drawn.tenxer.present(&mut snapshot);
         snapshot.widen_unscrolled_tab_strip();
         snapshot

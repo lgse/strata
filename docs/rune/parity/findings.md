@@ -173,6 +173,15 @@ closed issue is not a fixed finding: the state given here is the finding's.
   the five item-customization getters/setters in `src/ui/preferences/file_settings.rs` and
   the two emoji/choice helpers in `src/assets.rs` to `strata_desktop::settings`, which
   `minimization::deletion` never calls.
+- **Sighting on [#2550](https://github.com/lgse/strata/pull/2550):** a tenth, in
+  `strata-desktop`, `services::update_install::tests::repository_probe_selects_strata_instead_of_a_dependency`
+  (`crates/strata-desktop/src/services/update_install/tests.rs:185`), failed once in
+  `./scripts/quality.sh all` (shard 0, lane 3) at `cca75e9ac` with `Err("could not query the
+  package repository: The file is running and cannot be changed")`: `ETXTBSY` on the probe
+  script it had just written and made executable, as when another thread's fork holds the
+  file open for writing. It passed 3 times of 3 alone under `./scripts/test-headless.py`,
+  and the whole `./scripts/quality.sh test` passed on rerun. That pull request touches no
+  shared crate and no `src/`.
 
 ### #2176: a GTK critical after a file appears during a rename on a multiple selection
 
@@ -1143,7 +1152,8 @@ sequence only together with the alphabet's version, so the version is part of th
   `open_dialog` names the first rendered `dialog` in `app.dialog`. So a screen reader hears
   "Appearance, dialog" on Rune and an unnamed panel on GTK: not a QA artifact only.
 - **Concerns:** every plain popover: the Appearance popover, the Icons header's "Thumbnail
-  size" ([A5](packages/A5.md)), and "Customize columns…"'s menu is C4's and not one. The
+  size" ([A5](packages/A5.md)), the footer's "Jobs" dashboard (C16's, [A14](packages/A14.md)),
+  and "Customize columns…"'s menu is C4's and not one. The
   `views` alphabet keeps its popover actions; its smoke tier parts there until this is ruled.
 - **Options for the owner:**
   1. Rune keeps the named `dialog`, the more useful role for assistive technology, and the
@@ -1156,7 +1166,8 @@ sequence only together with the alphabet's version, so the version is part of th
 - **State:** ruled by the owner, 2026-11-13 ([`owner.md`](owner.md#ruled)): option 1. Rune
   keeps the named `dialog`, a deliberate difference, and `tests/qa/fuzz/normalisation.map`
   excuses `app.dialog` only for GTK's `null` against a plain popover's name ("Appearance",
-  "Thumbnail size"): a rule that names its values, which the map takes since this finding.
+  "Jobs", "Thumbnail size"; "Jobs" added by [A14](packages/A14.md)'s
+  [#2550](https://github.com/lgse/strata/pull/2550)): a rule that names its values, which the map takes since this finding.
   Noted in `popover.rs`'s module docs. [A8](packages/A8.md)'s.
 
 ### #2408: Down in an empty Icons view takes GTK's keyboard to the footer
@@ -1889,7 +1900,13 @@ sequence only together with the alphabet's version, so the version is part of th
   `crates/strata-components/src/context_menu/view.rs`,
   `dialogs_and_menus/submenu-arrows-return-to-parent` (line 12), and `tabs.toml` (`Open in… →
   New Tab` left out until `strata-qa` reads sibling submenu surfaces).
-- **State:** open, [H3](packages/H3.md)'s and [A6](packages/A6.md)'s.
+- **State:** fixed in the Rune QA tree, `crates/strata-app/src/qa/submenus.rs`:
+  [A13](packages/A13.md)'s [#2536](https://github.com/lgse/strata/pull/2536) moved each open
+  submenu surface under its menu, and [A14](packages/A14.md)'s [#2550](https://github.com/lgse/strata/pull/2550) under the
+  row that opens it, as GTK's nested popover is, so `app.menu` lists its rows right after their
+  trigger in GTK's order and `Target::MenuItem` reaches them.
+  `dialogs_and_menus/submenu-arrows-return-to-parent` (all three views) is `required`;
+  `tabs.toml`'s `Open in… → New Tab` is [A4](packages/A4.md)'s to put back.
 
 ### #2509: the Rune sheet preview is a table of cells where GTK's GtkColumnView is named rows under a tree table
 
@@ -1955,6 +1972,46 @@ sequence only together with the alphabet's version, so the version is part of th
   `v1-000000000000000f` is parked in `tests/qa/fuzz/corpus/clipboard/parked`; `clipboard v4` moves
   the pointer onto a clicked folder's opened column and pastes into `archive` via the
   selected-folder route from `$root`.
+
+### #2547: "Run this action?" ignores `Escape` and drops focus when closed on GTK
+
+- **Code:** `oracle`. [Issue](https://github.com/lgse/strata/issues/2547), filed on
+  2026-11-16 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** in [A14](packages/A14.md)'s `open-with` differential smoke runs. With "Run this
+  action?" open for a custom action that asks to confirm, `Escape` leaves the dialog open on GTK
+  (`v1` seed `0x08`, step 23), and Cancel or Close dialog closes it with focus nowhere
+  (`app.focused = null`; `v2` seeds `0x01`, `0x0a` and `0x0d`). Rune dismisses it on `Escape`
+  and returns focus to the entry either way.
+- **Why:** `confirm_and_run` (`src/ui/actions.rs`) builds the dialog with
+  `message_dialog_layout` and `modal_layer` and wires Close and Cancel, but calls neither
+  `close_on_escape(&layer, ...)` nor `remember_modal_focus(&layer, &overlay)`, as every other
+  modal does (`src/ui/modal/messages.rs`, `src/ui/settings/actions.rs`). C15's `StrataDialog`
+  does both.
+- **Concerns:** `src/ui/actions.rs` (`confirm_and_run`), and `fuzz-open-with-v1-0000000000000008`,
+  `fuzz-open-with-v2-0000000000000001`, `-000000000000000a` and `-000000000000000d`, shrunk to
+  2, 4, 5 and 4 steps, each confirmed 3 of 3 GTK against Rune, and parked in
+  `tests/qa/fuzz/corpus/open-with/parked`.
+- **State:** open, set aside: Rune behaves as intended, and any fix belongs on `main`.
+  `open-with v3` leaves `Escape`, Cancel and Close dialog on "Run this action?" out and confirms
+  only with Run; the custom actions' unit tests in `crates/strata-app/src/custom_actions/tests.rs`
+  cover Cancel.
+
+### #2554: "Clear finished" in the Jobs dashboard leaves focus nowhere on GTK
+
+- **Code:** `oracle`. [Issue](https://github.com/lgse/strata/issues/2554), filed on
+  2026-11-16 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** in [A14](packages/A14.md)'s `open-with` alphabet's drafts, which left the action out
+  for it, and in the review of [#2550](https://github.com/lgse/strata/pull/2550). With no job
+  running or queued, "Clear finished" empties the Jobs indicator; on GTK the dashboard closes with
+  focus nowhere (`app.focused = null`). Rune closed nothing and kept the popover open on "No
+  background jobs." until the review; it now closes the dashboard and its button as GTK does, and
+  returns focus to the file view.
+- **Why:** `refresh_indicator` and the service observer in `src/ui/jobs.rs` hide the whole
+  `GtkMenuButton` once `indicator_label` is empty, which unmaps the open popover holding focus,
+  and nothing hands focus back. C16 keeps an emptied list open by design; the adapter
+  (`close_when_emptied` in `crates/strata-app/src/custom_actions/jobs.rs`) closes it.
+- **Concerns:** `src/ui/jobs.rs`, and `open-with.toml`, which leaves "Clear finished" out.
+- **State:** open, set aside: Rune behaves as intended, and any fix belongs on `main`.
 
 ### #2551: Rune anchors a Shift+click at a load's cursor and at the cursor after a clear
 

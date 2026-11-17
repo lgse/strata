@@ -62,6 +62,7 @@ struct Opening {
     name: String,
     target: MenuTarget,
     model: MenuModel,
+    custom_slot: usize,
     provider_slot: usize,
     provider_paths: Option<Vec<std::path::PathBuf>>,
     background: bool,
@@ -190,11 +191,13 @@ fn entry_menu(app: &App, depth: usize, id: EntryId) -> Option<Opening> {
                 .collect::<Option<Vec<_>>>()
         })
         .flatten();
+    let custom_slot = if can_create { 3 } else { 1 };
     Some(Opening {
         name: entry.display_name,
         target: MenuTarget::Entry(id),
         model,
-        provider_slot: if can_create { 3 } else { 1 },
+        custom_slot,
+        provider_slot: custom_slot + 1,
         provider_paths,
         background: false,
     })
@@ -222,7 +225,8 @@ fn folder_menu(app: &App, depth: usize) -> Option<Opening> {
         name,
         target: MenuTarget::Background,
         model,
-        provider_slot: 2,
+        custom_slot: 2,
+        provider_slot: 3,
         provider_paths,
         background: true,
     })
@@ -272,6 +276,8 @@ pub(crate) fn open(app: &mut App, request: Request, tx: &mut Tx) {
         None => folder_menu(app, depth),
     };
     if let Some(mut opening) = opening {
+        opening.model.sections[opening.custom_slot] =
+            crate::custom_actions::begin_menu(app, depth, entry);
         let sections = crate::file_providers::begin_menu(
             app,
             opening.provider_paths.take(),
@@ -295,6 +301,10 @@ pub(crate) fn open(app: &mut App, request: Request, tx: &mut Tx) {
 /// a button ask for it too. A row no part has a command for does nothing.
 fn chosen(app: &mut App, intent: MenuIntent, tx: &mut Tx) {
     let MenuIntent::Activate { target, action } = intent;
+    if crate::custom_actions::is_menu_action(&action) {
+        crate::custom_actions::activate_menu_action(app, &action);
+        return;
+    }
     if crate::file_providers::menus::is_provider_action(&action) {
         crate::file_providers::activate_menu_action(app, &action, tx);
         return;
@@ -624,6 +634,7 @@ fn single(target: &EntryTarget<'_>) -> MenuModel {
         .section(creation(typing))
         .section(section(&[(GROUP, true)], typing))
         .section(open)
+        .section(Section::default())
         .section(section(
             &[(CUT, true), (COPY, true), (DUPLICATE, true), (RENAME, true)],
             typing,
@@ -663,6 +674,7 @@ fn several(target: &EntryTarget<'_>) -> MenuModel {
         .section(creation(typing))
         .section(section(&[(GROUP, true)], typing))
         .section(open)
+        .section(Section::default())
         .section(section(
             &[(CUT, true), (COPY, true), (DUPLICATE, true)],
             typing,
@@ -723,6 +735,7 @@ pub(crate) fn folder(target: &FolderTarget) -> MenuModel {
             OPEN_WITH.item(typing),
             TERMINAL.item(typing).enabled(target.can_open_terminal),
         ]))
+        .section(Section::default())
         .section(Section::new([
             SELECT_ALL.item(typing).enabled(target.has_entries),
             REFRESH.item(typing),

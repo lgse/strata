@@ -111,9 +111,8 @@ host = "offscreen"
 scenario = "recursive-file-double-click-launches-once"
 run = "list"
 package = "A10"
-status = "pending"
-reason = "scope"
-blocker = "A14: opening a file (`BrowserEvent::OpenRequested`), at line 8"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "recursive-filtered-result-opens-once"
