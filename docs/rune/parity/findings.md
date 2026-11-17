@@ -2120,9 +2120,13 @@ sequence only together with the alphabet's version, so the version is part of th
   handover contract. Giving the neighbour the keyboard unselected must not hand the browser a
   cursor GTK's browser never gets: in Columns a browser cursor on a folder opens it. Any
   other move out of the shown folder (a cut and paste, A12's) likely shows the same.
-- **State:** open; the owner ruled on 2026-11-16 that Rune matches GTK ([`owner.md`](owner.md#ruled)).
-  [A19](packages/A19.md) changes the shared handover rule in its own `contract` pull request. The
-  three runs stay `pending` on it in `tests/qa/parity/cross_volume_drop.toml` until then.
+- **State:** fixed by [A19](packages/A19.md)'s
+  [#PRNUM](https://github.com/lgse/strata/pull/PRNUM), as the owner ruled on 2026-11-16
+  ([`owner.md`](owner.md#ruled)): after a selectionless removal the view keeps the keyboard on
+  the neighbour, unselected, without handing the browser a cursor (`handover::kept_neighbour`
+  and `handover::Kept`). The three runs are `required`. Held by
+  `columns::tests::moved`, `handover::tests::a_move_out_leaves_the_keyboard_on_the_neighbour_*`
+  and `qa::tests::invariants::*_after_a_move_out`.
 
 ### #2557: the Rune still-image preview names its picture for the file where GTK's is unnamed
 
