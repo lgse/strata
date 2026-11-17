@@ -660,6 +660,17 @@ Found by the package's agent, 2026-11-12, against A1's five items above.
    match GTK, or is the name a `deviation`? Default meanwhile: no change; A15's `preview`
    fuzz alphabet leaves non-cover still images out. Source: A15, 2026-11-16.
 
+### A16: Media, PDF and model viewers
+
+1. **The window-level Ctrl+wheel text size holds two PDF runs.**
+   `quick_preview/pdf-zoom-keeps-text-size/columns-wheel` and `columns-reset` (and
+   [A11](packages/A11.md)'s `columns-reset-tenxer`) pass on Rune through line 19: the PDF's own
+   Ctrl+wheel zoom, its Ctrl+0 reset, and the text size left alone. They stop at line 20, a
+   Ctrl+wheel over a listing row that GTK reads as the interface's text size while the PDF has
+   the keyboard: [A1](#a1-icons-view-and-thumbnails)'s item 10, which no package has. Default
+   meanwhile: the runs stay `pending`, reason `scope`, with that item as their blocker, and A16
+   does not build the window-level wheel. Source: A16, 2026-11-16.
+
 ### Packages added later
 
 - **A branch name for a package with no archived issue.** Branch names keep the package's
