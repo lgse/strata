@@ -2014,10 +2014,21 @@ sequence only together with the alphabet's version, so the version is part of th
   `close_on_escape(&layer, ...)` nor `remember_modal_focus(&layer, &overlay)`, as every other
   modal does (`src/ui/modal/messages.rs`, `src/ui/settings/actions.rs`). C15's `StrataDialog`
   does both.
+- **Also seen (2026-11-17), the same fault in Settings → Keyboard's "Reset all keybinds?":** in
+  the review of [#2564](https://github.com/lgse/strata/pull/2564) ([A18](packages/A18.md)), driving
+  the pinned GTK build with `./scripts/qa-drive.sh`: with the confirmation open, `Escape` leaves
+  it open and focus on Reset (`app.dialog = "Reset all keybinds?"`). Cancel and Close dialog
+  close it and give "Reset all" the keyboard back, as on Rune, so only the `Escape` half applies.
+  `confirm_reset_all` (`src/ui/settings/keyboard.rs`) builds `message_dialog_layout` and
+  `modal_layer` and never calls `close_on_escape`. Rune's confirmation closes on `Escape`
+  (`crates/strata-app/src/settings_dialog/keyboard/reset_all.rs`, and the unit test
+  `each_table_edits_its_own_map_and_reset_all_asks_first`).
 - **Concerns:** `src/ui/actions.rs` (`confirm_and_run`), and `fuzz-open-with-v1-0000000000000008`,
   `fuzz-open-with-v2-0000000000000001`, `-000000000000000a` and `-000000000000000d`, shrunk to
   2, 4, 5 and 4 steps, each confirmed 3 of 3 GTK against Rune, and parked in
-  `tests/qa/fuzz/corpus/open-with/parked`.
+  `tests/qa/fuzz/corpus/open-with/parked`. `src/ui/settings/keyboard.rs` (`confirm_reset_all`):
+  no run or seed reads it yet; A18's `settings` alphabet leaves `Escape` on that confirmation
+  out.
 - **State:** open, set aside: Rune behaves as intended, and any fix belongs on `main`.
   `open-with v3` leaves `Escape`, Cancel and Close dialog on "Run this action?" out and confirms
   only with Run; the custom actions' unit tests in `crates/strata-app/src/custom_actions/tests.rs`
@@ -2109,11 +2120,13 @@ sequence only together with the alphabet's version, so the version is part of th
   handover contract. Giving the neighbour the keyboard unselected must not hand the browser a
   cursor GTK's browser never gets: in Columns a browser cursor on a folder opens it. Any
   other move out of the shown folder (a cut and paste, A12's) likely shows the same.
-- **State:** open. The three runs stay `pending` on it in `tests/qa/parity/cross_volume_drop.toml`.
+- **State:** open; the owner ruled on 2026-11-16 that Rune matches GTK ([`owner.md`](owner.md#ruled)).
+  [A19](packages/A19.md) changes the shared handover rule in its own `contract` pull request. The
+  three runs stay `pending` on it in `tests/qa/parity/cross_volume_drop.toml` until then.
 
 ### #2557: the Rune still-image preview names its picture for the file where GTK's is unnamed
 
-- **Code:** `divergence`, a `deviation` if the owner rules it so. [Issue](https://github.com/lgse/strata/issues/2557),
+- **Code:** `deviation`, ruled by the owner on 2026-11-16 ([`owner.md`](owner.md#ruled)). [Issue](https://github.com/lgse/strata/issues/2557),
   filed on 2026-11-16 as the finding's reference and closed at once: its state is kept here.
 - **Seen:** in [A15](packages/A15.md)'s Slice 4, comparing the settled `app.preview` of a
   previewed `pic.png` on both targets. GTK's picture (`render_sandboxed_media`,
@@ -2125,11 +2138,13 @@ sequence only together with the alphabet's version, so the version is part of th
   (`docs/rune/work/phase-3-views/C14b-viewers.md`; `docs/rune/work/STATUS.md`, "image caption
   new"), a coordinator's choice, not an owner's ruling.
 - **Concerns:** A15's `preview` fuzz alphabet, which leaves non-cover still images out.
-- **State:** open, for the owner ([`owner.md`](owner.md), A15).
+- **State:** ruled: Rune keeps the name and the caption (the owner, 2026-11-16). A run or fuzz
+  step that reads it takes a `deviation` twin or a cited rule.
 
 ### #2558: the Rune text and document previews name their body and split the text where GTK reads one buffer string
 
-- **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2558), filed on
+- **Code:** `deviation` for the two names, ruled by the owner on 2026-11-16
+  ([`owner.md`](owner.md#ruled)); the line split stays a `divergence` for the QA backend. [Issue](https://github.com/lgse/strata/issues/2558), filed on
   2026-11-16 as the finding's reference and closed at once: its state is kept here.
 - **Seen:** in [A15](packages/A15.md)'s Slice 4, comparing the settled `app.preview` on both
   targets. For `notes.txt` GTK's `GtkSourceView` reads its buffer as one string, newlines
@@ -2141,8 +2156,9 @@ sequence only together with the alphabet's version, so the version is part of th
 - **Concerns:** A15's `preview` fuzz alphabet, which leaves text and document bodies out while
   open at step boundaries; `quick_preview/rendered-document-word-selection-rune`, which finds
   the rendered document by its `"Document"` name.
-- **State:** open. Dropping the two names, and reading a code view's lines as one string,
-  would match GTK; the twin would then find the document another way.
+- **State:** the names are ruled: Rune keeps `"Source"` and `"Document"` (the owner,
+  2026-11-16). Open for the line split, which the QA backend may absorb by reading a code
+  view's lines as one string.
 
 ### #2559: GTK logs a `gtk_orientable_get_orientation` critical after a previewed tar is extracted
 
