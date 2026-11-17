@@ -854,23 +854,33 @@ fn archive_preview_rows_present_drawn_labels_without_marking_as_browser_entries(
             { "role": "region", "key": "preview-pane", "name": "Preview", "children": [
                 { "role": "list-box", "key": "preview-archive", "states": ["focused"],
                   "activeDescendant": "row-42", "children": [
-                    { "role": "list-box-option", "key": "row-42", "name": "docs/",
-                      "states": ["selected"], "bounds": [800.0, 80.0, 360.0, 28.0] },
+                    { "role": "list-box-option", "key": "row-42", "name": "top.txt",
+                      "description": "3 B", "states": ["selected"],
+                      "bounds": [800.0, 80.0, 360.0, 28.0] },
                 ] },
             ] },
         ],
     });
+    let above = vec![
+        "row-42".to_owned(),
+        "preview-archive".to_owned(),
+        "preview-pane".to_owned(),
+    ];
     let drawn = Drawn {
-        labels: vec![NameLabel {
-            above: vec![
-                "row-42".to_owned(),
-                "preview-archive".to_owned(),
-                "preview-pane".to_owned(),
-            ],
-            text: "docs/".to_owned(),
-            bounds: bounds(84.0),
-            badge: false,
-        }],
+        labels: vec![
+            NameLabel {
+                above: above.clone(),
+                text: "top.txt".to_owned(),
+                bounds: bounds(84.0),
+                badge: false,
+            },
+            NameLabel {
+                above,
+                text: "3 B".to_owned(),
+                bounds: bounds(84.0),
+                badge: true,
+            },
+        ],
         ..Drawn::default()
     };
     let snapshot = Snapshot::read(&tree, &drawn);
@@ -879,6 +889,10 @@ fn archive_preview_rows_present_drawn_labels_without_marking_as_browser_entries(
         .find(|s| s.key.as_deref() == Some("row-42"))
         .expect("archive member row");
     assert_eq!(row.mark, None, "archive member is not a browser entry");
+    assert_eq!(
+        row.name, "",
+        "GTK's archive row is read through its labels alone"
+    );
     let child_labels: Vec<_> = row
         .children
         .iter()
@@ -886,7 +900,42 @@ fn archive_preview_rows_present_drawn_labels_without_marking_as_browser_entries(
         .filter(|s| s.role() == "label")
         .map(|s| s.name.as_str())
         .collect();
-    assert_eq!(child_labels, ["docs/"]);
+    assert_eq!(child_labels, ["top.txt", "3 B"]);
+}
+
+#[test]
+fn archive_preview_text_buttons_hold_their_label_and_its_icon_button_none() {
+    let tree = json!({
+        "role": "window",
+        "children": [
+            { "role": "region", "key": "preview-pane", "name": "Preview", "children": [
+                { "role": "button", "key": "preview-archive-up", "name": "Go up one level" },
+                { "role": "button", "key": "preview-archive-crumb-0", "name": "Contents" },
+                { "role": "button", "key": "preview-archive-prompt-unlock", "name": "Unlock" },
+            ] },
+        ],
+    });
+    let snapshot = Snapshot::read(&tree, &Drawn::default());
+    let labels_of = |key: &str| -> Vec<String> {
+        let button = (0..)
+            .map_while(|i| snapshot.at(i))
+            .find(|s| s.key.as_deref() == Some(key))
+            .expect("button");
+        button
+            .children
+            .iter()
+            .filter_map(|&c| snapshot.at(c))
+            .filter(|s| s.role() == "label")
+            .map(|s| s.name.clone())
+            .collect()
+    };
+    for (key, labels) in [
+        ("preview-archive-up", vec![]),
+        ("preview-archive-crumb-0", vec!["Contents".to_owned()]),
+        ("preview-archive-prompt-unlock", vec!["Unlock".to_owned()]),
+    ] {
+        assert_eq!(labels_of(key), labels, "{key}");
+    }
 }
 
 #[test]

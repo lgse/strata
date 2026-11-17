@@ -127,6 +127,23 @@ impl Default for ArchiveLabels {
     }
 }
 
+/// A member row's trailing element: a file's size, or a folder's chevron. The size is the row's
+/// description: heard there, not as a stray label inside the option. It is keyed as a row's
+/// badge, so a host's tooling reads it as the row's second label, as GTK's row holds one.
+fn member_trailing(size: Option<String>, look: &Look) -> El {
+    let k = &look.kit;
+    match size {
+        Some(size) => text(size)
+            .key(crate::columns::keys::BADGE)
+            .font(k.ty.small)
+            .color(k.c.text_muted)
+            .a11y_hidden(),
+        None => icon(look.icon(IconName::ChevronRight), look.icon_size.sm)
+            .color(k.c.icon_muted)
+            .a11y_hidden(),
+    }
+}
+
 /// Strata's `i18n::file_size`: decimal units, one decimal unless it would be ".0".
 pub fn file_size(bytes: u64) -> String {
     const UNITS: [&str; 5] = ["B", "kB", "MB", "GB", "TB"];
@@ -393,19 +410,8 @@ impl<S: 'static> ArchiveView<S> {
             move |s: &S, rcx| get(s).listing.size(rcx.index).unwrap_or(u64::MAX),
             move |s: &S, rcx, icon_el, label| {
                 let look = rcx.look;
-                let k = &look.kit;
                 let a = get(s);
-                // The size is the row's description (above): heard there, not as a stray
-                // label inside the option.
-                let trailing = match a.listing.size(rcx.index) {
-                    Some(size) => text((a.labels.size)(size))
-                        .font(k.ty.small)
-                        .color(k.c.text_muted)
-                        .a11y_hidden(),
-                    None => icon(look.icon(IconName::ChevronRight), look.icon_size.sm)
-                        .color(k.c.icon_muted)
-                        .a11y_hidden(),
-                };
+                let trailing = member_trailing(a.listing.size(rcx.index).map(a.labels.size), look);
                 row()
                     .w_full()
                     .h_full()
