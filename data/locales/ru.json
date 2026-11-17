@@ -1121,6 +1121,7 @@
   "This archive has no parent directory.": "У этого архива нет родительской папки.",
   "This archive uses a compression method or feature that Strata does not support.": "В этом архиве используется метод сжатия или функция, которые Strata не поддерживает.",
   "This directory is empty": "Этот каталог пуст",
+  "Unable to read this directory": "Не удаётся прочитать этот каталог",
   "This download is not a supported image. Choose a JPEG, BMP, static WebP, GIF or PNG image.": "Загруженный файл не является поддерживаемым изображением. Выберите изображение JPEG, BMP, статичное WebP, GIF или PNG.",
   "This exclusion has already been added.": "Это исключение уже добавлено.",
   "This folder is empty": "Эта папка пуста",
