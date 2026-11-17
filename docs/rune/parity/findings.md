@@ -2121,7 +2121,7 @@ sequence only together with the alphabet's version, so the version is part of th
   cursor GTK's browser never gets: in Columns a browser cursor on a folder opens it. Any
   other move out of the shown folder (a cut and paste, A12's) likely shows the same.
 - **State:** fixed by [A19](packages/A19.md)'s
-  [#PRNUM](https://github.com/lgse/strata/pull/PRNUM), as the owner ruled on 2026-11-16
+  [#2571](https://github.com/lgse/strata/pull/2571), as the owner ruled on 2026-11-16
   ([`owner.md`](owner.md#ruled)): after a selectionless removal the view keeps the keyboard on
   the neighbour, unselected, without handing the browser a cursor (`handover::kept_neighbour`
   and `handover::Kept`). The three runs are `required`. Held by
