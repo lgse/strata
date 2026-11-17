@@ -24,7 +24,7 @@ mod link;
 mod sway;
 
 use std::{
-    cell::{OnceCell, RefCell},
+    cell::{Cell, OnceCell, RefCell},
     ffi::OsStr,
     fs::File,
     future::Future,
@@ -69,10 +69,11 @@ const SETTLE_LIMIT: Duration = Duration::from_millis(250);
 /// get, a motion outside it say, is not waited for longer.
 const DISPATCH_LIMIT: Duration = Duration::from_millis(500);
 const DISPATCH_POLL: Duration = Duration::from_millis(2);
-/// How long a motion is given while a drag this window started runs. Under the compositor's
-/// drag grab a motion reaches the data device, not the pointer, so Rune records no input for
-/// it and [`DISPATCH_LIMIT`] would run out at every step; a drag paced so slowly rests on each
-/// folder it crosses past the 750 ms spring, and opens it.
+/// How long a motion is given while a drag runs that this window does not follow through its
+/// pointer: one it started, or a press another client took, a drag from another process.
+/// Under the compositor's drag grab a motion reaches the data device, not the pointer, so Rune
+/// records no input for it and [`DISPATCH_LIMIT`] would run out at every step; a drag paced so
+/// slowly rests on each folder it crosses past the 750 ms spring, and opens it.
 const DRAG_MOTION_PACE: Duration = Duration::from_millis(16);
 /// How long the window may take to show in the admitted sway.
 const WINDOW_LIMIT: Duration = Duration::from_secs(30);
@@ -181,6 +182,9 @@ pub(super) struct Session {
     /// The private Wayland client owning the clipboard from `clipboard_set`, kept alive until
     /// replaced or closed by `clipboard`.
     clipboard: RefCell<Option<clipboard::ClipboardOwner>>,
+    /// A button is held whose press the window never took: another client has the pointer,
+    /// such as a drag source in another process.
+    held_elsewhere: Cell<bool>,
 }
 
 impl Session {
@@ -203,6 +207,7 @@ impl Session {
             held: RefCell::default(),
             seen: RefCell::default(),
             clipboard: RefCell::default(),
+            held_elsewhere: Cell::new(false),
         })
     }
 
@@ -227,16 +232,17 @@ impl Session {
 
     /// Waits until Rune has dispatched input from after the last event the devices sent, for
     /// [`DISPATCH_LIMIT`] at most, and says so when it runs out: `what` names the input.
-    fn dispatched(&self, what: &str) {
+    /// Returns whether it did.
+    fn dispatched(&self, what: &str) -> bool {
         let sent = self.devices.last_sent();
         let deadline = Instant::now() + DISPATCH_LIMIT;
         while Instant::now() < deadline {
             match self.link.ask(|_| rune::last_input()) {
-                Ok(Some(at)) if at >= sent => return,
+                Ok(Some(at)) if at >= sent => return true,
                 Ok(_) => std::thread::sleep(DISPATCH_POLL),
                 Err(error) => {
                     eprintln!("strata-rune: the session host: {what}: {error}");
-                    return;
+                    return false;
                 }
             }
         }
@@ -244,6 +250,7 @@ impl Session {
             "strata-rune: the session host: the window had not taken {what} after {} ms",
             DISPATCH_LIMIT.as_millis()
         );
+        false
     }
 
     /// Whether a drag this window started runs: its motions go to the compositor's data device.
@@ -263,7 +270,7 @@ impl Session {
         let before = self.devices.last_sent();
         send()?;
         if self.devices.last_sent() != before {
-            self.dispatched(what);
+            let _ = self.dispatched(what);
         }
         self.settle().await;
         Ok(())
@@ -453,7 +460,7 @@ impl Host for Session {
             self.press(key, pressed)?;
         }
         let direction = if pressed { "press" } else { "release" };
-        self.dispatched(&format!("the {direction} of {name}"));
+        let _ = self.dispatched(&format!("the {direction} of {name}"));
         Ok(())
     }
 
@@ -464,10 +471,10 @@ impl Host for Session {
         if !moves {
             return Ok(());
         }
-        if self.dragging_out() {
+        if self.held_elsewhere.get() || self.dragging_out() {
             std::thread::sleep(DRAG_MOTION_PACE);
         } else {
-            self.dispatched(&format!("the motion to ({x}, {y})"));
+            let _ = self.dispatched(&format!("the motion to ({x}, {y})"));
         }
         Ok(())
     }
@@ -480,7 +487,8 @@ impl Host for Session {
         self.devices.button(number, pressed)?;
         self.log.button(self.devices.position(), number, pressed);
         let direction = if pressed { "press" } else { "release" };
-        self.dispatched(&format!("the {direction} of button {number}"));
+        let taken = self.dispatched(&format!("the {direction} of button {number}"));
+        self.held_elsewhere.set(pressed && !taken);
         Ok(())
     }
 
@@ -505,7 +513,7 @@ impl Host for Session {
             .motion(x, y)
             .and_then(|()| self.devices.button(1, true))
             .and_then(|()| self.devices.button(1, false));
-        self.dispatched(&format!("the click on {}", target.key));
+        let _ = self.dispatched(&format!("the click on {}", target.key));
         clicked.is_ok()
     }
 

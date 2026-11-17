@@ -63,6 +63,7 @@ pub struct LocationBar<'a, S> {
     access: Access<S>,
     emit: Emit<S>,
     dnd: Dnd<S>,
+    content: &'static [&'static str],
     action: Option<ActionFn<S>>,
     open_in_new: bool,
     spring: Option<f64>,
@@ -92,6 +93,7 @@ impl<'a, S: 'static> LocationBar<'a, S> {
             access,
             emit: Rc::new(on_intent),
             dnd: Dnd::rune(),
+            content: &[],
             action: None,
             open_in_new: true,
             spring: Some(SPRING_DELAY),
@@ -103,6 +105,13 @@ impl<'a, S: 'static> LocationBar<'a, S> {
     /// Attaches the crumbs' drop zones through `dnd` (default [`Dnd::rune`]).
     pub fn dnd(mut self, dnd: Dnd<S>) -> Self {
         self.dnd = dnd;
+        self
+    }
+
+    /// The content types an ancestor crumb takes from other apps besides files, most wanted
+    /// first (the host's content-drops policy). Default none.
+    pub fn content_types(mut self, mimes: &'static [&'static str]) -> Self {
+        self.content = mimes;
         self
     }
 
@@ -155,6 +164,7 @@ impl<'a, S: 'static> LocationBar<'a, S> {
             access: self.access,
             emit: &self.emit,
             dnd: &self.dnd,
+            content: self.content,
             action: self.action.as_ref(),
             open_in_new: self.open_in_new,
             spring: self.spring,
@@ -206,6 +216,7 @@ pub(crate) struct Ctx<'a, S> {
     pub access: Access<S>,
     pub emit: &'a Emit<S>,
     pub dnd: &'a Dnd<S>,
+    pub content: &'static [&'static str],
     pub action: Option<&'a ActionFn<S>>,
     pub open_in_new: bool,
     pub spring: Option<f64>,

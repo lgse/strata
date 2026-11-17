@@ -27,7 +27,9 @@ fn prepare_reveal(app: &mut App, directory: &Location, tx: &mut Tx) {
     }
 }
 
-pub(super) fn apply(
+/// Selects `locations`, new in `destination`, once it lists them: what a transfer placed, or
+/// what a content drop saved (`dnd::content`).
+pub(crate) fn apply(
     app: &mut App,
     destination: Location,
     mut locations: Vec<Location>,

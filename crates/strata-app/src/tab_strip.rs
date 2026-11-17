@@ -226,6 +226,7 @@ fn build(app: &App, close: Option<El>, frame: &mut Frame<'_, App>) -> Option<El>
     )
     .dnd(active_dnd(app))
     .drop_action(drops::drop_action)
+    .content_types(crate::dnd::CONTENT_TYPES)
     .tab_open(drops::tab_open)
     .badges(badges_shown(app))
     .spring_delay(spring)
