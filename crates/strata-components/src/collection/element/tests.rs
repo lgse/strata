@@ -313,9 +313,6 @@ fn collection(s: &Host) -> Collection<Host> {
     if let Some(takes) = s.host_takes_keys {
         c = c.before_keys(move |_: &mut Host, _, _| takes);
     }
-    if s.single {
-        c = c.settings(crate::collection::pointer::PointerSettings::default().multiple(false));
-    }
     c.settings(7u32)
 }
 

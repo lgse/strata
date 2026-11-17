@@ -129,15 +129,32 @@ fn open_defaults_match_the_portal_contract() {
     assert!(request.filters.is_empty() && request.choices.is_empty());
 }
 
-#[test]
-fn open_options_keep_filters_choices_and_flags_in_order() {
-    let folder = tempfile::tempdir().expect("current folder");
-    let images: RawFilter = (
-        "Images".to_owned(),
-        vec![(0, "*.png".to_owned()), (1, "image/jpeg".to_owned())],
-    );
-    let text: RawFilter = ("Text".to_owned(), vec![(0, "*.txt".to_owned())]);
-    let choices: Vec<RawChoice> = vec![
+fn images_and_text() -> (Vec<RawFilter>, Vec<PortalFileFilter>) {
+    let raw: Vec<RawFilter> = vec![
+        (
+            "Images".to_owned(),
+            vec![(0, "*.png".to_owned()), (1, "image/jpeg".to_owned())],
+        ),
+        ("Text".to_owned(), vec![(0, "*.txt".to_owned())]),
+    ];
+    let parsed = vec![
+        PortalFileFilter {
+            label: "Images".to_owned(),
+            rules: vec![
+                FilterRule::Pattern("*.png".to_owned()),
+                FilterRule::MimeType("image/jpeg".to_owned()),
+            ],
+        },
+        PortalFileFilter {
+            label: "Text".to_owned(),
+            rules: vec![FilterRule::Pattern("*.txt".to_owned())],
+        },
+    ];
+    (raw, parsed)
+}
+
+fn two_choices() -> Vec<RawChoice> {
+    vec![
         (
             "readonly".to_owned(),
             "Read only".to_owned(),
@@ -153,52 +170,46 @@ fn open_options_keep_filters_choices_and_flags_in_order() {
             ],
             "utf8".to_owned(),
         ),
-    ];
+    ]
+}
+
+#[test]
+fn open_options_keep_filters_choices_and_flags_in_order() {
+    let folder = tempfile::tempdir().expect("current folder");
+    let (raw, filters) = images_and_text();
     let request = run_async(build_open_request(params(options(&[
         ("accept_label", "Attach".to_variant()),
         ("modal", false.to_variant()),
         ("multiple", true.to_variant()),
         ("directory", true.to_variant()),
-        ("filters", vec![images, text.clone()].to_variant()),
-        ("current_filter", text.to_variant()),
-        ("choices", choices.to_variant()),
+        ("current_filter", raw[1].to_variant()),
+        ("filters", raw.to_variant()),
+        ("choices", two_choices().to_variant()),
         (
             "current_folder",
             bytes(folder.path().as_os_str().as_bytes()),
         ),
     ]))))
     .expect("open request");
-    assert!(!request.modal);
-    assert_eq!(request.accept_label, "Attach");
+    let ids: Vec<&str> = request.choices.iter().map(|c| c.id.as_str()).collect();
     assert_eq!(
-        request.kind,
-        ChooserKind::Open {
-            directory: true,
-            multiple: true
-        }
+        (request.modal, request.accept_label.as_str(), &request.kind),
+        (
+            false,
+            "Attach",
+            &ChooserKind::Open {
+                directory: true,
+                multiple: true
+            }
+        )
     );
     assert_eq!(request.initial_directory, folder.path());
-    let text_filter = PortalFileFilter {
-        label: "Text".to_owned(),
-        rules: vec![FilterRule::Pattern("*.txt".to_owned())],
-    };
+    assert_eq!(request.current_filter.as_ref(), Some(&filters[1]));
+    assert_eq!(request.filters, filters);
     assert_eq!(
-        request.filters,
-        [
-            PortalFileFilter {
-                label: "Images".to_owned(),
-                rules: vec![
-                    FilterRule::Pattern("*.png".to_owned()),
-                    FilterRule::MimeType("image/jpeg".to_owned()),
-                ],
-            },
-            text_filter.clone(),
-        ]
+        (ids, request.choices[1].pairs.len()),
+        (vec!["readonly", "encoding"], 2)
     );
-    assert_eq!(request.current_filter, Some(text_filter));
-    let ids: Vec<&str> = request.choices.iter().map(|c| c.id.as_str()).collect();
-    assert_eq!(ids, ["readonly", "encoding"]);
-    assert_eq!(request.choices[1].pairs.len(), 2);
 }
 
 #[test]

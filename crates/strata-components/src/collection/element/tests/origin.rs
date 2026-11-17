@@ -9,17 +9,26 @@ use super::*;
 
 const STRIP: f32 = 60.0;
 
+/// The fixture's collection, allowing one selected entry when the host says so.
+fn origin_collection(s: &Host) -> Collection<Host> {
+    let single = crate::collection::pointer::PointerSettings::default().multiple(false);
+    let c = collection(s);
+    if s.single { c.settings(single) } else { c }
+}
+
 /// A blank strip left of the collection whose drags start the collection's band.
 fn with_origin(s: &Host, _: &mut Cx<Host>) -> El {
     let strip = rune::el().key("origin").w(STRIP).h_full().on_drag(
         |s: &mut Host, d: &mut Drag, tx: &mut Tx| {
-            collection(s).origin_drag(s, (d, true), tx);
+            origin_collection(s).origin_drag(s, (d, true), tx);
         },
     );
-    rune::row()
-        .size(W, H)
-        .child(strip)
-        .child(col().w(W - STRIP).h_full().child(collection(s).build(s)))
+    rune::row().size(W, H).child(strip).child(
+        col()
+            .w(W - STRIP)
+            .h_full()
+            .child(origin_collection(s).build(s)),
+    )
 }
 
 /// What a drag from the strip across the first rows leaves selected.

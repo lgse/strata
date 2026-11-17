@@ -1510,16 +1510,19 @@ fn with_one_entry_allowed_shift_moves_and_fills_are_refused() {
     // portal/chooser: a chooser not asked for several files keeps one entry selected; Shift+arrows move it, and Ctrl+A and Ctrl+Space are not taken.
     let mut r = Rig::list_with(8, KeySettings::default().multiple(false));
     r.click(2);
-    assert!(r.shift(Key::Down));
-    assert!(r.shift(Key::Down));
-    assert_eq!((r.selected(), r.cursor()), (vec![4], Some(4)));
-    assert!(r.shift(Key::End));
-    assert_eq!(r.selected(), [7]);
+    let moved = [r.shift(Key::Down), r.shift(Key::Down)];
+    assert_eq!(
+        (moved, r.selected(), r.cursor()),
+        ([true, true], vec![4], Some(4))
+    );
+    r.shift(Key::End);
     r.take();
-    assert!(!r.ctrl_letter('a'), "Ctrl+A is left to the host");
-    assert!(!r.press(Key::Text(" ".into()), CTRL), "Ctrl+Space too");
-    assert_eq!(r.selected(), [7]);
-    assert!(r.take().is_empty());
+    let refused = [r.ctrl_letter('a'), r.press(Key::Text(" ".into()), CTRL)];
+    assert_eq!(
+        (refused, r.selected(), r.take()),
+        ([false, false], vec![7], Vec::new()),
+        "Ctrl+A and Ctrl+Space are left to the host"
+    );
 }
 
 #[test]
