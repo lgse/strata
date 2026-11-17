@@ -22,6 +22,8 @@ mod devices;
 mod guard;
 mod link;
 mod sway;
+#[cfg(test)]
+mod tests;
 
 use std::{
     cell::{Cell, OnceCell, RefCell},
@@ -70,7 +72,8 @@ const SETTLE_LIMIT: Duration = Duration::from_millis(250);
 const DISPATCH_LIMIT: Duration = Duration::from_millis(500);
 const DISPATCH_POLL: Duration = Duration::from_millis(2);
 /// How long a motion is given while a drag runs that this window does not follow through its
-/// pointer: one it started, or a press another client took, a drag from another process.
+/// pointer: one it started, or one the runner started from another client's window (the
+/// foreign drag source), with a press outside this one.
 /// Under the compositor's drag grab a motion reaches the data device, not the pointer, so Rune
 /// records no input for it and [`DISPATCH_LIMIT`] would run out at every step; a drag paced so
 /// slowly rests on each folder it crosses past the 750 ms spring, and opens it.
@@ -182,8 +185,8 @@ pub(super) struct Session {
     /// The private Wayland client owning the clipboard from `clipboard_set`, kept alive until
     /// replaced or closed by `clipboard`.
     clipboard: RefCell<Option<clipboard::ClipboardOwner>>,
-    /// A button is held whose press the window never took: another client has the pointer,
-    /// such as a drag source in another process.
+    /// A button is held that was pressed outside this window, on another client: the drag the
+    /// runner starts from the foreign drag source (`presses_elsewhere`).
     held_elsewhere: Cell<bool>,
 }
 
@@ -232,17 +235,16 @@ impl Session {
 
     /// Waits until Rune has dispatched input from after the last event the devices sent, for
     /// [`DISPATCH_LIMIT`] at most, and says so when it runs out: `what` names the input.
-    /// Returns whether it did.
-    fn dispatched(&self, what: &str) -> bool {
+    fn dispatched(&self, what: &str) {
         let sent = self.devices.last_sent();
         let deadline = Instant::now() + DISPATCH_LIMIT;
         while Instant::now() < deadline {
             match self.link.ask(|_| rune::last_input()) {
-                Ok(Some(at)) if at >= sent => return true,
+                Ok(Some(at)) if at >= sent => return,
                 Ok(_) => std::thread::sleep(DISPATCH_POLL),
                 Err(error) => {
                     eprintln!("strata-rune: the session host: {what}: {error}");
-                    return false;
+                    return;
                 }
             }
         }
@@ -250,7 +252,6 @@ impl Session {
             "strata-rune: the session host: the window had not taken {what} after {} ms",
             DISPATCH_LIMIT.as_millis()
         );
-        false
     }
 
     /// Whether a drag this window started runs: its motions go to the compositor's data device.
@@ -270,7 +271,7 @@ impl Session {
         let before = self.devices.last_sent();
         send()?;
         if self.devices.last_sent() != before {
-            let _ = self.dispatched(what);
+            self.dispatched(what);
         }
         self.settle().await;
         Ok(())
@@ -310,6 +311,13 @@ impl Session {
     fn window(&self) -> Result<sway::Area, String> {
         self.sway.window(std::process::id())
     }
+}
+
+/// Whether a press at `at` lands outside this window, shown at `window`: on another client,
+/// such as the foreign drag source the runner drags from. Not when the window's place is
+/// unknown, nor on a slow window: a press inside it is waited for as ever.
+fn presses_elsewhere(window: Option<sway::Area>, at: (i16, i16)) -> bool {
+    window.is_some_and(|window| !window.contains(at))
 }
 
 impl Host for Session {
@@ -460,7 +468,7 @@ impl Host for Session {
             self.press(key, pressed)?;
         }
         let direction = if pressed { "press" } else { "release" };
-        let _ = self.dispatched(&format!("the {direction} of {name}"));
+        self.dispatched(&format!("the {direction} of {name}"));
         Ok(())
     }
 
@@ -474,7 +482,7 @@ impl Host for Session {
         if self.held_elsewhere.get() || self.dragging_out() {
             std::thread::sleep(DRAG_MOTION_PACE);
         } else {
-            let _ = self.dispatched(&format!("the motion to ({x}, {y})"));
+            self.dispatched(&format!("the motion to ({x}, {y})"));
         }
         Ok(())
     }
@@ -484,11 +492,21 @@ impl Host for Session {
     }
 
     async fn button(&self, number: u8, pressed: bool) -> Result<(), String> {
+        let at = self.devices.position();
+        // Another client's press, or the release ending the drag it started: this window's
+        // pointer hears neither, so neither is waited for.
+        let elsewhere = if pressed {
+            presses_elsewhere(self.window().ok(), at)
+        } else {
+            self.held_elsewhere.get()
+        };
         self.devices.button(number, pressed)?;
-        self.log.button(self.devices.position(), number, pressed);
-        let direction = if pressed { "press" } else { "release" };
-        let taken = self.dispatched(&format!("the {direction} of button {number}"));
-        self.held_elsewhere.set(pressed && !taken);
+        self.log.button(at, number, pressed);
+        self.held_elsewhere.set(pressed && elsewhere);
+        if !elsewhere {
+            let direction = if pressed { "press" } else { "release" };
+            self.dispatched(&format!("the {direction} of button {number}"));
+        }
         Ok(())
     }
 
@@ -513,7 +531,7 @@ impl Host for Session {
             .motion(x, y)
             .and_then(|()| self.devices.button(1, true))
             .and_then(|()| self.devices.button(1, false));
-        let _ = self.dispatched(&format!("the click on {}", target.key));
+        self.dispatched(&format!("the click on {}", target.key));
         clicked.is_ok()
     }
 

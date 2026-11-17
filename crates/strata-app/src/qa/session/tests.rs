@@ -18,7 +18,12 @@ fn only_a_press_outside_the_window_starts_another_clients_drag() {
         ("inside", Some(window), (600, 400), false),
         ("at its corner", Some(window), (0, 0), false),
         ("just past its right edge", Some(window), (1200, 400), true),
-        ("on the drag source past its corner", Some(window), (1320, 800), true),
+        (
+            "on the drag source past its corner",
+            Some(window),
+            (1320, 800),
+            true,
+        ),
         ("with the window's place unknown", None, (1320, 800), false),
     ];
     for (what, window, at, elsewhere) in cases {
