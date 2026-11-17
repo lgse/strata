@@ -79,17 +79,15 @@ host = "offscreen"
 scenario = "password-protected-pdf-reports-reason"
 run = "columns"
 package = "A16"
-status = "pending"
-reason = "scope"
-blocker = "A16"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "pdf-preview-copies-text"
 run = "columns"
 package = "A16"
-status = "pending"
-reason = "scope"
-blocker = "A16"
+status = "required"
+host = "session"
 
 [[run]]
 scenario = "pdf-zoom-keeps-text-size"
@@ -97,7 +95,7 @@ run = "columns-wheel"
 package = "A16"
 status = "pending"
 reason = "scope"
-blocker = "A16"
+blocker = "owner.md, A1 item 10: the window-level Ctrl+wheel text size, which no package has (line 20)"
 
 [[run]]
 scenario = "pdf-zoom-keeps-text-size"
@@ -105,7 +103,7 @@ run = "columns-reset"
 package = "A16"
 status = "pending"
 reason = "scope"
-blocker = "A16"
+blocker = "owner.md, A1 item 10: the window-level Ctrl+wheel text size, which no package has (line 20)"
 
 [[run]]
 scenario = "pdf-zoom-keeps-text-size"
@@ -169,9 +167,8 @@ host = "offscreen"
 scenario = "preview-focus-ignores-file-commands"
 run = "columns-pdf"
 package = "A16"
-status = "pending"
-reason = "scope"
-blocker = "A16"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "preview-focus-ignores-file-commands"
