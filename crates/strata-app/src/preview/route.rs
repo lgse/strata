@@ -9,7 +9,7 @@
 //!   `Later`; a reply for a preview that has moved on is dropped.
 //! - **Playback** runs on the poll's clock ([`poll`]). The media keys (`media_play_pause`,
 //!   `media_seek_back`, `media_seek_forward`) play, pause and seek it at the dispatcher's
-//!   `video_controls` stage ([`MEDIA`], GTK's `handle_video_key`), outside the sidebar and text
+//!   `video_controls` stage ([`PLAY_PAUSE`], GTK's `handle_video_key`), outside the sidebar and text
 //!   fields.
 //! - **Units** follow Settings → Units live: each poll gives the view the saved
 //!   `unit_system`, as GTK binds the preference.
@@ -169,18 +169,31 @@ pub(super) fn poll(app: &mut App, clock: f64, tx: &mut Tx) -> bool {
 }
 
 /// The media keys on a shown route (GTK's `handle_video_key`, which hands a route its play,
-/// pause and seeks).
-pub(super) const MEDIA: Action<App> = Action::new("preview-route-media", media_key)
+/// pause and seeks), one command each.
+pub(super) const PLAY_PAUSE: Action<App> = Action::new("preview-route-play-pause", play_pause)
     .command(MEDIA_PLAY_PAUSE)
     .keys(&[Keys::at(
         Stage::VideoControls,
-        &[
-            MEDIA_PLAY_PAUSE.ignoring(Modifiers::empty()),
-            MEDIA_SEEK_BACK.ignoring(Modifiers::empty()),
-            MEDIA_SEEK_FORWARD.ignoring(Modifiers::empty()),
-        ],
+        &[MEDIA_PLAY_PAUSE.ignoring(Modifiers::empty())],
     )
     .when(plays_here)]);
+
+pub(super) const SEEK_BACK: Action<App> = Action::new("preview-route-seek-back", seek_back)
+    .command(MEDIA_SEEK_BACK)
+    .keys(&[Keys::at(
+        Stage::VideoControls,
+        &[MEDIA_SEEK_BACK.ignoring(Modifiers::empty())],
+    )
+    .when(plays_here)]);
+
+pub(super) const SEEK_FORWARD: Action<App> =
+    Action::new("preview-route-seek-forward", seek_forward)
+        .command(MEDIA_SEEK_FORWARD)
+        .keys(&[Keys::at(
+            Stage::VideoControls,
+            &[MEDIA_SEEK_FORWARD.ignoring(Modifiers::empty())],
+        )
+        .when(plays_here)]);
 
 /// A route shows in an open drawer, and the keyboard is in no text field and not in the
 /// sidebar (`video_controls` in `src/ui/window/keyboard/commands.rs`).
@@ -189,12 +202,19 @@ fn plays_here(app: &App, at: &Situation) -> bool {
     showing && matches!(app.preview.viewer, Viewer::Route(_)) && !at.text() && !at.within("sidebar")
 }
 
-fn media_key(app: &mut App, call: &Call<'_>, _: &mut Tx) -> Outcome {
-    let command = match call.press {
-        Some(press) if press.is(MEDIA_SEEK_BACK) => RouteCommand::Seek(Seek::By(-SEEK_SECONDS)),
-        Some(press) if press.is(MEDIA_SEEK_FORWARD) => RouteCommand::Seek(Seek::By(SEEK_SECONDS)),
-        _ => RouteCommand::PlayPause,
-    };
+fn play_pause(app: &mut App, _: &Call<'_>, _: &mut Tx) -> Outcome {
+    command(app, RouteCommand::PlayPause)
+}
+
+fn seek_back(app: &mut App, _: &Call<'_>, _: &mut Tx) -> Outcome {
+    command(app, RouteCommand::Seek(Seek::By(-SEEK_SECONDS)))
+}
+
+fn seek_forward(app: &mut App, _: &Call<'_>, _: &mut Tx) -> Outcome {
+    command(app, RouteCommand::Seek(Seek::By(SEEK_SECONDS)))
+}
+
+fn command(app: &mut App, command: RouteCommand) -> Outcome {
     let taken = match &mut app.preview.viewer {
         Viewer::Route(route) => route.state.command(command),
         _ => false,
