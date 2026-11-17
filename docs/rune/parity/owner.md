@@ -801,8 +801,8 @@ Rulings of the owner on the parity work, oldest first.
   request of its own, without handing the browser a cursor GTK's browser never gets; the three
   `cross_volume_drop/cross-volume-enter-choice/*-move` runs then flip. Source: the owner,
   2026-11-16.
-- **2026-11-16: the List details cell for a symlink's size is left for E1** (`delete-file-
-  symlink-sizes-link`, found by A7's closing survey). Its two runs stay `pending`, unplaced,
+- **2026-11-16: the List details cell for a symlink's size is left for E1** (found by A7's closing survey in
+  `delete-file-symlink-sizes-link`). Its two runs stay `pending`, unplaced,
   and [E1](packages/E1.md) places or fixes them when it closes the ledger. Source: the owner,
   2026-11-16.
 - **2026-11-16: agents may merge H5's pull requests into `main`.** As for `strata-next`, a
