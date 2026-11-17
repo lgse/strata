@@ -93,25 +93,22 @@ host = "session"
 scenario = "pdf-zoom-keeps-text-size"
 run = "columns-wheel"
 package = "A16"
-status = "pending"
-reason = "scope"
-blocker = "owner.md, A1 item 10: the window-level Ctrl+wheel text size, which no package has (line 20)"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "pdf-zoom-keeps-text-size"
 run = "columns-reset"
 package = "A16"
-status = "pending"
-reason = "scope"
-blocker = "owner.md, A1 item 10: the window-level Ctrl+wheel text size, which no package has (line 20)"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "pdf-zoom-keeps-text-size"
 run = "columns-reset-tenxer"
 package = "A11"
-status = "pending"
-reason = "scope"
-blocker = "A11"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "preview-boundary-resizes-grabbed-side"
