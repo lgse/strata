@@ -64,9 +64,8 @@ host = "offscreen"
 scenario = "model-preview-reports-limits"
 run = "list"
 package = "A16"
-status = "pending"
-reason = "scope"
-blocker = "A16"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "narrow-window-keeps-last-column"
@@ -312,9 +311,8 @@ ref = "docs/rune/upstream/rune/34-read-only-caret.md"
 scenario = "route-preview-shows-offline-track-and-elevation"
 run = "list"
 package = "A16"
-status = "pending"
-reason = "scope"
-blocker = "A16"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "sandboxed-office-shared-preview"
