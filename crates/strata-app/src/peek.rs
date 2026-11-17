@@ -11,13 +11,18 @@
 //! - **Any move closes it.** GTK closes a peek on every cursor or selection move, through
 //!   `keyboard_navigation` (`src/ui/browser/view_selection.rs`, `view_navigation.rs`): the keys,
 //!   Select All, Invert Selection, find, a filter, a search. Here the part notes the view's
-//!   selection revision as the peek opens, and closes the peek on the next settle once that
-//!   moved or results took the listing's place, whatever moved it (`Part::publish`).
+//!   selection as the peek opens, and closes the peek on the next settle once its cursor or its
+//!   selected entries differ or results took the listing's place, whatever moved them
+//!   (`Part::publish`). Reload keeps it, as GTK's does: its sync moves C1's revision only.
+//! - **A snapshot.** The card lists the folder as it was when the peek opened; GTK's adds no
+//!   file made in it later, nor does Reload list it again.
 //! - **Keyboard peeks only, for now.** C22's state opens nothing while it is off, and peeking
 //!   from a resting pointer is the `folder_peeking` preference's, which [A19](../../../docs/rune/parity/packages/A19.md)
 //!   wires with the drag rules. Here the state is on while a keyboard peek is open, and off
 //!   again as it closes ([`ended`]).
 //! - **Columns never peeks:** its `i` on a folder opens the folder's column.
+
+use std::hash::{DefaultHasher, Hash, Hasher};
 
 use rune::{El, Tx};
 use strata_components::{
@@ -103,28 +108,73 @@ impl Part for Peek {
 #[derive(Clone, Copy)]
 struct Opened {
     scope: &'static str,
-    revision: u64,
+    seen: Seen,
 }
 
-/// The selection's revision of the view keyed `scope`, while it shows its listing.
-fn revision(app: &App, scope: &str) -> Option<u64> {
+/// The selection of the view a peek is open in, as the user sees it.
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct Seen {
+    /// Moves on with every change C1 reports, a listing's sync among them.
+    revision: u64,
+    /// A digest of the cursor and the selected entries.
+    picked: u64,
+}
+
+/// The pane of the view keyed `scope`, while it shows its listing.
+fn listing_pane<'a>(app: &'a App, scope: &str) -> Option<&'a crate::pane::Pane> {
     if app.filter.pane.shows() {
         return None;
     }
-    let pane = match scope {
-        Icons::KEY => &Icons::single(app).pane,
-        List::KEY => &List::single(app).pane,
-        _ => return None,
-    };
-    Some(pane.collection().selection.revision())
+    match scope {
+        Icons::KEY => Some(&Icons::single(app).pane),
+        List::KEY => Some(&List::single(app).pane),
+        _ => None,
+    }
 }
 
-/// Closes the peek once the cursor or the selection moved, or results replaced the listing.
+/// Whether the view keyed `scope` reads its folder again, a reload's: its rows go and come
+/// back with the cursor and the selection they had.
+fn relisting(app: &App, scope: &str) -> bool {
+    listing_pane(app, scope)
+        .and_then(crate::pane::Pane::listing)
+        .is_some_and(crate::listing::Column::is_loading)
+}
+
+/// The selection of the view keyed `scope`, while it shows its listing.
+fn seen(app: &App, scope: &str) -> Option<Seen> {
+    let pane = listing_pane(app, scope)?;
+    let selection = &pane.collection().selection;
+    let mut picked = DefaultHasher::new();
+    selection.cursor().hash(&mut picked);
+    if let Some(listing) = pane.listing() {
+        selection.selected_ids(listing).hash(&mut picked);
+    }
+    Some(Seen {
+        revision: selection.revision(),
+        picked: picked.finish(),
+    })
+}
+
+/// Closes the peek once the cursor or the selection moved, or results replaced the listing. A
+/// change that keeps both, a reload's sync, is no move: GTK's Reload keeps the peek.
 fn close_once_moved(app: &mut App) -> bool {
     let Some(opened) = app.peek.opened else {
         return false;
     };
-    revision(app, opened.scope) != Some(opened.revision) && close(app)
+    if relisting(app, opened.scope) {
+        return false;
+    }
+    match seen(app, opened.scope) {
+        Some(now) if now == opened.seen => false,
+        Some(now) if now.picked == opened.seen.picked => {
+            app.peek.opened = Some(Opened {
+                seen: now,
+                ..opened
+            });
+            false
+        }
+        _ => close(app),
+    }
 }
 
 /// The peek has gone, however it went: C22's state turns off with it, since only a keyboard
@@ -256,9 +306,9 @@ pub(crate) fn toggle_at_cursor(app: &mut App) -> bool {
     );
     match change {
         Change::Opened => {
-            app.peek.opened = revision(app, spot.scope).map(|revision| Opened {
+            app.peek.opened = seen(app, spot.scope).map(|seen| Opened {
                 scope: spot.scope,
-                revision,
+                seen,
             });
             listen_to(app, depth, entry);
         }
