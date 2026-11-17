@@ -2356,6 +2356,11 @@ sequence only together with the alphabet's version, so the version is part of th
   each a press and release at one point, with no drag between them.
 - **Concerns:** `quick_preview/rendered-document-word-selection-rune`, [A15](packages/A15.md)'s
   `parallel` twin. #2569 changes no pointer drag or document selection.
+- **Sighting on [#2578](https://github.com/lgse/strata/pull/2578):** in its re-gate at
+  `32db8aa4d`, the full session-host batch (35 runs) failed all three of the twin's runs,
+  `columns-md` and `columns-rtf` at line 20 (`pha bravo charlie delta`) and `columns-docx` at
+  line 21 (`uarterly Report`); alone on the session host it then passed three rounds, 9 of 9.
+  #2578 changes no pointer drag or document selection.
 - **Not traced.** One reading to check: under the larger batch's load, the compositor's pointer
   motion reaches the document after the press, so the drag's anchor lands past its start.
 - **State:** open, unowned.

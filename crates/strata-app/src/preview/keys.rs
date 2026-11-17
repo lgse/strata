@@ -17,8 +17,8 @@ use rune::{Key, KeyEvent, Tx};
 use strata_components::contract::EntryId;
 use strata_core::model::FileEntry;
 use strata_desktop::keys::{
-    Active, Binding, Key as DesktopKey, KeyPress, Map, Modifiers,
-    bindings::{ENTER, ESCAPE, ESCAPE_ANY_SHIFT, LEFT, PREVIEW, RIGHT, SPACE},
+    Active, Binding, Key as DesktopKey, KeyPress, Map, Matcher, Modifiers,
+    bindings::{ENTER, ESCAPE, ESCAPE_ANY_SHIFT, FOCUS_PREVIOUS, LEFT, PREVIEW, RIGHT, SPACE},
 };
 
 use super::{ContentFocus, archive, session};
@@ -30,6 +30,12 @@ use crate::{
 
 const DIVIDER_KEY: Binding = Binding::plain(DesktopKey::F8);
 const PREVIEW_IGNORED: Modifiers = Modifiers::SHIFT_MASK.union(Modifiers::SUPER_MASK);
+/// What 10xer's Shift+Tab out of the preview ignores (`leave_or_close_preview`).
+const RETURN_IGNORED: Modifiers = Modifiers::CONTROL_MASK
+    .union(Modifiers::ALT_MASK)
+    .union(Modifiers::SUPER_MASK);
+/// 10xer's Shift+Tab: the keys go back to the listing, the drawer stays.
+pub(super) const TENXER_RETURN: Matcher = FOCUS_PREVIOUS.ignoring(RETURN_IGNORED);
 
 pub(super) const COMMANDS: &[Action<App>] = &[
     super::pdf::RESET,
@@ -69,6 +75,10 @@ pub(super) const COMMANDS: &[Action<App>] = &[
             )
             .when(in_listing_for_preview),
         ]),
+    // Read at the password field's last stage, so the field hands it over too.
+    Action::new("preview-tenxer-return", return_to_files)
+        .command(FOCUS_PREVIOUS)
+        .keys(&[Keys::at(Stage::PreviewPasswordEscape, &[TENXER_RETURN]).when(in_tenxer_preview)]),
     Action::new("preview-password-escape", close_from_preview)
         .command(ESCAPE)
         .keys(
@@ -133,6 +143,17 @@ fn in_preview_outside_find(app: &App, at: &Situation) -> bool {
         && !app.preview.viewer.is_prompt_focused()
 }
 
+fn in_tenxer_preview(app: &App, at: &Situation) -> bool {
+    let in_drawer = at.within("preview") || app.preview.viewer.is_prompt_focused();
+    shell::preferences(app).tenxer_mode && app.preview.enabled && in_drawer
+}
+
+/// `return_from_preview`: the listing takes the keys, the drawer stays open.
+fn return_to_files(app: &mut App, _: &Call<'_>, _: &mut Tx) -> Outcome {
+    app.preview.drawer.focus_files();
+    Outcome::Ran
+}
+
 fn in_tenxer_preview_outside_find(app: &App, at: &Situation) -> bool {
     shell::preferences(app).tenxer_mode && in_preview_outside_find(app, at)
 }
@@ -141,8 +162,12 @@ fn on_preview_grip(app: &App, at: &Situation) -> bool {
     app.preview.enabled && at.within("preview-grip")
 }
 
+/// The default map's Space there; 10xer's preview keeps it (`tenxer_preview` swallows what
+/// the archive list does not take).
 fn on_archive_tree(app: &App, at: &Situation) -> bool {
-    app.preview.enabled && at.focused() == Some(archive::ARCHIVE_KEY)
+    app.preview.enabled
+        && at.focused() == Some(archive::ARCHIVE_KEY)
+        && !shell::preferences(app).tenxer_mode
 }
 
 fn in_preview_body_outside_find(app: &App, at: &Situation) -> bool {

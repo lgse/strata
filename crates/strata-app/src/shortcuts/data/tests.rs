@@ -36,7 +36,7 @@ fn a_saved_keymap_moves_a_rows_keys() {
     library();
     let keymap = Keymap::defaults().with(Map::Default, RENAME, vec![Binding::ctrl(Key::e)]);
     let _keymap = use_keymap(keymap);
-    let data = rows(Mode::Columns, 1);
+    let data = rows(Mode::Columns, false, 1);
     let rename = data
         .sections
         .iter()
@@ -55,7 +55,7 @@ fn the_panel_answers_the_keymaps_keys() {
         vec![Binding::ctrl(Key::g)],
     );
     let _keymap = use_keymap(keymap);
-    let keys = panel_keys();
+    let keys = panel_keys(false);
     assert_eq!(keys.toggle, [Chord::new(ChordKey::Function(1))]);
     assert_eq!(
         keys.categories,

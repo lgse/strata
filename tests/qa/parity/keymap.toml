@@ -27,9 +27,8 @@ host = "offscreen"
 scenario = "keymap-tables-change-independently"
 run = "columns"
 package = "A18"
-status = "pending"
-reason = "scope"
-blocker = "A11: the 10xer `r` footer rename prompt (line 55 waits for its field on readme.md)"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "saved-keymap-applies-at-launch"

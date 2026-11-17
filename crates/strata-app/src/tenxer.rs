@@ -30,6 +30,7 @@ mod bookmarks;
 mod chords;
 mod go;
 mod keys;
+mod preview_keys;
 mod prompts;
 #[cfg(test)]
 mod tests;
@@ -52,12 +53,14 @@ pub(crate) enum ChordKind {
     Tabs,
     BookmarkSet,
     BookmarkGo,
+    /// `g` in a focused document or archive preview: `g` again goes to its top.
+    PreviewTop,
 }
 
 impl ChordKind {
     pub(crate) fn mark(self) -> String {
         let prefix = match self {
-            Self::Go => Keys::One(bindings::GO.shown()),
+            Self::Go | Self::PreviewTop => Keys::One(bindings::GO.shown()),
             Self::Copy => Keys::One(bindings::COPY_AS.shown()),
             Self::Sort => Keys::One(bindings::SORT_BY.shown()),
             Self::Action => Keys::One(bindings::ACTIONS.shown()),
@@ -74,7 +77,8 @@ impl ChordKind {
             (key_catalog::label(&Keys::One(cmd.shown())), tr(action))
         };
         match self {
-            Self::Go => go_options(),
+            Self::Go => go_options("First item"),
+            Self::PreviewTop => go_options("Top"),
             Self::Copy => vec![
                 step(bindings::COPY_AS_PATH, "Copy path"),
                 step(bindings::COPY_AS_NAME, "Copy name"),
@@ -98,10 +102,10 @@ impl ChordKind {
     }
 }
 
-fn go_options() -> Vec<(String, String)> {
+fn go_options(first: &str) -> Vec<(String, String)> {
     let one = |cmd: KeyCommand| Keys::One(cmd.shown());
     let rows = [
-        (one(bindings::GO_FIRST), "First item"),
+        (one(bindings::GO_FIRST), first),
         (one(bindings::GO_FOLLOW), "Follow search result"),
         (one(bindings::GO_HOME), "Home"),
         (one(bindings::GO_DOWNLOADS), "Downloads"),

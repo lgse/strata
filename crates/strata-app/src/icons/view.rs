@@ -19,7 +19,7 @@ use crate::{App, details, listing::Row, shell, single, slots::Frame};
 pub(crate) fn grid() -> IconsGrid<App> {
     IconsGrid::new(
         VIEW,
-        single::collection::<Icons>,
+        |app: &App| crate::peek::rows(single::collection::<Icons>(app)),
         |app: &App| IconsParts {
             source: app.icons.single.pane.source(),
             collection: app.icons.single.pane.collection(),

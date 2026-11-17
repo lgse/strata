@@ -43,6 +43,7 @@ pub(super) fn handle_armed_chord(app: &mut App, press: &KeyPress, tx: &mut Tx) -
         ChordKind::FolderAction => complete_folder_action(app, press, tx),
         ChordKind::Tabs => complete_tab(app, press, tx),
         ChordKind::BookmarkSet | ChordKind::BookmarkGo => bookmarks::complete(app, kind, press, tx),
+        ChordKind::PreviewTop => super::preview_keys::complete_top(app, press, tx),
     };
     if !completed {
         app.tenxer.flash.show(tr("Unknown chord"), tx);
