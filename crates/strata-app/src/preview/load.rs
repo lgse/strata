@@ -164,6 +164,11 @@ impl Loader {
         self.provider.clone()
     }
 
+    #[cfg(test)]
+    pub(super) fn set_provider(&mut self, provider: Rc<dyn PreviewProvider>) {
+        self.provider = provider;
+    }
+
     pub(super) fn set_media_backend(&self, backend: MediaPreviewBackend) {
         self.media_backend.set(backend);
     }

@@ -613,8 +613,10 @@ impl PdfState {
         self.zoom_to(next, tx)
     }
 
-    /// Ctrl+0: back to fitted width on the same page. Already there, nothing moves.
-    pub(crate) fn reset_zoom(&mut self, tx: &mut Tx) -> bool {
+    /// Back to fitted width on the same page, as Ctrl+0 does: for a host that reads the reset
+    /// from its own key map ([`PdfView::reset_key`](super::PdfView::reset_key) off). Already
+    /// there, nothing moves. True when the zoom changed.
+    pub fn reset_zoom(&mut self, tx: &mut Tx) -> bool {
         self.zoom_to(LIMITS.min, tx)
     }
 

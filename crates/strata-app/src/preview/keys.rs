@@ -32,6 +32,7 @@ const DIVIDER_KEY: Binding = Binding::plain(DesktopKey::F8);
 const PREVIEW_IGNORED: Modifiers = Modifiers::SHIFT_MASK.union(Modifiers::SUPER_MASK);
 
 pub(super) const COMMANDS: &[Action<App>] = &[
+    super::pdf::RESET,
     Action::new("preview-panel", toggle_panel),
     Action::new("preview-close", close_from_preview)
         .command(PREVIEW)

@@ -45,6 +45,8 @@ pub(crate) use follow::{
     follow_active_column, follow_filter_close, follow_filter_pick, note_click_opening,
 };
 use load::Loader;
+#[cfg(feature = "qa")]
+pub(crate) use pdf::PDF_KEY;
 use viewer::Viewer;
 
 use crate::{

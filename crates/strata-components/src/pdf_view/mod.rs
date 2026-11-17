@@ -336,7 +336,8 @@ impl<S: 'static> PdfView<S> {
     }
 
     /// Which keys reset the zoom (Ctrl+0 and Ctrl+keypad 0 unless set): Strata's
-    /// `pdf_zoom_reset` key map entry.
+    /// `pdf_zoom_reset` key map entry. A host that reads that entry from a live key map turns
+    /// this off (`|_| false`), so the key goes on, and calls [`PdfState::reset_zoom`] itself.
     pub fn reset_key(mut self, f: fn(&KeyEvent) -> bool) -> Self {
         self.reset = f;
         self

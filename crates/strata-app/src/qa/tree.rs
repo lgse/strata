@@ -255,11 +255,18 @@ fn scrolled(node: &Value) -> Option<Scrolled> {
     })
 }
 
-/// A keyed node's segment of its path. A PDF page's row is keyed by its zoom too, so Rune
-/// measures it afresh (`pdf_view::page_row_identity`), where GTK resizes the same page widget:
-/// the path leaves the zoom out, so a page remembered before a zoom is the page after it.
+/// A keyed node's segment of its path. The preview's PDF page row is keyed by its zoom too, so
+/// Rune measures it afresh (`pdf_view::page_row_identity`), where GTK resizes the same page
+/// widget: the path leaves the zoom out, so a page remembered before a zoom is the page after
+/// it. Only the preview's PDF keys are read so.
 fn segment_of(key: &str) -> String {
-    page_row_identity(key).unwrap_or_else(|| key.to_owned())
+    let pdf_page = key
+        .strip_prefix(crate::preview::PDF_KEY)
+        .is_some_and(|rest| rest.starts_with('-'));
+    pdf_page
+        .then(|| page_row_identity(key))
+        .flatten()
+        .unwrap_or_else(|| key.to_owned())
 }
 
 /// Rune's role of an unnamed box, which the role map presents as GTK's `panel`.

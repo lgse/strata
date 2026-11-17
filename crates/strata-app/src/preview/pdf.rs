@@ -10,9 +10,12 @@
 //!   width the view wants, one render at a time across the preview, as GTK's page loader asks on
 //!   bind. The PNG is decoded off the UI thread (`gio::spawn_blocking`) before the view takes it.
 //!   A reply for a viewer that has gone, or a request the view cancelled, is dropped.
-//! - **Zoom** is the view's own: Ctrl+wheel over the pages and Ctrl+0 with the pages focused,
-//!   which the view hears before the window's `text-reset` does (Rune gives a key to the focused
-//!   element first), so the text size stays, as GTK's `preview.reset_pdf_zoom` keeps it.
+//! - **Zoom:** Ctrl+wheel over the pages is the view's own, and the window's zoom wheel leaves
+//!   it to the view (`appearance::wheel`), as GTK's `claims_zoom` leaves the PDF's scroll.
+//!   The reset is the key map's `pdf_zoom_reset` ([`RESET`]), read at the dispatcher's
+//!   `zoom_shortcut` stage ahead of the window's `text-reset` while the keyboard is in the
+//!   pages, as GTK's `zoom_shortcut` asks `reset_pdf_zoom` first. The view's own Ctrl+0 is off,
+//!   so a rebound reset follows the key map and an unbound Ctrl+0 reaches the text size.
 //! - **A password-protected PDF** keeps the preview's message card with its Open button
 //!   (`load::render_failed`), as GTK's does.
 //!
@@ -26,13 +29,17 @@ use strata_components::pdf_view::{
     TextLayer, Ticket,
 };
 use strata_core::{i18n::tr, model::FileEntry};
+use strata_desktop::keys::{Modifiers, bindings::PDF_ZOOM_RESET};
 use strata_fs::services::{
     LoadHandle, MediaPreviewSize, PdfTextLayer, Preview, PreviewContent, PreviewEvent,
     PreviewRequest, PreviewRequestId,
 };
 
 use super::{load::TEXT_BYTE_LIMIT, viewer::Viewer};
-use crate::App;
+use crate::{
+    App,
+    commands::{Action, Call, Keys, Outcome, Situation, Stage},
+};
 
 /// Key of the PDF viewer inside the preview drawer.
 pub(crate) const PDF_KEY: &str = "preview-pdf";
@@ -159,8 +166,33 @@ pub(super) fn labels() -> PdfLabels {
 pub(super) fn build_view(app: &App, cx: &mut Cx<App>) -> El {
     PdfView::new(pdf_ref, pdf_mut)
         .labels(labels())
+        // The key map's reset is [`RESET`]'s, at the window's stage.
+        .reset_key(|_| false)
         .on_intent(on_intent)
         .build(app, &app.look, cx)
+}
+
+/// `pdf_zoom_reset` while the keyboard is in the pages: the PDF back to its fitted width, ahead
+/// of `text-reset` at the same stage (`reset_pdf_zoom` in `src/ui/preview/keyboard.rs`).
+pub(super) const RESET: Action<App> = Action::new("preview-pdf-reset", reset_zoom)
+    .command(PDF_ZOOM_RESET)
+    .keys(&[Keys::at(
+        Stage::ZoomShortcut,
+        &[PDF_ZOOM_RESET.ignoring(Modifiers::empty())],
+    )
+    .when(in_pages)]);
+
+fn in_pages(app: &App, at: &Situation) -> bool {
+    matches!(app.preview.viewer, Viewer::Pdf(_)) && at.within(PDF_KEY)
+}
+
+fn reset_zoom(app: &mut App, _: &Call<'_>, tx: &mut Tx) -> Outcome {
+    let Viewer::Pdf(pdf) = &mut app.preview.viewer else {
+        return Outcome::Declined;
+    };
+    pdf.state.reset_zoom(tx);
+    crate::tenxer::cancel_chord(app);
+    Outcome::Ran
 }
 
 fn on_intent(app: &mut App, intent: PdfIntent, _: &mut Tx) {
