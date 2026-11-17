@@ -1,0 +1,9 @@
+diff --git a/crates/strata-app/src/preview/keys.rs b/crates/strata-app/src/preview/keys.rs
+index afe410ca5..99908670c 100644
+--- a/crates/strata-app/src/preview/keys.rs
++++ b/crates/strata-app/src/preview/keys.rs
+@@ -111,3 +111,3 @@ fn password_prompt_focused(app: &App, _: &Situation) -> bool {
+ fn opens_archive_key(press: &KeyPress) -> bool {
+-    press.is(RIGHT) || press.is(ENTER) || press.is(SPACE)
++    press.is(RIGHT)
+ }

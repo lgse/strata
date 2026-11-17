@@ -1,0 +1,13 @@
+diff --git a/crates/strata-app/src/compress.rs b/crates/strata-app/src/compress.rs
+index 842f38a92..209eedc84 100644
+--- a/crates/strata-app/src/compress.rs
++++ b/crates/strata-app/src/compress.rs
+@@ -463,7 +463,7 @@ fn ask_to_replace_archive(app: &mut App, pending: PendingCompression, final_name
+     conflict_dialog::prompt_with_icon(app, IconName::Archive, prompt, move |app, choice, _| {
+         let conflict = match choice {
+             ConflictChoice::Replace => TransferConflict::ReplaceExisting,
+-            ConflictChoice::KeepBoth => TransferConflict::KeepBoth,
++            ConflictChoice::KeepBoth => TransferConflict::ReplaceExisting,
+             ConflictChoice::Merge | ConflictChoice::Skip => return,
+         };
+         run_compression(app, pending.clone(), conflict);
