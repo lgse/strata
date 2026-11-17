@@ -70,6 +70,7 @@ pub(crate) fn view(app: &App) -> ColumnsView<App> {
     )
     .labels(app.columns.labels.0.clone())
     .dnd(crate::dnd::binder(app))
+    .content_types(crate::dnd::CONTENT_TYPES)
     .drop_action(intents::drop_action)
     // "Show sizes in Columns view", read at each build: the popover's row changes it live.
     .show_sizes(|app: &App| shell::preferences(app).columns_show_sizes)
@@ -102,8 +103,8 @@ pub(crate) fn view(app: &App) -> ColumnsView<App> {
     .on_intent(intents::heard)
 }
 
-/// Column `depth`'s collection with the part's extras: its status, thumbnails, fills, drags,
-/// the window's zoom wheel, its keys and the rename editor.
+/// One column's collection, as the part dresses it: its status, thumbnails, fills, drags, the
+/// window's zoom wheel, its keys, rename and commands.
 fn column_collection(app: &App, depth: usize, collection: Collection<App>) -> Collection<App> {
     let collection = collection
         .empty(move |app: &App| shown_status(app, depth))

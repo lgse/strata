@@ -813,7 +813,8 @@ fn row_zone<S: 'static>(cfg: &Rc<Config<S>>, on_drop: DropFn<S>, id: EntryId) ->
         };
         super::route::dropped_on_row(&drop_cfg, s, id);
         on_drop(s, target, dropped, tx);
-    });
+    })
+    .takes_content(cfg.drop_content);
     // With the host's action, a folder row it refuses (the drag's own folder, one inside the
     // drag) stops the drop: passed on, the background around it would take it into the folder
     // shown.

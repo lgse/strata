@@ -214,6 +214,12 @@ closed issue is not a fixed finding: the state given here is the finding's.
   thread holding the write descriptor fails the probe, and the legacy arguments are chosen.
   #2567 does not touch `terminal/`. The fix, if taken up, is A14's: write the script under a
   temporary name and rename it, or retry on `ETXTBSY`.
+- **Sighting on [#2577](https://github.com/lgse/strata/pull/2577):** the ninth again,
+  `fast_delete_animates_only_its_own_success_without_showing_progress`
+  (`minimization.rs:182`, `progress transition timed out`), failed once in
+  `./scripts/quality.sh all --jobs 4` (shard 0, lane 3; the other three lanes passed) at
+  `1ba2778c1909325066429fdf368128030d2ddea1`, and passed 3 times of 3 alone under `./scripts/test-headless.py` (7.7 s each).
+  That pull request changes no `src/`.
 
 ### #2176: a GTK critical after a file appears during a rename on a multiple selection
 
@@ -2265,11 +2271,16 @@ sequence only together with the alphabet's version, so the version is part of th
   643): the same first wait, the `archive` row's `No items` label, timed out after 15 s. The
   scenario passed alone three times in a row (6 of 6 runs each). #2566 changes the portal
   chooser and leaves the browser's listing, item counts and drag and drop as they were.
-- **Seen a third time:** as `drag-file-onto-folder/list-move`, in the gate of
-  [#2569](https://github.com/lgse/strata/pull/2569)'s review round at `f14ea347d` (rune offscreen
-  663 of 664). It failed at the same first wait. The scenario then passed alone three times in a
-  row (6 of 6 runs each). #2569 adds the window's zoom wheel and the PDF preview, and leaves the
-  listing, item counts and drag and drop as they were.
+- **Seen again:** as `drag-file-onto-folder/list-move`, in round 3 of
+  [#2571](https://github.com/lgse/strata/pull/2571)'s three rounds of `drag_and_drop` at
+  `815298327`: the same first wait, the `archive` row's `No items` label, timed out after
+  15 s. The run passed in that pull request's `qa-parity.sh all`. #2571 changes the views'
+  keyboard handover after a move out of the folder, not the listing or its item counts.
+- **Seen in [#2569](https://github.com/lgse/strata/pull/2569)'s gate too:** as
+  `drag-file-onto-folder/list-move`, in its review round at `f14ea347d` (rune offscreen 663 of
+  664), at the same first wait. The scenario then passed alone three times in a row (6 of 6 runs
+  each). #2569 adds the window's zoom wheel and the PDF preview, and leaves the listing, item
+  counts and drag and drop as they were.
 - **Concerns:** `drag_and_drop/drag-file-onto-folder/columns-copy`, `list-copy` and `list-move`,
   `required`, [A19](packages/A19.md)'s.
 - **State:** open, unowned. The ledger is unchanged: the run stays `required`. Not traced.
@@ -2311,3 +2322,17 @@ sequence only together with the alphabet's version, so the version is part of th
   alphabet (Slice 5) should exercise `/` then Escape with a selection.
 - **State:** open, [A11](packages/A11.md#open)'s, for Slice 4 or 5 or a `contract` change to
   the row components.
+
+### #2575: `preview-blank-click-keeps-selection/columns` was still loading its preview once in a full Rune run
+
+- **Code:** none of the plan's: a flaky Rune run, labelled `testing`.
+  [Issue](https://github.com/lgse/strata/issues/2575), filed on 2026-11-17 as the finding's
+  reference and closed at once: its state is kept here.
+- **Seen:** in the re-gate of [#2571](https://github.com/lgse/strata/pull/2571) at
+  `fc58473eb`, `./scripts/qa-parity.sh all` on a loaded host (rune offscreen 661 of 662). At
+  line 6 the preview still showed its "Loading…" bar. The scenario passed 5 of 5 alone
+  afterwards. #2571 changes the views' keyboard handover after a move out of the folder, not
+  the preview's loading path.
+- **Concerns:** `background_selection/preview-blank-click-keeps-selection/columns`,
+  `required`, [A15](packages/A15.md)'s (done).
+- **State:** open, unowned. The ledger is unchanged: the run stays `required`. Not traced.

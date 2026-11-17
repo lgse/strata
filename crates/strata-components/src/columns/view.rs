@@ -131,6 +131,7 @@ pub(super) struct Shared<S> {
     pub(super) close_buttons: FlagFn<S>,
     pub(super) show_sizes: FlagFn<S>,
     pub(super) dnd: Dnd<S>,
+    content: &'static [&'static str],
     drop_action: Option<DropActionFn<S>>,
     on_intent: Option<IntentFn<S>>,
     pub(super) labels: ColumnsLabels,
@@ -150,6 +151,7 @@ impl<S> Clone for Shared<S> {
             close_buttons: self.close_buttons.clone(),
             show_sizes: self.show_sizes.clone(),
             dnd: self.dnd.clone(),
+            content: self.content,
             drop_action: self.drop_action.clone(),
             on_intent: self.on_intent.clone(),
             labels: self.labels.clone(),
@@ -227,6 +229,7 @@ impl<S: 'static> ColumnsView<S> {
                 close_buttons: Rc::new(|_| true),
                 show_sizes: Rc::new(|_| true),
                 dnd: Dnd::rune(),
+                content: &[],
                 drop_action: None,
                 on_intent: None,
                 labels: ColumnsLabels::default(),
@@ -313,6 +316,12 @@ impl<S: 'static> ColumnsView<S> {
     /// The drag-and-drop binder: Rune's own by default; X2 passes the system shim's.
     pub fn dnd(self, dnd: Dnd<S>) -> Self {
         self.with(|sh| sh.dnd = dnd)
+    }
+
+    /// The content types each column's folder rows and background take from other apps
+    /// besides files, most wanted first (C1e's `Collection::content_types`). Default none.
+    pub fn content_types(self, mimes: &'static [&'static str]) -> Self {
+        self.with(|sh| sh.content = mimes)
     }
 
     /// Says which action a drag would take, or `None` to refuse it, for a binder that
@@ -565,6 +574,7 @@ fn attach_column_dnd<S: 'static>(
     }
     let (drops, over) = (sh.clone(), sh.clone());
     c.dnd(sh.dnd.clone())
+        .content_types(sh.content)
         .on_drop(move |s: &mut S, target, dropped, tx| {
             (drops.parts_mut)(s).state.drag_over(None);
             if let Some(depth) = depth_of(&drops, s, serial) {

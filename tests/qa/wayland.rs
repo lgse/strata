@@ -24,8 +24,13 @@ pub(crate) const WINDOW_VARIABLE: &str = "STRATA_QA_WINDOW";
 const SWAY_START_TIMEOUT: Duration = Duration::from_secs(15);
 /// Xvfb's screen.
 const SCREEN: (u32, u32) = (1440, 900);
+/// The foreign drag source's application id, and where it goes: past the application's
+/// 1200 by 760 window, in the screen's last corner.
+const PEER: (&str, u32, u32) = ("io.github.lgse.Strata.TestDragSource", 1200, 760);
 /// Xvfb's 660 ms autorepeat delay, and every window floating in the output's corner, where
-/// the window-manager-less X display leaves it.
+/// the window-manager-less X display leaves it; but the foreign drag source
+/// (`tests/qa/fixtures/file_drag_source.py`) beside the application's window, which it would
+/// cover there, so a drag can go from one to the other.
 const SWAY_CONFIG: &str = "\
 output HEADLESS-1 resolution {width}x{height} position 0 0 scale 1
 default_border none
@@ -35,6 +40,7 @@ mouse_warping none
 xwayland disable
 input type:keyboard repeat_delay 660
 for_window [app_id=\".*\"] floating enable, move position 0 0
+for_window [app_id=\"{peer}\"] move position {peer_x} {peer_y}
 ";
 
 pub(crate) struct Sway {
@@ -65,7 +71,10 @@ pub(crate) fn start(scratch: &Path, runtime: &Path) -> Result<Display, String> {
         &config,
         SWAY_CONFIG
             .replace("{width}", &SCREEN.0.to_string())
-            .replace("{height}", &SCREEN.1.to_string()),
+            .replace("{height}", &SCREEN.1.to_string())
+            .replace("{peer}", PEER.0)
+            .replace("{peer_x}", &PEER.1.to_string())
+            .replace("{peer_y}", &PEER.2.to_string()),
     )
     .map_err(io)?;
     let log = scratch.join("sway.log");

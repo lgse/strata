@@ -283,6 +283,8 @@ pub(crate) struct Config<S> {
     lines: Rc<dyn Lines>,
     group_style: GroupStyleFn,
     dnd: Dnd<S>,
+    /// What the folder rows and the background take from other apps besides files.
+    drop_content: &'static [&'static str],
     read_only: bool,
     bare_items: bool,
     on_drop: Option<row::DropFn<S>>,
@@ -367,6 +369,7 @@ impl<S: 'static> Collection<S> {
                 lines: Rc::new(OnePerLine),
                 group_style: Rc::new(GroupStyle::from_look),
                 dnd: Dnd::rune(),
+                drop_content: &[],
                 read_only: false,
                 bare_items: false,
                 on_drop: None,
@@ -460,6 +463,14 @@ impl<S: 'static> Collection<S> {
     /// The drag-and-drop binder: Rune's own by default.
     pub fn dnd(mut self, dnd: Dnd<S>) -> Self {
         self.cfg.dnd = dnd;
+        self
+    }
+
+    /// The content types the folder rows and the background take from other apps besides
+    /// files, most wanted first (the host's content-drops policy: text, images, web
+    /// addresses). Default none. The host's drop handler tells the two apart.
+    pub fn content_types(mut self, mimes: &'static [&'static str]) -> Self {
+        self.cfg.drop_content = mimes;
         self
     }
 
@@ -1149,7 +1160,8 @@ fn background_zone<S: 'static>(cfg: &Rc<Config<S>>, on_drop: row::DropFn<S>) -> 
     let zone = DropZone::new(move |s: &mut S, dropped, tx| {
         (get_mut)(s).1.drop = None;
         on_drop(s, None, dropped, tx);
-    });
+    })
+    .takes_content(cfg.drop_content);
     // With the host's action, the background stops what it refuses (an item onto its own
     // folder) as the rows do, so it hears the refused drag's moves: autoscroll and C2's column
     // wash go on over it.
