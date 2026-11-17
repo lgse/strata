@@ -52,6 +52,8 @@ pub(super) enum Kind {
     Permanent,
     /// The user asked for the Trash, which this location does not support.
     TrashUnavailable,
+    /// 10xer's confirmed Move to Trash (`DeleteDialog::Trash`).
+    Trash,
 }
 
 /// One confirmation: what it was opened for, and what the size task has said since.
@@ -79,15 +81,30 @@ impl Confirm {
             entries,
             kind,
             reach,
-            sizing: true,
+            sizing: kind != Kind::Trash,
             cursor: None,
             generation,
         }
     }
 
+    pub(super) fn needs_size_task(&self) -> bool {
+        self.kind != Kind::Trash
+            || self
+                .entries
+                .iter()
+                .take(MAX_ROWS)
+                .any(|entry| entry.kind == strata_core::model::EntryKind::FileSymbolicLink)
+    }
+
     /// `title_and_confirm_label`.
     fn title_and_confirm(&self) -> (String, String) {
         let items = item_count_label(self.entries.len());
+        if self.kind == Kind::Trash {
+            return (
+                rust_i18n::t!("Move %{value1} to Trash?", value1 = items).into_owned(),
+                tr("Move to Trash"),
+            );
+        }
         let (title, confirm) = match self.reach {
             Reach::Local => (
                 rust_i18n::t!("Permanently delete %{value1}?", value1 = items),
@@ -105,6 +122,11 @@ impl Confirm {
     fn paragraphs(&self) -> Vec<String> {
         let single = self.entries.len() == 1;
         match self.kind {
+            Kind::Trash => vec![tr(if single {
+                "This item can be restored from Trash."
+            } else {
+                "These items can be restored from Trash."
+            })],
             Kind::TrashUnavailable => [
                 Some(tr("This location doesn't support Trash.")),
                 trash_unavailable_reason(&self.entries),
@@ -166,7 +188,11 @@ pub(super) fn build(app: &App, frame: &mut Frame<'_, App>) -> Option<El> {
     let (title, confirm_label) = confirm.title_and_confirm();
     let focus = match confirm.kind {
         Kind::TrashUnavailable => Focus::Secondary,
-        Kind::Permanent => Focus::Primary,
+        Kind::Permanent | Kind::Trash => Focus::Primary,
+    };
+    let tone = match confirm.kind {
+        Kind::Trash => Tone::Accent,
+        Kind::Permanent | Kind::TrashUnavailable => Tone::Danger,
     };
     let loading = confirm.sizing.then(|| tr("Calculating total size…"));
     // A key of its own for each, so a confirmation that opens as another closes takes its own
@@ -176,7 +202,7 @@ pub(super) fn build(app: &App, frame: &mut Frame<'_, App>) -> Option<El> {
         .open(trash.open)
         .subtitle(confirm.subtitle.clone())
         .icon(IconName::Trash)
-        .tone(Tone::Danger)
+        .tone(tone)
         .loading(loading)
         .child(item_list(app, confirm).key(format!("{key}-items")));
     for paragraph in confirm.paragraphs() {

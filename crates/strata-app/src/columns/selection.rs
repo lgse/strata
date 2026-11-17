@@ -54,6 +54,22 @@ impl Columns {
             .map(|id| (depth, id))
     }
 
+    /// [`handover::kept_neighbour`] for column `depth`, whose cursor was `before` the change.
+    /// Never while a filter's results show there: their cursor is no entry of the listing.
+    pub(super) fn kept_neighbour(
+        &self,
+        depth: usize,
+        before: Option<EntryId>,
+        marks: &Marks,
+    ) -> Option<Marks> {
+        if self.listings.hits_at(depth) {
+            return None;
+        }
+        let column = self.listings.columns.get(depth)?;
+        let state = self.state.column(depth)?;
+        handover::kept_neighbour(before, column, &state.collection, marks)
+    }
+
     /// Writes the browser's cursor and selection for column `depth` to the view, unless the
     /// view shows them already ([`handover::adopt`]). Not while a filter's results show
     /// there: their selection is the filter's, which the browser does not hold.
@@ -67,6 +83,11 @@ impl Columns {
         ) else {
             return;
         };
+        let kept = self
+            .kept
+            .get_mut(depth)
+            .and_then(|kept| kept.marks(&state.collection, marks));
+        let marks = kept.as_ref().unwrap_or(marks);
         let now = handover::adopt(column, &mut state.collection, marks);
         if let Some(held) = self.held.get_mut(depth) {
             *held = now;

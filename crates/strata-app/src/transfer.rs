@@ -37,9 +37,12 @@ use crate::{
 mod collisions;
 mod dock;
 mod reveal;
+mod tenxer;
 #[cfg(test)]
 mod tests;
 mod words;
+
+pub(crate) use tenxer::{paste_preferring, start_in_place_transfer};
 
 #[derive(Clone, PartialEq, Eq)]
 struct PreparingKey {
@@ -47,6 +50,7 @@ struct PreparingKey {
     sources: Vec<Location>,
     move_sources: bool,
     reveal: bool,
+    focus: ConflictFocus,
 }
 
 pub(crate) struct Transfer {
@@ -347,7 +351,9 @@ fn resolve_paste_location(app: &App, on: &On) -> Option<Location> {
             } else {
                 Vec::new()
             };
-            let depth = if shows_columns(app) {
+            let depth = if shell::preferences(app).tenxer_mode {
+                crate::tenxer::focused_listing_depth(app)
+            } else if shows_columns(app) {
                 Some(app.columns.targeted())
             } else {
                 app.browser.active_depth()
@@ -364,23 +370,52 @@ fn paste(app: &mut App, call: &Call<'_>, tx: &mut Tx) -> Outcome {
     let Some(destination) = resolve_paste_location(app, &call.on) else {
         return Outcome::Ran;
     };
+    let into = PasteInto {
+        destination,
+        focus: ConflictFocus::Replace,
+        on_empty: None,
+    };
+    paste_into(app, into, tx);
+    Outcome::Ran
+}
+
+/// What a paste says when the clipboard holds no files.
+pub(crate) type OnEmpty = std::rc::Rc<dyn Fn(&mut App, &mut Tx)>;
+
+/// What a paste reads the clipboard for: where it goes, the conflict button it focuses, and
+/// what to say when the clipboard holds no files.
+struct PasteInto {
+    destination: Location,
+    focus: ConflictFocus,
+    on_empty: Option<OnEmpty>,
+}
+
+fn paste_into(app: &mut App, into: PasteInto, tx: &mut Tx) {
+    let PasteInto {
+        destination,
+        focus,
+        on_empty,
+    } = into;
     let later = app.transfer.later.clone();
     clipboard::read_files(
         app,
         move |app, decoded, tx| {
             let Some((sources, foreign_cut)) = decoded else {
+                if let Some(on_empty) = on_empty {
+                    on_empty(app, tx);
+                }
                 return;
             };
             later.then(move |app, _| {
                 let move_sources = foreign_cut || clipboard::is_cut_match(app, &sources);
-                begin_transfer(app, destination, sources, move_sources);
+                let request = TransferRequest::new(destination, sources, move_sources);
+                begin_transfer_request(app, request.focusing(focus));
                 false
             });
             shell::settle(app, tx);
         },
         tx,
     );
-    Outcome::Ran
 }
 
 fn focus_duplicate_entries(app: &App) -> Vec<FileEntry> {
@@ -397,12 +432,7 @@ fn focus_duplicate_entries(app: &App) -> Vec<FileEntry> {
     if !tenxer {
         return app.browser.transfer_entries();
     }
-    let depth = if shows_columns(app) {
-        Some(app.columns.targeted())
-    } else {
-        app.browser.active_depth()
-    };
-    depth
+    crate::tenxer::focused_listing_depth(app)
         .map(|d| app.browser.command_entries(d))
         .unwrap_or_default()
 }
@@ -477,6 +507,30 @@ struct TransferRequest {
     sources: Vec<Location>,
     move_sources: bool,
     reveal: bool,
+    focus: ConflictFocus,
+}
+
+impl TransferRequest {
+    /// A transfer that reveals what it placed and focuses Replace on a conflict.
+    fn new(destination: Location, sources: Vec<Location>, move_sources: bool) -> Self {
+        Self {
+            destination,
+            sources,
+            move_sources,
+            reveal: true,
+            focus: ConflictFocus::Replace,
+        }
+    }
+
+    fn revealing(mut self, reveal: bool) -> Self {
+        self.reveal = reveal;
+        self
+    }
+
+    fn focusing(mut self, focus: ConflictFocus) -> Self {
+        self.focus = focus;
+        self
+    }
 }
 
 /// Starts a file drop transfer on the shown tab (`start_drop_transfer` in
@@ -489,29 +543,15 @@ pub(crate) fn start_drop_transfer(
     move_sources: bool,
 ) {
     let reveal = shell::preferences(app).open_folder_after_drop;
-    begin_transfer_request(
-        app,
-        TransferRequest {
-            destination,
-            sources,
-            move_sources,
-            reveal,
-        },
-    );
+    let request = TransferRequest::new(destination, sources, move_sources);
+    begin_transfer_request(app, request.revealing(reveal));
 }
 
 /// Moves `sources` into a newly created group folder (`move_selection_into_created` in
 /// `src/ui/browser/inline_edit/new_entry.rs`), without revealing the moved children inside it.
 pub(crate) fn move_into_group_folder(app: &mut App, destination: Location, sources: Vec<Location>) {
-    begin_transfer_request(
-        app,
-        TransferRequest {
-            destination,
-            sources,
-            move_sources: true,
-            reveal: false,
-        },
-    );
+    let request = TransferRequest::new(destination, sources, true);
+    begin_transfer_request(app, request.revealing(false));
 }
 
 /// Copies or moves `sources` into the folder chosen in the floating Copy to or Move to chooser,
@@ -542,12 +582,7 @@ fn begin_transfer(
 ) {
     begin_transfer_request(
         app,
-        TransferRequest {
-            destination,
-            sources,
-            move_sources,
-            reveal: true,
-        },
+        TransferRequest::new(destination, sources, move_sources),
     );
 }
 
@@ -557,6 +592,7 @@ fn begin_transfer_request(app: &mut App, req: TransferRequest) {
         sources,
         move_sources,
         reveal,
+        focus,
     } = req;
     if transfer_refused(&destination, &sources, move_sources) {
         return;
@@ -573,6 +609,7 @@ fn begin_transfer_request(app: &mut App, req: TransferRequest) {
         sources: sources.clone(),
         move_sources,
         reveal,
+        focus,
     };
     if app.transfer.preparing.contains(&key) {
         return;
@@ -623,7 +660,7 @@ fn finish_preparing(
         destination: key.destination.clone(),
         move_sources: key.move_sources,
         reveal: key.reveal,
-        focus: ConflictFocus::Replace,
+        focus: key.focus,
     };
     shell::publish(app);
     collisions::resolve(app, plan, collisions, accepted);

@@ -15,6 +15,11 @@
 //!   places, the neighbour a deletion moves it to, a reveal.
 //! - [`placed`] tells [`adopt`]'s one exception: a cursor the collection was waiting to place
 //!   until its folder was listed is the user's.
+//! - [`kept_neighbour`] is the other: after a selectionless removal, a move out of the folder,
+//!   the browser places no cursor, and the keyboard goes to the neighbouring row, unselected,
+//!   as GTK's list view moves its focus there (finding lgse/strata#2546). The view keeps it
+//!   ([`Kept`]) without handing it over: GTK's browser holds no cursor then, and in Columns a
+//!   browser cursor on a folder would open it.
 //! - [`Moving`] carries the selection across a rename, which gives an entry another id.
 //!
 //! A collection's selection has a revision that moves with every change. The view keeps, for
@@ -52,6 +57,84 @@ pub(crate) fn sync_rule(column: &Column) -> SyncRule {
     match column.load() {
         Load::Loading => SyncRule::loading(),
         Load::Listed | Load::Failed(_) => SyncRule::complete(CursorGone::Clear),
+    }
+}
+
+/// How a collection follows its rows when the browser's marks come with them (a view's
+/// `settle`): as [`sync_rule`], but a cursor whose entry left goes to its neighbour,
+/// unselected, which [`kept_neighbour`] keeps only when the browser places no cursor of its
+/// own; otherwise [`adopt`] writes the browser's over it.
+pub(crate) fn settle_rule(column: &Column) -> SyncRule {
+    match column.load() {
+        Load::Loading => SyncRule::loading(),
+        Load::Listed | Load::Failed(_) => SyncRule::complete(CursorGone::Neighbor),
+    }
+}
+
+/// The marks to adopt after the rows changed when the cursor, `before` the change, left them
+/// and the browser placed no cursor and selects nothing: a selectionless removal, a move out
+/// of the folder. They are the browser's, with the neighbour [`settle_rule`]'s sync gave the
+/// cursor to as the cursor: the keyboard stays in the view, on the row beside the one that
+/// went, unselected, as GTK's list view keeps its focus (finding lgse/strata#2546). [`adopt`]
+/// then records them as the browser's, so the cursor is not handed over. `None` otherwise.
+pub(crate) fn kept_neighbour(
+    before: Option<EntryId>,
+    column: &Column,
+    collection: &CollectionState,
+    marks: &Marks,
+) -> Option<Marks> {
+    let left = before.is_some_and(|id| column.index_of(id).is_none());
+    let removed = left && *column.load() != Load::Loading;
+    if !removed || !unplaced(marks) {
+        return None;
+    }
+    collection.selection.cursor().map(neighbour)
+}
+
+/// The browser marks no cursor and selects nothing.
+fn unplaced(marks: &Marks) -> bool {
+    marks.cursor.is_none() && marks.selected.is_empty()
+}
+
+/// The neighbour a view keeps the keyboard on after a selectionless removal
+/// ([`kept_neighbour`]). The browser's next marks still place no cursor and select nothing,
+/// and they would take the keyboard off the row again: while they say so, and the cursor is
+/// still that row, the view goes on keeping it. A cursor the browser marks, or one the user
+/// moves, ends it.
+#[derive(Clone, Copy, Debug, Default)]
+pub(crate) struct Kept(Option<EntryId>);
+
+impl Kept {
+    /// The neighbour kept, if any.
+    #[cfg(feature = "qa")]
+    pub(crate) fn id(self) -> Option<EntryId> {
+        self.0
+    }
+
+    /// Starts keeping the cursor of `marks`, [`kept_neighbour`]'s, or nothing.
+    pub(crate) fn keep(&mut self, marks: Option<&Marks>) {
+        self.0 = marks.and_then(|marks| marks.cursor);
+    }
+
+    /// The marks `collection` adopts for the browser's `marks`: the kept neighbour's while the
+    /// browser still places no cursor and selects nothing, and the cursor is still on it.
+    /// `None` when the browser's stand, which ends the keeping.
+    pub(crate) fn marks(&mut self, collection: &CollectionState, marks: &Marks) -> Option<Marks> {
+        let id = self.0?;
+        if !unplaced(marks) || collection.selection.cursor() != Some(id) {
+            self.0 = None;
+            return None;
+        }
+        Some(neighbour(id))
+    }
+}
+
+/// The browser's empty marks with `id` as the cursor and anchor, unselected.
+fn neighbour(id: EntryId) -> Marks {
+    Marks {
+        cursor: Some(id),
+        anchor: Some(id),
+        ..Marks::default()
     }
 }
 
@@ -127,6 +210,10 @@ pub(crate) struct Presented<'a> {
     /// What the tree draws in a column's place while a filter's results show there: its rows
     /// and their collection.
     pub(crate) drawn: Vec<Drawn<'a>>,
+    /// The depth of each column whose cursor is a neighbour kept after a selectionless
+    /// removal ([`Kept`]), and that neighbour: the browser holds no cursor there, as GTK's
+    /// does not.
+    pub(crate) kept: Vec<(usize, EntryId)>,
 }
 
 /// A filter's results, drawn in the place of column `depth`.
