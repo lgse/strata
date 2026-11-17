@@ -98,8 +98,10 @@ properties v3 103535e459c8641e
 # and toggles, opened the menu from its inner toggle and pressed Reset all only while sensitive:
 # its smoke tier caught the keybind search moving to the other table, which GTK's never does
 # (fixed), and met GTK's activate of "Reset" reaching General's Reset button. Version 3 looks for
-# Reset all's answer within its dialog.
-settings v3 56b25c119bf09e0d
+# Reset all's answer within its dialog. Version 3's smoke tier met only lgse/strata#2572, ruled a
+# `deviation` on 2026-11-17, and that finding's third facet while "Reset all keybinds?" is open,
+# which the ruling does not name. Version 4 leaves Reset all out.
+settings v4 b511623aa3993d92
 sidebar v1 4acfcd20a194fff5
 # tabs: versions 1 and 2 were A4's drafts, never merged: version 1 caught the hidden-tab
 # view-switch focus and tab_shown bug (fixed in shell/tabs.rs) and met lgse/strata#2507;

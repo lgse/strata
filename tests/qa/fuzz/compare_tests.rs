@@ -330,6 +330,10 @@ pub(crate) fn an_entry_is_refused_for_its_form_its_code_or_blinding_a_whole_root
             "sorted by field",
         ),
         (format!("{one}{one}"), "listed once"),
+        (
+            format!("{}{one}", one.replace("#1", "#2")),
+            "sorted by field, code and issue",
+        ),
         ("app.focused timing\n".to_owned(), "<field> <code> <issue>"),
         (one.replace("timing", "noise"), "the code is one of"),
         (one.replace("lgse/strata", ""), "lgse/strata#<number>"),
@@ -406,6 +410,24 @@ pub(crate) fn a_rule_that_names_values_excuses_only_those() {
         differs(real, json!("Appearance")),
         Some("app.dialog".to_owned())
     );
+    // Another ruling's rule on the same field and code cites its own issue, and each excuses
+    // only its own values (lgse/strata#2572's Settings beside lgse/strata#2405's popovers).
+    let two = [
+        line,
+        r#"app.dialog deviation lgse/strata#2572 {"gtk":null,"rune":["Settings"]}"#,
+    ];
+    let both = Ignored {
+        rules: rules::parse(&two.join("\n"), &exceptions()).expect("both rules should parse"),
+        masks: Vec::new(),
+    };
+    for (rune, excused) in [
+        ("Settings", true),
+        ("Appearance", true),
+        ("Unable to open location", false),
+    ] {
+        let (left, right) = streams(Value::Null, json!(rune));
+        assert_eq!(compare(&left, &right, &both).is_none(), excused, "{rune}");
+    }
     // The order of the streams does not turn the rule round.
     let (left, right) = streams(Value::Null, json!("Appearance"));
     assert_eq!(compare(&right, &left, &ruled), None);

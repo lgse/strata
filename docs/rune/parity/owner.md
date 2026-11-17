@@ -645,16 +645,16 @@ Found by the package's agent, 2026-11-12, against A1's five items above.
 
 ### A18: Settings and themes
 
-1. **Settings' roles to assistive technology** (finding
-   [#2572](https://github.com/lgse/strata/issues/2572), `divergence`). GTK's Settings is an
-   unnamed layer over the browser, and its choice menus unnamed popovers. Rune's is a `dialog`
-   named "Settings", and its menus are `menu`s. So every fuzz sequence that opens Settings
-   parts on `app.dialog`, and on `app.menu` when a menu opens, though nothing else differs in
-   20 of 20 sequences. Should Rune keep the dialog and menus, with map rules that name their
-   values (as for [#2405](https://github.com/lgse/strata/issues/2405)'s plain popovers), or
-   present GTK's unnamed panels? Meanwhile: Rune keeps them, the `settings` alphabet's
-   sequence is parked, and its smoke tier is not clean, so A18's done-when items 6 and 7 wait
-   on this. Source: A18's `settings` alphabet, 2026-11-17.
+1. **Settings' messages under the ruling of 2026-11-17** (finding
+   [#2572](https://github.com/lgse/strata/issues/2572), its third facet). While a message is open
+   over Settings ("Reset all keybinds?", the save notice), GTK's snapshot names that message: a
+   named dialog inside GTK's unnamed Settings layer. Rune's names "Settings", the first of its
+   two dialogs. It follows from the ruled `deviation`, but its values are not Settings' own:
+   should the map excuse a message's name on GTK against "Settings" on Rune, one more rule
+   `app.dialog deviation lgse/strata#2572 {"gtk":"Reset all keybinds?","rune":["Settings"]}`
+   (and one for each message)? Meanwhile: no such rule, and the `settings` alphabet leaves
+   Reset all out. Rune's Reset all and the save notice are covered by their unit tests and
+   scenarios. Source: A18's `settings` alphabet, 2026-11-17.
 
 ### Packages added later
 
@@ -826,6 +826,14 @@ Rulings of the owner on the parity work, oldest first.
   comes from a separate reviewer session; a re-review of a small, test-only or docs-only fixup
   after it may be the coordinator's, and the coordinator may make docs-only touch-ups to a
   package's file before merging. Source: the owner, 2026-11-16.
+
+- **2026-11-17: Settings' dialog and menus are a ruled `deviation`** (finding
+  [#2572](https://github.com/lgse/strata/issues/2572)). GTK's Settings is an unnamed layer over
+  the browser, and its choice menus are unnamed popovers. Rune keeps its `dialog` named
+  "Settings" and its real `menu`s, as for [#2405](https://github.com/lgse/strata/issues/2405)'s
+  plain popovers. The fuzz map's rules name exactly their values: `app.dialog`'s "Settings"
+  against GTK's none, and an open choice menu's `app.menu` `[]` against GTK's none. Built in
+  [A18](packages/A18.md)'s `settings` alphabet pull request. Source: the owner, 2026-11-17.
 
 ## Housekeeping
 

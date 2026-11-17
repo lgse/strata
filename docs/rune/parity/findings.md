@@ -2252,7 +2252,7 @@ sequence only together with the alphabet's version, so the version is part of th
 
 ### #2572: Settings is a named dialog with menus on Rune and unnamed panels on GTK
 
-- **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2572), filed on
+- **Code:** `deviation`, ruled by the owner on 2026-11-17 ([`owner.md`](owner.md#ruled)). [Issue](https://github.com/lgse/strata/issues/2572), filed on
   2026-11-17 as the finding's reference and closed at once: its state is kept here.
 - **Seen:** in [A18](packages/A18.md)'s `settings` alphabet's smoke tier (v3), in all 20
   sequences. It has three facets of `app.*`, all from one cause:
@@ -2265,7 +2265,7 @@ sequence only together with the alphabet's version, so the version is part of th
   With `app.dialog` and `app.menu` set aside, all 20 sequences agree at every step: focus,
   panes, the text field, `settings.toml` and the tree. The shrunk sequence, one step that opens
   Settings from the header, confirmed 3 of 3:
-  `tests/qa/fuzz/corpus/settings/fuzz-settings-v3-0000000000000001.jsonl`, parked.
+  `tests/qa/fuzz/corpus/settings/fuzz-settings-v3-0000000000000001.jsonl`, unparked once ruled.
 - **Why:**
   - **GTK.** Its Settings is a `gtk::Box` overlaid on the browser and kept between openings
     (`build_layer` in `src/ui/settings.rs`, added by `SettingsLauncher` in
@@ -2280,8 +2280,7 @@ sequence only together with the alphabet's version, so the version is part of th
   is the pattern of [#2405](https://github.com/lgse/strata/issues/2405), whose ruling covers
   plain popovers only. [A9](packages/A9.md)'s `pointer` drafts met the first facet and read
   GTK's Settings as a window of its own; it is a layer in the browser's window.
-- **Concerns:** the `settings` alphabet, whose smoke tier parts at the step that opens Settings
-  until this is ruled; any alphabet that opens Settings.
+- **Concerns:** the `settings` alphabet, and any alphabet that opens Settings.
 - **Options for the owner:**
   1. Rune keeps the named dialog and the menus, and the normalisation map gains rules that name
      their values. For `app.dialog`: GTK's `null`, or a message layer's name such as "Reset all
@@ -2294,4 +2293,14 @@ sequence only together with the alphabet's version, so the version is part of th
      AT-SPI. Assistive technology then loses "Settings" and the menus' roles.
   3. The QA snapshot names the innermost open dialog rather than the first. That is a change
      to strata-qa for both targets, and it leaves the first two facets.
-- **State:** open, for the owner (`owner.md`, A18).
+- **State:** ruled by the owner, 2026-11-17: option 1. Rune keeps the named dialog and the
+  menus, and `tests/qa/fuzz/normalisation.map` names exactly their values:
+  - `app.dialog deviation lgse/strata#2572 {"gtk":null,"rune":["Settings"]}`;
+  - `app.menu deviation lgse/strata#2572 {"gtk":null,"rune":[[]]}`.
+
+  The map takes a rule of one code for each ruling on a field, each citing its own issue
+  (`tests/qa/fuzz/rules.rs`), so the first sits beside #2405's. The third facet's values are a
+  message's name on GTK, not Settings' own, so no rule names them: the `settings` alphabet
+  (v4) leaves Reset all out, and the question is in `owner.md` (A18). Under the two rules, the
+  v4 smoke tier agrees in 20 of 20, and the unparked v3 sequence replays clean.
+  [A18](packages/A18.md)'s.

@@ -6,30 +6,29 @@
 #   Include subfolders, Open folder after dropping files) and List view's folder click modes,
 #   and the Modified date format menu;
 # - Keyboard's two tables, its search, a capture on Rename or Refresh (a free key, a taken key
-#   that is refused, Backspace and Escape), removing Rename's chips, Rename's row Reset, and
-#   Reset all answered with Reset or Cancel.
+#   that is refused, Backspace and Escape), removing Rename's chips and Rename's row Reset.
 #
 # A page-specific action first opens Settings when it is closed and clicks its page, so that
 # most actions reach their control. Pages and the map toggles are clicked, as the scenarios do:
 # GTK keeps every page in its tree, so an `activate` of "10xer mode" can reach General's switch
 # of that name. The date format's menu opens from its inner toggle, as in
 # `settings-choice-buttons-expose-value`: GTK's outer menu button opens nothing when activated.
-# Reset all is pressed only while it can be: GTK's `activate` presses an insensitive button.
-# Its answer is looked for within its dialog: GTK's General page, in the tree too, has a Reset.
+#
+# Settings is a named dialog with menus on Rune and an unnamed layer with unnamed popovers on
+# GTK: a `deviation` the owner ruled on 2026-11-17 (lgse/strata#2572), whose two rules in
+# tests/qa/fuzz/normalisation.map excuse "Settings" and an open choice menu's [] against GTK's
+# none, and nothing else.
 #
 # Left out, with why:
-# - `Escape` on "Reset all keybinds?": GTK's `confirm_reset_all` (`src/ui/settings/keyboard.rs`)
-#   never calls `close_on_escape`, so the confirmation stays open, where Rune's closes as every
-#   other modal does (`oracle` finding lgse/strata#2547, `findings.md`). The `escape` action is
-#   guarded on its absence; Cancel and Close dialog agree on both.
-#
-# Met and kept: GTK's Settings is an unnamed layer and its choice menus unnamed popovers, where
-# Rune's are a named dialog and menus, so every sequence parts on `app.dialog` at the step that
-# opens Settings, and on `app.menu` where a menu opens (`divergence` finding lgse/strata#2572,
-# for the owner; its shrunk sequence is parked in tests/qa/fuzz/corpus/settings).
+# - Reset all and its "Reset all keybinds?" confirmation. While it is open, GTK's snapshot names
+#   the confirmation, a named dialog inside its unnamed Settings layer, and Rune's names
+#   Settings, the first of its two dialogs: lgse/strata#2572's third facet, which the ruling of
+#   2026-11-17 does not name (`owner.md`, A18). Versions 1 to 3 pressed it; Rune's Reset all is
+#   covered by `settings_dialog::keyboard::tests`. Escape on it would meet `oracle` finding
+#   lgse/strata#2547 too: GTK's `confirm_reset_all` never calls `close_on_escape`.
 area = "settings"
-version = 3
-about = "Columns, type to search off: Settings from the header, closed by Close settings and Escape; General's switches, List view's folder clicks and the date format menu; Keyboard's tables, search, capture with a free, a taken and the Backspace and Escape keys, chip removal, row Reset and Reset all with Reset or Cancel"
+version = 4
+about = "Columns, type to search off: Settings from the header, closed by Close settings and Escape; General's switches, List view's folder clicks and the date format menu; Keyboard's tables, search, capture with a free, a taken and the Backspace and Escape keys, chip removal and row Reset"
 header = '{"modes":["columns"],"prefs":{"type_to_search":false}}'
 
 [[action]]
@@ -45,7 +44,7 @@ steps = ['{"activate":{"role":"button","name":"Close settings"},"when":{"present
 [[action]]
 name = "escape"
 weight = 2
-steps = ['{"key":"Escape","when":{"absent":{"role":"dialog","name":"Reset all keybinds?"}}}']
+steps = ['{"key":"Escape"}']
 
 [[action]]
 name = "page"
@@ -94,9 +93,3 @@ choose.keys = ["F2", "Ctrl+R", "Ctrl+E", "r"]
 name = "reset-row"
 weight = 2
 steps = ['{"activate":{"role":"button","name":"Settings"},"when":{"absent":{"role":"button","name":"Close settings"}}}', '{"click":{"role":"button","name":"Keyboard settings"},"when":{"present":{"role":"button","name":"Keyboard settings"}}}', '{"activate":{"role":"button","name":"Restore the default keys of “Rename”","rendered":false},"when":{"present":{"role":"button","name":"Restore the default keys of “Rename”","rendered":false}}}']
-
-[[action]]
-name = "reset-all"
-weight = 2
-steps = ['{"activate":{"role":"button","name":"Settings"},"when":{"absent":{"role":"button","name":"Close settings"}}}', '{"click":{"role":"button","name":"Keyboard settings"},"when":{"present":{"role":"button","name":"Keyboard settings"}}}', '{"activate":{"role":"button","name":"Reset all","rendered":false},"when":{"state":{"target":{"role":"button","name":"Reset all","rendered":false},"sensitive":true}}}', '{"activate":{"role":"button","name":"<answer>","within":{"role":"dialog","name":"Reset all keybinds?"}},"when":{"present":{"role":"dialog","name":"Reset all keybinds?"}}}']
-choose.answer = ["Reset", "Cancel"]

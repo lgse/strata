@@ -3,6 +3,6 @@
 #   v<version>-<seed> <code> <issue>
 #
 # Each line is a finding's sequence shrunk GTK against Rune, named for the smoke seed that met
-# it, and stays until the finding is ruled or fixed. lgse/strata#2572: Settings is a named
-# dialog with menus on Rune and unnamed panels on GTK, met at the step that opens Settings.
-v3-0000000000000001 divergence lgse/strata#2572
+# it, and stays until the finding is ruled or fixed. In the corpus unparked, its finding ruled
+# a `deviation` on 2026-11-17: `v3-0000000000000001` (lgse/strata#2572, Settings is a named
+# dialog with menus on Rune and unnamed panels on GTK), held to agreeing under its map rules.
