@@ -84,11 +84,16 @@ pub(crate) fn kept_neighbour(
     marks: &Marks,
 ) -> Option<Marks> {
     let left = before.is_some_and(|id| column.index_of(id).is_none());
-    let unplaced = marks.cursor.is_none() && marks.selected.is_empty();
-    if !(left && unplaced) || *column.load() == Load::Loading {
+    let removed = left && *column.load() != Load::Loading;
+    if !removed || !unplaced(marks) {
         return None;
     }
     collection.selection.cursor().map(neighbour)
+}
+
+/// The browser marks no cursor and selects nothing.
+fn unplaced(marks: &Marks) -> bool {
+    marks.cursor.is_none() && marks.selected.is_empty()
 }
 
 /// The neighbour a view keeps the keyboard on after a selectionless removal
@@ -116,8 +121,7 @@ impl Kept {
     /// `None` when the browser's stand, which ends the keeping.
     pub(crate) fn marks(&mut self, collection: &CollectionState, marks: &Marks) -> Option<Marks> {
         let id = self.0?;
-        let unplaced = marks.cursor.is_none() && marks.selected.is_empty();
-        if !unplaced || collection.selection.cursor() != Some(id) {
+        if !unplaced(marks) || collection.selection.cursor() != Some(id) {
             self.0 = None;
             return None;
         }
