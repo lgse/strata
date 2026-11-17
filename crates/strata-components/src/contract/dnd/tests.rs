@@ -682,3 +682,31 @@ fn rune_and_unkeyed_custom_binders_take_keyed_zones_as_before() {
     let _ = dnd.drag_source_keyed(el(), "s", source());
     assert_eq!(count.get(), 11);
 }
+
+/// The cases of P1's test of the same name (`strata-platform`, `transfer::mime::tests`), whose
+/// `names` this one copies: a type listed without parameters names its forms with
+/// parameters, one listed with parameters names only itself, and a longer type is no form of
+/// a shorter one.
+#[test]
+fn a_type_without_parameters_names_its_forms_with_parameters() {
+    let cases = [
+        ("application/octet-stream", "application/octet-stream", true),
+        (
+            "application/octet-stream",
+            "application/octet-stream;name=\"a.jpg\"",
+            true,
+        ),
+        ("text/plain", "text/plain;charset=utf-8", true),
+        ("text/plain;charset=utf-8", "text/plain", false),
+        (
+            "text/plain;charset=utf-8",
+            "text/plain;charset=latin1",
+            false,
+        ),
+        ("text/plain", "text/plainer", false),
+        ("text/uri-list", "text/plain", false),
+    ];
+    for (listed, offered, named) in cases {
+        assert_eq!(names(listed, offered), named, "{listed} names {offered}");
+    }
+}

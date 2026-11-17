@@ -26,6 +26,10 @@ pub const TEXT_UTF8: &str = "text/plain;charset=utf-8";
 /// Whether the offered type `offered` is the type a reader `listed`: the same type, or, when
 /// `listed` names no parameters, that type with any (`application/octet-stream` names
 /// `application/octet-stream;name="a.jpg"`, the form a browser drags an image's bytes in).
+///
+/// `strata_components::contract::dnd::names` is the same rule for the components, which may
+/// not depend on this crate (`docs/workspace.md`): a change to one is a change to both, with
+/// the cases of `a_type_without_parameters_names_its_forms_with_parameters` in each.
 pub fn names(listed: &str, offered: &str) -> bool {
     offered == listed
         || (!listed.contains(';')
