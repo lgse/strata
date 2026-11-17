@@ -170,9 +170,14 @@ pub(crate) fn parse(text: &str, codes: &[&str]) -> Result<Vec<Entry>, String> {
 }
 
 /// What orders the entries: a field may have a rule of one code for each ruling, each citing
-/// its own issue (`app.dialog`'s, lgse/strata#2405 and lgse/strata#2572).
-fn sort_key(entry: &Entry) -> (&str, &str, &str) {
-    (&entry.field, &entry.code, &entry.issue)
+/// its own issue (`app.dialog`'s, lgse/strata#2405 and lgse/strata#2572), in the issues' order.
+fn sort_key(entry: &Entry) -> (&str, &str, u64) {
+    let number = entry
+        .issue
+        .strip_prefix("lgse/strata#")
+        .and_then(|number| number.parse().ok())
+        .unwrap_or(u64::MAX);
+    (&entry.field, &entry.code, number)
 }
 
 fn entry(line: &str, codes: &[&str]) -> Result<Entry, String> {

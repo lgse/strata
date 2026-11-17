@@ -643,19 +643,6 @@ Found by the package's agent, 2026-11-12, against A1's five items above.
    change in `roots.rs` by hand (`docs/rune/shared-state.md`, "Merging from `main`"). Should
    the rule move to a shared crate later, with GTK calling it? Source: A10, 2026-11-14.
 
-### A18: Settings and themes
-
-1. **Settings' messages under the ruling of 2026-11-17** (finding
-   [#2572](https://github.com/lgse/strata/issues/2572), its third facet). While a message is open
-   over Settings ("Reset all keybinds?", the save notice), GTK's snapshot names that message: a
-   named dialog inside GTK's unnamed Settings layer. Rune's names "Settings", the first of its
-   two dialogs. It follows from the ruled `deviation`, but its values are not Settings' own:
-   should the map excuse a message's name on GTK against "Settings" on Rune, one more rule
-   `app.dialog deviation lgse/strata#2572 {"gtk":"Reset all keybinds?","rune":["Settings"]}`
-   (and one for each message)? Meanwhile: no such rule, and the `settings` alphabet leaves
-   Reset all out. Rune's Reset all and the save notice are covered by their unit tests and
-   scenarios. Source: A18's `settings` alphabet, 2026-11-17.
-
 ### Packages added later
 
 - **A branch name for a package with no archived issue.** Branch names keep the package's
@@ -833,6 +820,13 @@ Rulings of the owner on the parity work, oldest first.
   "Settings" and its real `menu`s, as for [#2405](https://github.com/lgse/strata/issues/2405)'s
   plain popovers. The fuzz map's rules name exactly their values: `app.dialog`'s "Settings"
   against GTK's none, and an open choice menu's `app.menu` `[]` against GTK's none. Built in
+  [A18](packages/A18.md)'s `settings` alphabet pull request. Source: the owner, 2026-11-17.
+- **2026-11-17: while a message is open over Settings, Rune's QA snapshot reports the topmost
+  dialog, as GTK's does** (finding [#2572](https://github.com/lgse/strata/issues/2572), its third
+  facet). GTK's snapshot names "Reset all keybinds?" or the save notice over its unnamed
+  Settings layer; Rune drew them inside its "Settings" dialog, which the snapshot named. So
+  `app.dialog` names the innermost open dialog on Rune (`Backend::nests_dialogs` in
+  `crates/strata-qa`, which the GTK backend leaves off), and no map rule covers it. Built in
   [A18](packages/A18.md)'s `settings` alphabet pull request. Source: the owner, 2026-11-17.
 
 ## Housekeeping

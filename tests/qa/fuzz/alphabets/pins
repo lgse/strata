@@ -100,8 +100,9 @@ properties v3 103535e459c8641e
 # (fixed), and met GTK's activate of "Reset" reaching General's Reset button. Version 3 looks for
 # Reset all's answer within its dialog. Version 3's smoke tier met only lgse/strata#2572, ruled a
 # `deviation` on 2026-11-17, and that finding's third facet while "Reset all keybinds?" is open,
-# which the ruling does not name. Version 4 leaves Reset all out.
-settings v4 b511623aa3993d92
+# which the ruling does not name. Version 4 left Reset all out, until the owner ruled on
+# 2026-11-17 that Rune's snapshot names the dialog on top; version 5 presses it again.
+settings v5 56b25c119bf09e0d
 sidebar v1 4acfcd20a194fff5
 # tabs: versions 1 and 2 were A4's drafts, never merged: version 1 caught the hidden-tab
 # view-switch focus and tab_shown bug (fixed in shell/tabs.rs) and met lgse/strata#2507;

@@ -2357,8 +2357,9 @@ sequence only together with the alphabet's version, so the version is part of th
   - `app.menu deviation lgse/strata#2572 {"gtk":null,"rune":[[]]}`.
 
   The map takes a rule of one code for each ruling on a field, each citing its own issue
-  (`tests/qa/fuzz/rules.rs`), so the first sits beside #2405's. The third facet's values are a
-  message's name on GTK, not Settings' own, so no rule names them: the `settings` alphabet
-  (v4) leaves Reset all out, and the question is in `owner.md` (A18). Under the two rules, the
-  v4 smoke tier agrees in 20 of 20, and the unparked v3 sequence replays clean.
-  [A18](packages/A18.md)'s.
+  (`tests/qa/fuzz/rules.rs`), so the first sits beside #2405's. The third facet is fixed in the
+  QA backend, by the owner's second ruling of 2026-11-17: Rune's snapshot names the topmost
+  open dialog, the message drawn inside Settings, as GTK's does (`Backend::nests_dialogs` in
+  `crates/strata-qa`, on for the Rune backend only), with no map rule. Under the two rules the
+  `settings` alphabet's v5 smoke tier, Reset all included, agrees in 20 of 20, and the unparked
+  v3 sequence replays clean. [A18](packages/A18.md)'s.

@@ -1873,7 +1873,7 @@ purpose:
 | `tests/qa/fuzz/calibration.mask` | Noise: a field on which two replays on one target differ, with its cause (`unsettled`, `clock` or `environment`) and an issue | Every comparison |
 
 Both have one entry to a line, `<field> <code> <issue>`, sorted by field, code
-and issue, with `#` lines for comments, so two branches that each add a line merge
+and issue number, with `#` lines for comments, so two branches that each add a line merge
 cleanly. A field may have one rule of a code for each ruling, each citing its own
 issue, as `app.dialog`'s two `deviation` rules do:
 
