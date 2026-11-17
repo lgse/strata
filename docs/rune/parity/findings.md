@@ -2281,6 +2281,11 @@ sequence only together with the alphabet's version, so the version is part of th
   664), at the same first wait. The scenario then passed alone three times in a row (6 of 6 runs
   each). #2569 adds the window's zoom wheel and the PDF preview, and leaves the listing, item
   counts and drag and drop as they were.
+- **Seen in [#2583](https://github.com/lgse/strata/pull/2583)'s gate too:** as
+  `drag-file-onto-folder/list-copy`, in its re-gate at `32b544323` (rune offscreen 673 of 675),
+  at the same first wait. The scenario then passed alone three times in a row (6 of 6 runs
+  each). #2583 changes how a drop from another application is read, not the listing or its item
+  counts, and this run's drags come from the window itself.
 - **Concerns:** `drag_and_drop/drag-file-onto-folder/columns-copy`, `list-copy` and `list-move`,
   `required`, [A19](packages/A19.md)'s.
 - **State:** open, unowned. The ledger is unchanged: the run stays `required`. Not traced.
@@ -2304,6 +2309,10 @@ sequence only together with the alphabet's version, so the version is part of th
 - **Also seen** in the gate of [#2573](https://github.com/lgse/strata/pull/2573) (A18): once in
   a full Rune run on clean `strata-next` at `1370c6f7b`, and once in the re-gate at `cad74ce7e`
   (rune offscreen 674 of 675). Alone it then passed on both targets.
+- **Also seen** in the re-gate of [#2583](https://github.com/lgse/strata/pull/2583) at
+  `32b544323` (rune offscreen 673 of 675), at line 11 again. Alone on Rune it then passed three
+  times in a row. #2583 changes drops from other applications; this run cuts, pastes and undoes
+  with keys.
 - **State:** open, unowned.
 
 ### #2570: 10xer's find and filter highlights are not drawn in Rune's rows
