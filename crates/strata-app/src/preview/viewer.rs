@@ -42,6 +42,18 @@ use super::{
 };
 use crate::{App, buttons};
 
+/// Where a handler of a viewer that has gone lands: Rune can dispatch a layout report or a
+/// press it queued for a frame after the viewer was replaced in that frame's update, as a
+/// first load that fails at once replaces the model's frame. The report changes this, which
+/// nothing reads, instead of the viewer now shown.
+#[derive(Default)]
+pub(super) struct Detached {
+    pub(super) viewport: ViewportState,
+    pub(super) model: strata_components::viewers::model::ModelState,
+    pub(super) route: strata_components::viewers::route::RouteState,
+    pub(super) pdf: strata_components::pdf_view::PdfState,
+}
+
 /// Key of the read-only source/text viewer inside the preview drawer.
 pub(crate) const CODE_KEY: &str = "preview-code";
 

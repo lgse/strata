@@ -326,16 +326,20 @@ pub(super) fn build_view(model: &ModelViewer, app: &App, cx: &mut Cx<App>) -> El
         .build(&app.look, cx)
 }
 
+/// The model view's state, or, for a handler Rune queued before the viewer changed, the
+/// preview's detached one (`viewer::Detached`).
 fn model_mut(app: &mut App) -> &mut ModelState {
-    match &mut app.preview.viewer {
+    let preview = &mut app.preview;
+    match &mut preview.viewer {
         Viewer::Model(model) => &mut model.state,
-        _ => unreachable!("ModelView mutated only while Viewer::Model is active"),
+        _ => &mut preview.detached.model,
     }
 }
 
 fn viewport_mut(app: &mut App) -> &mut ViewportState {
-    match &mut app.preview.viewer {
+    let preview = &mut app.preview;
+    match &mut preview.viewer {
         Viewer::Model(model) => &mut model.state.viewport,
-        _ => unreachable!("ModelView mutated only while Viewer::Model is active"),
+        _ => &mut preview.detached.viewport,
     }
 }

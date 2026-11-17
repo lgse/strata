@@ -61,6 +61,7 @@ use crate::{
 pub(crate) struct Preview {
     drawer: DrawerState,
     viewer: Viewer,
+    detached: viewer::Detached,
     raw: raw::RawSection,
     header: HeaderInfo,
     loader: Loader,
@@ -167,6 +168,7 @@ impl Part for Preview {
         Self {
             drawer,
             viewer: Viewer::Empty,
+            detached: viewer::Detached::default(),
             raw: raw::RawSection::default(),
             header: HeaderInfo::default(),
             loader,

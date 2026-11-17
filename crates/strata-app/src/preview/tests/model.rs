@@ -171,3 +171,38 @@ fn a_picture_saved_in_a_model_file_shows_alone() {
         },
     );
 }
+
+/// A first load that fails at once, as the 128 MiB limit does, replaces the frame while its
+/// picture's layout report is still queued: the report lands nowhere, and nothing panics.
+#[test]
+fn a_load_that_fails_at_once_leaves_no_report_for_the_frame() {
+    hosted(
+        MODULE,
+        "model::a_load_that_fails_at_once_leaves_no_report_for_the_frame",
+        |mut host| {
+            let provider = Recorded::default();
+            install(&mut host, &provider);
+            let folder = listed_with(&mut host, &[("oversized.stl", STL)]);
+            disable_auto_preview(&mut host);
+            select(
+                &mut host,
+                &Location::local(folder.path().join("oversized.stl")),
+            );
+            focus_view(&mut host);
+            crate::test_support::send_key(
+                &mut host,
+                rune::KeyEvent {
+                    key: rune::Key::Text(" ".to_owned()),
+                    mods: rune::Mods::default(),
+                },
+            );
+            while provider.count() == 0 {
+                host.turn();
+            }
+            assert!(state(&host).is_some(), "the frame");
+            provider.fail(0, "This model exceeds the 128 MiB preview limit.");
+            while host.turn() {}
+            assert!(matches!(host.app().preview.viewer, Viewer::Message { .. }));
+        },
+    );
+}

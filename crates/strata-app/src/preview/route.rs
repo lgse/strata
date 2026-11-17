@@ -300,16 +300,20 @@ pub(super) fn build_view(route: &RouteViewer, app: &App, cx: &mut Cx<App>) -> El
         .build(&app.look, cx)
 }
 
+/// The route view's state, or, for a handler Rune queued before the viewer changed, the
+/// preview's detached one (`viewer::Detached`).
 fn route_mut(app: &mut App) -> &mut RouteState {
-    match &mut app.preview.viewer {
+    let preview = &mut app.preview;
+    match &mut preview.viewer {
         Viewer::Route(route) => &mut route.state,
-        _ => unreachable!("RouteView mutated only while Viewer::Route is active"),
+        _ => &mut preview.detached.route,
     }
 }
 
 fn viewport_mut(app: &mut App) -> &mut ViewportState {
-    match &mut app.preview.viewer {
+    let preview = &mut app.preview;
+    match &mut preview.viewer {
         Viewer::Route(route) => &mut route.state.viewport,
-        _ => unreachable!("RouteView mutated only while Viewer::Route is active"),
+        _ => &mut preview.detached.viewport,
     }
 }
