@@ -2383,7 +2383,7 @@ sequence only together with the alphabet's version, so the version is part of th
   points from the double-click, it is a single click whatever the timing. What the twin checks is
   unchanged. With the 700 ms sleep the fixed twin passed 3 of 3; under the same load it passed
   10 rounds in a row, 30 of 30, and two full `./scripts/qa-parity.sh all` runs had no failure of
-  it ([A15](packages/A15.md)'s fix pull request).
+  it ([#2584](https://github.com/lgse/strata/pull/2584)).
 - **State:** fixed in the twin. #2581 is its duplicate.
 
 ### #2572: Settings is a named dialog with menus on Rune and unnamed panels on GTK
