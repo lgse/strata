@@ -368,7 +368,7 @@ fn open_folder_menu(app: &mut App, depth: usize) {
     );
 }
 
-pub(crate) type RefusalReport = Rc<dyn Fn(&mut App, &str)>;
+pub(crate) type RefusalReport = Rc<dyn Fn(&mut App, &str, &mut Tx)>;
 
 /// Resolves the current focus targets (`command_targets`) and opens the Open With chooser
 /// (`BrowserView::open_targets_with`). `report` receives untranslated refusal reasons when a
@@ -377,7 +377,7 @@ pub(crate) fn open_targets(app: &mut App, tx: &mut Tx, report: Option<RefusalRep
     let entries = focus_entries(app);
     if entries.is_empty() {
         if let Some(report) = report {
-            report(app, "Nothing to open");
+            report(app, "Nothing to open", tx);
         }
         return false;
     }
@@ -394,7 +394,7 @@ fn resolve_and_open(
     let locations: Vec<Location> = entries.iter().map(|entry| entry.location.clone()).collect();
     if locations.iter().any(Location::is_administrator) {
         if let Some(report) = report {
-            report(app, ADMINISTRATOR_OPEN_REFUSAL);
+            report(app, ADMINISTRATOR_OPEN_REFUSAL, tx);
         }
         return;
     }
@@ -447,11 +447,16 @@ fn target_guard_holds(app: &mut App, tx: &Tx, guard: &TargetGuard) -> bool {
     intact && entries_match_locations(&focus_entries(app), &guard.locations)
 }
 
-fn report_refusal(app: &mut App, report: Option<&RefusalReport>, reason: &str) -> bool {
+fn report_refusal(
+    app: &mut App,
+    report: Option<&RefusalReport>,
+    reason: &str,
+    tx: &mut Tx,
+) -> bool {
     let Some(report) = report else {
         return false;
     };
-    report(app, reason);
+    report(app, reason, tx);
     true
 }
 
@@ -466,10 +471,10 @@ fn finish_target_lookup(
     }
     let applications = match resolved {
         Ok(applications) => applications,
-        Err(reason) => return report_refusal(app, guard.report.as_ref(), reason),
+        Err(reason) => return report_refusal(app, guard.report.as_ref(), reason, tx),
     };
     if let Some(reason) = applications.unavailable_reason() {
-        return report_refusal(app, guard.report.as_ref(), reason);
+        return report_refusal(app, guard.report.as_ref(), reason, tx);
     }
     super::show_chooser(
         app,

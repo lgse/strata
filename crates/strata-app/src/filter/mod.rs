@@ -174,6 +174,8 @@ pub(crate) struct Filter {
     saved_filter: Option<String>,
     /// Opened by 10xer's `f` or `s` prompt (cleared on leaving 10xer mode).
     tenxer_owned: bool,
+    /// A 10xer commit waits for its results to take the cursor (GTK's `focus_on_arrival`).
+    focus_on_arrival: bool,
     /// Counts the columns the filter opened in, for the bar's key.
     serial: u64,
     /// Counts the edits waiting for the debounce and the stops: a wait that ends after a later
@@ -220,7 +222,7 @@ fn placeholder(items: usize) -> String {
 }
 
 /// What the bar's Enter and Down read: the open column's results or rows, and its selection.
-pub(super) fn results(app: &App) -> Results<'_> {
+fn results(app: &App) -> Results<'_> {
     let shown = app
         .filter
         .open_in
@@ -270,7 +272,7 @@ fn opening_in(app: &App) -> Option<OpenIn> {
 }
 
 /// Closes the filter in any other column or view and configures [`FilterState`] for `opening`.
-pub(super) fn prepare_open(app: &mut App, opening: OpenIn, tx: &mut Tx) {
+fn prepare_open(app: &mut App, opening: OpenIn, tx: &mut Tx) {
     let elsewhere = app
         .filter
         .open_in
@@ -446,7 +448,7 @@ fn schedule(app: &mut App, text: String) {
 }
 
 /// Runs `text` at once without waiting for `DEBOUNCE` (`FilterQueryBinding::flush`).
-pub(super) fn flush_search(app: &mut App, text: &str) {
+fn flush_search(app: &mut App, text: &str) {
     if let Some(earlier) = app.filter.debounce.borrow_mut().take() {
         earlier.remove();
     }
@@ -461,9 +463,21 @@ fn search_scope(
     forced_recursive: bool,
 ) -> (Scope, bool) {
     if forced_recursive {
-        (Scope::Paths { root, recursive: true }, true)
+        (
+            Scope::Paths {
+                root,
+                recursive: true,
+            },
+            true,
+        )
     } else if preferences.tenxer_mode {
-        (Scope::Paths { root, recursive: false }, false)
+        (
+            Scope::Paths {
+                root,
+                recursive: false,
+            },
+            false,
+        )
     } else {
         let recursive = preferences.filter_include_subfolders;
         (Scope::Folder { root, recursive }, recursive)
@@ -553,6 +567,7 @@ fn delivered(app: &mut App, batch: Batch, tx: &mut Tx) -> bool {
     let items = eligible(app, &batch);
     let update = hits_for_batch(&mut app.filter, open.folder.clone(), &items, &batch);
     open.show_hits(app, update, tx);
+    tenxer::results_arrived(app, tx);
     if let Some(index) = take_reveal(app) {
         open.place.reveal_index(app, open.depth, index, tx);
     }
@@ -722,6 +737,7 @@ fn closed(app: &mut App) {
     app.filter.forced_recursive = false;
     app.filter.saved_filter = None;
     app.filter.tenxer_owned = false;
+    app.filter.focus_on_arrival = false;
     app.filter.open_in = None;
     app.filter.typed.clear();
     app.filter.pane.drop_hits();
@@ -806,6 +822,12 @@ pub(crate) fn open_hit(app: &mut App, depth: usize, id: EntryId) {
     }
 }
 
+/// Whether Up from the first result gives the keyboard back to the field: 10xer's filter has
+/// its field in the footer prompt, which has closed by then.
+fn up_returns_to_field(app: &App) -> bool {
+    app.filter.state.is_open() && !app.filter.state.tenxer()
+}
+
 /// What a result asks of the view, where it is not a listing's: true when the filter took it.
 pub(crate) fn hit_intent(
     app: &mut App,
@@ -816,7 +838,7 @@ pub(crate) fn hit_intent(
     use strata_components::{collection::element::Intent, contract::Direction};
     match intent {
         // Up from the first result: the field takes the keyboard back.
-        Intent::Edge(Direction::Up) if app.filter.state.is_open() => {
+        Intent::Edge(Direction::Up) if up_returns_to_field(app) => {
             app.filter.state.focus_field();
             tx.focus_when_shown(bar(app).field_key(), false);
             true
@@ -1067,6 +1089,7 @@ impl Part for Filter {
             forced_recursive: false,
             saved_filter: None,
             tenxer_owned: false,
+            focus_on_arrival: false,
             serial: 0,
             edits: 0,
             debounce: Rc::default(),

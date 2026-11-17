@@ -7,8 +7,12 @@
 
 use rune::Tx;
 use strata_components::{
-    collection::keyboard::{Command as NavCommand, Target as NavTarget},
+    collection::{
+        keyboard::{Command as NavCommand, Target as NavTarget},
+        selection::{AnchorRule, Position},
+    },
     contract::Direction,
+    filter_bar::filter::Polled,
     footer::FilterMark,
 };
 use strata_core::model::Location;
@@ -93,7 +97,7 @@ pub(crate) fn dismiss_search_only(app: &mut App, tx: &mut Tx) -> bool {
         let polled = app.filter.state.close();
         route(app, polled, tx);
     } else {
-        apply_tenxer_query(app, &saved, false, true, tx);
+        apply_tenxer_query(app, &saved, Apply::COMMIT_FILTER, tx);
         focus_results_or_view(app, tx);
     }
     true
@@ -123,16 +127,15 @@ fn opening_in_tenxer(app: &App) -> Option<OpenIn> {
     })
 }
 
+/// Whether the filter is open on `target`.
+fn open_on(app: &App, target: &OpenIn) -> bool {
+    app.filter.open_in.as_ref() == Some(target) && app.filter.state.is_open()
+}
+
 /// `BrowserView::listing_filter`: the current or saved `f` query in the focused listing.
 pub(crate) fn listing_filter_query(app: &App) -> Option<String> {
     let target = opening_in_tenxer(app)?;
-    let open = app
-        .filter
-        .open_in
-        .as_ref()
-        .filter(|open| **open == target)?;
-    let _ = open;
-    if !app.filter.state.is_open() {
+    if !open_on(app, &target) {
         return None;
     }
     let text = if app.filter.forced_recursive {
@@ -143,48 +146,79 @@ pub(crate) fn listing_filter_query(app: &App) -> Option<String> {
     (!text.trim().is_empty()).then_some(text)
 }
 
-fn apply_tenxer_query(app: &mut App, query: &str, forced: bool, flush: bool, tx: &mut Tx) -> bool {
-    let Some(opening) = opening_in_tenxer(app) else {
-        return false;
+/// How a 10xer prompt's query reaches the filter: `forced` for `s`'s recursive search, and
+/// `flush` to run it at once on Enter.
+#[derive(Clone, Copy)]
+struct Apply {
+    forced: bool,
+    flush: bool,
+}
+
+impl Apply {
+    const FILTER: Self = Self {
+        forced: false,
+        flush: false,
     };
-    if query.trim().is_empty() && !forced {
-        if app.filter.open_in.as_ref() == Some(&opening) && app.filter.state.is_open() {
+    const COMMIT_FILTER: Self = Self {
+        forced: false,
+        flush: true,
+    };
+    const SEARCH: Self = Self {
+        forced: true,
+        flush: false,
+    };
+    const COMMIT_SEARCH: Self = Self {
+        forced: true,
+        flush: true,
+    };
+}
+
+fn apply_tenxer_query(app: &mut App, query: &str, how: Apply, tx: &mut Tx) {
+    let Some(opening) = opening_in_tenxer(app) else {
+        return;
+    };
+    if query.trim().is_empty() && !how.forced {
+        if open_on(app, &opening) {
             let polled = app.filter.state.close();
             route(app, polled, tx);
         }
-        return true;
+        return;
     }
-    let (place, depth) = (opening.place, opening.depth);
-    let before = place.listing_position(app, depth);
+    let before = opening.place.listing_position(app, opening.depth);
     prepare_open(app, opening, tx);
-    app.filter.forced_recursive = forced;
+    app.filter.forced_recursive = how.forced;
     app.filter.tenxer_owned = true;
-    let polled = if !app.filter.state.is_open() {
-        app.filter.state.open_with(query, before)
-    } else {
-        app.filter.state.edit.replace_text(query.to_owned());
-        app.filter.state.edit.set_caret(query.len());
-        app.filter.state.text_edited(before)
-    };
+    let polled = edit_query(app, query, before);
     app.filter.state.edit.focused = false;
     app.filter.typed = app.filter.state.text().to_owned();
     route(app, polled, tx);
-    if flush && !query.trim().is_empty() {
+    if how.flush && !query.trim().is_empty() {
         flush_search(app, query);
     }
-    true
+}
+
+/// Opens the filter on `query`, or replaces the open one's text with it, keeping `before` as
+/// the selection Escape gives back.
+fn edit_query(app: &mut App, query: &str, before: Position) -> Polled {
+    let state = &mut app.filter.state;
+    if !state.is_open() {
+        return state.open_with(query, before);
+    }
+    state.edit.replace_text(query.to_owned());
+    state.edit.set_caret(query.len());
+    state.text_edited(before)
 }
 
 /// `BrowserView::set_listing_filter`: updates the focused listing's `f` filter live.
 pub(crate) fn set_listing_filter(app: &mut App, query: &str, tx: &mut Tx) {
     app.filter.saved_filter = None;
-    apply_tenxer_query(app, query, false, false, tx);
+    apply_tenxer_query(app, query, Apply::FILTER, tx);
 }
 
 /// `BrowserView::commit_listing_filter`: flushes `query` and returns focus to the results/view.
 pub(crate) fn commit_listing_filter(app: &mut App, query: &str, tx: &mut Tx) {
     app.filter.saved_filter = None;
-    apply_tenxer_query(app, query, false, true, tx);
+    apply_tenxer_query(app, query, Apply::COMMIT_FILTER, tx);
     focus_results_or_view(app, tx);
 }
 
@@ -193,10 +227,7 @@ pub(crate) fn clear_listing_filter(app: &mut App, tx: &mut Tx) -> bool {
     let Some(target) = opening_in_tenxer(app) else {
         return false;
     };
-    if app.filter.open_in.as_ref() != Some(&target)
-        || !app.filter.state.is_open()
-        || app.filter.state.text().is_empty()
-    {
+    if !open_on(app, &target) || app.filter.state.text().is_empty() {
         return false;
     }
     let polled = app.filter.state.close();
@@ -221,11 +252,11 @@ pub(crate) fn begin_listing_search(app: &mut App) -> Option<String> {
 pub(crate) fn set_listing_search(app: &mut App, query: &str, tx: &mut Tx) {
     if query.trim().is_empty() {
         let saved = app.filter.saved_filter.clone().unwrap_or_default();
-        apply_tenxer_query(app, &saved, false, false, tx);
+        apply_tenxer_query(app, &saved, Apply::FILTER, tx);
         return;
     }
     let _ = crate::tenxer::end_all_ranges(app);
-    apply_tenxer_query(app, query, true, false, tx);
+    apply_tenxer_query(app, query, Apply::SEARCH, tx);
 }
 
 /// `BrowserView::commit_listing_search`: commits `query`, or dismisses `s` when empty.
@@ -236,7 +267,7 @@ pub(crate) fn commit_listing_search(app: &mut App, query: &str, tx: &mut Tx) {
         }
         return;
     }
-    apply_tenxer_query(app, query, true, true, tx);
+    apply_tenxer_query(app, query, Apply::COMMIT_SEARCH, tx);
     focus_results_or_view(app, tx);
 }
 
@@ -244,6 +275,7 @@ pub(crate) fn commit_listing_search(app: &mut App, query: &str, tx: &mut Tx) {
 /// filter opened before entering 10xer mode (`end_tenxer_session`).
 pub(crate) fn end_tenxer_filters(app: &mut App, tx: &mut Tx) {
     app.filter.saved_filter = None;
+    app.filter.focus_on_arrival = false;
     if app.filter.tenxer_owned || app.filter.forced_recursive {
         let polled = app.filter.state.close();
         route(app, polled, tx);
@@ -262,7 +294,57 @@ pub(crate) fn focus_visible_results(app: &App, tx: &mut Tx) -> bool {
     true
 }
 
-fn focus_results_or_view(app: &App, tx: &mut Tx) {
+/// GTK's `focus_filter_results`: with no cursor among the shown results, the keyboard lands on
+/// the first one without selecting it, as a GTK list's `grab_focus` does.
+fn cursor_on_first_result(app: &mut App, tx: &mut Tx) {
+    let Some(open) = app.filter.open_in.clone() else {
+        return;
+    };
+    let without_cursor = open.place.shows_hits(app, open.depth)
+        && open
+            .place
+            .shown_with_selection(app, open.depth)
+            .is_some_and(|(source, selection)| {
+                !source.is_empty() && selection.cursor_index(source).is_none()
+            });
+    if !without_cursor {
+        return;
+    }
+    if open.place == Where::Columns {
+        app.columns.move_cursor_to(open.depth, 0, tx);
+        return;
+    }
+    {
+        let (source, collection) = app.filter.pane.parts_mut();
+        let _ = collection
+            .selection
+            .move_cursor(source, 0, AnchorRule::Keep);
+        collection.note_selection(source);
+    }
+    app.filter.pane.reveal_index(open.place.view_key(), 0, tx);
+}
+
+/// GTK's `focus_arrived_results`: results that arrive after a commit, while the keyboard
+/// still waits in the view, put the cursor on the first of them.
+pub(super) fn results_arrived(app: &mut App, tx: &mut Tx) {
+    if !app.filter.focus_on_arrival {
+        return;
+    }
+    let waiting = app
+        .filter
+        .open_in
+        .as_ref()
+        .is_some_and(|open| tx.focused().is_none_or(|key| key == open.place.view_key()));
+    if waiting {
+        cursor_on_first_result(app, tx);
+    } else {
+        app.filter.focus_on_arrival = false;
+    }
+}
+
+fn focus_results_or_view(app: &mut App, tx: &mut Tx) {
+    app.filter.focus_on_arrival = app.filter.open_in.is_some();
+    cursor_on_first_result(app, tx);
     if !focus_visible_results(app, tx)
         && let Some(view) = shell::view_focus(app)
     {
@@ -271,7 +353,7 @@ fn focus_results_or_view(app: &App, tx: &mut Tx) {
 }
 
 /// Resolves the settled directory match for a `/` typed into 10xer's `f` prompt: `None` while
-/// results are still arriving, `Some(Some(folder))` when the settled match is a folder, and
+/// results are still arriving, `Some(Some(folder))` when the settled first match is a folder, and
 /// `Some(None)` when settled on a file or empty results (`settled_filter_match`).
 pub(crate) fn settled_descent_folder(app: &App, at_cursor: bool) -> Option<Option<Location>> {
     if app.filter.open_in.is_none() {
@@ -283,10 +365,9 @@ pub(crate) fn settled_descent_folder(app: &App, at_cursor: bool) -> Option<Optio
     if app.filter.debounce.borrow().is_some() || app.filter.session.awaiting() {
         return None;
     }
-    let folder = app
-        .filter
-        .state
-        .target(results(app))
+    let shown = results(app).source;
+    let folder = (!shown.is_empty())
+        .then(|| shown.id_at(0))
         .and_then(|id| app.filter.found.get(&id))
         .filter(|entry| entry.is_directory())
         .map(|entry| entry.location.clone());

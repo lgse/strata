@@ -181,8 +181,11 @@ impl Part for Trash {
         Action::new("empty-trash", empty::run),
         Action::new("trash-tenxer-confirm", tenxer_confirm)
             .command(TENXER_DELETE_CONFIRM)
-            .keys(&[Keys::at(Stage::Entry, &[TENXER_DELETE_CONFIRM])
-                .when(|app, _| shell::preferences(app).tenxer_mode && confirms_trash_dialog(app))]),
+            .keys(&[Keys::at(
+                Stage::Entry,
+                &[TENXER_DELETE_CONFIRM.ignoring(Modifiers::empty())],
+            )
+            .when(|app, _| shell::preferences(app).tenxer_mode && confirms_trash_dialog(app))]),
         Action::new("trash-dialog-focus", dialog_focus).keys(&[Keys::at(
             Stage::Entry,
             &[
@@ -235,7 +238,10 @@ fn dialog_focus(app: &mut App, call: &Call<'_>, tx: &mut Tx) -> Outcome {
     } else {
         "primary"
     };
-    tx.focus(format!("delete-confirm-{}-{suffix}", confirm.generation), true);
+    tx.focus(
+        format!("delete-confirm-{}-{suffix}", confirm.generation),
+        true,
+    );
     Outcome::Ran
 }
 

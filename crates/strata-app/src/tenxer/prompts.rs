@@ -8,9 +8,9 @@ use std::ops::Range;
 use rune::Tx;
 use strata_components::{
     collection::keyboard::{Command as Nav, Target},
-    contract::Direction,
+    contract::{Direction, EntryKind},
     filter_bar::prompt::{By, FooterPrompt, PromptIntent},
-    rename::initial_selection,
+    rename::{Initial, initial_selection},
 };
 use strata_core::{i18n::tr, model::FileEntry};
 
@@ -20,6 +20,8 @@ pub(crate) mod find;
 pub(crate) mod folder;
 mod names;
 pub(crate) mod spec;
+#[cfg(test)]
+mod tests;
 
 pub(crate) use spec::PromptKind;
 
@@ -55,6 +57,20 @@ impl State {
     }
 }
 
+/// The prompt and the text an answer was asked for: an answer that comes back after either
+/// changed is dropped.
+#[derive(Clone, Copy, Debug)]
+pub(super) struct Asked {
+    pub(super) kind: PromptKind,
+    pub(super) serial: u64,
+}
+
+impl Asked {
+    pub(super) fn holds(self, app: &App) -> bool {
+        app.tenxer.prompt.kind() == Some(self.kind) && app.tenxer.prompt.serial() == self.serial
+    }
+}
+
 pub(crate) fn prompt_builder(app: &App) -> FooterPrompt<App, PromptKind> {
     let builder = FooterPrompt::new(
         PROMPT_KEY,
@@ -69,13 +85,25 @@ pub(crate) fn prompt_builder(app: &App) -> FooterPrompt<App, PromptKind> {
     }
 }
 
-fn open_prompt(
-    app: &mut App,
-    kind: PromptKind,
-    text: &str,
+/// What a prompt opens with: its text, and the part of it selected.
+struct Prefill<'a> {
+    text: &'a str,
     select: Option<Range<usize>>,
-    tx: &mut Tx,
-) {
+}
+
+impl<'a> Prefill<'a> {
+    const EMPTY: Prefill<'static> = Prefill {
+        text: "",
+        select: None,
+    };
+
+    fn text(text: &'a str) -> Self {
+        Self { text, select: None }
+    }
+}
+
+fn open_prompt(app: &mut App, kind: PromptKind, prefill: Prefill<'_>, tx: &mut Tx) {
+    let Prefill { text, select } = prefill;
     super::cancel_chord(app);
     app.tenxer.prompt_state.filter_typed = if kind == PromptKind::Filter {
         text.to_owned()
@@ -96,7 +124,7 @@ pub(crate) fn open_find(app: &mut App, backward: bool, tx: &mut Tx) {
     } else {
         PromptKind::Find
     };
-    open_prompt(app, kind, "", None, tx);
+    open_prompt(app, kind, Prefill::EMPTY, tx);
 }
 
 pub(crate) fn open_history(app: &mut App, recent: bool, tx: &mut Tx) {
@@ -105,31 +133,33 @@ pub(crate) fn open_history(app: &mut App, recent: bool, tx: &mut Tx) {
     } else {
         PromptKind::Jump
     };
-    open_prompt(app, kind, "", None, tx);
+    open_prompt(app, kind, Prefill::EMPTY, tx);
 }
 
 pub(crate) fn open_filter(app: &mut App, tx: &mut Tx) {
     let query = filter::listing_filter_query(app).unwrap_or_default();
-    open_prompt(app, PromptKind::Filter, &query, None, tx);
+    open_prompt(app, PromptKind::Filter, Prefill::text(&query), tx);
 }
 
 pub(crate) fn open_search(app: &mut App, tx: &mut Tx) {
     match filter::begin_listing_search(app) {
-        Some(query) => open_prompt(app, PromptKind::Search, &query, None, tx),
+        Some(query) => open_prompt(app, PromptKind::Search, Prefill::text(&query), tx),
         None => app.tenxer.flash.show(tr("Nothing to search"), tx),
     }
 }
 
 pub(crate) fn open_go(app: &mut App, tx: &mut Tx) {
     app.tenxer.prompt_state.destination_targets.clear();
-    open_prompt(app, PromptKind::Go, "", None, tx);
+    open_prompt(app, PromptKind::Go, Prefill::EMPTY, tx);
 }
 
 pub(crate) fn open_create(app: &mut App, tx: &mut Tx) {
     if new_item::focused_create_parent(app).is_some() {
-        open_prompt(app, PromptKind::Create, "", None, tx);
+        open_prompt(app, PromptKind::Create, Prefill::EMPTY, tx);
     } else {
-        app.tenxer.flash.show(tr("Can\u{2019}t create items here"), tx);
+        app.tenxer
+            .flash
+            .show(tr("Can\u{2019}t create items here"), tx);
     }
 }
 
@@ -149,13 +179,24 @@ pub(crate) fn open_rename(app: &mut App, tx: &mut Tx) {
         return;
     };
     if !rename::can_rename(&entry) {
-        app.tenxer.flash.show(tr("Can\u{2019}t rename items here"), tx);
+        app.tenxer
+            .flash
+            .show(tr("Can\u{2019}t rename items here"), tx);
         return;
     }
     let name = entry.display_name.clone();
-    let stem = initial_selection(&name, entry.is_directory());
+    let kind = if entry.is_directory() {
+        EntryKind::Folder
+    } else {
+        EntryKind::File
+    };
+    let (start, end) = initial_selection(&name, kind, Initial::Stem);
     app.tenxer.prompt_state.rename_target = Some((depth, entry));
-    open_prompt(app, PromptKind::Rename, &name, Some(stem), tx);
+    let prefill = Prefill {
+        text: &name,
+        select: Some(start..end),
+    };
+    open_prompt(app, PromptKind::Rename, prefill, tx);
 }
 
 pub(crate) fn open_transfer(app: &mut App, moving: bool, tx: &mut Tx) {
@@ -174,7 +215,9 @@ pub(crate) fn open_transfer(app: &mut App, moving: bool, tx: &mut Tx) {
             .iter()
             .all(|entry| clipboard::paths::can_remove(&entry.location))
     {
-        app.tenxer.flash.show(tr("Can\u{2019}t move these items"), tx);
+        app.tenxer
+            .flash
+            .show(tr("Can\u{2019}t move these items"), tx);
         return;
     }
     app.tenxer.prompt_state.destination_targets = entries;
@@ -183,12 +226,12 @@ pub(crate) fn open_transfer(app: &mut App, moving: bool, tx: &mut Tx) {
     } else {
         PromptKind::CopyTo
     };
-    open_prompt(app, kind, "", None, tx);
+    open_prompt(app, kind, Prefill::EMPTY, tx);
 }
 
 pub(crate) fn open_extract_to(app: &mut App, entry: FileEntry, tx: &mut Tx) {
     app.tenxer.prompt_state.destination_targets = vec![entry];
-    open_prompt(app, PromptKind::ExtractTo, "", None, tx);
+    open_prompt(app, PromptKind::ExtractTo, Prefill::EMPTY, tx);
 }
 
 fn close_only(app: &mut App, tx: &mut Tx) {
@@ -236,7 +279,7 @@ fn on_intent(app: &mut App, intent: PromptIntent<PromptKind>, tx: &mut Tx) {
             },
             tx,
         ),
-        PromptIntent::Dismissed { kind, text, by } => on_dismissed(app, kind, text, by, tx),
+        PromptIntent::Dismissed { kind, text, by } => on_dismissed(app, kind, (text, by), tx),
         _ => {}
     }
 }
@@ -310,7 +353,7 @@ pub(crate) fn finish_filter_descent(app: &mut App, tx: &mut Tx) {
     shell::publish(app);
     app.browser.navigate(folder);
     shell::settle(app, tx);
-    open_prompt(app, PromptKind::Filter, "", None, tx);
+    open_prompt(app, PromptKind::Filter, Prefill::EMPTY, tx);
 }
 
 fn on_step(app: &mut App, kind: PromptKind, delta: i32, tx: &mut Tx) {
@@ -354,7 +397,9 @@ fn on_submit(app: &mut App, args: folder::SubmitArgs, tx: &mut Tx) {
     }
 }
 
-fn on_dismissed(app: &mut App, kind: PromptKind, text: String, by: By, tx: &mut Tx) {
+/// The prompt went without a submit, by Escape, a blur or another prompt, with `text` as
+/// it stood.
+fn on_dismissed(app: &mut App, kind: PromptKind, (text, by): (String, By), tx: &mut Tx) {
     app.tenxer.prompt_state.completing.cancel();
     app.tenxer.prompt_state.filter_descent = None;
     if kind == PromptKind::Rename {

@@ -26,7 +26,7 @@ fn keeps_filter_open(app: &App, tx: &Tx) -> bool {
     }
     matches!(
         Situation::of(app, tx).holds(),
-        Some(Holds::Modal { .. } | Holds::Menu | Holds::Edit)
+        Some(Holds::Modal { .. } | Holds::Menu | Holds::Edit | Holds::Prompt)
     )
 }
 

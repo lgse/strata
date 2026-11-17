@@ -17,7 +17,7 @@ use strata_fs::{
     services::{TypedPath, validate_basename},
 };
 
-use super::{close_and_return, spec::PromptKind};
+use super::{Asked, close_and_return, spec::PromptKind};
 use crate::{App, new_item, rename, shell};
 
 #[derive(Debug, PartialEq, Eq)]
@@ -110,6 +110,11 @@ fn prepare_typed_entry(app: &App, text: &str) -> Result<TypedEntry, CreateRefusa
     })
 }
 
+/// Whether `name` is already `entry`'s, as shown or on disk.
+fn is_named(entry: &FileEntry, name: &str) -> bool {
+    entry.display_name == name || entry.native_name == OsStr::new(name)
+}
+
 fn prepare_typed_rename(
     depth: usize,
     entry: FileEntry,
@@ -135,7 +140,7 @@ fn prepare_typed_rename(
         validate_basename(text).map_err(CreateRefusal::Invalid)?;
         (text.to_owned(), None)
     };
-    if path.is_none() && (entry.display_name == name || entry.native_name == OsStr::new(&name)) {
+    if path.is_none() && is_named(&entry, &name) {
         return Ok(None);
     }
     Ok(Some(TypedRename {
@@ -147,7 +152,7 @@ fn prepare_typed_rename(
     }))
 }
 
-fn refuse(app: &mut App, kind: PromptKind, serial: u64, refusal: CreateRefusal, tx: &mut Tx) {
+fn refuse(app: &mut App, asked: Asked, refusal: CreateRefusal, tx: &mut Tx) {
     let hint = match refusal {
         CreateRefusal::Invalid(message) => tr(message),
         CreateRefusal::Exists(name) => {
@@ -159,7 +164,7 @@ fn refuse(app: &mut App, kind: PromptKind, serial: u64, refusal: CreateRefusal, 
         }
         CreateRefusal::Unsupported => {
             close_and_return(app, tx);
-            let msg = if kind == PromptKind::Create {
+            let msg = if asked.kind == PromptKind::Create {
                 "Can\u{2019}t create items here"
             } else {
                 "Can\u{2019}t rename items here"
@@ -168,25 +173,27 @@ fn refuse(app: &mut App, kind: PromptKind, serial: u64, refusal: CreateRefusal, 
             return;
         }
     };
-    let _ = app.tenxer.prompt.refuse(serial, hint);
+    let _ = app.tenxer.prompt.refuse(asked.serial, hint);
 }
 
 pub(super) fn submit_create(app: &mut App, serial: u64, text: &str, tx: &mut Tx) {
+    let asked = Asked {
+        kind: PromptKind::Create,
+        serial,
+    };
     let entry = match prepare_typed_entry(app, text) {
         Ok(entry) => entry,
-        Err(refusal) => return refuse(app, PromptKind::Create, serial, refusal, tx),
+        Err(refusal) => return refuse(app, asked, refusal, tx),
     };
     let later = app.tenxer.later.clone();
     glib::MainContext::default().spawn_local(async move {
         let refusal = entry.refusal().await;
         later.then(move |app, tx| {
-            if app.tenxer.prompt.kind() != Some(PromptKind::Create)
-                || app.tenxer.prompt.serial() != serial
-            {
+            if !asked.holds(app) {
                 return false;
             }
             match refusal {
-                Some(refusal) => refuse(app, PromptKind::Create, serial, refusal, tx),
+                Some(refusal) => refuse(app, asked, refusal, tx),
                 None => {
                     app.browser
                         .create_exact_entry(entry.parent, entry.name, entry.directory);
@@ -200,27 +207,39 @@ pub(super) fn submit_create(app: &mut App, serial: u64, text: &str, tx: &mut Tx)
 }
 
 async fn check_typed_rename(rename: &TypedRename) -> Option<CreateRefusal> {
-    if let Some(folder) = rename.start_folder().as_ref().map(gio_file_for_location) {
-        for (name, new_folder) in rename.components() {
-            if let Some(msg) = typed_name_refusal(&folder, name, new_folder).await {
-                return Some(CreateRefusal::Unstorable(msg));
-            }
+    match unstorable(rename).await {
+        Some(refusal) => Some(refusal),
+        None => blocked_or_taken(rename).await,
+    }
+}
+
+/// A name along the typed path that the start folder's file system cannot store.
+async fn unstorable(rename: &TypedRename) -> Option<CreateRefusal> {
+    let folder = gio_file_for_location(&rename.start_folder()?);
+    for (name, new_folder) in rename.components() {
+        if let Some(message) = typed_name_refusal(&folder, name, new_folder).await {
+            return Some(CreateRefusal::Unstorable(message));
         }
     }
+    None
+}
+
+/// A file in the way of the typed folders, or a destination already taken.
+async fn blocked_or_taken(rename: &TypedRename) -> Option<CreateRefusal> {
     let paths = rename.native_paths();
     let start = rename
         .start_folder()
         .and_then(|start| start.native_path().map(std::path::Path::to_path_buf));
     let folders = rename.folders();
     let (blocked, taken) = match paths.zip(start) {
-        Some(((current, wanted), start)) => gio::spawn_blocking(move || {
-            match typed_folder_blocked(&start, &folders) {
+        Some(((current, wanted), start)) => {
+            gio::spawn_blocking(move || match typed_folder_blocked(&start, &folders) {
                 Some(blocked) => (Some(blocked), false),
                 None => (None, typed_rename_is_taken(&current, &wanted)),
-            }
-        })
-        .await
-        .unwrap_or_default(),
+            })
+            .await
+            .unwrap_or_default()
+        }
         None => (None, false),
     };
     match blocked {
@@ -229,41 +248,40 @@ async fn check_typed_rename(rename: &TypedRename) -> Option<CreateRefusal> {
     }
 }
 
+/// Whether the rename prompt is still the one for `entry`.
+fn renames(app: &App, entry: &FileEntry) -> bool {
+    app.tenxer
+        .prompt_state
+        .rename_target
+        .as_ref()
+        .is_some_and(|(_, target)| target.location == entry.location)
+}
+
 pub(super) fn submit_rename(app: &mut App, serial: u64, text: &str, tx: &mut Tx) {
     let Some((depth, entry)) = app.tenxer.prompt_state.rename_target.clone() else {
         close_and_return(app, tx);
         return;
     };
+    let asked = Asked {
+        kind: PromptKind::Rename,
+        serial,
+    };
     let prepared = match prepare_typed_rename(depth, entry, text) {
         Ok(None) => return close_and_return(app, tx),
         Ok(Some(prepared)) => prepared,
-        Err(refusal) => return refuse(app, PromptKind::Rename, serial, refusal, tx),
+        Err(refusal) => return refuse(app, asked, refusal, tx),
     };
     let later = app.tenxer.later.clone();
     glib::MainContext::default().spawn_local(async move {
         let refusal = check_typed_rename(&prepared).await;
         later.then(move |app, tx| {
-            let same_target = app
-                .tenxer
-                .prompt_state
-                .rename_target
-                .as_ref()
-                .is_some_and(|(_, cur)| cur.location == prepared.entry.location);
-            if app.tenxer.prompt.kind() != Some(PromptKind::Rename)
-                || app.tenxer.prompt.serial() != serial
-                || !same_target
-            {
+            if !asked.holds(app) || !renames(app, &prepared.entry) {
                 return false;
             }
             match refusal {
-                Some(refusal) => refuse(app, PromptKind::Rename, serial, refusal, tx),
+                Some(refusal) => refuse(app, asked, refusal, tx),
                 None => {
-                    rename::start_typed_rename(
-                        app,
-                        prepared.depth,
-                        prepared.entry,
-                        prepared.typed,
-                    );
+                    rename::start_typed_rename(app, prepared.depth, prepared.entry, prepared.typed);
                     close_and_return(app, tx);
                     shell::settle(app, tx);
                 }

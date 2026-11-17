@@ -10,6 +10,7 @@ use std::{
     time::Duration,
 };
 
+use gio::prelude::FileExt;
 use rune::Tx;
 use strata_components::filter_bar::prompt::{Candidate, Candidates, CompletionQuery};
 use strata_core::{
@@ -21,7 +22,7 @@ use strata_fs::{
     services::{NavigationHistory, RefusedFolders, sanitize_uri_credentials},
 };
 
-use super::{close_and_return, prompt_builder, spec::PromptKind};
+use super::{Asked, close_and_return, prompt_builder, spec::PromptKind};
 use crate::{
     App, archive,
     filter::{
@@ -74,13 +75,23 @@ fn looks_like_uri(text: &str) -> bool {
         return true;
     }
     let first = text.split('/').next().unwrap_or_default();
-    if let Some((scheme, _)) = first.split_once(':')
-        && is_scheme(scheme)
-        && (text[scheme.len() + 1..].starts_with("//")
-            || LOCATION_SCHEMES.contains(&scheme.to_ascii_lowercase().as_str()))
-    {
-        return true;
-    }
+    has_location_scheme(text, first) || is_user_at_host(first)
+}
+
+/// `scheme://…`, or a scheme Strata opens without the slashes (`trash:`, `smb:`).
+fn has_location_scheme(text: &str, first: &str) -> bool {
+    let Some((scheme, _)) = first.split_once(':') else {
+        return false;
+    };
+    let names_location = || {
+        text[scheme.len() + 1..].starts_with("//")
+            || LOCATION_SCHEMES.contains(&scheme.to_ascii_lowercase().as_str())
+    };
+    is_scheme(scheme) && names_location()
+}
+
+/// `user@host:…`, as scp writes a remote path.
+fn is_user_at_host(first: &str) -> bool {
     first
         .split_once('@')
         .and_then(|(user, rest)| Some((user, rest.split_once(':')?.0)))
@@ -108,6 +119,11 @@ fn split_typed_path(text: &str) -> Option<(&str, &str)> {
     }
 }
 
+/// `~user`: another user's home, which the picker does not resolve.
+fn names_another_home(text: &str) -> bool {
+    text.starts_with('~') && text != "~" && !text.starts_with("~/")
+}
+
 fn picker_scope(
     text: &str,
     current: Option<&Path>,
@@ -120,7 +136,7 @@ fn picker_scope(
     if looks_like_uri(text) {
         return Err("Only local folders can be chosen");
     }
-    if text.starts_with('~') && text != "~" && !text.starts_with("~/") {
+    if names_another_home(text) {
         return Err("Only ~ and ~/ are supported");
     }
     let Some((stem, query)) = split_typed_path(text) else {
@@ -306,15 +322,26 @@ fn complete_folder(app: &mut App, kind: PromptKind, query: CompletionQuery, tx: 
         });
         prompt_builder(app).route(app, polled, tx);
     }
-    start_folder_index(app, scope, refused, typed, query.generation);
+    let listing = Listing {
+        generation: query.generation,
+        typed,
+    };
+    start_folder_index(app, scope, refused, listing);
+}
+
+/// What a folder index's batches answer: the completion they belong to, and the typed folder
+/// itself, listed first.
+#[derive(Clone)]
+struct Listing {
+    generation: u64,
+    typed: Option<PathBuf>,
 }
 
 fn start_folder_index(
     app: &mut App,
     scope: PickerScope,
     refused: RefusedFolders,
-    typed: Option<PathBuf>,
-    prompt_gen: u64,
+    listing: Listing,
 ) {
     let current = active_folder(app);
     let below_open = current.as_deref() == Some(scope.base.as_path());
@@ -333,12 +360,12 @@ fn start_folder_index(
     let query = scope.query;
     let launch = move || {
         session.update(input, &query, limits, move |batch| {
-            let typed = typed.clone();
+            let listing = listing.clone();
             later.then(move |app, tx| {
                 if app.tenxer.prompt_state.completing.generation != run_gen {
                     return false;
                 }
-                deliver_folder_batch(app, prompt_gen, typed, batch, tx);
+                deliver_folder_batch(app, listing, batch, tx);
                 true
             });
         });
@@ -361,11 +388,11 @@ fn start_folder_index(
 
 fn deliver_folder_batch(
     app: &mut App,
-    generation: u64,
-    typed: Option<PathBuf>,
+    listing: Listing,
     batch: filter::session::Batch,
     tx: &mut Tx,
 ) {
+    let Listing { generation, typed } = listing;
     let paths: Vec<PathBuf> = typed
         .into_iter()
         .chain(batch.items.into_iter().map(|item| item.path))
@@ -409,6 +436,26 @@ pub(super) fn submit_history(app: &mut App, chosen: Option<String>, serial: u64,
     shell::settle(app, tx);
 }
 
+/// An answer asked for in one folder: dropped once the prompt or the folder changed.
+#[derive(Clone, Copy)]
+struct Pending {
+    asked: Asked,
+    navigation: u64,
+}
+
+impl Pending {
+    fn of(app: &App, kind: PromptKind, serial: u64) -> Self {
+        Self {
+            asked: Asked { kind, serial },
+            navigation: app.browser.navigation_generation(),
+        }
+    }
+
+    fn holds(self, app: &App) -> bool {
+        self.asked.holds(app) && app.browser.navigation_generation() == self.navigation
+    }
+}
+
 pub(super) fn submit_folder(app: &mut App, args: SubmitArgs, tx: &mut Tx) {
     if args.stepped {
         return finish_folder_submit(app, args, None, tx);
@@ -419,17 +466,14 @@ pub(super) fn submit_folder(app: &mut App, args: SubmitArgs, tx: &mut Tx) {
         return wait_or_finish(app, args, tx);
     };
     let later = app.tenxer.later.clone();
-    let nav = app.browser.navigation_generation();
+    let pending = Pending::of(app, args.kind, args.serial);
     glib::MainContext::default().spawn_local(async move {
         let probed = target.clone();
         let exists = gio::spawn_blocking(move || probed.exists())
             .await
             .unwrap_or(false);
         later.then(move |app, tx| {
-            if app.tenxer.prompt.kind() != Some(args.kind)
-                || app.tenxer.prompt.serial() != args.serial
-                || app.browser.navigation_generation() != nav
-            {
+            if !pending.holds(app) {
                 return false;
             }
             if exists {
@@ -444,7 +488,10 @@ pub(super) fn submit_folder(app: &mut App, args: SubmitArgs, tx: &mut Tx) {
 
 fn wait_or_finish(app: &mut App, args: SubmitArgs, tx: &mut Tx) {
     if !args.settled && app.tenxer.prompt.wait_until_settled(args.serial) {
-        let _ = app.tenxer.prompt.show_hint(args.serial, Some(tr(SEARCHING)));
+        let _ = app
+            .tenxer
+            .prompt
+            .show_hint(args.serial, Some(tr(SEARCHING)));
         return;
     }
     finish_folder_submit(app, args, None, tx);
@@ -452,7 +499,8 @@ fn wait_or_finish(app: &mut App, args: SubmitArgs, tx: &mut Tx) {
 
 fn finish_folder_submit(app: &mut App, args: SubmitArgs, typed: Option<PathBuf>, tx: &mut Tx) {
     if args.kind == PromptKind::Go {
-        submit_go(app, &args.text, args.chosen, typed.is_some(), tx);
+        let picked = args.chosen.filter(|_| typed.is_none());
+        submit_go(app, &args.text, picked, tx);
         return;
     }
     if args.text.trim().is_empty() || app.tenxer.prompt_state.destination_targets.is_empty() {
@@ -468,17 +516,12 @@ fn finish_folder_submit(app: &mut App, args: SubmitArgs, typed: Option<PathBuf>,
         let _ = app.tenxer.prompt.show_hint(args.serial, Some(tr(reason)));
         return;
     };
-    send_to_destination(app, args.kind, args.serial, destination);
+    let pending = Pending::of(app, args.kind, args.serial);
+    send_to_destination(app, pending, destination);
 }
 
-fn submit_go(
-    app: &mut App,
-    text: &str,
-    chosen: Option<String>,
-    typed_exists: bool,
-    tx: &mut Tx,
-) {
-    let picked = (!typed_exists).then_some(chosen).flatten();
+/// Goes to the candidate `picked`, or else to the typed path or URI.
+fn submit_go(app: &mut App, text: &str, picked: Option<String>, tx: &mut Tx) {
     close_and_return(app, tx);
     if text.trim().is_empty() {
         return;
@@ -502,39 +545,40 @@ fn submit_go(
     }
 }
 
-fn send_to_destination(app: &mut App, kind: PromptKind, serial: u64, destination: PathBuf) {
-    let mut targets = app.tenxer.prompt_state.destination_targets.clone();
+fn send_to_destination(app: &mut App, pending: Pending, destination: PathBuf) {
+    let targets = app.tenxer.prompt_state.destination_targets.clone();
     if targets.is_empty() {
         return;
     }
-    let nav = app.browser.navigation_generation();
     let later = app.tenxer.later.clone();
     glib::MainContext::default().spawn_local(async move {
-        let check = gio::spawn_blocking(move || match std::fs::metadata(&destination) {
+        let checked = gio::spawn_blocking(move || match std::fs::metadata(&destination) {
             Ok(meta) if meta.is_dir() => Ok(destination),
             Ok(_) => Err("Not a folder"),
             Err(_) => Err("No such folder"),
         })
-        .await;
+        .await
+        .unwrap_or(Err("Unable to check folder"));
         later.then(move |app, tx| {
-            if app.tenxer.prompt.kind() != Some(kind)
-                || app.tenxer.prompt.serial() != serial
-                || app.browser.navigation_generation() != nav
-            {
+            if !pending.holds(app) {
                 return false;
             }
-            let outcome = match check {
-                Ok(Ok(dest)) if kind == PromptKind::ExtractTo => {
-                    archive::extract_entry_to(app, targets.remove(0), Location::local(dest), tx);
-                    Ok(())
-                }
-                Ok(Ok(dest)) => validate_and_transfer(app, targets, dest, kind == PromptKind::MoveTo),
-                Ok(Err(reason)) => Err(reason),
-                Err(_) => Err("Unable to check folder"),
-            };
+            let outcome = checked.and_then(|folder| {
+                let kind = pending.asked.kind;
+                place_into(
+                    app,
+                    Placing {
+                        kind,
+                        targets,
+                        folder,
+                    },
+                    tx,
+                )
+            });
             match outcome {
                 Ok(()) => close_and_return(app, tx),
                 Err(reason) => {
+                    let serial = pending.asked.serial;
                     let _ = app.tenxer.prompt.show_hint(serial, Some(tr(reason)));
                 }
             }
@@ -542,6 +586,29 @@ fn send_to_destination(app: &mut App, kind: PromptKind, serial: u64, destination
             true
         });
     });
+}
+
+/// What a folder picker's Enter places, and where.
+struct Placing {
+    kind: PromptKind,
+    targets: Vec<FileEntry>,
+    folder: PathBuf,
+}
+
+/// Extracts the archive into the folder, or moves or copies the targets there.
+fn place_into(app: &mut App, placing: Placing, tx: &mut Tx) -> Result<(), &'static str> {
+    let Placing {
+        kind,
+        mut targets,
+        folder,
+    } = placing;
+    match kind {
+        PromptKind::ExtractTo => {
+            archive::extract_entry_to(app, targets.remove(0), Location::local(folder), tx);
+            Ok(())
+        }
+        kind => validate_and_transfer(app, targets, folder, kind == PromptKind::MoveTo),
+    }
 }
 
 fn validate_and_transfer(

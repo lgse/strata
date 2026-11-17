@@ -34,7 +34,8 @@ fn contains_case_insensitive(name: &str, query: &str) -> bool {
         return false;
     }
     let hay: Vec<char> = name.chars().flat_map(char::to_lowercase).collect();
-    hay.windows(needle.len()).any(|win| win == needle.as_slice())
+    hay.windows(needle.len())
+        .any(|win| win == needle.as_slice())
 }
 
 fn next_match(
@@ -55,7 +56,7 @@ fn next_match(
             (None, false) => step - 1,
             (None, true) => len - step,
         })
-        .find(|&idx| contains_case_insensitive(&source.entry(idx).label, query))
+        .find(|&idx| contains_case_insensitive(source.entry(idx).name, query))
 }
 
 fn place_cursor(app: &mut App, index: usize, tx: &mut Tx) {
@@ -63,12 +64,14 @@ fn place_cursor(app: &mut App, index: usize, tx: &mut Tx) {
         let Some(view) = shell::view_focus(app) else {
             return;
         };
-        let (source, collection) = app.filter.pane.source_and_collection();
-        let _ = collection
-            .selection
-            .move_cursor(source, index, AnchorRule::Keep);
-        collection.note_selection(source);
-        collection.reveal(view, source, index, tx);
+        {
+            let (source, collection) = app.filter.pane.parts_mut();
+            let _ = collection
+                .selection
+                .move_cursor(source, index, AnchorRule::Keep);
+            collection.note_selection(source);
+        }
+        app.filter.pane.reveal_index(&view, index, tx);
         return;
     }
     if super::super::shows(app, "columns") {

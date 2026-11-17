@@ -11,7 +11,7 @@ use strata_components::{
         Flash,
         chord::{self, ChordMap, ChordOption, ChordState},
         flash,
-        prompt::{FooterPrompt, PromptState},
+        prompt::PromptState,
     },
 };
 use strata_core::{i18n::tr, model::FileEntry};
@@ -30,8 +30,12 @@ mod bookmarks;
 mod chords;
 mod go;
 mod keys;
+mod prompts;
 #[cfg(test)]
 mod tests;
+mod verbs;
+
+pub(crate) use prompts::finish_filter_descent;
 
 const FLASH_KEY: &str = "footer-flash";
 const CHORD_KEY: &str = "footer-chord";
@@ -148,7 +152,8 @@ pub(crate) struct Tenxer {
     pub(crate) flash: Flash,
     pub(crate) chord: ChordState<()>,
     pub(crate) armed: Option<ChordKind>,
-    pub(crate) prompt: PromptState<()>,
+    pub(crate) prompt: PromptState<prompts::PromptKind>,
+    pub(crate) prompt_state: prompts::State,
     pub(crate) later: Later<App>,
     pub(crate) bookmark_revision: u64,
     pub(crate) bookmark_pending: bool,
@@ -166,6 +171,7 @@ impl Part for Tenxer {
             chord: ChordState::new(),
             armed: None,
             prompt: PromptState::new(),
+            prompt_state: prompts::State::default(),
             later: setup.later.clone(),
             bookmark_revision: 0,
             bookmark_pending: false,
@@ -184,7 +190,7 @@ impl Part for Tenxer {
     }
 
     fn keyboard(app: &App) -> Option<Holds> {
-        (app.tenxer.prompt.is_open() && app.tenxer.prompt.edit.focused).then_some(Holds::Field)
+        app.tenxer.prompt.focused().then_some(Holds::Prompt)
     }
 
     fn tab_hidden(app: &mut App, _: &mut Tx) {
@@ -195,13 +201,18 @@ impl Part for Tenxer {
         let enabled = shell::preferences(app).tenxer_mode;
         let mut changed = false;
         if app.tenxer.was_enabled && !enabled {
-            end_session(app);
+            end_session(app, tx);
             changed = true;
         }
         app.tenxer.was_enabled = enabled;
+        let reference_open = app.shortcuts.reference.is_open();
+        app.tenxer.prompt.hold_open(reference_open);
+        if reference_open {
+            changed |= cancel_chord(app);
+        }
         let polled = app.tenxer.prompt.tick();
         changed |= polled.changed;
-        prompt_builder(app).route(app, polled, tx);
+        prompts::prompt_builder(app).route(app, polled, tx);
         changed |= app.tenxer.flash.tick(clock, tx);
         changed
     }
@@ -217,18 +228,6 @@ fn build(app: &App, frame: &mut Frame<'_, App>) -> Option<El> {
         frame.layer.push(panel);
     }
     None
-}
-
-fn prompt_builder(app: &App) -> FooterPrompt<App, ()> {
-    let builder = FooterPrompt::new(
-        PROMPT_KEY,
-        |app: &App| &app.tenxer.prompt,
-        |app: &mut App| &mut app.tenxer.prompt,
-    );
-    match shell::view_focus(app) {
-        Some(focus) => builder.focus_return(focus),
-        None => builder,
-    }
 }
 
 /// Cancels any armed chord on `app`.
@@ -268,10 +267,18 @@ pub(crate) fn arm_chord(app: &mut App, kind: ChordKind, rows: Vec<(String, Strin
 }
 
 /// Ends an active 10xer session when leaving 10xer mode (`end_tenxer_session`).
-pub(crate) fn end_session(app: &mut App) {
+pub(crate) fn end_session(app: &mut App, tx: &mut Tx) {
     cancel_chord(app);
-    let _ = app.tenxer.prompt.close();
+    crate::open_with::cancel_target_lookup(app);
+    app.tenxer.prompt_state.reset_all();
+    let prompt_had_focus = app.tenxer.prompt.focused();
+    let polled = app.tenxer.prompt.close();
+    prompts::prompt_builder(app).route(app, polled, tx);
+    filter::end_tenxer_filters(app, tx);
     end_all_ranges(app);
+    if prompt_had_focus && let Some(view) = shell::view_focus(app) {
+        tx.focus_when_shown(view, true);
+    }
 }
 
 /// Shows `"Nothing to select"` in the footer flash.
@@ -401,5 +408,5 @@ pub(crate) fn chord_pill_el(app: &App) -> Option<El> {
 }
 
 pub(crate) fn prompt_el(app: &App, cx: &mut Cx<App>, layer: &mut Vec<El>) -> Option<El> {
-    prompt_builder(app).build(app, &app.look, cx, layer)
+    prompts::prompt_builder(app).build(app, &app.look, cx, layer)
 }

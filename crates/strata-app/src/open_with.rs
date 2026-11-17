@@ -46,7 +46,9 @@ use crate::{
 
 #[cfg(test)]
 pub(crate) use launch::open_location_at;
-pub(crate) use menu::{open_selection_default, prepare_menu};
+pub(crate) use menu::{
+    RefusalReport, cancel_target_lookup, open_selection_default, open_targets, prepare_menu,
+};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum OpenWithContext {
