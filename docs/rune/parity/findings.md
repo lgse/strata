@@ -2261,8 +2261,13 @@ sequence only together with the alphabet's version, so the version is part of th
   643): the same first wait, the `archive` row's `No items` label, timed out after 15 s. The
   scenario passed alone three times in a row (6 of 6 runs each). #2566 changes the portal
   chooser and leaves the browser's listing, item counts and drag and drop as they were.
-- **Concerns:** `drag_and_drop/drag-file-onto-folder/columns-copy` and `list-copy`, `required`,
-  [A19](packages/A19.md)'s.
+- **Seen a third time:** as `drag-file-onto-folder/list-move`, in the gate of
+  [#2569](https://github.com/lgse/strata/pull/2569)'s review round at `f14ea347d` (rune offscreen
+  663 of 664). It failed at the same first wait. The scenario then passed alone three times in a
+  row (6 of 6 runs each). #2569 adds the window's zoom wheel and the PDF preview, and leaves the
+  listing, item counts and drag and drop as they were.
+- **Concerns:** `drag_and_drop/drag-file-onto-folder/columns-copy`, `list-copy` and `list-move`,
+  `required`, [A19](packages/A19.md)'s.
 - **State:** open, unowned. The ledger is unchanged: the run stays `required`. Not traced.
 
 ### #2568: `undo-restores-completed-move/columns` did not put the file back once in a full Rune run
