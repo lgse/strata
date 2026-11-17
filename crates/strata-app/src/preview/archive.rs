@@ -14,7 +14,7 @@ use strata_fs::services::{
 };
 use strata_kit::look::Look;
 
-use super::{labels, load};
+use super::{keys, labels, load};
 use crate::{
     App,
     commands::{self, Situation},
@@ -105,7 +105,9 @@ pub(super) fn build_prompt_view(
         .labels(labels::archive_prompt())
         .on_field_key(|app: &mut App, ev: &KeyEvent, tx: &mut Tx| {
             let at = Situation::of(app, tx);
-            if commands::read(app, ev, &at, tx).is(ESCAPE_ANY_SHIFT) {
+            let press = commands::read(app, ev, &at, tx);
+            let returns = shell::preferences(app).tenxer_mode && press.is(keys::TENXER_RETURN);
+            if press.is(ESCAPE_ANY_SHIFT) || returns {
                 return commands::on_key(app, ev, tx);
             }
             false

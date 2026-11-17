@@ -1121,6 +1121,7 @@
   "This archive has no parent directory.": "이 압축 파일에는 상위 디렉터리가 없습니다.",
   "This archive uses a compression method or feature that Strata does not support.": "이 압축 파일은 Strata에서 지원하지 않는 압축 방식이나 기능을 사용합니다.",
   "This directory is empty": "이 디렉터리는 비어 있습니다",
+  "Unable to read this directory": "이 디렉터리를 읽을 수 없습니다",
   "This download is not a supported image. Choose a JPEG, BMP, static WebP, GIF or PNG image.": "다운로드한 파일이 지원되는 이미지가 아닙니다. JPEG, BMP, 정적 WebP, GIF 또는 PNG 이미지를 선택하세요.",
   "This exclusion has already been added.": "이 제외 항목은 이미 추가되었습니다.",
   "This folder is empty": "이 폴더는 비어 있습니다",

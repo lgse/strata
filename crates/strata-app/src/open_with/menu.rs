@@ -223,7 +223,7 @@ fn update_menu_open_with(
     let Some(mut model) = app.menu.state.model().cloned() else {
         return;
     };
-    let open_item = add_open.then(|| app.menu.open_item());
+    let open_item = add_open.then(|| crate::menus::Menu::open_item(app));
     for section in &mut model.sections {
         let Some(pos) = section
             .items

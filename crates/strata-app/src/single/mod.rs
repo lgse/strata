@@ -295,7 +295,10 @@ pub(crate) fn collection<V: SinglePane>(app: &App) -> Collection<App> {
     .on_drag_phase(|app: &mut App, d, key, tx| crate::dnd::drag_phase(app, d, key, tx))
     .on_drop(dropped::<V>)
     .drop_action(drop_action::<V>)
-    .marks(|app: &App, id| crate::dnd::with_marks(app, id, crate::clipboard::marks(app, id)))
+    .marks(|app: &App, id| {
+        let marks = crate::dnd::with_marks(app, id, crate::clipboard::marks(app, id));
+        crate::peek::with_marks(app, V::KEY, id, marks)
+    })
     .empty(shown_status::<V>)
     .on_press(|app: &mut App, _, _| {
         interrupted::<V>(app);
@@ -549,9 +552,10 @@ fn heard<V: SinglePane>(app: &mut App, intent: Intent, tx: &mut Tx) {
         Intent::Reveal { id } => reveal::<V>(app, (depth, id), tx),
         // Left at the view's start: the sidebar takes the keyboard, when there is one. The
         // component decides where its start is, from the view's keys (the first tile in Icons,
-        // any row in List); only that Left reaches here.
+        // any row in List); only that Left reaches here. 10xer's keep it in the view, as GTK's
+        // native arrows there stop at the edge (`move_icon_cursor`).
         Intent::Edge(Direction::Left) => {
-            if !shell::preferences(app).tenxer_mode || V::KEY == crate::icons::VIEW {
+            if !shell::preferences(app).tenxer_mode {
                 shell::leave_view_at_start(app, tx);
             }
         }

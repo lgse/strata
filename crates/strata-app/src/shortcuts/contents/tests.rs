@@ -2,7 +2,7 @@
 
 //! The port against the catalog, as GTK's `every_listed_binding_has_its_own_row_in_its_maps`
 //! (`src/ui/keys/tests/catalog.rs`) holds GTK's tables to it: each command the catalog lists
-//! in the default map has a row of its own in some view's sections. Both sides answer to the
+//! in a map has a row of its own in some view's sections of that map. Both sides answer to the
 //! same catalog, so a command added there fails here until the port has its row.
 
 use strata_desktop::keys::{
@@ -13,6 +13,7 @@ use strata_desktop::keys::{
 };
 
 use super::{Mention, Mode, Shortcut, default_sections};
+use crate::shortcuts::tenxer::tenxer_sections;
 
 /// What a row shows for a listed constant: its bindings, the chord key they follow, or its
 /// digit or letter range (GTK's `Wanted`).
@@ -23,8 +24,7 @@ enum Wanted {
     Letters(Letters),
 }
 
-fn wanted(constant: &Listed) -> Wanted {
-    let map = Map::Default;
+fn wanted(constant: &Listed, map: Map) -> Wanted {
     match constant.entry {
         Entry::Binding(binding) => Wanted::Keys(vec![binding], None),
         Entry::Digits(digits) => Wanted::Digits(digits),
@@ -44,12 +44,11 @@ fn wanted(constant: &Listed) -> Wanted {
     }
 }
 
-/// GTK's `shows`, in the default map.
-fn shows(keys: &Keys, wanted: &Wanted) -> bool {
-    let map = Map::Default;
+/// GTK's `shows`, in `map`.
+fn shows(keys: &Keys, wanted: &Wanted, map: Map) -> bool {
     let primary = |shown: &Shown| shown.bindings(map).first().copied();
     match (keys, wanted) {
-        (Keys::Mixed(alternatives), _) => alternatives.iter().any(|keys| shows(keys, wanted)),
+        (Keys::Mixed(alternatives), _) => alternatives.iter().any(|keys| shows(keys, wanted, map)),
         (Keys::Digits(digits), Wanted::Digits(wanted)) => digits == wanted,
         (Keys::Letters(letters), Wanted::Letters(wanted)) => letters == wanted,
         (Keys::Letters(letters), Wanted::Keys(bindings, None)) => letters
@@ -89,6 +88,10 @@ fn shows(keys: &Keys, wanted: &Wanted) -> bool {
     }
 }
 
+/// 10xer's constants only the portal chooser's sections list (`chooser_requests`,
+/// `chooser_files`), which are A20's to port.
+const CHOOSER_ONLY: &[&str] = &["CHOOSE_FOLDER"];
+
 /// Custom action slots ship no key, so bind each to find its row.
 fn keymap_with_custom_actions_bound() -> Keymap {
     let slot_keys = [
@@ -112,11 +115,16 @@ fn keymap_with_custom_actions_bound() -> Keymap {
         })
 }
 
-/// Every view's rows, each once, with the keys its action names (GTK's `reference_rows`).
-fn rows() -> Vec<Vec<Keys>> {
+/// Every view's rows in `map`, each once, with the keys its action names (GTK's
+/// `reference_rows`).
+fn rows(map: Map) -> Vec<Vec<Keys>> {
     let mut rows: Vec<Shortcut> = Vec::new();
     for mode in [Mode::Columns, Mode::Icons, Mode::List] {
-        for shortcut in default_sections(mode).into_iter().flat_map(|s| s.rows) {
+        let sections = match map {
+            Map::Tenxer => tenxer_sections(mode),
+            Map::Default => default_sections(mode),
+        };
+        for shortcut in sections.into_iter().flat_map(|s| s.rows) {
             if !rows.contains(&shortcut) {
                 rows.push(shortcut);
             }
@@ -134,14 +142,22 @@ fn rows() -> Vec<Vec<Keys>> {
 }
 
 #[test]
-fn every_listed_default_binding_has_its_own_row() {
+fn every_listed_binding_has_its_own_row_in_its_maps() {
     crate::startup::install_key_library().expect("the key library");
     let _keymap = use_keymap(keymap_with_custom_actions_bound());
-    let rows = rows();
+    for map in [Map::Default, Map::Tenxer] {
+        assert_each_listed_constant_has_a_row(map);
+    }
+}
+
+fn assert_each_listed_constant_has_a_row(map: Map) {
+    let tenxer = map == Map::Tenxer;
+    let rows = rows(map);
     let wanted: Vec<(Listed, Wanted)> = bindings::listed()
-        .filter(|constant| constant.maps.include(false))
+        .filter(|constant| constant.maps.include(tenxer))
+        .filter(|constant| !(tenxer && CHOOSER_ONLY.contains(&constant.name)))
         .map(|constant| {
-            let keys = wanted(&constant);
+            let keys = wanted(&constant, map);
             (constant, keys)
         })
         .collect();
@@ -154,11 +170,11 @@ fn every_listed_default_binding_has_its_own_row() {
             .collect();
         let shown = rows
             .iter()
-            .filter(|row| row.iter().any(|row_keys| shows(row_keys, keys)))
+            .filter(|row| row.iter().any(|row_keys| shows(row_keys, keys, map)))
             .count();
         assert!(
             shown >= sharing.len(),
-            "{sharing:?} need a row each in the default reference, which has {shown}: \
+            "{sharing:?} need a row each in the {map:?} reference, which has {shown}: \
              port GTK's row from src/ui/shortcut_reference.rs ({})",
             constant.name
         );

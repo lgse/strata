@@ -1121,6 +1121,7 @@
   "This archive has no parent directory.": "Este arquivo compactado não tem um diretório pai.",
   "This archive uses a compression method or feature that Strata does not support.": "Este arquivo compactado usa um método de compactação ou recurso não compatível com o Strata.",
   "This directory is empty": "Este diretório está vazio",
+  "Unable to read this directory": "Não foi possível ler este diretório",
   "This download is not a supported image. Choose a JPEG, BMP, static WebP, GIF or PNG image.": "Este download não é uma imagem compatível. Escolha uma imagem JPEG, BMP, WebP estática, GIF ou PNG.",
   "This exclusion has already been added.": "Esta exclusão já foi adicionada.",
   "This folder is empty": "Esta pasta está vazia",

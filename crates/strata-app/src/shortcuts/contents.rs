@@ -53,7 +53,7 @@ pub(crate) enum Mention {
 }
 
 impl Shortcut {
-    const fn mentioning(self, mention: Mention) -> Self {
+    pub(super) const fn mentioning(self, mention: Mention) -> Self {
         Self {
             mention: Some(mention),
             ..self
@@ -61,7 +61,7 @@ impl Shortcut {
     }
 }
 
-const fn row(keys: Keys, action: &'static str) -> Shortcut {
+pub(super) const fn row(keys: Keys, action: &'static str) -> Shortcut {
     Shortcut {
         keys,
         context: None,
@@ -71,17 +71,20 @@ const fn row(keys: Keys, action: &'static str) -> Shortcut {
     }
 }
 
-const fn within(context: &'static str, keys: Keys, action: &'static str) -> Shortcut {
+pub(super) const fn within(context: &'static str, keys: Keys, action: &'static str) -> Shortcut {
     Shortcut {
         context: Some(context),
         ..row(keys, action)
     }
 }
 
-/// `reference_sections` for the window in the default map: the rows the active keymap binds,
-/// in the sections that keep one.
-pub(crate) fn sections(mode: Mode) -> Vec<Section> {
-    let mut sections = default_sections(mode);
+/// `reference_sections` for the window: 10xer mode's sections or the default map's, with the
+/// rows the active keymap binds, in the sections that keep one.
+pub(crate) fn sections(mode: Mode, tenxer: bool) -> Vec<Section> {
+    let mut sections = match tenxer {
+        true => super::tenxer::tenxer_sections(mode),
+        false => default_sections(mode),
+    };
     for section in &mut sections {
         section.rows.retain(|row| row.keys.is_bound());
     }
@@ -130,7 +133,7 @@ fn custom_action_rows() -> Vec<Shortcut> {
 /// `CUSTOM_ACTION`: a custom action slot's name.
 pub(crate) const CUSTOM_ACTION: &str = "Custom action %{number}";
 
-fn navigation_title(mode: Mode) -> &'static str {
+pub(super) fn navigation_title(mode: Mode) -> &'static str {
     match mode {
         Mode::Columns => "Columns navigation",
         Mode::Icons => "Icons navigation",
@@ -392,17 +395,17 @@ const DEFAULT_TOOLS: &[Shortcut] = &[
     row(One(REFERENCE.shown()), "Show or hide this reference"),
 ];
 
-const SELECT_TAB: Shortcut = row(
+pub(super) const SELECT_TAB: Shortcut = row(
     Keys::Digits(TAB_NUMBERS),
     "Select a tab (hold %{keys} for numbers)",
 )
 .mentioning(Mention::Held(TAB_NUMBERS.modifiers()));
 
-const VIEW_MODES: Keys = Any(shown![VIEW_COLUMNS, VIEW_ICONS, VIEW_LIST]);
+pub(super) const VIEW_MODES: Keys = Any(shown![VIEW_COLUMNS, VIEW_ICONS, VIEW_LIST]);
 
-const TEXT_SIZE: Keys = Any(shown![TEXT_LARGER.alternate(0), TEXT_SMALLER, TEXT_RESET]);
+pub(super) const TEXT_SIZE: Keys = Any(shown![TEXT_LARGER.alternate(0), TEXT_SMALLER, TEXT_RESET]);
 
-const MEDIA: &[Shortcut] = &[
+pub(super) const MEDIA: &[Shortcut] = &[
     row(One(MEDIA_PLAY_PAUSE.shown()), "Play / pause"),
     row(
         Any(shown![MEDIA_SEEK_BACK, MEDIA_SEEK_FORWARD]),
