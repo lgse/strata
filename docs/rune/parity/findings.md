@@ -2348,6 +2348,12 @@ sequence only together with the alphabet's version, so the version is part of th
   `columns-docx` failed at line 21: the clipboard held `uarterly Report`. `columns-md` failed
   at line 20: it held `pha bravo charlie delta`. Each selection started a character or two past
   the drag's start. Alone on the session host the twin then passed four rounds, 12 of 12.
+- **Also seen:** in the gate of [#2577](https://github.com/lgse/strata/pull/2577) at
+  `1ba2778c1909325066429fdf368128030d2ddea1`, `./scripts/qa-parity.sh all`: the session host
+  passed 31 of 32, and `columns-docx` failed at line 21 with `uarterly Report`, as above. Alone
+  it then passed three rounds, 3 of 3 each (`md`, `rtf`, `docx`). That run's selection comes
+  from `click` steps (a double click at line 14, a click and a Shift-click at lines 17 and 18),
+  each a press and release at one point, with no drag between them.
 - **Concerns:** `quick_preview/rendered-document-word-selection-rune`, [A15](packages/A15.md)'s
   `parallel` twin. #2569 changes no pointer drag or document selection.
 - **Not traced.** One reading to check: under the larger batch's load, the compositor's pointer
