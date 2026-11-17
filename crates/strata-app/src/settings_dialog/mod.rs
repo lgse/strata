@@ -31,6 +31,8 @@ mod appearance_page;
 mod controls;
 mod general;
 mod general_more;
+mod keyboard;
+mod message;
 mod notice;
 mod pages;
 mod search_index;
@@ -187,6 +189,7 @@ pub(crate) struct SettingsDialog {
     theme_query: TextEdit,
     theme_filter: appearance_page::ThemeFilter,
     notice: notice::NoticeState,
+    keyboard: keyboard::KeyboardState,
 }
 
 impl SettingsDialog {
@@ -233,6 +236,7 @@ impl SettingsDialog {
             theme_query: TextEdit::default(),
             theme_filter: appearance_page::ThemeFilter::All,
             notice: notice::NoticeState::default(),
+            keyboard: keyboard::KeyboardState::default(),
         }
     }
 
@@ -244,6 +248,7 @@ impl SettingsDialog {
         if self.page != page {
             self.page = page;
             self.open_choice = None;
+            self.keyboard.end_capture();
         }
     }
 
@@ -254,6 +259,13 @@ impl SettingsDialog {
             || self.video_start.edit().focused
             || self.text_size.edit().focused
             || self.roundness.edit().focused
+            || self.keyboard.query.focused
+    }
+
+    /// Whether a message over the pages has the keyboard: the save notice or Reset all's
+    /// confirmation.
+    fn message_open(&self) -> bool {
+        self.notice.is_open() || self.keyboard.confirm_open()
     }
 }
 
@@ -285,6 +297,7 @@ pub(crate) fn open_settings_tx(app: &mut App, tx: &mut Tx) {
     controls::sync_search_index_if_needed(&mut state.index, &mut state.indexed_locale, avail);
     general::sync_general_fields(&mut state.workers, &mut state.video_start, &prefs);
     appearance_page::sync_appearance_fields(&mut state.text_size, &mut state.roundness, &prefs);
+    state.keyboard = keyboard::KeyboardState::opened(prefs.tenxer_mode);
     state.open = true;
     state.open_choice = None;
     state.opened_page = state.page;
@@ -298,11 +311,16 @@ pub(super) fn close_settings(app: &mut App) {
     state.search = SettingsSearchState::new();
     state.theme_query.replace_text("");
     state.theme_filter = appearance_page::ThemeFilter::All;
+    state.keyboard = keyboard::KeyboardState::default();
 }
 
 fn dismiss_settings_or_notice(app: &mut App, tx: &mut Tx) {
     if app.settings_dialog.notice.is_open() {
         notice::dismiss_tx(app, tx);
+        return;
+    }
+    if app.settings_dialog.keyboard.confirm_open() {
+        keyboard::reset_all::dismiss(app, tx);
         return;
     }
     close_settings(app);
@@ -323,7 +341,7 @@ impl Part for SettingsDialog {
             return None;
         }
         Some(Holds::Modal {
-            field: dialog.open && !dialog.notice.is_open() && dialog.text_field_focused(),
+            field: dialog.open && !dialog.message_open() && dialog.text_field_focused(),
         })
     }
 
@@ -349,6 +367,7 @@ impl Part for SettingsDialog {
         changed |= general::video_start_field().poll(app, tx);
         changed |= appearance_page::text_size_field().poll(app, tx);
         changed |= appearance_page::roundness_field().poll(app, tx);
+        changed |= keyboard::poll(app, tx);
         let prefs = shell::preferences(app).clone();
         let state = &mut app.settings_dialog;
         general::sync_general_fields(&mut state.workers, &mut state.video_start, &prefs);
@@ -366,7 +385,7 @@ fn build(app: &App, frame: &mut Frame<'_, App>) -> Option<El> {
     let mut menu_layer = Vec::new();
     let rail = build_rail(app, &search);
     let main = build_main_column(app, &search, &mut menu_layer);
-    let notice_open = app.settings_dialog.notice.is_open();
+    let notice_open = app.settings_dialog.message_open();
     let mut body = row()
         .key("settings-body")
         .w_full()
@@ -378,7 +397,8 @@ fn build(app: &App, frame: &mut Frame<'_, App>) -> Option<El> {
         body = body.inert();
     }
     let mut stack = col().key("settings-stack").w_full().min_h(0.0).child(body);
-    if let Some(overlay) = notice::inline_overlay(app) {
+    if let Some(overlay) = notice::inline_overlay(app).or_else(|| keyboard::reset_all_overlay(app))
+    {
         stack = stack.child(overlay);
     }
     let mut shell = DialogShell::new("settings", tr("Settings"), close_settings)
@@ -556,7 +576,7 @@ fn build_page_content(
         PageId::General => general::build(app, search, menu_layer),
         PageId::Appearance => appearance_page::build(app, search, menu_layer),
         PageId::Actions => pages::actions_page(app, search),
-        PageId::Keyboard => pages::keyboard_page(app, search),
+        PageId::Keyboard => keyboard::build(app, search),
         PageId::Integrations => pages::integrations_page(app, search),
         PageId::Updates => pages::updates_page(app, search, menu_layer),
         PageId::Diagnostics => pages::diagnostics_page(app, search),

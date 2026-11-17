@@ -25,7 +25,7 @@ const LIST: Shape = Shape {
 
 const MODULE: &str = "settings_dialog::tests";
 
-fn press(host: &mut Offscreen, key: Key, mods: Mods) {
+pub(super) fn press(host: &mut Offscreen, key: Key, mods: Mods) {
     send_key(host, KeyEvent { key, mods });
     idle(host);
 }
@@ -86,12 +86,12 @@ fn reveal_and_center(host: &mut Offscreen, key: &str) -> (f32, f32) {
     panic!("{key} never scrolled into settings-page viewport");
 }
 
-fn click(host: &mut Offscreen, key: &str) {
+pub(super) fn click(host: &mut Offscreen, key: &str) {
     let (x, y) = reveal_and_center(host, key);
     click_at(host, x, y);
 }
 
-fn has_state(node: &Value, state: &str) -> bool {
+pub(super) fn has_state(node: &Value, state: &str) -> bool {
     node["states"]
         .as_array()
         .is_some_and(|states| states.iter().any(|held| held == state))

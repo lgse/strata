@@ -37,8 +37,11 @@ use crate::{
 
 mod contents;
 mod data;
+mod sections;
 
+pub(crate) use contents::CUSTOM_ACTION;
 use contents::Mode;
+pub(crate) use sections::command_sections;
 
 pub(crate) struct Shortcuts {
     pub(crate) reference: ReferenceState,

@@ -5,7 +5,7 @@
 use std::rc::Rc;
 
 use rune::{El, ScrollSpec, Tx, col, el, icon, row, text};
-use rune_kit::{Button, ButtonVariant, IconButton, IconButtonVariant, TextInput};
+use rune_kit::{Button, ButtonVariant};
 use strata_components::controls::{
     number_field::{NumberField, NumberFieldState},
     settings_search::SettingsSearch,
@@ -22,8 +22,8 @@ use strata_kit::{
 };
 
 use super::controls::{
-    ChoiceOption, ChoiceSpec, PageCtx, RowSpec, choice_menu, group_card, number_field, option_row,
-    section_heading, segmented_toggles, switch_row,
+    ChoiceOption, ChoiceSpec, PageCtx, RowSpec, SearchField, choice_menu, group_card, number_field,
+    option_row, search_field, section_heading, segmented_toggles, switch_row,
 };
 use crate::{App, buttons, shell};
 
@@ -325,26 +325,18 @@ fn theme_library_section(ctx: PageCtx<'_>) -> Option<El> {
 
 fn library_toolbar(app: &App) -> El {
     let look = &app.look;
-    let search_label = tr("Search themes");
-    let input = TextInput::new(&app.settings_dialog.theme_query)
-        .label(search_label.clone())
-        .placeholder(search_label)
-        .width(Some(196.0))
-        .on_edit(|app: &mut App| &mut app.settings_dialog.theme_query)
-        .build(&look.kit)
-        .key("settings-theme-search");
-    let mut search_box = row().gap(look.space.xs).items_center().child(input);
-    if !app.settings_dialog.theme_query.text.is_empty() {
-        let clear = IconButton::new(look.icon(IconName::Close))
-            .variant(IconButtonVariant::Ghost)
-            .label(tr("Clear search"))
-            .on_press_tx(|app: &mut App, tx: &mut Tx| {
-                app.settings_dialog.theme_query.replace_text("");
-                tx.focus("settings-theme-search", true);
-            })
-            .build(&look.kit);
-        search_box = search_box.child(buttons::on_return("settings-theme-search-clear", clear));
-    }
+    let search_box = search_field(
+        app,
+        SearchField {
+            key: "settings-theme-search",
+            clear_key: "settings-theme-search-clear",
+            label: tr("Search themes"),
+            edit: |app| &app.settings_dialog.theme_query,
+            edit_mut: |app| &mut app.settings_dialog.theme_query,
+            width: Some(196.0),
+            on_change: |_| {},
+        },
+    );
     let current = app.settings_dialog.theme_filter;
     let filters = segmented_toggles(
         look,
