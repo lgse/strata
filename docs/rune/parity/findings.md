@@ -214,6 +214,12 @@ closed issue is not a fixed finding: the state given here is the finding's.
   thread holding the write descriptor fails the probe, and the legacy arguments are chosen.
   #2567 does not touch `terminal/`. The fix, if taken up, is A14's: write the script under a
   temporary name and rename it, or retry on `ETXTBSY`.
+- **Sighting on [#2577](https://github.com/lgse/strata/pull/2577):** the ninth again,
+  `fast_delete_animates_only_its_own_success_without_showing_progress`
+  (`minimization.rs:182`, `progress transition timed out`), failed once in
+  `./scripts/quality.sh all --jobs 4` (shard 0, lane 3; the other three lanes passed) at
+  `1ba2778c1`, and passed 3 times of 3 alone under `./scripts/test-headless.py` (7.7 s each).
+  That pull request changes no `src/`.
 
 ### #2176: a GTK critical after a file appears during a rename on a multiple selection
 
