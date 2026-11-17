@@ -2301,6 +2301,9 @@ sequence only together with the alphabet's version, so the version is part of th
   zoom generation out of node paths. The run opens no preview, and its fixture holds no PDF.
 - **Not traced.** One reading to check: line 10 waits only for the moved file on disk, so under
   load Ctrl+Z can arrive before the move is recorded as the operation to undo.
+- **Also seen** in the gate of [#2573](https://github.com/lgse/strata/pull/2573) (A18): once in
+  a full Rune run on clean `strata-next` at `1370c6f7b`, and once in the re-gate at `cad74ce7e`
+  (rune offscreen 674 of 675). Alone it then passed on both targets.
 - **State:** open, unowned.
 
 ### #2570: 10xer's find and filter highlights are not drawn in Rune's rows
@@ -2361,8 +2364,9 @@ sequence only together with the alphabet's version, so the version is part of th
   #2578 changes no pointer drag or document selection.
 - **Also seen** in the gate of [#2573](https://github.com/lgse/strata/pull/2573) (A18): in two
   full runs (`columns-md` and `columns-docx`, then `columns-docx`), and once in two full Rune
-  runs on clean `strata-next` at `1370c6f7b`. Alone it passed 2 of 2 on both targets. Filed
-  again at the same time as [#2581](https://github.com/lgse/strata/issues/2581), a duplicate.
+  runs on clean `strata-next` at `1370c6f7b`, and in the re-gate at `cad74ce7e` (`columns-docx`,
+  session host 34 of 35). Alone it passed each time on both targets. Filed again at the same
+  time as [#2581](https://github.com/lgse/strata/issues/2581), a duplicate.
 - **Not traced.** One reading to check: under the larger batch's load, the compositor's pointer
   motion reaches the document after the press, so the drag's anchor lands past its start.
 - **State:** open, unowned.
