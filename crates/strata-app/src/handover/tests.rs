@@ -2,6 +2,8 @@
 
 use std::{path::Path, rc::Rc};
 
+use rune::{Key, Mods};
+
 use strata_components::collection::{
     element::CollectionState,
     selection::{Extend, Position},
@@ -11,9 +13,28 @@ use strata_fs::{adapters::LocalFileSource, app::Browser, app::BrowserEvent};
 
 use super::{Moving, adopt, sync_rule};
 use crate::{
+    App,
     events::{self, Change, Marks},
     listing::{Column, Edit, Load, Row},
     slots::Ids,
+    test_support::{
+        PATIENCE, fixture,
+        view::{Shape, browser_holds, hosted_in, idle, open, press, wait},
+    },
+};
+
+const MODULE: &str = "handover::tests";
+
+const ICONS: Shape = Shape {
+    described: "Icons view",
+    list: "grid",
+    entry: "grid-cell",
+};
+
+const LIST: Shape = Shape {
+    described: "List view",
+    list: "list",
+    entry: "list-item",
 };
 
 fn file_entry(path: &Path) -> FileEntry {
@@ -252,4 +273,77 @@ fn adopt_updates_anchor_when_cursor_and_selection_already_match() {
         },
     );
     assert_eq!(collection.selection.anchor(), Some(id_b));
+}
+
+/// A view in a saved mode, and the arrow that steps back from the last entry in it.
+struct Moved {
+    mode: &'static str,
+    shape: Shape,
+    back: Key,
+    name: &'static str,
+}
+
+/// After the entry with the keyboard moves out of the folder, a selectionless removal, the
+/// keyboard is on the row beside it with nothing selected, and the browser holds no cursor,
+/// as GTK's list views leave it (finding lgse/strata#2546). The next arrow goes on from that
+/// row, and the browser follows it.
+fn a_move_out_leaves_the_keyboard_on_the_neighbour(case: &Moved) {
+    let (shape, back) = (case.shape, case.back.clone());
+    hosted_in(MODULE, case.mode, case.name, move |mut host| {
+        let folder = fixture();
+        let root = folder.path().to_owned();
+        open(&mut host, shape, &root);
+        press(&mut host, Key::End, Mods::default());
+        wait(&mut host, shape, "todo.txt under the keyboard", |seen| {
+            seen.focused.as_deref() == Some("todo.txt")
+        });
+        let (from, into) = (root.join("todo.txt"), root.join("archive"));
+        host.runtime().update(move |app: &mut App, _| {
+            let sources = vec![Location::local(&from)];
+            crate::transfer::start_drop_transfer(app, Location::local(&into), sources, true);
+        });
+        let gone = host.run_until(PATIENCE, |_| root.join("archive/todo.txt").exists());
+        assert!(gone, "todo.txt moved into archive");
+        let seen = wait(&mut host, shape, "the keyboard on readme.md", |seen| {
+            seen.focused.as_deref() == Some("readme.md")
+        });
+        assert!(seen.selected.is_empty(), "nothing selected: {seen:#?}");
+        idle(&mut host);
+        assert_eq!(
+            browser_holds(&host),
+            (Vec::new(), None),
+            "the browser holds no cursor"
+        );
+
+        press(&mut host, back, Mods::default());
+        let seen = wait(
+            &mut host,
+            shape,
+            "the arrow to go on from readme.md",
+            |seen| seen.focused.as_deref() == Some("pictures"),
+        );
+        assert_eq!(seen.selected, ["pictures"]);
+        let holds = (vec!["pictures".to_owned()], Some("pictures".to_owned()));
+        assert_eq!(browser_holds(&host), holds, "the browser follows the arrow");
+    });
+}
+
+#[test]
+fn a_move_out_leaves_the_keyboard_on_the_neighbour_in_icons() {
+    a_move_out_leaves_the_keyboard_on_the_neighbour(&Moved {
+        mode: "icons",
+        shape: ICONS,
+        back: Key::Left,
+        name: "a_move_out_leaves_the_keyboard_on_the_neighbour_in_icons",
+    });
+}
+
+#[test]
+fn a_move_out_leaves_the_keyboard_on_the_neighbour_in_list() {
+    a_move_out_leaves_the_keyboard_on_the_neighbour(&Moved {
+        mode: "list",
+        shape: LIST,
+        back: Key::Up,
+        name: "a_move_out_leaves_the_keyboard_on_the_neighbour_in_list",
+    });
 }

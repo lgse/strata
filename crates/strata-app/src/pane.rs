@@ -34,7 +34,7 @@ use std::{rc::Rc, sync::Arc};
 use strata_components::{
     collection::{
         element::{CollectionState, Group, Groups},
-        selection::Listing,
+        selection::{Listing, SyncRule},
     },
     contract::{Entry, EntryId, EntrySource},
 };
@@ -43,7 +43,7 @@ use strata_fs::app::Browser;
 
 use crate::{
     events::{Added, Change, Marks, Moved},
-    handover::{self, Held, Moving, Shown},
+    handover::{self, Held, Kept, Moving, Shown},
     listing::{Column, Edit, Load},
     slots::Worn,
 };
@@ -99,6 +99,8 @@ pub(crate) struct Pane {
     generation: u64,
     collection: CollectionState,
     held: Held,
+    /// The neighbour kept after a move out of the folder ([`handover::Kept`]).
+    kept: Kept,
     moving: Moving,
     /// The collection has groups: the folder shown was grouped when they were last given.
     grouped: bool,
@@ -145,6 +147,7 @@ impl Pane {
             shown: None,
             generation: 0,
             held: Held::of(&collection),
+            kept: Kept::default(),
             collection,
             moving: Moving::default(),
             grouped: false,
@@ -488,12 +491,16 @@ impl Pane {
 
     /// Brings the collection in step with its rows after they changed.
     fn sync(&mut self, tx: &mut rune::Tx) {
+        self.sync_by(handover::sync_rule, tx);
+    }
+
+    /// [`Pane::sync`] by `rule`: [`handover::settle_rule`] when the browser's marks follow.
+    fn sync_by(&mut self, rule: fn(&Column) -> SyncRule, tx: &mut rune::Tx) {
         self.regroup();
         let Some(column) = self.shown.and_then(|depth| self.columns.get(depth)) else {
             return;
         };
-        let rule = handover::sync_rule(column);
-        let _ = self.collection.sync(self.scope, column, rule, tx);
+        let _ = self.collection.sync(self.scope, column, rule(column), tx);
     }
 
     fn settle_at(&mut self, depth: usize, marks: &Marks, tx: &mut rune::Tx) {
@@ -509,7 +516,7 @@ impl Pane {
     fn settle(&mut self, marks: &Marks, tx: &mut rune::Tx) {
         let before = self.collection.selection.cursor();
         let restoring = self.collection.restore_pending();
-        self.sync(tx);
+        self.sync_by(handover::settle_rule, tx);
         // A remembered position that came back with the listing is the pane's, as GTK's
         // restore sets the browser's selection to it: the browser's marks don't replace it.
         let restored = restoring && !self.collection.restore_pending();
@@ -520,7 +527,14 @@ impl Pane {
             }
             self.restored = Some(Held::of(&self.collection));
         } else if !handover::placed(before, &self.collection) {
-            self.adopt(marks);
+            let kept = self
+                .shown
+                .and_then(|depth| self.columns.get(depth))
+                .and_then(|column| {
+                    handover::kept_neighbour(before, column, &self.collection, marks)
+                });
+            self.adopt(kept.as_ref().unwrap_or(marks));
+            self.kept.keep(kept.as_ref());
         }
     }
 
@@ -528,6 +542,8 @@ impl Pane {
         let Some(column) = self.shown.and_then(|depth| self.columns.get(depth)) else {
             return;
         };
+        let kept = self.kept.marks(&self.collection, marks);
+        let marks = kept.as_ref().unwrap_or(marks);
         self.held = handover::adopt(column, &mut self.collection, marks);
     }
 
