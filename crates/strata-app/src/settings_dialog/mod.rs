@@ -244,6 +244,15 @@ impl SettingsDialog {
         self.open
     }
 
+    /// Shows `page`. The Keyboard page is made the first time it shows, as GTK builds it on its
+    /// first selection (`src/ui/settings.rs`), so it opens on the table of the mode in force then.
+    pub(super) fn select_page(&mut self, page: PageId, tenxer_mode: bool) {
+        self.set_page(page);
+        if page == PageId::Keyboard {
+            self.keyboard.build_once(tenxer_mode);
+        }
+    }
+
     pub(super) fn set_page(&mut self, page: PageId) {
         if self.page != page {
             self.page = page;
@@ -297,7 +306,6 @@ pub(crate) fn open_settings_tx(app: &mut App, tx: &mut Tx) {
     controls::sync_search_index_if_needed(&mut state.index, &mut state.indexed_locale, avail);
     general::sync_general_fields(&mut state.workers, &mut state.video_start, &prefs);
     appearance_page::sync_appearance_fields(&mut state.text_size, &mut state.roundness, &prefs);
-    state.keyboard = keyboard::KeyboardState::opened(prefs.tenxer_mode);
     state.open = true;
     state.open_choice = None;
     state.opened_page = state.page;
@@ -311,7 +319,9 @@ pub(super) fn close_settings(app: &mut App) {
     state.search = SettingsSearchState::new();
     state.theme_query.replace_text("");
     state.theme_filter = appearance_page::ThemeFilter::All;
-    state.keyboard = keyboard::KeyboardState::default();
+    // GTK hides its Settings layer and keeps it: the keybind search and the table shown stay as
+    // they were, and only a capture or a confirmation ends with it.
+    state.keyboard.closed();
 }
 
 fn dismiss_settings_or_notice(app: &mut App, tx: &mut Tx) {
@@ -339,6 +349,11 @@ impl Part for SettingsDialog {
         let dialog = &app.settings_dialog;
         if !dialog.open && !dialog.notice.is_open() {
             return None;
+        }
+        if dialog.open && !dialog.message_open() && dialog.open_choice.is_some() {
+            // A choice menu is a second modal, which leaves only the menu in the tree. Its keys
+            // stay in it, as GTK's popover in the Settings window keeps them from the browser.
+            return Some(Holds::Popover);
         }
         Some(Holds::Modal {
             field: dialog.open && !dialog.message_open() && dialog.text_field_focused(),
@@ -488,7 +503,8 @@ fn nav_button(app: &App, entry: &NavEntry) -> El {
                 )
         })
         .on_press_tx(move |app: &mut App, _: &mut Tx| {
-            app.settings_dialog.set_page(page);
+            let tenxer_mode = shell::preferences(app).tenxer_mode;
+            app.settings_dialog.select_page(page, tenxer_mode);
         })
         .build(kit)
         .w_full()

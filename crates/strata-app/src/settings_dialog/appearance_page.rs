@@ -334,7 +334,6 @@ fn library_toolbar(app: &App) -> El {
             edit: |app| &app.settings_dialog.theme_query,
             edit_mut: |app| &mut app.settings_dialog.theme_query,
             width: Some(196.0),
-            on_change: |_| {},
         },
     );
     let current = app.settings_dialog.theme_filter;
