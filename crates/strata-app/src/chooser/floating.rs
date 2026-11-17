@@ -10,6 +10,9 @@
 //! of the portal, choosing one existing folder. Its answer comes back through the asking
 //! window's [`Later`], which then transfers or extracts into the folder chosen.
 
+#[cfg(test)]
+mod tests;
+
 use std::{
     path::{Path, PathBuf},
     rc::Rc,

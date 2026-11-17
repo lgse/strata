@@ -218,61 +218,75 @@ fn save_files_refuse_a_folder_or_a_link_to_one_in_the_way() {
     assert!(relative.is_err());
 }
 
+/// The entries chosen, whether folders are asked for, whether several are, and the answer.
+type SelectionCase = (
+    Vec<FileEntry>,
+    bool,
+    bool,
+    Result<Vec<PathBuf>, &'static str>,
+);
+
 #[test]
 fn open_selection_validates_kind_cardinality_and_locality() {
     let current = Location::local("/tmp");
     let file = entry(Path::new("/tmp/file"), false);
     let folder = entry(Path::new("/tmp/folder"), true);
-    assert_eq!(
-        open_selection(std::slice::from_ref(&file), &current, false, false),
-        Ok(vec![PathBuf::from("/tmp/file")])
-    );
-    assert_eq!(
-        open_selection(&[file.clone(), folder.clone()], &current, false, true),
-        Err("Choose files only")
-    );
-    assert_eq!(
-        open_selection(&[file.clone(), file.clone()], &current, false, false),
-        Err("Choose one item")
-    );
-    assert_eq!(
-        open_selection(&[], &current, false, false),
-        Err("Choose a file")
-    );
-    assert_eq!(
-        open_selection(&[], &current, true, false),
-        Ok(vec![PathBuf::from("/tmp")])
-    );
-    assert_eq!(
-        open_selection(std::slice::from_ref(&file), &current, true, false),
-        Err("Choose folders only")
-    );
     let remote = FileEntry {
         location: Location::uri("smb://server/share/file"),
-        ..folder
+        ..entry(Path::new("/tmp/remote"), true)
     };
-    assert_eq!(
-        open_selection(&[remote], &current, true, false),
-        Err("Choose local items only")
-    );
+    let picked = |path: &str| Ok(vec![PathBuf::from(path)]);
+    let cases: [SelectionCase; 7] = [
+        (vec![file.clone()], false, false, picked("/tmp/file")),
+        (
+            vec![file.clone(), folder],
+            false,
+            true,
+            Err("Choose files only"),
+        ),
+        (
+            vec![file.clone(), file.clone()],
+            false,
+            false,
+            Err("Choose one item"),
+        ),
+        (vec![], false, false, Err("Choose a file")),
+        (vec![], true, false, picked("/tmp")),
+        (vec![file], true, false, Err("Choose folders only")),
+        (vec![remote], true, false, Err("Choose local items only")),
+    ];
+    for (entries, directory, multiple, expected) in cases {
+        assert_eq!(
+            open_selection(&entries, &current, directory, multiple),
+            expected,
+            "{} entries, directory={directory}, multiple={multiple}",
+            entries.len()
+        );
+    }
 }
 
 #[test]
 fn cancellation_before_presentation_is_sticky_and_cleanup_is_race_safe() {
     let tracker = Arc::new(RequestTracker::default());
     let first = tracker.begin("same".into()).expect("first request");
-    assert!(tracker.begin("same".into()).is_err());
-    assert!(tracker.cancel("same"));
-    assert!(!tracker.cancel("same"), "a second Close changes nothing");
-    assert!(first.cancelled.load(Ordering::SeqCst));
-
+    let twice = tracker.begin("same".into()).is_err();
+    let closes = [tracker.cancel("same"), tracker.cancel("same")];
+    assert_eq!(
+        (twice, closes, first.cancelled.load(Ordering::SeqCst)),
+        (true, [true, false], true),
+        "one request per token; a second Close changes nothing; the request stays cancelled"
+    );
     drop(first);
     let replacement = tracker.begin("same".into()).expect("replacement request");
-    assert!(!replacement.cancelled.load(Ordering::SeqCst));
-    assert!(tracker.cancel("same"));
-    assert!(replacement.cancelled.load(Ordering::SeqCst));
+    let fresh = !replacement.cancelled.load(Ordering::SeqCst);
+    let closed = tracker.cancel("same");
+    let cancelled = replacement.cancelled.load(Ordering::SeqCst);
     drop(replacement);
-    assert!(!tracker.cancel("same"));
+    assert_eq!(
+        (fresh, closed, cancelled, tracker.cancel("same")),
+        (true, true, true, false),
+        "a replacement starts uncancelled, and a finished one leaves nothing to close"
+    );
 }
 
 #[test]
@@ -353,54 +367,76 @@ fn untrusted_request_inputs_are_bounded() {
     ] {
         assert!(validate_common_request(title, label, parent, &[]).is_err());
     }
+    assert!(validate_filename(&"x".repeat(MAX_FILENAME_BYTES + 1)).is_err());
+    for (path, bounded) in [(Some(Path::new(&too_long)), false), (None, true)] {
+        assert_eq!(validate_path(path, "path").is_ok(), bounded, "{path:?}");
+    }
+}
 
-    let choices = (0..=MAX_CHOICES)
-        .map(|index| boolean_choice(&format!("choice-{index}")))
-        .collect::<Vec<_>>();
-    assert!(validate_choices(&choices).is_err());
+#[test]
+fn choices_are_bounded_one_by_one_and_in_total() {
     let crowded = |count: usize| PortalChoice {
         pairs: (0..count)
             .map(|index| (format!("option-{index}"), "Option".to_owned()))
             .collect(),
         ..boolean_choice("choice")
     };
-    assert!(validate_choices(&[crowded(MAX_CHOICE_OPTIONS + 1)]).is_err());
+    let many = (0..=MAX_CHOICES)
+        .map(|index| boolean_choice(&format!("choice-{index}")))
+        .collect::<Vec<_>>();
     let spread =
         vec![crowded(MAX_CHOICE_OPTIONS); MAX_TOTAL_CHOICE_OPTIONS / MAX_CHOICE_OPTIONS + 1];
-    assert!(
-        validate_choices(&spread).is_err(),
-        "options are bounded in total"
-    );
-    assert!(validate_choices(&[crowded(MAX_CHOICE_OPTIONS)]).is_ok());
+    for (why, choices, accepted) in [
+        ("too many choices", many, false),
+        (
+            "a choice with too many options",
+            vec![crowded(MAX_CHOICE_OPTIONS + 1)],
+            false,
+        ),
+        ("too many options in total", spread, false),
+        ("a full choice", vec![crowded(MAX_CHOICE_OPTIONS)], true),
+    ] {
+        assert_eq!(validate_choices(&choices).is_ok(), accepted, "{why}");
+    }
+}
 
+#[test]
+fn filters_are_bounded_by_their_globs_not_their_rule_count() {
     let bulky = filter(
         "GitHub accepted types",
         (0..=FILTER_RULE_WARNING_THRESHOLD)
             .map(|index| FilterRule::MimeType(format!("application/x-attachment-{index}")))
             .collect(),
     );
-    assert!(validate_filters(&[bulky], None).is_ok());
     let glob = |pattern: &str| filter("Filter", vec![FilterRule::Pattern(pattern.to_owned())]);
-    assert!(
-        validate_filters(&[glob("*a*a*a*z")], None).is_err(),
-        "backtracking-heavy globs must be rejected"
-    );
-    assert!(
-        validate_filters(&[glob("*a**.txt")], None).is_ok(),
-        "two wildcard groups remain supported"
-    );
-    assert!(
-        validate_filters(&[glob(&"a".repeat(MAX_GLOB_BYTES + 1))], None).is_err(),
-        "glob length must be bounded"
-    );
-    assert!(
-        validate_filters(&[], Some(&glob("*a*b*c"))).is_err(),
-        "the current filter too"
-    );
-
-    assert!(validate_filename(&"x".repeat(MAX_FILENAME_BYTES + 1)).is_err());
-    assert!(validate_path(Some(Path::new(&too_long)), "path").is_err());
-    assert!(validate_path(None, "path").is_ok());
+    for (why, filters, current, accepted) in [
+        ("many rules", vec![bulky], None, true),
+        (
+            "a backtracking-heavy glob",
+            vec![glob("*a*a*a*z")],
+            None,
+            false,
+        ),
+        ("two wildcard groups", vec![glob("*a**.txt")], None, true),
+        (
+            "a long glob",
+            vec![glob(&"a".repeat(MAX_GLOB_BYTES + 1))],
+            None,
+            false,
+        ),
+        (
+            "a heavy current filter",
+            vec![],
+            Some(glob("*a*b*c")),
+            false,
+        ),
+    ] {
+        assert_eq!(
+            validate_filters(&filters, current.as_ref()).is_ok(),
+            accepted,
+            "{why}"
+        );
+    }
 }
 
 #[test]
@@ -431,10 +467,15 @@ fn long_filter_lists_are_accepted() {
 
 #[test]
 fn a_blank_title_or_label_takes_the_portal_default() {
-    assert_eq!(request_title("  ", "Open Files"), "Open Files");
-    assert_eq!(request_title("Pick", "Open Files"), "Pick");
-    assert_eq!(default_accept_label(None, "Open"), "Open");
-    assert_eq!(default_accept_label(Some("Attach"), "Open"), "Attach");
+    assert_eq!(
+        [
+            request_title("  ", "Open Files"),
+            request_title("Pick", "Open Files"),
+            default_accept_label(None, "Open"),
+            default_accept_label(Some("Attach"), "Open"),
+        ],
+        ["Open Files", "Pick", "Open", "Attach"]
+    );
 }
 
 #[test]

@@ -23,6 +23,7 @@ use crate::{
 
 mod clicks;
 mod filter;
+mod floating;
 mod icon;
 mod invariants;
 mod modifiers;

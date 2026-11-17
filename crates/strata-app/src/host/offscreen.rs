@@ -85,7 +85,7 @@ impl Offscreen {
     }
 
     /// The window's state, for what the host takes out of it outside a handler.
-    #[cfg(feature = "qa")]
+    #[cfg(any(test, feature = "qa"))]
     pub(crate) fn app_mut(&mut self) -> &mut App {
         &mut self.runtime.state
     }
