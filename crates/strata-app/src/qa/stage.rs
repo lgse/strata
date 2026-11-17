@@ -364,6 +364,7 @@ pub(super) fn drawn(elements: &[ElementInfo], app: &App) -> Drawn {
         icon_descriptions: crate::file_providers::presented_descriptions(app),
         buttons: drawn_buttons(elements, &lists),
         sidebar: super::sidebar::Gaps::drawn(elements),
+        jobs: super::jobs::Labels::drawn(elements),
         tenxer: super::tenxer::Labels::drawn(elements),
         outlined: crate::filter::outlined(app),
         edit_range: elements

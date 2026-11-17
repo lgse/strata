@@ -79,6 +79,18 @@ pub(super) fn at_spi(role: &str, named: bool) -> &'static str {
     }
 }
 
+/// What GTK's harness names a `gtk::SearchEntry` (`AccessibleRole::SearchBox` in
+/// `src/qa/targets/naming.rs`), which is no `text` field to the QA engine.
+pub(super) const SEARCH_BOX: &str = "entry";
+
+/// Whether the node keyed `key` is a text input GTK builds as a `gtk::SearchEntry`: the Open
+/// With chooser's search (`open_with::view::search_key`, `src/ui/open_with/dialog.rs`). Other
+/// Rune search inputs stand for GTK's plain `gtk::Entry`, a `text` field.
+pub(super) fn is_search_box(role: &str, key: Option<&str>) -> bool {
+    let open_with_search = |key: &str| key.starts_with("open-with-") && key.ends_with("-search");
+    role == "text-input" && key.is_some_and(open_with_search)
+}
+
 /// The AT-SPI name for Rune's `role` on a node that reports a pressed state (`toggled`) or
 /// not. A button with one is a toggle button, as AccessKit hands it to AT-SPI (`Role::Button`
 /// with `toggled`, in `accesskit_atspi_common`) and as GTK's toggle buttons are.
