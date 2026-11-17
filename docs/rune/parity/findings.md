@@ -2364,7 +2364,9 @@ sequence only together with the alphabet's version, so the version is part of th
   session host; gtk 705 of 705, rune 672 of 672). Alone on the session host the twin passed
   three rounds, 9 of 9. Again after merging `44a600075`, at `9a8df7673`: `columns-docx` alone,
   `uarterly Report` (34 of 35 on the session host; gtk 715 of 715, rune 680 of 680), then 9 of 9
-  alone. #2579 changes no pointer drag or document selection.
+  alone. And after merging `5c107d947`, at `193c69af6`: both runs as at first (33 of 35 on the
+  session host; gtk 715 of 715, rune 680 of 680), then 9 of 9 alone. #2579 changes no pointer
+  drag or document selection.
 - **Concerns:** `quick_preview/rendered-document-word-selection-rune`, [A15](packages/A15.md)'s
   `parallel` twin. #2569 changes no pointer drag or document selection.
 - **Sighting on [#2578](https://github.com/lgse/strata/pull/2578):** in its re-gate at
