@@ -2361,6 +2361,11 @@ sequence only together with the alphabet's version, so the version is part of th
   `columns-md` and `columns-rtf` at line 20 (`pha bravo charlie delta`) and `columns-docx` at
   line 21 (`uarterly Report`); alone on the session host it then passed three rounds, 9 of 9.
   #2578 changes no pointer drag or document selection.
+- **Sighting on [#2583](https://github.com/lgse/strata/pull/2583):** in its gate at
+  `90a405bbc`, the session-host batch passed 33 of 35: `columns-md` failed at line 20
+  (`pha bravo charlie delta`) and `columns-docx` at line 21 (`uarterly Report`). Alone on the
+  session host the twin then passed three rounds, 9 of 9. #2583's session-host change paces
+  only motions after a press outside the window; these clicks are inside it.
 - **Not traced.** One reading to check: under the larger batch's load, the compositor's pointer
   motion reaches the document after the press, so the drag's anchor lands past its start.
 - **State:** open, unowned.
