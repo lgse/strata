@@ -149,7 +149,7 @@ closed issue is not a fixed finding: the state given here is the finding's.
   `1d4e3b8a9` on a loaded host. That change touches neither `src/` nor
   `crates/strata-desktop`; alone, the first passed 3 of 3 and the second 1 of 1
   (`./scripts/test-headless.py`).
-- **On [A13](packages/A13.md)'s closing pull request:** a tenth,
+- **On [#2561](https://github.com/lgse/strata/pull/2561), [A13](packages/A13.md)'s closing pull request:** a tenth,
   `ui::media::tests::reopening_resumes_where_the_preview_closed`
   (`src/ui/media/tests.rs:99`, `assertion failed: media.imp().first_frame.get()`), failed once
   in `./scripts/quality.sh all` in the pinned image at `17d3fa87d` on a loaded host, and 1
@@ -2071,7 +2071,7 @@ sequence only together with the alphabet's version, so the version is part of th
   `packed (1).tar`.
 - **State:** open, for [A15](packages/A15.md) to settle with its preview alphabet: by the Rune
   QA backend presenting the drawn nodes, by the components' trees, or by an `a11y` rule. The
-  same run found one visible difference, which A13's closing pull request fixed: until an
+  same run found one visible difference, which A13's closing pull request, [#2561](https://github.com/lgse/strata/pull/2561), fixed: until an
   archive opens, the header named its kind `ZIP` (`extension_label`,
   `crates/strata-app/src/preview/load.rs`) where GTK writes the extension as it is, `zip`.
   `archives` v4 keeps the drawer closed, and the nine `archive_preview` runs hold the preview.
