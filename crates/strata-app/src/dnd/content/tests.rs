@@ -20,6 +20,9 @@ type Offered<'a> = Vec<(&'a str, &'a [u8])>;
 /// One drop: what it is, what it offers, and what it saves.
 type Case<'a> = (&'a str, Offered<'a>, Option<Content>);
 
+/// The bytes of a type offered but never read: a type the zone does not list.
+const UNREAD: &[u8] = b"\0unread";
+
 fn dropped(items: &[(&str, &[u8])]) -> Dropped {
     let mimes: Vec<std::borrow::Cow<'static, str>> = items
         .iter()
@@ -27,6 +30,7 @@ fn dropped(items: &[(&str, &[u8])]) -> Dropped {
         .collect();
     let items = items
         .iter()
+        .filter(|(_, bytes)| *bytes != UNREAD)
         .map(|(mime, bytes)| DropItem::new(*mime, bytes.to_vec()))
         .collect();
     Dropped::new(
@@ -60,12 +64,45 @@ fn saves(files: Vec<DroppedFile>) -> Option<Content> {
 /// left to the transfer.
 #[test]
 fn a_foreign_drop_saves_what_gtk_saves_from_it() {
-    let png = encoded(image::ImageFormat::Png);
-    let uris = format!("{ADDRESS}\r\n");
-    let file_uri = "file:///tmp/a.txt\r\n";
-    let mixed = format!("{ADDRESS}\r\nfile:///tmp/a.txt\r\n");
-    let named = "application/octet-stream;name=\"photo \\\"one\\\".png\"";
-    let cases: Vec<Case<'_>> = vec![
+    let fixtures = Fixtures::new();
+    let cases = text_and_link_cases(&fixtures)
+        .into_iter()
+        .chain(image_cases(&fixtures));
+    for (what, items, expected) in cases {
+        assert_eq!(read(&dropped(&items)), expected, "{what}");
+    }
+}
+
+/// The bytes the cases of a foreign drop offer.
+struct Fixtures {
+    png: Vec<u8>,
+    uris: String,
+    mixed: String,
+}
+
+impl Fixtures {
+    fn new() -> Self {
+        Self {
+            png: encoded(image::ImageFormat::Png),
+            uris: format!("{ADDRESS}\r\n"),
+            mixed: format!("{ADDRESS}\r\nfile:///tmp/a.txt\r\n"),
+        }
+    }
+
+    fn pasted_png(&self) -> Option<Content> {
+        saves(vec![DroppedFile::png(
+            &tr("pasted_image.name"),
+            self.png.clone(),
+        )])
+    }
+}
+
+/// A browser's image bytes, under the name it gives.
+const NAMED: &str = "application/octet-stream;name=\"photo \\\"one\\\".png\"";
+
+/// Text, addresses and file lists.
+fn text_and_link_cases(f: &Fixtures) -> Vec<Case<'_>> {
+    vec![
         (
             "text",
             vec![("text/plain;charset=utf-8", b"Selected words")],
@@ -83,18 +120,25 @@ fn a_foreign_drop_saves_what_gtk_saves_from_it() {
         ),
         (
             "web addresses",
-            vec![(URI_LIST, uris.as_bytes()), ("text/plain", b"ignored")],
+            vec![(URI_LIST, f.uris.as_bytes()), ("text/plain", b"ignored")],
             saves(vec![link_file(ADDRESS)]),
         ),
         (
             "addresses mixed with files",
-            vec![(URI_LIST, mixed.as_bytes())],
+            vec![(URI_LIST, f.mixed.as_bytes())],
             Some(Content::Refused),
         ),
-        ("files", vec![(URI_LIST, file_uri.as_bytes())], None),
+        ("files", vec![(URI_LIST, b"file:///tmp/a.txt\r\n")], None),
+    ]
+}
+
+/// Image bytes and image data, and what they fall back on.
+fn image_cases(f: &Fixtures) -> Vec<Case<'_>> {
+    let (png, uris) = (&f.png, &f.uris);
+    vec![
         (
             "a browser's image bytes",
-            vec![(named, &png), (URI_LIST, uris.as_bytes())],
+            vec![(NAMED, png), (URI_LIST, uris.as_bytes())],
             saves(vec![
                 DroppedFile::image(Some("photo \"one\".png"), "unused", png.clone())
                     .expect("an image"),
@@ -102,31 +146,35 @@ fn a_foreign_drop_saves_what_gtk_saves_from_it() {
         ),
         (
             "unreadable image bytes, falling back on the address",
-            vec![(named, b"not an image"), (URI_LIST, uris.as_bytes())],
+            vec![(NAMED, b"not an image"), (URI_LIST, uris.as_bytes())],
             saves(vec![link_file(ADDRESS)]),
         ),
         (
             "unreadable image bytes, falling back on text",
-            vec![(named, b"not an image"), ("text/plain", b"caption")],
+            vec![(NAMED, b"not an image"), ("text/plain", b"caption")],
             saves(vec![text_file("caption")]),
         ),
         (
             "unreadable image bytes alone",
-            vec![(named, b"not an image")],
+            vec![(NAMED, b"not an image")],
             Some(Content::Unreadable(tr("Unsupported image format"))),
         ),
+        ("PNG image data", vec![("image/png", png)], f.pasted_png()),
         (
-            "PNG image data",
-            vec![("image/png", &png)],
-            saves(vec![DroppedFile::png(
-                &tr("pasted_image.name"),
-                png.clone(),
-            )]),
+            "PNG image data after an image type the zone does not list",
+            vec![("image/svg+xml", UNREAD), ("image/png", png)],
+            f.pasted_png(),
         ),
-    ];
-    for (what, items, expected) in cases {
-        assert_eq!(read(&dropped(&items)), expected, "{what}");
-    }
+        (
+            "PNG image data after an image type the zone does not list, with text",
+            vec![
+                ("image/svg+xml", UNREAD),
+                ("image/png", png),
+                ("text/plain;charset=utf-8", b"caption"),
+            ],
+            f.pasted_png(),
+        ),
+    ]
 }
 
 /// Image data in another format is saved as a PNG of the same picture.
@@ -246,6 +294,7 @@ fn a_drop_reads_only_the_types_it_uses() {
     let browser = [URI_LIST, named, "image/png", text];
     let plain = [named, "image/png", text];
     let files = [URI_LIST, "image/png", text];
+    let charsets = ["text/plain;charset=x-no-such-charset", text];
     // What it is, the types offered, what each read gives, and the types read, in order.
     let cases: Vec<(&str, &[&'static str], Offered<'_>, Vec<&str>)> = vec![
         (
@@ -281,6 +330,12 @@ fn a_drop_reads_only_the_types_it_uses() {
             vec![named, "image/png", text],
         ),
         (
+            "text in a charset GLib does not know, then UTF-8",
+            &charsets,
+            vec![(charsets[0], b"words"), (charsets[1], b"words")],
+            charsets.to_vec(),
+        ),
+        (
             "files",
             &files,
             vec![(URI_LIST, b"file:///tmp/a.png\r\n")],
@@ -288,23 +343,25 @@ fn a_drop_reads_only_the_types_it_uses() {
         ),
     ];
     for (what, offered, answers, wanted) in cases {
-        let answers: HashMap<&str, &[u8]> = answers.into_iter().collect();
-        let mut reading = Reading {
-            offered: offered.to_vec(),
-            read: HashMap::new(),
-        };
-        let mut order = Vec::new();
-        while let Some(mime) = next_read(&reading) {
-            assert!(
-                order.len() < offered.len(),
-                "{what}: {mime} asked for again"
-            );
-            let bytes = answers.get(mime.as_str()).copied().unwrap_or_default();
-            reading.read.insert(mime.clone(), bytes.to_vec());
-            order.push(mime);
-        }
-        assert_eq!(order, wanted, "{what}");
+        assert_eq!(reads_in_order(offered, answers), wanted, "{what}");
     }
+}
+
+/// The types a drop offering `offered` reads, in order, each read giving what `answers` says.
+fn reads_in_order(offered: &[&'static str], answers: Offered<'_>) -> Vec<String> {
+    let answers: HashMap<&str, &[u8]> = answers.into_iter().collect();
+    let mut reading = Reading {
+        offered: offered.to_vec(),
+        read: HashMap::new(),
+    };
+    let mut order = Vec::new();
+    while let Some(mime) = next_read(&reading) {
+        assert!(order.len() < offered.len(), "{mime} asked for again");
+        let bytes = answers.get(mime.as_str()).copied().unwrap_or_default();
+        reading.read.insert(mime.clone(), bytes.to_vec());
+        order.push(mime);
+    }
+    order
 }
 
 /// Text in a charset other than UTF-8 is converted from it, as GTK's string reader converts;
@@ -342,4 +399,13 @@ fn dropped_text_is_read_in_its_charset() {
     for (mime, bytes, expected) in cases {
         assert_eq!(read(&dropped(&[(mime, bytes)])), expected, "{mime}");
     }
+    let unknown = dropped(&[
+        ("text/plain;charset=x-no-such-charset", b"words"),
+        ("text/plain;charset=utf-8", "café".as_bytes()),
+    ]);
+    assert_eq!(
+        read(&unknown),
+        saves(vec![text_file("café")]),
+        "a charset GLib does not know gives way to the next text form"
+    );
 }

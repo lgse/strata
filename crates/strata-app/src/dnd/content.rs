@@ -36,7 +36,7 @@ mod decode;
 #[cfg(test)]
 mod tests;
 
-pub(crate) use classify::{Got, Reads, next_read, read};
+pub(crate) use classify::{Got, Reads, content_zone_takes, next_read, read};
 
 /// A browser's dragged image bytes, with `;name="…"` (GTK has no reader for them).
 const FILE_CONTENTS: &str = "application/octet-stream";

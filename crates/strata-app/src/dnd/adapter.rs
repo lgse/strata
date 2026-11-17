@@ -8,7 +8,7 @@ use std::{cell::RefCell, sync::Arc};
 use rune::{Cx, El, Mods, PointerEvent, Tx, col, text};
 use strata_components::contract::dnd::{
     DragPayload, DropAction, DropActions, DropData, DropHover, DropItem, DropOffer, DropZone,
-    Dropped, ReadFailure, URI_LIST, names, parse_uri_list,
+    Dropped, ReadFailure, URI_LIST, parse_uri_list,
 };
 use strata_kit::{icons::IconName, look::Look};
 use strata_platform::{
@@ -217,21 +217,17 @@ fn failures_of_p1(failed: &[(String, ReadError)]) -> Vec<(String, ReadFailure)> 
         .collect()
 }
 
-/// A drop being read by P1, as the content policy sees it: the offered types `listed` takes.
+/// A drop being read by P1, as the content policy sees it: the offered types a content zone
+/// takes, as the walk after the drop sees them (`content_zone_takes`).
 struct Reading<'a> {
     data: &'a P1Data,
-    listed: &'a [std::borrow::Cow<'static, str>],
 }
 
 impl Reads for Reading<'_> {
     fn offered(&self) -> Vec<&str> {
-        let takes = |m: &&String| self.listed.iter().any(|l| names(l, m));
-        self.data
-            .offer
-            .mimes
-            .iter()
-            .filter(takes)
-            .map(String::as_str)
+        let types = self.data.offer.mimes.iter().map(String::as_str);
+        types
+            .filter(|mime| content::content_zone_takes(mime))
             .collect()
     }
 
@@ -259,13 +255,7 @@ pub(crate) fn target_of<S: 'static>(zone: DropZone<S>) -> DropTarget<S> {
     // A zone that takes content reads one type at a time, as GTK reads only the one it uses;
     // a zone of files reads the file list.
     let mut target = if content::zone_takes(&zone) {
-        let listed = zone.preferred_mime_types().to_vec();
-        target.read_next(move |data| {
-            content::next_read(&Reading {
-                data,
-                listed: &listed,
-            })
-        })
+        target.read_next(|data| content::next_read(&Reading { data }))
     } else {
         target.read_all()
     };

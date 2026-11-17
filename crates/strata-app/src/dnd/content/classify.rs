@@ -7,15 +7,22 @@
 //! the type it uses and falls back where `DeferredContent::read` does: from image bytes that
 //! are no image, or image data that cannot be read, to the addresses or text offered with
 //! them. So a drop reads one type of each kind at most, in that order, and stops at the first
-//! that settles it.
+//! that settles it. Text is the exception: a form whose charset cannot be read gives way to the
+//! next text form, as GTK's string reader takes only the forms it can read.
+//!
+//! Both walks see the same types: the ones a content zone lists ([`URI_LIST`] and
+//! [`CONTENT_TYPES`](super::CONTENT_TYPES)), in the source's order; a type no one read is
+//! passed over.
+//!
+//! One difference from GTK, on purpose: a file list that could not be read (it timed out, say)
+//! leaves the drop to its image and text types, where GTK's `DeferredContent::for_drop` gives
+//! up and its main target refuses the drop.
 
-use strata_components::contract::dnd::{Dropped, ReadFailure, URI_LIST, parse_uri_list};
+use strata_components::contract::dnd::{Dropped, ReadFailure, URI_LIST, names, parse_uri_list};
 use strata_core::{error_text::UNEXPECTED_SYSTEM_ERROR, i18n::tr};
-use strata_fs::services::{
-    DroppedFile, MAX_DROPPED_FILE_BYTES, WebLink, has_web_scheme, io_error_message,
-};
+use strata_fs::services::{DroppedFile, WebLink, has_web_scheme, io_error_message};
 
-use super::{Content, FILE_CONTENTS, decode};
+use super::{CONTENT_TYPES, Content, FILE_CONTENTS, decode};
 
 /// What a drop holds of one offered type, as far as it was read.
 pub(crate) enum Got<'a> {
@@ -37,21 +44,28 @@ pub(crate) trait Reads {
     fn local(&self) -> bool;
 }
 
+/// Whether a content zone takes the offered type `mime`.
+pub(crate) fn content_zone_takes(mime: &str) -> bool {
+    std::iter::once(URI_LIST)
+        .chain(CONTENT_TYPES.iter().copied())
+        .any(|listed| names(listed, mime))
+}
+
+/// A drop once read. The binder bounds each read (P1 fails one past 64 MiB, which arrives as
+/// [`ReadFailure::TooLarge`]), so the bytes are not measured again here.
 impl Reads for Dropped {
     fn offered(&self) -> Vec<&str> {
-        self.offer.mime_types.iter().map(AsRef::as_ref).collect()
+        let types = self.offer.mime_types.iter().map(AsRef::as_ref);
+        types.filter(|mime| content_zone_takes(mime)).collect()
     }
 
     fn got(&self, mime: &str) -> Got<'_> {
-        let item = self.data.items.iter().find(|item| item.mime == mime);
-        let failed = self.data.failed.iter().find(|(m, _)| m == mime);
-        match (item, failed) {
-            (Some(item), _) if item.data.len() > MAX_DROPPED_FILE_BYTES => {
-                Got::Failed(ReadFailure::TooLarge)
-            }
-            (Some(item), _) => Got::Bytes(&item.data),
-            (None, Some((_, failure))) => Got::Failed(failure.clone()),
-            (None, None) => Got::Absent,
+        if let Some(item) = self.data.items.iter().find(|item| item.mime == mime) {
+            return Got::Bytes(&item.data);
+        }
+        match self.data.failed.iter().find(|(m, _)| m == mime) {
+            Some((_, failure)) => Got::Failed(failure.clone()),
+            None => Got::Absent,
         }
     }
 
@@ -124,28 +138,28 @@ struct Walk<'a, R> {
 }
 
 impl<'a, R: Reads> Walk<'a, R> {
-    /// The bytes of the first offered type `wanted` takes, `None` when none is offered or its
-    /// read failed (noted, if `report` says so), or the type to read first.
+    /// The bytes of the first offered type `wanted` takes and someone read, `None` when there
+    /// is none or its read failed (noted, if `report` says so), or the type to read first.
     fn bytes(
         &mut self,
         offered: &[&str],
         wanted: impl Fn(&str) -> bool,
         report: impl Fn(&ReadFailure) -> bool,
     ) -> Result<Option<(String, &'a [u8])>, Needs> {
-        let Some(&mime) = offered.iter().find(|m| wanted(m)) else {
-            return Ok(None);
-        };
-        match self.reads.got(mime) {
-            Got::Bytes(bytes) => Ok(Some((mime.to_owned(), bytes))),
-            Got::Unread => Err(mime.to_owned()),
-            Got::Absent => Ok(None),
-            Got::Failed(failure) => {
-                if report(&failure) {
-                    self.fail(reason(&failure));
+        for &mime in offered.iter().filter(|m| wanted(m)) {
+            match self.reads.got(mime) {
+                Got::Bytes(bytes) => return Ok(Some((mime.to_owned(), bytes))),
+                Got::Unread => return Err(mime.to_owned()),
+                Got::Absent => {}
+                Got::Failed(failure) => {
+                    if report(&failure) {
+                        self.fail(reason(&failure));
+                    }
+                    return Ok(None);
                 }
-                Ok(None)
             }
         }
+        Ok(None)
     }
 
     fn fail(&mut self, reason: String) {
@@ -198,17 +212,25 @@ impl<'a, R: Reads> Walk<'a, R> {
         Ok(image)
     }
 
-    /// The first text type offered, in its charset: a link when it is one address, else a
-    /// text file. GTK reads one string and reports nothing when it is no use.
+    /// The first text form offered that reads as text in its charset, the next tried when one
+    /// does not: a link when it is one address, else a text file. GTK reads one string and
+    /// reports nothing when it is no use; a read too large is reported.
     fn text(&mut self, offered: &[&str]) -> Result<Option<DroppedFile>, Needs> {
-        let Some((mime, bytes)) = self.bytes(offered, decode::is_text, too_large)? else {
-            return Ok(None);
-        };
-        let text = decode::text(&mime, bytes).filter(|text| !text.is_empty());
-        Ok(text.map(|text| match WebLink::parse(&text) {
-            Some(link) => DroppedFile::link(&link),
-            None => DroppedFile::text(&tr("dropped_text.name"), text),
-        }))
+        let mut forms: Vec<&str> = offered
+            .iter()
+            .copied()
+            .filter(|m| decode::is_text(m))
+            .collect();
+        while let Some((mime, bytes)) = self.bytes(&forms, |_| true, too_large)? {
+            if let Some(text) = decode::text(&mime, bytes).filter(|text| !text.is_empty()) {
+                return Ok(Some(match WebLink::parse(&text) {
+                    Some(link) => DroppedFile::link(&link),
+                    None => DroppedFile::text(&tr("dropped_text.name"), text),
+                }));
+            }
+            forms.retain(|form| *form != mime);
+        }
+        Ok(None)
     }
 }
 
