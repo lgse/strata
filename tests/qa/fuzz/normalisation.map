@@ -17,3 +17,16 @@
 # GTK reports `null` for its popover whether it is open or not, so this rule cannot catch a
 # Rune popover left open where GTK's closed; the fields after it, focus and the panes, do.
 app.dialog deviation lgse/strata#2405 {"gtk":null,"rune":["Appearance","Jobs","Thumbnail size"]}
+# Settings is a named dialog on Rune and an unnamed layer on GTK, and its choice menus are menus
+# on Rune and unnamed popovers on GTK, by the owner's ruling of 2026-11-17 (owner.md): only
+# "Settings" against GTK's none, and an open choice menu's [] against GTK's none, are excused.
+# A message over Settings ("Reset all keybinds?", the save notice) needs no rule: Rune's
+# snapshot names the dialog on top, as GTK's does (`nests_dialogs`, the same ruling).
+# app.menu is the menu items of the first open menu, so [] is a menu of radio or check rows
+# only. Of Rune's menus today only Settings' choice menus are one where GTK has none: Sort by is
+# a menu on both, and the List columns menu has a menu item. A new Rune menu of radio or check
+# rows over a GTK popover needs its own ruling. As for #2405's rule, GTK reports `null` whether
+# Settings or its menu is open or not, so these rules cannot catch a Rune one left open where
+# GTK's closed; the focus fields after them do.
+app.dialog deviation lgse/strata#2572 {"gtk":null,"rune":["Settings"]}
+app.menu deviation lgse/strata#2572 {"gtk":null,"rune":[[]]}

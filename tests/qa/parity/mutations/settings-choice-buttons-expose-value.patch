@@ -1,0 +1,13 @@
+diff --git a/crates/strata-app/src/settings_dialog/general_more.rs b/crates/strata-app/src/settings_dialog/general_more.rs
+index d3c1c5714..cea9cdd12 100644
+--- a/crates/strata-app/src/settings_dialog/general_more.rs
++++ b/crates/strata-app/src/settings_dialog/general_more.rs
+@@ -129,7 +129,7 @@ fn date_time_section(ctx: PageCtx<'_>, menu_layer: &mut Vec<El>) -> Option<El> {
+     ];
+     let current_label = choices
+         .iter()
+-        .find_map(|&(l, f)| (f == current).then(|| tr(l)))
++        .find_map(|&(l, f)| (f == DateFormat::Relative).then(|| tr(l)))
+         .unwrap_or_else(|| tr("Relative"));
+     let options = choices
+         .into_iter()
