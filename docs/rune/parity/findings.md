@@ -187,7 +187,8 @@ closed issue is not a fixed finding: the state given here is the finding's.
   as owned (its `Err(error)` arm), hence `Pacman`. That pull request changes no `src/` and no
   shared crate: only `crates/strata-app`, `crates/strata-components`, the QA files and
   Markdown, none of which the GTK lane compiles. It failed twice, so by the rule above the
-  agent stopped there and reported it; a fix, if taken up, lands on `main`.
+  agent stopped chasing it and reported it; after `strata-next` was merged again it passed in
+  `./scripts/quality.sh all --jobs 4` at `c3dcb8917`. A fix, if taken up, lands on `main`.
 
 ### #2176: a GTK critical after a file appears during a rename on a multiple selection
 
