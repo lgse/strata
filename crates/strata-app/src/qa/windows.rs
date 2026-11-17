@@ -44,6 +44,13 @@ struct Merged {
     both: Rc<Snapshot>,
 }
 
+impl Merged {
+    /// Whether this merge is of these two trees, which a window keeps while it is unchanged.
+    fn is_of(&self, main: &Rc<Snapshot>, floating: &Rc<Snapshot>) -> bool {
+        Rc::ptr_eq(&self.main, main) && Rc::ptr_eq(&self.floating, floating)
+    }
+}
+
 pub(super) struct Windows {
     main: Rc<Staged>,
     log: InputLog,
@@ -146,10 +153,7 @@ impl Windows {
     fn merged(&self, floating: &Staged) -> Rc<Snapshot> {
         let (main, other) = (self.main.snapshot(), floating.snapshot());
         let mut kept = self.merged.borrow_mut();
-        if let Some(merged) = kept.as_ref()
-            && Rc::ptr_eq(&merged.main, &main)
-            && Rc::ptr_eq(&merged.floating, &other)
-        {
+        if let Some(merged) = kept.as_ref().filter(|merged| merged.is_of(&main, &other)) {
             return merged.both.clone();
         }
         let both = Rc::new(main.with_toplevel(&other));

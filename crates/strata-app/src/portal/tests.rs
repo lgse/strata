@@ -12,6 +12,8 @@ use strata_test_support::PrivateContext;
 
 use super::*;
 
+mod bounds;
+
 // The cases below port GTK's `src/portal/tests.rs` to this copy of its validation.
 
 fn run_async<T>(future: impl Future<Output = T>) -> T {
@@ -218,14 +220,6 @@ fn save_files_refuse_a_folder_or_a_link_to_one_in_the_way() {
     assert!(relative.is_err());
 }
 
-/// The entries chosen, whether folders are asked for, whether several are, and the answer.
-type SelectionCase = (
-    Vec<FileEntry>,
-    bool,
-    bool,
-    Result<Vec<PathBuf>, &'static str>,
-);
-
 #[test]
 fn open_selection_validates_kind_cardinality_and_locality() {
     let current = Location::local("/tmp");
@@ -235,8 +229,9 @@ fn open_selection_validates_kind_cardinality_and_locality() {
         location: Location::uri("smb://server/share/file"),
         ..entry(Path::new("/tmp/remote"), true)
     };
-    let picked = |path: &str| Ok(vec![PathBuf::from(path)]);
-    let cases: [SelectionCase; 7] = [
+    let picked =
+        |path: &str| -> Result<Vec<PathBuf>, &'static str> { Ok(vec![PathBuf::from(path)]) };
+    let cases = [
         (vec![file.clone()], false, false, picked("/tmp/file")),
         (
             vec![file.clone(), folder],
@@ -354,89 +349,6 @@ fn active_request_count_and_token_length_are_bounded() {
         tracker.begin("x".repeat(MAX_STRING_BYTES + 1)),
         Err(PortalError::InvalidArgument(_))
     ));
-}
-
-#[test]
-fn untrusted_request_inputs_are_bounded() {
-    let too_long = "x".repeat(MAX_STRING_BYTES + 1);
-    for (title, label, parent) in [
-        (too_long.as_str(), None, None),
-        ("Title", Some(too_long.as_str()), None),
-        ("Title", None, Some(too_long.as_str())),
-        ("Ti\0tle", None, None),
-    ] {
-        assert!(validate_common_request(title, label, parent, &[]).is_err());
-    }
-    assert!(validate_filename(&"x".repeat(MAX_FILENAME_BYTES + 1)).is_err());
-    for (path, bounded) in [(Some(Path::new(&too_long)), false), (None, true)] {
-        assert_eq!(validate_path(path, "path").is_ok(), bounded, "{path:?}");
-    }
-}
-
-#[test]
-fn choices_are_bounded_one_by_one_and_in_total() {
-    let crowded = |count: usize| PortalChoice {
-        pairs: (0..count)
-            .map(|index| (format!("option-{index}"), "Option".to_owned()))
-            .collect(),
-        ..boolean_choice("choice")
-    };
-    let many = (0..=MAX_CHOICES)
-        .map(|index| boolean_choice(&format!("choice-{index}")))
-        .collect::<Vec<_>>();
-    let spread =
-        vec![crowded(MAX_CHOICE_OPTIONS); MAX_TOTAL_CHOICE_OPTIONS / MAX_CHOICE_OPTIONS + 1];
-    for (why, choices, accepted) in [
-        ("too many choices", many, false),
-        (
-            "a choice with too many options",
-            vec![crowded(MAX_CHOICE_OPTIONS + 1)],
-            false,
-        ),
-        ("too many options in total", spread, false),
-        ("a full choice", vec![crowded(MAX_CHOICE_OPTIONS)], true),
-    ] {
-        assert_eq!(validate_choices(&choices).is_ok(), accepted, "{why}");
-    }
-}
-
-#[test]
-fn filters_are_bounded_by_their_globs_not_their_rule_count() {
-    let bulky = filter(
-        "GitHub accepted types",
-        (0..=FILTER_RULE_WARNING_THRESHOLD)
-            .map(|index| FilterRule::MimeType(format!("application/x-attachment-{index}")))
-            .collect(),
-    );
-    let glob = |pattern: &str| filter("Filter", vec![FilterRule::Pattern(pattern.to_owned())]);
-    for (why, filters, current, accepted) in [
-        ("many rules", vec![bulky], None, true),
-        (
-            "a backtracking-heavy glob",
-            vec![glob("*a*a*a*z")],
-            None,
-            false,
-        ),
-        ("two wildcard groups", vec![glob("*a**.txt")], None, true),
-        (
-            "a long glob",
-            vec![glob(&"a".repeat(MAX_GLOB_BYTES + 1))],
-            None,
-            false,
-        ),
-        (
-            "a heavy current filter",
-            vec![],
-            Some(glob("*a*b*c")),
-            false,
-        ),
-    ] {
-        assert_eq!(
-            validate_filters(&filters, current.as_ref()).is_ok(),
-            accepted,
-            "{why}"
-        );
-    }
 }
 
 #[test]

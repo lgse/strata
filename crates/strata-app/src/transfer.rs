@@ -34,6 +34,7 @@ use crate::{
     slots::{Heard, Later, Listener, Part, Place, Scope, Setup},
 };
 
+mod chosen;
 mod collisions;
 mod dock;
 mod reveal;
@@ -42,6 +43,7 @@ mod tenxer;
 mod tests;
 mod words;
 
+pub(crate) use chosen::transfer_to_chosen;
 pub(crate) use tenxer::{paste_preferring, start_in_place_transfer};
 
 #[derive(Clone, PartialEq, Eq)]
@@ -552,18 +554,6 @@ pub(crate) fn start_drop_transfer(
 pub(crate) fn move_into_group_folder(app: &mut App, destination: Location, sources: Vec<Location>) {
     let request = TransferRequest::new(destination, sources, true);
     begin_transfer_request(app, request.revealing(false));
-}
-
-/// Copies or moves `sources` into the folder chosen in the floating Copy to or Move to chooser,
-/// revealing what lands there (`finish_copy_move_to` in
-/// `src/ui/browser/transfer/destination_dialog.rs`).
-pub(crate) fn transfer_to_chosen(
-    app: &mut App,
-    destination: Location,
-    sources: Vec<Location>,
-    move_sources: bool,
-) {
-    begin_transfer(app, destination, sources, move_sources);
 }
 
 /// Whether a transfer targeting `destination` is still resolving target names.
