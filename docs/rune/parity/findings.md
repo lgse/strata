@@ -2111,28 +2111,35 @@ sequence only together with the alphabet's version, so the version is part of th
 
 - **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2560), filed on
   2026-11-16 as the finding's reference and closed at once: its state is kept here.
-- **What differs:** `app.preview`, the names and texts of every node in the open drawer.
-  - The header: GTK exposes the `·` separators as labels, and Rune draws them `a11y_hidden`
-    (`crates/strata-components/src/preview_drawer/header.rs`).
-  - The archive member rows: GTK has a name label and a size label, while Rune names the row,
-    describes it by its size and draws the size `a11y_hidden`
-    (`crates/strata-components/src/viewers/archive/mod.rs`). The Rune QA backend adds the drawn
-    name label under the row.
-  - The password prompt: GTK exposes the field's placeholder and the `Unlock` button's inner
-    label, and Rune does not.
-  - A text preview: GTK has one label with the file's text, and Rune has `Source` and the
-    text's lines.
-
-  The drawer reads the same on both targets, and the scenario predicates are not affected.
+- **What differs:** `app.preview`, the names and texts of every node in the open drawer. The
+  drawer reads the same on both targets, and the scenario predicates are not affected. Two of
+  its parts are [A15](packages/A15.md)'s, two [A13](packages/A13.md)'s:
+  - *The header (A15's):* GTK exposes the `·` separators as labels, and Rune draws them
+    `a11y_hidden` (`crates/strata-components/src/preview_drawer/header.rs`). A15's
+    [#2548](https://github.com/lgse/strata/pull/2548), open, exposes them.
+  - *A text preview (A15's):* GTK has one label with the file's text, and Rune has `Source`
+    and the text's lines. A15's `preview` alphabet leaves text bodies out for it.
+  - *The archive member rows (A13's), fixed in [#2561](https://github.com/lgse/strata/pull/2561):*
+    GTK's row has no name and holds a name label and a size label. Rune names the option for
+    screen readers and draws its size `a11y_hidden`, as the row's description. The size is now
+    keyed as a row's badge, which the Rune QA backend presents under the row as it does the
+    name, and the backend presents an archive member row without its own name
+    (`unname_archive_members`, `crates/strata-app/src/qa/tree.rs`). A probe replaying the open
+    archive tree against GTK then differed on the header's separators alone.
+  - *The password prompt (A13's), open:* GTK's `GtkPasswordEntry` holds an inner `GtkText`, and
+    both are named by the placeholder, and its `GtkButton` holds a `GtkLabel`. So GTK reads
+    `Password` twice and `Unlock` three times, and Rune reads each once. Presenting those inner
+    nodes on Rune would add a node under every secure field and text button the backend
+    targets, so it is left as [A13](packages/A13.md)'s open item.
 - **Concerns:** 12 of 20 smoke seeds of `archives` v1 (never merged), each first differing
   there on a preview opened by `Space`, `Right` or `l`, and seed `0x07` of v3 by `Right` on
   `packed (1).tar`.
-- **State:** open, for [A15](packages/A15.md) to settle with its preview alphabet: by the Rune
-  QA backend presenting the drawn nodes, by the components' trees, or by an `a11y` rule. The
-  same run found one visible difference, which A13's closing pull request, [#2561](https://github.com/lgse/strata/pull/2561), fixed: until an
-  archive opens, the header named its kind `ZIP` (`extension_label`,
-  `crates/strata-app/src/preview/load.rs`) where GTK writes the extension as it is, `zip`.
-  `archives` v4 keeps the drawer closed, and the nine `archive_preview` runs hold the preview.
+- **State:** open. A13's rows are fixed. Its prompt is open, with the next step in
+  [`A13.md`](packages/A13.md#open). The header waits on #2548, and the text preview is A15's.
+  The same run found one visible difference, which #2561 fixed: until an archive opens, the
+  header named its kind `ZIP` (`extension_label`, `crates/strata-app/src/preview/load.rs`)
+  where GTK writes the extension as it is, `zip`. `archives` v4 keeps the drawer closed until
+  #2548 lands, and the nine `archive_preview` runs hold the preview.
 
 ### #2562: `keyboard-open-selects-first-child/columns` did not open `documents` once in a full Rune run
 

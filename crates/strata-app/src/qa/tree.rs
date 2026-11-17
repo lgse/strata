@@ -291,6 +291,7 @@ impl Snapshot {
         for label in &drawn.labels {
             snapshot.add_label(label);
         }
+        snapshot.unname_archive_members();
         for icon in &drawn.icons {
             snapshot.add_icon(icon, &drawn.icon_descriptions);
         }
@@ -454,6 +455,28 @@ impl Snapshot {
         };
         let segment = if label.badge { "@badge" } else { "@label" };
         self.push(row, segment, seen);
+    }
+
+    /// GTK's archive preview row has no name of its own: it is read through its name and size
+    /// labels (`src/ui/preview/archive_view.rs`). Rune names the option for screen readers, so
+    /// the snapshot leaves that name to the drawn labels presented under it.
+    fn unname_archive_members(&mut self) {
+        let in_archive = |nodes: &[Seen], mut at: Option<usize>| {
+            while let Some(index) = at {
+                if nodes[index].key.as_deref() == Some(crate::preview::ARCHIVE_KEY) {
+                    return true;
+                }
+                at = nodes[index].parent;
+            }
+            false
+        };
+        let members: Vec<usize> = (0..self.nodes.len())
+            .filter(|&index| self.nodes[index].role == "list-box-option")
+            .filter(|&index| in_archive(&self.nodes, self.nodes[index].parent))
+            .collect();
+        for index in members {
+            self.nodes[index].name.clear();
+        }
     }
 
     /// Presents a row's drawn icon as an `image` under the entry it is in.

@@ -16,10 +16,10 @@
 # - The archive preview (`Space`, and `Right`, `Return` or `Space` on an archive in Columns, so
 #   `Right` goes only to folders), and with it the password prompt in the drawer: with the
 #   drawer open, `app.preview` reads GTK's accessible tree of the drawer, which has the
-#   header's `·` separators, each archive member's size and the prompt's inner labels as
-#   labels where Rune's has none, and a text preview as one label where Rune has `Source` and
-#   its lines (lgse/strata#2560, A15's to settle with its preview alphabet). The nine
-#   `archive_preview` runs hold the preview.
+#   header's `·` separators as labels where Rune's has none until A15's #2548 lands, the
+#   password prompt's inner labels (A13's, open), and a text preview as one label where Rune
+#   has `Source` and its lines (A15's): lgse/strata#2560. The archive member rows read the same
+#   since #2561. The nine `archive_preview` runs hold the preview.
 # - Compressing anything but `readme.md`, `todo.txt` and `documents`, or from another folder: a
 #   file the sequence wrote has the clock's mtime, which a new archive records, so two replays
 #   would write different bytes.

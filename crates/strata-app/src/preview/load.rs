@@ -252,11 +252,13 @@ pub(super) fn identity_for(
 /// The extension as written, as GTK's header shows it until a preview loads (`file_extension`
 /// in `src/ui/preview.rs`).
 fn extension_label(entry: &FileEntry) -> String {
-    Path::new(&entry.native_name)
-        .extension()
+    entry
+        .location
+        .native_path()
+        .and_then(Path::extension)
         .and_then(|ext| ext.to_str())
-        .filter(|ext| !ext.is_empty())
-        .map_or_else(|| tr("File"), str::to_owned)
+        .unwrap_or("file")
+        .to_owned()
 }
 
 fn icon_for(entry: &FileEntry) -> IconName {

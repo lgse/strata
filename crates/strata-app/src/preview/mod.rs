@@ -41,6 +41,7 @@ pub(crate) mod viewer;
 #[cfg(test)]
 mod tests;
 
+pub(crate) use archive::ARCHIVE_KEY;
 use load::Loader;
 use viewer::Viewer;
 
