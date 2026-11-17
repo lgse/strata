@@ -289,6 +289,7 @@ pub(super) fn strip_action(
 
 pub(super) fn strip_zone() -> DropZone<App> {
     DropZone::new(strip_dropped)
+        .takes_content(crate::dnd::CONTENT_TYPES)
         .on_hover(strip_hover)
         .on_move(strip_move)
         .on_reject(|app: &mut App, _, _| app.columns.clear_drag_over())

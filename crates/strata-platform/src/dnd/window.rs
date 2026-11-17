@@ -667,12 +667,15 @@ impl<S: 'static> Core<S> {
             return;
         };
         for mime in &t.peek {
-            if !d.offer.offers(mime) || !d.peeks.insert(mime.clone()) {
+            let Some(offered) = d.offer.offered(mime).map(str::to_owned) else {
+                continue;
+            };
+            if !d.peeks.insert(mime.clone()) {
                 continue;
             }
             let (poster, serial, m) = (self.poster.borrow().clone(), d.offer.serial, mime.clone());
             d.port.read(
-                mime,
+                &offered,
                 Box::new(move |r| match (r, poster) {
                     (Ok(bytes), Some(p)) => p(Job::Peeked {
                         serial,
