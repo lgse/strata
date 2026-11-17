@@ -218,7 +218,7 @@ closed issue is not a fixed finding: the state given here is the finding's.
   `fast_delete_animates_only_its_own_success_without_showing_progress`
   (`minimization.rs:182`, `progress transition timed out`), failed once in
   `./scripts/quality.sh all --jobs 4` (shard 0, lane 3; the other three lanes passed) at
-  `1ba2778c1`, and passed 3 times of 3 alone under `./scripts/test-headless.py` (7.7 s each).
+  `1ba2778c1909325066429fdf368128030d2ddea1`, and passed 3 times of 3 alone under `./scripts/test-headless.py` (7.7 s each).
   That pull request changes no `src/`.
 
 ### #2176: a GTK critical after a file appears during a rename on a multiple selection
