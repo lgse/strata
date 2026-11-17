@@ -294,7 +294,11 @@ pub(crate) fn land_at<S: 'static>(
         let action = negotiate::drop_action(pick, allowed(offer), mods);
         let accept = match local {
             Some((token, p)) if t.takes_local(Some(p)) => Some(token.to_owned()),
-            _ => t.mimes.iter().find(|m| offer.offers(m)).cloned(),
+            _ => t
+                .mimes
+                .iter()
+                .find_map(|m| offer.offered(m))
+                .map(str::to_owned),
         };
         match (action, accept) {
             (Some(action), Some(accept)) => {

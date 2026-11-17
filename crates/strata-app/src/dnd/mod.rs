@@ -36,6 +36,7 @@ use crate::{
 };
 
 pub(crate) mod adapter;
+mod content;
 mod drag;
 pub(crate) mod policy;
 mod registry;
@@ -43,6 +44,7 @@ mod router;
 #[cfg(test)]
 mod tests;
 
+pub(crate) use content::CONTENT_TYPES;
 pub(crate) use policy::{
     FileDrop, commit, commit_file_drop, commit_trash_drop, drop_action, dropped_locations,
     locations_from_uris, trash_action,

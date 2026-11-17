@@ -383,3 +383,43 @@ mod moved {
 }
 
 mod review3;
+
+/// A drop reads each listed type in the form the drag offers it, an exact form first, and
+/// reads a type two listed names share once.
+#[test]
+fn a_target_reads_the_offered_form_of_each_listed_type() {
+    let offer = DropOffer {
+        mimes: vec![
+            "text/plain".to_owned(),
+            "text/plain;charset=utf-8".to_owned(),
+            "application/octet-stream;name=\"photo.jpg\"".to_owned(),
+        ],
+        actions: Actions::COPY,
+        local: false,
+        mods: None,
+        serial: 1,
+        peeked: Vec::new(),
+    };
+    let target = DropTarget::<S>::new(|_, _, _| {})
+        .mime_types(&[
+            "application/octet-stream",
+            "text/plain;charset=utf-8",
+            "text/plain",
+        ])
+        .read_all();
+    assert_eq!(
+        target.reads(&offer),
+        [
+            "application/octet-stream;name=\"photo.jpg\"",
+            "text/plain;charset=utf-8",
+            "text/plain",
+        ]
+    );
+    assert!(offer.offers("application/octet-stream"));
+    assert!(!offer.offers("image/png"));
+    let first = DropTarget::<S>::new(|_, _, _| {}).mime_types(&["application/octet-stream"]);
+    assert_eq!(
+        first.reads(&offer),
+        ["application/octet-stream;name=\"photo.jpg\""]
+    );
+}

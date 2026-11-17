@@ -459,6 +459,7 @@ fn element(app: &App, look: &Look, data: SidebarData<'_>) -> El {
     )
     .key(KEY)
     .dnd(crate::dnd::binder(app))
+    .content_types(crate::dnd::CONTENT_TYPES)
     .drop_action(drops::drop_action)
     .reorder(true)
     // A middle click opens a row in a new tab once a part registers the command.

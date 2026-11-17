@@ -292,6 +292,7 @@ pub(crate) fn collection<V: SinglePane>(app: &App) -> Collection<App> {
         Some(description.to_owned())
     }))
     .dnd(crate::dnd::binder(app))
+    .content_types(crate::dnd::CONTENT_TYPES)
     .on_drag_phase(|app: &mut App, d, key, tx| crate::dnd::drag_phase(app, d, key, tx))
     .on_drop(dropped::<V>)
     .drop_action(drop_action::<V>)

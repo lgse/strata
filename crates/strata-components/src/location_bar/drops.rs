@@ -33,7 +33,8 @@ pub(super) fn zone<S: 'static>(cx: &Ctx<'_, S>, index: usize, id: &str) -> DropZ
         let id = hover_id.clone();
         hover_emit(s, LocationIntent::DropHover { id, hover }, tx);
     })
-    .on_reject(move |s: &mut S, _, _| access(s).drag_ended());
+    .on_reject(move |s: &mut S, _, _| access(s).drag_ended())
+    .takes_content(cx.content);
     if let Some(action) = cx.action {
         let action = action.clone();
         let id = id.to_owned();

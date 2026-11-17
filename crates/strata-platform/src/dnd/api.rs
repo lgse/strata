@@ -238,8 +238,19 @@ pub struct DropOffer {
 }
 
 impl DropOffer {
+    /// Whether the drag offers `mime`, or that type with parameters when `mime` names none
+    /// ([`mime::names`]).
     pub fn offers(&self, mime: &str) -> bool {
-        self.mimes.iter().any(|m| m == mime)
+        self.offered(mime).is_some()
+    }
+
+    /// The type the drag offers that `mime` names: `mime` itself if offered, else the first
+    /// offered type with parameters that it names ([`mime::names`]). What a read asks for.
+    pub fn offered(&self, mime: &str) -> Option<&str> {
+        let exact = self.mimes.iter().find(|m| *m == mime);
+        exact
+            .or_else(|| self.mimes.iter().find(|m| mime::names(mime, m)))
+            .map(String::as_str)
     }
 
     /// The bytes peeked for `mime`, if they have arrived.
@@ -590,14 +601,18 @@ impl<S: 'static> DropTarget<S> {
         }
     }
 
-    /// The types a drop reads.
+    /// The types a drop reads, as the drag offers them.
     pub(crate) fn reads(&self, offer: &DropOffer) -> Vec<String> {
-        let offered = self.mimes.iter().filter(|m| offer.offers(m)).cloned();
-        if self.read_all {
-            offered.collect()
-        } else {
-            offered.take(1).collect()
+        let mut offered: Vec<String> = Vec::new();
+        for name in self.mimes.iter().filter_map(|m| offer.offered(m)) {
+            if !offered.iter().any(|read| read == name) {
+                offered.push(name.to_owned());
+            }
         }
+        if !self.read_all {
+            offered.truncate(1);
+        }
+        offered
     }
 }
 
