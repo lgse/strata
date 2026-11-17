@@ -208,16 +208,41 @@ fn tenxer_places(chooser: bool) -> Vec<Shortcut> {
             "Downloads / Documents / Music / Pictures / Videos",
         ),
     ];
+    shortcuts.extend(sidebar_places(chooser));
+    shortcuts.extend_from_slice(&[
+        row(
+            Chord(shown![GO, GO_PROMPT]),
+            "Go to a folder, typed path, or URI",
+        ),
+        within(
+            "%{keys} in %{go} / %{move_to} / %{copy_to}",
+            One(COMPLETE.shown()),
+            "Write the chosen folder into the prompt",
+        ),
+        row(One(JUMP_VISITED.shown()), "Jump to a visited folder"),
+        row(One(JUMP_RECENT.shown()), "Jump to a recent folder"),
+        within(
+            "%{keys} in %{jump} / %{recent}",
+            Any(shown![UP.alternate(0), DOWN.alternate(0)]),
+            "Choose a visited folder",
+        ),
+        row(Chord(shown![GO, ESCAPE]), "Cancel a pending chord"),
+    ]);
+    shortcuts
+}
+
+/// The places only the window's `g` reaches, or the chooser's own (`tenxer_places`).
+fn sidebar_places(chooser: bool) -> Vec<Shortcut> {
     if chooser {
-        shortcuts.extend_from_slice(&[
+        vec![
             row(Chord(shown![GO, GO_RECENT]), "Recent"),
             row(
                 Keys::Digits(PIN_NUMBERS),
                 "Visible PINNED rows that are local folders",
             ),
-        ]);
+        ]
     } else {
-        shortcuts.extend_from_slice(&[
+        vec![
             row(
                 Mixed(&[
                     Chord(shown![GO, GO_TRASH]),
@@ -242,28 +267,8 @@ fn tenxer_places(chooser: bool) -> Vec<Shortcut> {
                 Keys::Letters(BOOKMARK_GO_LETTERS),
                 "Jump to a bookmarked folder by letter",
             ),
-        ]);
+        ]
     }
-    shortcuts.extend_from_slice(&[
-        row(
-            Chord(shown![GO, GO_PROMPT]),
-            "Go to a folder, typed path, or URI",
-        ),
-        within(
-            "%{keys} in %{go} / %{move_to} / %{copy_to}",
-            One(COMPLETE.shown()),
-            "Write the chosen folder into the prompt",
-        ),
-        row(One(JUMP_VISITED.shown()), "Jump to a visited folder"),
-        row(One(JUMP_RECENT.shown()), "Jump to a recent folder"),
-        within(
-            "%{keys} in %{jump} / %{recent}",
-            Any(shown![UP.alternate(0), DOWN.alternate(0)]),
-            "Choose a visited folder",
-        ),
-        row(Chord(shown![GO, ESCAPE]), "Cancel a pending chord"),
-    ]);
-    shortcuts
 }
 
 fn tenxer_preview(mode: Mode, chooser: bool) -> Vec<Shortcut> {

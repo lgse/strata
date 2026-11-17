@@ -115,19 +115,24 @@ fn keymap_with_custom_actions_bound() -> Keymap {
         })
 }
 
+fn sections_of(map: Map, mode: Mode) -> Vec<super::Section> {
+    match map {
+        Map::Tenxer => tenxer_sections(mode),
+        Map::Default => default_sections(mode),
+    }
+}
+
 /// Every view's rows in `map`, each once, with the keys its action names (GTK's
 /// `reference_rows`).
 fn rows(map: Map) -> Vec<Vec<Keys>> {
     let mut rows: Vec<Shortcut> = Vec::new();
-    for mode in [Mode::Columns, Mode::Icons, Mode::List] {
-        let sections = match map {
-            Map::Tenxer => tenxer_sections(mode),
-            Map::Default => default_sections(mode),
-        };
-        for shortcut in sections.into_iter().flat_map(|s| s.rows) {
-            if !rows.contains(&shortcut) {
-                rows.push(shortcut);
-            }
+    let every = [Mode::Columns, Mode::Icons, Mode::List]
+        .into_iter()
+        .flat_map(|mode| sections_of(map, mode))
+        .flat_map(|section| section.rows);
+    for shortcut in every {
+        if !rows.contains(&shortcut) {
+            rows.push(shortcut);
         }
     }
     rows.into_iter()
