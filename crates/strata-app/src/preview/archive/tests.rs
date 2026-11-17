@@ -353,3 +353,52 @@ fn password_prompt_claims_field_holds_tracks_wrong_passwords_and_dismisses_on_es
         },
     );
 }
+
+/// 10xer's Shift+Tab hands the keys from the password field back to the listing and keeps
+/// the prompt open (`leave_or_close_preview`, `tenxer-password-archive-keys`).
+#[test]
+fn tenxer_shift_tab_leaves_the_password_field_for_the_listing() {
+    hosted(
+        MODULE,
+        "tenxer_shift_tab_leaves_the_password_field_for_the_listing",
+        |mut host| {
+            let (_folder, entry) = setup_folder_with_archive(&mut host, "encrypted.zip");
+            host.runtime().update(|app: &mut App, _: &mut Tx| {
+                shell::saved(app).change(|settings| settings.tenxer_mode = true);
+            });
+            while host.turn() {}
+            press_without_draining(&mut host, Key::Right);
+            host.runtime().update(move |app: &mut App, tx: &mut Tx| {
+                let req = app.preview.loader.current_request.expect("active request");
+                let needs = PreviewEvent::NeedsPassword {
+                    request_id: req,
+                    entry,
+                };
+                load::on_event(app, req, needs, tx);
+            });
+            while host.turn() {}
+            assert!(host.app().preview.viewer.is_prompt_focused());
+
+            let shift = Mods {
+                shift: true,
+                ..Mods::default()
+            };
+            send_key(
+                &mut host,
+                KeyEvent {
+                    key: Key::Tab,
+                    mods: shift,
+                },
+            );
+            while host.turn() {}
+            assert_eq!(
+                focused_key(&mut host).as_deref(),
+                Some(crate::columns::VIEW)
+            );
+            assert!(
+                matches!(host.app().preview.viewer, Viewer::ArchivePrompt(_)),
+                "the prompt stays"
+            );
+        },
+    );
+}

@@ -53,8 +53,6 @@ pub(crate) struct Menu {
     provider_slot: usize,
     /// What assistive technology hears the menu called: its entry or its folder.
     name: String,
-    /// "Type to search" takes plain keys, so a row hides a hint that is one.
-    typing: bool,
 }
 
 /// A menu to open: what it is for, and what it lists.
@@ -117,7 +115,7 @@ fn can_create_in_pane(app: &App, depth: usize, id: EntryId) -> bool {
 fn chooser_entry_menu(app: &App, depth: usize, id: EntryId) -> Option<Opening> {
     let (entry, entries) = context_entries(app, depth, id)?;
     let single = entries.len() == 1;
-    let typing = app.menu.typing;
+    let typing = Hints::of(shell::preferences(app));
     let mut items = vec![RENAME.item(typing).enabled(single)];
     if single && crate::preview::entry_supports_quick_preview(&entry) {
         items.push(PREVIEW.item(typing));
@@ -153,7 +151,7 @@ fn chooser_entry_menu(app: &App, depth: usize, id: EntryId) -> Option<Opening> {
 fn chooser_folder_menu(app: &App, depth: usize) -> Option<Opening> {
     let location = app.browser.location_at(depth)?;
     let item = NEW_FOLDER
-        .item(app.menu.typing)
+        .item(Hints::of(shell::preferences(app)))
         .enabled(app.chooser.allows_create());
     Some(Opening {
         name: location.display_name(),
@@ -180,7 +178,7 @@ fn entry_menu(app: &App, depth: usize, id: EntryId) -> Option<Opening> {
         can_create,
         can_trash: app.browser.can_trash_at(depth),
         can_delete: app.browser.can_delete_at(depth),
-        typing: app.menu.typing,
+        typing: Hints::of(shell::preferences(app)),
     });
     let has_native_parent = app
         .browser
@@ -222,7 +220,7 @@ fn folder_menu(app: &App, depth: usize) -> Option<Opening> {
         can_paste: crate::clipboard::may_paste(app, &location),
         can_open_terminal: crate::terminal::can_open(&location),
         hidden_shown: app.browser.preferences().show_hidden,
-        typing: app.menu.typing,
+        typing: Hints::of(shell::preferences(app)),
     });
     Some(Opening {
         name,
@@ -348,15 +346,12 @@ impl Part for Menu {
         app.menu.state.is_open().then_some(Holds::Menu)
     }
 
-    fn new(setup: &Setup<'_>) -> Self {
-        let settings = setup.settings;
+    fn new(_: &Setup<'_>) -> Self {
         Self {
             state: ContextMenuState::default(),
             depth: 0,
             provider_slot: 0,
             name: String::new(),
-            // `type_to_search_active` in `src/ui/preferences/input_settings.rs`.
-            typing: settings.type_to_search && !settings.tenxer_mode,
         }
     }
 }
@@ -377,13 +372,59 @@ impl Menu {
         self.provider_slot
     }
 
-    pub(crate) fn open_item(&self) -> Item {
-        OPEN.item(self.typing)
+    /// The Open row, with the hint `app`'s keymap shows.
+    pub(crate) fn open_item(app: &App) -> Item {
+        OPEN.item(Hints::of(shell::preferences(app)))
     }
 
     fn name(&self) -> &str {
         &self.name
     }
+}
+
+/// Which map's hints a menu shows, as the keymap in force when it opens says.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct Hints {
+    /// "Type to search" takes plain keys, so a row hides a hint that is one
+    /// (`type_to_search_active` in `src/ui/preferences/input_settings.rs`).
+    typing: bool,
+    /// 10xer mode's hints (`tenxer_hint` in `src/ui/shortcut_reference.rs`).
+    tenxer: bool,
+}
+
+impl Hints {
+    pub(crate) fn of(settings: &strata_desktop::settings::Preferences) -> Self {
+        Self {
+            typing: settings.type_to_search && !settings.tenxer_mode,
+            tenxer: settings.tenxer_mode,
+        }
+    }
+
+    /// The default map's hints, with "Type to search" on or off.
+    #[cfg(test)]
+    pub(crate) const fn default_map(typing: bool) -> Self {
+        Self {
+            typing,
+            tenxer: false,
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) const TENXER: Self = Self {
+        typing: false,
+        tenxer: true,
+    };
+}
+
+/// What a row hints in 10xer mode.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum TenxerHint {
+    /// The default map's hint.
+    Same,
+    /// Another command's keys: 10xer's verb for the row.
+    Keys(Shown),
+    /// None: the row's command has no key of its own there.
+    Hidden,
 }
 
 /// One row of a menu: its id, its label in the catalogs, and the catalog's keys its hint
@@ -398,6 +439,7 @@ pub(crate) struct Row {
     /// A command whose shipped keys may all type: "Type to search" then takes them, and the
     /// hint is hidden while it is on (`typed_only` in `default_hint`).
     typed: Option<Command>,
+    tenxer: TenxerHint,
 }
 
 const fn row(id: &'static str, label: &'static str) -> Row {
@@ -406,6 +448,7 @@ const fn row(id: &'static str, label: &'static str) -> Row {
         label,
         hint: None,
         typed: None,
+        tenxer: TenxerHint::Same,
     }
 }
 
@@ -421,25 +464,49 @@ impl Row {
         self
     }
 
-    /// The hint of `command`, whose keys "Type to search" may take.
+    /// The hint of `command`, whose keys "Type to search" may take. 10xer mode shows none.
     const fn typed_hint(mut self, command: Command) -> Self {
         self.hint = Some(command.shown());
         self.typed = Some(command);
+        self.tenxer = TenxerHint::Hidden;
         self
+    }
+
+    /// 10xer mode's hint for the row: `keys`.
+    const fn tenxer_hint(mut self, keys: Shown) -> Self {
+        self.tenxer = TenxerHint::Keys(keys);
+        self
+    }
+
+    /// No hint in 10xer mode.
+    const fn no_tenxer_hint(mut self) -> Self {
+        self.tenxer = TenxerHint::Hidden;
+        self
+    }
+
+    /// The keys the row hints with `hints`: 10xer's, or the default map's unless "Type to
+    /// search" takes them.
+    fn hinted(&self, hints: Hints) -> Option<Shown> {
+        if !hints.tenxer {
+            let taken = hints.typing && self.typed.is_some_and(types);
+            return self.hint.filter(|_| !taken);
+        }
+        match self.tenxer {
+            TenxerHint::Same => self.hint,
+            TenxerHint::Keys(keys) => Some(keys),
+            TenxerHint::Hidden => None,
+        }
     }
 
     /// The row's hint as the window's keymap labels it: none when it has none, when "Type to
     /// search" takes its keys, or when nothing binds them.
-    fn hint_label(&self, typing: bool) -> Option<String> {
-        let shown = self.hint?;
-        if typing && self.typed.is_some_and(types) {
-            return None;
-        }
+    fn hint_label(&self, typing: Hints) -> Option<String> {
+        let shown = self.hinted(typing)?;
         let label = keys::label(&Keys::One(shown));
         (!label.is_empty()).then_some(label)
     }
 
-    fn item(&self, typing: bool) -> Item {
+    fn item(&self, typing: Hints) -> Item {
         let item = Item::new(self.id, tr(self.label));
         match self.hint_label(typing) {
             Some(label) => item.shortcut(label),
@@ -455,19 +522,29 @@ pub(crate) const OPEN: Row = row("open", "Open").hint(key::ENTER.shown());
 pub(crate) const OPEN_WITH: Row = row("open-with", "Open With…");
 pub(crate) const PREVIEW: Row = row("preview", "Quick preview").hint(key::PREVIEW.shown());
 pub(crate) const RUN: Row = row("run", "Run");
-pub(crate) const TERMINAL: Row = row("terminal", "Open in Terminal").hint(key::TERMINAL.shown());
+pub(crate) const TERMINAL: Row = row("terminal", "Open in Terminal")
+    .hint(key::TERMINAL.shown())
+    .no_tenxer_hint();
 pub(crate) const OPEN_IN: Row = row("open-in", "Open in…");
 pub(crate) const NEW_TAB: Row = row("open-in-tab", "New Tab").hint(key::OPEN_IN_NEW_TAB.shown());
 pub(crate) const NEW_WINDOW: Row =
     row("open-in-window", "New Window").hint(key::OPEN_IN_NEW_WINDOW.shown());
 pub(crate) const EXTRACT: Row = row("extract", "Extract here");
 pub(crate) const EXTRACT_TO: Row = row("extract-to", "Extract to…");
-pub(crate) const CUT: Row = row("cut", "Cut").hint(key::CUT.shown());
-pub(crate) const COPY: Row = row("copy", "Copy").hint(key::COPY.shown());
-pub(crate) const DUPLICATE: Row = row("duplicate", "Duplicate").hint(key::DUPLICATE.shown());
-pub(crate) const RENAME: Row = row("rename", "Rename").hint(key::RENAME.shown());
-pub(crate) const MOVE_TO: Row = row("move-to", "Move to…");
-pub(crate) const COPY_TO: Row = row("copy-to", "Copy to…");
+pub(crate) const CUT: Row = row("cut", "Cut")
+    .hint(key::CUT.shown())
+    .tenxer_hint(key::YANK_CUT.shown());
+pub(crate) const COPY: Row = row("copy", "Copy")
+    .hint(key::COPY.shown())
+    .tenxer_hint(key::YANK.shown());
+pub(crate) const DUPLICATE: Row = row("duplicate", "Duplicate")
+    .hint(key::DUPLICATE.shown())
+    .no_tenxer_hint();
+pub(crate) const RENAME: Row = row("rename", "Rename")
+    .hint(key::RENAME.shown())
+    .tenxer_hint(key::RENAME.alternate(0).shown());
+pub(crate) const MOVE_TO: Row = row("move-to", "Move to…").tenxer_hint(key::MOVE_TO.shown());
+pub(crate) const COPY_TO: Row = row("copy-to", "Copy to…").tenxer_hint(key::COPY_TO.shown());
 pub(crate) const COMPRESS: Row = row("compress", "Compress…");
 pub(crate) const PIN: Row = row("pin", "Pin to sidebar").typed_hint(key::PIN);
 pub(crate) const CUSTOMIZE: Row = row("customize", "Customize…");
@@ -478,10 +555,15 @@ pub(crate) const COPY_NAMES: Row = row("copy-names", "Copy names");
 pub(crate) const PROPERTIES: Row = row("properties", "Properties").hint(key::PROPERTIES.shown());
 /// The background menu's Properties shows no hint (`ContextHint::None` in `folder_menu.rs`).
 pub(crate) const FOLDER_PROPERTIES: Row = row("properties", "Properties");
-pub(crate) const TRASH: Row = row("trash", "Move to Trash").hint(key::MOVE_TO_TRASH.shown());
-pub(crate) const DELETE: Row =
-    row("delete", "Permanently delete").hint(key::DELETE_PERMANENTLY.shown());
-pub(crate) const PASTE: Row = row("paste", "Paste").hint(key::PASTE.shown());
+pub(crate) const TRASH: Row = row("trash", "Move to Trash")
+    .hint(key::MOVE_TO_TRASH.shown())
+    .tenxer_hint(key::MOVE_TO_TRASH.alternate(0).shown());
+pub(crate) const DELETE: Row = row("delete", "Permanently delete")
+    .hint(key::DELETE_PERMANENTLY.shown())
+    .tenxer_hint(key::DELETE_PERMANENTLY.alternate(0).shown());
+pub(crate) const PASTE: Row = row("paste", "Paste")
+    .hint(key::PASTE.shown())
+    .tenxer_hint(key::PASTE_KEEP_BOTH.shown());
 pub(crate) const SELECT_ALL: Row = row("select-all", "Select All").hint(key::SELECT_ALL.shown());
 pub(crate) const REFRESH: Row = row("refresh", "Refresh").hint(key::REFRESH.shown());
 /// The hidden-files rows show the primary key alone: `HIDDEN_FILES.alternate(0)`.
@@ -543,8 +625,8 @@ pub(crate) struct EntryTarget<'a> {
     /// Whether the pane's folder can be trashed from and deleted from, where GIO says.
     pub(crate) can_trash: Option<bool>,
     pub(crate) can_delete: Option<bool>,
-    /// "Type to search" takes plain keys, so their hints are hidden.
-    pub(crate) typing: bool,
+    /// "Type to search" takes plain keys, so their hints are hidden; 10xer mode has its own.
+    pub(crate) typing: Hints,
 }
 
 /// `compact_native_path` in `src/ui/browser/paths.rs`: the home folder as `~`.
@@ -586,12 +668,12 @@ fn is_file(entry: &FileEntry) -> bool {
     matches!(entry.kind, EntryKind::File | EntryKind::FileSymbolicLink)
 }
 
-fn section(rows: &[(Row, bool)], typing: bool) -> Section {
+fn section(rows: &[(Row, bool)], typing: Hints) -> Section {
     let shown = rows.iter().filter(|(_, shown)| *shown);
     Section::new(shown.map(|(row, _)| row.item(typing)))
 }
 
-fn open_in(typing: bool) -> Item {
+fn open_in(typing: Hints) -> Item {
     let children = Section::new([NEW_TAB.item(typing), NEW_WINDOW.item(typing)]);
     Item::submenu(OPEN_IN.id, tr(OPEN_IN.label), [children])
 }
@@ -609,7 +691,7 @@ fn delete_rows(target: &EntryTarget<'_>) -> Section {
     Section::new(rows)
 }
 
-fn creation(typing: bool) -> Section {
+fn creation(typing: Hints) -> Section {
     Section::new([NEW_FOLDER.item(typing), NEW_FILE.item(typing)])
 }
 
@@ -722,7 +804,7 @@ pub(crate) struct FolderTarget {
     pub(crate) can_paste: bool,
     pub(crate) can_open_terminal: bool,
     pub(crate) hidden_shown: bool,
-    pub(crate) typing: bool,
+    pub(crate) typing: Hints,
 }
 
 /// A pane's background menu: `FolderMenuOptions`. Paste follows whether the clipboard offers

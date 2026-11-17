@@ -94,6 +94,7 @@ mod filter;
 mod palette;
 mod sort;
 // A11 10xer mode
+mod peek;
 mod tenxer;
 // A12 Clipboard and conflicts
 mod clipboard;
@@ -164,6 +165,7 @@ slots::parts! {
     sort: sort::Sort,
     // A11 10xer mode
     tenxer: tenxer::Tenxer,
+    peek: peek::Peek,
     // A12 Clipboard and conflicts
     clipboard: clipboard::Clipboard,
     transfer: transfer::Transfer,

@@ -16,10 +16,12 @@
 //!   now: a saved keymap shows its keys, and a row with no key is left out. The rows are
 //!   rebuilt when the keymap, the view, "Type to search" or the language changes.
 //!
-//! Left out, with what brings each back: the 10xer map's sections and its `~` toggle, which
-//! are [A11]'s with the mode; the portal chooser's rows, [A20]'s.
+//! - **In 10xer mode** it lists 10xer's sections instead ([`tenxer`]), and a typed `~`
+//!   toggles it too, as the 10xer map binds it.
 //!
-//! [A11]: ../../../docs/rune/parity/packages/A11.md
+//! Left out, with what brings each back: the portal chooser's rows, 10xer's among them,
+//! [A20]'s.
+//!
 //! [A20]: ../../../docs/rune/parity/packages/A20.md
 
 use std::rc::Rc;
@@ -38,6 +40,7 @@ use crate::{
 mod contents;
 mod data;
 mod sections;
+mod tenxer;
 
 pub(crate) use contents::CUSTOM_ACTION;
 use contents::Mode;
@@ -57,6 +60,7 @@ struct Built {
     keymap: Rc<Keymap>,
     mode: Mode,
     typing: bool,
+    tenxer: bool,
     locale: String,
 }
 
@@ -65,6 +69,7 @@ impl PartialEq for Built {
         Rc::ptr_eq(&self.keymap, &other.keymap)
             && self.mode == other.mode
             && self.typing == other.typing
+            && self.tenxer == other.tenxer
             && self.locale == other.locale
     }
 }
@@ -121,6 +126,7 @@ fn refresh(app: &mut App) -> bool {
         keymap: active_keymap(),
         mode: mode(app),
         typing: shell::preferences(app).type_to_search,
+        tenxer: shell::preferences(app).tenxer_mode,
         locale: rust_i18n::locale().to_string(),
     };
     let shortcuts = &mut app.shortcuts;
@@ -128,7 +134,7 @@ fn refresh(app: &mut App) -> bool {
         return false;
     }
     let revision = shortcuts.data.revision + 1;
-    shortcuts.data = data::rows(now.mode, revision);
+    shortcuts.data = data::rows(now.mode, now.tenxer, revision);
     shortcuts.built = Some(now);
     true
 }
@@ -156,7 +162,7 @@ fn build(app: &App, frame: &mut Frame<'_, App>) -> Option<El> {
         |app: &App| &app.shortcuts.data,
     )
     .labels(data::labels())
-    .keys(data::panel_keys())
+    .keys(data::panel_keys(shell::preferences(app).tenxer_mode))
     .reduced_motion(frame.cx.is_reduced_motion())
     .build(app, &app.look, frame.layer);
     None

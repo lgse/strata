@@ -392,6 +392,65 @@ pub(crate) fn dismiss_escape(app: &mut App, tx: &mut Tx) -> bool {
     true
 }
 
+/// 10xer's J and K (`scroll_open_preview`): the open preview's source text `lines` lines
+/// down, or up for negative, wherever the keyboard is. False when it shows none: a rendered
+/// document, a sheet or a PDF keeps no offset this can step from (A11's open item).
+pub(crate) fn scroll_lines(app: &App, lines: i32, tx: &mut Tx) -> bool {
+    let Some(code) = app
+        .preview
+        .viewer
+        .code_state()
+        .filter(|_| app.preview.enabled)
+    else {
+        return false;
+    };
+    let ty = &app.look.kit.ty;
+    let line = rune::TextStyle {
+        size: ty.body.size,
+        ..ty.mono
+    }
+    .line_px();
+    let y = (code.scroll_offset() + lines as f32 * line).max(0.0);
+    tx.scroll_to_y(format!("{}-scroll", code.view_key()), y);
+    true
+}
+
+/// Whether the open preview has a top for 10xer's `g g`: source text, a rendered document or
+/// an archive (`preview_to_top`'s surfaces).
+pub(crate) fn has_top(app: &App) -> bool {
+    app.preview.enabled
+        && matches!(
+            app.preview.viewer,
+            viewer::Viewer::Code(_) | viewer::Viewer::Document(_) | viewer::Viewer::Archive(_)
+        )
+}
+
+/// 10xer's `g g` in the preview (`preview_to_top`): a document's top, or an archive's first
+/// member, which its tree takes as Home.
+pub(crate) fn to_top(app: &App, tx: &mut Tx) {
+    if matches!(app.preview.viewer, viewer::Viewer::Archive(_)) {
+        tx.send_key(rune::KeyEvent {
+            key: rune::Key::Home,
+            mods: rune::Mods::default(),
+        });
+        return;
+    }
+    let code = app.preview.viewer.code_state().map(|code| code.view_key());
+    let bodies = [
+        Some(viewer::CODE_KEY),
+        Some(document::DOCUMENT_KEY),
+        Some(sheet::SHEET_KEY),
+    ];
+    for key in bodies.into_iter().chain([code]).flatten() {
+        tx.scroll_to_y(format!("{key}-scroll"), 0.0);
+    }
+}
+
+/// The listing takes the keys back; the drawer stays open (`return_from_preview`).
+pub(crate) fn return_to_files(app: &mut App) {
+    app.preview.drawer.focus_files();
+}
+
 /// Toggles the preview for `entry` at `depth` (called by C18's `FilterIntent::Preview`).
 pub(crate) fn toggle_entry(
     app: &mut App,

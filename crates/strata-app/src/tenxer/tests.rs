@@ -530,3 +530,39 @@ fn compress_chord_targets_keyboard_focused_column_over_hovered_column() {
         },
     );
 }
+
+/// The chrome 10xer hides rebuilds the view around the listing; the listing keeps the keyboard
+/// through the switch, as GTK's does.
+#[test]
+fn toggling_tenxer_mode_keeps_the_keyboard_in_the_listing() {
+    crate::test_support::hosted_after(
+        MODULE,
+        "toggling_tenxer_mode_keeps_the_keyboard_in_the_listing",
+        || {
+            let file = strata_core::storage::config_directory().join("settings.toml");
+            std::fs::create_dir_all(file.parent().expect("a folder")).expect("settings folder");
+            std::fs::write(file, "browser_mode = \"icons\"\n").expect("settings");
+        },
+        |mut host| {
+            let _folder = open_and_focus(&mut host);
+            let focus = |host: &mut Offscreen| {
+                let mut focused = None;
+                host.runtime().update(|_: &mut App, tx: &mut Tx| {
+                    focused = tx.focused().map(str::to_owned);
+                });
+                focused
+            };
+            let toggle = Mods {
+                ctrl: true,
+                cmd: true,
+                shift: true,
+                ..Mods::default()
+            };
+            for enabled in [true, false] {
+                tap(&mut host, Key::Command('m'), toggle);
+                assert_eq!(shell::preferences(host.app()).tenxer_mode, enabled);
+                assert_eq!(focus(&mut host).as_deref(), Some("icons"));
+            }
+        },
+    );
+}

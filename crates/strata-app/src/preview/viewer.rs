@@ -204,6 +204,16 @@ impl Viewer {
         }
     }
 
+    /// The source text shown now, which scrolls by lines (10xer's J and K): a text file, or a
+    /// document in its source view.
+    pub(super) fn code_state(&self) -> Option<&CodeState> {
+        match self {
+            Self::Code(code) => Some(code),
+            Self::Document(doc) if doc.active == DocumentView::Source => doc.source.as_deref(),
+            _ => None,
+        }
+    }
+
     pub(super) fn reset_viewport(&mut self, tx: &mut Tx) {
         if let Self::Image(img) = self {
             img.reset();

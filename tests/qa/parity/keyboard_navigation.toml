@@ -186,9 +186,8 @@ host = "offscreen"
 scenario = "tenxer-icons-edges-search-peek"
 run = "icons"
 package = "A11"
-status = "pending"
-reason = "scope"
-blocker = "A11"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "tenxer-keeps-location-edit"

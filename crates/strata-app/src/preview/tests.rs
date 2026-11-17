@@ -633,3 +633,62 @@ fn assert_blank_preview_click_and_marquee(host: &mut Offscreen) {
     host.runtime().pointer_up(x - 64.0, y);
     while host.turn() {}
 }
+
+/// 10xer's J and K scroll the open text preview a line from the listing, where the keyboard
+/// stays, and from inside it, where `g g` goes to its top (`scroll_open_preview`,
+/// `preview_to_top`).
+#[test]
+fn tenxer_shift_j_and_k_scroll_the_open_preview_from_the_listing() {
+    hosted(
+        MODULE,
+        "tenxer_shift_j_and_k_scroll_the_open_preview_from_the_listing",
+        |mut host| {
+            let folder = fixture();
+            let long: String = (0..400).map(|n| format!("line {n}\n")).collect();
+            std::fs::write(folder.path().join("long.txt"), long).expect("write long.txt");
+            host.app().open(Location::local(folder.path()));
+            let counted = |host: &Offscreen| host.app().browser().column_entry_counts(0).is_some();
+            assert!(host.run_until(PATIENCE, counted));
+            while host.turn() {}
+            host.runtime().update(|app: &mut App, _: &mut Tx| {
+                shell::saved(app).change(|settings| settings.tenxer_mode = true);
+            });
+            select(&mut host, &Location::local(folder.path().join("long.txt")));
+            wait_for_code_preview(&mut host);
+            focus_view(&mut host);
+            let offset = |host: &Offscreen| {
+                let code = host.app().preview.viewer.code_state().expect("source text");
+                code.scroll_offset()
+            };
+            let shift = Mods {
+                shift: true,
+                ..Mods::default()
+            };
+            for _ in 0..3 {
+                press(&mut host, Key::Text("J".to_owned()), shift);
+            }
+            let down = offset(&host);
+            assert!(down > 0.0, "J scrolls down");
+            press(&mut host, Key::Text("K".to_owned()), shift);
+            assert!(offset(&host) < down, "K scrolls up");
+            assert_eq!(
+                focused_key(&mut host).as_deref(),
+                Some(crate::columns::VIEW)
+            );
+
+            press(&mut host, Key::Text("l".to_owned()), Mods::default());
+            assert_ne!(
+                focused_key(&mut host).as_deref(),
+                Some(crate::columns::VIEW)
+            );
+            for _ in 0..3 {
+                press(&mut host, Key::Text("J".to_owned()), shift);
+            }
+            assert!(offset(&host) > 0.0, "J scrolls inside the preview too");
+            press(&mut host, Key::Text("g".to_owned()), Mods::default());
+            press(&mut host, Key::Text("g".to_owned()), Mods::default());
+            let top = host.run_until(PATIENCE, |host| offset(host) == 0.0);
+            assert!(top, "g g goes to the top");
+        },
+    );
+}
