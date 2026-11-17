@@ -4,7 +4,7 @@
 //! `src/ui/preview/route.rs` and `route/player.rs` host them:
 //!
 //! - **The route** comes from the sandboxed helper, offline: its picture as a PNG, the samples
-//!   the marker plays along, the distance, the duration and the recorded heights. The PNGs are
+//!   the marker plays along, the distance, the duration and the recorded heights. The PNG images are
 //!   decoded off the UI thread (`gio::spawn_blocking`), and the view shows once they are, through
 //!   `Later`; a reply for a preview that has moved on is dropped.
 //! - **Playback** runs on the poll's clock ([`poll`]). The media keys (`media_play_pause`,
