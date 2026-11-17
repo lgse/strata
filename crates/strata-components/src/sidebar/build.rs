@@ -40,6 +40,7 @@ pub struct PlacesSidebar<'a, S> {
     access: fn(&mut S) -> &mut SidebarState,
     data: SidebarData<'a>,
     dnd: Dnd<S>,
+    content: &'static [&'static str],
     action: Option<ActionFn<S>>,
     reorder: bool,
     new_tabs: bool,
@@ -63,6 +64,7 @@ impl<'a, S: 'static> PlacesSidebar<'a, S> {
             access,
             data,
             dnd: Dnd::rune(),
+            content: &[],
             action: None,
             reorder: false,
             new_tabs: true,
@@ -83,6 +85,13 @@ impl<'a, S: 'static> PlacesSidebar<'a, S> {
     /// How drop zones attach (default [`Dnd::rune`]).
     pub fn dnd(mut self, dnd: Dnd<S>) -> Self {
         self.dnd = dnd;
+        self
+    }
+
+    /// The content types a row takes from other apps besides files, most wanted first (the
+    /// host's content-drops policy). The pinned gaps take folders only. Default none.
+    pub fn content_types(mut self, mimes: &'static [&'static str]) -> Self {
+        self.content = mimes;
         self
     }
 
@@ -162,6 +171,7 @@ impl<'a, S: 'static> PlacesSidebar<'a, S> {
             access: self.access,
             emit: self.emit.clone(),
             dnd: &self.dnd,
+            content: self.content,
             action: self.action.as_ref(),
             reorder: self.reorder,
             rail,
