@@ -1105,3 +1105,48 @@ fn ctrl_shift_ranges_by_the_setting() {
     );
     assert_eq!(r.selected(), [3, 4, 5, 8]);
 }
+
+// A single-selection collection (`PointerSettings::multiple(false)`), as a portal chooser that
+// was not asked for several files is.
+
+#[test]
+fn with_one_entry_allowed_ctrl_and_shift_clicks_select_the_entry_alone() {
+    // portal/chooser: a chooser not asked for several files keeps one entry selected; Ctrl and Shift clicks do not add to it.
+    let mut r = Rig::new(PointerSettings::default().multiple(false));
+    r.click(3, Spot::Name, PLAIN);
+    for (index, spot, mods) in [
+        (5, Spot::Name, CTRL),
+        (8, Spot::Gutter, SHIFT),
+        (6, Spot::Gutter, CTRL),
+        (4, Spot::Content, SHIFT),
+    ] {
+        r.wait(1.0);
+        r.down(index, spot, mods);
+        r.wait(0.05);
+        r.up_with(mods);
+        assert_eq!(r.selected(), [index as u64], "{mods:?} on {index}");
+    }
+}
+
+#[test]
+fn with_one_entry_allowed_no_drag_draws_a_band_but_an_entry_still_drags() {
+    // portal/chooser: a chooser not asked for several files draws no marquee from blank space.
+    let mut r = Rig::new(PointerSettings::default().multiple(false));
+    for (index, mods) in [
+        (Some(4), PLAIN),
+        (Some(4), ALT),
+        (None, PLAIN),
+        (None, CTRL),
+    ] {
+        r.wait(1.0);
+        r.down_with(Button::Primary, index, Spot::Gutter, mods);
+        r.to(30.0, 30.0);
+        r.up_at(Point::new(30.0, 30.0), mods, false);
+        assert!(!r.take().iter().any(is_marquee), "{index:?} {mods:?}");
+    }
+    r.wait(1.0);
+    r.select(&[2]);
+    r.down(7, Spot::Name, CTRL);
+    r.to(0.0, 30.0);
+    assert!(r.take().iter().any(drag(&[7])), "the entry drags alone");
+}

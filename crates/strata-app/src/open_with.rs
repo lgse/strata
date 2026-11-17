@@ -46,7 +46,9 @@ use crate::{
 
 #[cfg(test)]
 pub(crate) use launch::open_location_at;
-pub(crate) use menu::{open_selection_default, prepare_menu};
+pub(crate) use menu::{
+    RefusalReport, cancel_target_lookup, open_selection_default, open_targets, prepare_menu,
+};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum OpenWithContext {
@@ -123,7 +125,10 @@ impl Part for OpenWith {
     }
 
     fn listen(_: &Setup<'_>) -> Option<Listener<App>> {
-        Some(Box::new(|event, _, heard| {
+        Some(Box::new(|event, browser, heard| {
+            if browser.is_chooser_mode() {
+                return;
+            }
             if let BrowserEvent::OpenRequested { location } = event {
                 let location = location.clone();
                 heard.then(move |app: &mut App, tx: &mut Tx| {

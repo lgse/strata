@@ -70,6 +70,7 @@ pub(super) struct Environment {
     pub(super) home: PathBuf,
     pub(super) special: fn(UserDirectory) -> Option<PathBuf>,
     pub(super) recent: bool,
+    pub(super) local_only: bool,
 }
 
 impl Environment {
@@ -79,7 +80,13 @@ impl Environment {
             home: home_directory(),
             special: glib::user_special_dir,
             recent: recent_available(),
+            local_only: false,
         }
+    }
+
+    pub(super) fn local_only(mut self, local_only: bool) -> Self {
+        self.local_only = local_only;
+        self
     }
 
     pub(super) fn is_standard(&self, location: &Location) -> bool {
@@ -157,10 +164,10 @@ pub(super) fn listed(
             listed.places.push(place);
         }
     }
-    let shown = pins
-        .iter()
-        .enumerate()
-        .filter(|(_, (location, _))| !environment.is_standard(location));
+    let shown = pins.iter().enumerate().filter(|(_, (location, _))| {
+        !environment.is_standard(location)
+            && (!environment.local_only || location.native_path().is_some())
+    });
     for (ordinal, (index, entry)) in shown.enumerate() {
         let pin = build_pin(ordinal, index, entry, settings);
         listed.rows.push(Row {
@@ -233,12 +240,12 @@ fn place(
             let place = decorate_place(place, settings, &environment.home);
             (place, location, Navigation::Validate)
         }),
-        "trash" => settings.sidebar_show_trash.then(|| {
+        "trash" => (!environment.local_only && settings.sidebar_show_trash).then(|| {
             let place = Place::trash(tr("Trash"), false).description("trash:///");
             let place = with_place_keycap(place, GO_TRASH);
             (place, Location::uri("trash:///"), Navigation::Direct)
         }),
-        "network" => settings.sidebar_show_network.then(|| {
+        "network" => (!environment.local_only && settings.sidebar_show_network).then(|| {
             let location = Location::uri("network:///");
             let place = Place::other(id, tr("Network"), IconName::Network)
                 .description(location.display_path());

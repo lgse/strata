@@ -191,7 +191,7 @@ impl KeyMachine {
             self.handle.set_range(None);
         }
         let edge_before = self.last_edge.take();
-        let taken = self.dispatch(command, edge_before, s);
+        let taken = self.route(command, edge_before, s);
         self.range_revision = s.selection().revision();
         taken
     }
@@ -248,6 +248,42 @@ impl KeyMachine {
             }
             Landing::Nowhere => {}
         }
+    }
+
+    fn dispatch_single(
+        &mut self,
+        command: Command,
+        edge_before: Option<(Direction, Option<EntryId>)>,
+        s: &mut dyn Surface,
+    ) -> Option<bool> {
+        match command {
+            Command::Extend(target) => {
+                self.select(target, edge_before, s);
+                Some(true)
+            }
+            Command::Toggle
+            | Command::ToggleAdvance
+            | Command::SelectAll
+            | Command::Invert
+            | Command::Range(_) => Some(false),
+            _ => None,
+        }
+    }
+
+    /// A single-selection collection answers the commands that would select more than one
+    /// entry itself ([`Self::dispatch_single`]); everything else is [`Self::dispatch`]'s.
+    fn route(
+        &mut self,
+        command: Command,
+        edge_before: Option<(Direction, Option<EntryId>)>,
+        s: &mut dyn Surface,
+    ) -> bool {
+        let single = if s.settings().multiple {
+            None
+        } else {
+            self.dispatch_single(command, edge_before, s)
+        };
+        single.unwrap_or_else(|| self.dispatch(command, edge_before, s))
     }
 
     fn dispatch(

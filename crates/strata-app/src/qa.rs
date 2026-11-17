@@ -21,6 +21,7 @@ mod kept;
 mod keyboard;
 mod keymap;
 mod keys;
+mod portal;
 mod replaced;
 mod reveal;
 mod roles;
@@ -54,7 +55,9 @@ use crate::{host::offscreen::Offscreen, launch, startup};
 /// holds the `usage: strata --qa` prefix, and the QA job requires it in a QA build of the GTK
 /// application; the same prefix here lets both checks cover this binary once they are pointed
 /// at it. It names `strata` because that is what this interface's binary is called at parity.
-const USAGE: &str = "usage: strata --qa <directory>";
+const USAGE: &str = "usage: strata --qa <directory|--portal>";
+/// The argument that serves the portal chooser instead of a folder (`src/qa.rs`).
+const PORTAL: &str = "--portal";
 const OPTION: &str = "--qa";
 /// The GTK window's default size (`src/ui/window`), so `window_width` means the same.
 const SIZE: (f32, f32) = (1200.0, 760.0);
@@ -70,7 +73,9 @@ pub(crate) fn launch(arguments: &[OsString]) -> Option<ExitCode> {
         eprintln!("{USAGE}");
         return Some(ExitCode::from(2));
     };
-    let served = if session::wanted() {
+    let served = if directory == PORTAL {
+        serve_portal()
+    } else if session::wanted() {
         session::serve(directory)
     } else {
         serve(directory)
@@ -100,6 +105,20 @@ fn serve(directory: &OsStr) -> Result<(), String> {
     Ok(())
 }
 
+/// Serves the portal chooser with no window until a request opens one.
+fn serve_portal() -> Result<(), String> {
+    let protocol = strata_qa::reply_stream()?;
+    criticals::capture();
+    let _settings = startup::initialize_process();
+    launch::leave_launch_folder();
+    let log = InputLog::from_environment()?;
+    let host = portal::PortalStaged::start(startup::UiThread::claim()?, log)?;
+    let backend = Rune::on(host);
+    let commands = strata_qa::command_lines();
+    block_on(&backend, strata_qa::serve(&backend, protocol, commands));
+    Ok(())
+}
+
 /// Wakes the interface thread out of its wait for GLib, from the thread that reads stdin.
 struct Awake(AtomicBool);
 
@@ -117,7 +136,7 @@ impl Wake for Awake {
 /// Runs the session on this thread, which owns the host. A step turns the host itself while
 /// it waits; between steps this loop does, so the application keeps running as a window's
 /// does while the runner works on files. Ends when the session does or the backend quits.
-fn block_on(backend: &Rune, session: impl Future<Output = ()>) {
+fn block_on<H: host::Host>(backend: &Rune<H>, session: impl Future<Output = ()>) {
     let awake = Arc::new(Awake(AtomicBool::new(true)));
     let waker = Waker::from(awake.clone());
     let mut context = Context::from_waker(&waker);
@@ -127,9 +146,9 @@ fn block_on(backend: &Rune, session: impl Future<Output = ()>) {
             if let Poll::Ready(()) = session.as_mut().poll(&mut context) {
                 return;
             }
-        } else if !backend.turn() && !awake.0.load(Ordering::Acquire) {
+        } else if !backend.idle_turn() && !awake.0.load(Ordering::Acquire) {
             // A wake-up that lands before the wait begins ends it at once: GLib keeps it.
-            backend.wait(IDLE_WAIT);
+            backend.pause(IDLE_WAIT);
         }
     }
 }

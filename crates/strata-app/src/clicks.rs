@@ -46,3 +46,11 @@ pub(crate) fn list(settings: &Preferences) -> ClickModes {
 pub(crate) fn one_click_files(modes: ClickModes) -> bool {
     modes.files == ClickCount::One
 }
+
+/// File choosers always require two clicks to accept a file (`src/ui/browser_modes/clicks.rs`).
+pub(crate) fn for_chooser(mut modes: ClickModes, chooser: bool) -> ClickModes {
+    if chooser {
+        modes.files = ClickCount::Two;
+    }
+    modes
+}

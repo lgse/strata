@@ -225,11 +225,19 @@ fn last_column(app: &App) -> Option<usize> {
 }
 
 /// `may_create_in`: neither the Trash nor Recent takes a new item.
-fn may_create_in(location: &Location) -> bool {
+pub(crate) fn may_create_in(location: &Location) -> bool {
     let trash = location
         .uri_value()
         .is_some_and(|uri| uri.starts_with("trash:"));
     !trash && !location.is_recent_location()
+}
+
+/// `BrowserView::new_entry_parent` for 10xer's `a` (`create ›`): the focused column's folder (or
+/// the active/last column's), when items can be created there.
+pub(crate) fn focused_create_parent(app: &App) -> Option<(usize, Location)> {
+    let depth = crate::tenxer::focused_listing_depth(app).or_else(|| column(app, &On::Focus))?;
+    let parent = app.browser.location_at(depth).filter(may_create_in)?;
+    Some((depth, parent))
 }
 
 /// `begin_new_entry`: an edit or a naming already open gives way, and the browser creates

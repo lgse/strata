@@ -16,32 +16,32 @@ use crate::{
 
 const MODULE: &str = "tenxer::tests";
 
-fn tap(host: &mut Offscreen, key: Key, mods: Mods) {
+pub(super) fn tap(host: &mut Offscreen, key: Key, mods: Mods) {
     send_key(host, KeyEvent { key, mods });
     while host.turn() {}
 }
 
-fn char_key(ch: &str) -> Key {
+pub(super) fn char_key(ch: &str) -> Key {
     Key::Text(ch.to_owned())
 }
 
-fn has_key(host: &Offscreen, key: &str) -> bool {
+pub(super) fn has_key(host: &Offscreen, key: &str) -> bool {
     let tree = host.tree();
     !all(&tree, &|node| node["key"] == key).is_empty()
 }
 
-fn node_name(host: &Offscreen, key: &str) -> Option<String> {
+pub(super) fn node_name(host: &Offscreen, key: &str) -> Option<String> {
     let tree = host.tree();
     all(&tree, &|node| node["key"] == key)
         .first()
         .map(|node| text(node, "name"))
 }
 
-fn open_and_focus(host: &mut Offscreen) -> tempfile::TempDir {
+pub(super) fn open_and_focus(host: &mut Offscreen) -> tempfile::TempDir {
     open_names_and_focus(host, &["alpha.txt", "beta.txt", "gamma.txt"])
 }
 
-fn open_names_and_focus(host: &mut Offscreen, names: &[&str]) -> tempfile::TempDir {
+pub(super) fn open_names_and_focus(host: &mut Offscreen, names: &[&str]) -> tempfile::TempDir {
     let folder = folder_of(names);
     host.app().open(Location::local(folder.path()));
     assert!(host.run_until(PATIENCE, |h| {

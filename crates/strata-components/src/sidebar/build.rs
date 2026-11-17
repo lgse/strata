@@ -195,7 +195,7 @@ impl<'a, S: 'static> PlacesSidebar<'a, S> {
             root = root.child(f(shown));
         }
         if !rail {
-            root = root.child(grip(&self.key, look, self.access, width));
+            root = root.child(grip(&self.key, self.access, width));
         }
         self.dnd
             .drop_zone_keyed(root, self.key.clone(), drops::background(self.access))
@@ -468,17 +468,13 @@ fn separator<S>(ctx: &Ctx<'_, S>) -> El {
         .a11y_hidden()
 }
 
-/// The full sidebar's resize grip on its trailing edge. A double click resets the width.
-fn grip<S: 'static>(
-    key: &str,
-    look: &Look,
-    access: fn(&mut S) -> &mut SidebarState,
-    width: f32,
-) -> El {
-    let reach = look.space.xs;
+/// The full sidebar's 1 pt resize grip on its trailing border, as GTK's
+/// `sidebar-split > separator.wide` is (`src/style.css`), so the blank space either side of it
+/// starts a marquee band rather than a resize. A double click resets the width.
+fn grip<S: 'static>(key: &str, access: fn(&mut S) -> &mut SidebarState, width: f32) -> El {
     el().key(format!("{key}-grip"))
-        .absolute(width - reach, 0.0)
-        .w(2.0 * reach)
+        .absolute(width - 1.0, 0.0)
+        .w(1.0)
         .h_full()
         .cursor(rune::Cursor::ResizeColumn)
         .a11y_hidden()

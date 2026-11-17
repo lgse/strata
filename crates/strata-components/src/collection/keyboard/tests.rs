@@ -1501,3 +1501,48 @@ fn ctrl_a_takes_the_cursor_to_the_last_entry_where_asked_and_keeps_the_anchor() 
     assert!(r.ctrl_letter('a'));
     assert_eq!((r.cursor(), r.anchor()), (Some(4), Some(4)));
 }
+
+// A single-selection collection (`KeySettings::multiple(false)`), as a portal chooser that was
+// not asked for several files is.
+
+#[test]
+fn with_one_entry_allowed_shift_moves_and_fills_are_refused() {
+    // portal/chooser: a chooser not asked for several files keeps one entry selected; Shift+arrows move it, and Ctrl+A and Ctrl+Space are not taken.
+    let mut r = Rig::list_with(8, KeySettings::default().multiple(false));
+    r.click(2);
+    let moved = [r.shift(Key::Down), r.shift(Key::Down)];
+    assert_eq!(
+        (moved, r.selected(), r.cursor()),
+        ([true, true], vec![4], Some(4))
+    );
+    r.shift(Key::End);
+    r.take();
+    let refused = [r.ctrl_letter('a'), r.press(Key::Text(" ".into()), CTRL)];
+    assert_eq!(
+        (refused, r.selected(), r.take()),
+        ([false, false], vec![7], Vec::new()),
+        "Ctrl+A and Ctrl+Space are left to the host"
+    );
+}
+
+#[test]
+fn with_one_entry_allowed_tenxer_fills_and_ranges_are_refused() {
+    // portal/chooser: in 10xer mode, Space, Ctrl+R, `v` and `V` select no second entry in a chooser not asked for several.
+    let single = KeySettings {
+        multiple: false,
+        ..KeySettings::tenxer()
+    };
+    let mut t = Rig::list_with(6, single);
+    t.click(1);
+    for (why, taken) in [
+        ("Space", t.typed(" ")),
+        ("Ctrl+R", t.ctrl_letter('r')),
+        ("Ctrl+A", t.ctrl_letter('a')),
+        ("v", t.typed("v")),
+        ("V", t.typed("V")),
+    ] {
+        assert!(!taken, "{why} is left to the host");
+    }
+    assert_eq!(t.selected(), [1]);
+    assert_eq!(t.handle.range(), None);
+}

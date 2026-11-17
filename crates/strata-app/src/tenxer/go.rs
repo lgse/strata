@@ -135,7 +135,7 @@ pub(super) fn complete(app: &mut App, press: &KeyPress, tx: &mut Tx) -> bool {
                 app.tenxer.flash.show(tr("Nothing to reveal"), tx);
             }
         }
-        GoTarget::Prompt => {}
+        GoTarget::Prompt => super::prompts::open_go(app, tx),
         GoTarget::Pin(pin) => change_pin(app, pin, tx),
         GoTarget::Place { location, validate } => {
             shell::publish(app);
