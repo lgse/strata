@@ -60,14 +60,19 @@ enum Sizes {
     Tiles,
 }
 
+/// Ctrl held without Alt or Super. (Off macOS Rune sets `cmd` with Ctrl, so it says nothing
+/// more.)
+fn zooms(m: rune::Mods) -> bool {
+    m.ctrl && !(m.alt || m.logo)
+}
+
 /// What `e` sizes, if anything: Ctrl alone for the text, with Shift for the tiles while Icons
 /// shows (`claims_zoom`).
 fn claims(app: &App, e: &WheelEvent) -> Option<Sizes> {
-    let m = e.mods;
-    if !m.ctrl || m.alt || m.logo {
+    if !zooms(e.mods) {
         return None;
     }
-    if !m.shift {
+    if !e.mods.shift {
         return Some(Sizes::Text);
     }
     let icons = shell::shown_view(app).is_some_and(|view| (view.shows)("icons"));
