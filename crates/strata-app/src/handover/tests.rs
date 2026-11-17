@@ -9,9 +9,9 @@ use strata_components::collection::{
 use strata_core::model::{EntryKind, FileEntry, Location, MetadataValue};
 use strata_fs::{adapters::LocalFileSource, app::Browser, app::BrowserEvent};
 
-use super::{Moving, sync_rule};
+use super::{Moving, adopt, sync_rule};
 use crate::{
-    events::{self, Change},
+    events::{self, Change, Marks},
     listing::{Column, Edit, Load, Row},
     slots::Ids,
 };
@@ -217,4 +217,39 @@ fn item_relocated_only_emits_change_moved_within_same_parent_folder() {
     };
     let cross_read = events::read(&cross_folder, &browser, &ids);
     assert!(cross_read.changes.is_empty());
+}
+
+#[test]
+fn adopt_updates_anchor_when_cursor_and_selection_already_match() {
+    let ids = Ids::default();
+    let root = Location::local(Path::new("/tmp/root"));
+    let a = file_entry(Path::new("/tmp/root/a.txt"));
+    let b = file_entry(Path::new("/tmp/root/b.txt"));
+    let id_a = ids.of(&a.location);
+    let id_b = ids.of(&b.location);
+
+    let mut column = Column::new(root, false, None);
+    column.apply(Edit::Replace(vec![Row::of(&a, &ids), Row::of(&b, &ids)]));
+    column.set_load(Load::Listed);
+    let mut collection = CollectionState::new();
+    let _ = collection.selection.restore(&Position {
+        cursor: Some(id_b),
+        cursor_index: Some(1),
+        anchor: Some(id_a),
+        selected: vec![id_b],
+        provisional: false,
+        scroll: None,
+    });
+
+    adopt(
+        &column,
+        &mut collection,
+        &Marks {
+            cursor: Some(id_b),
+            selected: vec![id_b],
+            anchor: Some(id_b),
+            provisional: false,
+        },
+    );
+    assert_eq!(collection.selection.anchor(), Some(id_b));
 }

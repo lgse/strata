@@ -79,6 +79,7 @@ pub(super) fn header<S: 'static>(
         let sh = shared.clone();
         controls.push(
             button(IconName::Open, &labels.open)
+                .disabled(parts.open_disabled)
                 .on_press_tx(move |s: &mut S, tx: &mut Tx| sh.emit(s, DrawerIntent::Open, tx))
                 .build(k)
                 .key("preview-open")
@@ -110,6 +111,25 @@ pub(super) fn header<S: 'static>(
             .on_key(super::return_as_space::<S>),
     );
 
+    let handle = header_handle(parts, &labels.detail_descriptions, look);
+
+    // Sized like the window's header bar, as Strata's `.preview-header` is: the bar's height
+    // and its Frame-density inset, no vertical padding, 8 points before and 6 after.
+    row()
+        .key("preview-header")
+        .w_full()
+        .h(look.frame.bar + 2.0 * look.frame.inset)
+        .pl(look.space.md)
+        .pr(look.space.sm)
+        .gap(look.space.xs)
+        .items_center()
+        .border_sides([0.0, 0.0, 1.0, 0.0], k.c.border_muted)
+        .child(handle)
+        .children(controls)
+}
+
+fn header_handle<S: 'static>(parts: &Parts<'_, S>, descriptions: &[String; 3], look: &Look) -> El {
+    let k = &look.kit;
     let info = parts.header;
     let mut heading = col().grow(1.0).min_w(0.0);
     if !info.title.is_empty() {
@@ -122,11 +142,7 @@ pub(super) fn header<S: 'static>(
         );
     }
     if !info.details.is_empty() {
-        heading = heading.child(details_row(
-            &info.details,
-            &labels.detail_descriptions,
-            look,
-        ));
+        heading = heading.child(details_row(&info.details, descriptions, look));
     }
     let mut handle = row()
         .key("preview-handle")
@@ -143,20 +159,7 @@ pub(super) fn header<S: 'static>(
     if let Some((dnd, source)) = parts.drag {
         handle = dnd.drag_source_keyed(handle, "preview-handle", source.clone());
     }
-
-    // Sized like the window's header bar, as Strata's `.preview-header` is: the bar's height
-    // and its Frame-density inset, no vertical padding, 8 points before and 6 after.
-    row()
-        .key("preview-header")
-        .w_full()
-        .h(look.frame.bar + 2.0 * look.frame.inset)
-        .pl(look.space.md)
-        .pr(look.space.sm)
-        .gap(look.space.xs)
-        .items_center()
-        .border_sides([0.0, 0.0, 1.0, 0.0], k.c.border_muted)
-        .child(handle)
-        .children(controls)
+    handle
 }
 
 /// The kit's button size nearest the look's bar control size (`frame.control`). rune-kit's
@@ -185,12 +188,7 @@ fn details_row(details: &[String], descriptions: &[String; 3], look: &Look) -> E
         .items_center();
     for (index, detail) in details.iter().enumerate() {
         if index > 0 {
-            line = line.child(
-                text("·")
-                    .font(k.ty.small)
-                    .color(k.c.text_muted)
-                    .a11y_hidden(),
-            );
+            line = line.child(text("·").font(k.ty.small).color(k.c.text_muted));
         }
         let mut item = text(detail.clone())
             .label(detail.clone())

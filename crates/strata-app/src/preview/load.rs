@@ -250,11 +250,13 @@ pub(super) fn identity_for(
 }
 
 fn extension_label(entry: &FileEntry) -> String {
-    Path::new(&entry.native_name)
-        .extension()
+    entry
+        .location
+        .native_path()
+        .and_then(Path::extension)
         .and_then(|ext| ext.to_str())
-        .filter(|ext| !ext.is_empty())
-        .map_or_else(|| tr("File"), |ext| ext.to_ascii_uppercase())
+        .unwrap_or("file")
+        .to_owned()
 }
 
 fn icon_for(entry: &FileEntry) -> IconName {

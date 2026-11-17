@@ -438,8 +438,9 @@ impl<'a, S: 'static> PreviewDrawer<'a, S> {
             let parts = Parts {
                 header: &header,
                 caps: &caps,
-                // A placeholder has nothing to open.
-                open_allowed: open_allowed && matches!(body, Body::View(_)),
+                open_allowed,
+                // A placeholder has nothing to open, so its Open button stays visible and disabled.
+                open_disabled: matches!(body, Body::Placeholder(_)),
                 drag: drag.as_ref(),
                 find_keys,
             };
@@ -450,18 +451,17 @@ impl<'a, S: 'static> PreviewDrawer<'a, S> {
         } else {
             slot = empty_reserved_slot(slot, &shared, slot_width, look);
         }
-        if st.is_open() && has_body {
-            slot = slot.child(fit_marker(&shared, st, solved.fits));
-        }
-        if !shown && (st.dragging || st.hint || st.find.query.focused) {
-            slot = slot.child(hidden_marker(&shared, st));
-        } else if st.find.query.focused && !(st.find.open && caps.searchable) {
-            // The pane shows but the bar doesn't (the view has nothing to search now).
-            slot = slot.child(find_focus_marker(&shared, st));
-        }
-        if st.find_end_pending {
-            slot = slot.child(find_end_marker(&shared, st));
-        }
+        slot = append_slot_markers(
+            slot,
+            &shared,
+            st,
+            SlotMarkers {
+                shown,
+                has_body,
+                fits: solved.fits,
+                searchable: caps.searchable,
+            },
+        );
 
         let mut split = row()
             .key(SPLIT_KEY)
@@ -476,18 +476,7 @@ impl<'a, S: 'static> PreviewDrawer<'a, S> {
                     .child(files),
             )
             .child(slot)
-            .child(stub(
-                format!("preview-focus-content-{}", st.focus_content),
-                BODY_KEY,
-            ))
-            .child(stub(
-                format!("preview-focus-files-{}", st.focus_files),
-                &files_key,
-            ))
-            .child(stub(
-                format!("preview-focus-divider-{}", st.focus_divider),
-                divider::GRIP_KEY,
-            ));
+            .children(focus_stubs(st, &files_key));
         if shown {
             split = split.children(divider::overlays(
                 &shared, st, solved, available, slot_width, columns, look,
@@ -495,6 +484,55 @@ impl<'a, S: 'static> PreviewDrawer<'a, S> {
         }
         split
     }
+}
+
+struct SlotMarkers {
+    shown: bool,
+    has_body: bool,
+    fits: bool,
+    searchable: bool,
+}
+
+fn hidden_state_needs_reset(st: &DrawerState) -> bool {
+    st.dragging || st.hint || st.find.query.focused
+}
+
+fn find_bar_unmounted(st: &DrawerState, searchable: bool) -> bool {
+    st.find.query.focused && !(st.find.open && searchable)
+}
+
+fn append_slot_markers<S: 'static>(
+    mut slot: El,
+    shared: &Shared<S>,
+    st: &DrawerState,
+    m: SlotMarkers,
+) -> El {
+    if st.is_open() && m.has_body {
+        slot = slot.child(fit_marker(shared, st, m.fits));
+    }
+    if !m.shown && hidden_state_needs_reset(st) {
+        slot = slot.child(hidden_marker(shared, st));
+    } else if find_bar_unmounted(st, m.searchable) {
+        slot = slot.child(find_focus_marker(shared, st));
+    }
+    if st.find_end_pending {
+        slot = slot.child(find_end_marker(shared, st));
+    }
+    slot
+}
+
+fn focus_stubs(st: &DrawerState, files_key: &str) -> [El; 3] {
+    [
+        stub(
+            format!("preview-focus-content-{}", st.focus_content),
+            BODY_KEY,
+        ),
+        stub(format!("preview-focus-files-{}", st.focus_files), files_key),
+        stub(
+            format!("preview-focus-divider-{}", st.focus_divider),
+            divider::GRIP_KEY,
+        ),
+    ]
 }
 
 fn compute_slot_width(
@@ -521,6 +559,7 @@ pub(crate) struct Parts<'b, S> {
     pub header: &'b HeaderInfo,
     pub caps: &'b Caps,
     pub open_allowed: bool,
+    pub open_disabled: bool,
     pub drag: Option<&'b (Dnd<S>, DragSource<S>)>,
     pub find_keys: fn(&KeyEvent) -> bool,
 }
