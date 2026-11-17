@@ -186,12 +186,22 @@ impl Part for Trash {
                 &[TENXER_DELETE_CONFIRM.ignoring(Modifiers::empty())],
             )
             .when(|app, _| shell::preferences(app).tenxer_mode && confirms_trash_dialog(app))]),
-        Action::new("trash-dialog-focus", dialog_focus).keys(&[Keys::at(
+        Action::new("trash-dialog-focus-cancel", |app, _, tx| {
+            focus_button(app, "secondary", tx)
+        })
+        .command(LEFT)
+        .keys(&[Keys::at(
             Stage::Entry,
-            &[
-                LEFT.ignoring(DIALOG_ARROW_MODIFIERS).alternates(),
-                RIGHT.ignoring(DIALOG_ARROW_MODIFIERS).alternates(),
-            ],
+            &[LEFT.ignoring(DIALOG_ARROW_MODIFIERS).alternates()],
+        )
+        .when(|app, _| app.trash.open)]),
+        Action::new("trash-dialog-focus-confirm", |app, _, tx| {
+            focus_button(app, "primary", tx)
+        })
+        .command(RIGHT)
+        .keys(&[Keys::at(
+            Stage::Entry,
+            &[RIGHT.ignoring(DIALOG_ARROW_MODIFIERS).alternates()],
         )
         .when(|app, _| app.trash.open)]),
     ];
@@ -229,14 +239,11 @@ fn tenxer_confirm(app: &mut App, _: &Call<'_>, _: &mut Tx) -> Outcome {
     Outcome::Ran
 }
 
-fn dialog_focus(app: &mut App, call: &Call<'_>, tx: &mut Tx) -> Outcome {
-    let (Some(press), Some(confirm)) = (call.press, app.trash.confirm.as_ref()) else {
+/// `h` and `l` move the keyboard between the confirmation's buttons, as GTK's
+/// `delete_confirmation_focus_target` does; the arrows are the dialog's own.
+fn focus_button(app: &mut App, suffix: &str, tx: &mut Tx) -> Outcome {
+    let Some(confirm) = app.trash.confirm.as_ref() else {
         return Outcome::Declined;
-    };
-    let suffix = if press.is(LEFT.ignoring(DIALOG_ARROW_MODIFIERS).alternates()) {
-        "secondary"
-    } else {
-        "primary"
     };
     tx.focus(
         format!("delete-confirm-{}-{suffix}", confirm.generation),
