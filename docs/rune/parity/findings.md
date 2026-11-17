@@ -2175,29 +2175,31 @@ sequence only together with the alphabet's version, so the version is part of th
     and the text's lines. That is
     [#2558](#2558-the-rune-text-and-document-previews-name-their-body-and-split-the-text-where-gtk-reads-one-buffer-string)'s,
     and A15's `preview` alphabet leaves text bodies out for it.
-  - *The archive member rows (A13's), fixed in [#2561](https://github.com/lgse/strata/pull/2561):*
+  - *The archive member rows and crumbs (A13's), fixed in [#2561](https://github.com/lgse/strata/pull/2561):*
     GTK's row has no name and holds a name label and a size label. Rune names the option for
-    screen readers and draws its size `a11y_hidden`, as the row's description. The size is now
-    keyed as a row's badge, which the Rune QA backend presents under the row as it does the
-    name, and the backend presents an archive member row without its own name
-    (`unname_archive_members`, `crates/strata-app/src/qa/tree.rs`). A probe replaying the open
-    archive tree against GTK then differed on the header's separators alone.
-  - *The password prompt (A13's), open:* GTK's `GtkPasswordEntry` holds an inner `GtkText`, and
-    both are named by the placeholder, and its `GtkButton` holds a `GtkLabel`. So GTK reads
-    `Password` twice and `Unlock` three times, and Rune reads each once. Presenting those inner
-    nodes on Rune would add a node under every secure field and text button the backend
-    targets, so it is left as [A13](packages/A13.md)'s open item.
+    screen readers and draws its size `a11y_hidden`, as the row's description. GTK's crumb
+    `GtkButton` holds a `GtkLabel`, and Rune's button is one node. In the Rune QA backend
+    (`crates/strata-app/src/qa/tree.rs`), the size is now keyed as a row's badge and presented
+    under the row as the name is, a member row is presented without its own name, and a crumb
+    holds a label with its text. `archives` v5 opens the archive tree, and it agrees with GTK
+    there.
+  - *The password prompt (A13's), half fixed:* GTK's `GtkButton` holds a `GtkLabel`, now
+    presented under Rune's `Unlock` too. GTK's `GtkPasswordEntry` holds an inner `GtkText`, and
+    both are named by the placeholder, so GTK reads `Password` twice and Rune once. Presenting
+    that inner node would add a second field-like node under every secure field the backend
+    targets, so it is [A13](packages/A13.md#open)'s open item, and `archives` never opens the
+    prompt.
 - **Concerns:** 12 of 20 smoke seeds of `archives` v1 (never merged), each first differing
   there on a preview opened by `Space`, `Right` or `l`, and seed `0x07` of v3 by `Right` on
   `packed (1).tar`.
-- **State:** open. A13's rows are fixed. Its prompt is open, with the next step in
+- **State:** open. A13's rows, crumbs and `Unlock` are fixed. Its password field is open, in
   [`A13.md`](packages/A13.md#open). The header is fixed by #2548, and the text preview is
   #2558's.
   The same run found one visible difference, which #2561 fixed: until an archive opens, the
   header named its kind `ZIP` (`extension_label`, `crates/strata-app/src/preview/load.rs`)
   where GTK writes the extension as it is, `zip`. `archives` v5 opens the archive tree, and
   keeps the drawer closed on text files, folders and the password prompt. The nine
-  `archive_preview` runs hold the rest of the preview.
+  `archive_preview` runs hold the prompt.
 
 ### #2562: `keyboard-open-selects-first-child/columns` did not open `documents` once in a full Rune run
 

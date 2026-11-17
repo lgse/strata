@@ -19,8 +19,8 @@
 #   the drawer to close, so the cursor never brings a text file's or a folder's preview in, and
 #   `encrypted.zip`'s preview is never opened. `app.preview` reads the drawer's accessible tree:
 #   a text body reads differently on the two targets (lgse/strata#2558, A15's), and so does the
-#   password prompt's inner labels (lgse/strata#2560, A13's, open). The nine `archive_preview`
-#   runs hold the prompt.
+#   password field, whose inner `GtkText` GTK names too (lgse/strata#2560, A13's, open). The
+#   nine `archive_preview` runs hold the prompt.
 # - Compressing anything but `readme.md`, `todo.txt` and `documents`, or from another folder: a
 #   file the sequence wrote has the clock's mtime, which a new archive records, so two replays
 #   would write different bytes.
@@ -42,8 +42,10 @@
 # third of its observations. Version 3, never merged, closed it in the action that opened it,
 # and met the drawer once more: `Right` on `packed (1).tar`, a numbered copy its guard did not
 # name. Version 4, never merged, sent `Right` only to the folders a sequence can open, and kept
-# the drawer closed. Version 5 opens the archive tree, since #2561 presents its member rows as
-# GTK's and A15's #2548 exposed the header's separators.
+# the drawer closed. Version 5 opens the archive tree, since #2561 presents its member rows and
+# crumbs as GTK's and A15's #2548 exposed the header's separators. Its first smoke tier found
+# Space in the tree no longer closing the preview after #2548 (fixed), and a click on an open
+# folder (lgse/strata#2356, now guarded).
 area = "archives"
 version = 5
 about = "Columns on the canonical fixture with bundle.zip, encrypted.zip and a provider, type to search off: Extract here with its password dialog, Compress with File already exists answers by click and by keys, Undo, the reveal of what they made, the provider's entry menu section and action, and the archive tree in the drawer"
