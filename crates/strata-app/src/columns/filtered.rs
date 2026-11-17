@@ -9,7 +9,7 @@ use std::collections::HashMap;
 
 use rune::Tx;
 use strata_components::{
-    collection::selection::{Position, Selection},
+    collection::selection::{AnchorRule, Position, Selection},
     contract::{EntryId, EntrySource},
 };
 use strata_fs::app::Browser;
@@ -192,6 +192,25 @@ impl Columns {
     /// the active column.
     pub(crate) fn land(&mut self, depth: usize, id: EntryId, look: &Look, tx: &mut Tx) {
         self.select_only((depth, id), look, tx);
+    }
+
+    /// Moves column `depth`'s cursor to `index` without replacing any committed selection.
+    pub(crate) fn move_cursor_to(&mut self, depth: usize, index: usize, tx: &mut Tx) {
+        let Some(shown) = self.listings.shown(depth) else {
+            return;
+        };
+        let Some(key) = self.state.column_key(depth) else {
+            return;
+        };
+        let Some(state) = self.state.column_mut(depth) else {
+            return;
+        };
+        let _ = state
+            .collection
+            .selection
+            .move_cursor(shown, index, AnchorRule::Keep);
+        state.collection.note_selection(shown);
+        state.collection.reveal(&key, shown, index, tx);
     }
 
     fn note(&mut self, depth: usize) {
