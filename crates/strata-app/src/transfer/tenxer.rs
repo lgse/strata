@@ -4,13 +4,11 @@
 //! `m:` and `c:` move or copy into a picked folder without going there
 //! (`src/ui/browser/file_commands.rs`, `src/ui/browser/transfer.rs`).
 
-use std::rc::Rc;
-
 use rune::Tx;
 use strata_core::model::Location;
 
 use super::{
-    PasteInto, TransferRequest, begin_transfer_request, paste_into, resolve_paste_location,
+    OnEmpty, PasteInto, TransferRequest, begin_transfer_request, paste_into, resolve_paste_location,
 };
 use crate::{App, clipboard, commands::On, conflict_dialog::ConflictFocus, shell};
 
@@ -19,7 +17,7 @@ use crate::{App, clipboard, commands::On, conflict_dialog::ConflictFocus, shell}
 pub(crate) fn paste_preferring(
     app: &mut App,
     focus: ConflictFocus,
-    on_empty: Rc<dyn Fn(&mut App, &mut Tx)>,
+    on_empty: OnEmpty,
     tx: &mut Tx,
 ) {
     shell::publish(app);

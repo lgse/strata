@@ -71,7 +71,7 @@ fn place_cursor(app: &mut App, index: usize, tx: &mut Tx) {
                 .move_cursor(source, index, AnchorRule::Keep);
             collection.note_selection(source);
         }
-        app.filter.pane.reveal_index(&view, index, tx);
+        app.filter.pane.reveal_index(view, index, tx);
         return;
     }
     if super::super::shows(app, "columns") {

@@ -376,12 +376,15 @@ fn paste(app: &mut App, call: &Call<'_>, tx: &mut Tx) -> Outcome {
     Outcome::Ran
 }
 
+/// What a paste says when the clipboard holds no files.
+pub(crate) type OnEmpty = std::rc::Rc<dyn Fn(&mut App, &mut Tx)>;
+
 /// What a paste reads the clipboard for: where it goes, the conflict button it focuses, and
 /// what to say when the clipboard holds no files.
 struct PasteInto {
     destination: Location,
     focus: ConflictFocus,
-    on_empty: Option<std::rc::Rc<dyn Fn(&mut App, &mut Tx)>>,
+    on_empty: Option<OnEmpty>,
 }
 
 fn paste_into(app: &mut App, into: PasteInto, tx: &mut Tx) {
