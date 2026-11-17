@@ -595,6 +595,9 @@ impl Columns {
             pending,
             results,
             drawn,
+            kept: (0..self.open())
+                .filter_map(|depth| Some((depth, self.kept.get(depth)?.id()?)))
+                .collect(),
         }
     }
 }

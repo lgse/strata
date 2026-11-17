@@ -417,6 +417,17 @@ fn cursor_past_the_end_moves_back() {
 }
 
 #[test]
+fn a_move_out_leaves_the_neighbour_the_cursor_unselected() {
+    // finding lgse/strata#2546: after a move out of the folder, GTK's list view gives the row beside the one that went the keyboard, and selects nothing.
+    let mut s = listing(5);
+    let mut sel = Selection::new();
+    sel.select_only(&s, 4);
+    delete(&mut sel, &mut s, &[4], CursorGone::Neighbor);
+    assert_eq!(cursor(&sel), Some(3));
+    assert!(sel.is_empty());
+}
+
+#[test]
 fn cursor_gone_clear_leaves_no_cursor() {
     // browser/selection: In Columns, when a reload drops the cursor's entry in a column whose child column is open, no neighbour takes the cursor.
     let mut s = listing(4);

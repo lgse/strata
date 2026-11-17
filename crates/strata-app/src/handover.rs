@@ -100,6 +100,12 @@ pub(crate) fn kept_neighbour(
 pub(crate) struct Kept(Option<EntryId>);
 
 impl Kept {
+    /// The neighbour kept, if any.
+    #[cfg(feature = "qa")]
+    pub(crate) fn id(self) -> Option<EntryId> {
+        self.0
+    }
+
     /// Starts keeping the cursor of `marks`, [`kept_neighbour`]'s, or nothing.
     pub(crate) fn keep(&mut self, marks: Option<&Marks>) {
         self.0 = marks.and_then(|marks| marks.cursor);
@@ -200,6 +206,10 @@ pub(crate) struct Presented<'a> {
     /// What the tree draws in a column's place while a filter's results show there: its rows
     /// and their collection.
     pub(crate) drawn: Vec<Drawn<'a>>,
+    /// The depth of each column whose cursor is a neighbour kept after a selectionless
+    /// removal ([`Kept`]), and that neighbour: the browser holds no cursor there, as GTK's
+    /// does not.
+    pub(crate) kept: Vec<(usize, EntryId)>,
 }
 
 /// A filter's results, drawn in the place of column `depth`.

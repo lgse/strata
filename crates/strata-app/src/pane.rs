@@ -207,6 +207,7 @@ impl Pane {
             pending,
             results: Vec::new(),
             drawn: Vec::new(),
+            kept: self.shown.zip(self.kept.id()).into_iter().collect(),
         }
     }
 

@@ -79,6 +79,37 @@ fn the_icons_hold_to_the_invariants_through_steps() {
     holds_through_steps("icons", "the_icons_hold_to_the_invariants_through_steps");
 }
 
+/// A drag that moves the entry with the keyboard out of the folder leaves the keyboard on the
+/// row beside it with nothing selected, a cursor the browser does not hold, as GTK's list view
+/// does (finding lgse/strata#2546): the invariants hold to it.
+fn holds_after_a_move_out(mode: &str, name: &str) {
+    shown_in(mode, name, |backend, kept| {
+        for step in [
+            json!({ "select": { "entry": "todo.txt" } }),
+            json!({ "drag": { "from": { "entry": "todo.txt" }, "to": { "entry": "archive" } } }),
+            json!({ "wait": { "entry_gone": "todo.txt" } }),
+            json!({ "wait": { "focused": "readme.md" } }),
+            json!({ "expect": { "selected": [] } }),
+        ] {
+            passes(backend, kept, &step);
+        }
+        assert_eq!(failed(backend, kept), json!([]), "after the move out");
+    });
+}
+
+#[test]
+fn the_columns_hold_to_the_invariants_after_a_move_out() {
+    holds_after_a_move_out(
+        "columns",
+        "the_columns_hold_to_the_invariants_after_a_move_out",
+    );
+}
+
+#[test]
+fn the_list_holds_to_the_invariants_after_a_move_out() {
+    holds_after_a_move_out("list", "the_list_holds_to_the_invariants_after_a_move_out");
+}
+
 /// Every column keeps its own load cursor: once Return has opened the folder the root's
 /// load cursor is on, the root's still is one, while the browser's active column is the
 /// folder's (seed 0x03 of `columns v3`, step 1).
