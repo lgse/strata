@@ -286,6 +286,11 @@ pub(crate) fn flash_nothing_to_select(app: &mut App, tx: &mut Tx) {
     app.tenxer.flash.show(tr("Nothing to select"), tx);
 }
 
+/// Shows `message` in the footer flash.
+pub(crate) fn show_flash(app: &mut App, message: String, tx: &mut Tx) {
+    app.tenxer.flash.show(message, tx);
+}
+
 pub(crate) fn shows(app: &App, mode: &str) -> bool {
     shell::shown_view(app).is_some_and(|view| (view.shows)(mode))
 }

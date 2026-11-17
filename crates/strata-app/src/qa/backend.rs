@@ -60,11 +60,6 @@ impl Rune {
         self.host.app(|app| app.browser.clone())
     }
 
-    /// One turn of the host while no step runs. Returns whether it did anything.
-    pub(super) fn turn(&self) -> bool {
-        self.host.turn()
-    }
-
     /// The modifiers the shell holds as held down in the window ([`shell::held_modifiers`]).
     #[cfg(test)]
     pub(super) fn held_modifiers(&self) -> rune::Mods {
@@ -76,11 +71,6 @@ impl Rune {
     #[cfg(test)]
     pub(super) fn update(&self, act: impl FnOnce(&mut App, &mut rune::Tx)) {
         self.host.update(act);
-    }
-
-    /// Blocks until the host has work, and for `limit` at most.
-    pub(super) fn wait(&self, limit: Duration) {
-        self.host.pause(limit);
     }
 }
 
@@ -94,6 +84,14 @@ impl<H: Host> Rune<H> {
 
     pub(super) fn quitting(&self) -> bool {
         self.quitting.get()
+    }
+
+    pub(super) fn idle_turn(&self) -> bool {
+        self.host.idle_turn()
+    }
+
+    pub(super) fn pause(&self, limit: Duration) {
+        self.host.pause(limit);
     }
 
     fn snapshot(&self) -> Rc<Snapshot> {
@@ -160,6 +158,10 @@ impl<H: Host> Backend for Rune<H> {
     type Kept = Kept;
 
     async fn ready(&self) -> Result<(), String> {
+        // The portal host has no window until a request opens one: `adopt` waits for that.
+        if self.host.windowless() {
+            return Ok(());
+        }
         let deadline = Instant::now() + READY_TIMEOUT;
         // The view is chosen when the window is built, so a fallback is named at once rather
         // than waited on until it lists.
@@ -184,17 +186,20 @@ impl<H: Host> Backend for Rune<H> {
         criticals::take()
     }
 
+    fn windowless(&self) -> bool {
+        self.host.windowless()
+    }
+
     fn window(&self) -> Option<Node> {
-        self.snapshot().root().and_then(|root| root.node.clone())
+        self.host.window()
     }
 
-    /// The one window is the only toplevel.
     fn toplevels(&self) -> Vec<Node> {
-        self.window().into_iter().collect()
+        self.host.toplevels()
     }
 
-    fn title(&self, _window: &Node) -> Option<String> {
-        self.host.with_app(|app| app.title().to_owned()).ok()
+    fn title(&self, window: &Node) -> Option<String> {
+        self.host.title_of(window)
     }
 
     fn window_width(&self, window: &Node) -> i32 {
@@ -362,7 +367,9 @@ impl<H: Host> Backend for Rune<H> {
     }
 
     /// There is one window, and it is the one the steps act on already.
-    fn adopt(&self, _window: &Node) {}
+    fn adopt(&self, window: &Node) {
+        self.host.adopt(window);
+    }
 
     async fn resize(&self, window: &Node, width: u16, height: Option<u16>) -> Result<(), String> {
         let frame = self.frame(window).ok_or("the window is not drawn")?;

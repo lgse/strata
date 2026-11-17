@@ -125,7 +125,10 @@ impl Part for OpenWith {
     }
 
     fn listen(_: &Setup<'_>) -> Option<Listener<App>> {
-        Some(Box::new(|event, _, heard| {
+        Some(Box::new(|event, browser, heard| {
+            if browser.is_chooser_mode() {
+                return;
+            }
             if let BrowserEvent::OpenRequested { location } = event {
                 let location = location.clone();
                 heard.then(move |app: &mut App, tx: &mut Tx| {

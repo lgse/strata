@@ -16,18 +16,21 @@ use strata_preview::sandbox_helper;
 
 use crate::{host, settings::Saved, startup};
 
-const USAGE: &str = "usage: strata-rune [DIRECTORY]";
+const USAGE: &str = "usage: strata-rune [DIRECTORY|--portal]";
 
 #[derive(Debug, PartialEq, Eq)]
 enum Command {
     /// Open the directory, or the home directory without one.
     Open(Option<OsString>),
+    /// Run the XDG Desktop Portal `FileChooser` D-Bus service.
+    Portal,
     Help,
 }
 
 /// Byte-safe: an argument that is not UTF-8 is a path, never an option.
 fn parse(arguments: impl IntoIterator<Item = OsString>) -> Result<Command, String> {
     let mut directory = None;
+    let mut portals = 0_usize;
     let mut options_ended = false;
     for argument in arguments {
         let option = (!options_ended)
@@ -37,6 +40,7 @@ fn parse(arguments: impl IntoIterator<Item = OsString>) -> Result<Command, Strin
         match option {
             Some("--") => options_ended = true,
             Some("--help" | "-h") => return Ok(Command::Help),
+            Some("--portal") => portals += 1,
             Some(unknown) => return Err(format!("unknown option {unknown}")),
             None if directory.is_some() => {
                 return Err("only one directory can be opened".to_owned());
@@ -44,7 +48,11 @@ fn parse(arguments: impl IntoIterator<Item = OsString>) -> Result<Command, Strin
             None => directory = Some(argument),
         }
     }
-    Ok(Command::Open(directory))
+    match (portals, directory) {
+        (0, directory) => Ok(Command::Open(directory)),
+        (1, None) => Ok(Command::Portal),
+        _ => Err("--portal cannot be combined with a directory".to_owned()),
+    }
 }
 
 /// The location an argument names, resolved as GIO resolves one for the GTK application: a
@@ -102,6 +110,12 @@ fn open(directory: Option<&OsStr>) -> Result<(), String> {
     let initial = initial(directory, &settings)?;
     leave_launch_folder();
     host::windowed::run(startup::UiThread::claim()?, settings, initial)
+}
+
+fn portal() -> Result<(), String> {
+    let settings = startup::initialize_process();
+    leave_launch_folder();
+    host::portal::run(startup::UiThread::claim()?, settings)
 }
 
 /// The argument the sandbox's worker pool runs this executable with
@@ -185,6 +199,13 @@ pub fn run(arguments: impl IntoIterator<Item = OsString>) -> ExitCode {
             println!("{USAGE}");
             ExitCode::SUCCESS
         }
+        Ok(Command::Portal) => match portal() {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(error) => {
+                eprintln!("strata-rune: {error}");
+                ExitCode::FAILURE
+            }
+        },
         Ok(Command::Open(directory)) => match open(directory.as_deref()) {
             Ok(()) => ExitCode::SUCCESS,
             Err(error) => {

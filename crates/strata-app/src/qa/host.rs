@@ -15,7 +15,7 @@ use std::{rc::Rc, time::Duration};
 use strata_components::contract::EntryId;
 use strata_qa::{Chord, ClipboardContent, Keymap, Modifier, Rect};
 
-use super::tree::Snapshot;
+use super::tree::{Node, Snapshot};
 use crate::App;
 
 /// What `activate` presses: the element's key, and where it is drawn.
@@ -25,6 +25,29 @@ pub(super) struct Activated {
 }
 
 pub(super) trait Host {
+    /// True for a host that accepts steps before a window opens (`--portal`).
+    fn windowless(&self) -> bool {
+        false
+    }
+    /// The active window root node, or `None` while windowless before `adopt`.
+    fn window(&self) -> Option<Node> {
+        self.snapshot().root().and_then(|root| root.node.clone())
+    }
+    /// Every open window root node.
+    fn toplevels(&self) -> Vec<Node> {
+        self.window().into_iter().collect()
+    }
+    /// The title of `window`.
+    fn title_of(&self, _window: &Node) -> Option<String> {
+        self.with_app(|app| app.title().to_owned()).ok()
+    }
+    /// Makes `window` the active target for subsequent steps.
+    fn adopt(&self, _window: &Node) {}
+    /// One idle turn of the host between steps.
+    fn idle_turn(&self) -> bool {
+        false
+    }
+
     /// The tree as of the host's latest frame.
     fn snapshot(&self) -> Rc<Snapshot>;
     /// Runs `read` on the window's state, on the thread that owns it.

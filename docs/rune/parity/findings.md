@@ -2256,7 +2256,12 @@ sequence only together with the alphabet's version, so the version is part of th
   `No items` label did not show within 15 s, and the kept tree has the row with its name label
   alone, after two loads of the folder and before any drag. The same run passed in the set's
   first round. #2561 changes nothing in the listing, item counts or drag and drop.
-- **Concerns:** `drag_and_drop/drag-file-onto-folder/columns-copy`, `required`,
+- **Seen again:** as `drag-file-onto-folder/list-copy`, in the re-gate of
+  [#2566](https://github.com/lgse/strata/pull/2566) at `fe1b8a077` (rune offscreen 642 of
+  643): the same first wait, the `archive` row's `No items` label, timed out after 15 s. The
+  scenario passed alone three times in a row (6 of 6 runs each). #2566 changes the portal
+  chooser and leaves the browser's listing, item counts and drag and drop as they were.
+- **Concerns:** `drag_and_drop/drag-file-onto-folder/columns-copy` and `list-copy`, `required`,
   [A19](packages/A19.md)'s.
 - **State:** open, unowned. The ledger is unchanged: the run stays `required`. Not traced.
 

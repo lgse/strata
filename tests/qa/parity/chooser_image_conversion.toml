@@ -6,22 +6,19 @@
 scenario = "png-conversion-consent-reuses-download"
 run = "list"
 package = "A20"
-status = "pending"
-reason = "scope"
-blocker = "A20"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "png-conversion-errors-keep-chooser"
 run = "list-animated"
 package = "A20"
-status = "pending"
-reason = "scope"
-blocker = "A20"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "png-conversion-errors-keep-chooser"
 run = "list-corrupt"
 package = "A20"
-status = "pending"
-reason = "scope"
-blocker = "A20"
+status = "required"
+host = "offscreen"
