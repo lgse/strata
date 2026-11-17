@@ -1,0 +1,12 @@
+diff --git a/crates/strata-app/src/tenxer/go.rs b/crates/strata-app/src/tenxer/go.rs
+--- a/crates/strata-app/src/tenxer/go.rs
++++ b/crates/strata-app/src/tenxer/go.rs
+@@ -302,7 +302,7 @@ fn pinned_feedback(app: &App, location: &Location, name: &str) -> String {
+         Some(index) => rust_i18n::t!(
+             "Pinned “%{name}” as %{keys}",
+             name = name,
+-            keys = key_catalog::digit_label(PIN_NUMBERS, (index + 1) as u8)
++            keys = key_catalog::digit_label(PIN_NUMBERS, (index + 2) as u8)
+         )
+         .into_owned(),
+         None => rust_i18n::t!("Pinned “%{name}”", name = name).into_owned(),
