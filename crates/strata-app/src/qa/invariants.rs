@@ -421,9 +421,10 @@ fn marks(shown: &Shown<'_>, browsed: &Browsed, kept: Option<EntryId>, failures: 
     let unplaced = browser.cursor.is_none() && browser.selected.is_empty();
     if unplaced && let Some(id) = kept.filter(|id| shown.collection.selection.cursor() == Some(*id))
     {
-        // The kept neighbour reads as the browser's cursor would, as `adopt` was given it.
+        // The kept neighbour reads as the browser's cursor would, as `adopt` was given it; the
+        // browser's own anchor, if it has one, is still compared.
         browser.cursor = shown.column.position_of(id);
-        browser.anchor = browser.cursor;
+        browser.anchor = browsed.anchor.or(browser.cursor);
     }
     let one = |position: Option<usize>| position.map(|position| browsed.name(position));
     let mut differs = |mark: &str, view: String, browser: String| {

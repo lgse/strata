@@ -55,12 +55,16 @@ impl Columns {
     }
 
     /// [`handover::kept_neighbour`] for column `depth`, whose cursor was `before` the change.
+    /// Never while a filter's results show there: their cursor is no entry of the listing.
     pub(super) fn kept_neighbour(
         &self,
         depth: usize,
         before: Option<EntryId>,
         marks: &Marks,
     ) -> Option<Marks> {
+        if self.listings.hits_at(depth) {
+            return None;
+        }
         let column = self.listings.columns.get(depth)?;
         let state = self.state.column(depth)?;
         handover::kept_neighbour(before, column, &state.collection, marks)

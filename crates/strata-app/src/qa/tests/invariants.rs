@@ -110,6 +110,33 @@ fn the_list_holds_to_the_invariants_after_a_move_out() {
     holds_after_a_move_out("list", "the_list_holds_to_the_invariants_after_a_move_out");
 }
 
+/// The keyboard on an unselected row while the selected rows move out stays on that row, as
+/// GTK's list view keeps its focus: its entry did not leave, and the browser holds it as its
+/// cursor (raised in review of #2571 against finding lgse/strata#2546's ruling).
+#[test]
+fn an_unselected_cursor_stays_while_the_selection_moves_out() {
+    shown_in(
+        "list",
+        "an_unselected_cursor_stays_while_the_selection_moves_out",
+        |backend, kept| {
+            for step in [
+                json!({ "click": { "entry": "readme.md" } }),
+                json!({ "click": { "entry": "todo.txt" }, "mods": ["ctrl"] }),
+                json!({ "click": { "entry": "todo.txt" }, "mods": ["ctrl"] }),
+                json!({ "wait": { "selected": ["readme.md"] } }),
+                json!({ "wait": { "focused": "todo.txt" } }),
+                json!({ "drag": { "from": { "entry": "readme.md" }, "to": { "entry": "archive" } } }),
+                json!({ "wait": { "entry_gone": "readme.md" } }),
+                json!({ "wait": { "focused": "todo.txt" } }),
+                json!({ "expect": { "selected": [] } }),
+            ] {
+                passes(backend, kept, &step);
+            }
+            assert_eq!(failed(backend, kept), json!([]), "after the move out");
+        },
+    );
+}
+
 /// Every column keeps its own load cursor: once Return has opened the folder the root's
 /// load cursor is on, the root's still is one, while the browser's active column is the
 /// folder's (seed 0x03 of `columns v3`, step 1).
