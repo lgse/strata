@@ -651,6 +651,15 @@ Found by the package's agent, 2026-11-12, against A1's five items above.
    change in `roots.rs` by hand (`docs/rune/shared-state.md`, "Merging from `main`"). Should
    the rule move to a shared crate later, with GTK calling it? Source: A10, 2026-11-14.
 
+### A15: Preview drawer, text and documents
+
+1. **The still image's name** (finding [#2557](https://github.com/lgse/strata/issues/2557)).
+   GTK's preview of a PNG, JPEG or SVG is the picture alone, with no accessible name. C14b's
+   `ImageView`, by its work package, draws the file's name and dimensions under it and names
+   the picture for the file. Should Rune drop the name, and with it perhaps the caption, to
+   match GTK, or is the name a `deviation`? Default meanwhile: no change; A15's `preview`
+   fuzz alphabet leaves non-cover still images out. Source: A15, 2026-11-16.
+
 ### Packages added later
 
 - **A branch name for a package with no archived issue.** Branch names keep the package's

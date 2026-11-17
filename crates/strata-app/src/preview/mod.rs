@@ -18,16 +18,14 @@ use strata_core::{
     i18n::tr,
     model::{EntryKind, FileEntry, Location, MetadataValue},
 };
-use strata_fs::{
-    app::{Browser, BrowserEvent, EntrySplice},
-    services::{
-        PreviewContent,
-        file_activity::{self, Notice},
-    },
+use strata_fs::services::{
+    PreviewContent,
+    file_activity::{self, Notice},
 };
 
 mod archive;
 mod document;
+mod follow;
 mod image;
 mod keys;
 mod labels;
@@ -42,14 +40,17 @@ pub(crate) mod viewer;
 mod tests;
 
 pub(crate) use archive::ARCHIVE_KEY;
+pub(crate) use follow::{
+    follow_active_column, follow_filter_close, follow_filter_pick, note_click_opening,
+};
 use load::Loader;
 use viewer::Viewer;
 
 use crate::{
     App,
     commands::{Action, Holds},
-    filter, shell,
-    slots::{Frame, Heard, Listener, Part, Place, Setup},
+    shell,
+    slots::{Frame, Listener, Part, Place, Setup},
 };
 
 pub(crate) struct Preview {
@@ -66,11 +67,31 @@ pub(crate) struct Preview {
     current: Option<FileEntry>,
     current_depth: Option<usize>,
     header_source: Option<(FileEntry, Option<String>)>,
+    content_focus: ContentFocus,
+    tab_shown: bool,
+    click_opening: Option<ClickOpening>,
     focus_timer: Rc<RefCell<Option<glib::SourceId>>>,
     released_from: Option<Option<usize>>,
     operations: Option<file_activity::Subscription>,
     last_split_width: Option<f32>,
     was_in_band: bool,
+}
+
+/// The folder a click in Columns is opening, at `depth`, until its column has loaded.
+#[derive(Clone, Debug, PartialEq)]
+pub(super) struct ClickOpening {
+    pub(super) depth: usize,
+    pub(super) folder: Location,
+}
+
+/// Whether a `No visual preview` card has the keyboard: asked for until it shows, then owned
+/// until the keyboard leaves it.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(super) enum ContentFocus {
+    #[default]
+    None,
+    Pending,
+    Owned,
 }
 
 impl Preview {
@@ -88,6 +109,24 @@ impl Preview {
         self.current.is_some()
             || self.reserves_empty_preview(app)
             || self.reserves_column_space(app)
+    }
+
+    /// Follows the keyboard into and out of a `No visual preview` card, which takes it only
+    /// while it owns it (GTK's `content.set_focusable(true)` and focus-leave controller,
+    /// `src/ui/preview/keyboard.rs`). Whether the card stops taking it, so the view redraws.
+    fn sync_message_focus(&mut self, tx: &Tx) -> bool {
+        let on_card = tx.focused() == Some(viewer::MESSAGE_KEY);
+        match (self.content_focus, on_card) {
+            (ContentFocus::Pending, true) => {
+                self.content_focus = ContentFocus::Owned;
+                false
+            }
+            (ContentFocus::Owned, false) => {
+                self.content_focus = ContentFocus::None;
+                true
+            }
+            _ => false,
+        }
     }
 
     #[cfg(test)]
@@ -134,6 +173,9 @@ impl Part for Preview {
             current: None,
             current_depth: None,
             header_source: None,
+            content_focus: ContentFocus::None,
+            tab_shown: false,
+            click_opening: None,
             focus_timer: Rc::default(),
             released_from: None,
             operations: None,
@@ -148,7 +190,7 @@ impl Part for Preview {
     }
 
     fn listen(_: &Setup<'_>) -> Option<Listener<App>> {
-        Some(Box::new(hear))
+        Some(Box::new(follow::hear))
     }
 
     fn poll(app: &mut App, clock: f64, tx: &mut Tx) -> bool {
@@ -164,34 +206,30 @@ impl Part for Preview {
         let band_ended = std::mem::replace(&mut app.preview.was_in_band, banding) && !banding;
         let band_synced = if band_ended && app.preview.enabled {
             let (depth, entry) = session::selected_entry(app);
-            follow_focus(app, depth.unwrap_or(0), entry, tx)
+            follow::follow_focus(app, depth.unwrap_or(0), entry, tx)
         } else {
             false
         };
+        let msg_focus = app.preview.sync_message_focus(tx);
         let viewer = app.preview.viewer.poll(clock, &app.look, tx);
         let archive = viewer::tick_archive_if_active(app, tx);
-        blocks | viewer | archive | lit_changed | band_synced
+        blocks | viewer | archive | lit_changed | band_synced | msg_focus
     }
 
     fn switched(app: &mut App, tx: &mut Tx) {
+        let tab_shown = std::mem::take(&mut app.preview.tab_shown);
         session::sync_reservation(app);
         if !app.preview.enabled && !app.preview.reserves_column_space(app) {
             app.preview.drawer.close(&app.look, tx);
             return;
         }
         if app.preview.enabled && app.preview.current.is_none() {
-            let (_, entry) = session::selected_entry(app);
-            app.preview.child_pane = session::browsing_columns(app)
-                && entry.as_ref().is_some_and(FileEntry::is_directory);
-            if app.preview.reserves_empty_preview(app) {
-                app.preview.drawer.open(&app.look, tx);
-            } else {
-                app.preview.drawer.close(&app.look, tx);
-            }
+            session::show_empty_slot_after_switch(app, tab_shown, tx);
         }
     }
 
     fn tab_shown(app: &mut App, _tx: &mut Tx) {
+        app.preview.tab_shown = true;
         ensure_operations_watch(app);
         sync_preferences(app);
         let prefs = shell::preferences(app);
@@ -405,32 +443,6 @@ pub(crate) fn one_click_files_in_shown_view(app: &App) -> bool {
     crate::clicks::one_click_files(modes)
 }
 
-/// Updates an already-open preview when the user moves the selection among filtered results.
-pub(crate) fn follow_filter_pick(app: &mut App) {
-    if !app.preview.enabled {
-        return;
-    }
-    let later = app.preview.loader.later.clone();
-    later.then(|app: &mut App, tx: &mut Tx| {
-        if !app.preview.enabled || session::in_band(app) {
-            return false;
-        }
-        let target = filter::targets::preview_result(app);
-        match target {
-            Some((depth, entry)) => {
-                if let Some(target) = preview_target(Some(entry.clone())) {
-                    session::show_after_focus_change(app, target, Some(depth), tx);
-                } else {
-                    session::lend_slot_to_child(app, depth, Some(&entry));
-                    session::clear_target(app, tx);
-                }
-            }
-            None => return false,
-        }
-        true
-    });
-}
-
 pub(crate) fn preview_target(entry: Option<FileEntry>) -> Option<FileEntry> {
     entry.filter(entry_supports_quick_preview)
 }
@@ -476,98 +488,6 @@ fn remote_unsupported(content: &PreviewContent, native_name: &std::ffi::OsStr) -
     matches!(content, PreviewContent::Pdf { .. })
         || (matches!(content, PreviewContent::Media)
             && !strata_fs::services::supports_remote_video(native_name))
-}
-
-fn hear(event: &BrowserEvent, browser: &Browser, heard: &mut Heard<'_, App>) {
-    match event {
-        BrowserEvent::PreviewRequested { entry, automatic } => {
-            let entry = entry.clone();
-            let automatic = *automatic;
-            let active_depth = browser.active_depth();
-            heard.then(move |app: &mut App, tx: &mut Tx| {
-                if automatic && app.preview.dismissed {
-                    return false;
-                }
-                session::show(app, entry, active_depth, tx);
-                true
-            });
-        }
-        BrowserEvent::FocusChanged {
-            depth,
-            position: Some(position),
-            ..
-        }
-        | BrowserEvent::SelectionSynced {
-            depth,
-            focused: Some(position),
-        }
-        | BrowserEvent::SelectionSetChanged {
-            depth,
-            focused: position,
-            ..
-        } => {
-            let depth = *depth;
-            let entry = browser.entry_at(depth, *position);
-            heard.then(move |app: &mut App, tx: &mut Tx| follow_focus(app, depth, entry, tx));
-        }
-        BrowserEvent::FocusChanged {
-            depth,
-            position: None,
-            ..
-        }
-        | BrowserEvent::SelectionSynced {
-            depth,
-            focused: None,
-        } => {
-            let depth = *depth;
-            heard.then(move |app: &mut App, tx: &mut Tx| {
-                if !app.preview.enabled || session::in_band(app) {
-                    return false;
-                }
-                session::lend_slot_to_child(app, depth, None);
-                session::clear_target(app, tx);
-                true
-            });
-        }
-        BrowserEvent::EntriesSpliced { depth, splices } => {
-            if !splices.iter().any(|s: &EntrySplice| s.removed > 0) {
-                return;
-            }
-            let depth = *depth;
-            heard.then(move |app: &mut App, tx: &mut Tx| follow_removal(app, depth, tx));
-        }
-        _ => {}
-    }
-}
-
-fn follow_focus(app: &mut App, depth: usize, entry: Option<FileEntry>, tx: &mut Tx) -> bool {
-    if !app.preview.enabled || session::in_band(app) {
-        return false;
-    }
-    if let Some(target) = preview_target(entry.clone()) {
-        session::show_after_focus_change(app, target, Some(depth), tx);
-    } else {
-        session::lend_slot_to_child(app, depth, entry.as_ref());
-        session::clear_target(app, tx);
-    }
-    true
-}
-
-fn follow_removal(app: &mut App, depth: usize, tx: &mut Tx) -> bool {
-    if !app.preview.enabled || app.preview.current_depth != Some(depth) {
-        return false;
-    }
-    let Some(current) = app.preview.current.clone() else {
-        return false;
-    };
-    let still_present = (0..)
-        .map_while(|pos| app.browser.entry_at(depth, pos))
-        .any(|entry| entry.location == current.location);
-    if !still_present {
-        session::clear_target(app, tx);
-        return true;
-    }
-    false
 }
 
 fn ensure_operations_watch(app: &mut App) {
