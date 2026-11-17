@@ -513,14 +513,6 @@ Found by the package's agent, 2026-11-12, against A1's five items above.
    [A7](packages/A7.md), entry management, or a package of its own after A7. Meanwhile:
    Return on such a file does nothing on Rune.
 
-### A7: Entry management and undo
-
-1. **Who takes the List details cell for a symlink's size?** On GTK the List row of a file
-   link shows its target's size (`delete-file-symlink-sizes-link`, 100 kB at line 5, in
-   both its runs); on Rune the cell shows nothing. It is the List view's details cell, A2's
-   area and the contract's `details.rs` and `fills.rs`, and A2 has closed. Meanwhile: the two
-   runs stay `pending`, unplaced. Found by A7's closing survey, 2026-11-13.
-
 ### A5: Location bar
 
 1. **The window's own buttons and the keyboard.** Rune draws the client-side window buttons
@@ -651,27 +643,12 @@ Found by the package's agent, 2026-11-12, against A1's five items above.
    change in `roots.rs` by hand (`docs/rune/shared-state.md`, "Merging from `main`"). Should
    the rule move to a shared crate later, with GTK calling it? Source: A10, 2026-11-14.
 
-### A15: Preview drawer, text and documents
-
-1. **The still image's name** (finding [#2557](https://github.com/lgse/strata/issues/2557)).
-   GTK's preview of a PNG, JPEG or SVG is the picture alone, with no accessible name. C14b's
-   `ImageView`, by its work package, draws the file's name and dimensions under it and names
-   the picture for the file. Should Rune drop the name, and with it perhaps the caption, to
-   match GTK, or is the name a `deviation`? Default meanwhile: no change; A15's `preview`
-   fuzz alphabet leaves non-cover still images out. Source: A15, 2026-11-16.
-
 ### Packages added later
 
 - **A branch name for a package with no archived issue.** Branch names keep the package's
   archived issue number, as `AGENTS.md` asks for one. A package added to the plan after
   2026-11-12 has none; the owner decides the rule. Source: the pull request that moved
   tracking here.
-
-### H5: Coverage-gap scenarios
-
-- **Who merges H5's pull requests.** H5 writes its scenarios on `main` first, and agents were
-  authorized to merge into `strata-next`, not into `main`. Meanwhile: H5 is held. Source:
-  recorded by the orchestrating session on 2026-11-12.
 
 ## Ruled
 
@@ -807,6 +784,35 @@ Rulings of the owner on the parity work, oldest first.
   [A12](packages/A12.md)'s Copy and Paste, so the clipboard run on the session host
   (`keyboard-only-copy-paste/columns` on both targets) moves to A12's done-when list, and the
   end-of-wave-1 checkpoint names the drag run alone.
+
+- **2026-11-16: the still image's name is a ruled `deviation`** (finding
+  [#2557](https://github.com/lgse/strata/issues/2557)). Rune's C14b `ImageView` keeps the
+  picture's accessible name for the file and its drawn caption of name and dimensions, where
+  GTK's picture is unnamed. A run or a fuzz step that reads it takes a `deviation` twin or a
+  cited rule. Source: the owner, asked by the coordinator, 2026-11-16.
+- **2026-11-16: the text and document bodies' names are a ruled `deviation`** (finding
+  [#2558](https://github.com/lgse/strata/issues/2558)). Rune's code view keeps its `"Source"`
+  and the document view its `"Document"` container names, which GTK lacks. The split of a code
+  view's text into lines is not ruled a deviation: the QA backend may absorb it. Source: the
+  owner, 2026-11-16.
+- **2026-11-16: after a move out of the shown folder, Rune gives the keyboard to the
+  neighbouring row, as GTK does** (finding [#2546](https://github.com/lgse/strata/issues/2546)).
+  [A19](packages/A19.md) changes the shared handover rule (`CursorGone`) in a `contract` pull
+  request of its own, without handing the browser a cursor GTK's browser never gets; the three
+  `cross_volume_drop/cross-volume-enter-choice/*-move` runs then flip. Source: the owner,
+  2026-11-16.
+- **2026-11-16: the List details cell for a symlink's size is left for E1** (`delete-file-
+  symlink-sizes-link`, found by A7's closing survey). Its two runs stay `pending`, unplaced,
+  and [E1](packages/E1.md) places or fixes them when it closes the ledger. Source: the owner,
+  2026-11-16.
+- **2026-11-16: agents may merge H5's pull requests into `main`.** As for `strata-next`, a
+  pull request merges with a merge commit once a session other than the author's has reviewed
+  it and its checks have passed; on `main` CI runs and its required checks must pass too. So
+  [H5](packages/H5.md) is no longer held. Source: the owner, 2026-11-16.
+- **2026-11-16: the coordinator may re-review small fixups itself.** A first review always
+  comes from a separate reviewer session; a re-review of a small, test-only or docs-only fixup
+  after it may be the coordinator's, and the coordinator may make docs-only touch-ups to a
+  package's file before merging. Source: the owner, 2026-11-16.
 
 ## Housekeeping
 
