@@ -7,6 +7,14 @@
 # raises `version` in the alphabet and the line here; the runner refuses the alphabet
 # otherwise, and says what the line should be. See docs/testing.md, "Fuzzing".
 #
+# archives: versions 1 to 4 were A13's drafts, never merged: version 1 met A15's preview
+# drawer reading differently on the two targets (lgse/strata#2560) and, on GTK alone,
+# lgse/strata#2559, parked in tests/qa/fuzz/corpus/archives; version 2 kept the drawer closed;
+# version 3 closed the provider's outcome dialog in its action and met the drawer again by
+# `Right` on a numbered archive; version 4 sent `Right` only to folders. Version 5 opens the
+# archive tree, its rows presented as GTK's, and keeps the drawer off text, folders and the
+# password prompt.
+archives v5 198d34d05a89aa18
 # calibration: versions 1 and 2 were its states while the driver was calibrated (before
 # the click guard, and before the hidden-files action). Three parked sequences are theirs.
 calibration v3 d06627cec8c47f93

@@ -149,6 +149,12 @@ closed issue is not a fixed finding: the state given here is the finding's.
   `1d4e3b8a9` on a loaded host. That change touches neither `src/` nor
   `crates/strata-desktop`; alone, the first passed 3 of 3 and the second 1 of 1
   (`./scripts/test-headless.py`).
+- **On [#2561](https://github.com/lgse/strata/pull/2561), [A13](packages/A13.md)'s closing pull request:** a tenth,
+  `ui::media::tests::reopening_resumes_where_the_preview_closed`
+  (`src/ui/media/tests.rs:99`, `assertion failed: media.imp().first_frame.get()`), failed once
+  in `./scripts/quality.sh all` in the pinned image at `17d3fa87d` on a loaded host, and 1
+  time in 3 alone (`./scripts/test-headless.py`). At `60c062c9a`, with `strata-next` merged
+  again, the ninth failed once more there, with its message. That change touches no `src/`.
 - **State:** open, set aside. Whoever meets one of these in a red shard reads the failure
   first: if the change could reach the test, it is the change's; if not, say why on the pull
   request, rerun the whole workflow once, and stop if the same test fails twice. A new flaky
@@ -2153,3 +2159,93 @@ sequence only together with the alphabet's version, so the version is part of th
 - **State:** the names are ruled: Rune keeps `"Source"` and `"Document"` (the owner,
   2026-11-16). Open for the line split, which the QA backend may absorb by reading a code
   view's lines as one string.
+
+### #2559: GTK logs a `gtk_orientable_get_orientation` critical after a previewed tar is extracted
+
+- **Code:** `oracle`. [Issue](https://github.com/lgse/strata/issues/2559), filed on
+  2026-11-16 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** in [A13](packages/A13.md)'s `archives` alphabet, GTK calibration. In Columns, the
+  sequence compresses `todo.txt` into `packed.tar`, enters its preview with `l`, then extracts
+  it with `Extract here`, which selects `todo (2).txt`. A move with `k` to `readme.md` then
+  makes GTK log `Gtk-CRITICAL **: gtk_orientable_get_orientation: assertion
+  'GTK_IS_ORIENTABLE (orientable)' failed` while the preview switches to the Markdown file.
+  It needs all four parts, and about 700 ms between steps when run as a scenario.
+- **Concerns:** `fuzz-archives-v1-000000000000000d`, shrunk on GTK from 76 steps to 12 and
+  confirmed 3 of 3, parked in `tests/qa/fuzz/corpus/archives/`. Rune logs no GLib warnings,
+  and its replay agrees with GTK on everything else.
+- **State:** open, set aside: no Rune change. `archives` v4 keeps the drawer closed, for
+  [#2560](#2560-the-preview-drawers-accessible-tree-differs-between-gtk-and-rune)'s reasons, so it
+  no longer reaches the sequence. Any fix belongs on `main`.
+
+### #2560: the preview drawer's accessible tree differs between GTK and Rune
+
+- **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2560), filed on
+  2026-11-16 as the finding's reference and closed at once: its state is kept here.
+- **What differs:** `app.preview`, the names and texts of every node in the open drawer. The
+  drawer reads the same on both targets, and the scenario predicates are not affected. Two of
+  its parts are [A15](packages/A15.md)'s, two [A13](packages/A13.md)'s:
+  - *The header (A15's), fixed:* GTK exposes the `·` separators as labels, and Rune drew them
+    `a11y_hidden` (`crates/strata-components/src/preview_drawer/header.rs`). A15's
+    [#2548](https://github.com/lgse/strata/pull/2548) exposes them.
+  - *A text preview (A15's):* GTK has one label with the file's text, and Rune has `Source`
+    and the text's lines. That is
+    [#2558](#2558-the-rune-text-and-document-previews-name-their-body-and-split-the-text-where-gtk-reads-one-buffer-string)'s,
+    and A15's `preview` alphabet leaves text bodies out for it.
+  - *The archive member rows and crumbs (A13's), fixed in [#2561](https://github.com/lgse/strata/pull/2561):*
+    GTK's row has no name and holds a name label and a size label. Rune names the option for
+    screen readers and draws its size `a11y_hidden`, as the row's description. GTK's crumb
+    `GtkButton` holds a `GtkLabel`, and Rune's button is one node. In the Rune QA backend
+    (`crates/strata-app/src/qa/tree.rs`), the size is now keyed as a row's badge and presented
+    under the row as the name is, a member row is presented without its own name, and a crumb
+    holds a label with its text. `archives` v5 opens the archive tree, and it agrees with GTK
+    there.
+  - *The password prompt (A13's), half fixed:* GTK's `GtkButton` holds a `GtkLabel`, now
+    presented under Rune's `Unlock` too. GTK's `GtkPasswordEntry` holds an inner `GtkText`, and
+    both are named by the placeholder, so GTK reads `Password` twice and Rune once. Presenting
+    that inner node would add a second field-like node under every secure field the backend
+    targets, so it is [A13](packages/A13.md#open)'s open item, and `archives` never opens the
+    prompt.
+- **Concerns:** 12 of 20 smoke seeds of `archives` v1 (never merged), each first differing
+  there on a preview opened by `Space`, `Right` or `l`, and seed `0x07` of v3 by `Right` on
+  `packed (1).tar`.
+- **State:** open. A13's rows, crumbs and `Unlock` are fixed. Its password field is open, in
+  [`A13.md`](packages/A13.md#open). The header is fixed by #2548, and the text preview is
+  #2558's.
+  The same run found one visible difference, which #2561 fixed: until an archive opens, the
+  header named its kind `ZIP` (`extension_label`, `crates/strata-app/src/preview/load.rs`)
+  where GTK writes the extension as it is, `zip`. `archives` v5 opens the archive tree, and
+  keeps the drawer closed on text files, folders and the password prompt. The nine
+  `archive_preview` runs hold the prompt.
+
+### #2562: `keyboard-open-selects-first-child/columns` did not open `documents` once in a full Rune run
+
+- **Code:** none of the plan's: a flaky Rune run, labelled `testing`.
+  [Issue](https://github.com/lgse/strata/issues/2562), filed on 2026-11-16 as the finding's
+  reference and closed at once: its state is kept here.
+- **Seen:** in a full `./scripts/qa-parity.sh all` for
+  [#2561](https://github.com/lgse/strata/pull/2561)'s gate at `60c062c9a`, on a loaded host
+  (rune offscreen 617 of 618). The run failed at line 4: after `select_with_keyboard` reached
+  `documents` and Return was sent, the browser still worked in the fixture's root after
+  15 s. Alone, it passed 3 of 3 on both targets right afterwards, and those rounds overwrote the
+  failing run's artifacts. #2561 changes nothing in Columns or the keyboard.
+- **Concerns:** `click_modes/keyboard-open-selects-first-child/columns`, `required`,
+  [A9](packages/A9.md)'s.
+- **Resembles:** [#2322](#2322-scrolled-away-crumbs-and-columns-stay-reachablecolumns-left-focus-nowhere-once-in-a-full-rune-run)
+  (a Rune Columns keyboard step left undone after 15 s in a full run) and
+  [#2162](#2162-new-folder-with-selection-groupscolumns-is-flaky) on GTK. Not traced.
+- **State:** open, unowned. The ledger is unchanged: the run stays `required`.
+
+### #2563: `drag-file-onto-folder/columns-copy` did not show the `archive` row's count once in a full Rune run
+
+- **Code:** none of the plan's: a flaky Rune run, labelled `testing`.
+  [Issue](https://github.com/lgse/strata/issues/2563), filed on 2026-11-16 as the finding's
+  reference and closed at once: its state is kept here.
+- **Seen:** in the rerun of `./scripts/qa-parity.sh all` for
+  [#2561](https://github.com/lgse/strata/pull/2561)'s gate at `fa4c1e64a`, on a loaded host
+  (rune offscreen 617 of 618). It failed at line 2, its first wait: the `archive` folder row's
+  `No items` label did not show within 15 s, and the kept tree has the row with its name label
+  alone, after two loads of the folder and before any drag. The same run passed in the set's
+  first round. #2561 changes nothing in the listing, item counts or drag and drop.
+- **Concerns:** `drag_and_drop/drag-file-onto-folder/columns-copy`, `required`,
+  [A19](packages/A19.md)'s.
+- **State:** open, unowned. The ledger is unchanged: the run stays `required`. Not traced.
