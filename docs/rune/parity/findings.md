@@ -2473,3 +2473,21 @@ sequence only together with the alphabet's version, so the version is part of th
   `crates/strata-qa`, on for the Rune backend only), with no map rule. Under the two rules the
   `settings` alphabet's v5 smoke tier, Reset all included, agrees in 20 of 20, and the unparked
   v3 sequence replays clean. [A18](packages/A18.md)'s.
+
+### #2588: Copy to or Move to that starts no transfer leaves its destination to navigate to on GTK
+
+- **Code:** `oracle`. [Issue](https://github.com/lgse/strata/issues/2588), filed on 2026-11-17
+  as the finding's reference and closed at once: its state is kept here.
+- **Seen:** by reading the source, in the review of [#2579](https://github.com/lgse/strata/pull/2579)
+  ([A20](packages/A20.md)); not reproduced by a run. `finish_copy_move_to`
+  (`src/ui/browser/transfer/destination_dialog.rs`) sets `pending_navigate`, and adds the
+  sources' names to `pending_select`, before `begin_transfer` (`src/ui/browser/transfer.rs`).
+  That can return with nothing started: the request is refused, every source is a no-op (Move
+  to… the folder the items are in), or the same transfer is already preparing. Nothing then
+  clears the destination; only a reveal, a failure, a cancellation or a move to the dock does.
+  A later foreground transfer that reveals nothing, such as a drop with "Open folder after drop"
+  off, navigates there when it completes (`complete_transfer_ui`, `src/ui/browser/events/reveal.rs`).
+- **Concerns:** `transfer::transfer_to_chosen` (`crates/strata-app/src/transfer/chosen.rs`),
+  which ports `pending_navigate` as GTK has it, early returns included. No run or seed reads it.
+- **State:** open, set aside: Rune keeps GTK's behaviour. Any fix belongs on `main`, and Rune
+  follows it.
