@@ -165,6 +165,13 @@ pub(super) fn widths(settings: &Preferences) -> ColumnWidths {
         .map_or_else(ColumnWidths::new, |saved| widths_of(&saved))
 }
 
+pub(super) fn chooser_widths(settings: &Preferences) -> ColumnWidths {
+    settings
+        .chooser_list_columns
+        .filter(ListColumns::is_valid)
+        .map_or_else(ColumnWidths::new, |saved| widths_of(&saved))
+}
+
 fn widths_of(saved: &ListColumns) -> ColumnWidths {
     #[expect(clippy::cast_precision_loss, reason = "a width in points")]
     let points = |width: i32| width as f32;
@@ -218,5 +225,12 @@ pub(super) fn keep_layout(app: &mut App, change: LayoutChange) {
 pub(super) fn keep_widths(app: &mut App, widths: ColumnWidths) {
     let saved = Some(saved_widths(&widths)).filter(ListColumns::is_valid);
     app.list.widths = saved.as_ref().map_or_else(ColumnWidths::new, widths_of);
-    shell::saved(app).change(|settings| settings.browser_list_columns = saved);
+    let chooser = app.browser.is_chooser_mode();
+    shell::saved(app).change(|settings| {
+        if chooser {
+            settings.chooser_list_columns = saved;
+        } else {
+            settings.browser_list_columns = saved;
+        }
+    });
 }

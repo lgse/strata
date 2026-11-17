@@ -464,6 +464,13 @@ fn search(app: &mut App, text: &str) {
         });
 }
 
+pub(crate) fn refresh_source_filter(app: &mut App) {
+    if app.filter.state.is_open() {
+        let text = app.filter.state.text().trim().to_owned();
+        search(app, &text);
+    }
+}
+
 /// `search_limits` in `src/ui/preferences/input_settings.rs`: zero is no limit.
 pub(crate) fn limits(preferences: &strata_desktop::settings::Preferences) -> SearchLimits {
     SearchLimits {
