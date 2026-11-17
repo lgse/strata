@@ -1590,5 +1590,9 @@
   "Table preview reached its text, column, or value budget; open the file to see all data.": "Предпросмотр таблицы достиг лимита текста, столбцов или значений; откройте файл, чтобы увидеть все данные.",
   "Loading sheet…": "Загрузка листа…",
   "Try again": "Повторить",
-  "This sheet is empty": "Этот лист пуст"
+  "This sheet is empty": "Этот лист пуст",
+  "PDF document": "Документ PDF",
+  "Page %{page} of %{pages}": "Страница %{page} из %{pages}",
+  "Page %{page} of %{pages}, %{zoom}%": "Страница %{page} из %{pages}, %{zoom}%",
+  "Loading page": "Загрузка страницы"
 }

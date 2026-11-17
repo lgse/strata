@@ -1192,6 +1192,8 @@ pub(crate) fn view(app: &App, cx: &mut Cx<App>) -> El {
         // focus navigation. The root takes no focus and no press for it.
         .on_key(commands::from_element)
         .on_layout(record_window_size)
+        // The window's zoom wheel, for what no scroll view holds (`appearance::wheel`).
+        .on_wheel(crate::appearance::wheel::heard)
         .on_window_focus(|app: &mut App, focused, tx: &mut Tx| {
             app.window.active = focused;
             if !focused && app.window.held != rune::Mods::default() {

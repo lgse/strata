@@ -1590,5 +1590,9 @@
   "Table preview reached its text, column, or value budget; open the file to see all data.": "A táblázat előnézete elérte a szöveg-, oszlop- vagy értékkorlátot; az összes adat megtekintéséhez nyissa meg a fájlt.",
   "Loading sheet…": "Munkalap betöltése…",
   "Try again": "Próbálja újra",
-  "This sheet is empty": "Ez a munkalap üres"
+  "This sheet is empty": "Ez a munkalap üres",
+  "PDF document": "PDF-dokumentum",
+  "Page %{page} of %{pages}": "%{page}. oldal / %{pages}",
+  "Page %{page} of %{pages}, %{zoom}%": "%{page}. oldal / %{pages}, %{zoom}%",
+  "Loading page": "Oldal betöltése"
 }

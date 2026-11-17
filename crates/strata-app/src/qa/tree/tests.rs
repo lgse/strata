@@ -5,6 +5,8 @@ use strata_qa::{Mark, Rect};
 
 use super::{Drawn, DrawnButton, DrawnColumn, DrawnRow, NameLabel, RowIcon, Shape, Snapshot};
 
+mod pdf;
+
 /// The Columns view's shape, as its probe states it.
 const COLUMNS: Shape = Shape {
     name: "Columns",

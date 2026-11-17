@@ -1590,5 +1590,9 @@
   "Table preview reached its text, column, or value budget; open the file to see all data.": "L’aperçu du tableau a atteint sa limite de texte, de colonnes ou de valeurs ; ouvrez le fichier pour voir toutes les données.",
   "Loading sheet…": "Chargement de la feuille…",
   "Try again": "Réessayer",
-  "This sheet is empty": "Cette feuille est vide"
+  "This sheet is empty": "Cette feuille est vide",
+  "PDF document": "Document PDF",
+  "Page %{page} of %{pages}": "Page %{page} sur %{pages}",
+  "Page %{page} of %{pages}, %{zoom}%": "Page %{page} sur %{pages}, %{zoom} %",
+  "Loading page": "Chargement de la page"
 }

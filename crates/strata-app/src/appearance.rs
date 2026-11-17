@@ -26,12 +26,14 @@ pub(crate) mod density;
 mod popover;
 pub(crate) mod text_size;
 pub(crate) mod views;
+pub(crate) mod wheel;
 
 pub(crate) use popover::face;
 
 pub(crate) struct Appearance {
     popover: popover::State,
     density: density::Sliders,
+    wheel: wheel::WheelZoom,
 }
 
 fn build(app: &App, frame: &mut Frame<'_, App>) -> Option<El> {
@@ -46,6 +48,7 @@ impl Part for Appearance {
         Self {
             popover: popover::State::translated(),
             density: density::Sliders::translated(),
+            wheel: wheel::WheelZoom::default(),
         }
     }
 
