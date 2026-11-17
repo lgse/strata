@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-//! Actions, Keyboard (Slice 2 placeholder; Slice 3 mounts the keymap tables and capture),
-//! Integrations, Updates, Diagnostics, and About pages.
+//! Actions, Integrations, Updates, Diagnostics, and About pages.
 
 use rune::{El, Tx, col, row, text};
 use rune_kit::{Button, ButtonVariant};
@@ -12,12 +11,9 @@ use strata_desktop::{
     services::{BuildKind, Channel},
 };
 
-use super::{
-    controls::{
-        ChoiceOption, ChoiceSpec, PageCtx, RowSpec, choice_menu, group_card, option_row,
-        pref_switch, section_heading,
-    },
-    search_index::KEYBOARD_SHORTCUTS,
+use super::controls::{
+    ChoiceOption, ChoiceSpec, PageCtx, RowSpec, choice_menu, group_card, option_row, pref_switch,
+    section_heading,
 };
 use crate::{App, buttons, shell};
 
@@ -26,18 +22,6 @@ pub(super) fn actions_page(app: &App, search: &SettingsSearch<App>) -> Vec<El> {
         PageCtx { app, search },
         RowSpec::new("custom-actions", "Custom actions", ""),
         "",
-    )
-}
-
-pub(super) fn keyboard_page(app: &App, search: &SettingsSearch<App>) -> Vec<El> {
-    placeholder_card(
-        PageCtx { app, search },
-        RowSpec::new(
-            KEYBOARD_SHORTCUTS,
-            "Keyboard shortcuts",
-            "Shortcuts for each mode",
-        ),
-        &tr("Default"),
     )
 }
 

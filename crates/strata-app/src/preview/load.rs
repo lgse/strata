@@ -249,6 +249,8 @@ pub(super) fn identity_for(
         .details([size, modified, kind])
 }
 
+/// The extension as written, as GTK's header shows it until a preview loads (`file_extension`
+/// in `src/ui/preview.rs`).
 fn extension_label(entry: &FileEntry) -> String {
     entry
         .location

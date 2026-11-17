@@ -1,0 +1,7 @@
+# The archives alphabet's sequences parked against their findings (docs/rune/parity/findings.md):
+#
+#   v<version>-<seed> <code> <issue>
+#
+# Each line is a finding's sequence shrunk on GTK, named for the calibration seed that met it.
+# Versions 1 to 3 were A13's drafts, never merged.
+v1-000000000000000d oracle lgse/strata#2559

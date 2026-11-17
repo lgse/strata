@@ -45,6 +45,12 @@ pub(super) const COMMANDS: &[Action<App>] = &[
                 &[PREVIEW.in_map(Map::Default)],
             )
             .when(on_preview_grip),
+            // GTK's archive list takes no Space either (A13): the window closes the preview.
+            Keys::at(
+                Stage::FilterAndLocationCommands,
+                &[PREVIEW.in_map(Map::Default)],
+            )
+            .when(on_archive_tree),
         ]),
     Action::new("preview", space_preview)
         .command(PREVIEW)
@@ -132,6 +138,10 @@ fn in_tenxer_preview_outside_find(app: &App, at: &Situation) -> bool {
 
 fn on_preview_grip(app: &App, at: &Situation) -> bool {
     app.preview.enabled && at.within("preview-grip")
+}
+
+fn on_archive_tree(app: &App, at: &Situation) -> bool {
+    app.preview.enabled && at.focused() == Some(archive::ARCHIVE_KEY)
 }
 
 fn in_preview_body_outside_find(app: &App, at: &Situation) -> bool {

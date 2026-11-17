@@ -141,7 +141,7 @@ impl Situation {
     }
 
     /// The key of the element that has it.
-    pub(super) fn focused(&self) -> Option<&str> {
+    pub(crate) fn focused(&self) -> Option<&str> {
         self.focused.as_deref()
     }
 
