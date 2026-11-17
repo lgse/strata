@@ -85,7 +85,8 @@ pub(crate) fn view(app: &App) -> ColumnsView<App> {
                 app.columns.thumbs.see(depth, range.clone());
                 app.columns.fills.see(depth, range);
                 false
-            });
+            })
+            .on_wheel(crate::appearance::wheel::heard);
         // A column with no rows is described as GTK's directory surface is then.
         let collection = match status(app, depth) {
             Some((said, _)) => collection.description(said.into_owned()),

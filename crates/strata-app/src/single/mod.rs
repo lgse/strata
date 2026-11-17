@@ -335,6 +335,8 @@ pub(crate) fn results<V: SinglePane>(app: &App) -> Collection<App> {
         )
     })
     .empty(filter::pane::status)
+    // C3 replaces this in Icons with its own, which asks the results grid's hook first.
+    .on_wheel(|app: &mut App, e, tx| crate::appearance::wheel::heard(app, e, tx))
     .on_intent(filter::pane::heard)
     .on_cursor(|app: &mut App, _, _| filter::picked(app))
     .on_selection(|app: &mut App, _| filter::picked(app))
@@ -405,9 +407,15 @@ pub(crate) fn interrupted<V: SinglePane>(app: &mut App) {
 }
 
 /// A wheel over the view's entries: it ends a first visit, and scrolls as ever.
-pub(crate) fn wheeled<V: SinglePane>(app: &mut App, _: WheelEvent, _: &mut Tx) -> bool {
+pub(crate) fn wheeled<V: SinglePane>(app: &mut App, e: WheelEvent, tx: &mut Tx) -> bool {
     interrupted::<V>(app);
-    false
+    crate::appearance::wheel::heard(app, e, tx)
+}
+
+/// [`wheeled`] for the Icons grid, whose own hook C3 asks before its size wheel.
+pub(crate) fn wheeled_over_grid<V: SinglePane>(app: &mut App, e: WheelEvent, tx: &mut Tx) -> bool {
+    interrupted::<V>(app);
+    crate::appearance::wheel::over_grid(app, e, tx)
 }
 
 /// What reads the view's share of each event out of the browser.
