@@ -2364,6 +2364,10 @@ sequence only together with the alphabet's version, so the version is part of th
   `columns-md` and `columns-rtf` at line 20 (`pha bravo charlie delta`) and `columns-docx` at
   line 21 (`uarterly Report`); alone on the session host it then passed three rounds, 9 of 9.
   #2578 changes no pointer drag or document selection.
+- **Sighting on A11's #2570 branch** (`feat/2143-a11-name-highlights` at `5a37f26d0`): the
+  same three runs failed in the full session-host batch, with the same messages; alone on the
+  session host the twin then passed three rounds, 9 of 9. The change draws name highlights
+  only.
 - **Not traced.** One reading to check: under the larger batch's load, the compositor's pointer
   motion reaches the document after the press, so the drag's anchor lands past its start.
 - **State:** open, unowned.
