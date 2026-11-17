@@ -22,7 +22,7 @@ run = "list-name-sort"
 package = "A7"
 status = "pending"
 reason = "scope"
-blocker = "unplaced: the List details cell for a symlink's size (A2's area, `contract` details): the row of a file link shows its target's size on GTK, 100 kB at line 5, and nothing on Rune. Asked in owner.md, A7"
+blocker = "unplaced: the List details cell for a symlink's size (A2's area, `contract` details): the row of a file link shows its target's size on GTK, 100 kB at line 5, and nothing on Rune. Left for E1 by the owner's ruling of 2026-11-16 (owner.md, Ruled)"
 
 [[run]]
 scenario = "delete-file-symlink-sizes-link"
@@ -30,7 +30,7 @@ run = "list-size-sort"
 package = "A7"
 status = "pending"
 reason = "scope"
-blocker = "unplaced: the List details cell for a symlink's size (A2's area, `contract` details): the row of a file link shows its target's size on GTK, 100 kB at line 5, and nothing on Rune. Asked in owner.md, A7"
+blocker = "unplaced: the List details cell for a symlink's size (A2's area, `contract` details): the row of a file link shows its target's size on GTK, 100 kB at line 5, and nothing on Rune. Left for E1 by the owner's ruling of 2026-11-16 (owner.md, Ruled)"
 
 [[run]]
 scenario = "delete-to-trash"
