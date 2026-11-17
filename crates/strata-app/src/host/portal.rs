@@ -7,7 +7,7 @@
 
 use std::{
     cell::{OnceCell, RefCell},
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     rc::Rc,
     sync::{
         Arc,
@@ -45,6 +45,7 @@ thread_local! {
     static GLIB: OnceCell<GlibLoop> = const { OnceCell::new() };
     static WINDOWS: RefCell<HashMap<String, (WindowHandle, AppHandle<App>)>> =
         RefCell::new(HashMap::new());
+    static TITLES: RefCell<HashSet<&'static str>> = RefCell::new(HashSet::new());
 }
 
 struct Daemon {
@@ -188,13 +189,28 @@ fn close_chooser(app: &mut App, tx: &mut Tx) {
     });
 }
 
+/// `title` for the life of the process, as `AppSpec` keeps a window's title: each distinct
+/// title is kept once (at most `MAX_STRING_BYTES`, as the request's validation bounds it), so
+/// a caller that opens the same chooser again adds nothing.
+fn interned(title: &str) -> &'static str {
+    TITLES.with(|titles| {
+        let mut titles = titles.borrow_mut();
+        if let Some(kept) = titles.get(title) {
+            return *kept;
+        }
+        let kept: &'static str = Box::leak(title.to_owned().into_boxed_str());
+        titles.insert(kept);
+        kept
+    })
+}
+
 /// The chooser's own app over `state`, which shows its window once it is parented.
 fn chooser_app(
     request: &ChooserRequest,
     state_size: (f32, f32),
     frame: strata_platform::csd::Frame,
 ) -> rune::App<App> {
-    let title: &'static str = Box::leak(request.title.clone().into_boxed_str());
+    let title = interned(&request.title);
     let parent = request
         .parent
         .as_deref()

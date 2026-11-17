@@ -3,6 +3,11 @@
 //! XDG Desktop Portal `FileChooser` backend (`src/portal.rs`): request validation, safe path and
 //! URI helpers, destination overwrite checks, D-Bus service registration ([`dbus`]), Hyprland
 //! placement hints ([`window_geometry`]), and standalone `--portal` windowed execution.
+//!
+//! The validation and path helpers here are a copy of the GTK application's, in `src/portal.rs`
+//! (its `tests.rs` holds the cases `portal/tests.rs` ports), until the two share a crate. A fix
+//! that lands on `main` reaches only GTK's copy: the merge into `strata-next` that brings it
+//! carries it here by hand.
 
 pub(crate) mod dbus;
 pub(crate) mod inbox;
@@ -290,7 +295,7 @@ pub(crate) fn validate_filters(
     if total_rules > FILTER_RULE_WARNING_THRESHOLD {
         tracing::warn!(
             rules = total_rules,
-            "file filters exceeded the rule budget and was accepted untrimmed"
+            "file filters exceeded the rule budget and were accepted untrimmed"
         );
     }
     Ok(())
