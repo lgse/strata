@@ -2267,6 +2267,11 @@ sequence only together with the alphabet's version, so the version is part of th
   chooser and leaves the browser's listing, item counts and drag and drop as they were.
 - **Concerns:** `drag_and_drop/drag-file-onto-folder/columns-copy` and `list-copy`, `required`,
   [A19](packages/A19.md)'s.
+- **Seen again:** as `drag-file-onto-folder/list-move`, in round 3 of
+  [#2571](https://github.com/lgse/strata/pull/2571)'s three rounds of `drag_and_drop` at
+  `815298327`: the same first wait, the `archive` row's `No items` label, timed out after
+  15 s. The run passed in that pull request's `qa-parity.sh all`. #2571 changes the views'
+  keyboard handover after a move out of the folder, not the listing or its item counts.
 - **State:** open, unowned. The ledger is unchanged: the run stays `required`. Not traced.
 
 ### #2570: 10xer's find and filter highlights are not drawn in Rune's rows
@@ -2288,3 +2293,17 @@ sequence only together with the alphabet's version, so the version is part of th
   alphabet (Slice 5) should exercise `/` then Escape with a selection.
 - **State:** open, [A11](packages/A11.md#open)'s, for Slice 4 or 5 or a `contract` change to
   the row components.
+
+### #2575: `preview-blank-click-keeps-selection/columns` was still loading its preview once in a full Rune run
+
+- **Code:** none of the plan's: a flaky Rune run, labelled `testing`.
+  [Issue](https://github.com/lgse/strata/issues/2575), filed on 2026-11-17 as the finding's
+  reference and closed at once: its state is kept here.
+- **Seen:** in the re-gate of [#2571](https://github.com/lgse/strata/pull/2571) at
+  `fc58473eb`, `./scripts/qa-parity.sh all` on a loaded host (rune offscreen 661 of 662). At
+  line 6 the preview still showed its "Loading…" bar. The scenario passed 5 of 5 alone
+  afterwards. #2571 changes the views' keyboard handover after a move out of the folder, not
+  the preview's loading path.
+- **Concerns:** `background_selection/preview-blank-click-keeps-selection/columns`,
+  `required`, [A15](packages/A15.md)'s (done).
+- **State:** open, unowned. The ledger is unchanged: the run stays `required`. Not traced.
