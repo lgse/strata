@@ -235,16 +235,17 @@ impl Session {
 
     /// Waits until Rune has dispatched input from after the last event the devices sent, for
     /// [`DISPATCH_LIMIT`] at most, and says so when it runs out: `what` names the input.
-    fn dispatched(&self, what: &str) {
+    /// Returns whether it did.
+    fn dispatched(&self, what: &str) -> bool {
         let sent = self.devices.last_sent();
         let deadline = Instant::now() + DISPATCH_LIMIT;
         while Instant::now() < deadline {
             match self.link.ask(|_| rune::last_input()) {
-                Ok(Some(at)) if at >= sent => return,
+                Ok(Some(at)) if at >= sent => return true,
                 Ok(_) => std::thread::sleep(DISPATCH_POLL),
                 Err(error) => {
                     eprintln!("strata-rune: the session host: {what}: {error}");
-                    return;
+                    return false;
                 }
             }
         }
@@ -252,6 +253,7 @@ impl Session {
             "strata-rune: the session host: the window had not taken {what} after {} ms",
             DISPATCH_LIMIT.as_millis()
         );
+        false
     }
 
     /// Whether a drag this window started runs: its motions go to the compositor's data device.
@@ -271,7 +273,7 @@ impl Session {
         let before = self.devices.last_sent();
         send()?;
         if self.devices.last_sent() != before {
-            self.dispatched(what);
+            let _ = self.dispatched(what);
         }
         self.settle().await;
         Ok(())
@@ -314,10 +316,22 @@ impl Session {
 }
 
 /// Whether a press at `at` lands outside this window, shown at `window`: on another client,
-/// such as the foreign drag source the runner drags from. Not when the window's place is
-/// unknown, nor on a slow window: a press inside it is waited for as ever.
-fn presses_elsewhere(window: Option<sway::Area>, at: (i16, i16)) -> bool {
-    window.is_some_and(|window| !window.contains(at))
+/// such as the foreign drag source the runner drags from. A press inside it is the window's,
+/// however slow the window is to take it, and `taken` waits for it. When sway does not say
+/// where the window is, a press the window never took (`taken` false) is another client's.
+fn presses_elsewhere(
+    window: Option<sway::Area>,
+    at: (i16, i16),
+    taken: impl FnOnce() -> bool,
+) -> bool {
+    match window {
+        Some(window) if !window.contains(at) => true,
+        Some(_) => {
+            let _ = taken();
+            false
+        }
+        None => !taken(),
+    }
 }
 
 impl Host for Session {
@@ -468,7 +482,7 @@ impl Host for Session {
             self.press(key, pressed)?;
         }
         let direction = if pressed { "press" } else { "release" };
-        self.dispatched(&format!("the {direction} of {name}"));
+        let _ = self.dispatched(&format!("the {direction} of {name}"));
         Ok(())
     }
 
@@ -482,7 +496,7 @@ impl Host for Session {
         if self.held_elsewhere.get() || self.dragging_out() {
             std::thread::sleep(DRAG_MOTION_PACE);
         } else {
-            self.dispatched(&format!("the motion to ({x}, {y})"));
+            let _ = self.dispatched(&format!("the motion to ({x}, {y})"));
         }
         Ok(())
     }
@@ -493,20 +507,23 @@ impl Host for Session {
 
     async fn button(&self, number: u8, pressed: bool) -> Result<(), String> {
         let at = self.devices.position();
+        let window = if pressed { self.window().ok() } else { None };
+        self.devices.button(number, pressed)?;
+        self.log.button(at, number, pressed);
+        let direction = if pressed { "press" } else { "release" };
+        let what = format!("the {direction} of button {number}");
         // Another client's press, or the release ending the drag it started: this window's
         // pointer hears neither, so neither is waited for.
         let elsewhere = if pressed {
-            presses_elsewhere(self.window().ok(), at)
+            presses_elsewhere(window, at, || self.dispatched(&what))
         } else {
-            self.held_elsewhere.get()
+            let held = self.held_elsewhere.get();
+            if !held {
+                let _ = self.dispatched(&what);
+            }
+            held
         };
-        self.devices.button(number, pressed)?;
-        self.log.button(at, number, pressed);
         self.held_elsewhere.set(pressed && elsewhere);
-        if !elsewhere {
-            let direction = if pressed { "press" } else { "release" };
-            self.dispatched(&format!("the {direction} of button {number}"));
-        }
         Ok(())
     }
 
@@ -531,7 +548,7 @@ impl Host for Session {
             .motion(x, y)
             .and_then(|()| self.devices.button(1, true))
             .and_then(|()| self.devices.button(1, false));
-        self.dispatched(&format!("the click on {}", target.key));
+        let _ = self.dispatched(&format!("the click on {}", target.key));
         clicked.is_ok()
     }
 
