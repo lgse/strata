@@ -14,7 +14,7 @@ use strata_desktop::keys::{self as key_catalog, KeyPress, Map, Modifiers, bindin
 
 use super::{
     ChordKind, arm_default_chord, bookmarks, cancel_chord, chords, end_active_range, end_session,
-    prompts::find, run_collection_command, shows, verbs,
+    preview_keys, prompts::find, run_collection_command, shows, verbs,
 };
 use crate::{
     App,
@@ -84,6 +84,9 @@ fn swallow_unclaimed_typing(_: &mut App, _: &Call<'_>, _: &mut Tx) -> Outcome {
 }
 
 fn toggle_mode(app: &mut App, _: &Call<'_>, tx: &mut Tx) -> Outcome {
+    // The chrome 10xer hides rebuilds the view around the listing; GTK's listing keeps the
+    // keyboard through the switch.
+    let in_view = Situation::of(app, tx).in_view();
     let mut enabled = false;
     shell::saved(app).change(|settings| {
         settings.tenxer_mode = !settings.tenxer_mode;
@@ -92,6 +95,9 @@ fn toggle_mode(app: &mut App, _: &Call<'_>, tx: &mut Tx) -> Outcome {
     shell::live_keys(app).follow(shell::preferences(app));
     if !enabled {
         end_session(app, tx);
+    }
+    if in_view && let Some(view) = shell::view_focus(app) {
+        tx.focus_when_shown(view, true);
     }
     Outcome::Ran
 }
@@ -204,6 +210,11 @@ fn listing_or_unbound(
     at: &Situation,
     tx: &mut Tx,
 ) -> Option<Outcome> {
+    if at.within("preview")
+        && let Some(outcome) = preview_keys::in_preview(app, press, tx)
+    {
+        return Some(outcome);
+    }
     let mut in_view = at.in_view();
     if routes_typing_to_listing(in_view, at, press)
         && let Some(view) = shell::view_focus(app)
@@ -224,7 +235,7 @@ fn routes_typing_to_listing(in_view: bool, at: &Situation, press: &KeyPress) -> 
 /// 10xer's Escape ladder (`src/ui/window/keyboard/escape.rs`): dismisses one interaction per
 /// press, and never closes a Miller column.
 fn escape_ladder(app: &mut App, tx: &mut Tx) {
-    if app.browser.close_peek() {
+    if crate::peek::close(app) {
         return;
     }
     let _ = if filter::search_active(app) {
@@ -257,7 +268,12 @@ fn end_results_range(app: &App) -> bool {
 }
 
 fn listing_keys(app: &mut App, press: &KeyPress, tx: &mut Tx) -> Option<Outcome> {
-    let outcome = verbs::prompt_keys(app, press, tx)
+    // `i` on a folder peeks it in Icons and List; on a file it is the preview's (A15's).
+    if press.is(PREVIEW) && crate::peek::toggle_at_cursor(app) {
+        return Some(Outcome::Ran);
+    }
+    let outcome = preview_keys::scroll(app, press, tx)
+        .or_else(|| verbs::prompt_keys(app, press, tx))
         .or_else(|| file_keys(app, press, tx))
         .or_else(|| verbs::file_verbs(app, press, tx))
         .or_else(|| alt_navigation(app, press, tx));

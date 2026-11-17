@@ -1080,6 +1080,7 @@
   "This archive has no parent directory.": "此壓縮檔沒有父目錄。",
   "This archive uses a compression method or feature that Strata does not support.": "此壓縮檔使用 Strata 不支援的壓縮方法或功能。",
   "This directory is empty": "此目錄是空的",
+  "Unable to read this directory": "無法讀取此目錄",
   "This download is not a supported image. Choose a JPEG, BMP, static WebP, GIF or PNG image.": "此下載不是支援的影像。請選擇 JPEG、BMP、靜態 WebP、GIF 或 PNG 影像。",
   "This exclusion has already been added.": "此排除項目已加入。",
   "This folder is empty": "此資料夾是空的",

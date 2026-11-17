@@ -21,8 +21,8 @@ use strata_desktop::keys::{
 use super::contents::{self, Mention, Mode, Shortcut};
 
 /// What the reference shows: the sections of `mode`, labelled through the keymap in force.
-pub(super) fn rows(mode: Mode, revision: u64) -> ShortcutData {
-    let sections = contents::sections(mode)
+pub(super) fn rows(mode: Mode, tenxer: bool, revision: u64) -> ShortcutData {
+    let sections = contents::sections(mode, tenxer)
         .into_iter()
         .map(|section| reference::Section {
             title: tr(section.title),
@@ -145,9 +145,19 @@ fn note() -> Vec<String> {
 
 /// The keys the open panel answers, as the keymap binds them now: F1 closes it, and the
 /// three area keys move among its search, categories and results.
-pub(super) fn panel_keys() -> ReferenceKeys {
+/// The panel's keys, as the keymap binds them; 10xer mode's `~` toggles it however the layout
+/// types it (C19's `ReferenceKeys::tenxer`).
+pub(super) fn panel_keys(tenxer: bool) -> ReferenceKeys {
+    let mut toggle = chords(REFERENCE);
+    if tenxer {
+        for tilde in ReferenceKeys::tenxer().toggle {
+            if !toggle.contains(&tilde) {
+                toggle.push(tilde);
+            }
+        }
+    }
     ReferenceKeys {
-        toggle: chords(REFERENCE),
+        toggle,
         categories: chords(REFERENCE_CATEGORIES),
         search: chords(REFERENCE_SEARCH),
         list: chords(REFERENCE_LIST),

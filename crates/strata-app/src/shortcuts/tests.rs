@@ -114,3 +114,42 @@ fn f1_in_a_rename_opens_nothing() {
         assert!(editing(&host), "the rename stays open");
     });
 }
+
+/// In 10xer mode a typed `~` toggles the reference too, and it lists 10xer's sections: its
+/// "10xer mode" and "Places" (`tenxer_sections`, C19's `ReferenceKeys::tenxer`).
+#[test]
+fn tilde_toggles_the_tenxer_reference_with_its_own_sections() {
+    hosted(
+        MODULE,
+        "tilde_toggles_the_tenxer_reference_with_its_own_sections",
+        |mut host| {
+            let _folder = listed(&mut host);
+            let titles = |host: &Offscreen| -> Vec<String> {
+                let data = &host.app().shortcuts.data;
+                data.sections.iter().map(|s| s.title.clone()).collect()
+            };
+            assert!(!titles(&host).iter().any(|title| title == "Places"));
+            host.runtime().update(|app: &mut App, _: &mut Tx| {
+                shell::saved(app).change(|settings| settings.tenxer_mode = true);
+                shell::live_keys(app).follow(shell::preferences(app));
+            });
+            while host.turn() {}
+            let tilde = KeyEvent {
+                key: Key::Text("~".to_owned()),
+                mods: Mods {
+                    shift: true,
+                    ..Mods::default()
+                },
+            };
+            send_key(&mut host, tilde.clone());
+            while host.turn() {}
+            assert!(open(&host), "~ opens it");
+            let shown = titles(&host);
+            assert!(shown.iter().any(|title| title == "10xer mode"), "{shown:?}");
+            assert!(shown.iter().any(|title| title == "Places"), "{shown:?}");
+            send_key(&mut host, tilde);
+            while host.turn() {}
+            assert!(!open(&host), "~ closes it");
+        },
+    );
+}
