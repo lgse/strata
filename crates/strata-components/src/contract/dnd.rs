@@ -712,3 +712,16 @@ impl<S: 'static> DragSource<S> {
         }
     }
 }
+
+/// How long a drop zone's hover that armed a spring asks to wait: its delay, or, under a clock
+/// that reads zero (Rune packet entry 108), only until the next frame, whose tick stamps the
+/// spring's start and asks for the rest. Waiting the whole delay there would stretch the
+/// spring to about twice its length when nothing else draws a frame. The tab strip's and the
+/// location bar's.
+pub(crate) fn spring_wake(clock: f64, delay: f64) -> std::time::Duration {
+    if clock > 0.0 {
+        std::time::Duration::from_secs_f64(delay)
+    } else {
+        std::time::Duration::ZERO
+    }
+}
