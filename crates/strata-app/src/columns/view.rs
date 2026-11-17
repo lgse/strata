@@ -6,7 +6,7 @@ use std::borrow::Cow;
 
 use rune::El;
 use strata_components::{
-    collection::pointer::PointerSettings,
+    collection::{element::Collection, pointer::PointerSettings},
     columns::{ColumnsLabels, ColumnsParts, ColumnsPartsMut, ColumnsView},
 };
 use strata_core::i18n::tr;
@@ -70,6 +70,7 @@ pub(crate) fn view(app: &App) -> ColumnsView<App> {
     )
     .labels(app.columns.labels.0.clone())
     .dnd(crate::dnd::binder(app))
+    .content_types(crate::dnd::CONTENT_TYPES)
     .drop_action(intents::drop_action)
     // "Show sizes in Columns view", read at each build: the popover's row changes it live.
     .show_sizes(|app: &App| shell::preferences(app).columns_show_sizes)
@@ -77,37 +78,7 @@ pub(crate) fn view(app: &App) -> ColumnsView<App> {
         !shell::preferences(app).tenxer_mode && !app.browser.is_chooser_mode()
     })
     .close_buttons(|app: &App| !shell::preferences(app).tenxer_mode)
-    .collection(|app, depth, collection| {
-        let collection = collection
-            .empty(move |app: &App| shown_status(app, depth))
-            .icon(app.columns.thumbs.icon(&app.look))
-            .on_drag_phase(|app: &mut App, d, key, tx| crate::dnd::drag_phase(app, d, key, tx))
-            .on_visible(move |app: &mut App, range| {
-                // Recorded only: the part syncs the store and asks for fills once a poll.
-                app.columns.thumbs.see(depth, range.clone());
-                app.columns.fills.see(depth, range);
-                false
-            });
-        // A column with no rows is described as GTK's directory surface is then.
-        let collection = match status(app, depth) {
-            Some((said, _)) => collection.description(said.into_owned()),
-            None => collection,
-        };
-        let keys = super::live_keys(shell::preferences(app), app.chooser.allows_multiple());
-        let collection = match keys {
-            Some(keys) => collection.settings(keys),
-            None => collection,
-        };
-        // The editor answers in the column its edit names, and in no other.
-        let collection = match app.columns.scope(depth) {
-            Some(scope) => collection.rename(
-                move |app: &App| app.rename.state.renaming_in(&scope),
-                rename::editor(app).slot(),
-            ),
-            None => collection,
-        };
-        commands::in_view(collection)
-    })
+    .collection(column_collection)
     .pointer_settings(|app: &App| {
         let chooser = app.browser.is_chooser_mode();
         let modes =
@@ -130,4 +101,37 @@ pub(crate) fn view(app: &App) -> ColumnsView<App> {
         )
     })
     .on_intent(intents::heard)
+}
+
+/// One column's collection, as the part dresses it: its status, keys, rename and commands.
+fn column_collection(app: &App, depth: usize, collection: Collection<App>) -> Collection<App> {
+    let collection = collection
+        .empty(move |app: &App| shown_status(app, depth))
+        .icon(app.columns.thumbs.icon(&app.look))
+        .on_drag_phase(|app: &mut App, d, key, tx| crate::dnd::drag_phase(app, d, key, tx))
+        .on_visible(move |app: &mut App, range| {
+            // Recorded only: the part syncs the store and asks for fills once a poll.
+            app.columns.thumbs.see(depth, range.clone());
+            app.columns.fills.see(depth, range);
+            false
+        });
+    // A column with no rows is described as GTK's directory surface is then.
+    let collection = match status(app, depth) {
+        Some((said, _)) => collection.description(said.into_owned()),
+        None => collection,
+    };
+    let keys = super::live_keys(shell::preferences(app), app.chooser.allows_multiple());
+    let collection = match keys {
+        Some(keys) => collection.settings(keys),
+        None => collection,
+    };
+    // The editor answers in the column its edit names, and in no other.
+    let collection = match app.columns.scope(depth) {
+        Some(scope) => collection.rename(
+            move |app: &App| app.rename.state.renaming_in(&scope),
+            rename::editor(app).slot(),
+        ),
+        None => collection,
+    };
+    commands::in_view(collection)
 }

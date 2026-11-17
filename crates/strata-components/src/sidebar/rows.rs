@@ -57,6 +57,7 @@ pub(crate) struct Ctx<'a, S> {
     pub access: fn(&mut S) -> &mut SidebarState,
     pub emit: Emit<S>,
     pub dnd: &'a Dnd<S>,
+    pub content: &'static [&'static str],
     pub action: Option<&'a ActionFn<S>>,
     pub reorder: bool,
     pub rail: bool,
@@ -385,7 +386,8 @@ pub(crate) fn folder_row<S: 'static>(
 
 fn attach<S: 'static>(ctx: &Ctx<'_, S>, el: El, spec: &Spec<'_>) -> El {
     if spec.accepts_drops {
-        let zone = super::drops::row(ctx.access, &ctx.emit, ctx.action, spec.item.clone());
+        let zone = super::drops::row(ctx.access, &ctx.emit, ctx.action, spec.item.clone())
+            .takes_content(ctx.content);
         ctx.dnd.drop_zone_keyed(el, spec.item.key(ctx.key), zone)
     } else {
         el

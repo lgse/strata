@@ -92,6 +92,7 @@ fn build(app: &App, frame: &mut Frame<'_, App>) -> Option<El> {
         intents::heard,
     )
     .dnd(crate::dnd::binder(app))
+    .content_types(crate::dnd::CONTENT_TYPES)
     .drop_action(intents::drop_action)
     .labels(&labels)
     .build(frame.cx, frame.layer);

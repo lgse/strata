@@ -32,6 +32,7 @@ use strata_fs::{
     },
 };
 
+use super::content;
 use crate::{
     App, clipboard, drop_dialog,
     error_dialog::{self, Error},
@@ -136,6 +137,12 @@ pub(crate) fn drop_action(
 ) -> Option<DropAction> {
     if refuses_file_drop(app, destination) {
         return None;
+    }
+    if content::offered(offer) {
+        return destination
+            .native_path()
+            .is_some()
+            .then_some(DropAction::Copy);
     }
     let cross = cross_device(app);
     let Some(uris) = offer.uris.as_deref() else {
@@ -250,6 +257,12 @@ pub(crate) fn commit(app: &mut App, drop: FileDrop, dropped: &Dropped, tx: &mut 
     } = drop;
     if refuses_file_drop(app, &destination) {
         return false;
+    }
+    if let Some(content) = content::read(dropped) {
+        if let Some(before) = before.filter(|_| content::takes(&destination, &content)) {
+            before(app, tx);
+        }
+        return content::commit(app, destination, content, tx);
     }
     let Some(sources) = dropped_locations(&dropped.data) else {
         return false;

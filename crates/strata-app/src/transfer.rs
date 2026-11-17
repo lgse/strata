@@ -37,7 +37,7 @@ use crate::{
 mod chosen;
 mod collisions;
 mod dock;
-mod reveal;
+pub(crate) mod reveal;
 mod tenxer;
 #[cfg(test)]
 mod tests;
