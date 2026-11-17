@@ -88,7 +88,7 @@ mod renamed;
 pub(crate) mod session;
 mod switch;
 pub(crate) mod targets;
-mod tenxer;
+pub(crate) mod tenxer;
 mod typing;
 
 pub(crate) use hits::HitsUpdate;
