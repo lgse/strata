@@ -104,6 +104,7 @@ fn run_initial(
     // The last write of the per-folder views, before the writer is flushed below. A quit runs
     // no `on_close`, so both ask for it; it is written once.
     .on_close(|app: &mut App, _: &mut Tx| {
+        super::floating::close_with_browser();
         crate::dnd::shutdown();
         crate::clipboard::shutdown();
         folder_views::flush_at_exit(app);

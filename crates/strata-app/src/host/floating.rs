@@ -6,6 +6,16 @@
 //!
 //! The chooser answers through the browser's inbox, which only the browser's own loop reads:
 //! the answer therefore also wakes the browser ([`AppHandle::update_if`]).
+//!
+//! Rune makes no window transient for another of the app's own (Rune packet entry 23), so
+//! the host does by hand what GTK's transient chooser gets from its parent: a second Copy to,
+//! Move to or Extract to brings the open chooser forward (`DestinationLease::acquire`'s
+//! `present`), and closing the browser closes its chooser (`bind_host_parent`'s
+//! `destroy_with_parent`), which cancels it.
+//!
+//! One browser window per process: `strata-rune` opens one, and New Window does not open a
+//! second in process yet. The one `BROWSER` and `OPEN` below assume it; whoever opens a second
+//! browser window in process keeps them per window.
 
 use std::cell::{OnceCell, RefCell};
 
@@ -26,8 +36,9 @@ use crate::{
 thread_local! {
     /// The browser window's thread and app, from before its first frame.
     static BROWSER: OnceCell<(UiThread, AppHandle<App>)> = const { OnceCell::new() };
-    /// The open chooser's app, which a GLib wake-up settles too.
-    static OPEN: RefCell<Option<AppHandle<App>>> = const { RefCell::new(None) };
+    /// The open chooser's window and app: the window to bring forward or close, the app for a
+    /// GLib wake-up to settle too.
+    static OPEN: RefCell<Option<(WindowHandle, AppHandle<App>)>> = const { RefCell::new(None) };
 }
 
 /// Lets the browser window open floating choosers.
@@ -37,8 +48,12 @@ pub(crate) fn bind(ui: UiThread, browser: AppHandle<App>) {
     });
 }
 
-/// Opens the floating chooser the browser asked for, if it asked.
+/// Opens the floating chooser the browser asked for, if it asked, or brings the open one
+/// forward when the browser asked again.
 pub(crate) fn open_requested(app: &mut App) {
+    if crate::chooser::floating::take_raise(app) {
+        raise_open();
+    }
     let Some(request) = crate::chooser::floating::take(app) else {
         return;
     };
@@ -53,10 +68,30 @@ pub(crate) fn open_requested(app: &mut App) {
 /// Applies what the open chooser's services queued, as the browser's GLib wake-up does for it.
 pub(super) fn settle_open() {
     OPEN.with(|open| {
-        if let Some(handle) = open.borrow().as_ref() {
+        if let Some((_, handle)) = open.borrow().as_ref() {
             handle.update_if(shell::settle);
         }
     });
+}
+
+/// Brings the open chooser forward and gives it the keyboard.
+fn raise_open() {
+    OPEN.with(|open| {
+        if let Some((window, _)) = open.borrow().as_ref() {
+            tracing::debug!("the open floating chooser was asked for again: brought forward");
+            window.show();
+            window.focus();
+        }
+    });
+}
+
+/// Closes the open chooser, whose close cancels it: the browser it answers is closing.
+pub(super) fn close_with_browser() {
+    let open = OPEN.with(|open| open.borrow_mut().take());
+    if let Some((window, _)) = open {
+        tracing::debug!("the browser window closed: its floating chooser closes with it");
+        window.close();
+    }
 }
 
 fn chooser_poll(app: &mut App, clock: f64, tx: &mut Tx) -> bool {
@@ -85,7 +120,7 @@ fn open(ui: UiThread, browser: AppHandle<App>, request: FloatingRequest) {
         completion,
     } = request;
     let frame = Policy::Auto.frame();
-    let (width, height) = chooser_initial_dimensions(None, None);
+    let (width, height) = chooser_initial_dimensions(None, request.parent_size_hint);
     #[expect(clippy::cast_precision_loss, reason = "window dimensions fit f32")]
     let size = (width as f32, height as f32);
     let token = request.token.clone();
@@ -114,6 +149,7 @@ fn open(ui: UiThread, browser: AppHandle<App>, request: FloatingRequest) {
     let app = app.on_window(move |window: &WindowHandle| {
         csd::attach(window, &attach, shell::csd_of);
     });
-    rune::open_window(WindowSpec::from_app(&token, app).state(state));
-    OPEN.with(|open| open.replace(Some(handle)));
+    let window = rune::open_window(WindowSpec::from_app(&token, app).state(state));
+    tracing::debug!("a floating chooser opened");
+    OPEN.with(|open| open.replace(Some((window, handle))));
 }

@@ -126,7 +126,10 @@ impl Windows {
             log: &self.log,
             keymap: keymap.as_ref(),
             root: FLOATING_ROOT.to_owned(),
-            size: chooser_initial_dimensions(None, Some(self.parent_size)),
+            size: chooser_initial_dimensions(
+                None,
+                request.request.parent_size_hint.or(Some(self.parent_size)),
+            ),
         };
         let parts = ChooserParts {
             request: request.request,
@@ -314,7 +317,7 @@ impl Host for Windows {
         self.drawing(&target.node).activate(target)
     }
 
-    async fn scroll_to(&self, key: &str, x: f32, y: f32) -> Result<(), String> {
-        self.main.scroll_to(key, x, y).await
+    async fn scroll_to(&self, at: (&Node, &str), x: f32, y: f32) -> Result<(), String> {
+        self.drawing(at.0).scroll_to(at, x, y).await
     }
 }

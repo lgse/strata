@@ -517,7 +517,7 @@ impl Host for Session {
         clicked.is_ok()
     }
 
-    async fn scroll_to(&self, key: &str, x: f32, y: f32) -> Result<(), String> {
+    async fn scroll_to(&self, (_, key): (&Node, &str), x: f32, y: f32) -> Result<(), String> {
         let key = key.to_owned();
         let before = self.link.frames.serial();
         self.link

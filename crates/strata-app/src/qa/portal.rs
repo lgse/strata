@@ -340,7 +340,7 @@ impl Host for PortalStaged {
         self.adopted().is_ok_and(|staged| staged.activate(target))
     }
 
-    async fn scroll_to(&self, key: &str, x: f32, y: f32) -> Result<(), String> {
-        self.adopted()?.scroll_to(key, x, y).await
+    async fn scroll_to(&self, at: (&Node, &str), x: f32, y: f32) -> Result<(), String> {
+        self.adopted()?.scroll_to(at, x, y).await
     }
 }

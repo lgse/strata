@@ -120,7 +120,9 @@ impl<H: Host> Rune<H> {
             clippy::cast_possible_truncation,
             reason = "a scroll offset in window points fits f32"
         )]
-        self.host.scroll_to(&key, x as f32, y as f32).await?;
+        self.host
+            .scroll_to((&node, &key), x as f32, y as f32)
+            .await?;
         let actual = self
             .scroll(&node, orientation)
             .map(|scroll| scroll.value)

@@ -60,6 +60,9 @@ pub(crate) struct Transfer {
     ops: dock::Ops,
     preparing: Vec<PreparingKey>,
     pending_reveal: Option<reveal::PendingReveal>,
+    /// Where a chosen transfer goes once it finishes, unless its reveal went there first
+    /// (`chosen`).
+    pending_navigate: Option<Location>,
 }
 
 /// Mounts the blocking progress dialog in `Slot::Dialogs` while `Transfer` mounts the
@@ -76,6 +79,7 @@ impl Part for Transfer {
             ops: dock::Ops::default(),
             preparing: Vec::new(),
             pending_reveal: None,
+            pending_navigate: None,
         }
     }
 

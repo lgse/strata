@@ -84,8 +84,9 @@ pub(super) trait Host {
     async fn button(&self, number: u8, pressed: bool) -> Result<(), String>;
     /// Presses the element as an assistive client's click would. False when it cannot.
     fn activate(&self, target: &Activated) -> bool;
-    /// Instantly scrolls the keyed scroll view `key` to `(x, y)` (`set_scrollbar`).
-    async fn scroll_to(&self, key: &str, x: f32, y: f32) -> Result<(), String>;
+    /// Instantly scrolls a scroll view to `(x, y)` (`set_scrollbar`). `at` is its node and its
+    /// key: the node tells a host with more than one window which one has it.
+    async fn scroll_to(&self, at: (&Node, &str), x: f32, y: f32) -> Result<(), String>;
 
     /// Owns the system clipboard from a second connection (`clipboard_set`). `None` when the
     /// host has no system clipboard (the offscreen host).

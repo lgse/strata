@@ -52,6 +52,9 @@ pub(crate) struct Floating {
     pending: Option<FloatingRequest>,
     /// A chooser is open over the window: GTK keeps one per window (`DestinationLease`).
     open: bool,
+    /// Asked for again while open: the host brings the open one forward, as GTK's
+    /// `DestinationLease::acquire` presents it.
+    raise: bool,
     opened: u64,
 }
 
@@ -80,6 +83,12 @@ impl Destined {
 /// The floating chooser the window asked for, once.
 pub(crate) fn take(app: &mut App) -> Option<FloatingRequest> {
     app.chooser.floating.pending.take()
+}
+
+/// Whether the window asked again for the chooser it has open, since the last call: the host
+/// brings it forward.
+pub(crate) fn take_raise(app: &mut App) -> bool {
+    std::mem::take(&mut app.chooser.floating.raise)
 }
 
 /// Whether the window asked for a floating chooser that no host has taken yet.
@@ -154,8 +163,10 @@ fn transferable(sources: &[Location], move_sources: bool) -> bool {
 }
 
 fn open(app: &mut App, (title, accept_label): (String, String), base: PathBuf, destined: Destined) {
+    let parent_size_hint = app.window_size();
     let floating = &mut app.chooser.floating;
     if floating.open {
+        floating.raise = true;
         return;
     }
     floating.open = true;
@@ -166,7 +177,7 @@ fn open(app: &mut App, (title, accept_label): (String, String), base: PathBuf, d
         accept_label,
         modal: true,
         parent: None,
-        parent_size_hint: None,
+        parent_size_hint,
         initial_directory: base,
         kind: ChooserKind::Open {
             directory: true,
@@ -195,6 +206,7 @@ fn answered(later: Later<App>, destined: Destined) -> Completion {
         let folder = chosen_folder(result);
         later.then(move |app: &mut App, tx: &mut Tx| {
             app.chooser.floating.open = false;
+            app.chooser.floating.raise = false;
             if let Some(folder) = folder {
                 destined.finish(app, folder, tx);
             }

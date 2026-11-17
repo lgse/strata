@@ -50,15 +50,37 @@ fn open_listing(host: &mut Offscreen, root: &Path, name: &str) {
 
 /// Runs the row `command` on `path` and takes the chooser it asked for.
 fn ask(host: &mut Offscreen, command: &'static str, path: &Path) -> Option<FloatingRequest> {
+    ask_at(host, (command, 0), path)
+}
+
+/// [`ask`], on a row of the column at `depth`.
+fn ask_at(
+    host: &mut Offscreen,
+    (command, depth): (&'static str, usize),
+    path: &Path,
+) -> Option<FloatingRequest> {
     let id = shell::id_of(host.app(), &Location::local(path));
     host.runtime().update(move |app: &mut App, tx: &mut Tx| {
         assert_eq!(
-            commands::run(app, command, On::Row((0, id)), tx),
+            commands::run(app, command, On::Row((depth, id)), tx),
             Outcome::Ran
         );
     });
     idle(host);
     take(host.app_mut())
+}
+
+/// Copies `source`, in the column at `depth`, into `folder` through the chooser, and waits
+/// for the copy and what follows it.
+fn copy_through_chooser(host: &mut Offscreen, (depth, source): (usize, &Path), folder: &Path) {
+    let request = ask_at(host, ("copy-to", depth), source).expect("a chooser");
+    answer(host, request, Some(folder));
+    let copied = folder.join(source.file_name().expect("a name"));
+    assert!(
+        host.run_until(PATIENCE, |_| copied.exists()),
+        "the copy lands"
+    );
+    idle(host);
 }
 
 fn answer(host: &mut Offscreen, request: FloatingRequest, folder: Option<&Path>) {
@@ -94,6 +116,12 @@ fn the_destination_rows_ask_for_a_folder_chooser_and_act_on_its_answer() {
                 let source = temp.path().join(name);
                 let request = ask(&mut host, command, &source).expect(command);
                 let asked = &request.request;
+                let browser = host.app().window_size();
+                assert!(browser.is_some(), "the browser window has been laid out");
+                assert_eq!(
+                    asked.parent_size_hint, browser,
+                    "{command}: sized against the browser"
+                );
                 assert_eq!(
                     (asked.title.as_str(), asked.accept_label.as_str()),
                     (title, accept)
@@ -111,6 +139,10 @@ fn the_destination_rows_ask_for_a_folder_chooser_and_act_on_its_answer() {
                 assert!(
                     ask(&mut host, command, &source).is_none(),
                     "{command}: one chooser at a time"
+                );
+                assert!(
+                    super::take_raise(host.app_mut()),
+                    "{command}: asked again, the open one is brought forward"
                 );
                 let chosen = (command != "extract-to").then_some(dest.as_path());
                 answer(&mut host, request, chosen);
@@ -134,6 +166,46 @@ fn the_destination_rows_ask_for_a_folder_chooser_and_act_on_its_answer() {
             assert!(
                 again.is_some(),
                 "a cancelled chooser lets the next one open"
+            );
+        },
+    );
+}
+
+#[test]
+fn a_chosen_copy_leaves_the_browser_on_its_destination() {
+    hosted(
+        MODULE,
+        "a_chosen_copy_leaves_the_browser_on_its_destination",
+        |mut host| {
+            let temp = tempfile::tempdir().expect("a folder");
+            let (dest, sub) = (temp.path().join("dest"), temp.path().join("sub"));
+            for folder in [&dest, &sub] {
+                std::fs::create_dir(folder).expect("a folder");
+            }
+            std::fs::write(temp.path().join("top.txt"), "x\n").expect("a file");
+            std::fs::write(sub.join("inner.txt"), "x\n").expect("a file");
+            open_listing(&mut host, temp.path(), "top.txt");
+            copy_through_chooser(&mut host, (0, &temp.path().join("top.txt")), &dest);
+            assert_eq!(
+                host.app().browser().active_location(),
+                Some(Location::local(&dest)),
+                "a folder the shown one holds"
+            );
+            open_listing(&mut host, temp.path(), "sub");
+            host.app().browser().descend(0, Location::local(&sub));
+            let opened = |host: &Offscreen| {
+                host.app().browser().active_location() == Some(Location::local(&sub))
+            };
+            assert!(
+                host.run_until(PATIENCE, opened),
+                "the subfolder's column opens"
+            );
+            idle(&mut host);
+            copy_through_chooser(&mut host, (1, &sub.join("inner.txt")), temp.path());
+            assert_eq!(
+                host.app().browser().active_location(),
+                Some(Location::local(temp.path())),
+                "the open ancestor column"
             );
         },
     );
