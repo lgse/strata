@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-use std::io::Cursor;
+use std::{collections::HashMap, io::Cursor};
 
 use rune::Mods;
 use strata_components::contract::dnd::{
@@ -8,13 +8,17 @@ use strata_components::contract::dnd::{
 };
 use strata_core::i18n::tr;
 use strata_fs::services::{DroppedFile, WebLink};
+use strata_platform::transfer::ReadError;
 
-use super::{Content, offered, read};
+use super::{Content, Got, Reads, next_read, offered, read};
 
 const ADDRESS: &str = "https://example.com/page";
 
-/// One drop: what it is, what it offers (each type with its bytes), and what it saves.
-type Case<'a> = (&'a str, Vec<(&'a str, &'a [u8])>, Option<Content>);
+/// What a drop offers: each type with its bytes.
+type Offered<'a> = Vec<(&'a str, &'a [u8])>;
+
+/// One drop: what it is, what it offers, and what it saves.
+type Case<'a> = (&'a str, Offered<'a>, Option<Content>);
 
 fn dropped(items: &[(&str, &[u8])]) -> Dropped {
     let mimes: Vec<std::borrow::Cow<'static, str>> = items
@@ -135,7 +139,7 @@ fn dropped_image_data_is_saved_as_png() {
     let [file] = files.as_slice() else {
         panic!("one file: {files:?}");
     };
-    let expected_png = super::png_of(&jpeg).expect("decodes");
+    let expected_png = super::decode::png_of(&jpeg).expect("decodes");
     assert_eq!(
         image::guess_format(&expected_png).ok(),
         Some(image::ImageFormat::Png)
@@ -172,4 +176,170 @@ fn a_foreign_drag_offers_content_without_a_file_list() {
     assert!(offered(&offer(&["image/webp"])));
     assert!(!offered(&offer(&[URI_LIST, "text/plain"])));
     assert!(!offered(&offer(&["application/x-strata-private"])));
+}
+
+/// A read past P1's bound (`ReadError::TooLarge`, as the binder carries it) says so, as GTK's
+/// "The dropped content is too large", rather than leaving the drop refused with no word; what
+/// else the drop offers is tried first.
+#[test]
+fn a_dropped_type_too_large_to_read_says_so() {
+    let named = "application/octet-stream;name=\"big.png\"";
+    let uris = format!("{ADDRESS}\r\n");
+    let too_large = || Some(Content::Unreadable(tr("The dropped content is too large")));
+    // What it is, what it offers, the type whose read was too large, and what it saves.
+    let cases: Vec<(&str, Offered<'_>, &str, Option<Content>)> = vec![
+        ("image bytes", vec![(named, b"")], named, too_large()),
+        (
+            "text",
+            vec![("text/plain;charset=utf-8", b"")],
+            "text/plain;charset=utf-8",
+            too_large(),
+        ),
+        (
+            "image bytes, with an address to fall back on",
+            vec![(named, b""), (URI_LIST, uris.as_bytes())],
+            named,
+            saves(vec![link_file(ADDRESS)]),
+        ),
+    ];
+    for (what, offered, failed, expected) in cases {
+        let mut drop = dropped(&offered);
+        drop.data.items.retain(|item| item.mime != failed);
+        let failure = crate::dnd::adapter::failure_of_p1(&ReadError::TooLarge);
+        drop.data = drop.data.failed(vec![(failed.to_owned(), failure)]);
+        assert_eq!(read(&drop), expected, "{what}");
+    }
+}
+
+/// A drop being read: the types offered, and the bytes each one read holds.
+struct Reading {
+    offered: Vec<&'static str>,
+    read: HashMap<String, Vec<u8>>,
+}
+
+impl Reads for Reading {
+    fn offered(&self) -> Vec<&str> {
+        self.offered.clone()
+    }
+
+    fn got(&self, mime: &str) -> Got<'_> {
+        self.read
+            .get(mime)
+            .map_or(Got::Unread, |bytes| Got::Bytes(bytes))
+    }
+
+    fn local(&self) -> bool {
+        false
+    }
+}
+
+/// A drop reads only the types GTK's order needs, one at a time: the file list first, then a
+/// browser's image bytes, then image data only when the bytes are no image, and text only
+/// when no image and no address settles it.
+#[test]
+fn a_drop_reads_only_the_types_it_uses() {
+    let jpeg = encoded(image::ImageFormat::Jpeg);
+    let png = encoded(image::ImageFormat::Png);
+    let links = format!("{ADDRESS}\r\n");
+    let named = "application/octet-stream;name=\"photo.jpg\"";
+    let text = "text/plain;charset=utf-8";
+    let browser = [URI_LIST, named, "image/png", text];
+    let plain = [named, "image/png", text];
+    let files = [URI_LIST, "image/png", text];
+    // What it is, the types offered, what each read gives, and the types read, in order.
+    let cases: Vec<(&str, &[&'static str], Offered<'_>, Vec<&str>)> = vec![
+        (
+            "a browser's image",
+            &browser,
+            vec![(URI_LIST, links.as_bytes()), (named, &jpeg)],
+            vec![URI_LIST, named],
+        ),
+        (
+            "image bytes that are no image",
+            &browser,
+            vec![
+                (URI_LIST, links.as_bytes()),
+                (named, b"no image"),
+                ("image/png", &png),
+            ],
+            vec![URI_LIST, named, "image/png"],
+        ),
+        (
+            "no image at all, with an address",
+            &browser,
+            vec![
+                (URI_LIST, links.as_bytes()),
+                (named, b"no"),
+                ("image/png", b"no"),
+            ],
+            vec![URI_LIST, named, "image/png"],
+        ),
+        (
+            "no image and no address",
+            &plain,
+            vec![(named, b"no"), ("image/png", b"no"), (text, b"words")],
+            vec![named, "image/png", text],
+        ),
+        (
+            "files",
+            &files,
+            vec![(URI_LIST, b"file:///tmp/a.png\r\n")],
+            vec![URI_LIST],
+        ),
+    ];
+    for (what, offered, answers, wanted) in cases {
+        let answers: HashMap<&str, &[u8]> = answers.into_iter().collect();
+        let mut reading = Reading {
+            offered: offered.to_vec(),
+            read: HashMap::new(),
+        };
+        let mut order = Vec::new();
+        while let Some(mime) = next_read(&reading) {
+            assert!(
+                order.len() < offered.len(),
+                "{what}: {mime} asked for again"
+            );
+            let bytes = answers.get(mime.as_str()).copied().unwrap_or_default();
+            reading.read.insert(mime.clone(), bytes.to_vec());
+            order.push(mime);
+        }
+        assert_eq!(order, wanted, "{what}");
+    }
+}
+
+/// Text in a charset other than UTF-8 is converted from it, as GTK's string reader converts;
+/// UTF-8 that is not valid is no text.
+#[test]
+fn dropped_text_is_read_in_its_charset() {
+    let utf16: Vec<u8> = "café".encode_utf16().flat_map(u16::to_le_bytes).collect();
+    let cases: Vec<(&str, &[u8], Option<Content>)> = vec![
+        (
+            "text/plain;charset=ISO-8859-1",
+            b"caf\xe9",
+            saves(vec![text_file("café")]),
+        ),
+        (
+            "text/plain;charset=UTF-16LE",
+            &utf16,
+            saves(vec![text_file("café")]),
+        ),
+        (
+            "text/plain;charset=UTF-8",
+            "café".as_bytes(),
+            saves(vec![text_file("café")]),
+        ),
+        (
+            "text/plain;charset=utf-8",
+            b"caf\xe9",
+            Some(Content::Refused),
+        ),
+        (
+            "text/plain",
+            "café".as_bytes(),
+            saves(vec![text_file("café")]),
+        ),
+    ];
+    for (mime, bytes, expected) in cases {
+        assert_eq!(read(&dropped(&[(mime, bytes)])), expected, "{mime}");
+    }
 }

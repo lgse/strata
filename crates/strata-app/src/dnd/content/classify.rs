@@ -163,27 +163,39 @@ impl<'a, R: Reads> Walk<'a, R> {
 
     /// A browser's image bytes, under the name it gives.
     fn file_contents(&mut self, offered: &[&str]) -> Result<Option<DroppedFile>, Needs> {
-        let Some((mime, bytes)) = self.bytes(offered, is_file_contents, any)? else {
-            return Ok(None);
-        };
-        let name = decode::supplied_name(&mime);
-        let image = DroppedFile::image(name.as_deref(), &tr("pasted_image.name"), bytes.to_vec());
-        if image.is_none() {
-            self.fail(tr("Unsupported image format"));
-        }
-        Ok(image)
+        self.image(offered, is_file_contents, |mime, bytes| {
+            let name = decode::supplied_name(mime);
+            DroppedFile::image(name.as_deref(), &tr("pasted_image.name"), bytes.to_vec())
+        })
     }
 
     /// Image data, saved as a PNG: the first image type offered, as GDK reads one texture.
     fn image_data(&mut self, offered: &[&str]) -> Result<Option<DroppedFile>, Needs> {
-        let Some((_, bytes)) = self.bytes(offered, |m| m.starts_with("image/"), any)? else {
+        self.image(
+            offered,
+            |m| m.starts_with("image/"),
+            |_, bytes| {
+                decode::png_of(bytes).map(|png| DroppedFile::png(&tr("pasted_image.name"), png))
+            },
+        )
+    }
+
+    /// The image `save` makes of the first offered type `wanted` takes. Bytes that are no
+    /// image, as a failed read, are noted.
+    fn image(
+        &mut self,
+        offered: &[&str],
+        wanted: impl Fn(&str) -> bool,
+        save: impl FnOnce(&str, &[u8]) -> Option<DroppedFile>,
+    ) -> Result<Option<DroppedFile>, Needs> {
+        let Some((mime, bytes)) = self.bytes(offered, wanted, any)? else {
             return Ok(None);
         };
-        let png = decode::png_of(bytes).map(|png| DroppedFile::png(&tr("pasted_image.name"), png));
-        if png.is_none() {
+        let image = save(&mime, bytes);
+        if image.is_none() {
             self.fail(tr("Unsupported image format"));
         }
-        Ok(png)
+        Ok(image)
     }
 
     /// The first text type offered, in its charset: a link when it is one address, else a
