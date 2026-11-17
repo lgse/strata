@@ -18,7 +18,7 @@ use strata_components::{
     collection::{
         element::DropOver,
         keyboard::{KeySettings, Letters},
-        selection::Listing,
+        selection::{Listing, SyncRule},
     },
     columns::{ColumnSources, ColumnsState, Focus, Opening},
     context_menu::AnchorEdge,
@@ -32,7 +32,7 @@ use strata_kit::look::Look;
 use crate::{
     commands,
     events::{Added, Change, Marks, Moved},
-    handover::{self, Held, Moving},
+    handover::{self, Held, Kept, Moving},
     listing::{Column, Edit, Load, Row},
     slots::{Ids, Setup, Worn},
     surface::Surface,
@@ -76,6 +76,9 @@ pub(crate) struct Columns {
     /// For each column, the revision of its selection that the browser holds. Another
     /// revision is a change the view made, which [`Columns::publish`] hands over.
     held: Vec<Held>,
+    /// For each column, the neighbour kept after a move out of its folder
+    /// ([`handover::Kept`]).
+    kept: Vec<Kept>,
     /// The cursor the child column last followed, or was told of: its column and entry.
     followed: Option<(usize, EntryId)>,
     /// Entries a rename gave another id, until the listing shows the change.
@@ -133,6 +136,7 @@ impl Columns {
             },
             ids: setup.ids.clone(),
             held: Vec::new(),
+            kept: Vec::new(),
             followed: None,
             moving: Moving::default(),
             mirror: Mirror::new(
@@ -304,6 +308,7 @@ impl Columns {
                 self.listings.drop_hits();
                 self.listings.columns.clear();
                 self.held.clear();
+                self.kept.clear();
             }
             Change::Truncated { len, replacing, .. } => self.truncate(len, replacing, hands),
             Change::Added(added) => self.add(added, hands),
@@ -372,6 +377,7 @@ impl Columns {
         self.listings.drop_hits_from(len);
         self.listings.columns.truncate(len);
         self.held.truncate(len);
+        self.kept.truncate(len);
         // A sibling takes the place of the column at `len` when it is added, with no exit.
         if !replacing {
             if !self.rebuilding.get() && hands.look.animations {
@@ -392,6 +398,7 @@ impl Columns {
         self.listings.drop_hits_from(depth);
         self.listings.columns.truncate(depth);
         self.held.truncate(depth);
+        self.kept.truncate(depth);
         // The browser adds columns in order, each after the last.
         if self.listings.columns.len() != depth {
             return;
@@ -423,6 +430,7 @@ impl Columns {
         }
         self.read_menu_keys(depth);
         self.held.push(self.held_now(depth));
+        self.kept.push(Kept::default());
     }
 
     /// Puts the context menu's keys ahead of a new column's own. GTK opens a Columns entry's
@@ -463,11 +471,15 @@ impl Columns {
     /// Brings column `depth`'s view state in step with what it shows after that changed: its
     /// rows, or a filter's results in their place.
     fn sync(&mut self, depth: usize, tx: &mut Tx) {
+        self.sync_by(depth, handover::sync_rule, tx);
+    }
+
+    /// [`Columns::sync`] by `rule`: [`handover::settle_rule`] when the browser's marks follow.
+    fn sync_by(&mut self, depth: usize, rule: fn(&Column) -> SyncRule, tx: &mut Tx) {
         let Some(column) = self.listings.shown(depth) else {
             return;
         };
-        self.state
-            .sync(depth, column, handover::sync_rule(column), tx);
+        self.state.sync(depth, column, rule(column), tx);
     }
 
     /// After column `depth`'s rows changed: the view catches up with them, and then the
@@ -476,13 +488,17 @@ impl Columns {
     /// that is the user's, and [`Columns::publish`] hands it to the browser.
     fn settle(&mut self, depth: usize, marks: &Marks, hands: &mut Hands<'_>) {
         let before = self.cursor(depth);
-        self.sync(depth, hands.tx);
+        self.sync_by(depth, handover::settle_rule, hands.tx);
         let placed = self
             .state
             .column(depth)
             .is_some_and(|column| handover::placed(before, &column.collection));
         if !placed {
-            self.adopt(depth, marks);
+            let kept = self.kept_neighbour(depth, before, marks);
+            self.adopt(depth, kept.as_ref().unwrap_or(marks));
+            if let Some(slot) = self.kept.get_mut(depth) {
+                slot.keep(kept.as_ref());
+            }
         }
         if let Some(column) = self.listings.columns.get(depth) {
             tracing::trace!(
@@ -590,6 +606,9 @@ impl Columns {
             pending,
             results,
             drawn,
+            kept: (0..self.open())
+                .filter_map(|depth| Some((depth, self.kept.get(depth)?.id()?)))
+                .collect(),
         }
     }
 }
