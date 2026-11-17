@@ -6,25 +6,22 @@
 scenario = "capture-records-latin-key-on-russian-layout"
 run = "columns-ru"
 package = "A18"
-status = "pending"
-reason = "scope"
-blocker = "A18"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "capture-records-latin-key-on-russian-layout"
 run = "columns-ru-only"
 package = "A18"
-status = "pending"
-reason = "scope"
-blocker = "A18"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "capture-refuses-a-taken-key"
 run = "columns"
 package = "A18"
-status = "pending"
-reason = "scope"
-blocker = "A18"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "keymap-tables-change-independently"
@@ -32,7 +29,7 @@ run = "columns"
 package = "A18"
 status = "pending"
 reason = "scope"
-blocker = "A18"
+blocker = "A11: the 10xer `r` footer rename prompt (line 55 waits for its field on readme.md)"
 
 [[run]]
 scenario = "saved-keymap-applies-at-launch"
@@ -47,9 +44,8 @@ ref = "lgse/strata#2466"
 scenario = "settings-capture-rebinds-rename"
 run = "columns"
 package = "A18"
-status = "pending"
-reason = "scope"
-blocker = "A18"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "structural-aliases-act-as-enter-and-escape"

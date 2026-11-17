@@ -152,6 +152,12 @@ impl CustomActions {
     fn job_service(&self) -> Option<Rc<JobService>> {
         self.services.as_ref().map(|s| s.jobs.clone())
     }
+
+    /// The custom actions loaded so far, once the window's first poll has started the
+    /// registry; Settings' keyboard page names each action slot's action from it.
+    pub(crate) fn catalog(&self) -> Option<Rc<strata_fs::services::ActionCatalog>> {
+        self.services.as_ref().map(|s| s.registry.catalog())
+    }
 }
 
 pub(crate) fn shared_registry(app: &mut App) -> Rc<ActionRegistry> {
