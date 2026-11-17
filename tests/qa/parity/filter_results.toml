@@ -317,25 +317,22 @@ host = "offscreen"
 scenario = "renamed-filter-result-keeps-focus"
 run = "columns-tenxer"
 package = "A11"
-status = "pending"
-reason = "scope"
-blocker = "A11"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "renamed-filter-result-keeps-focus"
 run = "icons-tenxer"
 package = "A11"
-status = "pending"
-reason = "scope"
-blocker = "A11"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "renamed-filter-result-keeps-focus"
 run = "list-tenxer"
 package = "A11"
-status = "pending"
-reason = "scope"
-blocker = "A11"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "renamed-filter-result-keeps-focus"

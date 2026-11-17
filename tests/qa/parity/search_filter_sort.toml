@@ -147,25 +147,22 @@ host = "offscreen"
 scenario = "tenxer-footer-filter-commits"
 run = "columns"
 package = "A11"
-status = "pending"
-reason = "scope"
-blocker = "A11"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "tenxer-footer-filter-commits"
 run = "icons"
 package = "A11"
-status = "pending"
-reason = "scope"
-blocker = "A11"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "tenxer-footer-filter-commits"
 run = "list"
 package = "A11"
-status = "pending"
-reason = "scope"
-blocker = "A11"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "tenxer-sort-chords-keep-cursor"
