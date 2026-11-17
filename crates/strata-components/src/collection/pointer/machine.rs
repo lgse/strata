@@ -483,10 +483,10 @@ fn primary_single(
     s: &mut dyn Surface,
 ) -> Gesture {
     apply(s, |sel, src| sel.select_only(src, index));
-    g.plan = if on_entry && settings.drags && !g.press.mods.alt {
-        Plan::Drag
-    } else {
-        Plan::Nothing
+    // No band selects more than one entry: a drag from blank space or with Alt does nothing.
+    g.plan = match drag_plan(&g, on_entry, settings) {
+        Plan::Marquee => Plan::Nothing,
+        plan => plan,
     };
     g
 }
@@ -497,17 +497,36 @@ fn primary_multi(
     settings: &PointerSettings,
     s: &mut dyn Surface,
 ) -> Gesture {
-    let (ctrl, shift) = (g.press.mods.ctrl, g.press.mods.shift);
+    let modified = g.press.mods.ctrl || g.press.mods.shift;
+    if modified {
+        modified_press(&mut g, (index, selected, on_entry), settings, s);
+    } else if on_entry && selected && len > 1 {
+        g.kept_group = true;
+    } else {
+        apply(s, |sel, src| sel.select_only(src, index));
+    }
+    g.plan = drag_plan(&g, on_entry, settings);
+    g
+}
+
+/// A Shift or Ctrl press on entry `index`. A file drag carries the selection the press makes,
+/// so it is made now. A band applies Ctrl or Shift to the selection as it was before the press
+/// (Strata takes it at the band's press, `marquee/state.rs`), so where a drag is a band they
+/// wait for the release.
+fn modified_press(
+    g: &mut Gesture,
+    (index, selected, on_entry): (usize, bool, bool),
+    settings: &PointerSettings,
+    s: &mut dyn Surface,
+) {
+    let ctrl = g.press.mods.ctrl;
     let range = if ctrl {
         settings.ctrl_shift
     } else {
         Extend::Replace
     };
-    // A file drag carries the selection the press makes, so it is made now. A band applies
-    // Ctrl or Shift to the selection as it was before the press (Strata takes it at the band's
-    // press, `marquee/state.rs`), so where a drag is a band they wait for the release.
     let now = on_entry && !g.press.mods.alt;
-    if shift {
+    if g.press.mods.shift {
         if now {
             let stays = settings.missing_anchor_stays;
             apply(s, |sel, src| {
@@ -516,25 +535,23 @@ fn primary_multi(
         } else {
             g.deferred = Deferred::Extend(range);
         }
-    } else if ctrl {
-        if now && !selected {
-            apply(s, |sel, src| sel.toggle(src, index));
-        } else {
-            g.deferred = Deferred::Toggle;
-        }
-    } else if on_entry && selected && len > 1 {
-        g.kept_group = true;
+    } else if now && !selected {
+        apply(s, |sel, src| sel.toggle(src, index));
     } else {
-        apply(s, |sel, src| sel.select_only(src, index));
+        g.deferred = Deferred::Toggle;
     }
-    g.plan = if g.press.mods.alt || !on_entry {
+}
+
+/// What a drag from the press does: a band from blank space or with Alt held, else a file
+/// drag where the collection drags files.
+fn drag_plan(g: &Gesture, on_entry: bool, settings: &PointerSettings) -> Plan {
+    if g.press.mods.alt || !on_entry {
         Plan::Marquee
     } else if settings.drags {
         Plan::Drag
     } else {
         Plan::Nothing
-    };
-    g
+    }
 }
 
 fn apply_deferred(g: &Gesture, index: usize, settings: &PointerSettings, s: &mut dyn Surface) {

@@ -279,9 +279,7 @@ pub(crate) fn open(app: &mut App, request: Request, tx: &mut Tx) {
         None => folder_menu(app, depth),
     };
     if let Some(mut opening) = opening {
-        if let Some(slot) = opening.custom_slot {
-            opening.model.sections[slot] = crate::custom_actions::begin_menu(app, depth, entry);
-        }
+        fill_custom_slot(app, &mut opening, depth, entry);
         let sections = crate::file_providers::begin_menu(
             app,
             opening.provider_paths.take(),
@@ -296,6 +294,13 @@ pub(crate) fn open(app: &mut App, request: Request, tx: &mut Tx) {
         app.menu
             .show(depth, opening, Point::new(anchor.x, anchor.y));
         crate::open_with::prepare_menu(app, depth, entry);
+    }
+}
+
+/// Puts the custom actions that match into the menu's slot for them, when it has one.
+fn fill_custom_slot(app: &mut App, opening: &mut Opening, depth: usize, entry: Option<EntryId>) {
+    if let Some(slot) = opening.custom_slot {
+        opening.model.sections[slot] = crate::custom_actions::begin_menu(app, depth, entry);
     }
 }
 

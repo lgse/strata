@@ -102,13 +102,13 @@ impl PortalService {
             .register_object(DESKTOP_PATH, &iface)
             .property(|_, _, _, _, _| FILE_CHOOSER_VERSION.to_variant())
             .method_call(move |conn, _, _, _, method, params, invocation| {
-                handle_chooser_call(
-                    conn,
+                let call = IncomingCall {
+                    connection: conn,
                     method,
                     params,
                     invocation,
-                    (&tracker, &request_info, &cb_for_calls),
-                );
+                };
+                handle_chooser_call(call, (&tracker, &request_info, &cb_for_calls));
             })
             .build()
             .map_err(|error| format!("cannot register FileChooser on D-Bus: {error}"))?;
@@ -261,11 +261,21 @@ fn unpack_call(params: &glib::Variant) -> Result<CallParams, PortalError> {
     })
 }
 
-fn handle_chooser_call(
+/// A FileChooser method call as GIO hands it over.
+struct IncomingCall<'a> {
     connection: gio::DBusConnection,
-    method: &str,
+    method: &'a str,
     params: glib::Variant,
     invocation: gio::DBusMethodInvocation,
+}
+
+fn handle_chooser_call(
+    IncomingCall {
+        connection,
+        method,
+        params,
+        invocation,
+    }: IncomingCall<'_>,
     (tracker, request_info, callbacks): (
         &Arc<RequestTracker>,
         &Rc<gio::DBusNodeInfo>,

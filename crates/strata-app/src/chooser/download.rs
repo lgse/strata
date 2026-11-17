@@ -53,6 +53,17 @@ impl DownloadProgress {
         }
     }
 
+    /// What a batch of the download thread's reports changed: the file's name, and how far it
+    /// has come.
+    pub(crate) fn advance(&mut self, name: Option<String>, progress: Option<(u64, Option<u64>)>) {
+        if let Some(name) = name {
+            self.name = name;
+        }
+        if let Some((downloaded, total)) = progress {
+            self.update(downloaded, total);
+        }
+    }
+
     pub(crate) fn update(&mut self, downloaded: u64, total: Option<u64>) {
         match total.filter(|total| *total > 0) {
             Some(total) => {
@@ -132,8 +143,8 @@ pub(crate) fn start_download(app: &mut App, url: String, _tx: &mut Tx) {
                 keep_polling = outcome.continues();
                 let flag = cancelled.clone();
                 let url_copy = url.clone();
-                later.then(move |app: &mut App, tx: &mut Tx| {
-                    apply_batch(app, &flag, &url_copy, outcome, tx)
+                later.then(move |app: &mut App, _: &mut Tx| {
+                    apply_batch(app, (&flag, &url_copy), outcome)
                 });
             }
         }
@@ -187,12 +198,12 @@ fn drain_batch(receiver: &Receiver<RemoteDownload>) -> BatchOutcome {
     }
 }
 
+/// What the download thread reported, applied while the download it belongs to is still the
+/// chooser's own: `cancelled` names it.
 fn apply_batch(
     app: &mut App,
-    cancelled: &Arc<AtomicBool>,
-    url: &str,
+    (cancelled, url): (&Arc<AtomicBool>, &str),
     outcome: BatchOutcome,
-    tx: &mut Tx,
 ) -> bool {
     let is_current = app
         .chooser
@@ -205,44 +216,32 @@ fn apply_batch(
     match outcome {
         BatchOutcome::Idle => return false,
         BatchOutcome::Progress { name, progress } => {
-            if let Some(active) = app.chooser.active.as_mut()
-                && let Some(bar) = active.download_progress.as_mut()
+            if let Some(bar) = app
+                .chooser
+                .active
+                .as_mut()
+                .and_then(|active| active.download_progress.as_mut())
             {
-                if let Some(name) = name {
-                    bar.name = name;
-                }
-                if let Some((downloaded, total)) = progress {
-                    bar.update(downloaded, total);
-                }
+                bar.advance(name, progress);
             }
         }
         BatchOutcome::Finished(path) => {
             if let Some(active) = app.chooser.active.as_mut() {
-                active.download_progress = None;
-                active.download_cancel = None;
-                active.downloaded_file = Some((url.to_owned(), path.clone()));
+                active.keep_download(url, &path);
             }
             image_conversion::complete_download(app, path);
         }
         BatchOutcome::Failed(message) => {
             if let Some(active) = app.chooser.active.as_mut() {
-                active.download_progress = None;
-                active.accept_sensitive = true;
-                if active.download_cancel.take().is_some() {
-                    active.show_error(message);
-                }
+                active.fail_download(message);
             }
         }
         BatchOutcome::Disconnected => {
             if let Some(active) = app.chooser.active.as_mut() {
-                active.download_progress = None;
-                active.accept_sensitive = true;
-                active.download_cancel = None;
-                active.show_error(tr("The download stopped unexpectedly. Try again."));
+                active.fail_download(tr("The download stopped unexpectedly. Try again."));
             }
         }
     }
-    let _ = tx;
     true
 }
 
@@ -312,5 +311,5 @@ pub(crate) fn finish_remote(app: &mut App, path: PathBuf, tx: &mut Tx) {
         }
         return;
     }
-    super::state::complete_paths_writable(app, vec![path], tx);
+    super::accept::complete_paths_writable(app, vec![path], tx);
 }

@@ -8,6 +8,7 @@
 //! - [`ChooserDialog`] (`Place::Dialogs`) mounts the Save overwrite confirmation and PNG image
 //!   conversion consent dialogs on C15's [`StrataDialog`].
 
+pub(crate) mod accept;
 pub(crate) mod download;
 pub(crate) mod geometry;
 pub(crate) mod image_conversion;
@@ -96,6 +97,28 @@ impl Chooser {
             .is_none_or(ActiveChooser::allows_create)
     }
 
+    /// Shows `message` in the footer's inline error.
+    pub(crate) fn show_error(&mut self, message: impl Into<String>) {
+        if let Some(active) = self.active.as_mut() {
+            active.show_error(message);
+        }
+    }
+
+    /// Ends the destination check that the accept numbered `generation` started. False when
+    /// the request has finished or a later accept took over, which the check's result then
+    /// leaves alone.
+    pub(crate) fn end_check(&mut self, generation: u64) -> bool {
+        let Some(active) = self.active.as_mut() else {
+            return false;
+        };
+        active.destination_check = false;
+        if active.completion.is_none() || active.accept_generation != generation {
+            return false;
+        }
+        active.accept_sensitive = true;
+        true
+    }
+
     /// The portal request's token, which names its window, whether or not it has finished.
     pub(crate) fn token(&self) -> Option<String> {
         self.active
@@ -146,7 +169,7 @@ impl Part for Chooser {
                 BrowserEvent::OpenRequested { location } => {
                     let location = location.clone();
                     heard.then(move |app: &mut App, tx: &mut Tx| {
-                        state::activate_file(app, &location, tx);
+                        accept::activate_file(app, &location, tx);
                         true
                     });
                 }
@@ -217,7 +240,19 @@ pub(crate) fn mount_request(
 }
 
 pub(crate) fn cancel(app: &mut App, tx: &mut Tx) -> bool {
-    state::cancel(app, tx)
+    accept::cancel(app, tx)
+}
+
+/// Return on the focused entry of a chooser, before the browser opens it
+/// ([`confirm_key_activation`]). False outside a chooser or when the browser should open it.
+pub(crate) fn confirms_focused(app: &mut App, tx: &mut Tx) -> bool {
+    if !app.browser.is_chooser_mode() {
+        return false;
+    }
+    let Some((depth, position, _)) = app.browser.focused_item() else {
+        return false;
+    };
+    confirm_key_activation(app, (depth, position), Activation::Key, tx)
 }
 
 /// Refills `Name` when clicking an already-selected file row in `SaveFile` mode
@@ -234,18 +269,25 @@ pub(crate) fn clicked_entry_in_chooser(app: &mut App) {
     if !save_file {
         return;
     }
-    if filter::targets::selected(app).is_none()
-        && app.browser.selection_is_load_cursor()
-        && let Some((depth, position, _)) = app.browser.focused_item()
-    {
-        app.browser.commit_selection();
-        let selected = app.browser.selected_positions(depth);
-        app.browser.set_selection(depth, &selected, Some(position));
-    }
+    commit_load_cursor(app);
     if let Some(active) = app.chooser.active.as_mut() {
         active.filename_selection.clear();
     }
     state::update_selected_filename(app);
+}
+
+/// Makes the entry the load put the cursor on a selection of its own, so a click on it reads as
+/// a click on a selected row.
+fn commit_load_cursor(app: &mut App) {
+    if filter::targets::selected(app).is_some() || !app.browser.selection_is_load_cursor() {
+        return;
+    }
+    let Some((depth, position, _)) = app.browser.focused_item() else {
+        return;
+    };
+    app.browser.commit_selection();
+    let selected = app.browser.selected_positions(depth);
+    app.browser.set_selection(depth, &selected, Some(position));
 }
 
 /// Intercepts `Activation::Key` on a file in chooser mode BEFORE `activate_focused_in_place` /
@@ -266,7 +308,7 @@ pub(crate) fn confirm_key_activation(
     if entry.is_directory() {
         return false;
     }
-    state::confirm_file(app, &entry, tx);
+    accept::confirm_file(app, &entry, tx);
     true
 }
 

@@ -30,7 +30,7 @@ enum Command {
 /// Byte-safe: an argument that is not UTF-8 is a path, never an option.
 fn parse(arguments: impl IntoIterator<Item = OsString>) -> Result<Command, String> {
     let mut directory = None;
-    let mut portal = false;
+    let mut portals = 0_usize;
     let mut options_ended = false;
     for argument in arguments {
         let option = (!options_ended)
@@ -40,24 +40,18 @@ fn parse(arguments: impl IntoIterator<Item = OsString>) -> Result<Command, Strin
         match option {
             Some("--") => options_ended = true,
             Some("--help" | "-h") => return Ok(Command::Help),
-            Some("--portal") if directory.is_none() && !portal => portal = true,
-            Some("--portal") => {
-                return Err("--portal cannot be combined with a directory".to_owned());
-            }
+            Some("--portal") => portals += 1,
             Some(unknown) => return Err(format!("unknown option {unknown}")),
-            None if portal => {
-                return Err("--portal cannot be combined with a directory".to_owned());
-            }
             None if directory.is_some() => {
                 return Err("only one directory can be opened".to_owned());
             }
             None => directory = Some(argument),
         }
     }
-    if portal {
-        Ok(Command::Portal)
-    } else {
-        Ok(Command::Open(directory))
+    match (portals, directory) {
+        (0, directory) => Ok(Command::Open(directory)),
+        (1, None) => Ok(Command::Portal),
+        _ => Err("--portal cannot be combined with a directory".to_owned()),
     }
 }
 

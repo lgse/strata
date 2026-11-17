@@ -5,6 +5,7 @@
 
 use std::{
     cell::{Cell, RefCell},
+    ops::RangeInclusive,
     path::{Component, Path, PathBuf},
     rc::Rc,
 };
@@ -83,47 +84,55 @@ fn glob_step(pat: &[char], txt: &[char]) -> bool {
     let Some(&first) = pat.first() else {
         return txt.is_empty();
     };
+    let rest = &pat[1..];
     match first {
-        '*' => {
-            let mut rest = &pat[1..];
-            while rest.first() == Some(&'*') {
-                rest = &rest[1..];
-            }
-            (0..=txt.len()).any(|skip| glob_step(rest, &txt[skip..]))
-        }
-        '?' => !txt.is_empty() && glob_step(&pat[1..], &txt[1..]),
-        '[' => match match_char_class(&pat[1..], txt.first().copied()) {
-            Some((after_class, matched)) => matched && glob_step(after_class, &txt[1..]),
-            None => txt.first() == Some(&'[') && glob_step(&pat[1..], &txt[1..]),
-        },
-        literal => txt.first() == Some(&literal) && glob_step(&pat[1..], &txt[1..]),
+        '*' => glob_star(rest, txt),
+        '?' => !txt.is_empty() && glob_step(rest, &txt[1..]),
+        '[' => glob_class(rest, txt),
+        literal => txt.first() == Some(&literal) && glob_step(rest, &txt[1..]),
     }
 }
 
+/// A `*`, with `pat` what follows it: any run of characters, the empty one included.
+fn glob_star(pat: &[char], txt: &[char]) -> bool {
+    let rest = pat
+        .iter()
+        .position(|c| *c != '*')
+        .map_or(&[][..], |at| &pat[at..]);
+    (0..=txt.len()).any(|skip| glob_step(rest, &txt[skip..]))
+}
+
+/// A `[`, with `pat` what follows it: a class, or a literal `[` when no `]` closes it.
+fn glob_class(pat: &[char], txt: &[char]) -> bool {
+    match match_char_class(pat, txt.first().copied()) {
+        Some((after_class, matched)) => matched && glob_step(after_class, &txt[1..]),
+        None => txt.first() == Some(&'[') && glob_step(pat, &txt[1..]),
+    }
+}
+
+/// The member of a class at the head of `pat`, a range `a-z` or one character, and how many
+/// characters of the pattern it takes. `pat` is not empty.
+fn class_member(pat: &[char]) -> (RangeInclusive<char>, usize) {
+    match pat {
+        [low, '-', high, ..] if *high != ']' => (*low..=*high, 3),
+        _ => (pat[0]..=pat[0], 1),
+    }
+}
+
+/// The class after a `[`: what follows its `]`, and whether `ch` is in it. `None` when no `]`
+/// closes it. A `]` first in the class is a member, and `!` or `^` first negates it.
 fn match_char_class(pat: &[char], ch: Option<char>) -> Option<(&[char], bool)> {
     let negated = matches!(pat.first(), Some('!' | '^'));
-    let mut idx = usize::from(negated);
+    let start = usize::from(negated);
+    let mut idx = start;
     let mut matched = false;
-    let start = idx;
-    while idx < pat.len() {
-        if pat[idx] == ']' && idx > start {
-            let ok = ch.is_some() && (matched != negated);
-            return Some((&pat[idx + 1..], ok));
+    while let Some(&member) = pat.get(idx) {
+        if member == ']' && idx > start {
+            return Some((&pat[idx + 1..], ch.is_some() && matched != negated));
         }
-        if idx + 2 < pat.len() && pat[idx + 1] == '-' && pat[idx + 2] != ']' {
-            if let Some(target) = ch
-                && target >= pat[idx]
-                && target <= pat[idx + 2]
-            {
-                matched = true;
-            }
-            idx += 3;
-        } else {
-            if ch == Some(pat[idx]) {
-                matched = true;
-            }
-            idx += 1;
-        }
+        let (members, width) = class_member(&pat[idx..]);
+        matched |= ch.is_some_and(|target| members.contains(&target));
+        idx += width;
     }
     None
 }

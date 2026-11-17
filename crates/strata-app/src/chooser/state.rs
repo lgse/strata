@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-//! Active chooser request state, selection resolution, filename auto-fill, and acceptance
+//! Active chooser request state, selection resolution and filename auto-fill
 //! (`src/ui/chooser/state.rs`).
 
 use std::{
@@ -22,23 +22,17 @@ use strata_core::{
     i18n::tr,
     model::{FileEntry, Location},
 };
-use strata_fs::{
-    adapters::query_file_entry,
-    services::{remote_file_url, validate_basename},
-};
 
 use super::{
-    ChooserPrompt, NAME_KEY,
-    download::{self, DownloadProgress},
+    download::DownloadProgress,
     options::{ChoiceControl, build_choices, normalize_portal_filters},
     source::{ChooserFileSource, CompiledFilter},
 };
 use crate::{
     App, filter,
     portal::{
-        ChooserKind, ChooserRequest, Completion, DestinationCheck, PortalError, PortalFileFilter,
-        SelectedResult, check_destinations, local_uri, open_selection, safe_filename,
-        writable_from_read_only,
+        ChooserKind, ChooserRequest, Completion, PortalError, PortalFileFilter, SelectedResult,
+        safe_filename, writable_from_read_only,
     },
     shell,
 };
@@ -168,6 +162,12 @@ impl ActiveChooser {
         self.error = None;
     }
 
+    /// Whether Open or Save may run now: the request waits for an answer, and no destination
+    /// check or download is under way.
+    pub(crate) fn can_accept(&self) -> bool {
+        self.completion.is_some() && !self.destination_check && !self.download_in_progress()
+    }
+
     pub(crate) fn download_in_progress(&self) -> bool {
         self.download_cancel.is_some()
     }
@@ -176,6 +176,30 @@ impl ActiveChooser {
         self.download_cancel
             .as_ref()
             .is_some_and(|current| Arc::ptr_eq(current, flag))
+    }
+
+    /// The download from `url` finished at `path`, which a later accept of the same URL reuses.
+    pub(crate) fn keep_download(&mut self, url: &str, path: &Path) {
+        self.download_progress = None;
+        self.download_cancel = None;
+        self.downloaded_file = Some((url.to_owned(), path.to_owned()));
+    }
+
+    /// The kept download moved from `from` to `to`, as a rename for the filter does.
+    pub(crate) fn rename_download(&mut self, from: &Path, to: &Path) {
+        if let Some((_, kept)) = self.downloaded_file.as_mut()
+            && kept.as_path() == from
+        {
+            *kept = to.to_owned();
+        }
+    }
+
+    /// The download stopped with `message`, which the footer shows.
+    pub(crate) fn fail_download(&mut self, message: String) {
+        self.download_progress = None;
+        self.accept_sensitive = true;
+        self.download_cancel = None;
+        self.show_error(message);
     }
 
     pub(crate) fn cancel_download(&mut self) -> bool {
@@ -211,6 +235,20 @@ impl ActiveChooser {
 
     pub(crate) fn dropdown_open(&self) -> bool {
         self.filter_open || self.choices.iter().any(ChoiceControl::is_open)
+    }
+
+    /// The choice at `index`, as a control's handler reaches it.
+    pub(crate) fn choice_mut(&mut self, index: usize) -> Option<&mut ChoiceControl> {
+        self.choices.get_mut(index)
+    }
+
+    /// Opens the select at `index` and closes any other list, or closes it when it is open.
+    pub(crate) fn toggle_choice_list(&mut self, index: usize) {
+        let was_open = self.choices.get(index).is_some_and(ChoiceControl::is_open);
+        self.dismiss_dropdown();
+        if let Some(choice) = self.choices.get_mut(index) {
+            choice.set_open(!was_open);
+        }
     }
 
     pub(crate) fn dismiss_dropdown(&mut self) -> bool {
@@ -433,411 +471,4 @@ pub(crate) fn active_folder(app: &App) -> Result<PathBuf, &'static str> {
         .active_location()
         .and_then(|location| location.native_path().map(Path::to_path_buf))
         .ok_or("Choose an accessible local folder")
-}
-
-pub(crate) fn complete_paths_writable(app: &mut App, paths: Vec<PathBuf>, tx: &mut Tx) {
-    let writable = app
-        .chooser
-        .active
-        .as_ref()
-        .and_then(ActiveChooser::writable);
-    complete_paths(app, paths, writable, tx);
-}
-
-pub(crate) fn complete_paths(
-    app: &mut App,
-    paths: Vec<PathBuf>,
-    writable: Option<bool>,
-    tx: &mut Tx,
-) {
-    let Some(active) = app.chooser.active.as_mut() else {
-        return;
-    };
-    let mut uris = Vec::with_capacity(paths.len());
-    for path in paths {
-        match local_uri(&path) {
-            Ok(uri) => uris.push(uri),
-            Err(error) => {
-                active.finish(Err(error), tx);
-                return;
-            }
-        }
-    }
-    let result = SelectedResult {
-        uris,
-        choices: active.selected_choices(),
-        current_filter: active.selected_filter(),
-        writable,
-    };
-    active.finish(Ok(result), tx);
-}
-
-pub(crate) fn cancel(app: &mut App, tx: &mut Tx) -> bool {
-    let Some(active) = app.chooser.active.as_mut() else {
-        return false;
-    };
-    active.finish(
-        Err(PortalError::Cancelled("file chooser dismissed".into())),
-        tx,
-    )
-}
-
-pub(crate) fn accept(app: &mut App, tx: &mut Tx) {
-    let modal = shell::modal_open(app);
-    let blocked = app.chooser.active.as_ref().is_none_or(|active| {
-        active.completion.is_none()
-            || active.destination_check
-            || active.download_in_progress()
-            || modal
-    });
-    if blocked {
-        return;
-    }
-    let kind = {
-        let active = app.chooser.active.as_mut().expect("checked active");
-        active.clear_error();
-        active.request.kind.clone()
-    };
-    match kind {
-        ChooserKind::Open {
-            directory,
-            multiple,
-        } => accept_open(app, directory, multiple, tx),
-        ChooserKind::SaveFile { .. } => accept_save_file(app, tx),
-        ChooserKind::SaveFiles { names } => match active_folder(app) {
-            Ok(folder) => accept_destinations(app, folder, names),
-            Err(message) => {
-                if let Some(active) = app.chooser.active.as_mut() {
-                    active.show_error(tr(message));
-                }
-            }
-        },
-    }
-}
-
-fn accept_open(app: &mut App, directory: bool, multiple: bool, tx: &mut Tx) {
-    update_selected_filename(app);
-    let edited = app.chooser.active.as_ref().and_then(|active| {
-        (!directory && active.filename_edited && active.has_name && !active.name.text.is_empty())
-            .then(|| active.name.text.clone())
-    });
-    if let Some(name) = edited {
-        accept_open_name(app, &name, tx);
-        return;
-    }
-    let Some(current) = app.browser.active_location() else {
-        if let Some(active) = app.chooser.active.as_mut() {
-            active.show_error(tr("Choose an accessible local folder"));
-        }
-        return;
-    };
-    let entries: Vec<FileEntry> = chosen_entries(app, !directory)
-        .into_iter()
-        .filter(|entry| entry.is_directory() == directory && app.browser.allows_entry(entry))
-        .collect();
-    let validate = app
-        .chooser
-        .active
-        .as_ref()
-        .and_then(|active| active.destination_host.as_ref())
-        .map(|host| host.validate.clone());
-    match (
-        open_selection(&entries, &current, directory, multiple),
-        validate,
-    ) {
-        (Ok(paths), Some(validate)) => accept_destination_host(app, validate(&paths[0])),
-        (Ok(paths), None) => complete_paths_writable(app, paths, tx),
-        (Err(message), _) => {
-            if let Some(active) = app.chooser.active.as_mut() {
-                active.show_error(tr(message));
-            }
-        }
-    }
-}
-
-fn accept_destination_host(app: &mut App, validation: PendingValidation) {
-    let later = app.chooser.later.clone();
-    let Some(active) = app.chooser.active.as_mut() else {
-        return;
-    };
-    active.destination_check = true;
-    active.accept_sensitive = false;
-    let generation = active.accept_generation;
-    glib::MainContext::default().spawn_local(async move {
-        let result = validation.await;
-        later.then(move |app: &mut App, tx: &mut Tx| {
-            let Some(active) = app.chooser.active.as_mut() else {
-                return false;
-            };
-            active.destination_check = false;
-            if active.completion.is_none() || active.accept_generation != generation {
-                return false;
-            }
-            active.accept_sensitive = true;
-            match result {
-                Ok(path) => complete_paths(app, vec![path], None, tx),
-                Err(message) => active.show_error(message),
-            }
-            true
-        });
-    });
-}
-
-fn accept_open_name(app: &mut App, name: &str, tx: &mut Tx) {
-    if let Some(url) = remote_file_url(name) {
-        download::open_remote(app, &url, tx);
-        return;
-    }
-    if let Err(message) = validate_basename(name) {
-        if let Some(active) = app.chooser.active.as_mut() {
-            active.show_error(tr(message));
-        }
-        return;
-    }
-    let folder = app
-        .browser
-        .active_location()
-        .and_then(|loc| loc.native_path().map(Path::to_path_buf))
-        .or_else(|| active_folder(app).ok());
-    let Some(folder) = folder else {
-        if let Some(active) = app.chooser.active.as_mut() {
-            active.show_error(tr("Choose an accessible local folder"));
-        }
-        return;
-    };
-    let location = Location::local(folder.join(name));
-    let later = app.chooser.later.clone();
-    let Some(active) = app.chooser.active.as_mut() else {
-        return;
-    };
-    active.destination_check = true;
-    active.accept_sensitive = false;
-    let generation = active.accept_generation;
-    glib::MainContext::default().spawn_local(async move {
-        let result = query_file_entry(location).await;
-        later.then(move |app: &mut App, tx: &mut Tx| {
-            finish_open_named_entry(app, generation, result, tx)
-        });
-    });
-}
-
-fn finish_open_named_entry(
-    app: &mut App,
-    generation: u64,
-    result: Result<FileEntry, glib::Error>,
-    tx: &mut Tx,
-) -> bool {
-    let valid = app.chooser.active.as_mut().is_some_and(|active| {
-        active.destination_check = false;
-        if active.completion.is_none() || active.accept_generation != generation {
-            return false;
-        }
-        active.accept_sensitive = true;
-        true
-    });
-    if !valid {
-        return false;
-    }
-    let Ok(entry) = result else {
-        if let Some(active) = app.chooser.active.as_mut() {
-            active.show_error(tr("Choose an existing, accessible file"));
-        }
-        return true;
-    };
-    if entry.is_directory() {
-        app.browser.navigate(entry.location);
-        if let Some(active) = app.chooser.active.as_mut() {
-            active.clear_filename();
-        }
-        return true;
-    }
-    if !app.browser.allows_entry(&entry) {
-        if let Some(active) = app.chooser.active.as_mut() {
-            active.show_error(tr("The file does not match the selected filter"));
-        }
-        return true;
-    }
-    match entry.location.native_path() {
-        Some(path) => download::finish_remote(app, path.to_path_buf(), tx),
-        None => {
-            if let Some(active) = app.chooser.active.as_mut() {
-                active.show_error(tr("Choose an existing, accessible file"));
-            }
-        }
-    }
-    true
-}
-
-fn accept_save_file(app: &mut App, tx: &mut Tx) {
-    let Some(name) = app
-        .chooser
-        .active
-        .as_ref()
-        .and_then(ActiveChooser::name_text)
-    else {
-        return;
-    };
-    if let Err(message) = validate_basename(&name) {
-        let translated = tr(message);
-        if let Some(active) = app.chooser.active.as_mut() {
-            active.name_error = Some(translated.clone());
-            active.show_error(translated);
-            active.name.focused = true;
-        }
-        tx.focus(NAME_KEY, true);
-        return;
-    }
-    if let Some(active) = app.chooser.active.as_mut() {
-        active.name_error = None;
-    }
-    let folder = match active_folder(app) {
-        Ok(folder) => folder,
-        Err(message) => {
-            if let Some(active) = app.chooser.active.as_mut() {
-                active.show_error(tr(message));
-            }
-            return;
-        }
-    };
-    let Some(destination_name) = app
-        .chooser
-        .active
-        .as_ref()
-        .map(|active| active.save_destination_name(&name))
-    else {
-        return;
-    };
-    accept_destinations(app, folder, vec![destination_name]);
-}
-
-pub(crate) fn accept_destinations(app: &mut App, folder: PathBuf, names: Vec<OsString>) {
-    let later = app.chooser.later.clone();
-    let Some(active) = app.chooser.active.as_mut() else {
-        return;
-    };
-    if std::mem::replace(&mut active.destination_check, true) {
-        return;
-    }
-    active.accept_sensitive = false;
-    let generation = active.accept_generation;
-    glib::MainContext::default().spawn_local(async move {
-        let result = check_destinations(&folder, &names).await;
-        later.then(move |app: &mut App, tx: &mut Tx| {
-            finish_destination_check(app, generation, result, tx)
-        });
-    });
-}
-
-fn finish_destination_check(
-    app: &mut App,
-    generation: u64,
-    result: Result<DestinationCheck, String>,
-    tx: &mut Tx,
-) -> bool {
-    let valid = app.chooser.active.as_mut().is_some_and(|active| {
-        active.destination_check = false;
-        if active.accept_generation != generation {
-            return false;
-        }
-        active.accept_sensitive = true;
-        active.completion.is_some()
-    });
-    if !valid {
-        return false;
-    }
-    let destinations = match result {
-        Ok(destinations) => destinations,
-        Err(message) => {
-            if let Some(active) = app.chooser.active.as_mut() {
-                active.show_error(message);
-            }
-            return true;
-        }
-    };
-    if destinations.existing.is_empty() {
-        complete_paths(app, destinations.paths, None, tx);
-    } else {
-        app.chooser_dialog
-            .open(ChooserPrompt::Overwrite(destinations));
-    }
-    true
-}
-
-pub(crate) fn confirm_file(app: &mut App, entry: &FileEntry, tx: &mut Tx) {
-    let allowed = app
-        .chooser
-        .active
-        .as_ref()
-        .is_some_and(|active| active.completion.is_some())
-        && app.browser.allows_entry(entry);
-    if !allowed {
-        return;
-    }
-    let kind = app
-        .chooser
-        .active
-        .as_ref()
-        .expect("checked active")
-        .request
-        .kind
-        .clone();
-    if matches!(
-        kind,
-        ChooserKind::Open {
-            directory: true,
-            ..
-        }
-    ) {
-        if let Some(active) = app.chooser.active.as_mut() {
-            active.show_error(tr("Choose folders only"));
-        }
-        return;
-    }
-    if matches!(
-        kind,
-        ChooserKind::Open {
-            directory: false,
-            multiple: true,
-        }
-    ) && has_fill(app)
-    {
-        accept(app, tx);
-        return;
-    }
-    activate_file(app, &entry.location, tx);
-}
-
-pub(crate) fn activate_file(app: &mut App, location: &Location, tx: &mut Tx) {
-    let kind = match app.chooser.active.as_ref() {
-        Some(active) if !active.download_in_progress() => active.request.kind.clone(),
-        _ => return,
-    };
-    match kind {
-        ChooserKind::Open {
-            directory: false, ..
-        } => match location.native_path() {
-            Some(path) => complete_paths_writable(app, vec![path.to_path_buf()], tx),
-            None => {
-                if let Some(active) = app.chooser.active.as_mut() {
-                    active.show_error(tr("Choose a local file"));
-                }
-            }
-        },
-        ChooserKind::SaveFile { .. } => {
-            let Some((folder, name)) = location
-                .native_path()
-                .and_then(|path| Some((path.parent()?.to_owned(), path.file_name()?.to_owned())))
-                .filter(|(_, name)| safe_filename(name))
-            else {
-                return;
-            };
-            if let Some(active) = app.chooser.active.as_mut()
-                && active.has_name
-            {
-                active.fill_filename(&name);
-            }
-            accept_destinations(app, folder, vec![name]);
-        }
-        _ => {}
-    }
 }

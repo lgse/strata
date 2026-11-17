@@ -139,26 +139,31 @@ impl PortalStaged {
         }
         for event in self.inbox.take() {
             worked = true;
-            match event {
-                PortalEvent::Present {
-                    request,
-                    cancelled,
-                    completion,
-                } => {
-                    if cancelled.load(std::sync::atomic::Ordering::SeqCst) {
-                        completion(Err(PortalError::Cancelled(
-                            "file chooser request was cancelled".into(),
-                        )));
-                    } else {
-                        self.present(*request, completion);
-                    }
-                }
-                PortalEvent::Cancel(token) => self.cancel(&token),
-                // The runner's private bus never takes the name away.
-                PortalEvent::Quit => {}
-            }
+            self.heard(event);
         }
         worked
+    }
+
+    fn heard(&self, event: PortalEvent) {
+        match event {
+            PortalEvent::Present {
+                cancelled,
+                completion,
+                ..
+            } if cancelled.load(std::sync::atomic::Ordering::SeqCst) => {
+                completion(Err(PortalError::Cancelled(
+                    "file chooser request was cancelled".into(),
+                )));
+            }
+            PortalEvent::Present {
+                request,
+                completion,
+                ..
+            } => self.present(*request, completion),
+            PortalEvent::Cancel(token) => self.cancel(&token),
+            // The runner's private bus never takes the name away.
+            PortalEvent::Quit => {}
+        }
     }
 
     fn present(&self, request: ChooserRequest, completion: Completion) {

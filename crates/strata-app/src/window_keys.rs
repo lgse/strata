@@ -66,15 +66,7 @@ fn escaped(app: &mut App, _: &Call<'_>, _: &mut Tx) -> Outcome {
 /// `directory_enter_or_escape`'s Enter: the cursor's entry opens, in a child column in
 /// Columns and in place in a view that shows one folder (`BrowserView::activate_focused`).
 fn activated(app: &mut App, _: &Call<'_>, tx: &mut Tx) -> Outcome {
-    if app.browser.is_chooser_mode()
-        && let Some((depth, position, _)) = app.browser.focused_item()
-        && crate::chooser::confirm_key_activation(
-            app,
-            (depth, position),
-            strata_components::collection::element::Activation::Key,
-            tx,
-        )
-    {
+    if crate::chooser::confirms_focused(app, tx) {
         return Outcome::Ran;
     }
     let browser = app.browser.clone();

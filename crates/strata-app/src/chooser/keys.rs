@@ -16,7 +16,7 @@ use strata_desktop::keys::{
     },
 };
 
-use super::{NAME_KEY, state};
+use super::{NAME_KEY, accept};
 use crate::{
     App,
     commands::{Action, Call, Keys, Outcome, Reads, Situation, Stage},
@@ -47,7 +47,7 @@ fn escape_outside_text(app: &mut App, _: &Call<'_>, tx: &mut Tx) -> Outcome {
     {
         return Outcome::Ran;
     }
-    state::cancel(app, tx);
+    accept::cancel(app, tx);
     Outcome::Ran
 }
 
@@ -61,17 +61,17 @@ fn escape_in_name(app: &mut App, _: &Call<'_>, tx: &mut Tx) -> Outcome {
         }
         return Outcome::Ran;
     }
-    state::cancel(app, tx);
+    accept::cancel(app, tx);
     Outcome::Ran
 }
 
 fn choose_folder(app: &mut App, _: &Call<'_>, tx: &mut Tx) -> Outcome {
-    state::accept(app, tx);
+    accept::accept(app, tx);
     Outcome::Ran
 }
 
 fn save_enter(app: &mut App, _: &Call<'_>, tx: &mut Tx) -> Outcome {
-    state::accept(app, tx);
+    accept::accept(app, tx);
     Outcome::Ran
 }
 

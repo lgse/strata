@@ -18,7 +18,7 @@ use strata_desktop::keys::{
 use strata_kit::{icons::IconName, look::Look};
 
 use super::{
-    ChooserPrompt, NAME_KEY,
+    ChooserPrompt, NAME_KEY, accept,
     download::DownloadProgress,
     image_conversion,
     options::ChoiceControl,
@@ -157,34 +157,44 @@ fn build_name_input(active: &ActiveChooser, look: &Look) -> El {
 }
 
 fn on_name_key(app: &mut App, ev: &KeyEvent, tx: &mut Tx) -> bool {
-    if let Some(active) = app.chooser.active.as_ref()
-        && active.name.is_composing()
-    {
+    let composing = app
+        .chooser
+        .active
+        .as_ref()
+        .is_some_and(|active| active.name.is_composing());
+    if composing || ev.mods != Mods::default() {
         return false;
     }
-    if ev.key == Key::Enter && ev.mods == Mods::default() {
-        if !tx.key_repeat() {
-            state::accept(app, tx);
-        }
-        return true;
-    }
-    if ev.key == Key::Escape && ev.mods == Mods::default() {
-        if tx.key_repeat() {
-            return true;
-        }
-        if shell::preferences(app).tenxer_mode {
-            if let Some(active) = app.chooser.active.as_mut() {
-                active.name.focused = false;
+    match ev.key {
+        Key::Enter => {
+            if !tx.key_repeat() {
+                accept::accept(app, tx);
             }
-            if let Some(view) = shell::view_focus(app) {
-                tx.focus(view, true);
-            }
-            return true;
+            true
         }
-        state::cancel(app, tx);
-        return true;
+        Key::Escape => {
+            if !tx.key_repeat() {
+                escape_name(app, tx);
+            }
+            true
+        }
+        _ => false,
     }
-    false
+}
+
+/// Escape in the name field: 10xer mode leaves the field for the view, the default map
+/// cancels the request.
+fn escape_name(app: &mut App, tx: &mut Tx) {
+    if !shell::preferences(app).tenxer_mode {
+        accept::cancel(app, tx);
+        return;
+    }
+    if let Some(active) = app.chooser.active.as_mut() {
+        active.name.focused = false;
+    }
+    if let Some(view) = shell::view_focus(app) {
+        tx.focus(view, true);
+    }
 }
 
 fn build_options(active: &ActiveChooser, look: &Look, layer: &mut Vec<El>) -> Vec<El> {
@@ -262,18 +272,7 @@ fn build_choice_control(
     match choice {
         ChoiceControl::Boolean {
             id, label, checked, ..
-        } => Checkbox::new(*checked)
-            .label(label.clone())
-            .on_toggle(move |app: &mut App| {
-                if let Some(active) = app.chooser.active.as_mut()
-                    && let Some(ChoiceControl::Boolean { checked, .. }) =
-                        active.choices.get_mut(idx)
-                {
-                    *checked = !*checked;
-                }
-            })
-            .build(&look.kit)
-            .key(format!("chooser-choice-{id}")),
+        } => build_choice_check(idx, (id, label, *checked), look),
         ChoiceControl::Select {
             id,
             label,
@@ -292,42 +291,39 @@ fn build_choice_control(
                 .open(*open)
                 .on_toggle(move |app: &mut App| {
                     if let Some(active) = app.chooser.active.as_mut() {
-                        let was_open = active.choices.get(idx).is_some_and(ChoiceControl::is_open);
-                        active.dismiss_dropdown();
-                        if let Some(ChoiceControl::Select { open, .. }) =
-                            active.choices.get_mut(idx)
-                        {
-                            *open = !was_open;
-                        }
+                        active.toggle_choice_list(idx);
                     }
                 })
                 .on_close(move |app: &mut App| {
-                    if let Some(active) = app.chooser.active.as_mut()
-                        && let Some(ChoiceControl::Select { open, .. }) =
-                            active.choices.get_mut(idx)
-                    {
-                        *open = false;
+                    if let Some(choice) = choice_at(app, idx) {
+                        choice.set_open(false);
                     }
                 })
                 .on_choose(move |app: &mut App, chosen: &str, _tx: &mut Tx| {
-                    if let Some(active) = app.chooser.active.as_mut()
-                        && let Some(ChoiceControl::Select {
-                            options,
-                            selected,
-                            open,
-                            ..
-                        }) = active.choices.get_mut(idx)
-                    {
-                        if let Some(pos) = options.iter().position(|(_, text)| text == chosen) {
-                            *selected = pos;
-                        }
-                        *open = false;
+                    if let Some(choice) = choice_at(app, idx) {
+                        choice.choose(chosen);
                     }
                 })
                 .build(&look.kit, layer);
             labeled_row(look, label, select)
         }
     }
+}
+
+fn choice_at(app: &mut App, idx: usize) -> Option<&mut ChoiceControl> {
+    app.chooser.active.as_mut()?.choice_mut(idx)
+}
+
+fn build_choice_check(idx: usize, (id, label, checked): (&str, &str, bool), look: &Look) -> El {
+    Checkbox::new(checked)
+        .label(label.to_owned())
+        .on_toggle(move |app: &mut App| {
+            if let Some(choice) = choice_at(app, idx) {
+                choice.toggle_checked();
+            }
+        })
+        .build(&look.kit)
+        .key(format!("chooser-choice-{id}"))
 }
 
 fn labeled_row(look: &Look, title: &str, control: El) -> El {
@@ -353,7 +349,7 @@ fn build_actions(active: &ActiveChooser, look: &Look, tenxer: bool) -> El {
         Button::new(tr("Cancel"))
             .variant(ButtonVariant::Neutral)
             .on_press_tx(|app: &mut App, tx: &mut Tx| {
-                state::cancel(app, tx);
+                accept::cancel(app, tx);
             })
             .build(kit)
             .key(CANCEL_KEY),
@@ -364,7 +360,7 @@ fn build_actions(active: &ActiveChooser, look: &Look, tenxer: bool) -> El {
         .disabled(!active.accept_sensitive);
     if active.accept_sensitive {
         accept_btn = accept_btn.on_press_tx(|app: &mut App, tx: &mut Tx| {
-            state::accept(app, tx);
+            accept::accept(app, tx);
         });
     }
     let mut accept = accept_btn.build(kit).key(ACCEPT_KEY).default_button();
@@ -590,7 +586,7 @@ fn build_overwrite_dialog(destinations: &DestinationCheck, look: &Look, layer: &
     })
     .primary_tx(tr("Replace"), move |app: &mut App, tx: &mut Tx| {
         app.chooser_dialog.close();
-        state::complete_paths(app, paths.clone(), None, tx);
+        accept::complete_paths(app, paths.clone(), None, tx);
     })
     .initial_focus(Focus::Secondary)
     .build(look, layer);

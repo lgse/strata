@@ -55,6 +55,21 @@ fn chooser_new_folder(app: &App, depth: usize) -> Option<El> {
     Some(button)
 }
 
+/// A chooser's New Folder: first in Icons, after Empty Trash in List, as GTK's chooser header
+/// places it.
+fn insert_chooser_new_folder(
+    app: &App,
+    (view, depth): (&str, usize),
+    list: bool,
+    actions: &mut Vec<El>,
+) {
+    let Some(button) = chooser_new_folder(app, depth) else {
+        return;
+    };
+    let at = if list { actions.len() } else { 0 };
+    actions.insert(at, buttons::on_return(format!("{view}-new-folder"), button));
+}
+
 /// The actions before the thumbnail size in the header over the single-pane view keyed `view`.
 /// In List, GTK's Sort by leads them, and its direction button follows Refresh in the Recent
 /// root only.
@@ -64,18 +79,13 @@ pub(super) fn pane(app: &App, view: &str) -> Vec<El> {
     };
     let list = view == crate::list::VIEW;
     let mut actions = Vec::new();
-    if !list && let Some(button) = chooser_new_folder(app, depth) {
-        actions.push(buttons::on_return(format!("{view}-new-folder"), button));
-    }
     if list {
         actions.extend(crate::sort::list_menu(app, view));
     }
     if let Some(button) = empty_trash::built(app, depth) {
         actions.push(buttons::on_return(format!("{view}-empty-trash"), button));
     }
-    if list && let Some(button) = chooser_new_folder(app, depth) {
-        actions.push(buttons::on_return(format!("{view}-new-folder"), button));
-    }
+    insert_chooser_new_folder(app, (view, depth), list, &mut actions);
     actions.push(buttons::on_return(
         format!("{view}-refresh"),
         refresh::built(app, depth),

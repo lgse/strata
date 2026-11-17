@@ -66,6 +66,36 @@ impl ChoiceControl {
         matches!(self, Self::Select { open: true, .. })
     }
 
+    /// A check box's click.
+    pub(crate) fn toggle_checked(&mut self) {
+        if let Self::Boolean { checked, .. } = self {
+            *checked = !*checked;
+        }
+    }
+
+    /// Opens or closes a select's list.
+    pub(crate) fn set_open(&mut self, to: bool) {
+        if let Self::Select { open, .. } = self {
+            *open = to;
+        }
+    }
+
+    /// A select's option labelled `chosen`, which closes its list.
+    pub(crate) fn choose(&mut self, chosen: &str) {
+        if let Self::Select {
+            options,
+            selected,
+            open,
+            ..
+        } = self
+        {
+            if let Some(position) = options.iter().position(|(_, text)| text == chosen) {
+                *selected = position;
+            }
+            *open = false;
+        }
+    }
+
     pub(crate) fn close(&mut self) -> bool {
         match self {
             Self::Select { open, .. } if *open => {

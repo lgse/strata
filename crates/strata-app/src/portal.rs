@@ -408,43 +408,45 @@ async fn resolve_save_file_suggestion(
     current_name: Option<String>,
 ) -> (PathBuf, Option<OsString>) {
     if let Some(file) = current_file {
-        let valid_save_target = if file.is_absolute() {
-            match gio::File::for_path(&file)
-                .query_info_future(
-                    gio::FILE_ATTRIBUTE_STANDARD_TYPE,
-                    gio::FileQueryInfoFlags::NONE,
-                    glib::Priority::DEFAULT,
-                )
-                .await
-            {
-                Ok(info) => info.file_type() == gio::FileType::Regular,
-                Err(error) => error.matches(gio::IOErrorEnum::NotFound),
-            }
-        } else {
-            false
-        };
-        if valid_save_target
-            && let (Some(parent), Some(name)) = (file.parent(), file.file_name())
-            && safe_filename(name)
-            && directory_is_accessible(parent).await
-        {
-            return (parent.to_path_buf(), Some(name.to_owned()));
-        }
-        return (default_save_folder(), None);
+        return suggested_file(&file)
+            .await
+            .unwrap_or_else(|| (default_save_folder(), None));
     }
-
     let name = current_name
         .as_deref()
         .filter(|name| validate_basename(name).is_ok())
         .map(OsString::from);
-    let folder = if let Some(folder) = current_folder.filter(|folder| folder.is_absolute())
-        && directory_is_accessible(&folder).await
-    {
-        folder
-    } else {
-        default_save_folder()
+    let folder = match current_folder.filter(|folder| folder.is_absolute()) {
+        Some(folder) if directory_is_accessible(&folder).await => folder,
+        _ => default_save_folder(),
     };
     (folder, name)
+}
+
+/// The folder and the name `current_file` suggests: a regular file, or none yet, with a safe
+/// name in a folder the caller can reach.
+async fn suggested_file(file: &Path) -> Option<(PathBuf, Option<OsString>)> {
+    if !file.is_absolute() || !is_save_target(file).await {
+        return None;
+    }
+    let (parent, name) = (file.parent()?, file.file_name()?);
+    let usable = safe_filename(name) && directory_is_accessible(parent).await;
+    usable.then(|| (parent.to_path_buf(), Some(name.to_owned())))
+}
+
+/// Whether a save may name `file`: a regular file, or nothing there yet.
+async fn is_save_target(file: &Path) -> bool {
+    let info = gio::File::for_path(file)
+        .query_info_future(
+            gio::FILE_ATTRIBUTE_STANDARD_TYPE,
+            gio::FileQueryInfoFlags::NONE,
+            glib::Priority::DEFAULT,
+        )
+        .await;
+    match info {
+        Ok(info) => info.file_type() == gio::FileType::Regular,
+        Err(error) => error.matches(gio::IOErrorEnum::NotFound),
+    }
 }
 
 pub(crate) fn safe_filename(name: &OsStr) -> bool {
@@ -565,32 +567,16 @@ async fn inspect_destinations(
 
 async fn classify_destination(path: &Path, name: &OsStr) -> Result<bool, String> {
     let file = gio::File::for_path(path);
-    match file
-        .query_info_future(
-            gio::FILE_ATTRIBUTE_STANDARD_TYPE,
-            gio::FileQueryInfoFlags::NOFOLLOW_SYMLINKS,
-            glib::Priority::DEFAULT,
-        )
-        .await
-    {
-        Ok(info) if info.file_type() == gio::FileType::Directory => {
-            Err(folder_exists_message(name))
-        }
-        Ok(info) if info.file_type() == gio::FileType::SymbolicLink => {
-            if file
-                .query_info_future(
-                    gio::FILE_ATTRIBUTE_STANDARD_TYPE,
-                    gio::FileQueryInfoFlags::NONE,
-                    glib::Priority::DEFAULT,
-                )
-                .await
-                .is_ok_and(|target| target.file_type() == gio::FileType::Directory)
-            {
-                return Err(folder_exists_message(name));
-            }
-            Ok(true)
-        }
-        Ok(_) => Ok(true),
+    let exists = |file_type| match file_type {
+        gio::FileType::Directory => Err(folder_exists_message(name)),
+        _ => Ok(true),
+    };
+    match query_type(&file, gio::FileQueryInfoFlags::NOFOLLOW_SYMLINKS).await {
+        // A link to a folder is a folder the save would replace.
+        Ok(gio::FileType::SymbolicLink) => query_type(&file, gio::FileQueryInfoFlags::NONE)
+            .await
+            .map_or(Ok(true), exists),
+        Ok(file_type) => exists(file_type),
         Err(error) if error.matches(gio::IOErrorEnum::NotFound) => Ok(false),
         Err(error) => Err(rust_i18n::t!(
             "Unable to inspect the destination: %{error}",
@@ -598,6 +584,19 @@ async fn classify_destination(path: &Path, name: &OsStr) -> Result<bool, String>
         )
         .into_owned()),
     }
+}
+
+async fn query_type(
+    file: &gio::File,
+    flags: gio::FileQueryInfoFlags,
+) -> Result<gio::FileType, glib::Error> {
+    file.query_info_future(
+        gio::FILE_ATTRIBUTE_STANDARD_TYPE,
+        flags,
+        glib::Priority::DEFAULT,
+    )
+    .await
+    .map(|info| info.file_type())
 }
 
 fn folder_exists_message(name: &OsStr) -> String {

@@ -46,13 +46,16 @@ fn hyprland_socket() -> Option<PathBuf> {
 }
 
 pub(crate) fn socket_path(runtime: &Path, signature: &str) -> Option<PathBuf> {
-    let valid_chars = signature
-        .bytes()
-        .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'));
-    if !runtime.is_absolute() || signature.is_empty() || !valid_chars {
-        return None;
-    }
-    Some(runtime.join("hypr").join(signature).join(".socket.sock"))
+    let valid = is_instance_signature(signature) && runtime.is_absolute();
+    valid.then(|| runtime.join("hypr").join(signature).join(".socket.sock"))
+}
+
+/// A Hyprland instance signature: a path component of letters, digits, `_` and `-` only.
+fn is_instance_signature(signature: &str) -> bool {
+    !signature.is_empty()
+        && signature
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
 }
 
 fn centering_commands() -> [String; 3] {
@@ -121,6 +124,11 @@ struct ApplicationWindow {
 }
 
 impl ApplicationWindow {
+    /// Mapped, not hidden, and with a size.
+    fn is_shown(&self) -> bool {
+        self.mapped && !self.hidden && self.size.iter().all(|size| *size > 0)
+    }
+
     /// `None` when a field is missing or of another type, as a typed parse would be.
     fn read(window: &Value) -> Option<Self> {
         let text = |key: &str| window.get(key)?.as_str().map(str::to_owned);
@@ -155,12 +163,6 @@ pub(crate) fn application_window_size(reply: &[u8], app_id: &str) -> Option<(i32
             .any(|class| class.eq_ignore_ascii_case(app_id))
     });
     let window = matches.next()?;
-    if matches.next().is_some()
-        || !window.mapped
-        || window.hidden
-        || window.size.iter().any(|size| *size <= 0)
-    {
-        return None;
-    }
-    Some((window.size[0], window.size[1]))
+    let unique = matches.next().is_none();
+    (unique && window.is_shown()).then_some((window.size[0], window.size[1]))
 }

@@ -119,11 +119,9 @@ fn classify_non_image(app: &mut App, path: PathBuf, tx: &mut Tx) {
         && image_target(app, &path, ImageKind::Png).is_some()
         && image_target(app, &path, ImageKind::Jpeg).is_none();
     if fake_png {
-        if let Some(active) = app.chooser.active.as_mut() {
-            active.show_error(tr(
+        app.chooser.show_error(tr(
                 "This download is not a supported image. Choose a JPEG, BMP, static WebP, GIF or PNG image.",
             ));
-        }
     } else {
         download::finish_remote(app, path, tx);
     }
@@ -140,24 +138,19 @@ fn accept_supported_image(app: &mut App, path: PathBuf, target: PathBuf, tx: &mu
         move || std::fs::rename(&from, &to),
         move |app, renamed, tx| match renamed {
             Ok(()) => {
-                if let Some(active) = app.chooser.active.as_mut()
-                    && let Some((_, cached)) = active.downloaded_file.as_mut()
-                    && cached.as_path() == path.as_path()
-                {
-                    *cached = target.clone();
+                if let Some(active) = app.chooser.active.as_mut() {
+                    active.rename_download(&path, &target);
                 }
                 download::finish_remote(app, target, tx);
             }
             Err(error) => {
-                if let Some(active) = app.chooser.active.as_mut() {
-                    active.show_error(
-                        rust_i18n::t!(
-                            "Could not name the downloaded image: %{error}",
-                            error = error
-                        )
-                        .into_owned(),
-                    );
-                }
+                app.chooser.show_error(
+                    rust_i18n::t!(
+                        "Could not name the downloaded image: %{error}",
+                        error = error
+                    )
+                    .into_owned(),
+                );
             }
         },
     );
