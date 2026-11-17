@@ -9,7 +9,7 @@ use std::{
     time::Duration,
 };
 
-use serde::Deserialize;
+use serde_json::Value;
 
 const QUERY_TIMEOUT: Duration = Duration::from_millis(100);
 const MAX_REPLY_BYTES: u64 = 1024 * 1024;
@@ -111,21 +111,44 @@ fn exchange(socket: &Path, command: &[u8], max_reply_bytes: u64) -> Option<Vec<u
     (reply.len() as u64 <= max_reply_bytes).then_some(reply)
 }
 
-#[derive(Deserialize)]
+/// One of the windows `hyprctl -j clients` lists, with the fields the size hint reads.
 struct ApplicationWindow {
     class: String,
-    #[serde(rename = "initialClass")]
     initial_class: String,
     mapped: bool,
     hidden: bool,
     size: [i32; 2],
 }
 
+impl ApplicationWindow {
+    /// `None` when a field is missing or of another type, as a typed parse would be.
+    fn read(window: &Value) -> Option<Self> {
+        let text = |key: &str| window.get(key)?.as_str().map(str::to_owned);
+        let flag = |key: &str| window.get(key)?.as_bool();
+        let extent = |value: &Value| i32::try_from(value.as_i64()?).ok();
+        let [width, height] = window.get("size")?.as_array()?.as_slice() else {
+            return None;
+        };
+        Some(Self {
+            class: text("class")?,
+            initial_class: text("initialClass")?,
+            mapped: flag("mapped")?,
+            hidden: flag("hidden")?,
+            size: [extent(width)?, extent(height)?],
+        })
+    }
+}
+
 pub(crate) fn application_window_size(reply: &[u8], app_id: &str) -> Option<(i32, i32)> {
     if app_id.is_empty() {
         return None;
     }
-    let windows: Vec<ApplicationWindow> = serde_json::from_slice(reply).ok()?;
+    let listed: Value = serde_json::from_slice(reply).ok()?;
+    let windows = listed
+        .as_array()?
+        .iter()
+        .map(ApplicationWindow::read)
+        .collect::<Option<Vec<_>>>()?;
     let mut matches = windows.iter().filter(|window| {
         [&window.class, &window.initial_class]
             .iter()

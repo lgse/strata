@@ -96,6 +96,13 @@ impl Chooser {
             .is_none_or(ActiveChooser::allows_create)
     }
 
+    /// The portal request's token, which names its window, whether or not it has finished.
+    pub(crate) fn token(&self) -> Option<String> {
+        self.active
+            .as_ref()
+            .map(|active| active.request.token.clone())
+    }
+
     pub(crate) fn is_confined(&self) -> bool {
         self.active.as_ref().is_some_and(ActiveChooser::is_confined)
     }

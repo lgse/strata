@@ -63,8 +63,8 @@ impl Staged {
         turned
     }
 
-    /// Runs `act` on the window's state as a handler would, then settles: what no step does.
-    #[cfg(test)]
+    /// Runs `act` on the window's state as a handler would, then settles: what no step does,
+    /// and what the portal host does for a request the caller closes.
     pub(super) fn update(&self, act: impl FnOnce(&mut App, &mut rune::Tx)) {
         let stage = &mut *self.stage.borrow_mut();
         stage.host().runtime().update(act);

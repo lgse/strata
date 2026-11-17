@@ -104,7 +104,11 @@ pub(super) fn live_keys(settings: &Preferences, multiple: bool) -> Option<KeySet
     if settings.tenxer_mode {
         Some(KeySettings::tenxer().multiple(multiple))
     } else if !settings.type_to_search {
-        Some(KeySettings::default().letters(Letters::Arrows).multiple(multiple))
+        Some(
+            KeySettings::default()
+                .letters(Letters::Arrows)
+                .multiple(multiple),
+        )
     } else if !multiple {
         Some(KeySettings::default().multiple(false))
     } else {
@@ -113,7 +117,7 @@ pub(super) fn live_keys(settings: &Preferences, multiple: bool) -> Option<KeySet
 }
 
 pub(crate) fn use_chooser_widths(app: &mut crate::App) {
-    let width = width::chooser_saved( crate::shell::preferences(app));
+    let width = width::chooser_saved(crate::shell::preferences(app));
     app.columns.state.set_default_width(width);
 }
 

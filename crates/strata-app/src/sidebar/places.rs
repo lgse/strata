@@ -164,13 +164,10 @@ pub(super) fn listed(
             listed.places.push(place);
         }
     }
-    let shown = pins
-        .iter()
-        .enumerate()
-        .filter(|(_, (location, _))| {
-            !environment.is_standard(location)
-                && (!environment.local_only || location.native_path().is_some())
-        });
+    let shown = pins.iter().enumerate().filter(|(_, (location, _))| {
+        !environment.is_standard(location)
+            && (!environment.local_only || location.native_path().is_some())
+    });
     for (ordinal, (index, entry)) in shown.enumerate() {
         let pin = build_pin(ordinal, index, entry, settings);
         listed.rows.push(Row {

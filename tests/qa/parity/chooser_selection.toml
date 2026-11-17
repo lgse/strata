@@ -6,113 +6,100 @@
 scenario = "chooser-divider-keeps-marquee"
 run = "columns-sidebar"
 package = "A20"
-status = "pending"
-reason = "scope"
-blocker = "A20"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "chooser-divider-keeps-marquee"
 run = "list-sidebar"
 package = "A20"
-status = "pending"
-reason = "scope"
-blocker = "A20"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "chooser-divider-keeps-marquee"
 run = "icons-sidebar"
 package = "A20"
-status = "pending"
-reason = "scope"
-blocker = "A20"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "chooser-divider-keeps-marquee"
 run = "columns-file-area"
 package = "A20"
-status = "pending"
-reason = "scope"
-blocker = "A20"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "chooser-divider-keeps-marquee"
 run = "list-file-area"
 package = "A20"
-status = "pending"
-reason = "scope"
-blocker = "A20"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "chooser-divider-keeps-marquee"
 run = "icons-file-area"
 package = "A20"
-status = "pending"
-reason = "scope"
-blocker = "A20"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "chooser-divider-keeps-marquee"
 run = "columns-rail-file-area"
 package = "A20"
-status = "pending"
-reason = "scope"
-blocker = "A20"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "chooser-divider-keeps-marquee"
 run = "list-rail-file-area"
 package = "A20"
-status = "pending"
-reason = "scope"
-blocker = "A20"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "chooser-divider-keeps-marquee"
 run = "icons-rail-file-area"
 package = "A20"
-status = "pending"
-reason = "scope"
-blocker = "A20"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "chooser-filtered-file-click-previews"
 run = "columns"
 package = "A20"
-status = "pending"
-reason = "scope"
-blocker = "A20"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "chooser-filtered-file-click-previews"
 run = "icons"
 package = "A20"
-status = "pending"
-reason = "scope"
-blocker = "A20"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "chooser-filtered-file-click-previews"
 run = "list"
 package = "A20"
-status = "pending"
-reason = "scope"
-blocker = "A20"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "chooser-heading-escape-keeps-selection"
 run = "list"
 package = "A20"
-status = "pending"
-reason = "scope"
-blocker = "A20"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "chooser-pdf-zoom-keeps-text-size"
 run = "list-default"
-package = "A20"
+package = "A16"
 status = "pending"
 reason = "scope"
-blocker = "A20"
+blocker = "A16: the PDF viewer in the chooser's preview drawer, whose page image is named \"PDF page text\" (line 9)"
 
 [[run]]
 scenario = "chooser-pdf-zoom-keeps-text-size"
@@ -125,47 +112,42 @@ blocker = "A11"
 [[run]]
 scenario = "chooser-sidebar-drops-survive-resize"
 run = "list"
-package = "A20"
+package = "A19"
 status = "pending"
 reason = "scope"
-blocker = "A20"
+blocker = "A19: a drop from another process onto a sidebar pin (line 7, `tests/qa/foreign_drag_source.py`), its third slice; then a session host for `--qa --portal`, which A20 adds once that lands (A20 serves the portal on the offscreen host only)"
 
 [[run]]
 scenario = "chooser-tap-drag-keeps-request-open"
 run = "columns"
 package = "A20"
-status = "pending"
-reason = "scope"
-blocker = "A20"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "chooser-tap-drag-keeps-request-open"
 run = "list"
 package = "A20"
-status = "pending"
-reason = "scope"
-blocker = "A20"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "chooser-tap-drag-keeps-request-open"
 run = "icons"
 package = "A20"
-status = "pending"
-reason = "scope"
-blocker = "A20"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "enter-returns-multiple-selection"
 run = "list"
 package = "A20"
-status = "pending"
-reason = "scope"
-blocker = "A20"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "enter-returns-multiple-selection"
 run = "columns"
 package = "A20"
-status = "pending"
-reason = "scope"
-blocker = "A20"
+status = "required"
+host = "offscreen"

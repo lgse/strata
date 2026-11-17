@@ -9,8 +9,8 @@ use strata_core::i18n::tr;
 use strata_desktop::keys::{
     KeyPress, Map, Modifiers,
     bindings::{
-        ACTIONS, BOOKMARK_GO, BOOKMARK_SET, CHOOSE_FOLDER, CLOSE_WINDOW, COPY, COPY_TO, CUT,
-        ENTER, ESCAPE, ESCAPE_ANY, ESCAPE_ANY_SHIFT, INVERT_SELECTION, MOVE_TO, OPEN_WITH, PASTE,
+        ACTIONS, BOOKMARK_GO, BOOKMARK_SET, CHOOSE_FOLDER, CLOSE_WINDOW, COPY, COPY_TO, CUT, ENTER,
+        ESCAPE, ESCAPE_ANY, ESCAPE_ANY_SHIFT, INVERT_SELECTION, MOVE_TO, OPEN_WITH, PASTE,
         PASTE_KEEP_BOTH, PASTE_REPLACE, PREVIEW, RENAME, RESTORE, SELECT_ALL, SPACE, UNYANK,
         VISUAL_SELECT, VISUAL_UNSET, YANK, YANK_CUT,
     },
@@ -92,10 +92,12 @@ fn refusal_reason(press: &KeyPress, multiple: bool, in_view: bool) -> Option<&'s
     if !in_view {
         return None;
     }
+    if press.is(PREVIEW.in_map(Map::Tenxer)) {
+        return Some(UNAVAILABLE);
+    }
     if press.is_any(&[
         YANK,
         PASTE_KEEP_BOTH,
-        PREVIEW.in_map(Map::Tenxer),
         YANK_CUT,
         CUT,
         COPY,
@@ -162,11 +164,9 @@ fn is_tenxer_save_view(app: &App, at: &Situation) -> bool {
 fn is_tenxer_save_file_view(app: &App, at: &Situation) -> bool {
     shell::preferences(app).tenxer_mode
         && at.in_view()
-        && app
-            .chooser
-            .active
-            .as_ref()
-            .is_some_and(|active| active.has_name && matches!(active.request.kind, ChooserKind::SaveFile { .. }))
+        && app.chooser.active.as_ref().is_some_and(|active| {
+            active.has_name && matches!(active.request.kind, ChooserKind::SaveFile { .. })
+        })
 }
 
 pub(crate) const COMMANDS: &[Action<App>] = &[
@@ -183,17 +183,19 @@ pub(crate) const COMMANDS: &[Action<App>] = &[
         .keys(&[Keys::at(Stage::Dismissal, &[ESCAPE_ANY_SHIFT]).when(is_chooser_outside_text)]),
     Action::new("choose-folder", choose_folder)
         .command(CHOOSE_FOLDER)
-        .keys(&[
-            Keys::at(Stage::FileCommands, &[CHOOSE_FOLDER.ignoring(Modifiers::SUPER)])
-                .when(can_choose_folder),
-        ]),
+        .keys(&[Keys::at(
+            Stage::FileCommands,
+            &[CHOOSE_FOLDER.ignoring(Modifiers::SUPER_MASK)],
+        )
+        .when(can_choose_folder)]),
     Action::new("chooser-save-enter", save_enter)
         .command(ENTER)
-        .keys(&[Keys::at(Stage::TenxerKeys, &[ENTER]).when(is_tenxer_save_view)]),
+        .keys(&[
+            Keys::at(Stage::TenxerKeys, &[ENTER.ignoring(Modifiers::empty())])
+                .when(is_tenxer_save_view),
+        ]),
     Action::new("chooser-edit-name", edit_name)
         .command(RENAME)
-        .keys(&[
-            Keys::at(Stage::TenxerKeys, &[RENAME.in_map(Map::Tenxer)])
-                .when(is_tenxer_save_file_view),
-        ]),
+        .keys(&[Keys::at(Stage::TenxerKeys, &[RENAME.in_map(Map::Tenxer)])
+            .when(is_tenxer_save_file_view)]),
 ];

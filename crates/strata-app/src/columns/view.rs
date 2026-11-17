@@ -110,7 +110,8 @@ pub(crate) fn view(app: &App) -> ColumnsView<App> {
     })
     .pointer_settings(|app: &App| {
         let chooser = app.browser.is_chooser_mode();
-        let modes = crate::clicks::for_chooser(crate::clicks::columns(shell::preferences(app)), chooser);
+        let modes =
+            crate::clicks::for_chooser(crate::clicks::columns(shell::preferences(app)), chooser);
         PointerSettings::default()
             .modes(modes)
             .rename(!chooser)

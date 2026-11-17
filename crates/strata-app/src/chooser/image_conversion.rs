@@ -38,7 +38,8 @@ pub(crate) struct ConversionConsent {
 pub(crate) fn image_target(app: &App, path: &Path, kind: ImageKind) -> Option<PathBuf> {
     let active = app.chooser.active.as_ref()?;
     let filter = active.selected_compiled_filter();
-    let content_type = gio::content_type_from_mime_type(kind.mime());
+    let content_type = gio::content_type_from_mime_type(kind.mime())
+        .map_or_else(|| kind.mime().to_owned(), String::from);
     let matches = |candidate: &Path| {
         let name = candidate
             .file_name()
@@ -150,8 +151,11 @@ fn accept_supported_image(app: &mut App, path: PathBuf, target: PathBuf, tx: &mu
             Err(error) => {
                 if let Some(active) = app.chooser.active.as_mut() {
                     active.show_error(
-                        rust_i18n::t!("Could not name the downloaded image: %{error}", error = error)
-                            .into_owned(),
+                        rust_i18n::t!(
+                            "Could not name the downloaded image: %{error}",
+                            error = error
+                        )
+                        .into_owned(),
                     );
                 }
             }
@@ -187,9 +191,9 @@ pub(crate) fn image_job<T: Send + 'static>(
         let outcome = match receiver.try_recv() {
             Ok(result) => Some(result),
             Err(TryRecvError::Empty) => None,
-            Err(TryRecvError::Disconnected) => {
-                Some(Err("Image processing stopped unexpectedly. Try again.".into()))
-            }
+            Err(TryRecvError::Disconnected) => Some(Err(
+                "Image processing stopped unexpectedly. Try again.".into(),
+            )),
         };
         if cancelled.load(Ordering::SeqCst) {
             return glib::ControlFlow::Break;
@@ -262,13 +266,14 @@ fn prompt_image_conversion(app: &mut App, path: PathBuf, target: PathBuf, kind: 
     }
     let expected_filter = active.selected_filter();
     let expected_name = active.name_text();
-    app.chooser_dialog.open(ChooserPrompt::ConvertImage(ConversionConsent {
-        path,
-        target,
-        kind,
-        expected_filter,
-        expected_name,
-    }));
+    app.chooser_dialog
+        .open(ChooserPrompt::ConvertImage(ConversionConsent {
+            path,
+            target,
+            kind,
+            expected_filter,
+            expected_name,
+        }));
 }
 
 pub(crate) fn confirm_conversion(app: &mut App, consent: ConversionConsent) {
@@ -289,6 +294,6 @@ pub(crate) fn confirm_conversion(app: &mut App, consent: ConversionConsent) {
         app,
         "Converting to PNG…",
         move |cancelled| image_conversion::convert(&path, &target, &cancelled),
-        |app, converted, tx| download::finish_remote(app, converted, tx),
+        download::finish_remote,
     );
 }

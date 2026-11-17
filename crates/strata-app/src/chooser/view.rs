@@ -84,7 +84,11 @@ fn build_details(active: &ActiveChooser, look: &Look, layer: &mut Vec<El>) -> Op
 
 fn build_name_or_files(active: &ActiveChooser, look: &Look) -> Option<El> {
     if active.has_name {
-        return Some(labeled_row(look, &tr("Name"), build_name_input(active, look)));
+        return Some(labeled_row(
+            look,
+            &tr("Name"),
+            build_name_input(active, look),
+        ));
     }
     let ChooserKind::SaveFiles { names } = &active.request.kind else {
         return None;
@@ -122,14 +126,7 @@ fn build_name_input(active: &ActiveChooser, look: &Look) -> El {
         .shrink()
         .min_w(0.0)
         .invalid(invalid)
-        .on_edit(|app: &mut App| {
-            &mut app
-                .chooser
-                .active
-                .as_mut()
-                .expect("chooser name edit")
-                .name
-        })
+        .on_edit(|app: &mut App| &mut app.chooser.active.as_mut().expect("chooser name edit").name)
         .on_input_change(|app: &mut App, _: &mut Tx| state::name_changed(app))
         .on_input_key(on_name_key)
         .on_secondary_press(|_: &mut App, _, _| {});
@@ -201,7 +198,6 @@ fn build_options(active: &ActiveChooser, look: &Look, layer: &mut Vec<El>) -> Ve
     if let Some(read_only) = active.read_only {
         let label = tr("Open files read-only");
         let check = Checkbox::new(read_only)
-            .key("chooser-read-only")
             .label(label)
             .on_toggle(|app: &mut App| {
                 if let Some(active) = app.chooser.active.as_mut()
@@ -210,7 +206,8 @@ fn build_options(active: &ActiveChooser, look: &Look, layer: &mut Vec<El>) -> Ve
                     *flag = !*flag;
                 }
             })
-            .build(&look.kit);
+            .build(&look.kit)
+            .key("chooser-read-only");
         items.push(check);
     }
     items
@@ -266,7 +263,6 @@ fn build_choice_control(
         ChoiceControl::Boolean {
             id, label, checked, ..
         } => Checkbox::new(*checked)
-            .key(format!("chooser-choice-{id}"))
             .label(label.clone())
             .on_toggle(move |app: &mut App| {
                 if let Some(active) = app.chooser.active.as_mut()
@@ -276,7 +272,8 @@ fn build_choice_control(
                     *checked = !*checked;
                 }
             })
-            .build(&look.kit),
+            .build(&look.kit)
+            .key(format!("chooser-choice-{id}")),
         ChoiceControl::Select {
             id,
             label,
@@ -442,12 +439,11 @@ fn build_action_status(active: &ActiveChooser, look: &Look, tenxer: bool) -> El 
 fn build_download_progress(progress: &DownloadProgress, look: &Look) -> El {
     let kit = &look.kit;
     let indicator = match progress.fraction {
-        Some(fraction) => {
+        Some(_) => {
             let mut bar = el()
                 .key("chooser-download-ring")
                 .role("progressbar")
                 .label(tr("Download progress"))
-                .a11y_range(fraction * 100.0, 0.0, 100.0)
                 .size(20.0, 20.0)
                 .center()
                 .child(Spinner::new().size(16.0).build(kit).a11y_hidden());
@@ -524,11 +520,7 @@ fn build_save_hints(kind: &ChooserKind, look: &Look) -> Option<El> {
                     .fill(kit.c.layer_02)
                     .child(text(cap).font(kit.ty.small).color(kit.c.text_muted)),
             )
-            .child(
-                text(tr(action))
-                    .font(kit.ty.small)
-                    .color(kit.c.text_muted),
-            );
+            .child(text(tr(action)).font(kit.ty.small).color(kit.c.text_muted));
     }
     Some(hints)
 }

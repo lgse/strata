@@ -177,7 +177,10 @@ fn claim_bus_name(connection: &gio::DBusConnection) -> Result<(), String> {
     let (code,) = reply
         .get::<(u32,)>()
         .ok_or_else(|| "invalid RequestName reply".to_owned())?;
-    if matches!(code, REQUEST_NAME_PRIMARY_OWNER | REQUEST_NAME_ALREADY_OWNER) {
+    if matches!(
+        code,
+        REQUEST_NAME_PRIMARY_OWNER | REQUEST_NAME_ALREADY_OWNER
+    ) {
         Ok(())
     } else {
         Err(format!("{BACKEND_NAME} is already owned (code {code})"))
@@ -283,7 +286,12 @@ fn handle_chooser_call(
             return;
         }
     };
-    let request_reg = match register_request_object(&connection, &parsed.token, request_info, (tracker, callbacks)) {
+    let request_reg = match register_request_object(
+        &connection,
+        &parsed.token,
+        request_info,
+        (tracker, callbacks),
+    ) {
         Ok(reg) => reg,
         Err(error) => {
             invocation.return_dbus_error("org.freedesktop.portal.Error.Failed", &error);
@@ -340,12 +348,15 @@ async fn dispatch_method(
     pending: Rc<RefCell<PendingCall>>,
     callbacks: Rc<PortalCallbacks>,
 ) {
-    let size_hint = window_geometry::parent_size_hint(&params.app_id, params.parent.as_deref()).await;
+    let size_hint =
+        window_geometry::parent_size_hint(&params.app_id, params.parent.as_deref()).await;
     let built = match method {
         "OpenFile" => build_open_request(params).await,
         "SaveFile" => build_save_file_request(params).await,
         "SaveFiles" => build_save_files_request(params).await,
-        _ => Err(PortalError::InvalidArgument("unknown FileChooser method".into())),
+        _ => Err(PortalError::InvalidArgument(
+            "unknown FileChooser method".into(),
+        )),
     };
     let mut request = match built {
         Ok(req) => req,
@@ -529,7 +540,7 @@ fn lookup_bytestring_list(
     let Some(value) = dict.lookup_value(key, None) else {
         return Ok(Vec::new());
     };
-    if !value.is_type(glib::VariantTy::BYTESTRING_ARRAY) {
+    if !value.is_type(glib::VariantTy::BYTE_STRING_ARRAY) {
         return invalid_argument(format!("invalid {key} array type"));
     }
     (0..value.n_children())

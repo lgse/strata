@@ -14,10 +14,13 @@ use std::{
 };
 
 use rune::{TextEdit, Tx};
-use strata_components::rename::{Initial, initial_selection};
+use strata_components::{
+    contract::EntryKind as NameKind,
+    rename::{Initial, initial_selection},
+};
 use strata_core::{
     i18n::tr,
-    model::{EntryKind, FileEntry, Location},
+    model::{FileEntry, Location},
 };
 use strata_fs::{
     adapters::query_file_entry,
@@ -40,8 +43,14 @@ use crate::{
     shell,
 };
 
-pub(crate) type ValidateDestination =
-    Rc<dyn Fn(&Path) -> futures_lite::future::BoxedLocal<Result<PathBuf, String>>>;
+/// A destination check a floating chooser's host runs on the interface thread.
+pub(crate) type PendingValidation =
+    std::pin::Pin<Box<dyn std::future::Future<Output = Result<PathBuf, String>>>>;
+
+/// What closes a chooser's window once its request finishes, in place of `Tx::close_window`.
+pub(crate) type CloseWindow = Box<dyn FnOnce(&mut Tx)>;
+
+pub(crate) type ValidateDestination = Rc<dyn Fn(&Path) -> PendingValidation>;
 
 pub(crate) struct DestinationHost {
     pub(crate) allow_create: bool,
@@ -70,7 +79,7 @@ pub(crate) struct ActiveChooser {
     pub(crate) accept_generation: u64,
     pub(crate) accept_sensitive: bool,
     pub(crate) completion: Option<Completion>,
-    pub(crate) close_window: Option<Box<dyn FnOnce(&mut Tx)>>,
+    pub(crate) close_window: Option<CloseWindow>,
     pub(crate) download_cancel: Option<Arc<AtomicBool>>,
     pub(crate) downloaded_file: Option<(String, PathBuf)>,
     pub(crate) download_progress: Option<DownloadProgress>,
@@ -86,11 +95,7 @@ impl ActiveChooser {
     ) -> Self {
         let (filters, filter_selected) =
             normalize_portal_filters(&request.filters, request.current_filter.as_ref());
-        source.set_filter(
-            filter_selected
-                .and_then(|idx| filters.get(idx))
-                .cloned(),
-        );
+        source.set_filter(filter_selected.and_then(|idx| filters.get(idx)).cloned());
         source.directory_only.set(matches!(
             &request.kind,
             ChooserKind::Open {
@@ -236,7 +241,7 @@ impl ActiveChooser {
     }
 
     pub(crate) fn select_name_stem(&mut self) {
-        let (start, end) = initial_selection(&self.name.text, EntryKind::File, Initial::Stem);
+        let (start, end) = initial_selection(&self.name.text, NameKind::File, Initial::Stem);
         self.name.set_selection(start, end);
     }
 
@@ -252,7 +257,7 @@ impl ActiveChooser {
         if let Some(close) = self.close_window.take() {
             close(tx);
         } else {
-            tx.close();
+            tx.close_window();
         }
         completion(result);
         true
@@ -262,10 +267,10 @@ impl ActiveChooser {
 fn build_name_state(kind: &ChooserKind) -> (bool, TextEdit, String, Option<OsString>) {
     match kind {
         ChooserKind::SaveFile { current_name } => {
-            let mut edit = TextEdit::new();
+            let mut edit = TextEdit::new(String::new());
             if let Some(initial) = current_name.as_deref() {
                 let text = initial.to_string_lossy().into_owned();
-                let (start, end) = initial_selection(&text, EntryKind::File, Initial::Stem);
+                let (start, end) = initial_selection(&text, NameKind::File, Initial::Stem);
                 edit.replace_text(text);
                 edit.set_selection(start, end);
             }
@@ -275,14 +280,16 @@ fn build_name_state(kind: &ChooserKind) -> (bool, TextEdit, String, Option<OsStr
             directory: false, ..
         } => (
             true,
-            TextEdit::new(),
+            TextEdit::new(String::new()),
             tr("Enter a filename or https:// URL"),
             None,
         ),
         ChooserKind::Open {
             directory: true, ..
         }
-        | ChooserKind::SaveFiles { .. } => (false, TextEdit::new(), String::new(), None),
+        | ChooserKind::SaveFiles { .. } => {
+            (false, TextEdit::new(String::new()), String::new(), None)
+        }
     }
 }
 
@@ -534,7 +541,10 @@ fn accept_open(app: &mut App, directory: bool, multiple: bool, tx: &mut Tx) {
         .as_ref()
         .and_then(|active| active.destination_host.as_ref())
         .map(|host| host.validate.clone());
-    match (open_selection(&entries, &current, directory, multiple), validate) {
+    match (
+        open_selection(&entries, &current, directory, multiple),
+        validate,
+    ) {
         (Ok(paths), Some(validate)) => accept_destination_host(app, validate(&paths[0])),
         (Ok(paths), None) => complete_paths_writable(app, paths, tx),
         (Err(message), _) => {
@@ -545,10 +555,7 @@ fn accept_open(app: &mut App, directory: bool, multiple: bool, tx: &mut Tx) {
     }
 }
 
-fn accept_destination_host(
-    app: &mut App,
-    validation: futures_lite::future::BoxedLocal<Result<PathBuf, String>>,
-) {
+fn accept_destination_host(app: &mut App, validation: PendingValidation) {
     let later = app.chooser.later.clone();
     let Some(active) = app.chooser.active.as_mut() else {
         return;
@@ -662,7 +669,12 @@ fn finish_open_named_entry(
 }
 
 fn accept_save_file(app: &mut App, tx: &mut Tx) {
-    let Some(name) = app.chooser.active.as_ref().and_then(ActiveChooser::name_text) else {
+    let Some(name) = app
+        .chooser
+        .active
+        .as_ref()
+        .and_then(ActiveChooser::name_text)
+    else {
         return;
     };
     if let Err(message) = validate_basename(&name) {
@@ -745,7 +757,8 @@ fn finish_destination_check(
     if destinations.existing.is_empty() {
         complete_paths(app, destinations.paths, None, tx);
     } else {
-        app.chooser_dialog.open(ChooserPrompt::Overwrite(destinations));
+        app.chooser_dialog
+            .open(ChooserPrompt::Overwrite(destinations));
     }
     true
 }

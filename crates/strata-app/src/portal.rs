@@ -5,6 +5,7 @@
 //! placement hints ([`window_geometry`]), and standalone `--portal` windowed execution.
 
 pub(crate) mod dbus;
+pub(crate) mod inbox;
 pub(crate) mod window_geometry;
 
 #[cfg(test)]
@@ -572,7 +573,9 @@ async fn classify_destination(path: &Path, name: &OsStr) -> Result<bool, String>
         )
         .await
     {
-        Ok(info) if info.file_type() == gio::FileType::Directory => Err(folder_exists_message(name)),
+        Ok(info) if info.file_type() == gio::FileType::Directory => {
+            Err(folder_exists_message(name))
+        }
         Ok(info) if info.file_type() == gio::FileType::SymbolicLink => {
             if file
                 .query_info_future(
@@ -589,9 +592,11 @@ async fn classify_destination(path: &Path, name: &OsStr) -> Result<bool, String>
         }
         Ok(_) => Ok(true),
         Err(error) if error.matches(gio::IOErrorEnum::NotFound) => Ok(false),
-        Err(error) => Err(
-            rust_i18n::t!("Unable to inspect the destination: %{error}", error = error).into_owned(),
-        ),
+        Err(error) => Err(rust_i18n::t!(
+            "Unable to inspect the destination: %{error}",
+            error = error
+        )
+        .into_owned()),
     }
 }
 

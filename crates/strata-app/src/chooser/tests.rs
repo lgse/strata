@@ -113,7 +113,10 @@ fn chooser_dimensions_clamp_to_monitor_and_parent_bounds() {
         chooser_initial_dimensions(None, None),
         (FALLBACK_CHOOSER_WIDTH, FALLBACK_CHOOSER_HEIGHT)
     );
-    assert_eq!(chooser_initial_dimensions(Some((1920, 1080)), None), (1000, 680));
+    assert_eq!(
+        chooser_initial_dimensions(Some((1920, 1080)), None),
+        (1000, 680)
+    );
     assert_eq!(
         chooser_initial_dimensions(Some((1920, 1080)), Some((800, 600))),
         (640, 468)

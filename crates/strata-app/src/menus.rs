@@ -116,7 +116,7 @@ fn chooser_entry_menu(app: &App, depth: usize, id: EntryId) -> Option<Opening> {
     let (entry, entries) = context_entries(app, depth, id)?;
     let single = entries.len() == 1;
     let typing = app.menu.typing;
-    let mut items = vec![RENAME.item(typing).disabled(!single)];
+    let mut items = vec![RENAME.item(typing).enabled(single)];
     if single && crate::preview::entry_supports_quick_preview(&entry) {
         items.push(PREVIEW.item(typing));
     }
@@ -135,12 +135,12 @@ fn chooser_entry_menu(app: &App, depth: usize, id: EntryId) -> Option<Opening> {
         items.push(TRASH.item(typing));
     }
     if can_delete {
-        items.push(DELETE.item(typing).danger());
+        items.push(DELETE.item(typing).danger(true));
     }
     Some(Opening {
         name: entry.display_name,
         target: MenuTarget::Entry(id),
-        model: MenuModel::from_sections(vec![Section::items(items)]),
+        model: MenuModel::new().section(Section::new(items)),
         provider_slot: 0,
         provider_paths: None,
         background: false,
@@ -151,11 +151,11 @@ fn chooser_folder_menu(app: &App, depth: usize) -> Option<Opening> {
     let location = app.browser.location_at(depth)?;
     let item = NEW_FOLDER
         .item(app.menu.typing)
-        .disabled(!app.chooser.allows_create());
+        .enabled(app.chooser.allows_create());
     Some(Opening {
         name: location.display_name(),
         target: MenuTarget::Background,
-        model: MenuModel::from_sections(vec![Section::items(vec![item])]),
+        model: MenuModel::new().section(Section::new([item])),
         provider_slot: 0,
         provider_paths: None,
         background: true,

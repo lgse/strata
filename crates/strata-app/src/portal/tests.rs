@@ -43,7 +43,8 @@ fn validate_filters_and_choices_enforce_limits_and_glob_rules() {
 
 #[test]
 fn hyprland_window_size_matches_single_mapped_visible_client() {
-    let valid = br#"[{"class":"zen","initialClass":"zen","mapped":true,"hidden":false,"size":[960,1000]}]"#;
+    let valid =
+        br#"[{"class":"zen","initialClass":"zen","mapped":true,"hidden":false,"size":[960,1000]}]"#;
     assert_eq!(
         window_geometry::application_window_size(valid, "ZEN"),
         Some((960, 1000))

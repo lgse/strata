@@ -257,6 +257,7 @@ fn places_and_visible_pins_carry_go_chord_keycaps_in_display_order() {
             _ => None,
         },
         recent: true,
+        local_only: false,
     };
     let listed = list(&Preferences::default(), &pins, &env);
     let place_caps: Vec<(&str, Option<&str>)> = listed

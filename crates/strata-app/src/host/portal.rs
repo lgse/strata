@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: MIT
 
-//! Windowless `--portal` daemon host: owns `org.freedesktop.impl.portal.desktop.strata` on the
-//! session bus, pumps GLib on Rune's event loop, opens each `ChooserRequest` as a foreign-parented
-//! Rune window (`strata_platform::foreign_parent`), and exits after [`IDLE_TIMEOUT`](crate::portal::IDLE_TIMEOUT).
+//! The windowless `--portal` host: owns `org.freedesktop.impl.portal.desktop.strata` on the
+//! session bus, pumps GLib on Rune's event loop, opens each `ChooserRequest` as a
+//! foreign-parented Rune window (`strata_platform::foreign_parent`), and exits once no request
+//! has been active for [`IDLE_TIMEOUT`](crate::portal::IDLE_TIMEOUT).
 
 use std::{
     cell::{OnceCell, RefCell},
@@ -29,8 +30,9 @@ use crate::{
     chooser::{geometry::chooser_initial_dimensions, source::ChooserFileSource},
     commands, folder_views,
     portal::{
-        CHOOSER_APPLICATION_ID, ChooserRequest, Completion, PortalCallbacks, PortalError,
-        RequestTracker, dbus::PortalService, window_geometry,
+        CHOOSER_APPLICATION_ID, ChooserRequest, Completion, PortalError,
+        dbus::PortalService,
+        inbox::{PortalEvent, PortalInbox},
     },
     settings::Saved,
     shell,
@@ -46,8 +48,9 @@ thread_local! {
 }
 
 struct Daemon {
-    tracker: Arc<RequestTracker>,
-    _service: PortalService,
+    ui: UiThread,
+    inbox: PortalInbox,
+    service: PortalService,
 }
 
 fn daemon_view(_: &Daemon, _: &mut Cx<Daemon>) -> El {
@@ -62,9 +65,31 @@ fn pump_glib() {
     });
 }
 
+/// Runs what the service queued: windows to open or cancel, or the end of the daemon.
+fn drain(daemon: &mut Daemon, tx: &mut Tx) {
+    for event in daemon.inbox.take() {
+        match event {
+            PortalEvent::Present {
+                request,
+                cancelled,
+                completion,
+            } => open_chooser_window(daemon.ui, *request, cancelled, completion),
+            PortalEvent::Cancel(token) => cancel_chooser_window(&token),
+            PortalEvent::Quit => tx.quit(),
+        }
+    }
+}
+
 fn daemon_poll(daemon: &mut Daemon, _clock: f64, tx: &mut Tx) -> bool {
     pump_glib();
-    if WINDOWS.with(|w| w.borrow().is_empty()) && daemon.tracker.begin_shutdown_if_idle(Instant::now()) {
+    drain(daemon, tx);
+    let idle = WINDOWS.with(|windows| windows.borrow().is_empty());
+    if idle
+        && daemon
+            .service
+            .requests
+            .begin_shutdown_if_idle(Instant::now())
+    {
         tx.quit();
         return false;
     }
@@ -81,59 +106,46 @@ fn chooser_poll(app: &mut App, clock: f64, tx: &mut Tx) -> bool {
 
 pub(crate) fn run(ui: UiThread, _initial_settings: Saved) -> Result<(), String> {
     std::thread::spawn(strata_fs::services::prune_stale_downloads);
-    window_geometry::apply_hyprland_centering_rule();
     rune::set_app_id(CHOOSER_APPLICATION_ID);
 
-    let tracker = Arc::new(RequestTracker::default());
     let daemon_spec = AppSpec {
         poll: Some(daemon_poll),
         fonts: FONTS,
         families: FAMILIES,
-        ..AppSpec::new("Strata File Chooser", (1.0, 1.0), || unreachable!(), daemon_view)
+        ..AppSpec::new(
+            "Strata File Chooser",
+            (1.0, 1.0),
+            || unreachable!(),
+            daemon_view,
+        )
     };
     let daemon_app = rune::App::new(daemon_spec)
         .windowless()
         .keep_running()
         .args(Vec::new())
         .on_quit(|_: &mut Daemon, _: &mut Tx| {
-            foreign_parent::shutdown();
+            let _ = foreign_parent::shutdown();
         });
     let daemon_handle = daemon_app.handle();
 
-    let present_ui = ui;
-    let present_daemon = daemon_handle.clone();
-    let cancel_daemon = daemon_handle.clone();
-    let quit_daemon = daemon_handle.clone();
-    let callbacks = PortalCallbacks {
-        present: Rc::new(move |request, cancelled, completion| {
-            present_daemon.update_if(move |_, _| {
-                open_chooser_window(present_ui, request, cancelled, completion);
-                false
-            });
-        }),
-        cancel: Rc::new(move |token| {
-            let token = token.to_owned();
-            cancel_daemon.update_if(move |_, _| {
-                cancel_chooser_window(&token);
-                false
-            });
-        }),
-        quit: Rc::new(move || {
-            quit_daemon.update_if(|_, tx| {
-                tx.quit();
-                false
-            });
-        }),
-    };
-    let service = PortalService::start(tracker.clone(), callbacks)?;
+    let inbox = PortalInbox::default();
+    let wake = daemon_handle.clone();
+    let callbacks = inbox.callbacks(Rc::new(move || {
+        wake.update_if(|daemon, tx| {
+            drain(daemon, tx);
+            false
+        });
+    }));
+    let service = PortalService::start(callbacks)?;
 
     let glib_wake = daemon_handle;
     let glib = GlibLoop::start(glib::MainContext::default(), move || {
-        glib_wake.update_if(|_, _| {
+        glib_wake.update_if(|daemon, tx| {
             pump_glib();
+            drain(daemon, tx);
             WINDOWS.with(|windows| {
-                for (_, (_, handle)) in windows.borrow().iter() {
-                    handle.update_if(|app, tx| shell::settle(app, tx));
+                for (_, handle) in windows.borrow().values() {
+                    handle.update_if(shell::settle);
                 }
             });
             false
@@ -145,12 +157,9 @@ pub(crate) fn run(ui: UiThread, _initial_settings: Saved) -> Result<(), String> 
 
     rune::fast_exit(strata_core::storage::writer::flush_at_exit);
     let ran = daemon_app
-        .init(move || Daemon {
-            tracker,
-            _service: service,
-        })
+        .init(move || Daemon { ui, inbox, service })
         .try_run();
-    foreign_parent::shutdown();
+    let _ = foreign_parent::shutdown();
     strata_core::storage::writer::flush_at_exit();
     ran
 }
@@ -158,8 +167,60 @@ pub(crate) fn run(ui: UiThread, _initial_settings: Saved) -> Result<(), String> 
 fn cancel_chooser_window(token: &str) {
     let entry = WINDOWS.with(|windows| windows.borrow().get(token).cloned());
     if let Some((_, handle)) = entry {
-        handle.update_if(|app, tx| crate::chooser::cancel(app, tx));
+        handle.update_if(crate::chooser::cancel);
     }
+}
+
+fn lost_parent(app: &mut App, tx: &mut Tx) {
+    crate::chooser::cancel(app, tx);
+}
+
+/// A chooser window closing, by its close button or after its request finished.
+fn close_chooser(app: &mut App, tx: &mut Tx) {
+    crate::chooser::cancel(app, tx);
+    folder_views::flush_at_exit(app);
+    let Some(token) = app.chooser.token() else {
+        return;
+    };
+    foreign_parent::release(&token);
+    WINDOWS.with(|windows| {
+        windows.borrow_mut().remove(&token);
+    });
+}
+
+/// The chooser's own app over `state`, which shows its window once it is parented.
+fn chooser_app(
+    request: &ChooserRequest,
+    state_size: (f32, f32),
+    frame: strata_platform::csd::Frame,
+) -> rune::App<App> {
+    let title: &'static str = Box::leak(request.title.clone().into_boxed_str());
+    let parent = request
+        .parent
+        .as_deref()
+        .and_then(|raw| Parent::parse(raw).ok())
+        .unwrap_or(Parent::None);
+    let modal = request.modal;
+    let app = rune::App::new(AppSpec {
+        poll: Some(chooser_poll),
+        on_key: Some(commands::on_key),
+        fonts: FONTS,
+        families: FAMILIES,
+        ..AppSpec::new(title, state_size, || unreachable!(), shell::view)
+    })
+    .window_options(WindowOptions {
+        visible: false,
+        ..csd::window_options(frame, WindowOptions::default())
+    })
+    .on_modifiers(shell::modifiers)
+    .on_close(close_chooser);
+    let handle = app.handle();
+    app.on_window(move |window: &WindowHandle| {
+        csd::attach(window, &handle, shell::csd_of);
+        let options = Options::new().modal(modal).on_lost(lost_parent);
+        let _ = foreign_parent::apply(window, &handle, &parent, options);
+        window.show();
+    })
 }
 
 fn open_chooser_window(
@@ -176,72 +237,26 @@ fn open_chooser_window(
     }
     let token = request.token.clone();
     let previous = WINDOWS.with(|windows| windows.borrow_mut().remove(&token));
-    if let Some((old_win, _)) = previous {
-        old_win.close();
+    if let Some((old_window, _)) = previous {
+        old_window.close();
     }
-
-    let settings = startup::load_settings();
     let frame = Policy::Auto.frame();
-    let (w, h) = chooser_initial_dimensions(None, request.parent_size_hint);
+    let (width, height) = chooser_initial_dimensions(None, request.parent_size_hint);
     #[expect(clippy::cast_precision_loss, reason = "window dimensions fit f32")]
-    let size = (w as f32, h as f32);
-    let parent = request
-        .parent
-        .as_deref()
-        .and_then(|raw| Parent::parse(raw).ok())
-        .unwrap_or(Parent::None);
-    let modal = request.modal;
-    let initial_dir = request.initial_directory.clone();
-    let leaked_title: &'static str = Box::leak(request.title.clone().into_boxed_str());
-
-    let source = ChooserFileSource::new(None);
-    let mut state = App::new_chooser(
+    let size = (width as f32, height as f32);
+    let initial = Location::local(request.initial_directory.clone());
+    let app = chooser_app(&request, size, frame);
+    let state = App::new_chooser(
         &ui,
         Csd::new(frame, Backend::from_env()),
-        settings,
-        (request, source, None, completion),
+        startup::load_settings(),
+        (request, ChooserFileSource::new(None), None, completion),
     );
-    state.open(Location::local(initial_dir));
-
-    let close_token = token.clone();
-    let window_token = token.clone();
-    let chooser_app = rune::App::new(AppSpec {
-        poll: Some(chooser_poll),
-        on_key: Some(commands::on_key),
-        fonts: FONTS,
-        families: FAMILIES,
-        ..AppSpec::new(leaked_title, size, || unreachable!(), shell::view)
-    })
-    .window_options(WindowOptions {
-        visible: false,
-        ..csd::window_options(frame, WindowOptions::default())
-    })
-    .on_modifiers(shell::modifiers)
-    .on_close(move |app: &mut App, tx: &mut Tx| {
-        crate::chooser::cancel(app, tx);
-        folder_views::flush_at_exit(app);
-        foreign_parent::release(&close_token);
-        WINDOWS.with(|windows| {
-            windows.borrow_mut().remove(&close_token);
-        });
-    });
-
-    let handle = chooser_app.handle();
-    let attach_handle = handle.clone();
-    let chooser_app = chooser_app.on_window(move |window: &WindowHandle| {
-        csd::attach(window, &attach_handle, shell::csd_of);
-        let options = Options::new()
-            .modal(modal)
-            .on_lost(|app: &mut App, tx: &mut Tx| {
-                crate::chooser::cancel(app, tx);
-            });
-        let _ = foreign_parent::apply(window, &attach_handle, &parent, options);
-        window.show();
-    });
-
-    let window = rune::open_window(WindowSpec::from_app(&window_token, chooser_app).state(state));
+    state.open(initial);
+    let handle = app.handle();
+    let window = rune::open_window(WindowSpec::from_app(&token, app).state(state));
     if cancelled.load(Ordering::SeqCst) {
-        handle.update_if(|app, tx| crate::chooser::cancel(app, tx));
+        handle.update_if(crate::chooser::cancel);
         window.close();
         return;
     }

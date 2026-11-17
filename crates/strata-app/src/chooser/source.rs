@@ -56,8 +56,9 @@ fn mime_matches(filter_mime: &str, content_type: &str) -> bool {
     if filter_mime == "*/*" {
         return true;
     }
-    let filter_ct = gio::content_type_from_mime_type(filter_mime);
-    if gio::content_type_is_a(content_type, &filter_ct) {
+    if gio::content_type_from_mime_type(filter_mime)
+        .is_some_and(|filter_ct| gio::content_type_is_a(content_type, &filter_ct))
+    {
         return true;
     }
     if let Some(prefix) = filter_mime.strip_suffix("/*") {
@@ -366,7 +367,8 @@ fn filter_directory_event(
             request_id,
             mut entries,
         } => {
-            entries.retain(|entry| chooser_entry_allowed(filter, directory_only, root_limit, entry));
+            entries
+                .retain(|entry| chooser_entry_allowed(filter, directory_only, root_limit, entry));
             DirectoryEvent::Batch {
                 request_id,
                 entries,

@@ -395,10 +395,6 @@ pub(super) struct Stage {
 }
 
 impl Stage {
-    pub(super) fn new(host: Offscreen) -> Self {
-        Self::named("window".to_owned(), host)
-    }
-
     pub(super) fn named(root_key: String, host: Offscreen) -> Self {
         Self {
             root_key,
