@@ -149,6 +149,11 @@ closed issue is not a fixed finding: the state given here is the finding's.
   `1d4e3b8a9` on a loaded host. That change touches neither `src/` nor
   `crates/strata-desktop`; alone, the first passed 3 of 3 and the second 1 of 1
   (`./scripts/test-headless.py`).
+- **On [A13](packages/A13.md)'s closing pull request:** a tenth,
+  `ui::media::tests::reopening_resumes_where_the_preview_closed`
+  (`src/ui/media/tests.rs:99`, `assertion failed: media.imp().first_frame.get()`), failed once
+  in `./scripts/quality.sh all` in the pinned image at `17d3fa87d` on a loaded host, and 1
+  time in 3 alone (`./scripts/test-headless.py`). That change touches no `src/`.
 - **State:** open, set aside. Whoever meets one of these in a red shard reads the failure
   first: if the change could reach the test, it is the change's; if not, say why on the pull
   request, rerun the whole workflow once, and stop if the same test fails twice. A new flaky
