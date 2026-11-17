@@ -1,0 +1,13 @@
+diff --git a/crates/strata-app/src/settings_dialog/keyboard/capture.rs b/crates/strata-app/src/settings_dialog/keyboard/capture.rs
+index 1b8b22449..a6b35f0e7 100644
+--- a/crates/strata-app/src/settings_dialog/keyboard/capture.rs
++++ b/crates/strata-app/src/settings_dialog/keyboard/capture.rs
+@@ -173,7 +173,7 @@ fn captured(app: &mut App, press: &KeyPress, tx: &mut Tx) {
+     let refused: Vec<String> = matched
+         .iter()
+         .flat_map(|binding| conflicts::check(&keymap, map, command, *binding, policy))
+-        .filter(|finding| finding.severity == Severity::Error)
++        .filter(|finding| finding.severity == Severity::Warning)
+         .map(|finding| message(map, command, finding))
+         .collect();
+     if refused.is_empty() {

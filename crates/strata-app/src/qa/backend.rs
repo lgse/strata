@@ -195,6 +195,13 @@ impl<H: Host> Backend for Rune<H> {
         self.host.windowless()
     }
 
+    /// Settings draws its messages ("Reset all keybinds?", the save notice) inside itself, so
+    /// the one on top is the innermost, as GTK's snapshot names the message over its Settings
+    /// layer (the owner's ruling of 2026-11-17 on lgse/strata#2572).
+    fn nests_dialogs(&self) -> bool {
+        true
+    }
+
     fn window(&self) -> Option<Node> {
         self.host.window()
     }

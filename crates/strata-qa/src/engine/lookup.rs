@@ -54,13 +54,25 @@ pub(crate) fn rendered_with_role<'a, B: Backend + ?Sized>(
         .filter(move |node| backend.role(node) == role && rendered(backend, node))
 }
 
+/// The open dialog: the first rendered dialog or alert, and on a toolkit that nests dialogs
+/// ([`Backend::nests_dialogs`]) the innermost rendered dialog inside it, the one on top.
 pub(crate) fn open_dialog<B: Backend + ?Sized>(
     backend: &B,
     presented: &[B::Node],
 ) -> Option<B::Node> {
-    ["dialog", "alert"]
+    let first = ["dialog", "alert"]
         .into_iter()
-        .find_map(|role| rendered_with_role(backend, presented, role).next().cloned())
+        .find_map(|role| rendered_with_role(backend, presented, role).next().cloned())?;
+    if !backend.nests_dialogs() {
+        return Some(first);
+    }
+    let mut top = first;
+    while let Some(inner) = rendered_with_role(backend, presented, "dialog")
+        .find(|node| is_ancestor(backend, &top, node))
+    {
+        top = inner.clone();
+    }
+    Some(top)
 }
 
 /// The list or table of a filter's search results, and the role its rows have. A list of
