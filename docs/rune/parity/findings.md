@@ -214,8 +214,8 @@ closed issue is not a fixed finding: the state given here is the finding's.
   thread holding the write descriptor fails the probe, and the legacy arguments are chosen.
   #2567 does not touch `terminal/`. The fix, if taken up, is A14's: write the script under a
   temporary name and rename it, or retry on `ETXTBSY`. Seen again in a full `mise run
-  test-rune` for [#2579](https://github.com/lgse/strata/pull/2579) at `25ffdb8f2`, with the
-  same assertion; it passed alone three times and in the full rerun, and #2579 does not touch
+  test-rune` for [#2579](https://github.com/lgse/strata/pull/2579) on its way to `ed4a3bdcd`,
+  with the same assertion; it passed alone three times and in the full rerun, and #2579 does not touch
   `terminal/` either.
 
 ### #2176: a GTK critical after a file appears during a rename on a multiple selection
