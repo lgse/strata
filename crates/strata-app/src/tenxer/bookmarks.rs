@@ -36,6 +36,7 @@ pub(super) fn cancels_pending_bookmark(browser: &Browser, event: &BrowserEvent) 
 /// and advances `bookmark_revision` (`keyboard.rs:424`).
 pub(super) fn on_entry_key(app: &mut App, call: &Call<'_>, _: &mut Tx) -> Outcome {
     if call.press.is_some_and(|press| !press.is_modifier()) {
+        crate::open_with::cancel_target_lookup(app);
         if app.tenxer.bookmark_pending {
             cancel_chord(app);
             return Outcome::Ran;

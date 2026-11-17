@@ -37,10 +37,14 @@ pub(super) struct Staged {
 
 impl Staged {
     pub(super) fn new(host: Offscreen, log: InputLog) -> Self {
+        Self::named("window".to_owned(), host, log)
+    }
+
+    pub(super) fn named(root_key: String, host: Offscreen, log: InputLog) -> Self {
         let replacements = Replacements::watch(host.app());
         Self {
             replacements,
-            stage: RefCell::new(Stage::new(host)),
+            stage: RefCell::new(Stage::named(root_key, host)),
             keyboard: RefCell::default(),
             pointer: Cell::new((0, 0)),
             log,
@@ -59,8 +63,8 @@ impl Staged {
         turned
     }
 
-    /// Runs `act` on the window's state as a handler would, then settles: what no step does.
-    #[cfg(test)]
+    /// Runs `act` on the window's state as a handler would, then settles: what no step does,
+    /// and what the portal host does for a request the caller closes.
     pub(super) fn update(&self, act: impl FnOnce(&mut App, &mut rune::Tx)) {
         let stage = &mut *self.stage.borrow_mut();
         stage.host().runtime().update(act);
@@ -118,6 +122,10 @@ impl Staged {
 }
 
 impl Host for Staged {
+    fn idle_turn(&self) -> bool {
+        self.turn()
+    }
+
     fn snapshot(&self) -> Rc<Snapshot> {
         self.stage.borrow_mut().snapshot()
     }

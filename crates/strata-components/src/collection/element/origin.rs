@@ -95,10 +95,13 @@ fn maybe_start_marquee<S: 'static>(
     (d, window): (&Drag, Point),
     (start, mods, tx): (Point, Mods, &mut Tx),
 ) {
-    let threshold = cfg
-        .settings
-        .get::<PointerSettings>()
-        .map_or(4.0, |p| p.drag_threshold);
+    let pointer = cfg.settings.get::<PointerSettings>();
+    if pointer.is_some_and(|p| !p.multiple) {
+        (cfg.get_mut)(s).1.origin_press = None;
+        tx.live_only();
+        return;
+    }
+    let threshold = pointer.map_or(4.0, |p| p.drag_threshold);
     if d.dx.abs() <= threshold && d.dy.abs() <= threshold {
         tx.live_only();
         return;

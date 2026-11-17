@@ -384,6 +384,48 @@ fn target_entries(app: &App, on: &On) -> Vec<FileEntry> {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Yank {
+    Nothing,
+    Done,
+    Refused,
+}
+
+/// `BrowserView::yank_targets` (`src/ui/browser/file_commands.rs`): copies (`cut = false`) or
+/// cuts (`cut = true`) 10xer's `command_targets`.
+pub(crate) fn yank_targets(app: &mut App, cut: bool) -> Yank {
+    let entries = crate::tenxer::command_targets(app);
+    if entries.is_empty() {
+        return Yank::Nothing;
+    }
+    if !cut {
+        copy_entries(app, &entries);
+        return Yank::Done;
+    }
+    if cut_entries(app, &entries) {
+        Yank::Done
+    } else {
+        Yank::Refused
+    }
+}
+
+/// `clipboard::unyank` (`src/ui/browser/clipboard.rs`): clears copy/cut marks and releases any
+/// file selection owned by this window.
+pub(crate) fn unyank(app: &mut App) {
+    app.clipboard.clear_marks();
+    if let Some(copy_id) = app.clipboard.owned {
+        if app.clipboard.handle.clear(copy_id).unwrap_or(false) {
+            app.clipboard.owned = None;
+            app.clipboard.has_files = false;
+            app.clipboard.bump_revision();
+        }
+    } else if matches!(app.clipboard.fallback, Fallback::Files(_)) {
+        app.clipboard.fallback = Fallback::Empty;
+        app.clipboard.has_files = false;
+        app.clipboard.bump_revision();
+    }
+}
+
 fn copy_entries(app: &mut App, entries: &[FileEntry]) -> bool {
     let locations: Vec<Location> = entries.iter().map(|e| e.location.clone()).collect();
     if app.clipboard.write_files(&locations, false) {

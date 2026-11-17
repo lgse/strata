@@ -22,7 +22,6 @@ rar = ["strata-core/rar", "strata-fs/rar", "strata-preview/rar"]
 # keyboard and pointer. Never in a release build.
 qa = [
     "dep:rustix",
-    "dep:serde_json",
     "dep:strata-qa",
     "dep:unicode-segmentation",
     "dep:wayland-client",
@@ -42,7 +41,7 @@ strata-core.workspace = true
 strata-desktop = { workspace = true, features = ["xkb-keys"] }
 strata-fs.workspace = true
 strata-kit.workspace = true
-strata-platform = { workspace = true, features = ["clipboard", "csd", "dnd", "glib-loop"] }
+strata-platform = { workspace = true, features = ["clipboard", "csd", "dnd", "foreign-parent", "glib-loop"] }
 # The sandbox's thumbnail workers, by the owner's ruling of 2026-11-12 ("in strata-rune until E4").
 strata-preview.workspace = true
 gio.workspace = true
@@ -51,7 +50,7 @@ glib.workspace = true
 image.workspace = true
 rust-i18n.workspace = true
 rustix = { workspace = true, optional = true }
-serde_json = { workspace = true, optional = true }
+serde_json.workspace = true
 strata-qa = { workspace = true, optional = true }
 tracing.workspace = true
 unicode-segmentation = { workspace = true, optional = true }
@@ -62,7 +61,6 @@ xkbcommon = { workspace = true, optional = true }
 
 [dev-dependencies]
 rune = { workspace = true, features = ["embedded-fonts"] }
-serde_json.workspace = true
 # The catalog's listed constants, for the shortcut reference's coverage test.
 strata-desktop = { workspace = true, features = ["xkb-keys", "test-support"] }
 strata-test-support.workspace = true

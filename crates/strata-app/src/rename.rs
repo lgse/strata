@@ -224,7 +224,7 @@ pub(crate) fn editor(app: &App) -> RenameEditor<App> {
 }
 
 /// `can_rename` in `src/ui/browser/file_commands.rs`: nothing in the Trash is renamed.
-fn can_rename(entry: &FileEntry) -> bool {
+pub(crate) fn can_rename(entry: &FileEntry) -> bool {
     !entry
         .location
         .uri_value()
@@ -413,6 +413,25 @@ fn ask(app: &mut App, editing: Editing, typed: String) {
         renamed,
         advanced: false,
     });
+}
+
+/// `BrowserView::start_typed_rename` (`src/ui/browser/file_commands.rs:317`): starts a rename or
+/// relative-path placement submitted from 10xer's footer `rename ›` prompt, tracking its
+/// filter-result follow and completion reveal through [`Rename::asked`].
+pub(crate) fn start_typed_rename(app: &mut App, depth: usize, entry: FileEntry, typed: String) {
+    new_item::cancel(app);
+    let id = shell::id_of(app, &entry.location);
+    let naming = naming_of(&entry);
+    ask(
+        app,
+        Editing {
+            depth,
+            id,
+            entry,
+            naming,
+        },
+        typed,
+    );
 }
 
 /// Tab and Shift+Tab: the cursor and the editor go on to the neighbour `step` rows away,

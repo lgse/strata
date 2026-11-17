@@ -78,6 +78,9 @@ pub struct PointerSettings {
     pub rename: bool,
     /// Whether a press on an entry can start a file drag. Off for a read-only collection.
     pub drags: bool,
+    /// Whether more than one entry may be selected (Ctrl/Shift clicks and marquee bands).
+    /// True by default; false in single-selection file choosers.
+    pub multiple: bool,
     /// How Ctrl+Shift+click combines its range with the selection. [`Extend::Replace`] by
     /// default, as Strata's pointer code does (Shift wins over Ctrl).
     pub ctrl_shift: Extend,
@@ -101,6 +104,7 @@ impl Default for PointerSettings {
             modes: ClickModes::default(),
             rename: true,
             drags: true,
+            multiple: true,
             ctrl_shift: Extend::Replace,
             already_open: None,
             missing_anchor_stays: false,
@@ -124,6 +128,12 @@ impl PointerSettings {
     /// The same settings with slow-click rename on or off.
     pub const fn rename(mut self, rename: bool) -> Self {
         self.rename = rename;
+        self
+    }
+
+    /// The same settings with multiple selection on or off.
+    pub const fn multiple(mut self, multiple: bool) -> Self {
+        self.multiple = multiple;
         self
     }
 

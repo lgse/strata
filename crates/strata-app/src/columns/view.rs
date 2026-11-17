@@ -73,7 +73,9 @@ pub(crate) fn view(app: &App) -> ColumnsView<App> {
     .drop_action(intents::drop_action)
     // "Show sizes in Columns view", read at each build: the popover's row changes it live.
     .show_sizes(|app: &App| shell::preferences(app).columns_show_sizes)
-    .escape_closes(|app: &App| !shell::preferences(app).tenxer_mode)
+    .escape_closes(|app: &App| {
+        !shell::preferences(app).tenxer_mode && !app.browser.is_chooser_mode()
+    })
     .close_buttons(|app: &App| !shell::preferences(app).tenxer_mode)
     .collection(|app, depth, collection| {
         let collection = collection
@@ -91,7 +93,8 @@ pub(crate) fn view(app: &App) -> ColumnsView<App> {
             Some((said, _)) => collection.description(said.into_owned()),
             None => collection,
         };
-        let collection = match super::live_keys(shell::preferences(app)) {
+        let keys = super::live_keys(shell::preferences(app), app.chooser.allows_multiple());
+        let collection = match keys {
             Some(keys) => collection.settings(keys),
             None => collection,
         };
@@ -106,7 +109,13 @@ pub(crate) fn view(app: &App) -> ColumnsView<App> {
         commands::in_view(collection)
     })
     .pointer_settings(|app: &App| {
-        PointerSettings::default().modes(crate::clicks::columns(shell::preferences(app)))
+        let chooser = app.browser.is_chooser_mode();
+        let modes =
+            crate::clicks::for_chooser(crate::clicks::columns(shell::preferences(app)), chooser);
+        PointerSettings::default()
+            .modes(modes)
+            .rename(!chooser)
+            .multiple(app.chooser.allows_multiple())
     })
     // GTK's column header actions, in its order (`pane_header::actions`).
     .header_actions(|app: &App, cx| pane_header::actions::column(app, &cx))

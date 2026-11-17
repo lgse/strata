@@ -14,7 +14,7 @@ use strata_desktop::keys::{self as key_catalog, KeyPress, Map, Modifiers, bindin
 
 use super::{
     ChordKind, arm_default_chord, bookmarks, cancel_chord, chords, end_active_range, end_session,
-    run_collection_command, shows,
+    prompts::find, run_collection_command, shows, verbs,
 };
 use crate::{
     App,
@@ -83,7 +83,7 @@ fn swallow_unclaimed_typing(_: &mut App, _: &Call<'_>, _: &mut Tx) -> Outcome {
     Outcome::Ran
 }
 
-fn toggle_mode(app: &mut App, _: &Call<'_>, _: &mut Tx) -> Outcome {
+fn toggle_mode(app: &mut App, _: &Call<'_>, tx: &mut Tx) -> Outcome {
     let mut enabled = false;
     shell::saved(app).change(|settings| {
         settings.tenxer_mode = !settings.tenxer_mode;
@@ -91,7 +91,7 @@ fn toggle_mode(app: &mut App, _: &Call<'_>, _: &mut Tx) -> Outcome {
     });
     shell::live_keys(app).follow(shell::preferences(app));
     if !enabled {
-        end_session(app);
+        end_session(app, tx);
     }
     Outcome::Ran
 }
@@ -227,21 +227,42 @@ fn escape_ladder(app: &mut App, tx: &mut Tx) {
     if app.browser.close_peek() {
         return;
     }
-    if filter::search_active(app) {
-        let _ = end_active_range(app)
-            || preview::dismiss_escape(app, tx)
-            || filter::dismiss_search_only(app, tx);
-        return;
-    }
-    let _ = end_active_range(app)
-        || filter::dismiss_filter_only(app, tx)
+    let _ = if filter::search_active(app) {
+        escape_in_search(app, tx)
+    } else {
+        escape_in_listing(app, tx)
+    };
+}
+
+fn escape_in_search(app: &mut App, tx: &mut Tx) -> bool {
+    end_active_range(app)
+        || find::dismiss_highlight(app)
         || preview::dismiss_escape(app, tx)
-        || app.browser.clear_active_selection();
+        || filter::dismiss_search_only(app, tx)
+}
+
+/// A range over `f` results lives on those results, so it ends before the filter that shows
+/// them; a range over the listing ends after the find's highlight.
+fn escape_in_listing(app: &mut App, tx: &mut Tx) -> bool {
+    end_results_range(app)
+        || filter::dismiss_filter_only(app, tx)
+        || find::dismiss_highlight(app)
+        || end_active_range(app)
+        || preview::dismiss_escape(app, tx)
+        || app.browser.clear_active_selection()
+}
+
+fn end_results_range(app: &App) -> bool {
+    filter::results_shown(app) && end_active_range(app)
 }
 
 fn listing_keys(app: &mut App, press: &KeyPress, tx: &mut Tx) -> Option<Outcome> {
-    if let Some(outcome) = file_keys(app, press, tx).or_else(|| alt_navigation(app, press, tx)) {
-        return Some(outcome);
+    let outcome = verbs::prompt_keys(app, press, tx)
+        .or_else(|| file_keys(app, press, tx))
+        .or_else(|| verbs::file_verbs(app, press, tx))
+        .or_else(|| alt_navigation(app, press, tx));
+    if outcome.is_some() {
+        return outcome;
     }
     if shows(app, "icons") {
         icons_keys(app, press, tx)

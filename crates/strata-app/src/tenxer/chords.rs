@@ -235,8 +235,9 @@ fn run_action_extract(app: &mut App, tx: &mut Tx) {
 }
 
 fn run_action_extract_to(app: &mut App, tx: &mut Tx) {
-    if let Err(reason) = extract_target(app) {
-        app.tenxer.flash.show(tr(reason), tx);
+    match extract_target(app) {
+        Ok(entry) => super::prompts::open_extract_to(app, entry, tx),
+        Err(reason) => app.tenxer.flash.show(tr(reason), tx),
     }
 }
 

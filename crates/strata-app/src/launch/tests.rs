@@ -9,7 +9,7 @@ fn arguments(list: &[&str]) -> Vec<OsString> {
 }
 
 #[test]
-fn arguments_name_one_directory_or_ask_for_help() {
+fn arguments_name_one_directory_the_portal_or_ask_for_help() {
     let open = |directory: &str| Ok(Command::Open(Some(directory.into())));
     for (list, expected) in [
         (&[][..], Ok(Command::Open(None))),
@@ -19,6 +19,21 @@ fn arguments_name_one_directory_or_ask_for_help() {
         (&["--help"], Ok(Command::Help)),
         (&["/srv/files", "-h"], Ok(Command::Help)),
         (&["--qa"], Err("unknown option --qa".to_owned())),
+        (&["--portal"], Ok(Command::Portal)),
+        (&["--", "--portal"], open("--portal")),
+        (&["--portal", "--help"], Ok(Command::Help)),
+        (
+            &["--portal", "/srv/files"],
+            Err("--portal cannot be combined with a directory".to_owned()),
+        ),
+        (
+            &["/srv/files", "--portal"],
+            Err("--portal cannot be combined with a directory".to_owned()),
+        ),
+        (
+            &["--portal", "--portal"],
+            Err("--portal cannot be combined with a directory".to_owned()),
+        ),
         (
             &["/srv/files", "/srv/more"],
             Err("only one directory can be opened".to_owned()),

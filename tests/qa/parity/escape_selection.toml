@@ -89,9 +89,8 @@ scenario = "tenxer-escape-closes-peek"
 run = "columns"
 package = "A11"
 gate = "G2"
-status = "pending"
-reason = "scope"
-blocker = "C1c: 10xer mode (`tenxer_mode`), at Space, which there selects and moves on"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "tenxer-escape-closes-peek"

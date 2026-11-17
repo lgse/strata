@@ -36,7 +36,7 @@ use rune::Tx;
 use strata_core::model::{FileEntry, Location};
 use strata_desktop::keys::{
     Map, Modifiers,
-    bindings::{DELETE_PERMANENTLY, MOVE_TO_TRASH},
+    bindings::{DELETE_PERMANENTLY, LEFT, MOVE_TO_TRASH, RIGHT, TENXER_DELETE_CONFIRM},
 };
 use strata_fs::app::BrowserEvent;
 
@@ -59,9 +59,14 @@ const DELETE_MODIFIERS: Modifiers = Modifiers::CONTROL_MASK
     .union(Modifiers::ALT_MASK)
     .union(Modifiers::SUPER_MASK);
 
+const DIALOG_ARROW_MODIFIERS: Modifiers = Modifiers::SHIFT_MASK.union(Modifiers::SUPER_MASK);
+
 /// What a dialog button asked, for the part's next `poll`, with what it was asked about: a
 /// confirmation that opens meanwhile changes nothing of it.
 enum Queued {
+    Trash {
+        entries: Vec<FileEntry>,
+    },
     Delete {
         entries: Vec<FileEntry>,
         remote: bool,
@@ -140,15 +145,7 @@ impl Part for Trash {
             return emptying;
         }
         for queued in queued {
-            match queued {
-                Queued::Delete { entries, remote } => {
-                    if let Some((asked, _)) = &mut waiting {
-                        not_again(asked, &entries);
-                    }
-                    delete_confirmed(app, entries, remote);
-                }
-                Queued::Cancel { cursor, entries } => return_cursor(app, cursor, &entries),
-            }
+            apply_queued(app, queued, &mut waiting);
         }
         if let Some((entries, kind)) = waiting.filter(|(entries, _)| !entries.is_empty()) {
             show(app, entries, kind);
@@ -182,7 +179,77 @@ impl Part for Trash {
             .when(|_, at| !at.text() && !at.within("preview"))]),
         // No key empties the Trash: the sidebar's Trash menu asks for it.
         Action::new("empty-trash", empty::run),
+        Action::new("trash-tenxer-confirm", tenxer_confirm)
+            .command(TENXER_DELETE_CONFIRM)
+            .keys(&[Keys::at(
+                Stage::Entry,
+                &[TENXER_DELETE_CONFIRM.ignoring(Modifiers::empty())],
+            )
+            .when(|app, _| shell::preferences(app).tenxer_mode && confirms_trash_dialog(app))]),
+        Action::new("trash-dialog-focus-cancel", |app, _, tx| {
+            focus_button(app, "secondary", tx)
+        })
+        .command(LEFT)
+        .keys(&[Keys::at(
+            Stage::Entry,
+            &[LEFT.ignoring(DIALOG_ARROW_MODIFIERS).alternates()],
+        )
+        .when(|app, _| app.trash.open)]),
+        Action::new("trash-dialog-focus-confirm", |app, _, tx| {
+            focus_button(app, "primary", tx)
+        })
+        .command(RIGHT)
+        .keys(&[Keys::at(
+            Stage::Entry,
+            &[RIGHT.ignoring(DIALOG_ARROW_MODIFIERS).alternates()],
+        )
+        .when(|app, _| app.trash.open)]),
     ];
+}
+
+fn apply_queued(app: &mut App, queued: Queued, waiting: &mut Option<(Vec<FileEntry>, Kind)>) {
+    match queued {
+        Queued::Trash { entries } => {
+            if let Some((asked, _)) = waiting {
+                not_again(asked, &entries);
+            }
+            move_to_trash(app, entries);
+        }
+        Queued::Delete { entries, remote } => {
+            if let Some((asked, _)) = waiting {
+                not_again(asked, &entries);
+            }
+            delete_confirmed(app, entries, remote);
+        }
+        Queued::Cancel { cursor, entries } => return_cursor(app, cursor, &entries),
+    }
+}
+
+fn confirms_trash_dialog(app: &App) -> bool {
+    app.trash.open
+        && app
+            .trash
+            .confirm
+            .as_ref()
+            .is_some_and(|confirm| confirm.kind == Kind::Trash)
+}
+
+fn tenxer_confirm(app: &mut App, _: &Call<'_>, _: &mut Tx) -> Outcome {
+    confirmed(app);
+    Outcome::Ran
+}
+
+/// `h` and `l` move the keyboard between the confirmation's buttons, as GTK's
+/// `delete_confirmation_focus_target` does; the arrows are the dialog's own.
+fn focus_button(app: &mut App, suffix: &str, tx: &mut Tx) -> Outcome {
+    let Some(confirm) = app.trash.confirm.as_ref() else {
+        return Outcome::Declined;
+    };
+    tx.focus(
+        format!("delete-confirm-{}-{suffix}", confirm.generation),
+        true,
+    );
+    Outcome::Ran
 }
 
 fn is_trash(location: &Location) -> bool {
@@ -344,6 +411,50 @@ fn deleted(app: &mut App, call: &Call<'_>, _: &mut Tx) -> Outcome {
     }
 }
 
+/// `BrowserView::confirm_targets_delete` (`src/ui/browser/file_commands.rs:179`): 10xer's `d`
+/// and `D` always confirm before trashing or deleting. Returns `false` when nothing is targeted.
+pub(crate) fn confirm_tenxer_delete(app: &mut App, permanent: bool) -> bool {
+    let mut entries = crate::tenxer::command_targets(app);
+    if entries.is_empty() && empty_active_column_falls_back(app) {
+        entries = app.browser.deletion_entries();
+    }
+    if entries.is_empty() {
+        return false;
+    }
+    let in_trash = crate::tenxer::focused_listing_depth(app)
+        .and_then(|depth| app.browser.location_at(depth))
+        .as_ref()
+        .is_some_and(is_trash);
+    request_confirmed(app, entries, permanent || in_trash);
+    true
+}
+
+fn empty_active_column_falls_back(app: &App) -> bool {
+    let focused = crate::tenxer::focused_listing_depth(app);
+    filter::targets::selected(app).is_none()
+        && in_columns(app)
+        && focused == app.browser.active_depth()
+        && focused.is_some_and(|depth| {
+            app.browser
+                .column_snapshot(depth)
+                .is_some_and(|column| column.count == 0)
+        })
+}
+
+fn request_confirmed(app: &mut App, entries: Vec<FileEntry>, permanent: bool) {
+    if entries.iter().any(|entry| !can_remove(&entry.location)) {
+        return;
+    }
+    let kind = if permanent {
+        Kind::Permanent
+    } else if trash_unsupported(app, &entries) {
+        Kind::TrashUnavailable
+    } else {
+        Kind::Trash
+    };
+    show(app, entries, kind);
+}
+
 /// `show_delete_dialog`: the confirmation opens over the window, and its size task starts.
 /// While one is open, the new one waits for it to close.
 fn show(app: &mut App, entries: Vec<FileEntry>, kind: Kind) {
@@ -359,10 +470,14 @@ fn show(app: &mut App, entries: Vec<FileEntry>, kind: Kind) {
         .browser
         .focused_item()
         .map(|(depth, _, entry)| (depth, entry.location));
+    let needs_size = confirm.needs_size_task();
     let entries = confirm.entries.clone();
     let generation = confirm.generation;
     trash.confirm = Some(confirm);
     trash.open = true;
+    if !needs_size {
+        return;
+    }
     let task = size_in_background(&trash.later, entries, reach, generation);
     if let Some(earlier) = trash.sizing.replace(task) {
         earlier.abort();
@@ -394,8 +509,10 @@ fn size_in_background(
             else {
                 return false;
             };
-            confirm.subtitle = subtitle;
-            confirm.sizing = false;
+            if confirm.kind != Kind::Trash {
+                confirm.subtitle = subtitle;
+                confirm.sizing = false;
+            }
             for (index, text) in links {
                 if let Some(metadata) = confirm.metadata.get_mut(index) {
                     *metadata = text;
@@ -420,15 +537,20 @@ fn close(app: &mut App) -> Option<&Confirm> {
     trash.confirm.as_ref()
 }
 
-/// The delete button: the dialog closes and the items it asked about go for good
-/// (`delete_confirmed_permanently`).
+/// The confirm button: moves items to Trash for `Kind::Trash`, or deletes them permanently.
 fn confirmed(app: &mut App) {
     let Some(confirm) = close(app) else {
         return;
     };
-    let queued = Queued::Delete {
-        entries: confirm.entries.clone(),
-        remote: confirm.reach == Reach::Remote,
+    let queued = if confirm.kind == Kind::Trash {
+        Queued::Trash {
+            entries: confirm.entries.clone(),
+        }
+    } else {
+        Queued::Delete {
+            entries: confirm.entries.clone(),
+            remote: confirm.reach == Reach::Remote,
+        }
     };
     app.trash.queued.push(queued);
 }

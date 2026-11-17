@@ -1,11 +1,11 @@
 diff --git a/crates/strata-app/src/single/mod.rs b/crates/strata-app/src/single/mod.rs
 --- a/crates/strata-app/src/single/mod.rs
 +++ b/crates/strata-app/src/single/mod.rs
-@@ -244,6 +244,7 @@ pub(crate) fn collection<V: SinglePane>(app: &App) -> Collection<App> {
+@@ -279,6 +279,7 @@ pub(crate) fn collection<V: SinglePane>(app: &App) -> Collection<App> {
          interrupted::<V>,
      )
      .name(title::<V>(app))
 +    .keys_by_host()
      .description(described::<V>(app))
      .settings(live_keys(app, single))
-     .settings(PointerSettings::default().modes(V::clicks(shell::preferences(app))))
+     .settings(live_pointer::<V>(app))

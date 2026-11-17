@@ -7,6 +7,7 @@
 mod describe;
 mod fixture;
 mod hooks;
+mod origin;
 mod perf;
 mod x2;
 
@@ -82,6 +83,8 @@ struct Host {
     host_takes_keys: Option<bool>,
     /// Every range `on_visible` heard, in order.
     heard_visible: Vec<std::ops::Range<usize>>,
+    /// Allows one selected entry only (`PointerSettings::multiple(false)`).
+    single: bool,
 }
 
 /// What each `on_scroll` follower heard: its name and the offset.
@@ -122,6 +125,7 @@ impl Host {
             followers: None,
             host_takes_keys: None,
             heard_visible: Vec::new(),
+            single: false,
         }
     }
 }
