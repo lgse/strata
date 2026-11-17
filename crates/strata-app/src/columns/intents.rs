@@ -51,9 +51,13 @@ impl App {
             Activation::Key if self.browser_is_on(depth, position) => {
                 self.browser.activate_focused();
             }
+            Activation::Key => self.browser.activate(depth, position),
             // A click opens it with no cursor: `activate_column_entry` in
             // `src/ui/browser/columns/state.rs`.
-            _ => self.browser.activate(depth, position),
+            _ => {
+                crate::preview::note_click_opening(self, depth, position);
+                self.browser.activate(depth, position);
+            }
         }
     }
 
@@ -221,9 +225,8 @@ pub(super) fn heard(app: &mut App, intent: ColumnsIntent, tx: &mut Tx) {
             filter::picked(app);
         }
         // Published above, and with it the active column a key moved the keyboard to.
-        ColumnsIntent::Cursor { .. }
-        | ColumnsIntent::Selection { .. }
-        | ColumnsIntent::Active { .. } => {}
+        ColumnsIntent::Cursor { .. } | ColumnsIntent::Selection { .. } => {}
+        ColumnsIntent::Active { .. } => crate::preview::follow_active_column(app, tx),
         ColumnsIntent::HeaderMenu { depth, anchor } => {
             let folder = Request {
                 depth,
@@ -365,6 +368,7 @@ pub(super) fn clicked_open(app: &mut App, (depth, id): At) {
         return;
     }
     if let Some(position) = app.columns.position(depth, id) {
+        crate::preview::note_click_opening(app, depth, position);
         app.browser.activate(depth, position);
     }
 }
