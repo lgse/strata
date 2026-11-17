@@ -1171,6 +1171,10 @@ sequence only together with the alphabet's version, so the version is part of th
   `sort::tests::a_columns_menu_sorts_its_own_column` said "the inner folder's column" after its
   30 s wait (`crates/strata-app/src/sort/tests.rs:167`); alone, it passed 3 of 3. It has no
   owner.
+  The sidebar's again on 2026-11-17, in the full lane of [A16](packages/A16.md)'s Slice 2 at
+  `bb330eb69`: after Left the keyboard was on `location-copy` where `header-sidebar-toggle` was
+  wanted (`crates/strata-app/src/sidebar/tests.rs:550`). That slice changes only the preview's
+  viewers; alone, the test passed 3 of 3.
 - **Concerns:** those four tests: the two of [A7](packages/A7.md)'s undo, the sidebar's and
   the sort's.
 - **What it suggests:** a hypothesis, by reading only, not verified: the test presses the redo
