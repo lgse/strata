@@ -4,6 +4,10 @@
 //! session bus, pumps GLib on Rune's event loop, opens each `ChooserRequest` as a
 //! foreign-parented Rune window (`strata_platform::foreign_parent`), and exits once no request
 //! has been active for [`IDLE_TIMEOUT`](crate::portal::IDLE_TIMEOUT).
+//!
+//! Each chooser window takes drops from other applications, as GTK's chooser does: a file
+//! dropped on a sidebar pin is copied there. The QA mode's session host runs this daemon with
+//! [`Hooks`] of its own (`qa::session::portal`).
 
 use std::{
     cell::{OnceCell, RefCell},
@@ -21,6 +25,7 @@ use strata_core::model::Location;
 use strata_kit::fonts::{FAMILIES, FONTS};
 use strata_platform::{
     csd::{self, Backend, Csd, Policy},
+    dnd::Dnd,
     foreign_parent::{self, Options, Parent},
     glib_loop::GlibLoop,
 };
@@ -46,6 +51,31 @@ thread_local! {
     static GLIB: OnceCell<GlibLoop> = const { OnceCell::new() };
     static WINDOWS: RefCell<HashMap<String, (WindowHandle, AppHandle<App>)>> =
         RefCell::new(HashMap::new());
+    static HOOKS: OnceCell<Hooks> = const { OnceCell::new() };
+}
+
+/// Ends the daemon, and so the process, from any thread.
+pub(crate) type Quit = Box<dyn Fn() + Send>;
+/// Runs once before the daemon's loop, with what ends it.
+pub(crate) type Started = Box<dyn FnOnce(Quit)>;
+/// Each chooser window's app before it opens, with its request's token.
+pub(crate) type Opening = Box<dyn Fn(rune::App<App>, &str) -> rune::App<App>>;
+/// The token of a chooser window that closed.
+pub(crate) type Closed = Box<dyn Fn(&str)>;
+
+/// What a host running the daemon adds to it: the QA mode's session host follows each chooser
+/// window and keeps the daemon while no request is active.
+#[derive(Default)]
+pub(crate) struct Hooks {
+    pub(crate) started: Option<Started>,
+    pub(crate) chooser: Option<Opening>,
+    pub(crate) closed: Option<Closed>,
+    /// The daemon runs on while no request is active.
+    pub(crate) stays: bool,
+}
+
+fn hooks<T>(read: impl FnOnce(&Hooks) -> T) -> Option<T> {
+    HOOKS.with(|hooks| hooks.get().map(read))
 }
 
 struct Daemon {
@@ -85,7 +115,9 @@ fn daemon_poll(daemon: &mut Daemon, _clock: f64, tx: &mut Tx) -> bool {
     pump_glib();
     drain(daemon, tx);
     let idle = WINDOWS.with(|windows| windows.borrow().is_empty());
+    let stays = hooks(|hooks| hooks.stays).unwrap_or(false);
     if idle
+        && !stays
         && daemon
             .service
             .requests
@@ -105,7 +137,16 @@ fn chooser_poll(app: &mut App, clock: f64, tx: &mut Tx) -> bool {
     shell::poll(app, clock, tx) | settled
 }
 
-pub(crate) fn run(ui: UiThread, _initial_settings: Saved) -> Result<(), String> {
+pub(crate) fn run(ui: UiThread, initial_settings: Saved) -> Result<(), String> {
+    run_with(ui, initial_settings, Hooks::default())
+}
+
+/// [`run`], with what `hooks` add.
+pub(crate) fn run_with(
+    ui: UiThread,
+    _initial_settings: Saved,
+    mut hooks: Hooks,
+) -> Result<(), String> {
     std::thread::spawn(strata_fs::services::prune_stale_downloads);
     rune::set_app_id(CHOOSER_APPLICATION_ID);
 
@@ -125,9 +166,17 @@ pub(crate) fn run(ui: UiThread, _initial_settings: Saved) -> Result<(), String> 
         .keep_running()
         .args(Vec::new())
         .on_quit(|_: &mut Daemon, _: &mut Tx| {
+            crate::dnd::shutdown();
             let _ = foreign_parent::shutdown();
         });
     let daemon_handle = daemon_app.handle();
+    if let Some(started) = hooks.started.take() {
+        let quitting = daemon_handle.clone();
+        started(Box::new(move || quitting.quit()));
+    }
+    HOOKS
+        .with(|cell| cell.set(hooks))
+        .map_err(|_| "the portal daemon is already running on this thread".to_owned())?;
 
     let inbox = PortalInbox::default();
     let wake = daemon_handle.clone();
@@ -187,13 +236,14 @@ fn close_chooser(app: &mut App, tx: &mut Tx) {
     WINDOWS.with(|windows| {
         windows.borrow_mut().remove(&token);
     });
+    hooks(|hooks| hooks.closed.as_ref().map(|closed| closed(&token)));
 }
 
 /// The chooser's own app over `state`, which shows its window once it is parented.
 fn chooser_app(
     request: &ChooserRequest,
-    state_size: (f32, f32),
-    frame: strata_platform::csd::Frame,
+    (state_size, frame): ((f32, f32), strata_platform::csd::Frame),
+    dnd: Dnd<App>,
 ) -> rune::App<App> {
     let parent = request
         .parent
@@ -211,6 +261,7 @@ fn chooser_app(
     let handle = app.handle();
     app.on_window(move |window: &WindowHandle| {
         csd::attach(window, &handle, shell::csd_of);
+        crate::dnd::attach(&dnd, window, &handle);
         let options = Options::new().modal(modal).on_lost(lost_parent);
         let _ = foreign_parent::apply(window, &handle, &parent, options);
         window.show();
@@ -239,13 +290,21 @@ fn open_chooser_window(
     #[expect(clippy::cast_precision_loss, reason = "window dimensions fit f32")]
     let size = (width as f32, height as f32);
     let initial = Location::local(request.initial_directory.clone());
-    let app = chooser_app(&request, size, frame);
-    let state = App::new_chooser(
+    let dnd = Dnd::<App>::new();
+    let app = chooser_app(&request, (size, frame), dnd.clone());
+    let app = HOOKS.with(
+        |cell| match cell.get().and_then(|hooks| hooks.chooser.as_ref()) {
+            Some(chooser) => chooser(app, &token),
+            None => app,
+        },
+    );
+    let mut state = App::new_chooser(
         &ui,
         Csd::new(frame, Backend::from_env()),
         startup::load_settings(),
         (request, ChooserFileSource::new(None), None, completion),
     );
+    crate::dnd::bind(&mut state, dnd);
     state.open(initial);
     let handle = app.handle();
     let window = rune::open_window(WindowSpec::from_app(&token, app).state(state));

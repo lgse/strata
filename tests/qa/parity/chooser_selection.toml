@@ -111,9 +111,8 @@ host = "offscreen"
 scenario = "chooser-sidebar-drops-survive-resize"
 run = "list"
 package = "A20"
-status = "pending"
-reason = "scope"
-blocker = "A19: a drop from another process onto a sidebar pin (line 7, `tests/qa/foreign_drag_source.py`), its third slice; then A20's session host for `--qa --portal`, which runs on the offscreen host only so far"
+status = "required"
+host = "session"
 
 [[run]]
 scenario = "chooser-tap-drag-keeps-request-open"
