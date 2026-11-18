@@ -129,8 +129,9 @@ impl Kept {
     }
 }
 
-/// The browser's empty `marks` with `id` as the cursor, unselected. The anchor is the
-/// browser's while it holds one, as a later Shift range on GTK extends from it, else `id`.
+/// The browser's `marks`, which place no cursor and select nothing, with `id` as the cursor,
+/// unselected, and as the anchor unless the browser marks one (an undo marks the entry it
+/// brings back).
 fn neighbour(id: EntryId, marks: &Marks) -> Marks {
     Marks {
         cursor: Some(id),

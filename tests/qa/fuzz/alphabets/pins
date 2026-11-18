@@ -39,6 +39,10 @@ clipboard v4 a90e680dd30c410f
 # Ctrl+A and Shift selection in the rename editor, version 3 its Up, Down and page keys. Their
 # seeds name the shrunk sequences of the pilot's findings, parked in tests/qa/fuzz/corpus/columns.
 columns v3 c1c7755a9701e199
+# drag: version 1 was A19's draft, never merged: it met lgse/strata#2590, #2591 and #2592,
+# parked in tests/qa/fuzz/corpus/drag, and Rune's keyboard lost after an undo (fixed).
+# Version 2 drags only rows not selected, and leaves Escape out.
+drag v2 f7207da98508ca44
 entries v3 8fb7d5c38ff6b880
 # filter: version 1 was A10's draft, never merged: version 2 leaves out Choose sort field on
 # lgse/strata#2494's account, adds Appearance's Group by file type and Hidden files, and keeps

@@ -81,6 +81,13 @@ pub(crate) fn zone_takes<S: 'static>(zone: &DropZone<S>) -> bool {
     CONTENT_TYPES.iter().any(|mime| zone.reads(mime))
 }
 
+/// Whether `zone` lists exactly what the policy reads: the file list, then [`CONTENT_TYPES`],
+/// as `DropZone::takes_content(CONTENT_TYPES)` makes it.
+pub(crate) fn lists_the_policy<S: 'static>(zone: &DropZone<S>) -> bool {
+    let listed = zone.preferred_mime_types().iter().map(AsRef::as_ref);
+    listed.eq(std::iter::once(URI_LIST).chain(CONTENT_TYPES.iter().copied()))
+}
+
 /// Whether a drop of `content` onto `destination` is taken, so what runs before a drop commits
 /// (a tab drop selects its tab) should run.
 pub(crate) fn takes(destination: &Location, content: &Content) -> bool {

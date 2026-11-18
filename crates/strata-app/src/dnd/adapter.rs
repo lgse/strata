@@ -255,6 +255,13 @@ pub(crate) fn target_of<S: 'static>(zone: DropZone<S>) -> DropTarget<S> {
     // A zone that takes content reads one type at a time, as GTK reads only the one it uses;
     // a zone of files reads the file list.
     let mut target = if content::zone_takes(&zone) {
+        // The walks read and judge a drop by the policy's list (`content_zone_takes`), not the
+        // zone's: a zone listing other types would be read by the wrong one.
+        debug_assert!(
+            content::lists_the_policy(&zone),
+            "a content zone lists the file list and `CONTENT_TYPES`, and nothing else: {:?}",
+            zone.preferred_mime_types()
+        );
         target.read_next(|data| content::next_read(&Reading { data }))
     } else {
         target.read_all()
