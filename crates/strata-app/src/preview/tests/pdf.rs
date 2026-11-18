@@ -255,3 +255,32 @@ fn the_pdf_zoom_reset_follows_the_key_map_ahead_of_the_text_size() {
         },
     );
 }
+
+/// Puts the pointer over the middle of the PDF's pages.
+fn hover_pages(host: &mut crate::host::offscreen::Offscreen) {
+    let scroll = format!("{}-scroll", pdf::PDF_KEY);
+    let elements = host.runtime().elements();
+    let pages = elements
+        .iter()
+        .find(|element| !element.exiting && element.key.as_deref() == Some(scroll.as_str()));
+    let [x, y, w, h] = pages.expect("the pages are mounted").visible;
+    host.runtime().pointer_move(x + w / 2.0, y + h / 2.0);
+    while host.turn() {}
+}
+
+/// Escape closes a PDF preview with the pointer over its pages: the pages' hover ends as
+/// they go, after the viewer has.
+#[test]
+fn escape_closes_a_pdf_preview_under_the_pointer() {
+    hosted(
+        MODULE,
+        "pdf::escape_closes_a_pdf_preview_under_the_pointer",
+        |mut host| {
+            let _folder = show_pdf(&mut host, &Pages::default());
+            hover_pages(&mut host);
+            focus_view(&mut host);
+            press(&mut host, Key::Escape, Mods::default());
+            assert!(!host.app().preview.enabled, "Escape closes the preview");
+        },
+    );
+}

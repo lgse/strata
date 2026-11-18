@@ -78,6 +78,8 @@ pub(crate) struct Preview {
     operations: Option<file_activity::Subscription>,
     last_split_width: Option<f32>,
     was_in_band: bool,
+    /// What a PDF view's handler gets once its viewer has gone (`pdf::pdf_mut`).
+    pdf_gone: strata_components::pdf_view::PdfState,
 }
 
 /// The folder a click in Columns is opening, at `depth`, until its column has loaded.
@@ -184,6 +186,7 @@ impl Part for Preview {
             operations: None,
             last_split_width: None,
             was_in_band: false,
+            pdf_gone: strata_components::pdf_view::PdfState::new(pdf::GONE_KEY),
         }
     }
 

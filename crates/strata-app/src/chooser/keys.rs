@@ -132,10 +132,14 @@ fn refuse_command(app: &mut App, call: &Call<'_>, tx: &mut Tx) -> Outcome {
     let Some(reason) = refusal_reason(press, multiple, in_view) else {
         return Outcome::Declined;
     };
-    if shell::preferences(app).tenxer_mode {
-        crate::tenxer::show_flash(app, tr(reason), tx);
-    }
+    crate::tenxer::show_flash(app, tr(reason), tx);
     Outcome::Ran
+}
+
+/// GTK refuses these only among its 10xer keys (`tenxer_window_keys`), which read nothing
+/// outside 10xer mode: there Space previews, as in the window.
+fn refuses_commands(app: &App, _: &Situation) -> bool {
+    app.chooser.is_active() && shell::preferences(app).tenxer_mode
 }
 
 fn is_chooser_outside_text(app: &App, at: &Situation) -> bool {
@@ -173,7 +177,7 @@ pub(crate) const COMMANDS: &[Action<App>] = &[
     Action::new("chooser-refusal", refuse_command).keys(&[Keys {
         stage: Stage::TenxerKeys,
         reads: Reads::Press(reads_refusal),
-        when: |app, _| app.chooser.is_active(),
+        when: refuses_commands,
     }]),
     Action::new("chooser-escape-name", escape_in_name)
         .command(ESCAPE)

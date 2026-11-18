@@ -97,17 +97,15 @@ host = "offscreen"
 scenario = "chooser-pdf-zoom-keeps-text-size"
 run = "list-default"
 package = "A20"
-status = "pending"
-reason = "scope"
-blocker = "A16: the PDF viewer in the chooser's preview drawer, whose page image is named \"PDF page text\" (line 9)"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "chooser-pdf-zoom-keeps-text-size"
 run = "list-tenxer"
 package = "A11"
-status = "pending"
-reason = "scope"
-blocker = "A20: Space opens no preview in the chooser, so line 30 never sees its `PDF page text` image (A16's viewer has landed); then the session host for `--qa --portal`"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "chooser-sidebar-drops-survive-resize"
