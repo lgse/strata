@@ -53,3 +53,6 @@ pub(crate) fn window_shown(app: &mut App, shown: bool, _: &mut Tx) {
     app.window.on_screen = shown;
     follow(app);
 }
+
+#[cfg(test)]
+mod tests;

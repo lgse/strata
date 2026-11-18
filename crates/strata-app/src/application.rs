@@ -53,9 +53,18 @@ pub(crate) enum Opening {
     Reveal(RevealRequest),
 }
 
+/// A window asked for, with the activation token its asker forwarded: the compositor lets a
+/// window created with it take the focus, as GTK's GApplication hands a launch's token to the
+/// window it presents.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct Asked {
+    pub(crate) opening: Opening,
+    pub(crate) token: Option<String>,
+}
+
 thread_local! {
     /// What the bus asked for since the host last looked: on the interface thread.
-    static QUEUED: RefCell<VecDeque<Opening>> = const { RefCell::new(VecDeque::new()) };
+    static QUEUED: RefCell<VecDeque<Asked>> = const { RefCell::new(VecDeque::new()) };
     /// The primary, kept for the life of the process and released as it quits.
     static PRIMARY: RefCell<Option<single_instance::Primary>> = const { RefCell::new(None) };
 }
@@ -92,42 +101,72 @@ pub(crate) fn release() {
     }
 }
 
-/// The windows asked for since the last call, in the order they were asked for.
-pub(crate) fn take() -> Vec<Opening> {
+/// The windows asked for since the last call, in the order they were asked for, with their
+/// tokens.
+pub(crate) fn take_asked() -> Vec<Asked> {
     QUEUED.with(|queued| queued.borrow_mut().drain(..).collect())
 }
 
-/// Puts `openings` back at the head of the queue, for the host's first pump.
+/// [`take_asked`], for a host whose windows take no activation token.
+pub(crate) fn take() -> Vec<Opening> {
+    take_asked()
+        .into_iter()
+        .map(|asked| asked.opening)
+        .collect()
+}
+
+/// Puts `openings` back at the head of the queue, for the host's first pump. They are the
+/// process's own launch's, whose token Rune gives its first window itself.
 pub(crate) fn queue_first(openings: impl IntoIterator<Item = Opening>) {
     let openings: Vec<Opening> = openings.into_iter().collect();
     QUEUED.with(|queued| {
         let mut queued = queued.borrow_mut();
         for opening in openings.into_iter().rev() {
-            queued.push_front(opening);
+            queued.push_front(Asked {
+                opening,
+                token: None,
+            });
         }
     });
 }
 
+/// Queues `openings`, each to be created with `token`.
+fn queue_with(openings: impl IntoIterator<Item = Opening>, token: Option<&str>) {
+    let token = token.filter(|token| !token.is_empty()).map(str::to_owned);
+    QUEUED.with(|queued| {
+        queued
+            .borrow_mut()
+            .extend(openings.into_iter().map(|opening| Asked {
+                opening,
+                token: token.clone(),
+            }));
+    });
+}
+
+#[cfg(test)]
 fn queue(openings: impl IntoIterator<Item = Opening>) {
-    QUEUED.with(|queued| queued.borrow_mut().extend(openings));
+    queue_with(openings, None);
 }
 
 /// One event of the bus, on the interface thread. A launch is answered as it is dropped, with
 /// status 0, as GTK answers once it has asked for its windows.
 fn heard(event: Event) {
     match event {
-        Event::CommandLine(command) => queue(openings(
-            command.arguments(),
-            command.cwd(),
-            command.is_remote(),
-        )),
-        Event::Activate(_) => queue([Opening::Present]),
-        Event::Open { uris, .. } => queue(
+        Event::CommandLine(command) => queue_with(
+            openings(command.arguments(), command.cwd(), command.is_remote()),
+            command.activation().token(),
+        ),
+        Event::Activate(activation) => queue_with([Opening::Present], activation.token()),
+        Event::Open {
+            uris, activation, ..
+        } => queue_with(
             uris.iter()
                 .filter_map(|uri| location_for_file(&gio::File::for_uri(uri)))
                 .map(Opening::Argument),
+            activation.token(),
         ),
-        Event::Reveal(reveal) => queue(revealed(&reveal)),
+        // FileManager1's startup id is the caller's activation token, when it has one.
+        Event::Reveal(reveal) => queue_with(revealed(&reveal), Some(&reveal.startup_id)),
         // No actions are exported.
         Event::Action { .. } => {}
     }

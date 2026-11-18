@@ -9,9 +9,9 @@ use std::{
 use strata_core::model::Location;
 
 use strata_fs::adapters::RevealRequest;
-use strata_platform::single_instance::{Reveal, RevealMethod};
+use strata_platform::single_instance::{Activation, Event, Reveal, RevealMethod};
 
-use super::{Opening, openings, queue, queue_first, revealed, take};
+use super::{Asked, Opening, heard, openings, queue, queue_first, revealed, take, take_asked};
 use crate::{
     host::offscreen::Offscreen,
     launch::Initial,
@@ -233,5 +233,44 @@ fn a_reveal_selects_its_items_and_shows_their_properties_when_asked() {
                 );
             }
         },
+    );
+}
+
+/// Each window is created with the activation token its asker forwarded: an activation's, and
+/// a FileManager1 call's startup id, which is the caller's token when it has one.
+#[test]
+fn a_window_takes_the_token_of_what_asked_for_it() {
+    let token = |token: &str| Activation {
+        xdg_activation_token: Some(token.to_owned()),
+        desktop_startup_id: None,
+    };
+    let reveal = |startup_id: &str| Reveal {
+        method: RevealMethod::Folders,
+        uris: vec!["file:///srv/a".to_owned()],
+        startup_id: startup_id.to_owned(),
+    };
+    let folder = Opening::Reveal(RevealRequest {
+        directory: Location::local("/srv/a"),
+        selection: Vec::new(),
+        properties: false,
+    });
+
+    heard(Event::Activate(token("from-the-launcher")));
+    heard(Event::Activate(Activation::default()));
+    heard(Event::Reveal(reveal("from-the-browser")));
+    heard(Event::Reveal(reveal("")));
+
+    let asked = |opening: &Opening, token: Option<&str>| Asked {
+        opening: opening.clone(),
+        token: token.map(str::to_owned),
+    };
+    assert_eq!(
+        take_asked(),
+        vec![
+            asked(&Opening::Present, Some("from-the-launcher")),
+            asked(&Opening::Present, None),
+            asked(&folder, Some("from-the-browser")),
+            asked(&folder, None),
+        ]
     );
 }
