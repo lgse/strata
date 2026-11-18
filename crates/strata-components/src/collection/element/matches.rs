@@ -26,7 +26,9 @@ pub struct NameMatches {
 const WORDS: usize = 8;
 
 impl NameMatches {
-    /// The bytes of a name that can be highlighted; matches past them are dropped.
+    /// The bytes of a name that can be highlighted; matches past them are dropped. A range across
+    /// it is cut there, which may fall inside a character of a longer name: the host, which
+    /// knows the name, ends its ranges on a character boundary within it.
     pub const REACH: usize = WORDS * 64;
 
     /// `ranges`, skipping empty ones, up to [`NameMatches::REACH`].
