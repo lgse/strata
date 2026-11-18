@@ -74,8 +74,11 @@ thread_local! {
     /// Every window's queue and handle by window id, the floating choosers' among them: what a
     /// dispatch in one window, or another window's change of a setting, queues into
     /// ([`wake_pending`]).
-    static QUEUES: RefCell<Vec<(u64, WeakLater<App>, AppHandle<App>)>> = const { RefCell::new(Vec::new()) };
+    static QUEUES: RefCell<Vec<Queue>> = const { RefCell::new(Vec::new()) };
 }
+
+/// A window's id, its queue and its handle ([`wake_pending`]).
+type Queue = (u64, WeakLater<App>, AppHandle<App>);
 
 /// The open windows' handles by window id, in the order they opened.
 static WINDOWS: Mutex<Vec<(u64, AppHandle<App>)>> = Mutex::new(Vec::new());
@@ -222,7 +225,7 @@ fn open_asked(app: &App) {
         let initial = launch::initial_for(opening, &settings);
         rune::open_window(WindowSpec::from_app(
             next_key(),
-            window(ui, Start::New(settings, initial)),
+            window(ui, Start::New(Box::new((settings, initial)))),
         ));
     }
 }
@@ -236,7 +239,7 @@ fn next_key() -> String {
 /// What a window starts from: new state on `initial`, or the state of a window whose close was
 /// refused ([`refused`]).
 enum Start {
-    New(Saved, launch::Initial),
+    New(Box<(Saved, launch::Initial)>),
     Kept(Box<App>),
 }
 
@@ -307,7 +310,8 @@ fn window(ui: UiThread, start: Start) -> rune::App<App> {
     let registered = handle.clone();
     app.init(move || {
         let (mut app, initial) = match start {
-            Start::New(settings, initial) => {
+            Start::New(new) => {
+                let (settings, initial) = *new;
                 let csd = Csd::new(frame, Backend::from_env());
                 (App::new(&ui, csd, settings), Some(initial))
             }
@@ -342,7 +346,7 @@ fn run_initial(
     UI.with(|cell| cell.set(ui))
         .map_err(|_| "the windows are already running on this thread".to_owned())?;
     super::floating::bind(ui);
-    let app = extend(window(ui, Start::New(settings, initial)));
+    let app = extend(window(ui, Start::New(Box::new((settings, initial)))));
     let glib = GlibLoop::start(glib::MainContext::default(), notify)
         .map_err(|error| format!("unable to start the GLib loop: {error}"))?;
     GLIB.with(|cell| cell.set(glib))
