@@ -8,10 +8,14 @@ use std::{
 
 use strata_core::model::Location;
 
-use super::{Opening, openings, queue, queue_first, take};
+use strata_fs::adapters::RevealRequest;
+use strata_platform::single_instance::{Reveal, RevealMethod};
+
+use super::{Opening, openings, queue, queue_first, revealed, take};
 use crate::{
     host::offscreen::Offscreen,
     launch::Initial,
+    properties,
     test_support::{PATIENCE, folder_of, hosted},
 };
 
@@ -140,6 +144,93 @@ fn an_argument_opens_its_folder_or_shows_its_file_selected_in_its_folder() {
                 if !chosen.is_empty() {
                     assert_eq!(selected(&host), chosen, "{path:?}");
                 }
+            }
+        },
+    );
+}
+
+/// A FileManager1 call opens a window per folder, as GTK groups it: the folder itself for
+/// `ShowFolders`, and for the items the folder they are in, with them selected.
+#[test]
+fn a_file_manager_call_asks_for_a_window_per_folder() {
+    let call = |method, uris: &[&str]| Reveal {
+        method,
+        uris: uris.iter().map(|uri| (*uri).to_owned()).collect(),
+        startup_id: String::new(),
+    };
+    let reveal = |directory: &str, selection: &[&str], properties| {
+        Opening::Reveal(RevealRequest {
+            directory: Location::local(directory),
+            selection: selection.iter().map(Location::local).collect(),
+            properties,
+        })
+    };
+    let cases = [
+        (
+            call(RevealMethod::Folders, &["file:///srv/a", "file:///srv/b"]),
+            vec![reveal("/srv/a", &[], false), reveal("/srv/b", &[], false)],
+        ),
+        (
+            call(
+                RevealMethod::Items,
+                &[
+                    "file:///srv/a/one.txt",
+                    "file:///srv/b/two.txt",
+                    "file:///srv/a/three.txt",
+                ],
+            ),
+            vec![
+                reveal("/srv/a", &["/srv/a/one.txt", "/srv/a/three.txt"], false),
+                reveal("/srv/b", &["/srv/b/two.txt"], false),
+            ],
+        ),
+        (
+            call(RevealMethod::ItemProperties, &["file:///srv/a/one.txt"]),
+            vec![reveal("/srv/a", &["/srv/a/one.txt"], true)],
+        ),
+    ];
+    for (call, expected) in cases {
+        assert_eq!(revealed(&call), expected, "{call:?}");
+    }
+}
+
+/// `ShowItemProperties` shows the revealed item's Properties once its folder has listed, and
+/// `ShowItems` shows none.
+#[test]
+fn a_reveal_selects_its_items_and_shows_their_properties_when_asked() {
+    hosted(
+        MODULE,
+        "a_reveal_selects_its_items_and_shows_their_properties_when_asked",
+        |mut host| {
+            let folder = folder_of(&["file.txt", "other.txt"]);
+            let here = Location::local(folder.path());
+            let file = Location::local(folder.path().join("file.txt"));
+            for properties in [false, true] {
+                host.app().open(Location::local(std::env::temp_dir()));
+                let request = RevealRequest {
+                    directory: here.clone(),
+                    selection: vec![file.clone()],
+                    properties,
+                };
+
+                host.start(Initial::Reveal(request));
+                let revealed = host.run_until(PATIENCE, |host| {
+                    host.app().location() == Some(&here)
+                        && selected(host) == vec![file.clone()]
+                        && (!properties || properties::shown_location(host.app()).is_some())
+                });
+
+                assert!(
+                    revealed,
+                    "properties {properties}: {:?}",
+                    host.app().location()
+                );
+                let shown = properties::shown_location(host.app()).cloned();
+                assert_eq!(
+                    shown,
+                    properties.then(|| file.clone()),
+                    "properties {properties}"
+                );
             }
         },
     );

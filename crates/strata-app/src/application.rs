@@ -14,16 +14,27 @@
 //! thread through GLib (`MainContext::invoke`), where it is dispatched like any other source:
 //! it only queues ([`Opening`]), and the host opens what is queued after the dispatch
 //! ([`take`]). A primary's own launch is delivered at [`attach`], before the first window.
+//!
+//! The primary also serves `org.freedesktop.FileManager1`, as GTK's
+//! `export_file_manager_interface` does: browsers and other applications call it for "Open file
+//! location". A call is grouped into a window per folder by GTK's own rules
+//! (`strata_fs::adapters::reveal_requests`), and each opens with its items selected
+//! ([`open_reveal`]). The name is queued for, never taken, so while another file manager holds it
+//! the calls keep reaching that one.
 
 mod argument;
+mod reveal;
 
 use std::{cell::RefCell, collections::VecDeque, ffi::OsString, path::Path};
 
 use strata_core::model::Location;
-use strata_fs::adapters::location_for_file;
-use strata_platform::single_instance::{self, AppId, Claim, Event, Launch, Options};
+use strata_fs::adapters::{RevealMethod, RevealRequest, location_for_file, reveal_requests};
+use strata_platform::single_instance::{
+    self, AppId, Claim, Event, Launch, Options, Reveal, RevealMethod as Called,
+};
 
 pub(crate) use argument::open as open_argument;
+pub(crate) use reveal::open as open_reveal;
 
 use crate::startup::APPLICATION_ID;
 
@@ -37,6 +48,9 @@ pub(crate) enum Opening {
     Present,
     /// An argument: a folder opens, a file is shown selected in its folder.
     Argument(Location),
+    /// A FileManager1 call's folder, with the items it named selected, and their Properties
+    /// shown when it was `ShowItemProperties`.
+    Reveal(RevealRequest),
 }
 
 thread_local! {
@@ -56,6 +70,7 @@ pub(crate) fn claim(launch: Launch, service: bool) -> Claim {
         launch,
         &Options {
             service,
+            file_manager1: true,
             ..Options::default()
         },
     )
@@ -112,9 +127,21 @@ fn heard(event: Event) {
                 .filter_map(|uri| location_for_file(&gio::File::for_uri(uri)))
                 .map(Opening::Argument),
         ),
-        // No actions are exported, and the shim serves FileManager1 only when asked to.
-        Event::Action { .. } | Event::Reveal(_) => {}
+        Event::Reveal(reveal) => queue(revealed(&reveal)),
+        // No actions are exported.
+        Event::Action { .. } => {}
     }
+}
+
+/// The windows a FileManager1 call opens: one per folder, as GTK groups them.
+fn revealed(reveal: &Reveal) -> Vec<Opening> {
+    let method = match reveal.method {
+        Called::Folders => RevealMethod::Folders,
+        Called::Items => RevealMethod::Items,
+        Called::ItemProperties => RevealMethod::ItemProperties,
+    };
+    let requests = reveal_requests(method, &reveal.uris);
+    requests.into_iter().map(Opening::Reveal).collect()
 }
 
 /// What a launch opens: a window for each argument that names a location, resolved against

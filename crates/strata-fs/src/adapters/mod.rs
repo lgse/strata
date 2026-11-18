@@ -17,7 +17,9 @@ pub mod trash_restore;
 pub mod trash_support;
 mod volume;
 
-pub use file_manager1::{RevealRequest, export_file_manager};
+pub use file_manager1::{
+    Method as RevealMethod, RevealRequest, export_file_manager, reveal_requests,
+};
 pub use gio_location::{
     CONTENT_TYPE_ATTRIBUTES, content_type_of, gio_file_for_location, location_for_file,
     reveal_target_for_file,

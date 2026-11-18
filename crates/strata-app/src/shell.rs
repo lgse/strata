@@ -385,6 +385,7 @@ impl App {
             launch::Initial::Argument(location) => {
                 crate::application::open_argument(self, location)
             }
+            launch::Initial::Reveal(request) => crate::application::open_reveal(self, request),
         }
     }
 
