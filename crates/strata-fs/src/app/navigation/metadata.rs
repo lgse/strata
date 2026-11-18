@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 
 use crate::{
-    model::{FileEntry, Location, MetadataValue},
+    model::{FileEntry, Location, MetadataValue, SortKey},
     services::{MetadataUpdate, RequestId},
 };
 
@@ -95,21 +95,17 @@ impl NavigationState {
     pub fn column_unknown_sort_metadata(
         &self,
         depth: usize,
-        key: crate::model::SortKey,
+        key: SortKey,
     ) -> Option<Vec<(usize, Location)>> {
+        if !key.uses_file_stat() && !key.uses_media_metadata() {
+            return None;
+        }
         let column = self.columns.get(depth)?;
         let gap: Vec<(usize, Location)> = column
             .entries
             .iter()
             .enumerate()
-            .filter(|(_, entry)| {
-                if key == crate::model::SortKey::Created {
-                    entry.created_unix_seconds == MetadataValue::Unknown
-                } else {
-                    entry.modified_unix_seconds == MetadataValue::Unknown
-                        || (!entry.is_directory() && entry.size == MetadataValue::Unknown)
-                }
-            })
+            .filter(|(_, entry)| sort_metadata_missing(key, entry))
             .map(|(position, entry)| (position, entry.location.clone()))
             .collect();
         if gap.is_empty() {
@@ -117,6 +113,36 @@ impl NavigationState {
         }
         Some(gap)
     }
+}
+
+pub(crate) fn sort_metadata_missing(key: SortKey, entry: &FileEntry) -> bool {
+    match key {
+        SortKey::Created => entry.created_unix_seconds == MetadataValue::Unknown,
+        SortKey::Size | SortKey::Modified => {
+            entry.modified_unix_seconds == MetadataValue::Unknown
+                || (!entry.is_directory() && entry.size == MetadataValue::Unknown)
+        }
+        SortKey::Duration | SortKey::Dimensions => media_sort_metadata_missing(key, entry),
+        _ => false,
+    }
+}
+
+fn media_sort_metadata_missing(key: SortKey, entry: &FileEntry) -> bool {
+    if entry.is_directory() {
+        return false;
+    }
+    let Some(path) = entry.location.native_path() else {
+        return false;
+    };
+    if key == SortKey::Duration {
+        return entry.duration_seconds == MetadataValue::Unknown
+            && crate::services::is_media_path(path);
+    }
+    if entry.image_dimensions != MetadataValue::Unknown {
+        return false;
+    }
+    let (content_type, _) = crate::services::guess_content_type(path);
+    content_type.starts_with("image/") || content_type.starts_with("video/")
 }
 
 impl ColumnState {

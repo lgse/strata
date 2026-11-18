@@ -9,10 +9,9 @@ use gtk::{glib, prelude::*};
 
 use super::{
     BoundModeItem, ClickActivation, ListColumnLayout, PanePositions, PaneSection, SourceIndexMap,
-    TransferHandlerSlot, assemble_list_row, entry_mode, entry_size, entry_type,
-    install_list_drag_drop, install_modified_selection_click, install_preview_click,
-    list_row_parts, metadata_fill_position, register_bound_mode_item, register_list_column_cell,
-    set_label_if_changed, set_mode_mark_style,
+    TransferHandlerSlot, assemble_list_row, install_list_drag_drop,
+    install_modified_selection_click, install_preview_click, metadata_fill_position,
+    register_bound_mode_item, register_list_column_cell, set_label_if_changed, set_mode_mark_style,
 };
 use crate::{
     app::Browser,
@@ -20,6 +19,7 @@ use crate::{
     ui::{
         accessibility,
         browser::{self, ClipboardMark, ClipboardMarks, mark_in},
+        preferences::ListColumnId,
         thumbnail,
     },
 };
@@ -171,7 +171,7 @@ impl ListFactory {
         }
         if self.scrolling.get() {
             binding.request_thumbnail_and_metadata(&row);
-            set_label_if_changed(&row.modified, &crate::util::modified_date(&binding.entry));
+            row.update_dates(Some(&binding.entry), false);
         } else {
             let mark = mark_in(&self.marks.borrow(), &binding.entry.location);
             set_mode_mark_style(&row.widget, mark);
@@ -188,41 +188,91 @@ pub(super) struct ListRow {
     pub(super) icon: thumbnail::ThumbnailSlot,
     pub(super) name: gtk::Label,
     pub(super) field: gtk::Entry,
-    pub(super) mode: gtk::Label,
-    pub(super) size: gtk::Label,
-    pub(super) kind: gtk::Label,
-    pub(super) modified: gtk::Label,
+    labels: [Option<gtk::Label>; ListColumnId::ALL.len()],
 }
 
 impl ListRow {
     pub(super) fn from_widget(widget: gtk::Box) -> Option<Self> {
-        let (icon, name, field, mode, size, kind, modified) = list_row_parts(&widget)?;
-        let name_cell = name.parent()?.upcast();
+        let mut name_cell = None;
+        let mut labels = std::array::from_fn(|_| None);
+        let mut child = widget.first_child();
+        while let Some(current) = child {
+            child = current.next_sibling();
+            if current.has_css_class(ListColumnId::Name.css_class()) {
+                name_cell = Some(current);
+            } else if let Some(column) = ListColumnId::ALL
+                .into_iter()
+                .find(|column| current.has_css_class(column.css_class()))
+            {
+                labels[column.index()] = current.downcast().ok();
+            }
+        }
+        let name_cell = name_cell?;
+        let icon = name_cell
+            .first_child()?
+            .downcast::<thumbnail::ThumbnailSlot>()
+            .ok()?;
+        let name = icon.next_sibling()?.downcast::<gtk::Label>().ok()?;
+        let field = name.next_sibling()?.downcast::<gtk::Entry>().ok()?;
         Some(Self {
             widget,
             name_cell,
             icon,
             name,
             field,
-            mode,
-            size,
-            kind,
-            modified,
+            labels,
         })
     }
 
+    pub(super) fn cell(&self, column: ListColumnId) -> Option<gtk::Widget> {
+        if column == ListColumnId::Name {
+            Some(self.name_cell.clone())
+        } else {
+            self.labels[column.index()].clone().map(gtk::Label::upcast)
+        }
+    }
+
     fn register_columns(&self, columns: &ListColumnLayout) {
-        for (index, widget) in [
-            self.name_cell.clone(),
-            self.mode.clone().upcast(),
-            self.size.clone().upcast(),
-            self.kind.clone().upcast(),
-            self.modified.clone().upcast(),
-        ]
-        .into_iter()
-        .enumerate()
-        {
-            register_list_column_cell(columns, index, &widget);
+        for column in ListColumnId::ALL {
+            if let Some(cell) = self.cell(column) {
+                register_list_column_cell(columns, column.index(), &cell);
+            }
+        }
+    }
+
+    fn has_media_column(&self) -> bool {
+        ListColumnId::ALL.into_iter().any(|column| {
+            column
+                .definition()
+                .sort_key
+                .is_some_and(|key| key.uses_media_metadata())
+                && self.labels[column.index()]
+                    .as_ref()
+                    .is_some_and(gtk::Label::is_visible)
+        })
+    }
+
+    pub(super) fn update_metadata(&self, entry: &FileEntry) {
+        self.update_text_columns(Some(entry));
+        self.update_dates(Some(entry), true);
+    }
+
+    fn update_text_columns(&self, entry: Option<&FileEntry>) {
+        for (column, label) in ListColumnId::ALL.into_iter().zip(&self.labels) {
+            if let Some(label) = label {
+                let text = entry.and_then(|entry| super::metadata::list_cell_text(column, entry));
+                if let Some(text) = text.or_else(|| entry.is_none().then(String::new)) {
+                    set_label_if_changed(label, &text);
+                }
+            }
+        }
+    }
+
+    fn update_dates(&self, entry: Option<&FileEntry>, live: bool) {
+        for (column, label) in ListColumnId::ALL.into_iter().zip(&self.labels) {
+            if let Some(label) = label {
+                super::metadata::update_list_date(column, label, entry, live);
+            }
         }
     }
 
@@ -230,9 +280,7 @@ impl ListRow {
         set_label_if_changed(&self.name, pending_name.unwrap_or(&entry.display_name));
         self.name
             .set_opacity(if entry.is_hidden { 0.65 } else { 1.0 });
-        set_label_if_changed(&self.mode, &entry_mode(entry));
-        set_label_if_changed(&self.size, &entry_size(entry));
-        set_label_if_changed(&self.kind, &entry_type(entry));
+        self.update_text_columns(Some(entry));
         accessibility::describe_entry(
             item,
             pending_name.unwrap_or(&entry.display_name),
@@ -250,10 +298,8 @@ impl ListRow {
         self.name.set_opacity(1.0);
         self.name.set_visible(true);
         self.field.set_visible(false);
-        self.mode.set_label("");
-        self.size.set_label("");
-        self.kind.set_label("");
-        crate::ui::modified_date::set_modified_date(&self.modified, None, "");
+        self.update_text_columns(None);
+        self.update_dates(None, true);
     }
 }
 
@@ -269,7 +315,7 @@ impl ListBinding {
     /// Detail updates must not reset labels or an active rename editor.
     fn refresh_details(&self, row: &ListRow) {
         self.request_thumbnail_and_metadata(row);
-        crate::ui::modified_date::set_modified_date(&row.modified, Some(&self.entry), "—");
+        row.update_dates(Some(&self.entry), true);
     }
 
     fn request_thumbnail_and_metadata(&self, row: &ListRow) {
@@ -280,8 +326,13 @@ impl ListBinding {
             18,
             18,
         );
+        self.request_metadata(row);
+    }
+
+    fn request_metadata(&self, row: &ListRow) {
+        let details = row.has_media_column();
         if let Some(position) =
-            metadata_fill_position(Some(self.position), &self.entry, true, false)
+            metadata_fill_position(Some(self.position), &self.entry, true, details)
         {
             thumbnail::request_metadata(
                 &row.icon,
@@ -290,7 +341,7 @@ impl ListBinding {
                 self.depth,
                 position,
                 self.entry.location.clone(),
-                self.entry.is_directory(),
+                details || self.entry.is_directory(),
             );
         }
     }
@@ -327,8 +378,40 @@ pub(super) fn refresh_list_section(
         let is_hidden = entry.is_hidden;
         set_mode_mark_style(&row.widget, mark_in(marks, &entry.location));
         row.name.set_opacity(if is_hidden { 0.65 } else { 1.0 });
-        crate::ui::modified_date::set_modified_date(&row.modified, Some(&entry), "—");
+        row.update_dates(Some(&entry), true);
         row.icon.set_hidden(is_hidden);
         row.icon.set_base_opacity(1.0);
     });
+}
+
+pub(super) fn request_visible_list_details(browser: &Rc<Browser>, pane: &super::pane::Pane) {
+    for section in pane.item_sections() {
+        for bound in section.bound_items.borrow().iter() {
+            let Some(row) = bound
+                .widget
+                .upgrade()
+                .and_downcast::<gtk::Box>()
+                .and_then(ListRow::from_widget)
+            else {
+                continue;
+            };
+            let Some(position) = bound
+                .item
+                .upgrade()
+                .and_then(|item| item.item())
+                .and_then(|item| pane.source_index.of_item(&item))
+            else {
+                continue;
+            };
+            if let Some(entry) = browser.entry_at(pane.depth, position) {
+                ListBinding {
+                    browser: browser.clone(),
+                    depth: pane.depth,
+                    position,
+                    entry,
+                }
+                .request_metadata(&row);
+            }
+        }
+    }
 }

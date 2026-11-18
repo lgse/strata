@@ -6,15 +6,18 @@ use std::{
 };
 
 use crate::{
-    model::{Location, SortKey, ViewPreferences},
+    app::navigation::EntrySplice,
+    model::{Location, ViewPreferences},
     services::{MetadataOutcome, MetadataRequest, RequestId},
 };
 
 use super::{
     Browser, DIRECTORY_LOAD_TIME_BUDGET, MAX_PENDING_FILL_LOCATIONS, MAX_VIEWPORT_FILL_BATCH,
-    METADATA_FILL_TIME_BUDGET, PublicationPlan, PublishTerminal, SortFill, SortOrigin,
-    ViewportFill, ViewportTarget,
+    METADATA_FILL_TIME_BUDGET, MediaSortFill, PublicationPlan, PublishTerminal, SortFill,
+    SortOrigin, ViewportFill, ViewportTarget,
 };
+
+const MEDIA_SORT_BATCH_SIZE: usize = 256;
 
 impl Browser {
     pub fn request_metadata_fill(
@@ -64,6 +67,25 @@ impl Browser {
             .any(|fill| fill.covers(depth, directory_request, target))
     }
 
+    pub(super) fn invalidate_spliced_viewport_details(
+        &self,
+        depth: usize,
+        splices: &[EntrySplice],
+    ) {
+        let mut fills = self.fill_tokens.borrow_mut();
+        for fill in fills
+            .values_mut()
+            .filter(|fill| fill.depth == depth && fill.include_icon_details)
+        {
+            fill.tokens.retain(|(_, location)| {
+                !splices
+                    .iter()
+                    .flat_map(|splice| &splice.entries)
+                    .any(|entry| !entry.is_directory() && entry.location == *location)
+            });
+        }
+    }
+
     pub fn prioritize_metadata_fills(&self, depth: usize, visible: &[Location]) {
         let mut pending = self.metadata_pending.borrow_mut();
         let Some(targets) = pending.get_mut(&depth) else {
@@ -99,6 +121,18 @@ impl Browser {
             self.finish_sorting(depth);
             return;
         };
+        let media = preferences
+            .sort_key
+            .uses_media_metadata()
+            .then(|| MediaSortFill {
+                revision: self.sort_resync.media_revision(depth, directory_request),
+                remaining_before: targets.len(),
+            });
+        let limit = if media.is_some() {
+            MEDIA_SORT_BATCH_SIZE
+        } else {
+            targets.len()
+        };
         let fill_request = self.new_request_id();
         self.sort_awaiting_fill.borrow_mut().replace(SortFill {
             generation,
@@ -107,6 +141,7 @@ impl Browser {
             fill_request,
             directory_request,
             preferences,
+            media,
         });
         let weak: Weak<Self> = Rc::downgrade(self);
         let emit = Rc::new(move |event| {
@@ -117,9 +152,13 @@ impl Browser {
         let handle = self.source.fill_metadata(
             MetadataRequest {
                 id: fill_request,
-                entries: targets.into_iter().map(|(_, location)| location).collect(),
+                entries: targets
+                    .into_iter()
+                    .take(limit)
+                    .map(|(_, location)| location)
+                    .collect(),
                 full: true,
-                include_icon_details: false,
+                include_icon_details: media.is_some(),
                 time_budget: DIRECTORY_LOAD_TIME_BUDGET,
             },
             emit,
@@ -203,7 +242,19 @@ impl Browser {
     fn finish_sort_fill(self: &Rc<Self>, awaiting: SortFill, outcome: MetadataOutcome) {
         self.sort_loads.borrow_mut().remove(&awaiting.depth);
         let current = self.pending_sort.get() == Some((awaiting.generation, awaiting.depth));
-        if outcome == MetadataOutcome::Complete && current {
+        if current && let Some(media) = awaiting.media {
+            self.sort_resync
+                .finish_media_revision(awaiting.depth, media.revision);
+            if matches!(
+                outcome,
+                MetadataOutcome::Complete | MetadataOutcome::Truncated
+            ) {
+                self.continue_media_sort(awaiting, media.remaining_before);
+                self.finish_awaited_sort(awaiting);
+                return;
+            }
+        }
+        if current && outcome == MetadataOutcome::Complete {
             self.finish_awaited_sort(awaiting);
             return;
         }
@@ -212,6 +263,17 @@ impl Browser {
                 .note_attempt(awaiting.origin, awaiting.depth, awaiting.preferences);
         }
         self.abandon_awaited_sort(awaiting.depth, awaiting.generation, outcome);
+    }
+
+    fn continue_media_sort(self: &Rc<Self>, fill: SortFill, remaining_before: usize) {
+        let remaining = self
+            .state
+            .borrow()
+            .column_unknown_sort_metadata(fill.depth, fill.preferences.sort_key)
+            .map_or(0, |targets| targets.len());
+        if remaining > 0 && remaining < remaining_before {
+            self.schedule_media_sort(fill.depth);
+        }
     }
 
     fn release_viewport_fill(self: &Rc<Self>, depth: usize) {
@@ -271,15 +333,16 @@ impl Browser {
             let Some(preferences) = state.column_preferences(depth) else {
                 return;
             };
-            let needs = matches!(
-                preferences.sort_key,
-                SortKey::Size | SortKey::Modified | SortKey::Created
-            ) && state
+            let needs = state
                 .column_unknown_sort_metadata(depth, preferences.sort_key)
                 .is_some();
             (needs, preferences)
         };
         if !needs {
+            return;
+        }
+        if preferences.sort_key.uses_media_metadata() {
+            self.schedule_media_sort(depth);
             return;
         }
         let generation = self.begin_sort(depth);

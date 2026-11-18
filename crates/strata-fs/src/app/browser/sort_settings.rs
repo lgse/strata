@@ -243,6 +243,13 @@ impl Browser {
     /// A fresh generation per sort, so a stale timer or fill cannot pass for a newer sort.
     /// An applied sort has already finished, or finishes when its rows publish.
     pub(super) fn begin_sort(&self, depth: usize) -> u64 {
+        let interrupted_media = self
+            .sort_awaiting_fill
+            .borrow()
+            .and_then(|fill| fill.media.map(|_| fill.depth));
+        if let Some(interrupted) = interrupted_media {
+            self.cancel_pending_sort_for(interrupted);
+        }
         let generation = self.sort_generation.get().wrapping_add(1);
         self.sort_generation.set(generation);
         let previous_applied = self.pending_sort_applied.replace(false);
@@ -304,11 +311,7 @@ impl Browser {
             let targets = state
                 .column_unknown_sort_metadata(depth, preferences.sort_key)
                 .unwrap_or_default();
-            if matches!(
-                preferences.sort_key,
-                SortKey::Size | SortKey::Modified | SortKey::Created
-            ) && !targets.is_empty()
-            {
+            if !targets.is_empty() {
                 drop(state);
                 let pass = SortPass {
                     depth,
@@ -320,9 +323,15 @@ impl Browser {
                 return;
             }
             self.sort_resync.note_attempt(origin, depth, preferences);
+            let request_id = state.request_id_for_depth(depth);
+            if preferences.sort_key.uses_media_metadata()
+                && let Some(request) = request_id
+            {
+                let revision = self.sort_resync.media_revision(depth, request);
+                self.sort_resync.finish_media_revision(depth, revision);
+            }
             let result = state.apply_sort_preferences(depth, preferences);
             self.pending_sort_applied.set(true);
-            let request_id = state.request_id_for_depth(depth);
             let total = state.columns.get(depth).map(|column| column.entries.len());
             let take_focus = state.take_selection_from_reveal(depth);
             result.and_then(|(focused, positions)| {

@@ -209,7 +209,9 @@ impl Browser {
         }
     }
 
-    fn publish_operation_batch(&self, depth: usize, publication: BatchPublication) {
+    fn publish_operation_batch(self: &Rc<Self>, depth: usize, publication: BatchPublication) {
+        self.invalidate_spliced_viewport_details(depth, &publication.splices);
+        self.note_media_sort_changes(depth, &publication.splices);
         self.emit(BrowserEvent::EntriesSpliced {
             depth,
             splices: publication.splices,

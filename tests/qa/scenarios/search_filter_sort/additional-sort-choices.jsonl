@@ -118,3 +118,10 @@
 {"key":"alt+Up"}
 {"wait":{"directory":"$root"},"message":"returning from the folder without menu teardown warnings"}
 {"wait":{"entries":{"contains":["a.rs","file10.md","file2.md","z.csv","Z.md"]},"dir":"$root"},"message":"the rebuilt listing to keep its files"}
+{"click":{"header":"Choose sort field"}}
+{"click":{"role":"radio menu item","name":"Duration"}}
+{"wait":{"state":{"target":{"role":"radio menu item","name":"Duration"},"checked":true}},"message":"the active media sort to be visible in every view"}
+{"click":{"role":"radio menu item","name":"Duration"}}
+{"wait":{"state":{"target":{"role":"radio menu item","name":"Duration"},"checked":false}},"message":"the active media sort to be clearable in every view"}
+{"key":"Escape"}
+{"wait":{"pref":{"key":"sort_key","value":"unsorted"}},"message":"clearing Duration to save the unsorted order"}

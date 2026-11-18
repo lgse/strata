@@ -24,7 +24,11 @@
 {"click":{"remembered":"size"}}
 {"wait":{"all":[{"state":{"target":{"remembered":"size"},"checked":false}},{"pref":{"key":"list_hidden_columns","contains":"size"}}]},"message":"Size visibility to be saved without changing the sort"}
 {"expect":{"entries":{"ends_with":["todo.txt","readme.md"]}}}
+{"expect":{"state":{"target":{"role":"check menu item","name":"Duration"},"checked":false}},"message":"Duration starts hidden"}
+{"click":{"role":"check menu item","name":"Duration"}}
+{"wait":{"all":[{"state":{"target":{"role":"check menu item","name":"Duration"},"checked":true}},{"pref":{"key":"list_shown_columns","contains":"duration"}}]},"message":"enabling Duration saves the opt-in"}
 {"expect":{"present":{"role":"menu item","name":"Reset to default columns"}}}
 {"click":{"role":"menu item","name":"Reset to default columns"}}
 {"wait":{"all":[{"state":{"target":{"remembered":"size"},"checked":true}},{"pref":{"key":"list_hidden_columns","value":null}}]},"message":"default column visibility to be restored"}
 {"expect":{"entries":{"ends_with":["todo.txt","readme.md"]}}}
+{"expect":[{"state":{"target":{"role":"check menu item","name":"Duration"},"checked":false}},{"pref":{"key":"list_shown_columns","value":null}}],"message":"reset removes the optional Duration column and its saved opt-in"}

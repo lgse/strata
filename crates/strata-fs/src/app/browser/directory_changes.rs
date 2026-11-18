@@ -493,7 +493,7 @@ impl Browser {
     }
 
     pub(super) fn publish_live_change(
-        &self,
+        self: &Rc<Self>,
         depth: usize,
         application: EntrySpliceApplication,
         focused_was_removed: bool,
@@ -501,6 +501,8 @@ impl Browser {
         let Some((splices, selected)) = application else {
             return;
         };
+        self.invalidate_spliced_viewport_details(depth, &splices);
+        self.note_media_sort_changes(depth, &splices);
         self.emit(BrowserEvent::EntriesSpliced { depth, splices });
         if self.active_depth() == Some(depth) && (selected.is_none() || focused_was_removed) {
             self.emit(BrowserEvent::FocusChanged {
