@@ -25,13 +25,6 @@ use crate::{
 };
 
 pub(crate) struct NumberedActions {
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "exposed for A11 10xer numbered action chord target guard"
-        )
-    )]
     pub(crate) targets: Vec<Location>,
     pub(crate) actions: Vec<Rc<ActionHandle>>,
     pub(crate) paths: Vec<PathBuf>,
@@ -155,10 +148,6 @@ fn run_listed_action(app: &mut App, index: usize, tx: &mut Tx) {
     }
 }
 
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "exposed for A11 10xer numbered action chords")
-)]
 pub(crate) fn numbered_actions(app: &mut App, source: InvocationSource) -> NumberedActions {
     match source {
         InvocationSource::Selection => actions_for_targets(app, ActionCatalog::numbered),

@@ -1,0 +1,12 @@
+diff --git a/crates/strata-app/src/tenxer/prompts/names.rs b/crates/strata-app/src/tenxer/prompts/names.rs
+--- a/crates/strata-app/src/tenxer/prompts/names.rs
++++ b/crates/strata-app/src/tenxer/prompts/names.rs
+@@ -275,7 +275,7 @@ pub(super) fn submit_rename(app: &mut App, serial: u64, text: &str, tx: &mut Tx)
+     glib::MainContext::default().spawn_local(async move {
+         let refusal = check_typed_rename(&prepared).await;
+         later.then(move |app, tx| {
+-            if !asked.holds(app) || !renames(app, &prepared.entry) {
++            if !asked.holds(app) || renames(app, &prepared.entry) {
+                 return false;
+             }
+             match refusal {

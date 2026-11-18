@@ -83,7 +83,8 @@
 //!   inside the row doesn't count, leaving it (for another row, or out of the collection) for
 //!   more than its 80 ms leave delay and coming back does.
 //! - **A peek closes when its folder leaves the view** (scrolled out, unmounted, removed),
-//!   whether the pointer or a key opened it. Rune's `on_visible_rows` gives no transaction, so
+//!   whether the pointer or a key opened it. A view that shows no rows, a listing read again, leaves it
+//!   open: the folder's row comes back with the rows. Rune's `on_visible_rows` gives no transaction, so
 //!   the host's [`FolderPeek::on_change`] hears that close with one whose scrolls and wakes go
 //!   nowhere.
 //! - **Placement is Strata's rule** ([`place`]), worked out once as the peek opens (as Strata

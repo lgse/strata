@@ -265,12 +265,12 @@ impl PeekState {
     }
 
     /// What a collection's viewport shows now: a peek whose folder left it closes, whether the
-    /// pointer or a key opened it.
+    /// pointer or a key opened it. A viewport that shows no rows says nothing of the folder: a
+    /// listing read again (a reload) empties it for a frame, and Strata's peek stays.
     pub(super) fn view(&mut self, v: &RestView) -> Change {
+        let left = |folder: &EntryId| !v.visible.is_empty() && !v.visible.contains(folder);
         match &self.open {
-            Some(o)
-                if o.target.collection == v.collection && !v.visible.contains(&o.target.folder) =>
-            {
+            Some(o) if o.target.collection == v.collection && left(&o.target.folder) => {
                 self.close();
                 Change::Closed
             }
