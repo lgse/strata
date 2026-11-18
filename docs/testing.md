@@ -1749,6 +1749,7 @@ is a fixed projection, and nothing else of a reply is kept:
 | `criticals` | What GLib logged since the last observation. |
 | `invariants` | The invariants the target broke at rest, one line each; empty on GTK, which checks none. |
 | `app.*` | The ten keys of the reply's `app` snapshot: `view_mode`, `directory`, `panes` (each pane's `name`, `selected` and `focused`), `focused`, `focused_pane`, `dialog`, `menu`, `preview`, `field` and `matches`. A runner unit test holds the list to the snapshot's own keys, so a key added there is not left uncompared by oversight. |
+| `context.toplevels` | The snapshot's `toplevels`: the titles of the windows open beside the one the steps act on. Never compared; a map rule's `while` reads it. |
 | `fs.<path>` | The fixture tree: `dir <mode>`, `file <mode> <size> <digest of its bytes>` or `link <target>` for each path. |
 | `settings.<key>` | `settings.toml`, parsed, so two files that say the same in another order are equal. |
 
