@@ -50,7 +50,7 @@ run = "columns"
 package = "A5"
 status = "pending"
 reason = "scope"
-blocker = "A21: a second window, at `launch` on line 8. Line 6 first: the suggestion is a `list item` named `documents/` on Rune, a `label` in its row on GTK, lgse/strata#2365, ruled an `a11y` twin once the run can otherwise flip"
+blocker = "A21's second slice: the second window opens (A21's first slice) but takes no activation from the first offscreen, and the window's presence does not reach the location bar's suggestion. Line 6 first: the suggestion is a `list item` named `documents/` on Rune, a `label` in its row on GTK, lgse/strata#2365, ruled an `a11y` twin once the run can otherwise flip"
 
 [[run]]
 scenario = "refresh-reconciles-external-changes"

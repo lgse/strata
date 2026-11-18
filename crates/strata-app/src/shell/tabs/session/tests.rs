@@ -4,9 +4,10 @@
 //! sessions"):
 //!
 //! 1. `load_restorable()` runs at start-up before the first window shows, and restores on a plain
-//!    launch only (`restore_tabs` on, no directory argument).
-//! 2. Only a plain-launch window persists its tabs; explicit-target windows leave `tabs.toml`
-//!    untouched.
+//!    launch only (`restore_tabs` on, no directory argument); a later launch with no argument
+//!    restores too, as GTK's `present`, reading the file off the interface thread.
+//! 2. Only a window opened with no argument persists its tabs; explicit-target windows leave
+//!    `tabs.toml` untouched.
 //! 3. Restoring builds every saved tab before clearing `restoring`, so no partial session is
 //!    saved midway.
 //! 4. An empty location list never overwrites `tabs.toml`.
@@ -262,6 +263,47 @@ fn plain_launch_persists_tab_changes_in_strip_order() {
             let saved = saved_session().expect("after close");
             assert_eq!((saved.tabs.len(), saved.active), (2, 0));
             assert_eq!(saved.tabs[0], gamma);
+        },
+    );
+}
+
+/// A later launch with no argument opens as GTK's `present` does: with `restore_tabs` on, the
+/// window restores the saved session, read once it is up, and saves its own changes.
+#[test]
+fn a_later_bare_launch_restores_the_session_and_persists_its_tabs() {
+    in_own_process(
+        &format!("{MODULE}::a_later_bare_launch_restores_the_session_and_persists_its_tabs"),
+        &[],
+        || {
+            let root = strata_core::storage::config_directory().join("present-root");
+            let folders = make_folders(&root, &["first", "second", "third"]);
+            let saved: Vec<_> = folders[..2].iter().map(Location::local).collect();
+            seed_session(&saved, 1);
+            let settings = startup::load_settings();
+            let initial = launch::initial_for(crate::application::Opening::Present, &settings);
+            let ui = UiThread::claim().expect("the UI thread");
+            let mut host = Offscreen::new(ui, settings);
+
+            host.start(initial);
+            wait_locations(&mut host, &[Some(saved[0].clone()), Some(saved[1].clone())]);
+            let third = Location::local(&folders[2]);
+            act(&mut host, |app, tx| {
+                tab_strip::open_in_new_tab(app, third.clone(), tx);
+            });
+            wait_locations(
+                &mut host,
+                &[
+                    Some(saved[0].clone()),
+                    Some(saved[1].clone()),
+                    Some(third.clone()),
+                ],
+            );
+
+            let session = saved_session().expect("the window's tabs saved");
+            assert_eq!(
+                session.tabs,
+                vec![saved[0].clone(), saved[1].clone(), third]
+            );
         },
     );
 }

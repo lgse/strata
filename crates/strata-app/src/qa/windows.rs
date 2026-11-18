@@ -12,6 +12,18 @@
 //!
 //! Each window is an `Rc<Staged>` cloned before a step acts on it: a step that answers the
 //! chooser closes it, and the clone keeps it alive until the step returns.
+//!
+//! # Windows a launch opens
+//!
+//! The QA process is the primary on the runner's private session bus, as the GTK application's
+//! QA process is its GApplication's (`crate::application`, claimed as a service, so that its
+//! own launch opens nothing: its folder is the run's). A `launch` step's `strata-rune` hands its
+//! arguments over and exits, and each argument becomes a browser window here, offscreen like the
+//! first, sharing its settings, as `crate::host::windowed` opens a real one (A21). Their trees
+//! stand beside the browser's under roots of their own (`window-2`, `window-3`…), behind it:
+//! the steps act on the run's window, which keeps the keys, the pointer and the focus, while a
+//! target `within` another's toplevel (`other_window`, `some_window`) finds its nodes, and an
+//! `activate` aimed at one presses it there.
 
 use std::{
     cell::{Cell, RefCell},
@@ -20,6 +32,7 @@ use std::{
 };
 
 use strata_components::contract::EntryId;
+use strata_platform::csd::{Backend, Csd, Policy};
 use strata_qa::{Chord, Keymap, Modifier};
 
 use super::{
@@ -29,7 +42,10 @@ use super::{
     toplevel::{ChooserParts, Placement, Toplevel},
     tree::{Node, Snapshot},
 };
-use crate::{App, chooser::geometry::chooser_initial_dimensions};
+use crate::{
+    App, application, chooser::geometry::chooser_initial_dimensions, host::offscreen::Offscreen,
+    launch, shell,
+};
 
 /// The root path of the floating chooser's tree, beside the browser's `window`.
 const FLOATING_ROOT: &str = "floating";
@@ -37,18 +53,33 @@ const FLOATING_ROOT: &str = "floating";
 /// window the scenarios size.
 const FLOATING_X: i16 = 8000;
 
-/// The browser's tree and the chooser's merged with it, kept while neither changes.
+/// The longest a pause waits while a launch's windows are open beside the browser: their
+/// timers are not the browser's, which is what a pause waits on.
+const OTHERS_PAUSE: Duration = Duration::from_millis(20);
+
+/// The windows' trees merged, kept while none changes: the browser's, a launch's windows' and
+/// the chooser's, in that order.
 struct Merged {
-    main: Rc<Snapshot>,
-    floating: Rc<Snapshot>,
+    parts: Vec<Rc<Snapshot>>,
     both: Rc<Snapshot>,
 }
 
 impl Merged {
-    /// Whether this merge is of these two trees, which a window keeps while it is unchanged.
-    fn is_of(&self, main: &Rc<Snapshot>, floating: &Rc<Snapshot>) -> bool {
-        Rc::ptr_eq(&self.main, main) && Rc::ptr_eq(&self.floating, floating)
+    /// Whether this merge is of these trees, which a window keeps while it is unchanged.
+    fn is_of(&self, parts: &[Rc<Snapshot>]) -> bool {
+        self.parts.len() == parts.len()
+            && self
+                .parts
+                .iter()
+                .zip(parts)
+                .all(|(kept, part)| Rc::ptr_eq(kept, part))
     }
+}
+
+/// A browser window a later launch opened.
+struct Launched {
+    root: Node,
+    staged: Rc<Staged>,
 }
 
 pub(super) struct Windows {
@@ -61,6 +92,9 @@ pub(super) struct Windows {
     /// The pointer's last move went to the floating chooser.
     pointer_in_floating: Cell<bool>,
     merged: RefCell<Option<Merged>>,
+    /// The browser windows later launches opened, and how many windows have opened.
+    launched: RefCell<Vec<Launched>>,
+    opened: Cell<u64>,
 }
 
 impl Windows {
@@ -73,6 +107,8 @@ impl Windows {
             keymap: RefCell::default(),
             pointer_in_floating: Cell::new(false),
             merged: RefCell::default(),
+            launched: RefCell::default(),
+            opened: Cell::new(1),
         }
     }
 
@@ -106,7 +142,56 @@ impl Windows {
     /// The window that draws `node`.
     fn drawing(&self, node: &Node) -> Rc<Staged> {
         let floating = is_floating(node).then(|| self.floating()).flatten();
-        floating.unwrap_or_else(|| self.main.clone())
+        floating
+            .or_else(|| self.launched_drawing(node))
+            .unwrap_or_else(|| self.main.clone())
+    }
+
+    /// The launch's window `node` is in, if it is in one.
+    fn launched_drawing(&self, node: &Node) -> Option<Rc<Staged>> {
+        let launched = self.launched.borrow();
+        let open = launched.iter().find(|open| node.is_within(&open.root));
+        open.map(|open| open.staged.clone())
+    }
+
+    fn launched(&self) -> Vec<Rc<Staged>> {
+        let launched = self.launched.borrow();
+        launched.iter().map(|open| open.staged.clone()).collect()
+    }
+
+    /// Opens a browser window for each launch the bus handed over since the last look. True
+    /// when any opened.
+    fn open_launched(&self) -> bool {
+        let asked = application::take();
+        let opened = !asked.is_empty();
+        for opening in asked {
+            self.open_launch(opening);
+        }
+        opened
+    }
+
+    fn open_launch(&self, opening: application::Opening) {
+        let id = self.opened.get() + 1;
+        self.opened.set(id);
+        let root = format!("window-{id}");
+        let ui = self.main.ui();
+        let settings = self.main.app(shell::share_settings);
+        let initial = launch::initial_for(opening, &settings);
+        let csd = Csd::new(Policy::Auto.frame(), Backend::Headless);
+        let app = App::new(&ui, csd, settings);
+        #[expect(clippy::cast_precision_loss, reason = "a window's size fits f32")]
+        let size = (self.parent_size.0 as f32, self.parent_size.1 as f32);
+        let mut host = Offscreen::from_app(ui, app, size).without_animations();
+        host.start(initial);
+        let staged = Rc::new(Staged::named(root.clone(), host, self.log.clone()));
+        if let Some(keymap) = self.keymap.borrow().as_ref() {
+            let _ = staged.set_layout(keymap);
+        }
+        staged.turn();
+        self.launched.borrow_mut().push(Launched {
+            root: Node(root.into()),
+            staged,
+        });
     }
 
     /// The window the pointer is over.
@@ -132,6 +217,7 @@ impl Windows {
             ),
         };
         let parts = ChooserParts {
+            settings: self.main.app(shell::share_settings),
             request: request.request,
             source: request.source,
             destination: Some(request.destination),
@@ -143,26 +229,41 @@ impl Windows {
         true
     }
 
-    /// One turn of every window, opening a chooser the browser asked for on the way.
+    /// One turn of every window, opening a chooser the browser asked for and the windows a
+    /// launch asked for on the way.
     fn turn_all(&self) -> bool {
         let mut worked = self.main.turn();
+        for launched in self.launched() {
+            worked |= launched.turn();
+        }
         worked |= self.open_requested();
         if let Some(floating) = self.floating() {
             worked |= floating.turn();
         }
-        worked
+        worked | self.open_launched()
     }
 
-    fn merged(&self, floating: &Staged) -> Rc<Snapshot> {
-        let (main, other) = (self.main.snapshot(), floating.snapshot());
+    /// The browser's tree with the launch's windows' behind it and the chooser's in front.
+    fn merged(&self, floating: Option<&Staged>) -> Rc<Snapshot> {
+        let mut parts = vec![self.main.snapshot()];
+        parts.extend(self.launched().iter().map(|launched| launched.snapshot()));
+        parts.extend(floating.map(Staged::snapshot));
         let mut kept = self.merged.borrow_mut();
-        if let Some(merged) = kept.as_ref().filter(|merged| merged.is_of(&main, &other)) {
+        if let Some(merged) = kept.as_ref().filter(|merged| merged.is_of(&parts)) {
             return merged.both.clone();
         }
-        let both = Rc::new(main.with_toplevel(&other));
+        let last = parts.len() - 1;
+        let mut both = Snapshot::default();
+        for (at, part) in parts.iter().enumerate() {
+            both = match at {
+                0 => continue,
+                1 => join(&parts[0], part, floating.is_some() && at == last),
+                _ => join(&both, part, floating.is_some() && at == last),
+            };
+        }
+        let both = Rc::new(both);
         *kept = Some(Merged {
-            main,
-            floating: other,
+            parts,
             both: both.clone(),
         });
         both
@@ -173,17 +274,31 @@ fn is_floating(node: &Node) -> bool {
     node.is_within(&Node(FLOATING_ROOT.into()))
 }
 
+/// `other`'s tree beside `base`'s: in front, with the focus, or behind.
+fn join(base: &Snapshot, other: &Snapshot, in_front: bool) -> Snapshot {
+    if in_front {
+        base.with_toplevel(other)
+    } else {
+        base.with_window_behind(other)
+    }
+}
+
 impl Host for Windows {
     fn toplevels(&self) -> Vec<Node> {
         let main = self.main.window();
+        let launched = self.launched.borrow();
         let floating = self.floating.borrow();
         let floating = floating.as_ref().filter(|open| !open.is_closed());
         main.into_iter()
+            .chain(launched.iter().map(|open| open.root.clone()))
             .chain(floating.map(|open| open.root.clone()))
             .collect()
     }
 
     fn title_of(&self, window: &Node) -> Option<String> {
+        if let Some(launched) = self.launched_drawing(window) {
+            return Some(launched.app(|app| app.title().to_owned()));
+        }
         if !is_floating(window) {
             return self.main.title_of(window);
         }
@@ -196,10 +311,11 @@ impl Host for Windows {
     }
 
     fn snapshot(&self) -> Rc<Snapshot> {
-        match self.floating() {
-            Some(floating) => self.merged(&floating),
-            None => self.main.snapshot(),
+        let floating = self.floating();
+        if floating.is_none() && self.launched.borrow().is_empty() {
+            return self.main.snapshot();
         }
+        self.merged(floating.as_deref())
     }
 
     fn with_app<T: Send + 'static>(
@@ -220,14 +336,23 @@ impl Host for Windows {
     /// The chooser answers into the browser, which may then ask for another: each settles,
     /// the browser after the chooser.
     async fn settle(&self) {
+        self.open_launched();
         if let Some(floating) = self.floating() {
             floating.settle().await;
+        }
+        for launched in self.launched() {
+            launched.settle().await;
         }
         self.main.settle().await;
         if self.open_requested()
             && let Some(floating) = self.floating()
         {
             floating.settle().await;
+        }
+        if self.open_launched() {
+            for launched in self.launched() {
+                launched.settle().await;
+            }
         }
     }
 
@@ -248,6 +373,11 @@ impl Host for Windows {
     }
 
     fn pause(&self, limit: Duration) {
+        let limit = if self.launched.borrow().is_empty() {
+            limit
+        } else {
+            limit.min(OTHERS_PAUSE)
+        };
         self.main.pause(limit);
     }
 
@@ -255,7 +385,7 @@ impl Host for Windows {
         if is_floating(node) {
             return Ok((f64::from(FLOATING_X), 0.0));
         }
-        self.main.origin(node)
+        self.drawing(node).origin(node)
     }
 
     async fn resize(&self, width: f32, height: f32) -> Result<(), String> {
@@ -264,6 +394,9 @@ impl Host for Windows {
 
     fn set_layout(&self, keymap: &Keymap) -> Result<(), String> {
         self.main.set_layout(keymap)?;
+        for launched in self.launched() {
+            launched.set_layout(keymap)?;
+        }
         if let Some(floating) = self.floating() {
             floating.set_layout(keymap)?;
         }
