@@ -131,6 +131,128 @@ mod window {
         );
     }
 
+    /// A later `strata-rune` hands its folder to the running one and exits, and the running
+    /// one opens a window on it, as GTK's GApplication does. The process outlives its first
+    /// window: GLib work still reaches the one left, and the process ends with that one.
+    #[test]
+    #[ignore = "needs a private session: mise run test-platform"]
+    fn a_later_launch_opens_its_window_in_the_running_process() {
+        let s = Session::start();
+        let mut launched = launch(&s, &[]);
+        let other = s.runtime_dir().join("home").join("Other");
+        std::fs::create_dir_all(&other).expect("folder");
+        std::fs::write(other.join("plans.txt"), "plans").expect("file");
+
+        let mut later = s.command(env!("CARGO_BIN_EXE_strata-rune"), Display::Wayland);
+        later.arg(&other);
+        let mut handed = s.spawn("strata-rune-later", later);
+        assert!(
+            handed.wait_exit().success(),
+            "the later launch handed its folder over"
+        );
+        let second = s.wait_window_where("the window on the later launch's folder", |w| {
+            w.pid == launched.app.pid() && w.title == "Other — Strata"
+        });
+        launched
+            .app
+            .wait_for(0, "the Columns view listing the later folder", |line| {
+                lists(line, 1, "Other")
+            });
+
+        s.sway_command(&format!("[con_id={}] kill", launched.window.id));
+        let took = change_reaches_poll(&launched.app, &other, "later.txt");
+        eprintln!("with the first window closed, a change reached poll in {took:?}");
+        launched
+            .app
+            .wait_for(0, "the window left listing the new file", |line| {
+                lists(line, 2, "Other")
+            });
+
+        s.sway_command(&format!("[con_id={}] kill", second.id));
+        assert!(
+            launched.app.wait_exit().success(),
+            "the process ended with its last window"
+        );
+    }
+
+    /// The process's one GLib context is pumped through the window with the keyboard, and what
+    /// that dispatch queued for another window wakes that window: a window shown without the
+    /// keyboard still lists a file added to its folder, as every GTK window does.
+    #[test]
+    #[ignore = "needs a private session: mise run test-platform"]
+    fn a_window_without_the_keyboard_still_hears_its_folder() {
+        let s = Session::start();
+        let launched = launch(&s, &[]);
+        let other = s.runtime_dir().join("home").join("Other");
+        std::fs::create_dir_all(&other).expect("folder");
+        std::fs::write(other.join("plans.txt"), "plans").expect("file");
+        let mut later = s.command(env!("CARGO_BIN_EXE_strata-rune"), Display::Wayland);
+        later.arg(&other);
+        assert!(
+            s.spawn("strata-rune-later", later).wait_exit().success(),
+            "the later launch handed its folder over"
+        );
+        s.wait_window_where("the window on the later launch's folder", |w| {
+            w.pid == launched.app.pid() && w.title == "Other — Strata"
+        });
+        launched
+            .app
+            .wait_for(0, "the Columns view listing the later folder", |line| {
+                lists(line, 1, "Other")
+            });
+
+        s.focus(&launched.window);
+        let took = change_reaches_poll(&launched.app, &other, "later.txt");
+
+        eprintln!("a change in the window without the keyboard reached poll in {took:?}");
+        launched.app.wait_for(
+            0,
+            "the window without the keyboard listing the new file",
+            |line| lists(line, 2, "Other"),
+        );
+    }
+
+    /// A setting one window changes reaches the other, which does not have the keyboard: Ctrl+H
+    /// in the first saves the hidden-files choice, and the second follows it, as every GTK
+    /// window follows the one `PreferenceManager`.
+    #[test]
+    #[ignore = "needs a private session: mise run test-platform"]
+    fn a_setting_one_window_changes_reaches_the_other() {
+        const FOLLOWED: &str = "followed another window's change of the settings";
+        let s = Session::start();
+        let launched = launch(&s, &[]);
+        let other = s.runtime_dir().join("home").join("Other");
+        std::fs::create_dir_all(&other).expect("folder");
+        std::fs::write(other.join("plans.txt"), "plans").expect("file");
+        let mut later = s.command(env!("CARGO_BIN_EXE_strata-rune"), Display::Wayland);
+        later.arg(&other);
+        assert!(
+            s.spawn("strata-rune-later", later).wait_exit().success(),
+            "the later launch handed its folder over"
+        );
+        s.wait_window_where("the window on the later launch's folder", |w| {
+            w.pid == launched.app.pid() && w.title == "Other — Strata"
+        });
+        launched
+            .app
+            .wait_for(0, "the Columns view listing the later folder", |line| {
+                lists(line, 1, "Other")
+            });
+        s.focus(&launched.window);
+        // The second window comes to rest, as `change_reaches_poll` lets the listing's last
+        // events arrive: one still drawing would follow without being woken.
+        std::thread::sleep(Duration::from_millis(500));
+        let before = launched.app.line_count();
+
+        s.input().key("ctrl+h");
+
+        launched
+            .app
+            .wait_for(before, "the other window following the setting", |line| {
+                line.contains(FOLLOWED).then_some(())
+            });
+    }
+
     /// With a `wake_after` tick in place of the embedded GLib loop, a change took 120 ms shown
     /// and 750 ms covered; a `Waker` alone never delivered it.
     #[test]

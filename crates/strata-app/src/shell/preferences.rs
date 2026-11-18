@@ -110,6 +110,26 @@ pub(crate) fn sync_live_preferences(app: &mut App, tx: &mut Tx) {
     crate::preview::sync_preferences(app);
 }
 
+/// Another window of the process changed the settings: this one reads them again, and what
+/// follows a change made here follows this one too, as every GTK window binds to the one
+/// `PreferenceManager`. What a part reads at use follows with the values themselves.
+pub(crate) fn follow_another_window(app: &mut App, tx: &mut Tx) -> bool {
+    if !app.window.settings.follow() {
+        return false;
+    }
+    tracing::trace!(
+        window = app.window.id,
+        "followed another window's change of the settings"
+    );
+    follow_look_tx(app, tx);
+    sync_live_preferences(app, tx);
+    let sort = strata_desktop::settings::sort_preferences(preferences(app));
+    sync_default_preferences(app, sort);
+    sync_freshness(app);
+    super::refresh_worn(app);
+    true
+}
+
 pub(crate) fn themes(app: &App) -> &ThemeEngine {
     &app.window.themes
 }

@@ -1,27 +1,33 @@
 // SPDX-License-Identifier: MIT
 
-//! The command line, and the location a launch opens.
+//! The command line, and the windows a launch opens.
 
-use std::{
-    env,
-    ffi::{OsStr, OsString},
-    path::PathBuf,
-    process::ExitCode,
-};
+#[cfg(any(test, feature = "qa"))]
+use std::ffi::OsStr;
+use std::{env, ffi::OsString, path::PathBuf, process::ExitCode};
 
 use strata_core::model::Location;
 use strata_desktop::tabs_session::{self, RestoredSession};
-use strata_fs::adapters::{list_archive_entries_direct, location_for_file};
+use strata_fs::adapters::list_archive_entries_direct;
+#[cfg(any(test, feature = "qa"))]
+use strata_fs::adapters::location_for_file;
+use strata_platform::single_instance::{Activation, Claim, Launch};
 use strata_preview::sandbox_helper;
 
-use crate::{host, settings::Saved, startup};
+use crate::{
+    application::{self, Opening},
+    host,
+    settings::Saved,
+    startup,
+};
 
-const USAGE: &str = "usage: strata-rune [DIRECTORY|--portal]";
+const USAGE: &str = "usage: strata-rune [PATH...|--portal]";
 
 #[derive(Debug, PartialEq, Eq)]
 enum Command {
-    /// Open the directory, or the home directory without one.
-    Open(Option<OsString>),
+    /// Open a window for each path, or the saved session or default folder without one. The
+    /// running instance opens them when there is one.
+    Open(Vec<OsString>),
     /// Run the XDG Desktop Portal `FileChooser` D-Bus service.
     Portal,
     Help,
@@ -29,7 +35,7 @@ enum Command {
 
 /// Byte-safe: an argument that is not UTF-8 is a path, never an option.
 fn parse(arguments: impl IntoIterator<Item = OsString>) -> Result<Command, String> {
-    let mut directory = None;
+    let mut paths = Vec::new();
     let mut portals = 0_usize;
     let mut options_ended = false;
     for argument in arguments {
@@ -42,21 +48,19 @@ fn parse(arguments: impl IntoIterator<Item = OsString>) -> Result<Command, Strin
             Some("--help" | "-h") => return Ok(Command::Help),
             Some("--portal") => portals += 1,
             Some(unknown) => return Err(format!("unknown option {unknown}")),
-            None if directory.is_some() => {
-                return Err("only one directory can be opened".to_owned());
-            }
-            None => directory = Some(argument),
+            None => paths.push(argument),
         }
     }
-    match (portals, directory) {
-        (0, directory) => Ok(Command::Open(directory)),
-        (1, None) => Ok(Command::Portal),
+    match (portals, paths.is_empty()) {
+        (0, _) => Ok(Command::Open(paths)),
+        (1, true) => Ok(Command::Portal),
         _ => Err("--portal cannot be combined with a directory".to_owned()),
     }
 }
 
 /// The location an argument names, resolved as GIO resolves one for the GTK application: a
 /// path, relative to the launch folder or absolute, or a URI.
+#[cfg(any(test, feature = "qa"))]
 pub(crate) fn location(argument: Option<&OsStr>) -> Option<Location> {
     match argument {
         Some(argument) => location_for_file(&gio::File::for_commandline_arg(argument)),
@@ -77,39 +81,81 @@ pub(crate) fn leave_launch_folder() {
     }
 }
 
-/// What a launch opens in its first window (`docs/rune/shared-state.md`, "Tab sessions").
+/// What a window opens (`docs/rune/shared-state.md`, "Tab sessions").
 pub(crate) enum Initial {
-    /// A directory argument, or a test's or QA run's folder: opens that folder in one tab and
-    /// leaves `tabs.toml` alone.
+    /// A test's or QA run's folder: opens that folder in one tab and leaves `tabs.toml` alone.
     Explicit(Location),
-    /// A plain launch (`strata-rune` with no directory argument): restores the saved session
-    /// when `Some`, or opens the default folder, and persists this window's tabs.
+    /// A plain launch (`strata-rune` with no argument): restores the saved session when
+    /// `Some`, or opens the default folder, and persists this window's tabs.
     Plain(Option<RestoredSession>),
+    /// A later launch with no argument, as GTK's `present` opens it: the saved session, read
+    /// off the interface thread once the window is up, or the default folder, and this
+    /// window's tabs persisted.
+    Present,
+    /// An argument: a folder opens, a file shows selected in its folder, and `tabs.toml` is
+    /// left alone (`crate::application::open_argument`).
+    Argument(Location),
 }
 
-/// Resolves what a launch opens, reading `tabs.toml` at start-up before the first window shows
-/// only on a plain launch with `restore_tabs` on.
+/// What a test launch opens: a plain launch without `directory`, that folder with one.
+#[cfg(test)]
 pub(crate) fn initial(directory: Option<&OsStr>, settings: &Saved) -> Result<Initial, String> {
     match directory {
         Some(argument) => location(Some(argument))
             .map(Initial::Explicit)
             .ok_or_else(|| "the argument is not a location".to_owned()),
-        None => {
+        None => Ok(initial_for(Opening::Plain, settings)),
+    }
+}
+
+/// The window `opening` asks for, reading `tabs.toml` only for a plain launch with
+/// `restore_tabs` on: at start-up, before its window shows.
+pub(crate) fn initial_for(opening: Opening, settings: &Saved) -> Initial {
+    match opening {
+        Opening::Plain => {
             let restored = settings
                 .preferences()
                 .restore_tabs
                 .then(tabs_session::load_restorable)
                 .flatten();
-            Ok(Initial::Plain(restored))
+            Initial::Plain(restored)
         }
+        Opening::Present => Initial::Present,
+        Opening::Argument(location) => Initial::Argument(location),
     }
 }
 
-fn open(directory: Option<&OsStr>) -> Result<(), String> {
+/// Claims the app id for this launch, or hands it to the instance that holds it and returns
+/// that one's answer. The primary opens a window for each of its own arguments, as for a
+/// launch handed to it later.
+fn open(arguments: Vec<OsString>) -> Result<i32, String> {
+    let launch = Launch {
+        args: arguments,
+        cwd: env::current_dir().ok(),
+        activation: Activation::from_env(),
+    };
+    let (primary, unclaimed) = match application::claim(launch, false) {
+        Claim::Forwarded(status) => return Ok(status),
+        Claim::Primary(primary) => (primary, None),
+        Claim::Standalone(primary, why) => (primary, Some(why)),
+    };
     let settings = startup::initialize_process();
-    let initial = initial(directory, &settings)?;
+    if let Some(why) = unclaimed {
+        tracing::debug!(?why, "running alone, not as the session's one instance");
+    }
     leave_launch_folder();
-    host::windowed::run(startup::UiThread::claim()?, settings, initial)
+    let ui = startup::UiThread::claim()?;
+    application::attach(primary);
+    let mut openings = application::take().into_iter();
+    // As GTK's `present_open` skips an argument that is no location, and the application then
+    // ends with no window and status 0.
+    let Some(first) = openings.next() else {
+        return Ok(0);
+    };
+    application::queue_first(openings);
+    let initial = initial_for(first, &settings);
+    host::windowed::run(ui, settings, initial)?;
+    Ok(0)
 }
 
 fn portal() -> Result<(), String> {
@@ -194,7 +240,7 @@ pub fn run(arguments: impl IntoIterator<Item = OsString>) -> ExitCode {
     if let Some(code) = crate::qa::launch(&arguments) {
         return code;
     }
-    match parse(arguments.into_iter().skip(1)) {
+    match parse(arguments.iter().skip(1).cloned()) {
         Ok(Command::Help) => {
             println!("{USAGE}");
             ExitCode::SUCCESS
@@ -206,8 +252,8 @@ pub fn run(arguments: impl IntoIterator<Item = OsString>) -> ExitCode {
                 ExitCode::FAILURE
             }
         },
-        Ok(Command::Open(directory)) => match open(directory.as_deref()) {
-            Ok(()) => ExitCode::SUCCESS,
+        Ok(Command::Open(_)) => match open(arguments) {
+            Ok(status) => ExitCode::from(u8::try_from(status).unwrap_or(1)),
             Err(error) => {
                 eprintln!("strata-rune: {error}");
                 ExitCode::FAILURE

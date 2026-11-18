@@ -155,6 +155,11 @@ closed issue is not a fixed finding: the state given here is the finding's.
   in `./scripts/quality.sh all` in the pinned image at `17d3fa87d` on a loaded host, and 1
   time in 3 alone (`./scripts/test-headless.py`). At `60c062c9a`, with `strata-next` merged
   again, the ninth failed once more there, with its message. That change touches no `src/`.
+- **On [#2594](https://github.com/lgse/strata/pull/2594), [A21](packages/A21.md)'s first slice:** the ninth failed once more in
+  `./scripts/quality.sh all` in the pinned image at `5da7cb20e`, with its message ("keyboard
+  fixture did not settle", `src/ui/window/tests/keyboard_dispatch.rs:324`). It passed alone
+  (`./scripts/test-headless.py`), and the rerun of `./scripts/quality.sh test` passed whole
+  (4074 tests). That change touches no `src/` and no crate the GTK lane builds.
 - **State:** open, set aside. Whoever meets one of these in a red shard reads the failure
   first: if the change could reach the test, it is the change's; if not, say why on the pull
   request, rerun the whole workflow once, and stop if the same test fails twice. A new flaky
@@ -2312,6 +2317,11 @@ sequence only together with the alphabet's version, so the version is part of th
   at the same first wait. The scenario then passed alone three times in a row (6 of 6 runs
   each). #2583 changes how a drop from another application is read, not the listing or its item
   counts, and this run's drags come from the window itself.
+- **Seen in [#2594](https://github.com/lgse/strata/pull/2594)'s gate too:** as
+  `drag-file-onto-folder/columns-copy`, in its `qa-parity.sh all` at `e631cad2f` (rune
+  offscreen 681 of 682), at the same first wait. The scenario then passed alone (6 of 6 runs).
+  #2594 shares the settings between windows and opens a window per launch, and leaves the
+  listing, item counts and drag and drop as they were.
 - **Concerns:** `drag_and_drop/drag-file-onto-folder/columns-copy`, `list-copy` and `list-move`,
   `required`, [A19](packages/A19.md)'s.
 - **State:** open, unowned. The ledger is unchanged: the run stays `required`. Not traced.
@@ -2394,6 +2404,28 @@ sequence only together with the alphabet's version, so the version is part of th
   `/icons` both showed "Loading…" at line 6 (rune offscreen 661 of 663). Both passed in the run
   before. #2573 changes Settings and the QA snapshot's nested dialogs, not the preview.
 - **State:** open, unowned. The ledger is unchanged: the run stays `required`. Not traced.
+
+### #2600: the floating chooser's second right-click opened no menu in a busier `window::` suite
+
+- **Code:** none of the plan's: a flaky Rune window test, labelled `testing`.
+  [Issue](https://github.com/lgse/strata/issues/2600), filed on 2026-11-18 as the finding's
+  reference and closed at once: its state is kept here.
+- **Seen:** on the head of [#2594](https://github.com/lgse/strata/pull/2594) (A21's first
+  slice), in `mise run test-platform window::`, whose suite there has 9 tests where
+  `strata-next` has 6. Its review saw 2 failures in 27 runs, and its author 3 in 10, then 2 in
+  10 with the floating chooser left out of the windowed host's `wake_pending`. Each time
+  `window::qa::the_floating_chooser_comes_forward_and_closes_with_its_browser`
+  (`crates/strata-rune/tests/window/qa.rs`) failed at the second `ask_to_copy`, after
+  `s.focus(&browser)`: the right-click on `notes.txt` reached the browser (the session host
+  aimed it from the browser's sway area, 0,0 640x800, and the compositor delivered the press),
+  but no entry menu opened, and `{"wait":{"menu_items":{}}}` timed out with `"menu":null`.
+  The failing suite took about 19 s against about 4 s.
+- **Not reproduced:** alone, 0 of 12 (the review); on `strata-next`, 0 of 12 (the review); and
+  on #2594's own code with its three new window tests skipped, the 6 tests `strata-next` has,
+  0 of 10. So it tracks the three extra sway sessions running beside it, not the code in its
+  path. Not traced further.
+- **Concerns:** `strata-rune`'s window test above, [A20](packages/A20.md)'s.
+- **State:** open, unowned.
 
 ### #2580: `rendered-document-word-selection-rune` lost the selection's first characters twice in a full session-host run
 

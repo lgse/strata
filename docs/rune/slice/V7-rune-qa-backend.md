@@ -35,7 +35,7 @@ How each part of `Backend` is answered:
 
 | Part | On Rune |
 | --- | --- |
-| `window`, `toplevels`, `title`, `window_width` | The tree's root, alone. The title is the one the application last asked for |
+| `window`, `toplevels`, `title`, `window_width` | The run's window's root; `toplevels` adds a root for each window a launch handed to the QA process opened (`qa::windows`, [A21](../parity/packages/A21.md)). A title is the one that window's application last asked for |
 | `parent`, `children`, `visible`, `attached` | The snapshot. Rune leaves hidden elements out of the tree, so every node is visible |
 | `role` | The role map. A `group` is a `grouping` only when it has a name, and a `panel` otherwise |
 | `name`, `description`, `value`, `text` | The node's own. `text` is a label's name or a field's value |
