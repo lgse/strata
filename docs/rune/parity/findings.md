@@ -2358,3 +2358,38 @@ sequence only together with the alphabet's version, so the version is part of th
 - **Not traced.** One reading to check: under the larger batch's load, the compositor's pointer
   motion reaches the document after the press, so the drag's anchor lands past its start.
 - **State:** open, unowned.
+
+### #2586: after 10xer's `f` filter commits, GTK's listing has no cursor and Space selects nothing
+
+- **Code:** `oracle`. [Issue](https://github.com/lgse/strata/issues/2586), filed on 2026-11-17
+  as the finding's reference and closed at once: its state is kept here.
+- **Seen:** by [A11](packages/A11.md)'s `tenxer` alphabet (v2, never merged), shrunk GTK
+  against Rune to three steps and confirmed 3 of 3 (`fuzz-tenxer-v2-0000000000000008`): `f`,
+  `txt`, Return. GTK's snapshot names `todo.txt` as focused, but its pane reports no cursor;
+  Rune's pane has its cursor on `todo.txt`.
+- **Driven on GTK** (`./scripts/qa-drive.sh`, 2026-11-17, 10xer List): after the commit GTK
+  draws its cursor outline on `todo.txt`, and Space selects nothing, nor does `j` then Space.
+  Its in-place filter (`with_filter_terms`) gives the row the keyboard without setting the
+  browser's cursor. Rune's Space selects `todo.txt`.
+- **Concerns:** 10xer's `f` filter; no ledger run reads Space after a commit. The sequences
+  are parked in `tests/qa/fuzz/corpus/tenxer/` (`v2-…08`, and `v2-…03`, which meets it too),
+  and the alphabet abandons its filter by Escape from version 3.
+- **State:** open, set aside: no Rune change. A fault for `main`, from a bug issue there.
+
+### #2587: a 10xer move keeps a selection a revisit restored, where GTK's first move drops it
+
+- **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2587), filed on
+  2026-11-17 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** by [A11](packages/A11.md)'s `tenxer` alphabet (v3, never merged), shrunk GTK
+  against Rune to 13 steps and confirmed 3 of 3 (`fuzz-tenxer-v3-0000000000000003`): Space
+  twice in `pictures`, `h`, back into `pictures` by a find and `l` (both targets restore
+  `[diagram.txt, photo.txt]`), then `k`. GTK's selection is then `[]`, Rune's unchanged.
+- **Why:** GTK's 10xer moves go through the shared browser's `place_cursor`, which clears the
+  selection while the column keeps the cursor its load placed (`load_cursor`). Rune's are C1's,
+  which keep any selection not marked provisional, and `events::marks` marks only a selection
+  with no fill. Without 10xer a move replaces the selection on both targets.
+- **Concerns:** the views' provisional mark, which [A1](packages/A1.md) and
+  [A2](packages/A2.md) own with C1, and 10xer's moves. No ledger run reads it. The sequence is
+  parked in `tests/qa/fuzz/corpus/tenxer/`; the alphabet leaves out `h` from version 4.
+- **State:** open. A fix marks a restored fill that keeps its load cursor provisional, which
+  changes the shared mark the browser-view invariant compares; recorded for A2 to rule on.
