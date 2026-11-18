@@ -293,3 +293,44 @@ fn what_was_never_kept_is_a_broken_lookup_and_not_a_missing_node() {
         "a dialog that is not open is only missing"
     );
 }
+
+/// `dialog_button` looks in the dialog on top, as `app.dialog` names it: with a message drawn
+/// inside Settings, its Cancel, not Settings' own Cancel before it in the tree.
+#[test]
+fn a_dialog_button_is_the_dialog_on_top_s() {
+    let pressed = |nests: bool| {
+        let mut fake = Fake::new();
+        fake.nests_dialogs = nests;
+        let settings = fake.add(
+            WINDOW,
+            drawn("dialog", "Settings", [0.0, 0.0, 800.0, 600.0]),
+        );
+        let own = fake.add(
+            settings,
+            drawn("button", "Cancel", [10.0, 10.0, 80.0, 30.0]),
+        );
+        let message = fake.add(
+            settings,
+            drawn(
+                "dialog",
+                "Reset all keybinds?",
+                [200.0, 200.0, 400.0, 200.0],
+            ),
+        );
+        let its = fake.add(
+            message,
+            drawn("button", "Cancel", [300.0, 350.0, 80.0, 30.0]),
+        );
+        let kept = Remembered::default();
+        let found = scope(&fake, &kept).resolve(&target(json!({ "dialog_button": "Cancel" })));
+        (found, own, its)
+    };
+    let (found, _, its) = pressed(true);
+    assert_eq!(found, Ok(Some(its)));
+    let (found, own, _) = pressed(false);
+    assert_eq!(
+        found,
+        Ok(Some(own)),
+        "a toolkit that nests no dialogs keeps the first"
+    );
+}
