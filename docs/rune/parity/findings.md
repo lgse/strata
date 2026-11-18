@@ -2333,6 +2333,10 @@ sequence only together with the alphabet's version, so the version is part of th
   listing, item counts and drag and drop as they were.
 - **Concerns:** `drag_and_drop/drag-file-onto-folder/columns-copy`, `list-copy` and `list-move`,
   `required`, [A19](packages/A19.md)'s.
+- **Seen again:** as `drag-file-onto-folder/list-copy`, in the re-gate of
+  [#2602](https://github.com/lgse/strata/pull/2602) at `5d50d32e8` (rune offscreen 704 of 705):
+  the same first wait timed out. Alone it then passed 6 of 6 on each target. #2602 changes
+  strata-qa's dialog lookup, not the listing, item counts or drag and drop.
 - **State:** open, unowned. The ledger is unchanged: the run stays `required`. Not traced.
 
 ### #2568: `undo-restores-completed-move/columns` did not put the file back once in a full Rune run
