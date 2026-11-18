@@ -2714,3 +2714,18 @@ sequence only together with the alphabet's version, so the version is part of th
   ([A16](packages/A16.md), [#2599](https://github.com/lgse/strata/pull/2599)), which waits for the
   preview's `image` named `camera.<ext>` and keeps the fixture, the thumbnail's `fs` pixel check
   and the end state. The twin goes once a Rune target can read drawn pixels.
+
+### #2606: the media player's volume slider is named "Volume" where GTK's is unnamed
+
+- **Code:** `deviation`, ruled by the owner on 2026-11-18 ([`owner.md`](owner.md#ruled)). [Issue](https://github.com/lgse/strata/issues/2606),
+  filed on 2026-11-18 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** in [A16](packages/A16.md)'s Slice 3 ([#2599](https://github.com/lgse/strata/pull/2599)),
+  which mounts C13's `MediaPlayer` in the preview drawer. GTK's volume slider
+  (`volume_slider`, `src/ui/preview/media_controls.rs`) is an unnamed `gtk::Scale`. C13's is a
+  `slider` named by `Labels::volume`, which A16 sets to "Volume", translated in all 13 catalogs
+  (`media_labels`, `crates/strata-app/src/preview/media/mod.rs`).
+- **Concerns:** no run today. A16's fuzz alphabet (Slice 4) will read the slider.
+- **State:** ruled: Rune keeps the "Volume" name (the owner, 2026-11-18, through the
+  coordinator), consistent with [#2557](https://github.com/lgse/strata/issues/2557) and
+  [#2558](https://github.com/lgse/strata/issues/2558). A run or fuzz step that reads it cites
+  the ruling.
