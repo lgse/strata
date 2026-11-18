@@ -228,6 +228,7 @@ pub(super) fn clear_target(app: &mut App, tx: &mut Tx) {
 }
 
 pub(super) fn close(app: &mut App, tx: &mut Tx) {
+    app.preview.media_checks.stop();
     if app.preview.enabled {
         app.preview.dismissed = true;
     }

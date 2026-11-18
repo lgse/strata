@@ -6,9 +6,9 @@
 # `drag v1` that met it; `drag v2` drags only rows not selected, and leaves Escape out.
 # Kept unparked in this folder: `v1-0000000000000004` (a move out, then Ctrl+Z), which broke
 # Rune's `browser-view` invariant and lost its keyboard until `handover::Kept` kept the
-# neighbour through the undo (A19's closing pull request).
+# neighbour through the undo (A19's closing pull request); and `v1-0000000000000006` (a drag
+# from a selected row of a multi-selection), which C1b's press agrees with since #2592's fix.
 v1-0000000000000005 oracle lgse/strata#2590
-v1-0000000000000006 divergence lgse/strata#2592
 v1-000000000000000d oracle lgse/strata#2591
 v1-0000000000000011 oracle lgse/strata#2590
 v2-0000000000000007 divergence lgse/strata#2593

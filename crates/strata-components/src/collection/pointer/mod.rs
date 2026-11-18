@@ -17,7 +17,7 @@
 //!
 //! | Press on | Plain | Ctrl | Shift | Past the threshold |
 //! | --- | --- | --- | --- | --- |
-//! | An entry's name or content | Selects it alone, now; inside a multi-selection, keeps the group | Unselected: adds it now. Selected: toggles it off on release (a deviation, below) | Ranges now | A file drag of the selection |
+//! | An entry's name or content | Selects it alone, now; inside a multi-selection, keeps the group and moves the cursor and the anchor to it | Unselected: adds it now. Selected: toggles it off on release (a deviation, below) | Ranges now | A file drag of the selection |
 //! | Blank space on a selected entry | As content | As content | As content | A file drag of the selection |
 //! | Blank space on an unselected entry | Selects it alone, now | Toggles on release | Ranges on release | A marquee |
 //! | Anything, with Alt held | As without Alt | Toggles on release | Ranges on release | A marquee |

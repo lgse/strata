@@ -65,6 +65,8 @@ rune = { workspace = true, features = ["embedded-fonts"] }
 strata-desktop = { workspace = true, features = ["xkb-keys", "test-support"] }
 # `single_instance::CommandLine::unanswered`, for the launch tests of `application`.
 strata-platform = { workspace = true, features = ["single-instance", "test-support"] }
+# The fixture streams that stand in for the sandboxed media decoder.
+strata-preview = { workspace = true, features = ["test-support"] }
 strata-test-support.workspace = true
 tempfile.workspace = true
 toml.workspace = true

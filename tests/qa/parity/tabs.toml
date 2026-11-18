@@ -76,49 +76,43 @@ host = "offscreen"
 scenario = "hovered-tab-takes-drop"
 run = "columns-file"
 package = "A4"
-status = "pending"
-reason = "component"
-blocker = "A19: flaky on Rune, 5 to 9 of 24 runs failing at line 27. After the hover springs the destination tab, the source row unmounts and the drag's hidden stand-in (`dnd::keep_alive`) does not always receive the held press, so the move onto `projects` and the release reach no handler; when it does, Rune's own Escape drag-cancel (`keys.rs`) ends the first drag before `dnd-cancel` runs"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "hovered-tab-takes-drop"
 run = "icons-file"
 package = "A4"
-status = "pending"
-reason = "component"
-blocker = "A19: flaky on Rune, 5 to 9 of 24 runs failing at line 27. After the hover springs the destination tab, the source row unmounts and the drag's hidden stand-in (`dnd::keep_alive`) does not always receive the held press, so the move onto `projects` and the release reach no handler; when it does, Rune's own Escape drag-cancel (`keys.rs`) ends the first drag before `dnd-cancel` runs"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "hovered-tab-takes-drop"
 run = "list-file"
 package = "A4"
-status = "pending"
-reason = "component"
-blocker = "A19: flaky on Rune, 5 to 9 of 24 runs failing at line 27. After the hover springs the destination tab, the source row unmounts and the drag's hidden stand-in (`dnd::keep_alive`) does not always receive the held press, so the move onto `projects` and the release reach no handler; when it does, Rune's own Escape drag-cancel (`keys.rs`) ends the first drag before `dnd-cancel` runs"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "hovered-tab-takes-drop"
 run = "columns-folder"
 package = "A4"
-status = "pending"
-reason = "component"
-blocker = "A19: flaky on Rune, 5 to 9 of 24 runs failing at line 27. After the hover springs the destination tab, the source row unmounts and the drag's hidden stand-in (`dnd::keep_alive`) does not always receive the held press, so the move onto `projects` and the release reach no handler; when it does, Rune's own Escape drag-cancel (`keys.rs`) ends the first drag before `dnd-cancel` runs"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "hovered-tab-takes-drop"
 run = "icons-folder"
 package = "A4"
-status = "pending"
-reason = "component"
-blocker = "A19: flaky on Rune, 5 to 9 of 24 runs failing at line 27. After the hover springs the destination tab, the source row unmounts and the drag's hidden stand-in (`dnd::keep_alive`) does not always receive the held press, so the move onto `projects` and the release reach no handler; when it does, Rune's own Escape drag-cancel (`keys.rs`) ends the first drag before `dnd-cancel` runs"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "hovered-tab-takes-drop"
 run = "list-folder"
 package = "A4"
-status = "pending"
-reason = "component"
-blocker = "A19: flaky on Rune, 5 to 9 of 24 runs failing at line 27. After the hover springs the destination tab, the source row unmounts and the drag's hidden stand-in (`dnd::keep_alive`) does not always receive the held press, so the move onto `projects` and the release reach no handler; when it does, Rune's own Escape drag-cancel (`keys.rs`) ends the first drag before `dnd-cancel` runs"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "reopen-closed-tabs"

@@ -1150,5 +1150,6 @@
   "Press the new key for “%{action}”": "“%{action}”에 사용할 새 키를 누르세요",
   "%{escape} cancels, and %{backspace} removes every key of this action.": "%{escape} 키를 누르면 취소되고, %{backspace} 키를 누르면 이 동작의 모든 키가 제거됩니다.",
   "“%{group}” has no key, so this action cannot run.": "“%{group}”에 키가 없으므로 이 작업을 실행할 수 없습니다.",
-  "Custom action %{number}": "사용자 지정 동작 %{number}"
+  "Custom action %{number}": "사용자 지정 동작 %{number}",
+  "Volume": "볼륨"
 }
