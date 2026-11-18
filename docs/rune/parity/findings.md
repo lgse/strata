@@ -2565,8 +2565,8 @@ sequence only together with the alphabet's version, so the version is part of th
 - **Concerns:** the views' provisional mark, which [A1](packages/A1.md) and
   [A2](packages/A2.md) own with C1, and 10xer's moves. No ledger run reads it. The sequence is
   parked in `tests/qa/fuzz/corpus/tenxer/`. The alphabet left out `h` in version 4; from
-  version 5 `h` leaves only a folder with nothing selected, so a revisit restores no
-  selection.
+  version 5 `h`, and from version 7 `l` too, leave only a folder with nothing selected,
+  so a revisit restores no selection.
 - **State:** ruled by the owner, 2026-11-17: GTK's fault. A fill the user made, left and came
   back to is still the user's, and 10xer's moves keep the marks elsewhere; Rune keeps its
   behaviour. A fix for GTK, if anyone takes it up, lands on `main`.

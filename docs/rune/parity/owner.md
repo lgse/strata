@@ -835,8 +835,8 @@ Rulings of the owner on the parity work, oldest first.
   first 10xer move after a revisit goes through the shared browser's `place_cursor`, which
   clears a selection the load restored; elsewhere 10xer's moves keep the marks. Rune keeps its
   behaviour, and the views' shared provisional mark is unchanged. [A11](packages/A11.md)'s
-  `tenxer` alphabet keeps the case out with a guard citing it (`h` only out of a folder with
-  nothing selected), and its shrunk sequence stays parked as `oracle`. Source: the owner,
+  `tenxer` alphabet keeps the case out with a guard citing it (`h` and `l` only out of a
+  folder with nothing selected), and its shrunk sequence stays parked as `oracle`. Source: the owner,
   2026-11-17.
 
 ## Housekeeping
