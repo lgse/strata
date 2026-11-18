@@ -4,7 +4,7 @@ index 5b7fa30ba..2891dc6db 100644
 +++ b/crates/strata-app/src/preview/pictures.rs
 @@ -60,7 +60,7 @@ pub(super) fn unavailable(reason: Option<&str>) -> Viewer {
  }
- 
+
  fn rasterized(entry: &FileEntry, png: &[u8]) -> Viewer {
 -    match ImageViewer::from_png(entry, png) {
 +    match ImageViewer::from_png(entry, &png[..png.len() / 2]) {
