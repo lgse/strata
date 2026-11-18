@@ -1,13 +1,13 @@
 diff --git a/crates/strata-app/src/preview/media/sequence.rs b/crates/strata-app/src/preview/media/sequence.rs
-index 7c2374212..c387ec51c 100644
+index 4187f6049..6747cbbe2 100644
 --- a/crates/strata-app/src/preview/media/sequence.rs
 +++ b/crates/strata-app/src/preview/media/sequence.rs
-@@ -247,7 +247,7 @@ pub(super) fn step(
-         return false;
+@@ -258,7 +258,7 @@ pub(super) fn step(
+         return None;
      };
      let Some(target) = index
 -        .checked_add_signed(isize::from(step))
 +        .checked_add_signed(isize::from(step) * 0)
          .and_then(|index| files.get(index))
      else {
-         return false;
+         return None;
