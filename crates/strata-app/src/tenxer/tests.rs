@@ -619,6 +619,29 @@ fn numbered_action_chords_run_the_listed_action_on_the_armed_targets() {
     );
 }
 
+/// A folder holding `pictures` (`diagram.txt` and `photo.txt`) and `readme.md`, opened with
+/// the keyboard in its listing.
+fn open_pictures(host: &mut Offscreen) -> tempfile::TempDir {
+    let root = tempfile::tempdir().expect("folder");
+    let pictures = root.path().join("pictures");
+    std::fs::create_dir(&pictures).expect("folder");
+    for name in ["diagram.txt", "photo.txt"] {
+        std::fs::write(pictures.join(name), name).expect("file");
+    }
+    std::fs::write(root.path().join("readme.md"), "readme").expect("file");
+    host.app().open(Location::local(root.path()));
+    assert!(host.run_until(PATIENCE, |h| {
+        h.app().browser().column_entry_counts(0).is_some()
+    }));
+    while host.turn() {}
+    host.runtime().update(|app: &mut App, tx: &mut Tx| {
+        let view = shell::view_focus(app).expect("a view").to_owned();
+        tx.focus(view, true);
+    });
+    while host.turn() {}
+    root
+}
+
 /// A folder came back to with its first entry selected and the cursor past it: the browser's
 /// load picked that first entry, so it read the restored selection as its own pick echoed and
 /// kept the load's cursor. The view showed the remembered one, and Return or Delete would act
@@ -635,23 +658,7 @@ fn a_revisit_keeps_the_view_and_the_browser_on_one_cursor() {
             std::fs::write(file, saved).expect("settings");
         },
         |mut host| {
-            let root = tempfile::tempdir().expect("folder");
-            let pictures = root.path().join("pictures");
-            std::fs::create_dir(&pictures).expect("folder");
-            for name in ["diagram.txt", "photo.txt"] {
-                std::fs::write(pictures.join(name), name).expect("file");
-            }
-            std::fs::write(root.path().join("readme.md"), "readme").expect("file");
-            host.app().open(Location::local(root.path()));
-            assert!(host.run_until(PATIENCE, |h| {
-                h.app().browser().column_entry_counts(0).is_some()
-            }));
-            while host.turn() {}
-            host.runtime().update(|app: &mut App, tx: &mut Tx| {
-                let view = shell::view_focus(app).expect("a view").to_owned();
-                tx.focus(view, true);
-            });
-            while host.turn() {}
+            let _root = open_pictures(&mut host);
             let named = |host: &Offscreen| {
                 host.app()
                     .browser()
