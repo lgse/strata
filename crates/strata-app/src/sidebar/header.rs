@@ -29,9 +29,6 @@ use crate::{
     shell,
 };
 
-/// The location bar's elements, which GTK's header box holds beside the buttons.
-const LOCATION: &str = "location";
-
 macro_rules! arrow {
     ($id:literal, $command:expr, $run:expr) => {
         Action::new($id, $run).command($command).keys(&[Keys::at(
@@ -49,8 +46,7 @@ pub(super) const TO_RIGHT: Action<App> = arrow!("header-right", RIGHT, right);
 
 /// GTK's guard: `top_bar.has_focus()` and no text field has the keyboard, outside 10xer mode.
 fn in_header(app: &App, at: &Situation) -> bool {
-    let header = at.within("header") || at.within(LOCATION);
-    header && !at.text() && !shell::preferences(app).tenxer_mode
+    at.in_top_bar() && !at.text() && !shell::preferences(app).tenxer_mode
 }
 
 fn left(_: &mut App, _: &Call<'_>, tx: &mut Tx) -> Outcome {

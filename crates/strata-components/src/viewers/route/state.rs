@@ -103,6 +103,8 @@ pub struct RouteLabels {
     pub height: fn(f64, Units) -> String,
     pub range: fn([f64; 2], Units) -> String,
     pub duration: fn(u64) -> String,
+    /// The eyebrow over the title: the file's place among the route files around it.
+    pub position: fn(Position) -> String,
 }
 
 impl Default for RouteLabels {
@@ -133,6 +135,7 @@ impl Default for RouteLabels {
                     format!("{m}:{s:02}")
                 }
             },
+            position: Position::caption,
         }
     }
 }

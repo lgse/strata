@@ -14,6 +14,7 @@ use strata_kit::slots::collection as tokens;
 use super::Config;
 use super::keys::{ICON, LABEL, header_key, line_key, row_key};
 use super::lines::{Group, GroupStyle, Line, LineMap};
+use super::matches::NameMatches;
 use super::state::DropOver;
 use crate::contract::{DropHover, DropZone, ElementKey, Entry, EntryId, Point, Rect};
 
@@ -39,6 +40,9 @@ pub struct RowMarks {
     pub active_parent: bool,
     /// The row a folder peek is open from.
     pub peek_anchor: bool,
+    /// The parts of the name that match what the host looks for, painted over the label in the
+    /// accent ([`NameMatches`]).
+    pub name_matches: NameMatches,
     /// Gone from view while its entry stays listed: the row draws nothing and leaves the
     /// accessibility tree, a pointer press there is on empty space, and the cursor on it is no
     /// one's active descendant; but it keeps its slot. C23 hides the rows it dissolves this
@@ -775,7 +779,9 @@ fn default_icon(rcx: &RowCx<'_>) -> El {
 /// The entry's name, cut short with an ellipsis.
 fn default_label(rcx: &RowCx<'_>) -> El {
     let kit = &rcx.look.kit;
+    let spans = rcx.state.marks.name_matches.spans(rcx.look);
     text(rcx.entry.name.to_owned())
+        .spans(spans)
         .key(LABEL)
         .a11y_hidden()
         .font(kit.ty.ui_compact)
