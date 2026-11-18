@@ -6,13 +6,17 @@ use std::borrow::Cow;
 
 use rune::El;
 use strata_components::{
-    collection::{element::Collection, pointer::PointerSettings},
+    collection::{
+        element::{Collection, RowMarks},
+        pointer::PointerSettings,
+    },
     columns::{ColumnsLabels, ColumnsParts, ColumnsPartsMut, ColumnsView},
+    contract::EntryId,
 };
 use strata_core::i18n::tr;
 
 use super::intents;
-use crate::{App, commands, filter, pane_header, rename, shell, surface};
+use crate::{App, commands, filter, pane_header, rename, shell, surface, tenxer::highlight};
 
 /// The view's words, translated once: the language changes only on restart.
 pub(super) struct Labels(ColumnsLabels);
@@ -92,15 +96,26 @@ pub(crate) fn view(app: &App) -> ColumnsView<App> {
     .header_actions(|app: &App, cx| pane_header::actions::column(app, &cx))
     // The filter's field, in a band under the header of the column it is open in.
     .header_band(|app: &App, cx| filter::column_band(app, cx.depth))
-    // The filter's Enter target among its results, plus copied, cut, and dragging marks.
-    .marks(|app: &App, depth, id| {
-        crate::dnd::with_marks(
-            app,
-            id,
-            crate::clipboard::with_marks(app, id, filter::marks(app, depth, id)),
-        )
-    })
+    // The filter's Enter target among its results, the names' find and filter highlights,
+    // plus copied, cut, and dragging marks.
+    .marks(row_marks)
     .on_intent(intents::heard)
+}
+
+/// Row `id`'s marks in column `depth`: the filter's Enter target among its results, the name's
+/// find or filter highlight, and the copied, cut and dragging marks.
+pub(crate) fn row_marks(app: &App, depth: usize, id: EntryId) -> RowMarks {
+    let marks = filter::marks(app, depth, id);
+    let marks = if app.columns.shows_hits(depth) {
+        highlight::hit_marks(app, id, marks)
+    } else {
+        let row = app
+            .columns
+            .listing(depth)
+            .and_then(|column| column.row_of(id));
+        highlight::listing_marks(app, row.map(crate::listing::Row::name), marks)
+    };
+    crate::dnd::with_marks(app, id, crate::clipboard::with_marks(app, id, marks))
 }
 
 /// One column's collection, as the part dresses it: its status, thumbnails, fills, drags, the

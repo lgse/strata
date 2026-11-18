@@ -52,6 +52,8 @@ mod width;
 
 pub(crate) use intents::spring_open;
 pub(crate) use selection::Input;
+#[cfg(test)]
+pub(crate) use view::row_marks;
 pub(crate) use view::view;
 
 use fills::ColumnFills;

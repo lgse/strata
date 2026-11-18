@@ -5,13 +5,15 @@
 //! subfolder search hit path under the cursor, Escape's dismissal of `f` vs `s`, and non-Latin
 //! `h j k l` moves on search results (`Stage::SearchResultKeys`).
 
+use std::ops::Range;
+
 use rune::Tx;
 use strata_components::{
     collection::{
         keyboard::{Command as NavCommand, Target as NavTarget},
         selection::{AnchorRule, Position},
     },
-    contract::Direction,
+    contract::{Direction, EntryId},
     filter_bar::filter::Polled,
     footer::FilterMark,
 };
@@ -20,6 +22,7 @@ use strata_desktop::keys::{
     KeyPress,
     bindings::{DOWN, LEFT, RIGHT, UP},
 };
+use strata_fs::services::{PathMatcher, PathQuery};
 
 use super::{OpenIn, flush_search, place::Where, prepare_open, results, route, targets};
 use crate::{
@@ -446,4 +449,38 @@ pub(super) fn result_vim_arrow(app: &mut App, call: &Call<'_>, tx: &mut Tx) -> O
     } else {
         Outcome::Declined
     }
+}
+
+thread_local! {
+    /// The matcher of the query the hits' names were last highlighted for: GTK keeps one per
+    /// query too (`with_filter_terms`).
+    static HIT_MATCHER: std::cell::RefCell<Option<(String, PathMatcher)>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+/// The name result `id` shows, while it is one of the results shown.
+pub(crate) fn hit_name(app: &App, id: EntryId) -> Option<&str> {
+    let entry = app.filter.found.get(&id)?;
+    Some(entry.display_name.as_str())
+}
+
+/// The parts of result `id`'s name its query matched, as 10xer's fuzzy `f` and `s` mark them
+/// (`search_hit_ranges` in `src/ui/browser/find.rs`). `None` outside them: a plain filter's
+/// results show no highlight.
+pub(crate) fn hit_name_ranges(app: &App, id: EntryId) -> Option<Vec<Range<usize>>> {
+    let open = app.filter.open_in.as_ref()?;
+    let fuzzy = app.filter.forced_recursive || shell::preferences(app).tenxer_mode;
+    if !fuzzy || !app.filter.state.is_open() {
+        return None;
+    }
+    let entry = app.filter.found.get(&id)?;
+    let (root, path) = (open.folder.native_path()?, entry.location.native_path()?);
+    let query = app.filter.state.text().trim();
+    Some(HIT_MATCHER.with_borrow_mut(|cached| {
+        if cached.as_ref().is_none_or(|(last, _)| last != query) {
+            *cached = Some((query.to_owned(), PathMatcher::new(&PathQuery::parse(query))));
+        }
+        let (_, matcher) = cached.as_mut().expect("cached above");
+        matcher.name_highlight(root, path)
+    }))
 }
