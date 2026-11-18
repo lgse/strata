@@ -1,0 +1,5 @@
+{"scenario":"fuzz-drag-v1-0000000000000005","modes":["list"],"prefs":{"type_to_search":false,"single_click_previews":false,"explorer_folder_clicks":1,"explorer_file_clicks":2}}
+{"drag":{"from":{"entry":"todo.txt"},"to":{"entry":"documents"}},"release":false,"when":{"all":[{"directory":"$root"},{"present":{"entry":"todo.txt"}},{"present":{"entry":"documents"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}
+{"key":"Escape"}
+{"button_up":1}
+{"drag":{"from":{"entry":"todo.txt"},"to":{"entry":"documents"}},"mods":["ctrl"],"when":{"all":[{"directory":"$root"},{"present":{"entry":"todo.txt"}},{"present":{"entry":"documents"}},{"file":{"path":"$fixture/documents/todo.txt","exists":false}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}

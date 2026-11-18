@@ -310,9 +310,14 @@ fn install_active_drag(app: &mut App, active: ActiveDrag, open: Option<TabOpen>)
     app.dnd.volumes.clear();
     app.dnd.out = Some(active);
     tab_strip::set_open_drag(app, open);
+    // GTK's item drag source cancels the peek as its drag begins.
+    crate::peek::close(app);
 }
 
 pub(super) fn on_drag_ended(app: &mut App, _tx: &mut Tx) {
+    // And as it ends; where it was dropped peeks only once the pointer arrives on a row again.
+    crate::peek::close(app);
+    crate::peek::hold_rest(app);
     app.dnd.out = None;
     app.dnd.spring.clear();
     app.dnd.volumes.clear();

@@ -2323,6 +2323,10 @@ sequence only together with the alphabet's version, so the version is part of th
 - **Seen again** in [A16](packages/A16.md)'s [#2585](https://github.com/lgse/strata/pull/2585)
   review gate at `6501200fd`, at the same line (Rune offscreen 676 of 677). Alone it then passed
   3 of 3. The pull request changes the preview's viewers and the media keys' guard, not undo.
+- **Also seen** in the re-gate of [#2597](https://github.com/lgse/strata/pull/2597) at
+  `8c69f50b3` (rune offscreen 683 of 684), at line 11 again. Alone it then passed three
+  rounds, 1 of 1 on each target. #2597 changes the view's cursor after an undo (A19's
+  `handover::Kept`), not what reaches the disk, which is what line 11 waits on.
 - **State:** open, unowned.
 
 ### #2570: 10xer's find and filter highlights are not drawn in Rune's rows
@@ -2514,3 +2518,70 @@ sequence only together with the alphabet's version, so the version is part of th
   which ports `pending_navigate` as GTK has it, early returns included. No run or seed reads it.
 - **State:** open, set aside: Rune keeps GTK's behaviour. Any fix belongs on `main`, and Rune
   follows it.
+
+### #2590: GTK's Ctrl+drag of a row an earlier drag selected takes it out of the selection and drags it alone
+
+- **Code:** `oracle`. [Issue](https://github.com/lgse/strata/issues/2590), filed on
+  2026-11-17 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** in [A19](packages/A19.md)'s `drag` alphabet (v1), GTK against Rune, in List.
+  `fuzz-drag-v1-0000000000000011`, shrunk to 3 steps: drag `todo.txt` onto the pane's own
+  background, then Ctrl+drag `readme.md` onto `archive` (both targets add it and copy both
+  files), then Ctrl+drag `readme.md` onto `pictures`. GTK copies `readme.md` alone and leaves
+  `[todo.txt]` selected. Rune copies both selected files and keeps both selected.
+  `fuzz-drag-v1-0000000000000005` (4 steps) shows it from a single selection: GTK's selection
+  is `[]` after the Ctrl+drag.
+- **Why it is GTK's:** `pointer_intent/ctrl-drag-copies-keeps-selection/*-selected-stay`
+  (`required`) holds GTK to keeping the dragged row selected when a `select` step selected it.
+  C1b's pointer machine says "A Ctrl-drag carries the entry: it stays selected instead of
+  toggling off". Rune does so either way.
+- **Concerns:** both sequences, confirmed 3 of 3, parked in `tests/qa/fuzz/corpus/drag/`.
+  `drag v2` drags only rows not selected. Not driven by hand on GTK.
+- **State:** open, set aside: no Rune change; any fix belongs on `main`.
+
+### #2591: releasing a drag Escape cancelled selects the row under the pointer on GTK, its focus on the dragged row
+
+- **Code:** `oracle`. [Issue](https://github.com/lgse/strata/issues/2591), filed on
+  2026-11-17 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** in [A19](packages/A19.md)'s `drag` alphabet (v1), GTK against Rune, in List.
+  `fuzz-drag-v1-000000000000000d`, shrunk to 4 steps: drag `archive` onto itself, drag
+  `readme.md` onto `archive` without releasing, Escape, release. GTK then selects `["archive"]`
+  with its focus on `readme.md`. Rune keeps `["readme.md"]` selected and focused.
+  `escape-cancels-file-drag` checks the selection only before the release.
+- **Concerns:** the sequence, confirmed 3 of 3, parked in `tests/qa/fuzz/corpus/drag/`.
+  `drag v2` leaves the Escape cancel out (`escape-cancels-file-drag` owns it). Not driven by
+  hand on GTK.
+- **State:** open, set aside: no Rune change; any fix belongs on `main`.
+
+### #2592: a drag from a selected row of a multi-selection gives GTK's keyboard to that row, Rune's stays
+
+- **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2592), filed on
+  2026-11-17 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** in [A19](packages/A19.md)'s `drag` alphabet (v1), GTK against Rune, in List.
+  `fuzz-drag-v1-0000000000000006`, shrunk to 3 steps: click `readme.md`, Ctrl+drag `todo.txt`
+  onto `documents` (both select both files, the keyboard on `todo.txt`), then drag `readme.md`
+  onto the pane's own background, which takes nothing. GTK's focus is then on `readme.md`,
+  Rune's still on `todo.txt`; the selections agree.
+- **Where:** C1b's pointer machine (`collection/pointer/machine.rs`) keeps the cursor on a press
+  of a selected row, deferring the click to the release, and drops the deferral when the press
+  becomes a drag. GTK's press moves the keyboard at once. The fix is C1b's owner's, a
+  component change outside A19.
+- **Concerns:** the sequence, confirmed 3 of 3, parked in `tests/qa/fuzz/corpus/drag/`.
+  `drag v2` drags only rows not selected.
+- **State:** open, unowned.
+
+### #2593: opening again a folder that was empty gives GTK's keyboard to the entry it gained, Rune's to none
+
+- **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2593), filed on
+  2026-11-17 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** in [A19](packages/A19.md)'s `drag` alphabet's smoke tier (v2), GTK against Rune, in
+  List with single-click folder activation. `fuzz-drag-v2-0000000000000007`, shrunk to 4 steps:
+  click `archive` (the empty folder opens, the keyboard on nothing on both), Alt+Up, drag
+  `readme.md` onto `archive` (a move), click `archive`. GTK's focus is then on `readme.md` with
+  nothing selected. Rune's is `null`.
+- **Where:** not drag and drop's. "Open folder after drop" is off, so the transfer reveals
+  nothing; the difference is the List view's restore of the folder's remembered position on
+  the way back in. Not checked: whether an entry made behind the application's back does the
+  same.
+- **Concerns:** the sequence, confirmed 3 of 3, parked in `tests/qa/fuzz/corpus/drag/`. The
+  smoke tier skips its seed while it is parked.
+- **State:** open, unowned.
