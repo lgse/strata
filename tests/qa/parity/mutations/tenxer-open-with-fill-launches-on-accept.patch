@@ -1,0 +1,10 @@
+diff --git a/crates/strata-app/src/tenxer/verbs.rs b/crates/strata-app/src/tenxer/verbs.rs
+--- a/crates/strata-app/src/tenxer/verbs.rs
++++ b/crates/strata-app/src/tenxer/verbs.rs
+@@ -125,5 +125,5 @@ fn open_with_targets(app: &mut App, tx: &mut Tx) {
+     let report: open_with::RefusalReport = Rc::new(|app: &mut App, reason: &str, tx: &mut Tx| {
+         app.tenxer.flash.show(tr(reason), tx);
+     });
+-    let _ = open_with::open_targets(app, tx, Some(report));
++    let _ = (app, tx, report);
+ }

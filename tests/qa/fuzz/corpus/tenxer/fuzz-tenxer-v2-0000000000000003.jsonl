@@ -1,0 +1,8 @@
+{"scenario":"fuzz-tenxer-v2-0000000000000003","modes":["list"],"prefs":{"tenxer_mode":true,"type_to_search":false,"single_click_previews":false}}
+{"type":"re"}
+{"key":"Return"}
+{"key":"space"}
+{"key":"l","when":{"any":[{"focused":"documents"},{"focused":"pictures"}]}}
+{"key":"f"}
+{"type":"txt"}
+{"key":"Return"}

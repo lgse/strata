@@ -16,11 +16,14 @@ use crate::{
     chooser::{source::ChooserFileSource, state::DestinationHost},
     host::offscreen::Offscreen,
     portal::{ChooserRequest, Completion},
-    startup::{self, UiThread},
+    settings::Saved,
+    startup::UiThread,
 };
 
 /// What a chooser is built from.
 pub(super) struct ChooserParts {
+    /// The settings it reads: its browser window's, shared, or the portal process's own.
+    pub(super) settings: Saved,
     pub(super) request: ChooserRequest,
     pub(super) source: Rc<ChooserFileSource>,
     pub(super) destination: Option<DestinationHost>,
@@ -61,7 +64,7 @@ impl Toplevel {
         let mut app = App::new_chooser(
             &ui,
             Csd::new(Policy::Auto.frame(), Backend::Headless),
-            startup::load_settings(),
+            parts.settings,
             (
                 parts.request,
                 parts.source,

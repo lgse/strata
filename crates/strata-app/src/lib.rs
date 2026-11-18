@@ -121,6 +121,9 @@ mod drop_dialog;
 // A20 Portal chooser
 mod chooser;
 // A21 Window and launch
+// The process behind the windows: its one instance on the session bus, and the windows its
+// launches ask for.
+mod application;
 
 // The order of these lines is the order of the parts: within a slot, and wherever the shell
 // calls each of them.

@@ -738,6 +738,14 @@ impl Snapshot {
         }
     }
 
+    /// This window's tree with `other`'s beside it, as [`Snapshot::with_toplevel`] puts it,
+    /// with this one's focus: `other` is a window behind it, which takes no keys.
+    pub(super) fn with_window_behind(&self, other: &Snapshot) -> Snapshot {
+        let mut both = self.with_toplevel(other);
+        both.focus = self.focus;
+        both
+    }
+
     pub(super) fn get(&self, node: &Node) -> Option<&Seen> {
         self.index.get(node).map(|index| &self.nodes[*index])
     }

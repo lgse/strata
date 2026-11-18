@@ -830,6 +830,14 @@ Rulings of the owner on the parity work, oldest first.
   `app.dialog` names the innermost open dialog on Rune (`Backend::nests_dialogs` in
   `crates/strata-qa`, which the GTK backend leaves off), and no map rule covers it. Built in
   [A18](packages/A18.md)'s `settings` alphabet pull request. Source: the owner, 2026-11-17.
+- **2026-11-17: a 10xer move keeps a selection a revisit restored; GTK, which drops it, is at
+  fault** (finding [#2587](https://github.com/lgse/strata/issues/2587), now `oracle`). GTK's
+  first 10xer move after a revisit goes through the shared browser's `place_cursor`, which
+  clears a selection the load restored; elsewhere 10xer's moves keep the marks. Rune keeps its
+  behaviour, and the views' shared provisional mark is unchanged. [A11](packages/A11.md)'s
+  `tenxer` alphabet keeps the case out with a guard citing it (`h` and `l` only out of a
+  folder with nothing selected), and its shrunk sequence stays parked as `oracle`. Source: the owner,
+  2026-11-17.
 - **2026-11-17: focus after the floating chooser closes is excused in the fuzz map**
   (finding [#2595](https://github.com/lgse/strata/issues/2595), option (c)). Once the floating
   Copy to or Move to chooser has closed, GTK's browser reports no focus on the QA's Xvfb, which

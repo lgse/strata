@@ -9,18 +9,18 @@ fn arguments(list: &[&str]) -> Vec<OsString> {
 }
 
 #[test]
-fn arguments_name_one_directory_the_portal_or_ask_for_help() {
-    let open = |directory: &str| Ok(Command::Open(Some(directory.into())));
+fn arguments_name_paths_the_portal_or_ask_for_help() {
+    let open = |paths: &[&str]| Ok(Command::Open(arguments(paths)));
     for (list, expected) in [
-        (&[][..], Ok(Command::Open(None))),
-        (&["/srv/files"], open("/srv/files")),
-        (&["--", "--help"], open("--help")),
-        (&["-"], open("-")),
+        (&[][..], open(&[])),
+        (&["/srv/files"], open(&["/srv/files"])),
+        (&["--", "--help"], open(&["--help"])),
+        (&["-"], open(&["-"])),
         (&["--help"], Ok(Command::Help)),
         (&["/srv/files", "-h"], Ok(Command::Help)),
         (&["--qa"], Err("unknown option --qa".to_owned())),
         (&["--portal"], Ok(Command::Portal)),
-        (&["--", "--portal"], open("--portal")),
+        (&["--", "--portal"], open(&["--portal"])),
         (&["--portal", "--help"], Ok(Command::Help)),
         (
             &["--portal", "/srv/files"],
@@ -36,7 +36,11 @@ fn arguments_name_one_directory_the_portal_or_ask_for_help() {
         ),
         (
             &["/srv/files", "/srv/more"],
-            Err("only one directory can be opened".to_owned()),
+            open(&["/srv/files", "/srv/more"]),
+        ),
+        (
+            &["/srv/files", "--", "-x", "--"],
+            open(&["/srv/files", "-x", "--"]),
         ),
     ] {
         assert_eq!(parse(arguments(list)), expected, "{list:?}");
@@ -44,10 +48,10 @@ fn arguments_name_one_directory_the_portal_or_ask_for_help() {
 }
 
 #[test]
-fn an_argument_that_is_not_utf8_is_a_directory() {
+fn an_argument_that_is_not_utf8_is_a_path() {
     let name = OsString::from_vec(b"-caf\xe9".to_vec());
 
-    assert_eq!(parse([name.clone()]), Ok(Command::Open(Some(name))));
+    assert_eq!(parse([name.clone()]), Ok(Command::Open(vec![name])));
 }
 
 /// As `launch_mode` in `src/main.rs`: the worker's argument counts only in first place, so a

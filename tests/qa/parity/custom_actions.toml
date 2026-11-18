@@ -6,6 +6,5 @@
 scenario = "tenxer-numbered-action-confirms"
 run = "columns"
 package = "A11"
-status = "pending"
-reason = "scope"
-blocker = "A11"
+status = "required"
+host = "offscreen"

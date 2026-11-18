@@ -118,6 +118,11 @@ fn surface(holds: &[(Holds, &str)], surface: Surface, open: bool, failures: &mut
 fn is_typing(hold: Holds) -> bool {
     matches!(
         hold,
-        Holds::Field | Holds::Filter | Holds::Location | Holds::Edit | Holds::Modal { field: true }
+        Holds::Field
+            | Holds::Filter
+            | Holds::Location
+            | Holds::Edit
+            | Holds::Prompt
+            | Holds::Modal { field: true }
     )
 }

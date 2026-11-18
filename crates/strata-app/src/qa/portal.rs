@@ -34,7 +34,7 @@ use crate::{
         dbus::PortalService,
         inbox::{PortalEvent, PortalInbox},
     },
-    startup::UiThread,
+    startup::{self, UiThread},
 };
 
 /// The QA runner's screen (Xvfb at 1440x900), which the GTK chooser sizes itself against.
@@ -167,6 +167,7 @@ impl PortalStaged {
             size: chooser_initial_dimensions(Some(SCREEN), request.parent_size_hint),
         };
         let parts = ChooserParts {
+            settings: startup::load_settings(),
             request,
             source: ChooserFileSource::new(None),
             destination: None,

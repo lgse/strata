@@ -7,9 +7,8 @@ scenario = "multiple-arguments-non-utf8"
 run = "columns"
 package = "A21"
 gate = "G2"
-status = "pending"
-reason = "scope"
-blocker = "P8 and the shell: `launch` with five arguments needs a window for each, a revealed file argument and the session bus; strata-rune takes one directory"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "startup-with-closed-pipes"
