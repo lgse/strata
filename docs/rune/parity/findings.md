@@ -2386,6 +2386,28 @@ sequence only together with the alphabet's version, so the version is part of th
   before. #2573 changes Settings and the QA snapshot's nested dialogs, not the preview.
 - **State:** open, unowned. The ledger is unchanged: the run stays `required`. Not traced.
 
+### #2600: the floating chooser's second right-click opened no menu in a busier `window::` suite
+
+- **Code:** none of the plan's: a flaky Rune window test, labelled `testing`.
+  [Issue](https://github.com/lgse/strata/issues/2600), filed on 2026-11-18 as the finding's
+  reference and closed at once: its state is kept here.
+- **Seen:** on the head of [#2594](https://github.com/lgse/strata/pull/2594) (A21's first
+  slice), in `mise run test-platform window::`, whose suite there has 9 tests where
+  `strata-next` has 6. Its review saw 2 failures in 27 runs, and its author 3 in 10, then 2 in
+  10 with the floating chooser left out of the windowed host's `wake_pending`. Each time
+  `window::qa::the_floating_chooser_comes_forward_and_closes_with_its_browser`
+  (`crates/strata-rune/tests/window/qa.rs`) failed at the second `ask_to_copy`, after
+  `s.focus(&browser)`: the right-click on `notes.txt` reached the browser (the session host
+  aimed it from the browser's sway area, 0,0 640x800, and the compositor delivered the press),
+  but no entry menu opened, and `{"wait":{"menu_items":{}}}` timed out with `"menu":null`.
+  The failing suite took about 19 s against about 4 s.
+- **Not reproduced:** alone, 0 of 12 (the review); on `strata-next`, 0 of 12 (the review); and
+  on #2594's own code with its three new window tests skipped, the 6 tests `strata-next` has,
+  0 of 10. So it tracks the three extra sway sessions running beside it, not the code in its
+  path. Not traced further.
+- **Concerns:** `strata-rune`'s window test above, [A20](packages/A20.md)'s.
+- **State:** open, unowned.
+
 ### #2580: `rendered-document-word-selection-rune` lost the selection's first characters twice in a full session-host run
 
 - **Code:** none of the plan's: a flaky Rune run, labelled `testing`.
