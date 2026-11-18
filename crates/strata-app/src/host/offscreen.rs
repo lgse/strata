@@ -19,7 +19,7 @@ pub(crate) struct Offscreen {
     runtime: Runtime<App>,
     context: glib::MainContext,
     stepped: Instant,
-    _ui: UiThread,
+    ui: UiThread,
 }
 
 impl Offscreen {
@@ -59,12 +59,35 @@ impl Offscreen {
             runtime,
             context: glib::MainContext::default(),
             stepped: Instant::now(),
-            _ui: ui,
+            ui,
         }
     }
 
     pub(crate) fn app(&self) -> &App {
         &self.runtime.state
+    }
+
+    /// The proof this host's thread owns the default GLib context, for another host beside it.
+    #[cfg(feature = "qa")]
+    pub(crate) fn ui(&self) -> UiThread {
+        self.ui
+    }
+
+    /// The window's size, in whole points.
+    #[cfg(feature = "qa")]
+    pub(crate) fn size(&self) -> (i32, i32) {
+        let (width, height) = self.runtime.viewport;
+        #[expect(
+            clippy::cast_possible_truncation,
+            reason = "a window's size in points fits i32"
+        )]
+        (width.round() as i32, height.round() as i32)
+    }
+
+    /// The window's state, for what the host takes out of it outside a handler.
+    #[cfg(any(test, feature = "qa"))]
+    pub(crate) fn app_mut(&mut self) -> &mut App {
+        &mut self.runtime.state
     }
 
     /// Starts the window from `initial`, as the windowed host's `App::init` does.

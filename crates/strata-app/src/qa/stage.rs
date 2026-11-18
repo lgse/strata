@@ -408,6 +408,11 @@ impl Stage {
         self.host.app()
     }
 
+    /// The host, for what reading it changes nothing of.
+    pub(super) fn app_host(&self) -> &Offscreen {
+        &self.host
+    }
+
     /// The host, for anything that can change what it shows: the tree is read again after.
     pub(super) fn host(&mut self) -> &mut Offscreen {
         self.seen = None;

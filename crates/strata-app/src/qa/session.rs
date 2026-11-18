@@ -54,7 +54,7 @@ use super::{
     input_log::{InputLog, modifier_name},
     keymap,
     replaced::Replacements,
-    tree::Snapshot,
+    tree::{Node, Snapshot},
 };
 use crate::{
     App,
@@ -408,7 +408,7 @@ impl Host for Session {
         std::thread::sleep(limit);
     }
 
-    fn origin(&self) -> Result<(f64, f64), String> {
+    fn origin(&self, _node: &Node) -> Result<(f64, f64), String> {
         let window = self.window()?;
         Ok((window.x, window.y))
     }
@@ -552,7 +552,7 @@ impl Host for Session {
         clicked.is_ok()
     }
 
-    async fn scroll_to(&self, key: &str, x: f32, y: f32) -> Result<(), String> {
+    async fn scroll_to(&self, (_, key): (&Node, &str), x: f32, y: f32) -> Result<(), String> {
         let key = key.to_owned();
         let before = self.link.frames.serial();
         self.link
