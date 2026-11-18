@@ -1851,8 +1851,12 @@ sequence only together with the alphabet's version, so the version is part of th
 - **Why:** Rune's `App::on_close` runs before the window goes and cannot keep it (at
   `2a44156`), and nothing else hears a close request.
 - **Concerns:** no run: no scenario closes a window with an operation running.
-- **State:** open, [A21](packages/A21.md)'s, to draft into the packet with the window's
-  lifecycle and to work around if it can.
+- **State:** drafted and worked around by [A21](packages/A21.md)'s Slice 2b (2026-11-18). Rune
+  packet entry 110 (`docs/rune/upstream/rune/110-refusable-close-request.md`) asks for a close
+  request the app can refuse. Until then, `on_close` opens the window's state again in a new
+  window, which says why (`crates/strata-app/src/host/windowed/refused.rs`). The same guards
+  now also refuse the last window's close while a custom action's job runs, as GTK's jobs
+  guard does. Open until the entry is filed and answered.
 
 ### #2477: `reopen-closed-tabs/columns` sometimes misses the click on a new tab's folder
 
