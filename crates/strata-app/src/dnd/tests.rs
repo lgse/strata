@@ -166,12 +166,35 @@ fn hovering_inactive_tab_springs_tab_and_keeps_drag_alive_until_drop() {
 
             let from = label_centre(&mut host, "todo.txt");
             let second_centre = key_centre(&mut host, &tab_key("tabs", TabId(second.0)));
-            drag_steps(&mut host, from, second_centre, false);
-            host.runtime().frame(0.8);
-            host.turn();
-            idle(&mut host);
-            assert_eq!(shown_tab(host.app()), second);
-            assert!(super::is_dragging(host.app()));
+            // A drag cancelled on the sprung tab first, as `tabs/hovered-tab-takes-drop` does:
+            // the source's path then has a node id from before, which the stand-in inherits.
+            for cancelled in [true, false] {
+                drag_steps(&mut host, from, second_centre, false);
+                assert!(
+                    host.run_until(PATIENCE, |h| shown_tab(h.app()) == second),
+                    "the hover springs the tab"
+                );
+                assert!(super::is_dragging(host.app()));
+                if !cancelled {
+                    break;
+                }
+                send_key(
+                    &mut host,
+                    KeyEvent {
+                        key: Key::Escape,
+                        mods: Mods::default(),
+                    },
+                );
+                host.turn();
+                host.runtime().pointer_up(second_centre.0, second_centre.1);
+                host.turn();
+                idle(&mut host);
+                assert!(!super::is_dragging(host.app()));
+                host.runtime().update(move |app, tx| {
+                    assert!(crate::tab_strip::select(app, first, tx));
+                });
+                idle(&mut host);
+            }
 
             // Move into the sprung tab's listing (exercising `keep_alive_drag`) and release.
             host.runtime().pointer_move(400.0, 220.0);
