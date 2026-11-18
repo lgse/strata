@@ -28,7 +28,9 @@ pub fn cell_key(id: &str) -> String {
 pub(super) fn label<S: 'static>() -> Slot<S> {
     Slot::pure(|_: &S, rcx: &RowCx<'_>| {
         let kit = &rcx.look.kit;
+        let spans = rcx.state.marks.name_matches.spans(rcx.look);
         text(rcx.entry.name.to_owned())
+            .spans(spans)
             .key(LABEL)
             .a11y_hidden()
             .font(kit.ty.ui_compact)
