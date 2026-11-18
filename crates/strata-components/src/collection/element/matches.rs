@@ -12,45 +12,56 @@ use strata_kit::look::Look;
 #[cfg(test)]
 mod tests;
 
-/// Byte ranges of an entry's name to highlight, in order and apart, at most [`NameMatches::CAP`]
-/// of them. `Copy`, so it rides in [`RowMarks`](super::RowMarks), and a change of ranges builds
-/// the row again.
+/// Byte ranges of an entry's name to highlight, as many as the name holds within its first
+/// [`NameMatches::REACH`] bytes (a file name's own limit is 255): one bit for each byte, so it
+/// stays `Copy` and rides in [`RowMarks`](super::RowMarks), and a change of ranges builds the
+/// row again. Ranges that touch read back as one, which paints the same.
 ///
 /// Used by: hosts (Strata's 10xer find and filter), C1e's label, C3's caption, C4's name cell.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub struct NameMatches {
-    ranges: [(u32, u32); NameMatches::CAP],
-    len: u8,
+    bytes: [u64; WORDS],
 }
 
-impl NameMatches {
-    /// The most ranges a name keeps; later ones are dropped.
-    pub const CAP: usize = 8;
+const WORDS: usize = 8;
 
-    /// `ranges`, skipping empty ones and keeping the first [`NameMatches::CAP`].
+impl NameMatches {
+    /// The bytes of a name that can be highlighted; matches past them are dropped. A range across
+    /// it is cut there, which may fall inside a character of a longer name: the host, which
+    /// knows the name, ends its ranges on a character boundary within it.
+    pub const REACH: usize = WORDS * 64;
+
+    /// `ranges`, skipping empty ones, up to [`NameMatches::REACH`].
     pub fn new(ranges: impl IntoIterator<Item = Range<usize>>) -> Self {
         let mut matches = Self::default();
-        for range in ranges.into_iter().filter(|range| range.start < range.end) {
-            if usize::from(matches.len) == Self::CAP {
-                break;
+        for range in ranges {
+            for byte in range.start..range.end.min(Self::REACH) {
+                matches.bytes[byte / 64] |= 1 << (byte % 64);
             }
-            let at = usize::from(matches.len);
-            matches.ranges[at] = (to_u32(range.start), to_u32(range.end));
-            matches.len += 1;
         }
         matches
     }
 
     /// Whether nothing is highlighted.
     pub fn is_empty(&self) -> bool {
-        self.len == 0
+        self.bytes.iter().all(|word| *word == 0)
     }
 
-    /// The ranges, in order.
+    fn marked(&self, byte: usize) -> bool {
+        byte < Self::REACH && self.bytes[byte / 64] & (1 << (byte % 64)) != 0
+    }
+
+    /// The ranges, in order and apart.
     pub fn ranges(&self) -> impl Iterator<Item = Range<usize>> + '_ {
-        self.ranges[..usize::from(self.len)]
-            .iter()
-            .map(|&(start, end)| start as usize..end as usize)
+        let mut at = 0;
+        std::iter::from_fn(move || {
+            let start = (at..Self::REACH).find(|byte| self.marked(*byte))?;
+            let end = (start..=Self::REACH)
+                .find(|byte| !self.marked(*byte))
+                .unwrap_or(Self::REACH);
+            at = end;
+            Some(start..end)
+        })
     }
 
     /// The ranges of `name` moved onto `shown`, the name as a caption cut it: the parts in the
@@ -83,10 +94,6 @@ impl NameMatches {
             })
             .collect()
     }
-}
-
-fn to_u32(at: usize) -> u32 {
-    u32::try_from(at).unwrap_or(u32::MAX)
 }
 
 /// The bytes `a` and `b` start with alike, on a character boundary.

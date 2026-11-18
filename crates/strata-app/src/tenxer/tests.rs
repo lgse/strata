@@ -9,7 +9,7 @@ use crate::{
     host::offscreen::Offscreen,
     preview, shell,
     test_support::{
-        PATIENCE, folder_of, hosted, send_key,
+        PATIENCE, folder_of, hosted, hosted_after, send_key,
         view::{all, text},
     },
 };
@@ -563,6 +563,158 @@ fn toggling_tenxer_mode_keeps_the_keyboard_in_the_listing() {
                 assert_eq!(shell::preferences(host.app()).tenxer_mode, enabled);
                 assert_eq!(focus(&mut host).as_deref(), Some("icons"));
             }
+        },
+    );
+}
+
+/// `;` lists the actions by number; its digit runs the one listed, unless the selection moved
+/// since it armed ("Selection changed") or the slot is empty (`complete_numbered_action`).
+#[test]
+fn numbered_action_chords_run_the_listed_action_on_the_armed_targets() {
+    let ran = || strata_core::storage::config_directory().join("ran.txt");
+    hosted_after(
+        MODULE,
+        "numbered_action_chords_run_the_listed_action_on_the_armed_targets",
+        move || {
+            let dir = strata_core::storage::config_directory()
+                .join("actions")
+                .join("record");
+            std::fs::create_dir_all(&dir).expect("action folder");
+            let body = format!(
+                "schema_version = 1\nid = \"record\"\nname = \"Record\"\nmenu = \"top\"\n\n\
+                 [when]\nextensions = [\"txt\"]\n\n[run]\nruntime = \"command\"\n\
+                 program = \"/bin/sh\"\n\
+                 args = [\"-c\", \"printf '%s\\\\n' \\\"$@\\\" >> '{}'\", \"sh\", \"{{paths}}\"]\n",
+                ran().display()
+            );
+            std::fs::write(dir.join("action.toml"), body).expect("action.toml");
+        },
+        move |mut host| {
+            host.runtime().update(|app, _| {
+                shell::saved(app).change(|s| s.tenxer_mode = true);
+            });
+            let folder = open_and_focus(&mut host);
+            let flash = |host: &Offscreen| node_name(host, "footer-flash");
+            host.app().browser().select(0, 0);
+            while host.turn() {}
+
+            tap(&mut host, char_key(";"), Mods::default());
+            host.app().browser().select(0, 1);
+            while host.turn() {}
+            tap(&mut host, char_key("1"), Mods::default());
+            assert_eq!(flash(&host).as_deref(), Some("Selection changed"));
+
+            tap(&mut host, char_key(";"), Mods::default());
+            tap(&mut host, char_key("2"), Mods::default());
+            assert_eq!(flash(&host).as_deref(), Some("No action 2"));
+            assert!(!ran().exists(), "no action ran yet");
+
+            tap(&mut host, char_key(";"), Mods::default());
+            tap(&mut host, char_key("1"), Mods::default());
+            assert!(host.run_until(PATIENCE, |_| ran().exists()), "slot 1 ran");
+            let beta = folder.path().join("beta.txt");
+            let recorded = std::fs::read_to_string(ran()).expect("recorded");
+            assert_eq!(recorded, format!("{}\n", beta.display()));
+        },
+    );
+}
+
+/// A folder holding `pictures` (the folders `aaa` and `bbb`, each with a file) and
+/// `readme.md`, opened with the keyboard in its listing.
+fn open_pictures(host: &mut Offscreen) -> tempfile::TempDir {
+    let root = tempfile::tempdir().expect("folder");
+    let pictures = root.path().join("pictures");
+    for name in ["aaa", "bbb"] {
+        std::fs::create_dir_all(pictures.join(name)).expect("folder");
+        std::fs::write(pictures.join(name).join("inside.txt"), name).expect("file");
+    }
+    std::fs::write(root.path().join("readme.md"), "readme").expect("file");
+    host.app().open(Location::local(root.path()));
+    assert!(host.run_until(PATIENCE, |h| {
+        h.app().browser().column_entry_counts(0).is_some()
+    }));
+    while host.turn() {}
+    host.runtime().update(|app: &mut App, tx: &mut Tx| {
+        let view = shell::view_focus(app).expect("a view").to_owned();
+        tx.focus(view, true);
+    });
+    while host.turn() {}
+    root
+}
+
+/// A folder came back to with its first entry selected and the cursor past it: the browser's
+/// load picked that first entry, takes the restored selection for its own pick and keeps the
+/// load's cursor. GTK's view draws that cursor, and its rename and Delete act on it (driven on
+/// GTK): so does the view. Nothing is committed, so Columns then opens no child column for
+/// the remembered folder, as GTK's opens none (finding lgse/strata#2437).
+#[test]
+fn a_revisit_keeps_the_view_and_the_browser_on_one_cursor() {
+    hosted_after(
+        MODULE,
+        "a_revisit_keeps_the_view_and_the_browser_on_one_cursor",
+        || {
+            let file = strata_core::storage::config_directory().join("settings.toml");
+            std::fs::create_dir_all(file.parent().expect("a folder")).expect("settings folder");
+            let saved = "browser_mode = \"list\"\ntenxer_mode = true\ntype_to_search = false\n";
+            std::fs::write(file, saved).expect("settings");
+        },
+        |mut host| {
+            let _root = open_pictures(&mut host);
+            let named = |host: &Offscreen| {
+                host.app()
+                    .browser()
+                    .focused_item()
+                    .map(|(_, _, entry)| entry.display_name)
+            };
+            let entered = |name: &'static str| {
+                move |h: &Offscreen| {
+                    h.app()
+                        .browser()
+                        .active_location()
+                        .and_then(|l| l.file_name())
+                        == Some(std::ffi::OsString::from(name))
+                }
+            };
+            assert_eq!(named(&host).as_deref(), Some("pictures"));
+            tap(&mut host, char_key("l"), Mods::default());
+            assert!(host.run_until(PATIENCE, entered("pictures")));
+            while host.turn() {}
+            tap(&mut host, char_key(" "), Mods::default());
+            assert_eq!(named(&host).as_deref(), Some("bbb"), "Space moved on");
+
+            tap(&mut host, char_key("h"), Mods::default());
+            assert!(host.run_until(PATIENCE, |h| named(h).as_deref() == Some("pictures")));
+            tap(&mut host, char_key("l"), Mods::default());
+            assert!(host.run_until(PATIENCE, entered("pictures")));
+            while host.turn() {}
+
+            use crate::single::SinglePane;
+            let app = host.app();
+            let view = crate::list::List::single(app)
+                .pane
+                .collection()
+                .selection
+                .cursor();
+            let browser = app
+                .browser()
+                .focused_item()
+                .map(|(_, _, entry)| shell::id_of(app, &entry.location));
+            assert_eq!(view, browser, "the view's cursor is the browser's");
+            assert_eq!(named(&host).as_deref(), Some("aaa"), "the load's pick");
+            assert!(app.browser().selection_is_load_cursor(), "still the load's");
+
+            let ctrl = Mods {
+                ctrl: true,
+                cmd: true,
+                ..Mods::default()
+            };
+            tap(&mut host, Key::Command('1'), ctrl);
+            while host.turn() {}
+            assert_eq!(shell::preferences(host.app()).browser_mode, "columns");
+            assert!(
+                host.app().browser().column_entry_counts(1).is_none(),
+                "Columns opens no child column for the load's cursor"
+            );
         },
     );
 }

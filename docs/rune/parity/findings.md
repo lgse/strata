@@ -155,6 +155,11 @@ closed issue is not a fixed finding: the state given here is the finding's.
   in `./scripts/quality.sh all` in the pinned image at `17d3fa87d` on a loaded host, and 1
   time in 3 alone (`./scripts/test-headless.py`). At `60c062c9a`, with `strata-next` merged
   again, the ninth failed once more there, with its message. That change touches no `src/`.
+- **On [#2594](https://github.com/lgse/strata/pull/2594), [A21](packages/A21.md)'s first slice:** the ninth failed once more in
+  `./scripts/quality.sh all` in the pinned image at `5da7cb20e`, with its message ("keyboard
+  fixture did not settle", `src/ui/window/tests/keyboard_dispatch.rs:324`). It passed alone
+  (`./scripts/test-headless.py`), and the rerun of `./scripts/quality.sh test` passed whole
+  (4074 tests). That change touches no `src/` and no crate the GTK lane builds.
 - **State:** open, set aside. Whoever meets one of these in a red shard reads the failure
   first: if the change could reach the test, it is the change's; if not, say why on the pull
   request, rerun the whole workflow once, and stop if the same test fails twice. A new flaky
@@ -223,6 +228,25 @@ closed issue is not a fixed finding: the state given here is the finding's.
   `./scripts/quality.sh all --jobs 4` (shard 0, lane 3; the other three lanes passed) at
   `1ba2778c1909325066429fdf368128030d2ddea1`, and passed 3 times of 3 alone under `./scripts/test-headless.py` (7.7 s each).
   That pull request changes no `src/`.
+- **Sighting on [#2589](https://github.com/lgse/strata/pull/2589)**, A11's close (at `97d5e0e8e`): the
+  eleventh, `unowned_release_binary_keeps_in_place_updates` (`tests.rs:258`, `left: Pacman`),
+  failed in `./scripts/quality.sh all --jobs 4` and again in the one rerun of
+  `./scripts/quality.sh test --jobs 4` (shard 0, lane 3, 79 of 80 each time), as on #2548, and
+  passed 3 times of 3 alone under `./scripts/test-headless.py`. The branch changes no `src/`
+  and no shared crate. Twice on one pull request: not chased further, by the rule above.
+- **Sighting on [#2589](https://github.com/lgse/strata/pull/2589) after review** (at
+  `ccf43b177`, `strata-next` at `7426fd041` merged in): the ninth,
+  `default_archive_keys_follow_pane_focus` (`keyboard_dispatch.rs:324`, "keyboard fixture did
+  not settle"), failed in `./scripts/quality.sh all --jobs 4` and again in the one rerun of
+  `./scripts/quality.sh test --jobs 4` (shard 0, lane 2, 331 of 332 each time; the other lanes
+  passed), and passed 3 times of 3 alone under `./scripts/test-headless.py`. The branch's GTK
+  lane is `strata-next`'s: no `src/`, shared crate or manifest differs. Not chased further.
+- **Sighting on [#2589](https://github.com/lgse/strata/pull/2589) after the second review** (at
+  `b86787184`, `strata-next` at `8c2ffda4f` merged in): the tenth,
+  `repository_probe_selects_strata_instead_of_a_dependency` (`tests.rs:185`, `ETXTBSY`: "The
+  file is running and cannot be changed"), failed once in `./scripts/quality.sh all --jobs 4`
+  (shard 0, lane 3, 79 of 80; the other lanes passed) and passed 3 times of 3 alone under
+  `./scripts/test-headless.py`. The branch changes no `strata-desktop`.
 - **Sighting on [#2599](https://github.com/lgse/strata/pull/2599)** ([A16](packages/A16.md)): the
   tenth, `repository_probe_selects_strata_instead_of_a_dependency`, failed once more in
   `./scripts/quality.sh all --jobs 4` (shard 0, lane 3, 79 of 80) at `42a5a67f1`, with the same
@@ -2302,6 +2326,11 @@ sequence only together with the alphabet's version, so the version is part of th
   at the same first wait. The scenario then passed alone three times in a row (6 of 6 runs
   each). #2583 changes how a drop from another application is read, not the listing or its item
   counts, and this run's drags come from the window itself.
+- **Seen in [#2594](https://github.com/lgse/strata/pull/2594)'s gate too:** as
+  `drag-file-onto-folder/columns-copy`, in its `qa-parity.sh all` at `e631cad2f` (rune
+  offscreen 681 of 682), at the same first wait. The scenario then passed alone (6 of 6 runs).
+  #2594 shares the settings between windows and opens a window per launch, and leaves the
+  listing, item counts and drag and drop as they were.
 - **Concerns:** `drag_and_drop/drag-file-onto-folder/columns-copy`, `list-copy` and `list-move`,
   `required`, [A19](packages/A19.md)'s.
 - **State:** open, unowned. The ledger is unchanged: the run stays `required`. Not traced.
@@ -2384,6 +2413,28 @@ sequence only together with the alphabet's version, so the version is part of th
   `/icons` both showed "Loading…" at line 6 (rune offscreen 661 of 663). Both passed in the run
   before. #2573 changes Settings and the QA snapshot's nested dialogs, not the preview.
 - **State:** open, unowned. The ledger is unchanged: the run stays `required`. Not traced.
+
+### #2600: the floating chooser's second right-click opened no menu in a busier `window::` suite
+
+- **Code:** none of the plan's: a flaky Rune window test, labelled `testing`.
+  [Issue](https://github.com/lgse/strata/issues/2600), filed on 2026-11-18 as the finding's
+  reference and closed at once: its state is kept here.
+- **Seen:** on the head of [#2594](https://github.com/lgse/strata/pull/2594) (A21's first
+  slice), in `mise run test-platform window::`, whose suite there has 9 tests where
+  `strata-next` has 6. Its review saw 2 failures in 27 runs, and its author 3 in 10, then 2 in
+  10 with the floating chooser left out of the windowed host's `wake_pending`. Each time
+  `window::qa::the_floating_chooser_comes_forward_and_closes_with_its_browser`
+  (`crates/strata-rune/tests/window/qa.rs`) failed at the second `ask_to_copy`, after
+  `s.focus(&browser)`: the right-click on `notes.txt` reached the browser (the session host
+  aimed it from the browser's sway area, 0,0 640x800, and the compositor delivered the press),
+  but no entry menu opened, and `{"wait":{"menu_items":{}}}` timed out with `"menu":null`.
+  The failing suite took about 19 s against about 4 s.
+- **Not reproduced:** alone, 0 of 12 (the review); on `strata-next`, 0 of 12 (the review); and
+  on #2594's own code with its three new window tests skipped, the 6 tests `strata-next` has,
+  0 of 10. So it tracks the three extra sway sessions running beside it, not the code in its
+  path. Not traced further.
+- **Concerns:** `strata-rune`'s window test above, [A20](packages/A20.md)'s.
+- **State:** open, unowned.
 
 ### #2580: `rendered-document-word-selection-rune` lost the selection's first characters twice in a full session-host run
 
@@ -2528,6 +2579,45 @@ sequence only together with the alphabet's version, so the version is part of th
 - **State:** open, set aside: Rune keeps GTK's behaviour. Any fix belongs on `main`, and Rune
   follows it.
 
+### #2586: after 10xer's `f` filter commits, GTK's listing has no cursor and Space selects nothing
+
+- **Code:** `oracle`. [Issue](https://github.com/lgse/strata/issues/2586), filed on 2026-11-17
+  as the finding's reference and closed at once: its state is kept here.
+- **Seen:** by [A11](packages/A11.md)'s `tenxer` alphabet (v2, never merged), shrunk GTK
+  against Rune to three steps and confirmed 3 of 3 (`fuzz-tenxer-v2-0000000000000008`): `f`,
+  `txt`, Return. GTK's snapshot names `todo.txt` as focused, but its pane reports no cursor;
+  Rune's pane has its cursor on `todo.txt`.
+- **Driven on GTK** (`./scripts/qa-drive.sh`, 2026-11-17, 10xer List): after the commit GTK
+  draws its cursor outline on `todo.txt`, and Space selects nothing, nor does `j` then Space.
+  Its in-place filter (`with_filter_terms`) gives the row the keyboard without setting the
+  browser's cursor. Rune's Space selects `todo.txt`.
+- **Concerns:** 10xer's `f` filter; no ledger run reads Space after a commit. The sequences
+  are parked in `tests/qa/fuzz/corpus/tenxer/` (`v2-…08`, and `v2-…03`, which meets it too),
+  and the alphabet abandons its filter by Escape from version 3.
+- **State:** open, set aside: no Rune change. A fault for `main`, from a bug issue there.
+
+### #2587: a 10xer move keeps a selection a revisit restored, where GTK's first move drops it
+
+- **Code:** `oracle`, by the owner's ruling of 2026-11-17 ([`owner.md`](owner.md#ruled));
+  filed as a `divergence`. [Issue](https://github.com/lgse/strata/issues/2587), filed on
+  2026-11-17 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** by [A11](packages/A11.md)'s `tenxer` alphabet (v3, never merged), shrunk GTK
+  against Rune to 13 steps and confirmed 3 of 3 (`fuzz-tenxer-v3-0000000000000003`): Space
+  twice in `pictures`, `h`, back into `pictures` by a find and `l` (both targets restore
+  `[diagram.txt, photo.txt]`), then `k`. GTK's selection is then `[]`, Rune's unchanged.
+- **Why:** GTK's 10xer moves go through the shared browser's `place_cursor`, which clears the
+  selection while the column keeps the cursor its load placed (`load_cursor`). Rune's are C1's,
+  which keep any selection not marked provisional, and `events::marks` marks only a selection
+  with no fill. Without 10xer a move replaces the selection on both targets.
+- **Concerns:** the views' provisional mark, which [A1](packages/A1.md) and
+  [A2](packages/A2.md) own with C1, and 10xer's moves. No ledger run reads it. The sequence is
+  parked in `tests/qa/fuzz/corpus/tenxer/`. The alphabet left out `h` in version 4; from
+  version 5 `h`, and from version 7 `l` too, leave only a folder with nothing selected,
+  so a revisit restores no selection.
+- **State:** ruled by the owner, 2026-11-17: GTK's fault. A fill the user made, left and came
+  back to is still the user's, and 10xer's moves keep the marks elsewhere; Rune keeps its
+  behaviour. A fix for GTK, if anyone takes it up, lands on `main`.
+
 ### #2590: GTK's Ctrl+drag of a row an earlier drag selected takes it out of the selection and drags it alone
 
 - **Code:** `oracle`. [Issue](https://github.com/lgse/strata/issues/2590), filed on
@@ -2544,7 +2634,10 @@ sequence only together with the alphabet's version, so the version is part of th
   C1b's pointer machine says "A Ctrl-drag carries the entry: it stays selected instead of
   toggling off". Rune does so either way.
 - **Concerns:** both sequences, confirmed 3 of 3, parked in `tests/qa/fuzz/corpus/drag/`.
-  `drag v2` drags only rows not selected. Not driven by hand on GTK.
+  `drag v2` drags only rows not selected.
+- **By hand on GTK** (2026-11-17, `./scripts/qa-drive.sh`, List, the sequence's preferences):
+  confirmed. After the third step `pictures` holds `readme.md` alone, `archive` holds both
+  files, and the selection is `[todo.txt]` with the keyboard on `readme.md`.
 - **State:** open, set aside: no Rune change; any fix belongs on `main`.
 
 ### #2591: releasing a drag Escape cancelled selects the row under the pointer on GTK, its focus on the dragged row
@@ -2557,8 +2650,10 @@ sequence only together with the alphabet's version, so the version is part of th
   with its focus on `readme.md`. Rune keeps `["readme.md"]` selected and focused.
   `escape-cancels-file-drag` checks the selection only before the release.
 - **Concerns:** the sequence, confirmed 3 of 3, parked in `tests/qa/fuzz/corpus/drag/`.
-  `drag v2` leaves the Escape cancel out (`escape-cancels-file-drag` owns it). Not driven by
-  hand on GTK.
+  `drag v2` leaves the Escape cancel out (`escape-cancels-file-drag` owns it).
+- **By hand on GTK** (2026-11-17, `./scripts/qa-drive.sh`, List, the sequence's preferences):
+  confirmed. Through Escape the selection is `[readme.md]`; the release makes it `[archive]`
+  with the keyboard still on `readme.md`, and nothing moves.
 - **State:** open, set aside: no Rune change; any fix belongs on `main`.
 
 ### #2592: a drag from a selected row of a multi-selection gives GTK's keyboard to that row, Rune's stays
@@ -2570,13 +2665,22 @@ sequence only together with the alphabet's version, so the version is part of th
   onto `documents` (both select both files, the keyboard on `todo.txt`), then drag `readme.md`
   onto the pane's own background, which takes nothing. GTK's focus is then on `readme.md`,
   Rune's still on `todo.txt`; the selections agree.
-- **Where:** C1b's pointer machine (`collection/pointer/machine.rs`) keeps the cursor on a press
-  of a selected row, deferring the click to the release, and drops the deferral when the press
-  becomes a drag. GTK's press moves the keyboard at once. The fix is C1b's owner's, a
-  component change outside A19.
-- **Concerns:** the sequence, confirmed 3 of 3, parked in `tests/qa/fuzz/corpus/drag/`.
-  `drag v2` drags only rows not selected.
-- **State:** open, unowned.
+- **Where:** C1b's pointer machine (`collection/pointer/machine.rs`) kept the cursor on a plain
+  press of a selected row of a multi-selection, leaving the collapse to the release, so a drag
+  left it where it was. GTK's press moves the keyboard at once.
+- **By hand on GTK** (2026-11-17, `./scripts/qa-drive.sh`, the sequence's preferences, in
+  Columns, Icons and List): the same in all three. The keyboard is on `readme.md` after the
+  drag, and a Shift+click on `archive` then selects `archive` to `readme.md`, so the press moved
+  the anchor too. (Columns' press is Strata's own, `columns/rows/click.rs`, which calls
+  `anchor_at`; Icons' and List's reach GTK's list-item gesture.)
+- **Fix:** owned by [A19](packages/A19.md), a `contract` change to C1b: the press keeps the group
+  and moves the cursor and the anchor to the entry (`AnchorRule::Move`), unless the selection
+  is a provisional pick. A release still collapses the group, so A9's click modes are
+  unchanged. `collection::pointer::tests::a_plain_press_inside_a_multi_selection_keeps_the_group_for_the_drag`
+  holds it, and fails without it.
+- **Concerns:** the sequence, confirmed 3 of 3, is unparked in `tests/qa/fuzz/corpus/drag/`, and
+  agrees 6 of 6 replays GTK against Rune. `drag v2` drags only rows not selected.
+- **State:** fixed on `strata-next` by [#2601](https://github.com/lgse/strata/pull/2601).
 
 ### #2593: opening again a folder that was empty gives GTK's keyboard to the entry it gained, Rune's to none
 

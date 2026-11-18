@@ -7,7 +7,7 @@ use std::path::Path;
 use rune::{Key, KeyEvent, Mods, Tx};
 use strata_core::model::Location;
 
-use super::match_ranges;
+use super::{match_ranges, within_reach};
 use crate::{
     App,
     host::offscreen::Offscreen,
@@ -215,4 +215,16 @@ fn match_ranges_fold_case_and_do_not_overlap() {
             .collect();
         assert_eq!(found, expected, "{name} / {query}");
     }
+}
+
+/// A match across the reach of a name longer than it ends on the character boundary before
+/// the reach, never inside the character the reach cuts.
+#[test]
+fn a_match_across_the_reach_ends_on_a_character_boundary() {
+    let name = format!("{}é{}", "a".repeat(511), "a".repeat(20));
+    let drawn: Vec<Pair> = within_reach(&name, vec![500..513, 520..530])
+        .ranges()
+        .map(|range| (range.start, range.end))
+        .collect();
+    assert_eq!(drawn, [(500, 511)]);
 }

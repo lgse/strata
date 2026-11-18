@@ -85,7 +85,9 @@ impl Part for Dnd {
     }
 
     fn poll(app: &mut App, clock: f64, tx: &mut Tx) -> bool {
-        policy::poll_spring(app, clock, tx)
+        let sprung = policy::poll_spring(app, clock, tx);
+        let wiring = app.dnd.wiring.clone();
+        wiring.poll_stand_in(app, tx) | sprung
     }
 
     const COMMANDS: &'static [Action<App>] = &[Action::new("dnd-cancel", cancel_by_key)

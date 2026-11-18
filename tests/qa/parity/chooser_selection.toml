@@ -107,7 +107,7 @@ run = "list-tenxer"
 package = "A11"
 status = "pending"
 reason = "scope"
-blocker = "A20: Space opens no preview in the chooser, so line 30 never sees its `PDF page text` image (A16's viewer has landed); then the session host for `--qa --portal`"
+blocker = "A20: Space opens no preview in the chooser, so line 30 never sees its `PDF page text` image (A16's viewer has landed). Its private D-Bus (`session_bus`) is the offscreen portal host's, as A20's required runs have it"
 
 [[run]]
 scenario = "chooser-sidebar-drops-survive-resize"

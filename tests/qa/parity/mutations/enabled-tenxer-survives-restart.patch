@@ -1,0 +1,12 @@
+diff --git a/crates/strata-app/src/shell.rs b/crates/strata-app/src/shell.rs
+--- a/crates/strata-app/src/shell.rs
++++ b/crates/strata-app/src/shell.rs
+@@ -1041,7 +1041,7 @@ fn bar(app: &App, chrome: &WindowChrome, location: Option<El>) -> El {
+     let trailing = TRAILING
+         .iter()
+         .filter(|button| Some(button.key) != in_strip)
+-        .filter(|button| !(tenxer && button.key == "search"));
++        .filter(|button| !(tenxer && button.key == "nothing"));
+     let header = trailing.fold(header, |header, button| {
+         let built = (button.key == NEW_TAB)
+             .then(|| strip_new_tab.map(|new_tab| new_tab(app, "header-new-tab")))
