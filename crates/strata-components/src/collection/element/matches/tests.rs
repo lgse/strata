@@ -19,14 +19,23 @@ fn of(pairs: &[Pair]) -> impl Iterator<Item = Range<usize>> + '_ {
     pairs.iter().map(|&(start, end)| start..end)
 }
 
+/// Every match of a short query in a long name, as GTK highlights them all; touching ranges
+/// read back as one, and bytes past the reach are dropped.
 #[test]
-fn new_skips_empty_ranges_and_keeps_the_first_eight() {
+fn new_keeps_every_match_up_to_the_reach() {
     assert!(NameMatches::new(of(&[(3, 3)])).is_empty());
-    let many = NameMatches::new((0..10).map(|at| at * 2..at * 2 + 1));
+    let many = NameMatches::new((0..40).map(|at| at * 2..at * 2 + 1));
     assert_eq!(
         ranges(many),
-        (0..8).map(|at| (at * 2, at * 2 + 1)).collect::<Vec<_>>()
+        (0..40).map(|at| (at * 2, at * 2 + 1)).collect::<Vec<_>>()
     );
+    assert_eq!(
+        ranges(NameMatches::new(of(&[(0, 2), (2, 4), (6, 7)]))),
+        [(0, 4), (6, 7)]
+    );
+    let reach = NameMatches::REACH;
+    let edge = NameMatches::new(of(&[(reach - 1, reach + 3), (reach + 5, reach + 9)]));
+    assert_eq!(ranges(edge), [(reach - 1, reach)]);
 }
 
 #[test]
