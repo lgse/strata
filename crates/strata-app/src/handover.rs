@@ -277,9 +277,31 @@ fn give(shown: &Shown<'_>, browser: &Browser, held: &mut Held, handed: Handed) {
         browser.commit_selection();
     }
     browser.set_selection(depth, &selected, cursor);
+    if handed == Handed::Restored && !holds_cursor(browser, column, depth, selection.cursor()) {
+        // The restored selection is the entry the browser's load picked, so it read the
+        // report as its own pick echoed and kept the load's cursor, not the remembered one
+        // the view shows (GTK's restore makes the same call, and its view rings the remembered
+        // row). The browser takes it as a choice, so Return and Delete act on what is drawn.
+        browser.commit_selection();
+        browser.set_selection(depth, &selected, cursor);
+    }
     if let Some(anchor) = selection.anchor().and_then(position) {
         browser.set_selection_anchor(depth, anchor);
     }
+}
+
+/// Whether the browser's cursor in column `depth` is the view's `cursor`; true when the view has
+/// none, or it is not listed.
+fn holds_cursor(browser: &Browser, column: &Column, depth: usize, cursor: Option<EntryId>) -> bool {
+    let Some(position) = cursor.and_then(|id| column.position_of(id)) else {
+        return true;
+    };
+    let wanted = browser
+        .with_column_entries(depth, |entries| {
+            entries.get(position).map(|e| e.location.clone())
+        })
+        .flatten();
+    browser.cursor_entry(depth).map(|entry| entry.location) == wanted
 }
 
 /// Entries one of the browser's operations gave another id (a rename gives an entry another

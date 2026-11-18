@@ -618,3 +618,85 @@ fn numbered_action_chords_run_the_listed_action_on_the_armed_targets() {
         },
     );
 }
+
+/// A folder came back to with its first entry selected and the cursor past it: the browser's
+/// load picked that first entry, so it read the restored selection as its own pick echoed and
+/// kept the load's cursor. The view showed the remembered one, and Return or Delete would act
+/// on another entry than the one drawn. Both now hold the remembered cursor.
+#[test]
+fn a_revisit_keeps_the_view_and_the_browser_on_one_cursor() {
+    hosted_after(
+        MODULE,
+        "a_revisit_keeps_the_view_and_the_browser_on_one_cursor",
+        || {
+            let file = strata_core::storage::config_directory().join("settings.toml");
+            std::fs::create_dir_all(file.parent().expect("a folder")).expect("settings folder");
+            let saved = "browser_mode = \"list\"\ntenxer_mode = true\ntype_to_search = false\n";
+            std::fs::write(file, saved).expect("settings");
+        },
+        |mut host| {
+            let root = tempfile::tempdir().expect("folder");
+            let pictures = root.path().join("pictures");
+            std::fs::create_dir(&pictures).expect("folder");
+            for name in ["diagram.txt", "photo.txt"] {
+                std::fs::write(pictures.join(name), name).expect("file");
+            }
+            std::fs::write(root.path().join("readme.md"), "readme").expect("file");
+            host.app().open(Location::local(root.path()));
+            assert!(host.run_until(PATIENCE, |h| {
+                h.app().browser().column_entry_counts(0).is_some()
+            }));
+            while host.turn() {}
+            host.runtime().update(|app: &mut App, tx: &mut Tx| {
+                let view = shell::view_focus(app).expect("a view").to_owned();
+                tx.focus(view, true);
+            });
+            while host.turn() {}
+            let named = |host: &Offscreen| {
+                host.app()
+                    .browser()
+                    .focused_item()
+                    .map(|(_, _, entry)| entry.display_name)
+            };
+            let entered = |name: &'static str| {
+                move |h: &Offscreen| {
+                    h.app()
+                        .browser()
+                        .active_location()
+                        .and_then(|l| l.file_name())
+                        == Some(std::ffi::OsString::from(name))
+                }
+            };
+            assert_eq!(named(&host).as_deref(), Some("pictures"));
+            tap(&mut host, char_key("l"), Mods::default());
+            assert!(host.run_until(PATIENCE, entered("pictures")));
+            while host.turn() {}
+            tap(&mut host, char_key(" "), Mods::default());
+            assert_eq!(named(&host).as_deref(), Some("photo.txt"), "Space moved on");
+
+            tap(&mut host, char_key("h"), Mods::default());
+            assert!(host.run_until(PATIENCE, |h| named(h).as_deref() == Some("pictures")));
+            tap(&mut host, char_key("l"), Mods::default());
+            assert!(host.run_until(PATIENCE, entered("pictures")));
+            while host.turn() {}
+
+            use crate::single::SinglePane;
+            let app = host.app();
+            let view = crate::list::List::single(app)
+                .pane
+                .collection()
+                .selection
+                .cursor();
+            let browser = app
+                .browser()
+                .focused_item()
+                .map(|(_, _, entry)| shell::id_of(app, &entry.location));
+            assert_eq!(view, browser, "the view's cursor is the browser's");
+            assert_eq!(
+                named(&host).as_deref(),
+                Some("photo.txt"),
+                "the remembered one"
+            );
+        },
+    );
+}
