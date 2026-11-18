@@ -160,6 +160,15 @@ closed issue is not a fixed finding: the state given here is the finding's.
   fixture did not settle", `src/ui/window/tests/keyboard_dispatch.rs:324`). It passed alone
   (`./scripts/test-headless.py`), and the rerun of `./scripts/quality.sh test` passed whole
   (4074 tests). That change touches no `src/` and no crate the GTK lane builds.
+- **On [A21](packages/A21.md)'s Slice 2a, at `4ed45f2d5`:** the ninth failed once more in
+  `./scripts/quality.sh all`, with its message. It then passed alone. The rerun of
+  `./scripts/quality.sh test` failed on an eleventh instead, `strata-desktop`'s
+  `services::update_install::tests::repository_probe_selects_strata_instead_of_a_dependency`
+  (`crates/strata-desktop/src/services/update_install/tests.rs:185`: "could not query the
+  package repository: The file is running and cannot be changed", an `ETXTBSY` on the fake tool
+  it writes and runs), which then passed alone 3 of 3. A second rerun passed whole (4074 tests).
+  That change touches `strata-fs`'s FileManager1 adapter (two items made public) and the Rune
+  side, neither the keyboard fixture nor `strata-desktop`.
 - **State:** open, set aside. Whoever meets one of these in a red shard reads the failure
   first: if the change could reach the test, it is the change's; if not, say why on the pull
   request, rerun the whole workflow once, and stop if the same test fails twice. A new flaky
