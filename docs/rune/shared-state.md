@@ -286,6 +286,11 @@ difference reaches the user:
 
 The line numbers are as of the move.
 
+On the Rune side the first two rules are `launch::Initial`'s: only `Initial::Plain`, the
+process's own launch with no argument, restores and persists. A window a later launch opens
+is `Initial::Fresh` or `Initial::Argument`, and leaves `tabs.toml` alone
+([A21](parity/packages/A21.md)).
+
 ## The key catalog
 
 Which key does what, and how a press is matched and labelled
@@ -630,10 +635,15 @@ own queued table and its own set of changed keys, which never emptied.
   writes them again. A failed save is logged; this interface has no notice yet. The rules a
   part keeps are in `crates/strata-app/src/slots.rs`, "Saving a setting".
 - **A part reads** `Setup::settings` once when it is built, and keeps what it shows in its
-  own state. Nothing follows a change made by another window or another process.
+  own state. A change another window of the process makes reaches it only through
+  `shell::follow_another_window` ([A21](parity/packages/A21.md)); nothing follows another
+  process's but the defaults the folder-views monitor adopts.
 - The shell saves the sort and the hidden-files choice the same way.
-- **One `Saved` for the process.** `startup::load_settings` makes it and the window owns it.
-  A second window on Rune would have to share it, which is an open question for the owner.
+- **One store for the process.** `startup::load_settings` makes it, and each window holds a
+  `Saved` over it: the first the one it was given, each later one `Saved::share`'s
+  ([A21](parity/packages/A21.md)). Whether the Rune side should keep one per window instead is
+  the owner's question in [parity/owner.md](parity/owner.md); one per process is the default
+  in force, as GTK has it.
 
 Sharing the bookkeeping changed what the Rune interface writes, to what the GTK application
 writes:

@@ -12,7 +12,7 @@
 //! A part reaches the settings through `shell::saved(app)`: `preferences()` to read them as
 //! they are now, and `change(…)` to change one and have it saved. `slots.rs` has the rules.
 
-use std::{io, path::Path};
+use std::{cell::RefCell, io, path::Path, rc::Rc};
 
 use strata_core::model::ViewPreferences;
 use strata_desktop::settings::{
@@ -23,7 +23,10 @@ use strata_desktop::settings::{
 };
 use strata_fs::services::io_error_detail;
 
-use crate::{App, slots::Later};
+use crate::{
+    App,
+    slots::{Later, WeakLater},
+};
 
 /// A save or startup-read notice waiting to be shown once per failure streak.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -76,15 +79,58 @@ impl NoticeStreaks {
     }
 }
 
-/// One for the process, made at start-up and owned by the window: two would lose each
-/// other's saves (`strata_desktop::settings::Saving`).
-pub(crate) struct Saved {
+/// The settings every window of the process shares: the values, the bookkeeping of saving
+/// them, and the windows to tell when one of them changes them. One for the process, made at
+/// start-up: two would lose each other's saves (`strata_desktop::settings::Saving`), as the
+/// GTK application keeps one `PreferenceManager` for all its windows.
+struct Store {
     preferences: Preferences,
     saving: Saving,
+    /// Moves with every change any window makes.
+    version: u64,
+    /// The windows reading the store, each by its [`Saved::id`], to be told of a change.
+    windows: Vec<(u64, WeakLater<App>)>,
+    /// The id the next window's [`Saved`] takes.
+    next: u64,
+}
+
+impl Store {
+    /// Queues a [`Saved::follow`] in every window but `changed_by`, through the shell.
+    fn tell_others(&mut self, changed_by: u64) {
+        self.windows.retain(|(_, later)| later.is_live());
+        for (id, later) in &self.windows {
+            if *id == changed_by {
+                continue;
+            }
+            if let Some(later) = later.upgrade() {
+                later.then(crate::shell::follow_another_window);
+            }
+        }
+    }
+}
+
+/// A window's way into the process's settings. It reads the values as of the last change it
+/// heard of ([`Saved::follow`]), so a build borrows them as plain data; a change it makes
+/// goes into the store at once, and the other windows hear of it through their queues.
+pub(crate) struct Saved {
+    store: Rc<RefCell<Store>>,
+    /// This window's place among the store's windows.
+    id: u64,
+    /// The values as of `version`.
+    preferences: Preferences,
+    version: u64,
     /// The window's queue, where a finished save tells the bookkeeping its result. Without
     /// it a save is still written, and its keys are written again with the next.
     later: Option<Later<App>>,
     notices: NoticeStreaks,
+}
+
+impl Drop for Saved {
+    fn drop(&mut self) {
+        if let Ok(mut store) = self.store.try_borrow_mut() {
+            store.windows.retain(|(id, _)| *id != self.id);
+        }
+    }
 }
 
 impl Saved {
@@ -93,16 +139,44 @@ impl Saved {
     pub(crate) fn load() -> Self {
         let (preferences, saving) = strata_desktop::settings::load();
         rust_i18n::set_locale(saving.startup_locale());
-        Self {
-            preferences,
+        let store = Store {
+            preferences: preferences.clone(),
             saving,
+            version: 0,
+            windows: Vec::new(),
+            next: 1,
+        };
+        Self {
+            store: Rc::new(RefCell::new(store)),
+            id: 0,
+            preferences,
+            version: 0,
             later: None,
             notices: NoticeStreaks::default(),
         }
     }
 
-    /// Gives the settings the window's queue, once the window has one.
+    /// The same settings for another window of the process, as they are now.
+    pub(crate) fn share(&self) -> Self {
+        let mut store = self.store.borrow_mut();
+        let id = store.next;
+        store.next += 1;
+        Self {
+            store: Rc::clone(&self.store),
+            id,
+            preferences: store.preferences.clone(),
+            version: store.version,
+            later: None,
+            notices: NoticeStreaks::default(),
+        }
+    }
+
+    /// Gives the settings the window's queue, once the window has one: a finished save is
+    /// heard there, and so is another window's change.
     pub(crate) fn report_to(&mut self, later: Later<App>) {
+        let mut store = self.store.borrow_mut();
+        store.windows.retain(|(id, _)| *id != self.id);
+        store.windows.push((self.id, later.downgrade()));
         self.later = Some(later);
     }
 
@@ -110,16 +184,54 @@ impl Saved {
         &self.preferences
     }
 
+    /// How many windows the store would tell of a change, this one among them.
+    #[cfg(test)]
+    pub(crate) fn windows_told(&self) -> usize {
+        let store = self.store.borrow();
+        store
+            .windows
+            .iter()
+            .filter(|(_, later)| later.is_live())
+            .count()
+    }
+
+    /// Takes the values another window changed since this one last read them. False when
+    /// none did.
+    pub(crate) fn follow(&mut self) -> bool {
+        let store = self.store.borrow();
+        if store.version == self.version {
+            return false;
+        }
+        self.preferences = store.preferences.clone();
+        self.version = store.version;
+        true
+    }
+
+    /// Puts this window's values into the store, as the process's from now on.
+    fn publish(&mut self, store: &mut Store) {
+        store.preferences = self.preferences.clone();
+        store.version += 1;
+        self.version = store.version;
+    }
+
+    /// Puts this window's values into the store when they differ from the process's.
+    fn publish_changed(&mut self, store: &mut Store) {
+        if store.preferences != self.preferences {
+            self.publish(store);
+        }
+    }
+
     pub(crate) fn language_restart_required(&self) -> bool {
-        self.preferences.language.locale() != self.saving.startup_locale()
+        self.preferences.language.locale() != self.store.borrow().saving.startup_locale()
     }
 
     pub(crate) fn interface_renderer_restart_required(&self) -> bool {
-        self.preferences.interface_renderer != self.saving.startup_interface_renderer()
+        self.preferences.interface_renderer
+            != self.store.borrow().saving.startup_interface_renderer()
     }
 
     pub(crate) fn can_adopt_defaults(&self) -> bool {
-        self.saving.load_failure().is_none()
+        self.store.borrow().saving.load_failure().is_none()
     }
 
     /// Repairs loaded theme and mode choices at startup without counting a user change.
@@ -128,26 +240,39 @@ impl Saved {
         theme_is_known: impl Fn(&str) -> bool,
         available: ThemeAvailability,
     ) {
+        self.follow();
         self.preferences
             .normalize_theme_selection(theme_is_known, available);
-        self.saving.rebase(&self.preferences);
+        let shared = Rc::clone(&self.store);
+        let store = &mut *shared.borrow_mut();
+        if store.preferences != self.preferences {
+            self.publish(store);
+            store.tell_others(self.id);
+        }
+        store.saving.rebase(&self.preferences);
     }
 
     /// Adopts default sort and icon-size keys another Strata process wrote, provided none of
     /// those keys have unsaved edits in this process.
     pub(crate) fn adopt_defaults_from_disk(&mut self, saved: Preferences) -> bool {
-        if self.saving.load_failure().is_some()
+        self.follow();
+        let shared = Rc::clone(&self.store);
+        let store = &mut *shared.borrow_mut();
+        if store.saving.load_failure().is_some()
             || ADOPTED_DEFAULT_KEYS
                 .iter()
-                .any(|key| self.saving.setting_unsaved(key))
+                .any(|key| store.saving.setting_unsaved(key))
         {
             return false;
         }
         if !self.preferences.adopt_defaults(saved) {
             return false;
         }
-        self.saving
+        self.publish(store);
+        store
+            .saving
             .record_adopted(&self.preferences, &ADOPTED_DEFAULT_KEYS);
+        store.tell_others(self.id);
         true
     }
 
@@ -184,22 +309,37 @@ impl Saved {
     }
 
     /// Mutates `Preferences` in place without committing yet, for batches that commit once.
+    /// What it changed is the process's at once; the other windows hear of it at the commit.
     pub(crate) fn mutate(&mut self, change: impl FnOnce(&mut Preferences) -> bool) -> bool {
-        change(&mut self.preferences)
+        self.follow();
+        let changed = change(&mut self.preferences);
+        if changed {
+            let shared = Rc::clone(&self.store);
+            self.publish(&mut shared.borrow_mut());
+        }
+        changed
     }
 
     pub(crate) fn mutate_in_place<R>(&mut self, change: impl FnOnce(&mut Preferences) -> R) -> R {
-        change(&mut self.preferences)
+        self.follow();
+        let result = change(&mut self.preferences);
+        let shared = Rc::clone(&self.store);
+        self.publish_changed(&mut shared.borrow_mut());
+        result
     }
 
     /// Commits whatever changed in `Preferences` since the last save and queues the write off
     /// the interface thread. A file that could not be read at start-up is the user's to repair,
     /// and nothing is saved over it.
     pub(crate) fn commit(&mut self) {
-        let Commit { save, problem, .. } = self.saving.commit(&self.preferences);
+        let shared = Rc::clone(&self.store);
+        let store = &mut *shared.borrow_mut();
+        self.publish_changed(store);
+        store.tell_others(self.id);
+        let Commit { save, problem, .. } = store.saving.commit(&self.preferences);
         match problem {
             Some(SaveProblem::UnreadableAtStartup { path }) => {
-                if let Some(error) = self.saving.load_failure() {
+                if let Some(error) = store.saving.load_failure() {
                     self.notices.raise(NoticeFailure {
                         subject: SaveSubject::Settings,
                         problem: NoticeProblem::UnreadableAtStartup,
@@ -238,6 +378,7 @@ impl Saved {
     /// `src/ui/preferences/file_settings.rs`). A file that could not be read at start-up is
     /// the user's to repair, and nothing is saved over it.
     pub(crate) fn change(&mut self, change: impl FnOnce(&mut Preferences)) {
+        self.follow();
         let was_restore_tabs = self.preferences.restore_tabs;
         change(&mut self.preferences);
         if was_restore_tabs && !self.preferences.restore_tabs {
@@ -247,7 +388,8 @@ impl Saved {
     }
 
     fn saved(&mut self, finished: FinishedSave) -> bool {
-        match self.saving.saved(finished) {
+        let outcome = self.store.borrow_mut().saving.saved(finished);
+        match outcome {
             SaveOutcome::Saved => {
                 self.notices.arm(SaveSubject::Settings);
                 false
@@ -265,3 +407,6 @@ impl Saved {
         }
     }
 }
+
+#[cfg(test)]
+mod tests;

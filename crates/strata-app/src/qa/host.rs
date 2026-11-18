@@ -18,10 +18,11 @@ use strata_qa::{Chord, ClipboardContent, Keymap, Modifier, Rect};
 use super::tree::{Node, Snapshot};
 use crate::App;
 
-/// What `activate` presses: the element's key, and where it is drawn.
+/// What `activate` presses: the element's key, where it is drawn, and the window it is in.
 pub(super) struct Activated {
     pub(super) key: String,
     pub(super) bounds: Option<Rect>,
+    pub(super) window: Node,
 }
 
 pub(super) trait Host {
@@ -50,6 +51,10 @@ pub(super) trait Host {
 
     /// The tree as of the host's latest frame.
     fn snapshot(&self) -> Rc<Snapshot>;
+    /// The tree of the window `node` is in, as of its latest frame.
+    fn snapshot_of(&self, _node: &Node) -> Rc<Snapshot> {
+        self.snapshot()
+    }
     /// Runs `read` on the window's state, on the thread that owns it.
     fn with_app<T: Send + 'static>(
         &self,

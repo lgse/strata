@@ -68,7 +68,7 @@ impl Offscreen {
     }
 
     /// Starts the window from `initial`, as the windowed host's `App::init` does.
-    #[cfg(test)]
+    #[cfg(any(test, feature = "qa"))]
     pub(crate) fn start(&mut self, initial: crate::launch::Initial) {
         self.runtime.state.start(initial);
     }

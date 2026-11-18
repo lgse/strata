@@ -131,6 +131,50 @@ mod window {
         );
     }
 
+    /// A later `strata-rune` hands its folder to the running one and exits, and the running
+    /// one opens a window on it, as GTK's GApplication does. The process outlives its first
+    /// window: GLib work still reaches the one left, and the process ends with that one.
+    #[test]
+    #[ignore = "needs a private session: mise run test-platform"]
+    fn a_later_launch_opens_its_window_in_the_running_process() {
+        let s = Session::start();
+        let mut launched = launch(&s, &[]);
+        let other = s.runtime_dir().join("home").join("Other");
+        std::fs::create_dir_all(&other).expect("folder");
+        std::fs::write(other.join("plans.txt"), "plans").expect("file");
+
+        let mut later = s.command(env!("CARGO_BIN_EXE_strata-rune"), Display::Wayland);
+        later.arg(&other);
+        let mut handed = s.spawn("strata-rune-later", later);
+        assert!(
+            handed.wait_exit().success(),
+            "the later launch handed its folder over"
+        );
+        let second = s.wait_window_where("the window on the later launch's folder", |w| {
+            w.pid == launched.app.pid() && w.title == "Other — Strata"
+        });
+        launched
+            .app
+            .wait_for(0, "the Columns view listing the later folder", |line| {
+                lists(line, 1, "Other")
+            });
+
+        s.sway_command(&format!("[con_id={}] kill", launched.window.id));
+        let took = change_reaches_poll(&launched.app, &other, "later.txt");
+        eprintln!("with the first window closed, a change reached poll in {took:?}");
+        launched
+            .app
+            .wait_for(0, "the window left listing the new file", |line| {
+                lists(line, 2, "Other")
+            });
+
+        s.sway_command(&format!("[con_id={}] kill", second.id));
+        assert!(
+            launched.app.wait_exit().success(),
+            "the process ended with its last window"
+        );
+    }
+
     /// With a `wake_after` tick in place of the embedded GLib loop, a change took 120 ms shown
     /// and 750 ms covered; a `Waker` alone never delivered it.
     #[test]

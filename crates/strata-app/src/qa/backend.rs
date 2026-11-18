@@ -18,15 +18,18 @@ use strata_qa::{
     Orientation, Outcome, Rect, Scope, Scroll, States, TextMatch,
 };
 
+#[cfg(test)]
+use super::input_log::InputLog;
 use super::{
     field, filter,
     host::{Activated, Host},
-    input_log::InputLog,
     invariants,
     staged::Staged,
     tree::{Kept, Node, Seen, Snapshot},
 };
-use crate::{App, host::offscreen::Offscreen, shell};
+#[cfg(test)]
+use crate::host::offscreen::Offscreen;
+use crate::{App, shell};
 
 const READY_TIMEOUT: Duration = Duration::from_secs(60);
 const READY_POLL: Duration = Duration::from_millis(5);
@@ -43,6 +46,7 @@ pub(super) struct Rune<H: Host = Staged> {
 }
 
 impl Rune {
+    #[cfg(test)]
     pub(super) fn new(host: Offscreen, log: InputLog) -> Self {
         Self::on(Staged::new(host, log))
     }
@@ -99,7 +103,7 @@ impl<H: Host> Rune<H> {
     }
 
     fn read<T>(&self, node: &Node, read: impl FnOnce(&Snapshot, &Seen) -> T) -> Option<T> {
-        let snapshot = self.snapshot();
+        let snapshot = self.host.snapshot_of(node);
         snapshot.get(node).map(|seen| read(&snapshot, seen))
     }
 
@@ -219,18 +223,19 @@ impl<H: Host> Backend for Rune<H> {
         width
     }
 
-    fn focus(&self, _window: &Node) -> Option<Node> {
-        self.snapshot().focus().and_then(|focus| focus.node.clone())
+    fn focus(&self, window: &Node) -> Option<Node> {
+        let snapshot = self.host.snapshot_of(window);
+        snapshot.focus().and_then(|focus| focus.node.clone())
     }
 
     fn parent(&self, node: &Node) -> Option<Node> {
-        let snapshot = self.snapshot();
+        let snapshot = self.host.snapshot_of(node);
         let parent = snapshot.at(snapshot.get(node)?.parent?)?;
         parent.node.clone()
     }
 
     fn children(&self, node: &Node) -> Vec<Node> {
-        let snapshot = self.snapshot();
+        let snapshot = self.host.snapshot_of(node);
         let Some(seen) = snapshot.get(node) else {
             return Vec::new();
         };
@@ -246,7 +251,7 @@ impl<H: Host> Backend for Rune<H> {
     }
 
     fn attached(&self, node: &Node) -> bool {
-        self.snapshot().get(node).is_some()
+        self.host.snapshot_of(node).get(node).is_some()
     }
 
     fn role(&self, node: &Node) -> &'static str {
@@ -347,7 +352,8 @@ impl<H: Host> Backend for Rune<H> {
     }
 
     fn keep(&self, node: &Node) -> Kept {
-        self.snapshot().keep(node).after(self.host.replacements())
+        let snapshot = self.host.snapshot_of(node);
+        snapshot.keep(node).after(self.host.replacements())
     }
 
     /// A row its column has been replaced in since is another row, as on GTK.
@@ -358,11 +364,11 @@ impl<H: Host> Backend for Rune<H> {
         if replaced {
             return None;
         }
-        self.snapshot().recall(kept)
+        self.host.snapshot_of(&kept.node).recall(kept)
     }
 
-    fn dump(&self, _window: &Node) -> String {
-        self.snapshot().dump()
+    fn dump(&self, window: &Node) -> String {
+        self.host.snapshot_of(window).dump()
     }
 
     async fn settle(&self, _window: &Node) {
@@ -427,6 +433,7 @@ impl<H: Host> Backend for Rune<H> {
             Some(Activated {
                 key,
                 bounds: seen.bounds,
+                window: node.window(),
             })
         });
         target

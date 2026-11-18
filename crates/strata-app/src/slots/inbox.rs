@@ -22,7 +22,7 @@
 use std::{
     cell::RefCell,
     collections::{HashMap, VecDeque},
-    rc::Rc,
+    rc::{Rc, Weak},
 };
 
 use rune::Tx;
@@ -109,7 +109,36 @@ impl<S> Clone for Later<S> {
     }
 }
 
+/// A [`Later`] that does not keep its window's queue: what a process-wide service holds for
+/// each window, so that a closed window's queue goes with it.
+pub(crate) struct WeakLater<S> {
+    inbox: Weak<RefCell<Queue<S>>>,
+    tab: Option<TabKey>,
+}
+
+impl<S> WeakLater<S> {
+    /// The way in again, while the window's queue is there.
+    pub(crate) fn upgrade(&self) -> Option<Later<S>> {
+        self.inbox.upgrade().map(|inbox| Later {
+            inbox: Inbox(inbox),
+            tab: self.tab,
+        })
+    }
+
+    pub(crate) fn is_live(&self) -> bool {
+        self.inbox.strong_count() > 0
+    }
+}
+
 impl<S: 'static> Later<S> {
+    /// A way in that does not keep the queue.
+    pub(crate) fn downgrade(&self) -> WeakLater<S> {
+        WeakLater {
+            inbox: Rc::downgrade(&self.inbox.0),
+            tab: self.tab,
+        }
+    }
+
     /// Queues `update`, after everything queued before it. It returns true when the view has
     /// to run.
     pub(crate) fn then(&self, update: impl FnOnce(&mut S, &mut Tx) -> bool + 'static) {

@@ -41,7 +41,7 @@ strata-core.workspace = true
 strata-desktop = { workspace = true, features = ["xkb-keys"] }
 strata-fs.workspace = true
 strata-kit.workspace = true
-strata-platform = { workspace = true, features = ["clipboard", "csd", "dnd", "foreign-parent", "glib-loop"] }
+strata-platform = { workspace = true, features = ["clipboard", "csd", "dnd", "foreign-parent", "glib-loop", "single-instance"] }
 # The sandbox's thumbnail workers, by the owner's ruling of 2026-11-12 ("in strata-rune until E4").
 strata-preview.workspace = true
 gio.workspace = true

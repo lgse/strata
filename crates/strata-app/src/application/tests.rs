@@ -1,0 +1,146 @@
+// SPDX-License-Identifier: MIT
+
+use std::{
+    ffi::OsString,
+    os::unix::ffi::OsStringExt,
+    path::{Path, PathBuf},
+};
+
+use strata_core::model::Location;
+
+use super::{Opening, openings, queue, queue_first, take};
+use crate::{
+    host::offscreen::Offscreen,
+    launch::Initial,
+    test_support::{PATIENCE, folder_of, hosted},
+};
+
+const MODULE: &str = "application::tests";
+
+fn argv(list: &[&[u8]]) -> Vec<OsString> {
+    std::iter::once(&b"strata-rune"[..])
+        .chain(list.iter().copied())
+        .map(|argument| OsString::from_vec(argument.to_vec()))
+        .collect()
+}
+
+fn argument(path: impl Into<PathBuf>) -> Opening {
+    Opening::Argument(Location::local(path.into()))
+}
+
+/// A launch's arguments after the program, whether another process handed it over, and the
+/// windows it asks for.
+type Case = (&'static [&'static [u8]], bool, Vec<Opening>);
+
+#[test]
+fn a_launch_asks_for_a_window_for_each_path_it_names() {
+    let cwd = Path::new("/srv/launch");
+    let cases: [Case; 7] = [
+        (&[], false, vec![Opening::Plain]),
+        (&[], true, vec![Opening::Fresh]),
+        (
+            &[b"first", b"/srv/second"],
+            true,
+            vec![argument("/srv/launch/first"), argument("/srv/second")],
+        ),
+        (
+            &[b"caf\xe9"],
+            true,
+            vec![argument(PathBuf::from(OsString::from_vec(
+                b"/srv/launch/caf\xe9".to_vec(),
+            )))],
+        ),
+        (&[b"file:///srv/third"], false, vec![argument("/srv/third")]),
+        // The launch read its options before it was handed over: what is left of them is no
+        // window, and `--` ends them.
+        (
+            &[b"--unknown", b"--", b"-dashed", b"--"],
+            true,
+            vec![argument("/srv/launch/-dashed"), argument("/srv/launch/--")],
+        ),
+        (&[b"--unknown"], false, vec![Opening::Plain]),
+    ];
+    for (arguments, handed_over, expected) in cases {
+        let arguments = argv(arguments);
+
+        let asked = openings(&arguments, Some(cwd), handed_over);
+
+        assert_eq!(asked, expected, "{arguments:?}");
+    }
+}
+
+#[test]
+fn the_host_takes_what_was_asked_in_order_the_first_launch_first() {
+    queue([argument("/srv/later")]);
+    queue_first([Opening::Plain, argument("/srv/own")]);
+
+    assert_eq!(
+        take(),
+        vec![Opening::Plain, argument("/srv/own"), argument("/srv/later")]
+    );
+    assert_eq!(take(), Vec::new());
+}
+
+fn selected(host: &Offscreen) -> Vec<Location> {
+    let entries = host.app().browser().selected_entries();
+    entries.into_iter().map(|entry| entry.location).collect()
+}
+
+/// As `classify` in `src/ui/window/open_argument.rs`: a folder opens; a file, a link whose
+/// target is gone, or one of two names that show alike, shows alone selected in its folder.
+#[test]
+fn an_argument_opens_its_folder_or_shows_its_file_selected_in_its_folder() {
+    hosted(
+        MODULE,
+        "an_argument_opens_its_folder_or_shows_its_file_selected_in_its_folder",
+        |mut host| {
+            let folder = folder_of(&["file.txt", "other.txt"]);
+            let root = folder.path();
+            std::fs::create_dir(root.join("inner")).expect("a folder");
+            std::os::unix::fs::symlink(root.join("gone.txt"), root.join("dangling.txt"))
+                .expect("a dangling link");
+            let alike = |byte: u8| {
+                root.join(OsString::from_vec(
+                    [b"alike-", &[byte][..], b".txt"].concat(),
+                ))
+            };
+            for name in [alike(0xe8), alike(0xe9)] {
+                std::fs::write(name, "alike").expect("a file whose name is not UTF-8");
+            }
+            let here = Location::local(root);
+            let cases = [
+                (
+                    root.join("inner"),
+                    Location::local(root.join("inner")),
+                    None,
+                ),
+                (
+                    root.join("file.txt"),
+                    here.clone(),
+                    Some(root.join("file.txt")),
+                ),
+                (
+                    root.join("dangling.txt"),
+                    here.clone(),
+                    Some(root.join("dangling.txt")),
+                ),
+                (alike(0xe9), here.clone(), Some(alike(0xe9))),
+            ];
+            for (path, shown, chosen) in cases {
+                let chosen: Vec<Location> = chosen.into_iter().map(Location::local).collect();
+                host.app().open(Location::local(std::env::temp_dir()));
+
+                host.start(Initial::Argument(Location::local(&path)));
+                let opened = host.run_until(PATIENCE, |host| {
+                    host.app().location() == Some(&shown)
+                        && (chosen.is_empty() || selected(host) == chosen)
+                });
+
+                assert!(opened, "{path:?} showed {:?}", host.app().location());
+                if !chosen.is_empty() {
+                    assert_eq!(selected(&host), chosen, "{path:?}");
+                }
+            }
+        },
+    );
+}

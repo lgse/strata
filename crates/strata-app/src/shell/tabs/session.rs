@@ -41,6 +41,18 @@ pub(crate) fn queue_plain_start(app: &mut App, restored: Option<RestoredSession>
     glib::idle_add_local_once(|| {});
 }
 
+/// Queues a later launch's window's start: the default folder, in a window that persists no
+/// session, so only the plain launch's window writes `tabs.toml`.
+pub(crate) fn queue_fresh_start(app: &mut App) {
+    let later = app.window.events.later();
+    later.then(|app, tx| {
+        start_shown_tab(app, tx);
+        open_default_folder(app, shown_tab(app), tx);
+        true
+    });
+    glib::idle_add_local_once(|| {});
+}
+
 /// Opens a plain-launch window's tabs: restores `restored` when `restore_tabs` is on and a
 /// session was loaded at start-up, else opens the default folder (`FirstFolder::open` in
 /// `src/ui/window/launch.rs`).

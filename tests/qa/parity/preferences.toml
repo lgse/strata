@@ -20,9 +20,8 @@ host = "offscreen"
 scenario = "preferences-sync-windows-restart"
 run = "columns"
 package = "A18"
-status = "pending"
-reason = "scope"
-blocker = "A21: single-instance second-window launch on session_bus (`launch`, `windows` count 2 and `other_window` on lines 15–17)"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "unsaved-changes-one-notice"

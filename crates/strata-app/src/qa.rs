@@ -32,6 +32,7 @@ mod staged;
 mod submenus;
 mod tenxer;
 mod tree;
+mod windows;
 
 use std::{
     ffi::{OsStr, OsString},
@@ -48,8 +49,10 @@ use std::{
 
 use strata_core::logging::criticals;
 
-use self::{backend::Rune, input_log::InputLog};
-use crate::{host::offscreen::Offscreen, launch, startup};
+use strata_platform::single_instance::{Claim, Launch};
+
+use self::{backend::Rune, input_log::InputLog, staged::Staged, windows::Windows};
+use crate::{application, host::offscreen::Offscreen, launch, startup};
 
 /// What a wrong `--qa` command line prints. The release workflow fails a release binary that
 /// holds the `usage: strata --qa` prefix, and the QA job requires it in a QA build of the GTK
@@ -95,14 +98,29 @@ fn serve(directory: &OsStr) -> Result<(), String> {
     criticals::capture();
     let settings = startup::initialize_process();
     let location = launch::location(Some(directory)).ok_or("the argument is not a location")?;
+    let primary = claim()?;
     launch::leave_launch_folder();
     let log = InputLog::from_environment()?;
-    let host = Offscreen::sized(startup::UiThread::claim()?, settings, SIZE).without_animations();
+    let ui = startup::UiThread::claim()?;
+    application::attach(primary);
+    let host = Offscreen::sized(ui, settings, SIZE).without_animations();
     host.app().open(location);
-    let backend = Rune::new(host, log);
+    let windows = Windows::new(ui, Staged::new(host, log.clone()), (log, SIZE));
+    let backend = Rune::on(windows);
     let commands = strata_qa::command_lines();
     block_on(&backend, strata_qa::serve(&backend, protocol, commands));
     Ok(())
+}
+
+/// This run's process as the primary on the runner's session bus, where a `launch` step's
+/// `strata-rune` hands its arguments to it; a run with no bus runs alone.
+fn claim() -> Result<strata_platform::single_instance::Primary, String> {
+    match application::claim(Launch::default(), true) {
+        Claim::Primary(primary) | Claim::Standalone(primary, _) => Ok(primary),
+        Claim::Forwarded(_) => {
+            Err("another strata-rune is the primary on the run's session bus".to_owned())
+        }
+    }
 }
 
 /// Serves the portal chooser with no window until a request opens one.

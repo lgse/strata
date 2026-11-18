@@ -49,15 +49,17 @@ use crate::{
 
 mod held;
 mod preferences;
+mod siblings;
 pub(crate) mod tabs;
 
 pub(crate) use held::{held_modifiers, modifiers};
 use preferences::{PowerMonitorGuard, WindowServices, sync_browser_freshness};
 pub(crate) use preferences::{
-    follow_look, follow_look_tx, interface_renderer_restart_required, language_restart_required,
-    reload_omarchy, sync_default_preferences, sync_folder_sorts, sync_freshness,
-    sync_live_preferences, themes,
+    follow_another_window, follow_look, follow_look_tx, interface_renderer_restart_required,
+    language_restart_required, reload_omarchy, sync_default_preferences, sync_folder_sorts,
+    sync_freshness, sync_live_preferences, themes,
 };
+pub(crate) use siblings::{share_settings, window_id, window_later};
 use tabs::{Here, Tabs};
 
 /// The window buttons' accessible names, translated once: the language changes only on
@@ -82,6 +84,8 @@ impl Labels {
 
 /// What the window keeps for itself, beside the parts' state.
 pub(crate) struct Window {
+    /// Which of the process's windows this is: none has the same.
+    id: u64,
     settings: Saved,
     events: Inbox<App>,
     /// The shown tab's own bits: the view it shows, and what its views share.
@@ -360,11 +364,16 @@ impl App {
 
     /// Starts the window from `initial`: an explicit directory opens in one tab and leaves
     /// `tabs.toml` alone; a plain launch restores its saved session or opens the default folder,
-    /// and persists its tabs (`tabs::session`).
+    /// and persists its tabs (`tabs::session`); a later launch's window opens the default folder
+    /// or its argument, and leaves `tabs.toml` alone.
     pub(crate) fn start(&mut self, initial: launch::Initial) {
         match initial {
             launch::Initial::Explicit(location) => self.open(location),
             launch::Initial::Plain(restored) => tabs::session::queue_plain_start(self, restored),
+            launch::Initial::Fresh => tabs::session::queue_fresh_start(self),
+            launch::Initial::Argument(location) => {
+                crate::application::open_argument(self, location)
+            }
         }
     }
 
@@ -589,6 +598,7 @@ impl Window {
         let thumbnails = thumbnail_store(saved);
         let look = services.themes.build_look(saved, true);
         let window = Self {
+            id: siblings::next_id(),
             settings,
             events,
             here: first.here,

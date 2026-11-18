@@ -24,6 +24,16 @@ pub(super) fn is_entry_key(key: &str) -> bool {
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub(crate) struct Node(pub(super) Rc<str>);
 
+impl Node {
+    /// The root of the window the node is in: the first key of its path.
+    pub(super) fn window(&self) -> Node {
+        match self.0.split_once('/') {
+            Some((root, _)) => Node(root.into()),
+            None => self.clone(),
+        }
+    }
+}
+
 /// What `remember` holds of a node: its path, and the role it had, so a different element
 /// that later stands at the same place is not taken for it; and for an entry's row, the
 /// browser's replacements as of then (`qa::replaced`), which the backend fills in.
