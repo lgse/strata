@@ -2585,3 +2585,19 @@ sequence only together with the alphabet's version, so the version is part of th
 - **Concerns:** the sequence, confirmed 3 of 3, parked in `tests/qa/fuzz/corpus/drag/`. The
   smoke tier skips its seed while it is parked.
 - **State:** open, unowned.
+
+### #2596: `camera-formats-preview-sandbox` reads a drawn pixel no Rune target can read
+
+- **Code:** `toolkit`. [Issue](https://github.com/lgse/strata/issues/2596), filed on 2026-11-17
+  as the exception's reference and closed at once: its state is kept here.
+- **What differs:** `preview_media_layout/camera-formats-preview-sandbox` checks at line 5 that a
+  HEIC or AVIF picture decoded in the preview sandbox by reading a white pixel of the
+  preview's last `image`. The Rune QA backend answers `pixel is not supported on this target`
+  (`crates/strata-qa/src/engine/check.rs`): Rune renders no element into pixels it can hand back
+  (packet entry 75), and a `Pixels` cannot be read back (anomalyco/rune#148).
+- **Concerns:** the `columns-heic` and `columns-avif` runs. `columns-mov` and `columns-mp4` read no
+  pixel and are `required` from the shared file.
+- **State:** both runs are `parallel` under a `toolkit` twin, `camera-formats-preview-sandbox-rune`
+  ([A16](packages/A16.md), [#2599](https://github.com/lgse/strata/pull/2599)), which waits for the
+  preview's `image` named `camera.<ext>` and keeps the fixture, the thumbnail's `fs` pixel check
+  and the end state. The twin goes once a Rune target can read drawn pixels.
