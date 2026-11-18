@@ -53,6 +53,21 @@ fn key_centre(host: &mut Offscreen, key: &str) -> (f32, f32) {
     (x + w / 2.0, y + h / 2.0)
 }
 
+/// Escape during a held drag, then the release at `at`.
+fn escape_and_release(host: &mut Offscreen, at: (f32, f32)) {
+    send_key(
+        host,
+        KeyEvent {
+            key: Key::Escape,
+            mods: Mods::default(),
+        },
+    );
+    host.turn();
+    host.runtime().pointer_up(at.0, at.1);
+    host.turn();
+    idle(host);
+}
+
 fn drag_steps(host: &mut Offscreen, from: (f32, f32), to: (f32, f32), release: bool) {
     host.runtime().pointer_move(from.0, from.1);
     host.turn();
@@ -96,17 +111,7 @@ fn columns_row_drag_moves_by_default_copies_with_ctrl_and_cancels_on_escape() {
             let dest = label_centre(&mut host, "archive");
             drag_steps(&mut host, from, dest, false);
             assert!(super::is_dragging(host.app()));
-            send_key(
-                &mut host,
-                KeyEvent {
-                    key: Key::Escape,
-                    mods: Mods::default(),
-                },
-            );
-            host.turn();
-            host.runtime().pointer_up(dest.0, dest.1);
-            host.turn();
-            idle(&mut host);
+            escape_and_release(&mut host, dest);
             assert!(!super::is_dragging(host.app()));
             assert!(root.join("todo.txt").exists());
             assert!(!root.join("archive/todo.txt").exists());
@@ -166,12 +171,25 @@ fn hovering_inactive_tab_springs_tab_and_keeps_drag_alive_until_drop() {
 
             let from = label_centre(&mut host, "todo.txt");
             let second_centre = key_centre(&mut host, &tab_key("tabs", TabId(second.0)));
-            drag_steps(&mut host, from, second_centre, false);
-            host.runtime().frame(0.8);
-            host.turn();
-            idle(&mut host);
-            assert_eq!(shown_tab(host.app()), second);
-            assert!(super::is_dragging(host.app()));
+            // A drag cancelled on the sprung tab first, as `tabs/hovered-tab-takes-drop` does:
+            // here the second drag is the one that lost its drop without the stand-in's wait.
+            for cancelled in [true, false] {
+                drag_steps(&mut host, from, second_centre, false);
+                assert!(
+                    host.run_until(PATIENCE, |h| shown_tab(h.app()) == second),
+                    "the hover springs the tab"
+                );
+                assert!(super::is_dragging(host.app()));
+                if !cancelled {
+                    break;
+                }
+                escape_and_release(&mut host, second_centre);
+                assert!(!super::is_dragging(host.app()));
+                host.runtime().update(move |app, tx| {
+                    assert!(crate::tab_strip::select(app, first, tx));
+                });
+                idle(&mut host);
+            }
 
             // Move into the sprung tab's listing (exercising `keep_alive_drag`) and release.
             host.runtime().pointer_move(400.0, 220.0);
@@ -237,17 +255,7 @@ fn dragging_folder_across_inactive_tab_onto_tabs_new_does_not_spring_tab() {
                 first,
                 "dragging across an inactive tab to tabs-new must not spring the tab"
             );
-            send_key(
-                &mut host,
-                KeyEvent {
-                    key: Key::Escape,
-                    mods: Mods::default(),
-                },
-            );
-            host.turn();
-            host.runtime().pointer_up(tabs_new.0, tabs_new.1);
-            host.turn();
-            idle(&mut host);
+            escape_and_release(&mut host, tabs_new);
             assert_eq!(tabs(host.app()).len(), 3);
             assert_eq!(shown_tab(host.app()), first);
         },
