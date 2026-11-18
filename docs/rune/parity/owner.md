@@ -636,6 +636,21 @@ Found by the package's agent, 2026-11-12, against A1's five items above.
    change in `roots.rs` by hand (`docs/rune/shared-state.md`, "Merging from `main`"). Should
    the rule move to a shared crate later, with GTK calling it? Source: A10, 2026-11-14.
 
+### A20: Portal chooser
+
+1. **Focus after the floating chooser closes in GTK's fuzz replays** (finding
+   [#2595](https://github.com/lgse/strata/issues/2595)). GTK's browser window reports no focus
+   once the floating Copy to or Move to chooser has closed: GTK's chooser leaves activating the
+   browser again to the window manager, and the QA's Xvfb runs none. On a desktop both
+   interfaces leave the keyboard in the browser. Rune's QA host gives it back as a window
+   manager does. Every seed of the `chooser` alphabet's smoke tier parts on it. Which way:
+   (a) GTK presents its browser window when the destination chooser closes, a change on `main`
+   that a desktop user does not see; (b) GTK's fuzz replays get a window manager; or (c) a
+   normalisation rule on the focus fields around the floating chooser, the broadest, which
+   would also hide a real focus bug there? Meanwhile: the alphabet is merged with its smoke
+   tier not clean, and A20 stays `in progress` on this item. Source: A20's closing pull
+   request, 2026-11-18.
+
 ### Packages added later
 
 - **A branch name for a package with no archived issue.** Branch names keep the package's

@@ -2491,3 +2491,25 @@ sequence only together with the alphabet's version, so the version is part of th
   which ports `pending_navigate` as GTK has it, early returns included. No run or seed reads it.
 - **State:** open, set aside: Rune keeps GTK's behaviour. Any fix belongs on `main`, and Rune
   follows it.
+
+### #2595: after the floating chooser closes, GTK's browser has no focus under the QA's Xvfb
+
+- **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2595), filed on
+  2026-11-18 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** in the differential smoke tier of [A20](packages/A20.md)'s `chooser` alphabet
+  (`chooser v2`, 20 seeds of 40 actions): all 20 first part on `app.focused`,
+  `app.focused_pane` and `app.panes[].focused` at the step that opens or closes the floating
+  Copy to or Move to chooser. Once it has closed (Copy here, Move here or Escape), GTK reports
+  no focus in the browser, and around a later chooser its focus comes back in no fixed order;
+  Rune reports the browser's row. GTK's QA backend reports focus only for a widget with
+  `has_focus()`, which needs its window active (`src/qa/backend.rs`, `focus`), and GTK's
+  destination chooser leaves making the browser active again to the window manager
+  (`present_destination_chooser`, `bind_host_parent` in `src/ui/chooser/`). The QA's Xvfb runs
+  none. Rune's QA host gives the browser the keyboard back as a window manager does
+  (`qa::windows`). What follows in a sequence comes from it: a step guarded on `focused_pane`
+  runs on Rune only, and `app.directory` is the focused pane's. With the three focus fields
+  set aside by a trial map, not committed, nothing else parts: no other field, and no invariant.
+- **Concerns:** the `chooser` alphabet, all 20 seeds of its smoke tier; seed `0x08` parts at
+  step 5, `Copy here`. No scenario reads focus after the chooser closes.
+- **State:** open, for the owner ([`owner.md`](owner.md), A20 item 1). Meanwhile the
+  `chooser` alphabet's smoke tier is not clean, and A20's done-when item 6 is not met.
