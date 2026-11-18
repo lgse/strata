@@ -1134,7 +1134,10 @@ where `strata-rune --qa` opens its window and serves the protocol from it
 (`STRATA_QA_WINDOW=1`, which the runner sets on that display;
 `crates/strata-app/src/qa/session.rs`). Input crosses the compositor through
 Wayland's virtual keyboard and pointer, on the US layout only. The run takes
-the same file on GTK, on Xvfb as every GTK run does.
+the same file on GTK, on Xvfb as every GTK run does. A `portal` scenario runs
+there too: `strata-rune --qa --portal` opens each request's chooser in a real
+window, the steps act on the window `adopt` picks, and the input devices
+connect at the first `adopt` (`crates/strata-app/src/qa/session/portal.rs`).
 
 ```bash
 ./scripts/qa-parity.sh A8                   # each Rune run on the host its entry names
