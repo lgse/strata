@@ -155,6 +155,11 @@ closed issue is not a fixed finding: the state given here is the finding's.
   in `./scripts/quality.sh all` in the pinned image at `17d3fa87d` on a loaded host, and 1
   time in 3 alone (`./scripts/test-headless.py`). At `60c062c9a`, with `strata-next` merged
   again, the ninth failed once more there, with its message. That change touches no `src/`.
+- **On [#2594](https://github.com/lgse/strata/pull/2594), [A21](packages/A21.md)'s first slice:** the ninth failed once more in
+  `./scripts/quality.sh all` in the pinned image at `5da7cb20e`, with its message ("keyboard
+  fixture did not settle", `src/ui/window/tests/keyboard_dispatch.rs:324`). It passed alone
+  (`./scripts/test-headless.py`), and the rerun of `./scripts/quality.sh test` passed whole
+  (4074 tests). That change touches no `src/` and no crate the GTK lane builds.
 - **State:** open, set aside. Whoever meets one of these in a red shard reads the failure
   first: if the change could reach the test, it is the change's; if not, say why on the pull
   request, rerun the whole workflow once, and stop if the same test fails twice. A new flaky
