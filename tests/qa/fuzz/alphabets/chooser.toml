@@ -1,0 +1,105 @@
+# The chooser alphabet (A20): the floating Copy to and Move to chooser, the folder chooser a file
+# manager opens over its window, in Columns on the canonical fixture, type to search off:
+# - opening it from an entry's context menu on a file or folder of `$root`;
+# - in it, the path field (Ctrl+L, a folder of the fixture typed, Return), the listing's arrow
+#   keys, Escape, and its "Copy here" or "Move here";
+# - the "File already exists" dialog a repeated copy raises, answered with Keep Both, Replace or
+#   Skip;
+# - the browser's own arrow keys and clicks, so that the chooser opens on other folders.
+# Every copy and move is compared in the fixture's digest.
+#
+# A browser step is taken only while no chooser is open, and a chooser step only while its
+# window is: each looks for its target within that window, as `floating-chooser-transfers-files`
+# does.
+#
+# Left out, with why:
+# - The portal chooser (`strata-rune --qa --portal`): the fuzz replay starts no session bus and
+#   no portal, and replays no `portal_open` (docs/testing.md, "Alphabets"), so its filters, Name
+#   field, multiple selection and image conversion are reached only by the `chooser_selection`
+#   and `chooser_image_conversion` scenarios.
+# - Leaving the fixture in the chooser: Left, Backspace and Alt+Up in its listing go above
+#   `$root`, where a Copy here would write outside the fixture. The path field types folders of
+#   the fixture only.
+# - Extract to: the canonical fixture holds no archive.
+# - Up from a column's first row: GTK focuses the pane header, Rune does not (`owner.md`, A1
+#   item 3), as the menus and clipboard alphabets leave out.
+#
+# Its smoke tier parts in 20 of 20 on the focus fields at the step that opens or closes the
+# chooser: GTK's browser has no focus once the chooser has closed, as no window manager on the
+# QA's Xvfb makes it active again, where Rune's QA host gives it the keyboard back as one does
+# (`divergence` finding lgse/strata#2595, for the owner). The comparisons after it follow from
+# that: a step guarded on `focused_pane` runs on Rune only, and `app.directory` is the focused
+# pane's.
+area = "chooser"
+version = 2
+about = "Columns, type to search off: the floating Copy to and Move to chooser from an entry's menu, its path field, listing keys, Escape and Copy here or Move here, the conflict dialog a repeated copy raises, and the browser's own keys and clicks between"
+header = '{"modes":["columns"],"prefs":{"type_to_search":false}}'
+
+[[action]]
+name = "down"
+weight = 4
+steps = ['{"key":"<key>","when":{"all":[{"focused_pane":true},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null},{"absent":{"toplevel":"Copy to"}},{"absent":{"toplevel":"Move to"}}]}}']
+choose.key = ["Down", "j"]
+
+[[action]]
+name = "up"
+weight = 3
+steps = ['{"key":"<key>","when":{"all":[{"focused_pane":true},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null},{"absent":{"toplevel":"Copy to"}},{"absent":{"toplevel":"Move to"}},{"not":{"focused":{"one_of":["archive","notes.txt","diagram.txt"]}}}]}}']
+choose.key = ["Up", "k"]
+
+[[action]]
+name = "click-entry"
+weight = 4
+steps = ['{"click":{"entry":"<entry>"},"when":{"all":[{"present":{"entry":"<entry>"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null},{"absent":{"toplevel":"Copy to"}},{"absent":{"toplevel":"Move to"}}]}}']
+choose.entry = ["documents", "pictures", "readme.md", "todo.txt"]
+
+[[action]]
+name = "open-chooser"
+weight = 8
+steps = [
+  '{"click":{"entry":"<entry>","dir":"$root"},"button":3,"when":{"all":[{"present":{"entry":"<entry>","dir":"$root"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null},{"absent":{"toplevel":"Copy to"}},{"absent":{"toplevel":"Move to"}}]}}',
+  '{"click":{"menu_item":"<item>"},"when":{"present":{"menu_item":"<item>"}}}',
+  '{"key":"Escape","when":{"menu_items":{}}}',
+]
+choose.entry = ["readme.md", "todo.txt", "documents", "pictures"]
+choose.item = ["Copy to…", "Copy to…", "Move to…"]
+
+[[action]]
+name = "chooser-path"
+weight = 8
+steps = [
+  '{"key":"ctrl+l","when":{"present":{"toplevel":"<title>"}}}',
+  '{"key":"ctrl+a","when":{"present":{"field":true,"within":{"toplevel":"<title>"}}}}',
+  '{"type":"<folder>","when":{"present":{"field":true,"within":{"toplevel":"<title>"}}}}',
+  '{"key":"Return","when":{"present":{"field":true,"within":{"toplevel":"<title>"}}}}',
+]
+choose.folder = ["$fixture", "$fixture/documents", "$fixture/pictures", "$fixture/archive"]
+choose.title = ["Copy to", "Move to"]
+
+[[action]]
+name = "chooser-keys"
+weight = 5
+steps = ['{"key":"<key>","when":{"all":[{"present":{"toplevel":"<title>"}},{"absent":{"field":true,"within":{"toplevel":"<title>"}}}]}}']
+choose.key = ["Down", "Up", "Right"]
+choose.title = ["Copy to", "Move to"]
+
+[[action]]
+name = "copy-here"
+weight = 5
+steps = ['{"click":{"role":"button","name":"Copy here","within":{"toplevel":"Copy to"}},"when":{"present":{"role":"button","name":"Copy here","within":{"toplevel":"Copy to"}}}}']
+
+[[action]]
+name = "move-here"
+weight = 3
+steps = ['{"click":{"role":"button","name":"Move here","within":{"toplevel":"Move to"}},"when":{"present":{"role":"button","name":"Move here","within":{"toplevel":"Move to"}}}}']
+
+[[action]]
+name = "chooser-escape"
+weight = 2
+steps = ['{"key":"Escape","when":{"any":[{"present":{"toplevel":"Copy to"}},{"present":{"toplevel":"Move to"}}]}}']
+
+[[action]]
+name = "conflict"
+weight = 4
+steps = ['{"click":{"dialog_button":"<choice>"},"when":{"all":[{"dialog":"File already exists"},{"present":{"dialog_button":"<choice>"}}]}}']
+choose.choice = ["Keep Both", "Replace", "Skip"]

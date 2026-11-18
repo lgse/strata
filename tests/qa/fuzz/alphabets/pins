@@ -18,6 +18,12 @@ archives v5 198d34d05a89aa18
 # calibration: versions 1 and 2 were its states while the driver was calibrated (before
 # the click guard, and before the hidden-files action). Three parked sequences are theirs.
 calibration v3 d06627cec8c47f93
+# chooser: version 1 was A20's draft, never merged: its smoke tier met Up from a column's first
+# row (`owner.md`, A1 item 3) and Rune's `keyboard` invariant broken while the floating chooser
+# had the keyboard (fixed). Version 2 keeps Up off the first rows; its smoke tier caught the row
+# kept after a move out dropping the browser's Shift anchor (fixed), and meets
+# lgse/strata#2595 in 20 of 20.
+chooser v2 fff96f7eee993371
 # clipboard: versions 1 to 3 were A12's drafts, never merged: version 1 met lgse/strata#2525
 # (`BrowserView::paste_location` falling back to the parent column under a parked pointer after
 # clicking a folder in Columns) and lgse/strata#2356, parked in tests/qa/fuzz/corpus/clipboard;
