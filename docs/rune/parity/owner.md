@@ -649,7 +649,7 @@ Found by the package's agent, 2026-11-12, against A1's five items above.
    normalisation rule on the focus fields around the floating chooser, the broadest, which
    would also hide a real focus bug there? Meanwhile: the alphabet is merged with its smoke
    tier not clean, and A20 stays `in progress` on this item. Source: A20's closing pull
-   request, 2026-11-18.
+   request, [#2598](https://github.com/lgse/strata/pull/2598), 2026-11-18.
 
 ### Packages added later
 
