@@ -16,10 +16,15 @@
 //!   (`Part::publish`). Reload keeps it, as GTK's does: its sync moves C1's revision only.
 //! - **A snapshot.** The card lists the folder as it was when the peek opened; GTK's adds no
 //!   file made in it later, nor does Reload list it again.
-//! - **Keyboard peeks only, for now.** C22's state opens nothing while it is off, and peeking
-//!   from a resting pointer is the `folder_peeking` preference's, which [A19](../../../docs/rune/parity/packages/A19.md)
-//!   wires with the drag rules. Here the state is on while a keyboard peek is open, and off
-//!   again as it closes ([`ended`]).
+//! - **A resting pointer peeks** when the `folder_peeking` preference is on, never in the file
+//!   chooser (GTK's `interactive && folder_peeking`, `src/ui/browser/preferences.rs`): C22's
+//!   state follows the preference, live ([`follow_preference`]), and a keyboard peek turns it
+//!   on while it is open, whatever the preference. Every close ends in [`ended`], which gives
+//!   the state back to the preference. A drag starting or ending closes a peek, as GTK's
+//!   `cancel_peek` in the item drag source's `drag-begin` and `drag-end` does
+//!   (`src/ui/browser_modes/drag_drop.rs`), and a drag ending holds the collections' rest, so
+//!   the folder it was dropped on never peeks until the pointer arrives on a row again.
+//!   A menu, a popover or a modal layer over the views covers them: no row under it peeks.
 //! - **Columns never peeks:** its `i` on a folder opens the folder's column.
 
 use std::hash::{DefaultHasher, Hash, Hasher};
@@ -40,6 +45,7 @@ use strata_fs::app::BrowserEvent;
 
 use crate::{
     App,
+    commands::Holds,
     icons::Icons,
     list::List,
     listing::{Column, Edit, Row},
@@ -94,6 +100,8 @@ impl Part for Peek {
     /// views hear (`single::moved`).
     fn publish(app: &mut App) {
         close_once_moved(app);
+        follow_preference(app);
+        follow_cover(app);
     }
 
     fn switched(app: &mut App, _: &mut Tx) {
@@ -177,11 +185,101 @@ fn close_once_moved(app: &mut App) -> bool {
     }
 }
 
-/// The peek has gone, however it went: C22's state turns off with it, since only a keyboard
-/// peek turns it on. A19's pointer peeking makes this the `folder_peeking` preference's value.
+/// The peek has gone, however it went: C22's state goes back to the preference's, which a
+/// keyboard peek overrode while it was open.
 fn ended(app: &mut App) {
     app.peek.opened = None;
-    app.peek.state.set_enabled(false);
+    let on = pointer_peeking(app);
+    app.peek.state.set_enabled(on);
+}
+
+/// Whether a resting pointer peeks: the `folder_peeking` preference, never in the chooser.
+fn pointer_peeking(app: &App) -> bool {
+    shell::preferences(app).folder_peeking && !app.browser.is_chooser_mode()
+}
+
+fn keyboard_peek_open(app: &App) -> bool {
+    let target = app.peek.state.target();
+    target.is_some_and(|target| target.origin == Origin::Keyboard)
+}
+
+/// Turns pointer peeking on or off as the preference changed, unless a keyboard peek holds it
+/// on. A rest under way then opens nothing (C22's `hold_rest`), and turning it off closes a
+/// pointer peek.
+fn follow_preference(app: &mut App) {
+    let on = pointer_peeking(app);
+    if keyboard_peek_open(app) || app.peek.state.enabled() == on {
+        return;
+    }
+    if app.peek.state.set_enabled(on) {
+        app.browser.close_peek();
+        app.peek.opened = None;
+    }
+    hold_rest(app);
+}
+
+/// Holds both views' rests until the pointer next arrives on a row.
+pub(crate) fn hold_rest(app: &mut App) {
+    Icons::single_mut(app).pane.parts_mut().1.hold_rest();
+    List::single_mut(app).pane.parts_mut().1.hold_rest();
+}
+
+/// Rows under a menu, a popover or a modal layer start no peek (C22's `set_covered`): Rune
+/// counts the rows under an overlay as hovered.
+fn follow_cover(app: &mut App) {
+    let covered = shell::parts(app).active().any(|part| {
+        matches!(
+            (part.keyboard)(app),
+            Some(Holds::Menu | Holds::Popover | Holds::Modal { .. })
+        )
+    });
+    if app.peek.state.covered() == covered {
+        return;
+    }
+    if app.peek.state.set_covered(covered) == Change::Closed {
+        app.browser.close_peek();
+        ended(app);
+    }
+}
+
+/// C22 opened a peek from a resting pointer: list its folder, as GTK's `schedule_peek` does
+/// once the delay ran out with the row still hovered, unless the folder is open beside it.
+fn pointer_opened(app: &mut App) {
+    let Some(target) = app.peek.state.target().cloned() else {
+        return;
+    };
+    if target.origin == Origin::Keyboard {
+        return;
+    }
+    let found = scope_of(&target.collection).and_then(|scope| {
+        let (depth, entry) = folder_of(app, scope, target.folder)?;
+        Some((scope, depth, entry))
+    });
+    let Some((scope, depth, entry)) = found.filter(|(_, depth, entry)| {
+        entry.is_directory() && !app.browser.is_open_child(*depth, &entry.location)
+    }) else {
+        close(app);
+        return;
+    };
+    app.peek.opened = seen(app, scope).map(|seen| Opened { scope, seen });
+    listen_to(app, depth, entry);
+}
+
+fn scope_of(collection: &str) -> Option<&'static str> {
+    [Icons::KEY, List::KEY]
+        .into_iter()
+        .find(|key| *key == collection)
+}
+
+/// The entry `id` is in the view keyed `scope`, and the browser's column it shows.
+fn folder_of(app: &App, scope: &str, id: EntryId) -> Option<(usize, FileEntry)> {
+    let pane = match scope {
+        Icons::KEY => &Icons::single(app).pane,
+        _ => &List::single(app).pane,
+    };
+    let depth = pane.depth()?;
+    let position = pane.position(depth, id)?;
+    Some((depth, app.browser.entry_at(depth, position)?))
 }
 
 /// What the browser said of the peek's listing.
@@ -241,11 +339,13 @@ fn peek() -> FolderPeek<App> {
         |app: &App| &app.look,
     )
     .labels(labels())
-    .on_change(|app: &mut App, change, _| {
-        if change == Change::Closed {
+    .on_change(|app: &mut App, change, _| match change {
+        Change::Closed => {
             app.browser.close_peek();
             ended(app);
         }
+        Change::Opened => pointer_opened(app),
+        Change::None => {}
     })
     .on_open(|app: &mut App, _, tx| {
         shell::publish(app);

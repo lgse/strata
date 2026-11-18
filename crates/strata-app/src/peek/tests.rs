@@ -266,3 +266,110 @@ fn icons_the_peek_keeps_its_listing_through_a_reload() {
         "icons_the_peek_keeps_its_listing_through_a_reload",
     );
 }
+
+/// A window in `mode`, 10xer or not as `tenxer` says, with "Folder peeking" on.
+fn peeking(mode: &'static str, tenxer: bool, name: &str, run: impl FnOnce(Offscreen)) {
+    hosted_after(
+        MODULE,
+        name,
+        move || {
+            let file = strata_core::storage::config_directory().join("settings.toml");
+            std::fs::create_dir_all(file.parent().expect("a folder")).expect("settings folder");
+            let saved = format!(
+                "browser_mode = \"{mode}\"\ntenxer_mode = {tenxer}\nfolder_peeking = true\n"
+            );
+            std::fs::write(file, saved).expect("settings");
+        },
+        run,
+    );
+}
+
+/// The middle of the first live element showing `text`.
+fn centre_of(host: &Offscreen, text: &str) -> (f32, f32) {
+    let element = host
+        .elements()
+        .into_iter()
+        .find(|el| !el.exiting && el.text.as_deref() == Some(text))
+        .unwrap_or_else(|| panic!("no element shows {text:?}"));
+    let [x, y, w, h] = element.visible;
+    (x + w.min(24.0) / 2.0, y + h / 2.0)
+}
+
+/// With "Folder peeking" on, the pointer resting on a folder opens its peek, listed by the
+/// browser; a drag starting from it closes the peek, as GTK's item drag source does. The
+/// folder is selected first, so the press that starts the drag moves no selection, which
+/// would close the peek on its own.
+fn a_resting_pointer_peeks_and_a_drag_closes_it(mode: &'static str, name: &str) {
+    peeking(mode, false, name, |mut host| {
+        let _root = on_folder(&mut host, "documents");
+        let folder = centre_of(&host, "documents");
+        host.runtime().pointer_move(folder.0 + 1.0, folder.1);
+        host.turn();
+        host.runtime().pointer_move(folder.0, folder.1);
+        let listed = host.run_until(PATIENCE, |h| open(h) && h.app().peek.entries.len() == 2);
+        assert!(listed, "the resting pointer opens the folder's peek");
+        let to = centre_of(&host, "pictures");
+        host.runtime().pointer_down(folder.0, folder.1);
+        host.turn();
+        assert!(open(&host), "pressing the selected folder keeps its peek");
+        for step in 1..=6 {
+            let t = step as f32 / 6.0;
+            host.runtime().pointer_move(
+                folder.0 + (to.0 - folder.0) * t,
+                folder.1 + (to.1 - folder.1) * t,
+            );
+            host.turn();
+        }
+        assert!(crate::dnd::is_dragging(host.app()), "the drag started");
+        assert!(!open(&host), "the drag closes the peek");
+        host.runtime().pointer_up(to.0, to.1);
+        while host.turn() {}
+    });
+}
+
+#[test]
+fn list_a_resting_pointer_peeks_and_a_drag_closes_it() {
+    a_resting_pointer_peeks_and_a_drag_closes_it(
+        "list",
+        "list_a_resting_pointer_peeks_and_a_drag_closes_it",
+    );
+}
+
+#[test]
+fn icons_a_resting_pointer_peeks_and_a_drag_closes_it() {
+    a_resting_pointer_peeks_and_a_drag_closes_it(
+        "icons",
+        "icons_a_resting_pointer_peeks_and_a_drag_closes_it",
+    );
+}
+
+fn set_folder_peeking(host: &mut Offscreen, on: bool) {
+    host.runtime().update(move |app: &mut App, tx: &mut Tx| {
+        shell::saved(app).change(|saved| saved.folder_peeking = on);
+        shell::settle(app, tx);
+    });
+    while host.turn() {}
+}
+
+/// Pointer peeking follows "Folder peeking" live; a keyboard peek holds it on while it is
+/// open, whatever the preference, and gives it back to the preference as it closes.
+#[test]
+fn pointer_peeking_follows_the_preference_and_a_keyboard_peek_holds_it_on() {
+    let name = "pointer_peeking_follows_the_preference_and_a_keyboard_peek_holds_it_on";
+    peeking("list", true, name, |mut host| {
+        let _root = on_folder(&mut host, "documents");
+        let enabled = |host: &Offscreen| host.app().peek.state.enabled();
+        assert!(enabled(&host), "on with the preference");
+        set_folder_peeking(&mut host, false);
+        assert!(!enabled(&host), "off as the preference turns off");
+        press(&mut host, Key::Text("i".to_owned()));
+        assert!(open(&host) && enabled(&host), "a keyboard peek turns it on");
+        press(&mut host, Key::Text("i".to_owned()));
+        assert!(
+            !open(&host) && !enabled(&host),
+            "and its close gives it back"
+        );
+        set_folder_peeking(&mut host, true);
+        assert!(enabled(&host), "on again with the preference");
+    });
+}

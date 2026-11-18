@@ -1,0 +1,14 @@
+# The drag alphabet's sequences parked against their findings (docs/rune/parity/findings.md):
+#
+#   v<version>-<seed> <code> <issue>
+#
+# Each line is a finding's sequence shrunk GTK against Rune, named for the smoke seed of
+# `drag v1` that met it; `drag v2` drags only rows not selected, and leaves Escape out.
+# Kept unparked in this folder: `v1-0000000000000004` (a move out, then Ctrl+Z), which broke
+# Rune's `browser-view` invariant and lost its keyboard until `handover::Kept` kept the
+# neighbour through the undo (A19's closing pull request).
+v1-0000000000000005 oracle lgse/strata#2590
+v1-0000000000000006 divergence lgse/strata#2592
+v1-000000000000000d oracle lgse/strata#2591
+v1-0000000000000011 oracle lgse/strata#2590
+v2-0000000000000007 divergence lgse/strata#2593
