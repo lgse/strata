@@ -373,3 +373,29 @@ fn pointer_peeking_follows_the_preference_and_a_keyboard_peek_holds_it_on() {
         assert!(enabled(&host), "on again with the preference");
     });
 }
+
+/// A peek a resting pointer opened survives Reload as a keyboard one does: the part notes the
+/// selection it opened over with the same check (`seen`), which a reload's sync leaves alone.
+#[test]
+fn a_pointer_peek_survives_a_reload() {
+    peeking(
+        "list",
+        false,
+        "a_pointer_peek_survives_a_reload",
+        |mut host| {
+            let _root = on_folder(&mut host, "documents");
+            let folder = centre_of(&host, "documents");
+            host.runtime().pointer_move(folder.0 + 1.0, folder.1);
+            host.turn();
+            host.runtime().pointer_move(folder.0, folder.1);
+            let listed = host.run_until(PATIENCE, |h| open(h) && h.app().peek.entries.len() == 2);
+            assert!(listed, "the resting pointer opens the folder's peek");
+            press(&mut host, Key::Function(5));
+            let _ = host.run_until(std::time::Duration::from_secs(1), |_| false);
+            assert!(
+                open(&host) && peek_shown(&host),
+                "Reload keeps the peek open"
+            );
+        },
+    );
+}
