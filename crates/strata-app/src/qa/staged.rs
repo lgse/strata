@@ -19,7 +19,7 @@ use super::{
     keyboard::Keyboard,
     replaced::Replacements,
     stage::Stage,
-    tree::Snapshot,
+    tree::{Node, Snapshot},
 };
 use crate::{App, host::offscreen::Offscreen};
 
@@ -54,6 +54,20 @@ impl Staged {
     /// The window's state, for the idle loop and a test to reach behind the steps.
     pub(super) fn app<T>(&self, read: impl FnOnce(&App) -> T) -> T {
         read(self.stage.borrow().app())
+    }
+
+    /// The proof this host's thread owns the default GLib context.
+    pub(super) fn ui(&self) -> crate::startup::UiThread {
+        self.stage.borrow().app_host().ui()
+    }
+
+    /// The floating chooser the window asked to open, if it asked since the last call.
+    pub(super) fn take_floating(&self) -> Option<crate::chooser::floating::FloatingRequest> {
+        if !self.app(crate::chooser::floating::has_pending) {
+            return None;
+        }
+        let stage = &mut *self.stage.borrow_mut();
+        crate::chooser::floating::take(stage.host().app_mut())
     }
 
     /// One turn of the host while no step runs. Returns whether it did anything.
@@ -163,7 +177,7 @@ impl Host for Staged {
     }
 
     /// The host has one surface, at the origin: a box in the window is a box on the screen.
-    fn origin(&self) -> Result<(f64, f64), String> {
+    fn origin(&self, _node: &Node) -> Result<(f64, f64), String> {
         Ok((0.0, 0.0))
     }
 
@@ -294,7 +308,7 @@ impl Host for Staged {
             .accessibility_action(&target.key, Action::Click, None)
     }
 
-    async fn scroll_to(&self, key: &str, x: f32, y: f32) -> Result<(), String> {
+    async fn scroll_to(&self, (_, key): (&Node, &str), x: f32, y: f32) -> Result<(), String> {
         let key = key.to_owned();
         let stage = &mut *self.stage.borrow_mut();
         stage

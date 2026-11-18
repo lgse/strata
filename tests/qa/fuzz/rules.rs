@@ -10,8 +10,8 @@
 //! target differ. It applies to every comparison, since a field that does not agree with
 //! itself cannot be compared with anything. A mask is not an exception and is counted apart.
 //!
-//! Both are one entry to a line, `<field> <code> <issue>`, sorted by field, so two branches
-//! that each add a line merge cleanly. A line that starts with `#` is a comment.
+//! Both are one entry to a line, `<field> <code> <issue>`, sorted by field, code and issue, so
+//! two branches that each add a line merge cleanly. A line that starts with `#` is a comment.
 //!
 //! A rule of the map may name the values it excuses, after the issue:
 //! `<field> <code> <issue> {"gtk":<value>,"rune":[<value>, …]}`. It then leaves out only a
@@ -154,11 +154,11 @@ pub(crate) fn parse(text: &str, codes: &[&str]) -> Result<Vec<Entry>, String> {
         }
         let entry = entry(line, codes).map_err(|error| format!("line {}: {error}", index + 1))?;
         if let Some(last) = entries.last()
-            && (last.field.as_str(), last.code.as_str())
-                >= (entry.field.as_str(), entry.code.as_str())
+            && sort_key(last) >= sort_key(&entry)
         {
             return Err(format!(
-                "line {}: entries are sorted by field and listed once; {} comes after {}",
+                "line {}: entries are sorted by field, code and issue and listed once; {} comes \
+                 after {}",
                 index + 1,
                 entry.field,
                 last.field
@@ -167,6 +167,17 @@ pub(crate) fn parse(text: &str, codes: &[&str]) -> Result<Vec<Entry>, String> {
         entries.push(entry);
     }
     Ok(entries)
+}
+
+/// What orders the entries: a field may have a rule of one code for each ruling, each citing
+/// its own issue (`app.dialog`'s, lgse/strata#2405 and lgse/strata#2572), in the issues' order.
+fn sort_key(entry: &Entry) -> (&str, &str, u64) {
+    let number = entry
+        .issue
+        .strip_prefix("lgse/strata#")
+        .and_then(|number| number.parse().ok())
+        .unwrap_or(u64::MAX);
+    (&entry.field, &entry.code, number)
 }
 
 fn entry(line: &str, codes: &[&str]) -> Result<Entry, String> {

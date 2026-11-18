@@ -266,3 +266,30 @@ fn a_search_results_list_inside_a_dialog_is_no_filters_results() {
     );
     assert_eq!(observation.matches(None), ["notes"]);
 }
+
+/// The open dialog is the one on top: on a toolkit that draws a message inside a dialog, the
+/// innermost; elsewhere the first, which a dialog beside it does not displace.
+#[test]
+fn the_open_dialog_is_the_innermost_where_the_toolkit_nests_them() {
+    let opened = |nests: bool| {
+        let mut fake = Fake::new();
+        fake.nests_dialogs = nests;
+        let settings = fake.add(
+            WINDOW,
+            drawn("dialog", "Settings", [0.0, 0.0, 800.0, 600.0]),
+        );
+        let body = fake.add(settings, drawn("panel", "", [0.0, 0.0, 800.0, 600.0]));
+        fake.add(
+            body,
+            drawn(
+                "dialog",
+                "Reset all keybinds?",
+                [200.0, 200.0, 400.0, 200.0],
+            ),
+        );
+        fake.add(WINDOW, drawn("dialog", "Beside", [0.0, 0.0, 10.0, 10.0]));
+        scan(&fake, &WINDOW).observation.dialog
+    };
+    assert_eq!(opened(true).as_deref(), Some("Reset all keybinds?"));
+    assert_eq!(opened(false).as_deref(), Some("Settings"));
+}

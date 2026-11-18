@@ -41,7 +41,7 @@ fn unused() -> App {
 /// Dispatches what GLib has ready, then applies what the browser's observers queued. Runs
 /// when the helper thread says GLib has work, and in `poll`: a handler may have attached a
 /// source since, which the helper cannot know of.
-fn pump(app: &mut App, tx: &mut Tx) -> bool {
+pub(super) fn pump(app: &mut App, tx: &mut Tx) -> bool {
     shell::publish(app);
     GLIB.with(|glib| {
         if let Some(glib) = glib.get() {
@@ -53,7 +53,9 @@ fn pump(app: &mut App, tx: &mut Tx) -> bool {
 
 fn poll(app: &mut App, clock: f64, tx: &mut Tx) -> bool {
     let pumped = pump(app, tx);
-    shell::poll(app, clock, tx) | pumped
+    let polled = shell::poll(app, clock, tx) | pumped;
+    super::floating::open_requested(app);
+    polled
 }
 
 /// Opens the window on `initial` and exits when it closes, returning an error if startup fails.
@@ -102,6 +104,7 @@ fn run_initial(
     // The last write of the per-folder views, before the writer is flushed below. A quit runs
     // no `on_close`, so both ask for it; it is written once.
     .on_close(|app: &mut App, _: &mut Tx| {
+        super::floating::close_with_browser();
         crate::dnd::shutdown();
         crate::clipboard::shutdown();
         folder_views::flush_at_exit(app);
@@ -125,8 +128,13 @@ fn run_initial(
     let app = extend(app);
     let handle = app.handle();
     let notified = handle.clone();
+    super::floating::bind(ui, handle.clone());
     let glib = GlibLoop::start(glib::MainContext::default(), move || {
-        notified.update_if(pump);
+        notified.update_if(|app, tx| {
+            let pumped = pump(app, tx);
+            super::floating::settle_open();
+            pumped
+        });
     })
     .map_err(|error| format!("unable to start the GLib loop: {error}"))?;
     GLIB.with(|cell| cell.set(glib))

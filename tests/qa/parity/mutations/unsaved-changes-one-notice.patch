@@ -1,0 +1,17 @@
+diff --git a/crates/strata-app/src/settings_dialog/notice.rs b/crates/strata-app/src/settings_dialog/notice.rs
+index afca53435..3e37f1dff 100644
+--- a/crates/strata-app/src/settings_dialog/notice.rs
++++ b/crates/strata-app/src/settings_dialog/notice.rs
+@@ -55,11 +55,7 @@ pub(super) fn dismiss_tx(app: &mut App, tx: &mut Tx) {
+         notice.open = false;
+         notice.opener.take()
+     };
+-    if app.settings_dialog.is_open()
+-        && let Some(opener) = opener
+-    {
+-        tx.focus(opener, true);
+-    }
++    let _ = (opener, tx);
+ }
+
+ fn dismiss(app: &mut App) {

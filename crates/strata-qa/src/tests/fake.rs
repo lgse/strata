@@ -37,6 +37,8 @@ pub(super) struct Fake {
     /// Nodes the toolkit answers as entries though no mark is on them, as GTK's row widgets
     /// are: the mark is on their `GtkListItem`, which is no widget.
     pub(super) rows: Vec<usize>,
+    /// Whether it draws a dialog inside another, as Rune does ([`Backend::nests_dialogs`]).
+    pub(super) nests_dialogs: bool,
 }
 
 pub(super) const WINDOW: usize = 0;
@@ -76,6 +78,10 @@ impl Backend for Fake {
 
     async fn ready(&self) -> Result<(), String> {
         Ok(())
+    }
+
+    fn nests_dialogs(&self) -> bool {
+        self.nests_dialogs
     }
 
     fn quit(&self) {

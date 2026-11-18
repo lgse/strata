@@ -197,7 +197,11 @@ mod demo {
             json!({
                 "action": action_name(data.action),
                 "items": items,
-                "failed": data.failed,
+                "failed": data
+                    .failed
+                    .iter()
+                    .map(|(mime, error)| (mime, error.to_string()))
+                    .collect::<Vec<_>>(),
                 "local": data.local::<Payload>().map(|p| p.0.clone()),
                 "mods": data.offer.mods.map(|m| json!({ "ctrl": m.ctrl, "shift": m.shift })),
                 "point": data.point.map(|p| [p.x, p.y, p.window_x, p.window_y]),

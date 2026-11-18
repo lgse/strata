@@ -13,6 +13,7 @@ use super::{
     observe_tests::{observation, stream},
     perturb::Perturbation,
     project::Difference,
+    replay::Stream,
     rules::{self, CAUSES, Entry, Ignored, exceptions},
     shrink::{CONFIRMATIONS, shrink},
 };
@@ -330,6 +331,15 @@ pub(crate) fn an_entry_is_refused_for_its_form_its_code_or_blinding_a_whole_root
             "sorted by field",
         ),
         (format!("{one}{one}"), "listed once"),
+        (
+            format!("{}{one}", one.replace("#1", "#2")),
+            "sorted by field, code and issue",
+        ),
+        // Issues sort by their number, not as text.
+        (
+            format!("{}{}", one.replace("#1", "#10"), one.replace("#1", "#9")),
+            "sorted by field, code and issue",
+        ),
         ("app.focused timing\n".to_owned(), "<field> <code> <issue>"),
         (one.replace("timing", "noise"), "the code is one of"),
         (one.replace("lgse/strata", ""), "lgse/strata#<number>"),
@@ -357,6 +367,16 @@ pub(crate) fn an_entry_is_refused_for_its_form_its_code_or_blinding_a_whole_root
     assert!(rules::parse(&one.replace("timing", "clock"), &CAUSES).is_ok());
 }
 
+/// Two streams, GTK's and Rune's, whose one observation shows the dialogs named.
+fn dialog_streams(gtk: Value, rune: Value) -> (Stream, Stream) {
+    let dialog = |name: Value| observed(json!({ "dialog": name }));
+    let (mut left, mut right) = (stream(&["archive"]), stream(&["archive"]));
+    right.header.target = "rune".to_owned();
+    left.observations[0].value = dialog(gtk);
+    right.observations[0].value = dialog(rune);
+    (left, right)
+}
+
 /// A rule that names values (`app.dialog`'s, lgse/strata#2405) excuses only GTK's value
 /// against one of Rune's: a plain popover's name where GTK has none. A real dialog against
 /// none, the two values the other way round, and a different dialog on each side still
@@ -375,16 +395,8 @@ pub(crate) fn a_rule_that_names_values_excuses_only_those() {
         rules: entries,
         masks: Vec::new(),
     };
-    let dialog = |name: Value| observed(json!({ "dialog": name }));
-    let streams = |gtk: Value, rune: Value| {
-        let (mut left, mut right) = (stream(&["archive"]), stream(&["archive"]));
-        right.header.target = "rune".to_owned();
-        left.observations[0].value = dialog(gtk);
-        right.observations[0].value = dialog(rune);
-        (left, right)
-    };
     let differs = |gtk: Value, rune: Value| {
-        let (left, right) = streams(gtk, rune);
+        let (left, right) = dialog_streams(gtk, rune);
         compare(&left, &right, &ruled).map(|found| found.field().to_owned())
     };
     assert_eq!(differs(Value::Null, json!("Appearance")), None);
@@ -407,7 +419,7 @@ pub(crate) fn a_rule_that_names_values_excuses_only_those() {
         Some("app.dialog".to_owned())
     );
     // The order of the streams does not turn the rule round.
-    let (left, right) = streams(Value::Null, json!("Appearance"));
+    let (left, right) = dialog_streams(Value::Null, json!("Appearance"));
     assert_eq!(compare(&right, &left, &ruled), None);
     // A field the rule names no values for is not left out by it.
     assert!(!ruled.covers("app.dialog"));
@@ -417,5 +429,26 @@ pub(crate) fn a_rule_that_names_values_excuses_only_those() {
         r#"app.dialog deviation lgse/strata#2405 null"#,
     ] {
         assert!(rules::parse(refused, &exceptions()).is_err(), "{refused}");
+    }
+}
+
+/// Another ruling's rule on the same field and code cites its own issue, and each excuses only
+/// its own values: lgse/strata#2572's Settings beside lgse/strata#2405's plain popovers.
+pub(crate) fn rules_of_two_rulings_on_one_field_excuse_only_their_own() {
+    let two = [
+        r#"app.dialog deviation lgse/strata#2405 {"gtk":null,"rune":["Appearance"]}"#,
+        r#"app.dialog deviation lgse/strata#2572 {"gtk":null,"rune":["Settings"]}"#,
+    ];
+    let both = Ignored {
+        rules: rules::parse(&two.join("\n"), &exceptions()).expect("both rules should parse"),
+        masks: Vec::new(),
+    };
+    for (rune, excused) in [
+        ("Settings", true),
+        ("Appearance", true),
+        ("Unable to open location", false),
+    ] {
+        let (left, right) = dialog_streams(Value::Null, json!(rune));
+        assert_eq!(compare(&left, &right, &both).is_none(), excused, "{rune}");
     }
 }

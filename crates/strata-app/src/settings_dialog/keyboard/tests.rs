@@ -242,21 +242,24 @@ fn each_table_edits_its_own_map_and_reset_all_asks_first() {
     );
 }
 
+/// The keybind search filters the shown table only. GTK's `follow_search` moves to the other
+/// table on the visibility of the Settings search's groups, which the keybind search never
+/// changes (the `settings` fuzz alphabet's seed 14).
 #[test]
-fn the_search_moves_to_the_table_that_has_matches() {
+fn the_keybind_search_filters_the_shown_table_only() {
     hosted(
         MODULE,
-        "the_search_moves_to_the_table_that_has_matches",
+        "the_keybind_search_filters_the_shown_table_only",
         |mut host| {
             let find = title(FIND);
             open_keyboard(&mut host, &find);
-            assert_eq!(host.app().settings_dialog.keyboard.shown, Map::Tenxer);
-            let tree = host.tree();
-            let tenxer = view::all(&tree, &|node| node["key"] == "settings-keymap-maps-1");
-            assert!(has_state(tenxer[0], "checked"));
-
-            type_text(&mut host, "qqqq");
+            assert_eq!(host.app().settings_dialog.keyboard.shown, Map::Default);
             assert!(!named(&host.tree(), "No matching shortcuts").is_empty());
+
+            click(&mut host, "settings-keymap-maps-1");
+            let tree = host.tree();
+            assert!(named(&tree, "No matching shortcuts").is_empty());
+            assert!(!named(&tree, &format!("Add a key for “{find}”")).is_empty());
         },
     );
 }
@@ -323,4 +326,42 @@ fn every_command_has_a_row_name() {
         .map(Command::id)
         .collect();
     assert!(unnamed.is_empty(), "{unnamed:?}");
+}
+
+/// GTK hides its Settings layer and keeps it, so the page reopens as it was left: the search
+/// and the table stay, a capture does not (the `settings` fuzz alphabet's seeds 5 and 15).
+#[test]
+fn the_page_reopens_as_it_was_left_but_a_capture_ends() {
+    hosted(
+        MODULE,
+        "the_page_reopens_as_it_was_left_but_a_capture_ends",
+        |mut host| {
+            open_keyboard(&mut host, "Rename");
+            click(&mut host, "settings-keymap-maps-1");
+            click(&mut host, &RowKeys::of(Map::Tenxer, RENAME).add);
+            assert!(host.app().settings_dialog.keyboard.capture.is_some());
+
+            assert!(host.runtime().accessibility_action(
+                "settings-close",
+                rune::accesskit::Action::Click,
+                None
+            ));
+            idle(&mut host);
+            assert!(!host.app().settings_dialog.is_open());
+            click(&mut host, "header-settings");
+            let state = &host.app().settings_dialog.keyboard;
+            let kept = (
+                state.query.text.as_str(),
+                state.shown,
+                state.capture.is_none(),
+            );
+            assert_eq!(
+                kept,
+                ("Rename", Map::Tenxer, true),
+                "query, table, no capture"
+            );
+            assert!(!named(&host.tree(), "Add a key for “Rename”").is_empty());
+            assert!(named(&host.tree(), "Add a key for “Copy”").is_empty());
+        },
+    );
 }

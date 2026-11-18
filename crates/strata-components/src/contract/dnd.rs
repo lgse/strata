@@ -307,7 +307,6 @@ impl DropOffer {
         self
     }
 
-    /// Whether the drag offers `mime`.
     /// Whether the drag offers `mime`, or, when `mime` names no parameters, that type with
     /// some: `application/octet-stream` is offered by `application/octet-stream;name="a.jpg"`,
     /// the form a browser drags an image's bytes in (P1's `transfer::mime::names`).
@@ -318,12 +317,30 @@ impl DropOffer {
 
 /// Whether the offered type `offered` is the type `listed`: the same, or `listed` with
 /// parameters when it names none.
+///
+/// The same rule as P1's `strata_platform::transfer::mime::names`, which binders match drags
+/// by: components never depend on `strata-platform` (`docs/workspace.md`), so each crate has
+/// its copy, and a change to one is a change to both, with the cases of
+/// `a_type_without_parameters_names_its_forms_with_parameters` in each.
 pub fn names(listed: &str, offered: &str) -> bool {
     offered == listed
         || (!listed.contains(';')
             && offered
                 .strip_prefix(listed)
                 .is_some_and(|rest| rest.trim_start().starts_with(';')))
+}
+
+/// Why a drop's read of one MIME type failed.
+///
+/// Used by: C1e, C6, C7, C8, X2.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ReadFailure {
+    /// The source sent more than the binder reads for one type.
+    TooLarge,
+    /// The source went quiet.
+    TimedOut,
+    /// Anything else, as the binder says it (for logs, not for the user).
+    Failed(String),
 }
 
 /// One MIME type's data, as read from a drop.
@@ -361,12 +378,25 @@ pub struct DropData {
     pub local: Option<DragPayload>,
     /// Each MIME type read, in the zone's order of preference.
     pub items: Vec<DropItem>,
+    /// Each MIME type whose read failed, and why. A host reports a failure where GTK does
+    /// ("The dropped content is too large").
+    pub failed: Vec<(String, ReadFailure)>,
 }
 
 impl DropData {
     /// Data of the given items, with no in-process payload.
     pub fn new(items: Vec<DropItem>) -> Self {
-        Self { local: None, items }
+        Self {
+            local: None,
+            items,
+            failed: Vec::new(),
+        }
+    }
+
+    /// The same data, with the failed reads `failed`.
+    pub fn failed(mut self, failed: Vec<(String, ReadFailure)>) -> Self {
+        self.failed = failed;
+        self
     }
 
     /// Dropped files, as one `text/uri-list` item.
