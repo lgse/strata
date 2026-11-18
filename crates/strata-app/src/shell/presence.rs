@@ -8,8 +8,13 @@
 //! from the window's focus and visibility hooks.
 //!
 //! Rune reports a window going off screen (`App::on_visibility`: hidden, minimized or fully
-//! covered on macOS and X11) but on Wayland neither covering nor minimizing, so a Wayland window
-//! that is minimized stays `Visible`, where GTK's reads `MINIMIZED` from the toplevel state.
+//! covered on macOS and X11) but on Wayland neither covering nor minimizing. GTK's
+//! `presence_of` reads only an unmapped window and the toplevel's `SUSPENDED` and `MINIMIZED`
+//! states, so the two differ both ways:
+//!
+//! - **Wayland:** a minimized window stays `Visible` here, where GTK's is `Hidden`.
+//! - **X11:** a fully covered window is `Hidden` here, where GTK's stays `Visible`, so its
+//!   browsers recheck their folders less often than GTK's until it is uncovered.
 
 use std::rc::Rc;
 

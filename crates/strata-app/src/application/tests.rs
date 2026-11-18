@@ -4,12 +4,15 @@ use std::{
     ffi::OsString,
     os::unix::ffi::OsStringExt,
     path::{Path, PathBuf},
+    time::Duration,
 };
 
 use strata_core::model::Location;
 
 use strata_fs::adapters::RevealRequest;
-use strata_platform::single_instance::{Activation, Event, Reveal, RevealMethod};
+use strata_platform::single_instance::{
+    Activation, CommandLine, Event, Launch, Reveal, RevealMethod,
+};
 
 use super::{Asked, Opening, heard, openings, queue, queue_first, revealed, take, take_asked};
 use crate::{
@@ -236,8 +239,9 @@ fn a_reveal_selects_its_items_and_shows_their_properties_when_asked() {
     );
 }
 
-/// Each window is created with the activation token its asker forwarded: an activation's, and
-/// a FileManager1 call's startup id, which is the caller's token when it has one.
+/// Each window is created with the activation token its asker forwarded: a launch's, each of
+/// its arguments' windows taking it, an open's and an activation's, and a FileManager1 call's
+/// startup id, which is the caller's token when it has one.
 #[test]
 fn a_window_takes_the_token_of_what_asked_for_it() {
     let token = |token: &str| Activation {
@@ -255,6 +259,34 @@ fn a_window_takes_the_token_of_what_asked_for_it() {
         properties: false,
     });
 
+    let folder_a = tempfile::tempdir().expect("a folder");
+    let folder_b = tempfile::tempdir().expect("a folder");
+    let launch = |args: Vec<OsString>, activation| {
+        let launch = Launch {
+            args,
+            cwd: Some(PathBuf::from("/")),
+            activation,
+        };
+        Event::CommandLine(CommandLine::unanswered(launch))
+    };
+    let both = vec![
+        OsString::from("strata-rune"),
+        folder_a.path().into(),
+        folder_b.path().into(),
+    ];
+    let argument = |path: &Path| Opening::Argument(Location::local(path));
+    let uri = |path: &Path| format!("file://{}", path.display());
+
+    heard(launch(both, token("from-the-terminal")));
+    heard(launch(
+        vec![OsString::from("strata-rune")],
+        Activation::default(),
+    ));
+    heard(Event::Open {
+        uris: vec![uri(folder_a.path())],
+        hint: String::new(),
+        activation: token("from-the-menu"),
+    });
     heard(Event::Activate(token("from-the-launcher")));
     heard(Event::Activate(Activation::default()));
     heard(Event::Reveal(reveal("from-the-browser")));
@@ -267,10 +299,53 @@ fn a_window_takes_the_token_of_what_asked_for_it() {
     assert_eq!(
         take_asked(),
         vec![
+            asked(&argument(folder_a.path()), Some("from-the-terminal")),
+            asked(&argument(folder_b.path()), Some("from-the-terminal")),
+            asked(&Opening::Plain, None),
+            asked(&argument(folder_a.path()), Some("from-the-menu")),
             asked(&Opening::Present, Some("from-the-launcher")),
             asked(&Opening::Present, None),
             asked(&folder, Some("from-the-browser")),
             asked(&folder, None),
         ]
+    );
+}
+
+/// As GTK's `on_reset` forgets `pending_properties`: a `ShowItemProperties` window that goes
+/// to another folder before the revealed one lists, then comes back, shows no Properties.
+#[test]
+fn a_reveal_left_before_it_lists_shows_no_properties_later() {
+    hosted(
+        MODULE,
+        "a_reveal_left_before_it_lists_shows_no_properties_later",
+        |mut host| {
+            let folder = folder_of(&["file.txt"]);
+            let elsewhere = folder_of(&["other.txt"]);
+            let here = Location::local(folder.path());
+            let away = Location::local(elsewhere.path());
+            let request = RevealRequest {
+                directory: here.clone(),
+                selection: vec![Location::local(folder.path().join("file.txt"))],
+                properties: true,
+            };
+            let gone = away.clone();
+            host.runtime().update(move |app, _| {
+                app.start(Initial::Reveal(request));
+                app.browser.navigate_location(gone, true);
+            });
+            let left = host.run_until(PATIENCE, |host| host.app().location() == Some(&away));
+            assert!(left, "the window went to the other folder");
+
+            let back = here.clone();
+            host.runtime()
+                .update(move |app, _| app.browser.navigate_location(back, true));
+            let listed = host.run_until(PATIENCE, |host| {
+                host.app().location() == Some(&here)
+                    && host.app().browser().column_entry_counts(0).is_some()
+            });
+            assert!(listed, "the revealed folder listed on the second visit");
+            host.run_until(Duration::from_millis(500), |_| false);
+            assert_eq!(properties::shown_location(host.app()), None);
+        },
     );
 }

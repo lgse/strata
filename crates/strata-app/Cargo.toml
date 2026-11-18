@@ -63,6 +63,8 @@ xkbcommon = { workspace = true, optional = true }
 rune = { workspace = true, features = ["embedded-fonts"] }
 # The catalog's listed constants, for the shortcut reference's coverage test.
 strata-desktop = { workspace = true, features = ["xkb-keys", "test-support"] }
+# `single_instance::CommandLine::unanswered`, for the launch tests of `application`.
+strata-platform = { workspace = true, features = ["single-instance", "test-support"] }
 strata-test-support.workspace = true
 tempfile.workspace = true
 toml.workspace = true

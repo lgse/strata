@@ -2436,6 +2436,10 @@ sequence only together with the alphabet's version, so the version is part of th
   on #2594's own code with its three new window tests skipped, the 6 tests `strata-next` has,
   0 of 10. So it tracks the three extra sway sessions running beside it, not the code in its
   path. Not traced further.
+- **Seen again** by the review of [#2604](https://github.com/lgse/strata/pull/2604) (A21's Slice
+  2a) at `dbf11553d`: 1 failure in 3 runs of `window::`, whose suite there has 9 tests. It
+  failed at `qa.rs:53`, the second `ask_to_copy`'s `menu_items` wait, the same symptom, and the
+  failing suite took 20 s against about 4 s.
 - **Concerns:** `strata-rune`'s window test above, [A20](packages/A20.md)'s.
 - **State:** open, unowned.
 

@@ -4,7 +4,9 @@
 //! as `present_reveal` in `src/ui/window/launch.rs` opens one. For `ShowItemProperties`, the
 //! Properties of the entry the reveal leaves under the cursor show once the folder has listed,
 //! as GTK's `pending_properties` waits for its load (`reveal_loaded_names` in
-//! `src/ui/browser/events/listing.rs`). The window leaves `tabs.toml` alone.
+//! `src/ui/browser/events/listing.rs`), and forget it on a reset to another location or a
+//! failed listing, as GTK's `on_reset` and `abandon_deferred_reveal` do. The window leaves
+//! `tabs.toml` alone.
 
 use std::{cell::Cell, rc::Rc};
 
@@ -36,20 +38,30 @@ pub(crate) fn open(app: &mut App, request: RevealRequest) {
     }
 }
 
-/// Has the browser queue the Properties of its focused entry when `directory` first lists.
+/// Has the browser queue the Properties of its focused entry when `directory` first lists. The
+/// request is forgotten, as GTK forgets `pending_properties`, once the browser resets to
+/// another location (`on_reset`) or the folder fails to list, so a later visit never shows
+/// Properties unasked.
 fn show_properties_once_listed(app: &App, directory: strata_core::model::Location) {
     let later = shell::window_later(app);
     let waiting = Rc::new(Cell::new(true));
     let browser = Rc::downgrade(&app.browser);
     app.browser.observe(move |event| {
-        let BrowserEvent::LoadFinished { depth, .. } = event else {
+        if !waiting.get() {
+            return;
+        }
+        let Some(browser) = browser.upgrade() else {
             return;
         };
-        let listed = browser
-            .upgrade()
-            .is_some_and(|browser| browser.location_at(*depth).as_ref() == Some(&directory));
-        if listed && waiting.replace(false) {
-            later.then(show_focused_properties);
+        let at = |depth: usize| browser.location_at(depth).as_ref() == Some(&directory);
+        match event {
+            BrowserEvent::LoadFinished { depth, .. } if at(*depth) => {
+                waiting.set(false);
+                later.then(show_focused_properties);
+            }
+            BrowserEvent::Reset if !at(0) => waiting.set(false),
+            BrowserEvent::LoadFailed { depth, .. } if at(*depth) => waiting.set(false),
+            _ => {}
         }
     });
 }
