@@ -2588,22 +2588,31 @@ sequence only together with the alphabet's version, so the version is part of th
 
 ### #2595: after the floating chooser closes, GTK's browser has no focus under the QA's Xvfb
 
-- **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2595), filed on
-  2026-11-18 as the finding's reference and closed at once: its state is kept here.
+- **Code:** `exception` (`toolkit`), ruled by the owner on 2026-11-17 ([`owner.md`](owner.md#ruled)).
+  [Issue](https://github.com/lgse/strata/issues/2595), filed on 2026-11-18 as the finding's
+  reference and closed at once: its state is kept here.
 - **Seen:** in the differential smoke tier of [A20](packages/A20.md)'s `chooser` alphabet
-  (`chooser v2`, 20 seeds of 40 actions): all 20 first part on `app.focused`,
-  `app.focused_pane` and `app.panes[].focused` at the step that opens or closes the floating
-  Copy to or Move to chooser. Once it has closed (Copy here, Move here or Escape), GTK reports
-  no focus in the browser, and around a later chooser its focus comes back in no fixed order;
+  (`chooser v2`, 20 seeds of 40 actions). All 20 first part on `app.focused`,
+  `app.focused_pane` and `app.panes[].focused` around the floating Copy to or Move to chooser.
+  Once it has closed (Copy here, Move here or Escape), GTK reports no focus in the browser, and
   Rune reports the browser's row. GTK's QA backend reports focus only for a widget with
   `has_focus()`, which needs its window active (`src/qa/backend.rs`, `focus`), and GTK's
   destination chooser leaves making the browser active again to the window manager
   (`present_destination_chooser`, `bind_host_parent` in `src/ui/chooser/`). The QA's Xvfb runs
   none. Rune's QA host gives the browser the keyboard back as a window manager does
-  (`qa::windows`). What follows in a sequence comes from it: a step guarded on `focused_pane`
-  runs on Rune only, and `app.directory` is the focused pane's. With the three focus fields
-  set aside by a trial map, not committed, nothing else parts: no other field, and no invariant.
-- **Concerns:** the `chooser` alphabet, all 20 seeds of its smoke tier; seed `0x08` parts at
-  step 5, `Copy here`. No scenario reads focus after the chooser closes.
-- **State:** open, for the owner ([`owner.md`](owner.md), A20 item 1). Meanwhile the
-  `chooser` alphabet's smoke tier is not clean, and A20's done-when item 6 is not met.
+  (`qa::windows`). It also moved `app.directory`, the focused pane's, and a step guarded on
+  `focused_pane` ran on Rune only. A trial with the three focus fields set aside (v2) still
+  left 17 of 20 parting on those two, not none, as an earlier version of this entry said.
+- **Second facet, met under the rule (v4):** from the second chooser of a sequence on, GTK's
+  browser reports its row while the chooser is open and through every later close, where
+  Rune's reports none while a chooser is open, as GTK's did at the first. 19 of 20 seeds part
+  there, each at the click that opens a later chooser: GTK's row against Rune's no focus, the
+  direction the ruling does not cover.
+- **Concerns:** the `chooser` alphabet's smoke tier. No scenario reads the browser's focus
+  around the floating chooser.
+- **State:** the first facet is ruled and excused: four `toolkit` rules in
+  `tests/qa/fuzz/normalisation.map`, each with `"while":{"gtk":{"app.focused_pane":null}}`.
+  `app.focused`, `app.focused_pane` and `app.panes[].focused` excuse GTK's `null` against
+  Rune's value, and `app.directory` excuses any value. The `chooser` alphabet (v3) leaves out
+  the browser's arrow keys, which GTK then skips. The second facet is open, for the owner
+  ([`owner.md`](owner.md), A20 item 1), and A20's smoke tier is not clean until it is ruled.

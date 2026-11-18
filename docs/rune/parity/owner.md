@@ -638,18 +638,20 @@ Found by the package's agent, 2026-11-12, against A1's five items above.
 
 ### A20: Portal chooser
 
-1. **Focus after the floating chooser closes in GTK's fuzz replays** (finding
-   [#2595](https://github.com/lgse/strata/issues/2595)). GTK's browser window reports no focus
-   once the floating Copy to or Move to chooser has closed: GTK's chooser leaves activating the
-   browser again to the window manager, and the QA's Xvfb runs none. On a desktop both
-   interfaces leave the keyboard in the browser. Rune's QA host gives it back as a window
-   manager does. Every seed of the `chooser` alphabet's smoke tier parts on it. Which way:
-   (a) GTK presents its browser window when the destination chooser closes, a change on `main`
-   that a desktop user does not see; (b) GTK's fuzz replays get a window manager; or (c) a
-   normalisation rule on the focus fields around the floating chooser, the broadest, which
-   would also hide a real focus bug there? Meanwhile: the alphabet is merged with its smoke
-   tier not clean, and A20 stays `in progress` on this item. Source: A20's closing pull
-   request, [#2598](https://github.com/lgse/strata/pull/2598), 2026-11-18.
+1. **Focus while a later floating chooser is open, in GTK's fuzz replays** (finding
+   [#2595](https://github.com/lgse/strata/issues/2595), its second facet). The ruling of
+   2026-11-17 below excuses GTK's no focus once the chooser has closed. With it in the map, the
+   `chooser` alphabet's smoke tier (v4) still parts in 19 of 20 seeds, all at one kind of step:
+   the click that opens a second or later Copy to or Move to chooser. There GTK's browser
+   reports the row it had (`app.focused`, `app.focused_pane`, `app.panes[].focused`), and
+   Rune's reports none, as an inactive window has none and as GTK's did at the first chooser.
+   On the QA's Xvfb, with no window manager, GTK's browser is active again from the second
+   chooser on, through every later open and close. It is the same cause, but the other
+   direction: GTK's value against Rune's no focus, which the ruling does not cover. Should the
+   map excuse it too (a rule naming Rune's `null` against GTK's row, which needs a `while` on
+   Rune's side), or should the alphabet open one chooser to a sequence, or something else?
+   Meanwhile: A20 stays `in progress`, and its done-when items 6 and 7 wait on this. Source:
+   A20's closing pull request, [#2598](https://github.com/lgse/strata/pull/2598), 2026-11-18.
 
 ### Packages added later
 
@@ -845,6 +847,15 @@ Rulings of the owner on the parity work, oldest first.
   `app.dialog` names the innermost open dialog on Rune (`Backend::nests_dialogs` in
   `crates/strata-qa`, which the GTK backend leaves off), and no map rule covers it. Built in
   [A18](packages/A18.md)'s `settings` alphabet pull request. Source: the owner, 2026-11-17.
+- **2026-11-17: focus after the floating chooser closes is excused in the fuzz map**
+  (finding [#2595](https://github.com/lgse/strata/issues/2595), option (c)). Once the floating
+  Copy to or Move to chooser has closed, GTK's browser reports no focus on the QA's Xvfb, which
+  runs no window manager to make it active again, where Rune's QA host gives the browser the
+  keyboard back as a window manager does. `tests/qa/fuzz/normalisation.map` excuses it under
+  `toolkit`, scoped to GTK's no focus against Rune's while GTK's browser has no focused pane:
+  `app.focused`, `app.focused_pane` and `app.panes[].focused`, and `app.directory`, the focused
+  pane's. A20 adds the map's `while` for it. Source: the owner, 2026-11-17, through the
+  coordinator.
 
 ## Housekeeping
 
