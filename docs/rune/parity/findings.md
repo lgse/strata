@@ -229,6 +229,13 @@ closed issue is not a fixed finding: the state given here is the finding's.
   `./scripts/quality.sh test --jobs 4` (shard 0, lane 3, 79 of 80 each time), as on #2548, and
   passed 3 times of 3 alone under `./scripts/test-headless.py`. The branch changes no `src/`
   and no shared crate. Twice on one pull request: not chased further, by the rule above.
+- **Sighting on [#2589](https://github.com/lgse/strata/pull/2589) after review** (at
+  `ccf43b177`, `strata-next` at `7426fd041` merged in): the ninth,
+  `default_archive_keys_follow_pane_focus` (`keyboard_dispatch.rs:324`, "keyboard fixture did
+  not settle"), failed in `./scripts/quality.sh all --jobs 4` and again in the one rerun of
+  `./scripts/quality.sh test --jobs 4` (shard 0, lane 2, 331 of 332 each time; the other lanes
+  passed), and passed 3 times of 3 alone under `./scripts/test-headless.py`. The branch's GTK
+  lane is `strata-next`'s: no `src/`, shared crate or manifest differs. Not chased further.
 
 ### #2176: a GTK critical after a file appears during a rename on a multiple selection
 
