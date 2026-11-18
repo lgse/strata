@@ -104,7 +104,7 @@ pub fn track_caption(
                 .replace("{total}", &n.to_string()),
         ),
         (Some(t), None, _) => Some(labels.track.replace("{track}", &t.to_string())),
-        (None, _, Some(p)) => Some(p.caption()),
+        (None, _, Some(p)) => Some((labels.position)(p)),
         (None, _, None) => None,
     }
 }
