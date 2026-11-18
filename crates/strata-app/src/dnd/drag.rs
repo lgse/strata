@@ -85,7 +85,12 @@ pub(super) struct InWindowDrag {
 /// had there (`path_ids` in its commit), and its scene is keyed by id: a stand-in mounted in
 /// the source's place keeps the source's scene entry under the source's old ancestors, and
 /// loses it when they go. `Runtime::node` then counts it unmounted, and the held press's moves
-/// and release reach no handler (A4, `tabs/hovered-tab-takes-drop`).
+/// and release reach no handler (A4, `tabs/hovered-tab-takes-drop`; Rune packet entry 109,
+/// `docs/rune/upstream/rune/109-remount-at-a-seen-path.md`).
+///
+/// For the one frame between, no live node holds the press's path: a move in that frame is
+/// lost, which the next move makes up, and a release in exactly that frame loses the drop.
+/// That is accepted; the frame after is woken at once.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(super) enum StandIn {
     /// The source is drawn; no stand-in.
