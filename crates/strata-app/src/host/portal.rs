@@ -111,18 +111,24 @@ fn drain(daemon: &mut Daemon, tx: &mut Tx) {
     }
 }
 
+/// Whether the daemon may end: no chooser window is open, no host keeps it, and no request
+/// has been active for the idle timeout, which starts its shutdown.
+fn ends_idle(daemon: &Daemon) -> bool {
+    let idle = WINDOWS.with(|windows| windows.borrow().is_empty());
+    let stays = hooks(|hooks| hooks.stays).unwrap_or(false);
+    if !idle || stays {
+        return false;
+    }
+    daemon
+        .service
+        .requests
+        .begin_shutdown_if_idle(Instant::now())
+}
+
 fn daemon_poll(daemon: &mut Daemon, _clock: f64, tx: &mut Tx) -> bool {
     pump_glib();
     drain(daemon, tx);
-    let idle = WINDOWS.with(|windows| windows.borrow().is_empty());
-    let stays = hooks(|hooks| hooks.stays).unwrap_or(false);
-    if idle
-        && !stays
-        && daemon
-            .service
-            .requests
-            .begin_shutdown_if_idle(Instant::now())
-    {
+    if ends_idle(daemon) {
         tx.quit();
         return false;
     }
