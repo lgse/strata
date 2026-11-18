@@ -253,6 +253,55 @@ mod window {
             });
     }
 
+    /// A close the window manager asks for is refused while a guard says no, as GTK's close
+    /// guards refuse it: here a custom action's job runs as the only window closes, so the
+    /// window opens again and the process goes on; once the job ends, the next close ends it.
+    #[test]
+    #[ignore = "needs a private session: mise run test-platform"]
+    fn a_close_the_window_manager_asks_for_waits_for_a_running_job() {
+        const REFUSED: &str = "the window manager's close was refused";
+        let s = Session::start();
+        let config = s.runtime_dir().join("home").join(".config").join("strata");
+        let action = config.join("actions").join("wait");
+        std::fs::create_dir_all(&action).expect("the action's folder");
+        std::fs::write(
+            action.join("action.toml"),
+            "schema_version = 1\nid = \"wait\"\nname = \"Wait\"\nmenu = \"top\"\n[when]\nkinds = [\"file\", \"folder\"]\n[run]\nruntime = \"command\"\nprogram = \"/bin/sleep\"\nargs = [\"3\"]\n",
+        )
+        .expect("action.toml");
+        std::fs::write(
+            config.join("settings.toml"),
+            "[keymap.default]\n\"custom_action.1\" = [\"F9\"]\n",
+        )
+        .expect("settings.toml");
+        let mut launched = launch(&s, &[]);
+        // The custom actions load on the window's first poll.
+        std::thread::sleep(Duration::from_millis(1000));
+        let before = launched.app.line_count();
+        s.input().key("F9");
+        launched.app.wait_for(before, "the job queued", |line| {
+            line.contains("a custom action's job was queued")
+                .then_some(())
+        });
+
+        let before = launched.app.line_count();
+        s.sway_command(&format!("[con_id={}] kill", launched.window.id));
+        launched.app.wait_for(before, "the close refused", |line| {
+            line.contains(REFUSED).then_some(())
+        });
+        let closed = launched.window.id;
+        let reopened = s.wait_window_where("the window open again", |w| {
+            w.pid == launched.app.pid() && w.id != closed && w.title == "Projects — Strata"
+        });
+
+        std::thread::sleep(Duration::from_millis(3500));
+        s.sway_command(&format!("[con_id={}] kill", reopened.id));
+        assert!(
+            launched.app.wait_exit().success(),
+            "with the job done, the close ends the process"
+        );
+    }
+
     /// With a `wake_after` tick in place of the embedded GLib loop, a change took 120 ms shown
     /// and 750 ms covered; a `Waker` alone never delivered it.
     #[test]

@@ -168,6 +168,14 @@ pub(crate) fn shared_registry(app: &mut App) -> Rc<ActionRegistry> {
     registry
 }
 
+/// Whether a job still runs or waits, without starting the job service if nothing has
+/// (GTK's last-window guard, `src/ui/jobs.rs`).
+pub(crate) fn jobs_active(app: &App) -> bool {
+    app.custom_actions
+        .job_service()
+        .is_some_and(|service| jobs::has_active_jobs(&service))
+}
+
 pub(crate) fn shared_jobs(app: &mut App) -> Rc<JobService> {
     app.custom_actions.ensure_services().jobs.clone()
 }

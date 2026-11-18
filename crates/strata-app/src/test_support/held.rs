@@ -52,7 +52,7 @@ impl OperationProvider for Held {
 }
 
 /// `browser` deletes its first column's entry `name` in the background, and never finishes.
-pub(super) fn busy(browser: &Rc<Browser>, name: &str) {
+pub(crate) fn busy(browser: &Rc<Browser>, name: &str) {
     let named = |entries: &[FileEntry]| {
         entries
             .iter()

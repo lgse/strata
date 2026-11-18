@@ -124,6 +124,7 @@ pub(super) fn enqueue_and_present(app: &mut App, request: JobRequest, tx: &mut T
     let service = super::shared_jobs(app);
     match service.enqueue(request) {
         Ok(id) => {
+            tracing::debug!(?id, "a custom action's job was queued");
             app.custom_actions.featured_job = Some(id);
             app.custom_actions.jobs_state.open(tx);
             sync_rows(app);

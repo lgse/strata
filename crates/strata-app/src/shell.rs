@@ -47,6 +47,7 @@ use crate::{
     startup::UiThread,
 };
 
+pub(crate) mod close_guard;
 mod held;
 mod preferences;
 mod siblings;
@@ -283,6 +284,15 @@ fn hear(event: &BrowserEvent, _: &Browser, heard: &mut Heard<'_, App>) {
             false
         });
     }
+}
+
+/// Readies a state for the new native window it moves into, after a refused close
+/// (`crate::host::windowed`, "Refused closes"): the window takes its title on the next poll.
+pub(crate) fn reopened(app: &App) {
+    window_later(app).then(|app, tx| {
+        retitle_now(app, tx);
+        true
+    });
 }
 
 /// Names the window for the shown tab, whether or not its location changed.
@@ -831,14 +841,13 @@ fn on_window_action(app: &mut App, action: WindowAction, tx: &mut Tx) {
     tracing::debug!(?action, ?outcome, "window button");
 }
 
-/// Closes the window, unless a tab's browser has a file operation running: then GTK's close
-/// guard says so and the window stays (`close_guard::install` in
-/// `src/ui/window/composition/tabs.rs`). The Close buttons and closing the last tab come here;
-/// a close the window manager asks for does not, as Rune lets nothing refuse it.
+/// Closes the window, unless one of GTK's close guards refuses it: then the guard says why and
+/// the window stays ([`close_guard`]). The Close buttons and closing the last tab come here; a
+/// close the window manager asks for is refused by the windowed host.
 pub(crate) fn close_window(app: &mut App, tx: &mut Tx) {
-    let busy = tabs::tabs(app).iter().any(|&key| tabs::is_busy(app, key));
-    if busy {
-        tabs::operations_active(app);
+    let last = crate::host::windowed::is_last_window(window_id(app));
+    if let Some(refusal) = close_guard::refusal(app, last) {
+        close_guard::tell(app, refusal);
         return;
     }
     let outcome = app.window.csd.close(tx);
