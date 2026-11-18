@@ -83,25 +83,25 @@ fn play_pause(app: &mut App, _: &Call<'_>, tx: &mut Tx) -> Outcome {
 }
 
 fn seek_back(app: &mut App, _: &Call<'_>, tx: &mut Tx) -> Outcome {
-    run(
-        app,
-        Asked {
-            route: Some(RouteCommand::Seek(RouteSeek::By(-SEEK_STEP.as_secs_f64()))),
-            media: MediaCommand::Seek(MediaSeek::Back(SEEK_STEP)),
-        },
-        tx,
-    )
+    run(app, seek(-1), tx)
 }
 
 fn seek_forward(app: &mut App, _: &Call<'_>, tx: &mut Tx) -> Outcome {
-    run(
-        app,
-        Asked {
-            route: Some(RouteCommand::Seek(RouteSeek::By(SEEK_STEP.as_secs_f64()))),
-            media: MediaCommand::Seek(MediaSeek::Forward(SEEK_STEP)),
-        },
-        tx,
-    )
+    run(app, seek(1), tx)
+}
+
+/// A seek of one step back (-1) or forward (1), for a route and for a player.
+fn seek(way: i8) -> Asked {
+    let route = RouteSeek::By(f64::from(way) * SEEK_STEP.as_secs_f64());
+    let media = if way < 0 {
+        MediaSeek::Back(SEEK_STEP)
+    } else {
+        MediaSeek::Forward(SEEK_STEP)
+    };
+    Asked {
+        route: Some(RouteCommand::Seek(route)),
+        media: MediaCommand::Seek(media),
+    }
 }
 
 fn player_only(media: MediaCommand) -> Asked {

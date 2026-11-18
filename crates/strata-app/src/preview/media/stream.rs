@@ -75,7 +75,8 @@ impl Drop for Pump {
 pub(super) struct Inlet {
     pub(super) later: Later<App>,
     pub(super) viewer: u64,
-    pub(super) deliver: fn(&mut App, u64, u64, Received, &mut Tx) -> bool,
+    /// Hands over the events of the session for the viewer: `(viewer, session)`.
+    pub(super) deliver: fn(&mut App, (u64, u64), Received, &mut Tx) -> bool,
 }
 
 #[cfg(test)]
@@ -133,7 +134,7 @@ fn drain(pump: &Weak<Pump>, session: u64, inlet: &Inlet) -> glib::ControlFlow {
         let (viewer, deliver) = (inlet.viewer, inlet.deliver);
         inlet
             .later
-            .then(move |app: &mut App, tx: &mut Tx| deliver(app, viewer, session, events, tx));
+            .then(move |app: &mut App, tx: &mut Tx| deliver(app, (viewer, session), events, tx));
     }
     if done {
         pump.timer.borrow_mut().take();
@@ -328,11 +329,17 @@ impl Stream {
         }
     }
 
-    fn release_idle(&mut self) {
-        let idle = self
+    /// Paused long enough, with a worker that has shown its frame.
+    fn idle(&self) -> bool {
+        let paused_long = self
             .paused_at
             .is_some_and(|at| self.now - at >= PAUSED_IDLE);
-        if !self.playing && idle && !self.dormant && self.first_frame {
+        let holds_worker = self.first_frame && !self.dormant;
+        paused_long && holds_worker && !self.playing
+    }
+
+    fn release_idle(&mut self) {
+        if self.idle() {
             self.pump = None;
             self.restart = None;
             self.frames.clear();
@@ -530,14 +537,13 @@ impl PlaybackClock for Stream {
     }
 
     fn state(&self) -> PlaybackState {
+        let settled = self.first_frame || self.dormant || self.error.is_some();
         if self.ended {
             PlaybackState::Ended
-        } else if self.first_frame || self.dormant || self.error.is_some() {
-            if self.playing {
-                PlaybackState::Playing
-            } else {
-                PlaybackState::Paused
-            }
+        } else if settled && self.playing {
+            PlaybackState::Playing
+        } else if settled {
+            PlaybackState::Paused
         } else if self.seeking {
             PlaybackState::Seeking
         } else {

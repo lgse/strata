@@ -109,15 +109,16 @@ fn probed(host: &mut Offscreen, names: &'static [&'static str]) {
     while host.turn() {}
 }
 
-/// Opens the preview on `name`, answered as `content_type` media.
+/// Opens the preview on `name` in a folder holding `files`, and answers it as `content_type`
+/// media; the provider keeps answering what follows.
 fn open(
     host: &mut Offscreen,
-    provider: &Recorded,
     files: &[(&str, &str)],
     name: &str,
     content_type: &str,
-) -> tempfile::TempDir {
-    install(host, provider);
+) -> (Recorded, tempfile::TempDir) {
+    let provider = Recorded::default();
+    install(host, &provider);
     let folder = listed_with(host, files);
     probed(host, &["alpha.mp4", "beta.mp4"]);
     disable_auto_preview(host);
@@ -126,7 +127,7 @@ fn open(
     space(host);
     provider.wait_for(host, 0);
     provider.answer_as(0, content_type, sandboxed(folder.path().join(name)));
-    folder
+    (provider, folder)
 }
 
 fn ctrl_alt() -> Mods {
@@ -148,14 +149,8 @@ fn a_video_plays_on_the_media_key_and_its_clock_moves() {
         "media::a_video_plays_on_the_media_key_and_its_clock_moves",
         |mut host| {
             decode_with(ten_seconds);
-            let provider = Recorded::default();
-            let _folder = open(
-                &mut host,
-                &provider,
-                &[("alpha.mp4", MP4)],
-                "alpha.mp4",
-                "video/mp4",
-            );
+            let (_provider, _folder) =
+                open(&mut host, &[("alpha.mp4", MP4)], "alpha.mp4", "video/mp4");
             let ready =
                 |s: &MediaState| s.has_frame() && s.duration() == Some(Duration::from_secs(10));
             shows(&mut host, ready, "the first frame and the duration");
@@ -182,13 +177,12 @@ fn next_steps_past_text_named_as_video_and_keeps_playing() {
         "media::next_steps_past_text_named_as_video_and_keeps_playing",
         |mut host| {
             decode_with(ten_seconds);
-            let provider = Recorded::default();
             let files = [
                 ("alpha.mp4", MP4),
                 ("bait.mp4", "not a video\n"),
                 ("beta.mp4", MP4),
             ];
-            let _folder = open(&mut host, &provider, &files, "alpha.mp4", "video/mp4");
+            let (provider, _folder) = open(&mut host, &files, "alpha.mp4", "video/mp4");
             let first = Position {
                 index: 1,
                 count: 2,
@@ -233,14 +227,8 @@ fn a_decode_that_fails_shows_its_error_in_the_player() {
         "media::a_decode_that_fails_shows_its_error_in_the_player",
         |mut host| {
             decode_with(|_, _| fixtures::failing_stream());
-            let provider = Recorded::default();
-            let _folder = open(
-                &mut host,
-                &provider,
-                &[("alpha.mp4", MP4)],
-                "alpha.mp4",
-                "video/mp4",
-            );
+            let (_provider, _folder) =
+                open(&mut host, &[("alpha.mp4", MP4)], "alpha.mp4", "video/mp4");
             let failed = |s: &MediaState| {
                 s.error().is_some_and(|error| {
                     error
@@ -273,14 +261,8 @@ fn a_gif_plays_in_the_plain_bar_and_loops() {
                     start_tick,
                 })
             });
-            let provider = Recorded::default();
-            let _folder = open(
-                &mut host,
-                &provider,
-                &[("spin.gif", MP4)],
-                "spin.gif",
-                "image/gif",
-            );
+            let (_provider, _folder) =
+                open(&mut host, &[("spin.gif", MP4)], "spin.gif", "image/gif");
             shows(&mut host, MediaState::has_frame, "the first frame");
             assert_eq!(state(&host).map(|s| s.clip().kind), Some(MediaKind::Plain));
             play_pause(&mut host);

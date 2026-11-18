@@ -80,48 +80,93 @@ pub(super) struct MediaViewer {
     _details: Option<details::DetailsLoad>,
 }
 
+/// A sandboxed media preview, as the provider answered it.
+pub(super) struct Arrived {
+    pub(super) entry: FileEntry,
+    pub(super) content_type: String,
+    pub(super) media: SandboxedMedia,
+}
+
+/// What Settings say a player opens with.
+struct Opening {
+    start_percent: u32,
+    autoplay: bool,
+    volume: f32,
+    muted: bool,
+    tenxer: bool,
+}
+
+impl Opening {
+    fn of(app: &App, content_type: &str) -> Self {
+        let prefs = shell::preferences(app);
+        // A GIF and a raw stream start at their first frame (`render_sandboxed_media`).
+        let from_start = content_type == GIF || is_raw_video_stream(content_type);
+        Self {
+            start_percent: if from_start {
+                0
+            } else {
+                prefs.preview_video_start
+            },
+            autoplay: prefs.preview_autoplay,
+            volume: prefs.preview_volume as f32,
+            muted: prefs.preview_muted,
+            tenxer: prefs.tenxer_mode,
+        }
+    }
+}
+
+const GIF: &str = "image/gif";
+
 /// A sandboxed media preview arrived: the player for its kind, decoding from the start.
-pub(super) fn ready(
-    app: &mut App,
-    entry: FileEntry,
-    content_type: &str,
-    mut media: SandboxedMedia,
-    tx: &mut Tx,
-) -> Viewer {
+pub(super) fn ready(app: &mut App, arrived: Arrived, tx: &mut Tx) -> Viewer {
+    let Arrived {
+        entry,
+        content_type,
+        mut media,
+    } = arrived;
     let id = NEXT_VIEWER.with(|next| next.replace(next.get().wrapping_add(1)));
-    let gif = content_type == "image/gif";
-    let family = sequence::family_of_type(content_type);
+    let family = sequence::family_of_type(&content_type);
     media.audio_only = family == Some(Family::Audio);
-    let prefs = shell::preferences(app);
-    let start_percent = if gif || is_raw_video_stream(content_type) {
-        0
-    } else {
-        prefs.preview_video_start
-    };
-    let (autoplay, volume, muted, tenxer) = (
-        prefs.preview_autoplay,
-        prefs.preview_volume,
-        prefs.preview_muted,
-        prefs.tenxer_mode,
-    );
+    let opening = Opening::of(app, &content_type);
     let later = app.preview.loader.later.clone();
+    let details = (family == Some(Family::Video))
+        .then(|| details::load(&entry, &media, (later.clone(), id), detailed));
     let inlet = Inlet {
-        later: later.clone(),
+        later,
         viewer: id,
         deliver: received,
     };
-    let details = (family == Some(Family::Video))
-        .then(|| details::load(&entry, &media, (later, id), detailed));
-    let mut stream = Stream::new(media, inlet, start_percent, tx.clock());
-    stream.set_loop(gif);
-    let continues = app
+    let mut stream = Stream::new(media, inlet, opening.start_percent, tx.clock());
+    stream.set_loop(content_type == GIF);
+    if opening.autoplay || plays_on(app, family, &entry) {
+        stream.play();
+    }
+    let mut viewer = MediaViewer {
+        state: player(&entry, family, &opening),
+        pixels: Pixels::new(),
+        stream,
+        entry,
+        family,
+        id,
+        _details: details,
+    };
+    let (position, previous, next) = place(app, family, &viewer.entry.location);
+    viewer.state.set_listing(position, previous, next);
+    Viewer::Media(Box::new(viewer))
+}
+
+/// Whether a step from a playing file landed on `entry`, which then plays on.
+fn plays_on(app: &mut App, family: Option<Family>, entry: &FileEntry) -> bool {
+    let stepped_here = app
         .preview
         .continue_playback
         .take()
         .is_some_and(|location| location == entry.location);
-    if autoplay || (continues && family.is_some()) {
-        stream.play();
-    }
+    stepped_here && family.is_some()
+}
+
+/// The player's state for `entry`: its view, words, keys and volume.
+fn player(entry: &FileEntry, family: Option<Family>, opening: &Opening) -> MediaState {
     let mut state = MediaState::new(Clip {
         kind: match family {
             Some(Family::Video) => MediaKind::Video,
@@ -132,28 +177,17 @@ pub(super) fn ready(
         ..Clip::default()
     });
     state.set_labels(media_labels());
-    state.set_keys(if tenxer {
+    state.set_keys(if opening.tenxer {
         MediaKeys::tenxer()
     } else {
         MediaKeys::default_map()
     });
-    state.set_volume(volume as f32, muted);
-    let mut viewer = MediaViewer {
-        state,
-        pixels: Pixels::new(),
-        stream,
-        entry,
-        family,
-        id,
-        _details: details,
-    };
-    viewer.state.set_details(match family {
+    state.set_volume(opening.volume, opening.muted);
+    state.set_details(match family {
         Some(Family::Video) => Details::Loading,
         _ => Details::Failed,
     });
-    let (position, previous, next) = place(app, family, &viewer.entry.location);
-    viewer.state.set_listing(position, previous, next);
-    Viewer::Media(Box::new(viewer))
+    state
 }
 
 /// The clip's place among its kind's files, and whether it has a previous and a next.
@@ -189,7 +223,7 @@ pub(super) fn refresh_listing(app: &mut App) -> bool {
 }
 
 /// A pump's events for the player `viewer`, dropped when it has gone.
-fn received(app: &mut App, viewer: u64, session: u64, events: Received, tx: &mut Tx) -> bool {
+fn received(app: &mut App, (viewer, session): (u64, u64), events: Received, tx: &mut Tx) -> bool {
     let Some(media) = shown(app, viewer) else {
         return false;
     };
@@ -311,7 +345,7 @@ fn step(app: &mut App, by: i8, tx: &mut Tx) -> bool {
         return false;
     };
     let (current, playing) = (media.entry.location.clone(), media.stream.playing());
-    let Some(target) = sequence::step(app, family, &current, by, tx) else {
+    let Some(target) = sequence::step(app, (family, &current), by, tx) else {
         return false;
     };
     app.preview.continue_playback = playing.then_some(target);

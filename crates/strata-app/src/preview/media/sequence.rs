@@ -246,8 +246,7 @@ fn nearest_first(
 /// does: the preview follows the selection. The file it moved to, if there is one.
 pub(super) fn step(
     app: &mut App,
-    family: Family,
-    current: &Location,
+    (family, current): (Family, &Location),
     step: i8,
     tx: &mut Tx,
 ) -> Option<Location> {
@@ -346,21 +345,7 @@ impl ReadRun {
         stop: &gio::Cancellable,
     ) -> Option<Vec<Option<bool>>> {
         while !stop.is_cancelled() {
-            let (paths, cancel) = (paths.clone(), stop.clone());
-            let read = mount_lanes::run(folder, Class::Background, move |progress| {
-                paths
-                    .iter()
-                    .map(|path| {
-                        if cancel.is_cancelled() {
-                            return None;
-                        }
-                        progress
-                            .reach(path, None, || read_supports_named_family(path))
-                            .and_then(Result::ok)
-                    })
-                    .collect::<Vec<_>>()
-            });
-            match read.await {
+            match read_in_lane(folder, paths.clone(), stop.clone()).await {
                 Ok(read) => return Some(read),
                 Err(Unanswered::Skipped) if self.may_wait_for(folder) => {
                     glib::timeout_future(BUSY_RETRY).await;
@@ -378,6 +363,28 @@ impl ReadRun {
         let since = *self.busy_since.get_or_insert_with(Instant::now);
         since.elapsed() < mount_lanes::NOT_RESPONDING_AFTER
     }
+}
+
+/// Reads each of `paths` in the folder's mount lane: whether its bytes back its name, or
+/// `None` when it could not be read.
+fn read_in_lane(
+    folder: &Path,
+    paths: Vec<PathBuf>,
+    stop: gio::Cancellable,
+) -> impl Future<Output = Result<Vec<Option<bool>>, Unanswered>> {
+    mount_lanes::run(folder, Class::Background, move |progress| {
+        paths
+            .iter()
+            .map(|path| {
+                if stop.is_cancelled() {
+                    return None;
+                }
+                progress
+                    .reach(path, None, || read_supports_named_family(path))
+                    .and_then(Result::ok)
+            })
+            .collect::<Vec<_>>()
+    })
 }
 
 fn by_folder(chunk: Vec<(PathBuf, Fingerprint)>) -> Vec<(PathBuf, Vec<(PathBuf, Fingerprint)>)> {

@@ -34,6 +34,7 @@ mod load;
 mod media;
 mod model;
 mod pdf;
+mod pictures;
 mod raw;
 mod route;
 mod session;

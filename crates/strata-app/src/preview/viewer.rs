@@ -553,88 +553,129 @@ impl HostedPreview for Viewer {
     }
 }
 
-fn code_ref(app: &App) -> &CodeState {
-    match &app.preview.viewer {
-        Viewer::Code(code) => code,
-        _ => spare("code", &app.preview.detached.code),
+/// The state `pick` finds in the shown viewer, or, for a handler Rune queued before the viewer
+/// changed, the spare one `spare_of` names ([`Detached`]).
+fn shown<'a, T>(
+    app: &'a App,
+    viewer: &'static str,
+    pick: fn(&Viewer) -> Option<&T>,
+    spare_of: fn(&Detached) -> &T,
+) -> &'a T {
+    let preview = &app.preview;
+    pick(&preview.viewer).unwrap_or_else(|| spare(viewer, spare_of(&preview.detached)))
+}
+
+/// [`shown`], to change.
+fn shown_mut<'a, T>(
+    app: &'a mut App,
+    viewer: &'static str,
+    pick: fn(&mut Viewer) -> Option<&mut T>,
+    spare_of: fn(&mut Detached) -> &mut T,
+) -> &'a mut T {
+    let preview = &mut app.preview;
+    match pick(&mut preview.viewer) {
+        Some(state) => state,
+        None => spare(viewer, spare_of(&mut preview.detached)),
     }
+}
+
+impl Viewer {
+    fn document_source(&self) -> Option<&CodeState> {
+        match self {
+            Self::Document(doc) => doc.source.as_deref(),
+            _ => None,
+        }
+    }
+
+    fn document_source_mut(&mut self) -> Option<&mut CodeState> {
+        match self {
+            Self::Document(doc) => doc.source.as_deref_mut(),
+            _ => None,
+        }
+    }
+
+    fn rendered(&self) -> Option<&RenderedBody> {
+        match self {
+            Self::Document(doc) => doc.rendered.as_ref(),
+            _ => None,
+        }
+    }
+
+    fn rendered_mut(&mut self) -> Option<&mut RenderedBody> {
+        match self {
+            Self::Document(doc) => doc.rendered.as_mut(),
+            _ => None,
+        }
+    }
+}
+
+fn code_ref(app: &App) -> &CodeState {
+    let pick: fn(&Viewer) -> Option<&CodeState> = |viewer| match viewer {
+        Viewer::Code(code) => Some(code),
+        _ => None,
+    };
+    shown(app, "code", pick, |spare| &spare.code)
 }
 
 fn code_mut(app: &mut App) -> &mut CodeState {
-    let preview = &mut app.preview;
-    match &mut preview.viewer {
-        Viewer::Code(code) => code,
-        _ => spare("code", &mut preview.detached.code),
-    }
+    let pick: fn(&mut Viewer) -> Option<&mut CodeState> = |viewer| match viewer {
+        Viewer::Code(code) => Some(code),
+        _ => None,
+    };
+    shown_mut(app, "code", pick, |spare| &mut spare.code)
 }
 
 fn doc_code_ref(app: &App) -> &CodeState {
-    match &app.preview.viewer {
-        Viewer::Document(DocumentViewer {
-            source: Some(code), ..
-        }) => code,
-        _ => spare("document source", &app.preview.detached.code),
-    }
+    shown(app, "document source", Viewer::document_source, |spare| {
+        &spare.code
+    })
 }
 
 fn doc_code_mut(app: &mut App) -> &mut CodeState {
-    let preview = &mut app.preview;
-    match &mut preview.viewer {
-        Viewer::Document(DocumentViewer {
-            source: Some(code), ..
-        }) => code,
-        _ => spare("document source", &mut preview.detached.code),
-    }
+    let pick = Viewer::document_source_mut;
+    shown_mut(app, "document source", pick, |spare| &mut spare.code)
 }
 
 fn doc_state_ref(app: &App) -> &DocumentState {
-    match &app.preview.viewer {
-        Viewer::Document(DocumentViewer {
-            rendered: Some(RenderedBody::Document(doc)),
-            ..
-        }) => &doc.state,
-        _ => spare("document", &app.preview.detached.document),
-    }
+    let pick: fn(&Viewer) -> Option<&DocumentState> = |viewer| match viewer.rendered()? {
+        RenderedBody::Document(doc) => Some(&doc.state),
+        RenderedBody::Sheet(_) => None,
+    };
+    shown(app, "document", pick, |spare| &spare.document)
 }
 
 fn doc_state_mut(app: &mut App) -> &mut DocumentState {
-    let preview = &mut app.preview;
-    match &mut preview.viewer {
-        Viewer::Document(DocumentViewer {
-            rendered: Some(RenderedBody::Document(doc)),
-            ..
-        }) => &mut doc.state,
-        _ => spare("document", &mut preview.detached.document),
-    }
+    let pick: fn(&mut Viewer) -> Option<&mut DocumentState> =
+        |viewer| match viewer.rendered_mut()? {
+            RenderedBody::Document(doc) => Some(&mut doc.state),
+            RenderedBody::Sheet(_) => None,
+        };
+    shown_mut(app, "document", pick, |spare| &mut spare.document)
 }
 
 fn sheet_state_ref(app: &App) -> &SheetGridState {
-    match &app.preview.viewer {
-        Viewer::Document(DocumentViewer {
-            rendered: Some(RenderedBody::Sheet(sheet)),
-            ..
-        }) => sheet,
-        _ => spare("sheet", &app.preview.detached.sheet),
-    }
+    let pick: fn(&Viewer) -> Option<&SheetGridState> = |viewer| match viewer.rendered()? {
+        RenderedBody::Sheet(sheet) => Some(sheet),
+        RenderedBody::Document(_) => None,
+    };
+    shown(app, "sheet", pick, |spare| &spare.sheet)
 }
 
 fn sheet_state_mut(app: &mut App) -> &mut SheetGridState {
-    let preview = &mut app.preview;
-    match &mut preview.viewer {
-        Viewer::Document(DocumentViewer {
-            rendered: Some(RenderedBody::Sheet(sheet)),
-            ..
-        }) => sheet,
-        _ => spare("sheet", &mut preview.detached.sheet),
-    }
+    let pick: fn(&mut Viewer) -> Option<&mut SheetGridState> =
+        |viewer| match viewer.rendered_mut()? {
+            RenderedBody::Sheet(sheet) => Some(sheet),
+            RenderedBody::Document(_) => None,
+        };
+    shown_mut(app, "sheet", pick, |spare| &mut spare.sheet)
 }
 
 fn image_viewport_mut(app: &mut App) -> &mut ViewportState {
-    let preview = &mut app.preview;
-    match &mut preview.viewer {
-        Viewer::Image(img) => &mut img.viewport,
-        _ => spare("image", &mut preview.detached.viewport),
-    }
+    let pick: fn(&mut Viewer) -> Option<&mut ViewportState> = |viewer| match viewer {
+        Viewer::Image(image) => Some(&mut image.viewport),
+        _ => None,
+    };
+    shown_mut(app, "image", pick, |spare| &mut spare.viewport)
 }
 
 pub(super) fn tick_archive_if_active(app: &mut App, tx: &mut Tx) -> bool {
@@ -646,26 +687,27 @@ pub(super) fn tick_archive_if_active(app: &mut App, tx: &mut Tx) -> bool {
 }
 
 fn archive_ref(app: &App) -> &ArchiveState {
-    match &app.preview.viewer {
-        Viewer::Archive(state) => state,
-        _ => spare("archive", &app.preview.detached.archive),
-    }
+    let pick: fn(&Viewer) -> Option<&ArchiveState> = |viewer| match viewer {
+        Viewer::Archive(state) => Some(state),
+        _ => None,
+    };
+    shown(app, "archive", pick, |spare| &spare.archive)
 }
 
 fn archive_mut(app: &mut App) -> &mut ArchiveState {
-    let preview = &mut app.preview;
-    match &mut preview.viewer {
-        Viewer::Archive(state) => state,
-        _ => spare("archive", &mut preview.detached.archive),
-    }
+    let pick: fn(&mut Viewer) -> Option<&mut ArchiveState> = |viewer| match viewer {
+        Viewer::Archive(state) => Some(state),
+        _ => None,
+    };
+    shown_mut(app, "archive", pick, |spare| &mut spare.archive)
 }
 
 fn prompt_mut(app: &mut App) -> &mut PromptState {
-    let preview = &mut app.preview;
-    match &mut preview.viewer {
-        Viewer::ArchivePrompt(prompt) => prompt,
-        _ => spare("archive prompt", &mut preview.detached.prompt),
-    }
+    let pick: fn(&mut Viewer) -> Option<&mut PromptState> = |viewer| match viewer {
+        Viewer::ArchivePrompt(prompt) => Some(prompt),
+        _ => None,
+    };
+    shown_mut(app, "archive prompt", pick, |spare| &mut spare.prompt)
 }
 
 fn code_view(
