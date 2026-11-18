@@ -247,6 +247,15 @@ closed issue is not a fixed finding: the state given here is the finding's.
   file is running and cannot be changed"), failed once in `./scripts/quality.sh all --jobs 4`
   (shard 0, lane 3, 79 of 80; the other lanes passed) and passed 3 times of 3 alone under
   `./scripts/test-headless.py`. The branch changes no `strata-desktop`.
+- **Sighting on [#2599](https://github.com/lgse/strata/pull/2599)** ([A16](packages/A16.md)): the
+  tenth, `repository_probe_selects_strata_instead_of_a_dependency`, failed once more in
+  `./scripts/quality.sh all --jobs 4` (shard 0, lane 3, 79 of 80) at `42a5a67f1`, with the same
+  `ETXTBSY` message, and passed 3 times of 3 alone under `./scripts/test-headless.py`. That pull
+  request touches no shared crate and no `src/`. In its Rune lane on the way there, `mise run
+  test-rune` once failed `footer::tests::clipboard_badge_follows_copy_cut_paste_and_text_copy`
+  (`crates/strata-app/src/footer/tests.rs:213`, "consuming a cut withdraws the clipboard
+  badge": the badge still showed) with the load average near 10. It passed 3 times of 3 alone
+  and in the full rerun (3058 passed); #2599 does not touch the footer or the clipboard.
 
 ### #2176: a GTK critical after a file appears during a rename on a multiple selection
 
@@ -2689,3 +2698,34 @@ sequence only together with the alphabet's version, so the version is part of th
 - **Concerns:** the sequence, confirmed 3 of 3, parked in `tests/qa/fuzz/corpus/drag/`. The
   smoke tier skips its seed while it is parked.
 - **State:** open, unowned.
+
+### #2596: `camera-formats-preview-sandbox` reads a drawn pixel no Rune target can read
+
+- **Code:** `toolkit`. [Issue](https://github.com/lgse/strata/issues/2596), filed on 2026-11-17
+  as the exception's reference and closed at once: its state is kept here.
+- **What differs:** `preview_media_layout/camera-formats-preview-sandbox` checks at line 5 that a
+  HEIC or AVIF picture decoded in the preview sandbox by reading a white pixel of the
+  preview's last `image`. The Rune QA backend answers `pixel is not supported on this target`
+  (`crates/strata-qa/src/engine/check.rs`): Rune renders no element into pixels it can hand back
+  (packet entry 75), and a `Pixels` cannot be read back (anomalyco/rune#148).
+- **Concerns:** the `columns-heic` and `columns-avif` runs. `columns-mov` and `columns-mp4` read no
+  pixel and are `required` from the shared file.
+- **State:** both runs are `parallel` under a `toolkit` twin, `camera-formats-preview-sandbox-rune`
+  ([A16](packages/A16.md), [#2599](https://github.com/lgse/strata/pull/2599)), which waits for the
+  preview's `image` named `camera.<ext>` and keeps the fixture, the thumbnail's `fs` pixel check
+  and the end state. The twin goes once a Rune target can read drawn pixels.
+
+### #2606: the media player's volume slider is named "Volume" where GTK's is unnamed
+
+- **Code:** `deviation`, ruled by the owner on 2026-11-18 ([`owner.md`](owner.md#ruled)). [Issue](https://github.com/lgse/strata/issues/2606),
+  filed on 2026-11-18 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** in [A16](packages/A16.md)'s Slice 3 ([#2599](https://github.com/lgse/strata/pull/2599)),
+  which mounts C13's `MediaPlayer` in the preview drawer. GTK's volume slider
+  (`volume_slider`, `src/ui/preview/media_controls.rs`) is an unnamed `gtk::Scale`. C13's is a
+  `slider` named by `Labels::volume`, which A16 sets to "Volume", translated in all 13 catalogs
+  (`media_labels`, `crates/strata-app/src/preview/media/mod.rs`).
+- **Concerns:** no run today. A16's fuzz alphabet (Slice 4) will read the slider.
+- **State:** ruled: Rune keeps the "Volume" name (the owner, 2026-11-18, through the
+  coordinator), consistent with [#2557](https://github.com/lgse/strata/issues/2557) and
+  [#2558](https://github.com/lgse/strata/issues/2558). A run or fuzz step that reads it cites
+  the ruling.

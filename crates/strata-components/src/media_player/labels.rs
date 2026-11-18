@@ -2,9 +2,11 @@
 
 //! The player's words, in English by default. A host translates them.
 
+use crate::viewers::layout::Position;
+
 /// Names, tooltips and fixed text. Tooltips that name a key take it from the key map, so
 /// these hold the words around it: `"Play/Pause ({keys})"`.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug)]
 pub struct Labels {
     /// The timeline slider's name.
     pub timeline: String,
@@ -17,8 +19,12 @@ pub struct Labels {
     pub next_video: String,
     pub previous_audio: String,
     pub next_audio: String,
-    /// `{label} ({keys})`: a previous or next button's tooltip.
-    pub step_tooltip: String,
+    /// The previous and next buttons' tooltips, `{keys}` the shortcut: each a whole message,
+    /// so a host translates it as one (Strata's `"Next video (%{keys})"`).
+    pub previous_video_tooltip: String,
+    pub next_video_tooltip: String,
+    pub previous_audio_tooltip: String,
+    pub next_audio_tooltip: String,
     /// The mute button's name and tooltip, `{keys}` the shortcut.
     pub mute: String,
     /// The volume slider's name.
@@ -41,6 +47,9 @@ pub struct Labels {
     /// The audio caption from tags: `Track {track} of {total}`, or `Track {track}`.
     pub track_of: String,
     pub track: String,
+    /// The eyebrow without a track tag: the file's place among the files of its kind
+    /// around it ("2 of 4 in folder").
+    pub position: fn(Position) -> String,
 }
 
 impl Default for Labels {
@@ -53,7 +62,10 @@ impl Default for Labels {
             next_video: "Next video".into(),
             previous_audio: "Previous audio file".into(),
             next_audio: "Next audio file".into(),
-            step_tooltip: "{label} ({keys})".into(),
+            previous_video_tooltip: "Previous video ({keys})".into(),
+            next_video_tooltip: "Next video ({keys})".into(),
+            previous_audio_tooltip: "Previous audio file ({keys})".into(),
+            next_audio_tooltip: "Next audio file ({keys})".into(),
             mute: "Mute/unmute ({keys})".into(),
             volume: "Volume".into(),
             video_frame: "Video frame".into(),
@@ -69,6 +81,7 @@ impl Default for Labels {
             captions_many: "CC ×{count}".into(),
             track_of: "Track {track} of {total}".into(),
             track: "Track {track}".into(),
+            position: Position::caption,
         }
     }
 }

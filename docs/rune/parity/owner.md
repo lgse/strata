@@ -838,6 +838,14 @@ Rulings of the owner on the parity work, oldest first.
   `tenxer` alphabet keeps the case out with a guard citing it (`h` and `l` only out of a
   folder with nothing selected), and its shrunk sequence stays parked as `oracle`. Source: the owner,
   2026-11-17.
+- **2026-11-18: the media player's volume slider keeps its "Volume" name**, a ruled
+  `deviation` (finding [#2606](https://github.com/lgse/strata/issues/2606)). GTK's volume slider
+  is an unnamed `gtk::Scale`; Rune's C13 slider is named "Volume", translated in the 13
+  catalogs, as for [#2557](https://github.com/lgse/strata/issues/2557)'s picture name and
+  [#2558](https://github.com/lgse/strata/issues/2558)'s body names. A run or a fuzz step that
+  reads it cites this ruling. Built in [A16](packages/A16.md)'s Slice 3
+  ([#2599](https://github.com/lgse/strata/pull/2599)). Source: the owner, 2026-11-18, through
+  the coordinator.
 
 ## Housekeeping
 

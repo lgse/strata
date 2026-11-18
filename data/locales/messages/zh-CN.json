@@ -1150,5 +1150,6 @@
   "Press the new key for “%{action}”": "按下“%{action}”的新按键",
   "%{escape} cancels, and %{backspace} removes every key of this action.": "按 %{escape} 取消，按 %{backspace} 移除此操作的所有按键。",
   "“%{group}” has no key, so this action cannot run.": "“%{group}”没有按键，因此无法执行此操作。",
-  "Custom action %{number}": "自定义操作 %{number}"
+  "Custom action %{number}": "自定义操作 %{number}",
+  "Volume": "音量"
 }

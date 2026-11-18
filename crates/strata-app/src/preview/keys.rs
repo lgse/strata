@@ -39,9 +39,14 @@ pub(super) const TENXER_RETURN: Matcher = FOCUS_PREVIOUS.ignoring(RETURN_IGNORED
 
 pub(super) const COMMANDS: &[Action<App>] = &[
     super::pdf::RESET,
-    super::route::PLAY_PAUSE,
-    super::route::SEEK_BACK,
-    super::route::SEEK_FORWARD,
+    super::transport::PLAY_PAUSE,
+    super::transport::SEEK_BACK,
+    super::transport::SEEK_FORWARD,
+    super::transport::VOLUME_UP,
+    super::transport::VOLUME_DOWN,
+    super::transport::MUTE,
+    super::transport::PREVIOUS,
+    super::transport::NEXT,
     Action::new("preview-panel", toggle_panel),
     Action::new("preview-close", close_from_preview)
         .command(PREVIEW)
@@ -190,7 +195,7 @@ fn in_listing_for_preview(_: &App, at: &Situation) -> bool {
 /// Where the preview's media keys reach (`video_controls` in
 /// `src/ui/window/keyboard/commands.rs`, with the drawer's `has_video`): an open drawer, not
 /// set aside in a narrow window, and the keyboard in no text field, not in the sidebar and not
-/// in the header. The route's keys read it, and audio and video are to.
+/// in the header. The route's and the media player's keys read it (`super::transport`).
 pub(super) fn media_keys_reach(app: &App, at: &Situation) -> bool {
     let showing = app.preview.drawer.is_open() && !app.preview.drawer.is_suspended();
     showing && !at.text() && !at.within("sidebar") && !at.in_top_bar()

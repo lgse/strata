@@ -31,12 +31,15 @@ mod keys;
 mod labels;
 mod layout;
 mod load;
+mod media;
 mod model;
 mod pdf;
+mod pictures;
 mod raw;
 mod route;
 mod session;
 mod sheet;
+mod transport;
 pub(crate) mod viewer;
 
 #[cfg(test)]
@@ -81,6 +84,10 @@ pub(crate) struct Preview {
     operations: Option<file_activity::Subscription>,
     last_split_width: Option<f32>,
     was_in_band: bool,
+    /// Which files of the shown player's kind hold media (`media::sequence`).
+    media_checks: media::Checks,
+    /// A step from a playing file: the file it moved to, which plays on once it shows.
+    continue_playback: Option<Location>,
 }
 
 /// The folder a click in Columns is opening, at `depth`, until its column has loaded.
@@ -188,6 +195,8 @@ impl Part for Preview {
             operations: None,
             last_split_width: None,
             was_in_band: false,
+            media_checks: media::Checks::default(),
+            continue_playback: None,
         }
     }
 
@@ -222,7 +231,8 @@ impl Part for Preview {
         let archive = viewer::tick_archive_if_active(app, tx);
         let pdf = pdf::poll(app, clock, tx);
         let route = route::poll(app, clock, tx);
-        blocks | viewer | archive | pdf | route | lit_changed | band_synced | msg_focus
+        let media = media::poll(app, clock, tx);
+        blocks | viewer | archive | pdf | route | media | lit_changed | band_synced | msg_focus
     }
 
     fn switched(app: &mut App, tx: &mut Tx) {
