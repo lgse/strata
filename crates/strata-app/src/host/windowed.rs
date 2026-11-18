@@ -18,11 +18,17 @@
 //! The GLib context is the process's, so the helper pumps it through one window: the one with
 //! the keyboard, or else the first still open. A pump hands that window's view changes to its
 //! browser before it dispatches ([`shell::publish`]); another window's go at its own next
-//! `poll`, which pumps too. What a dispatch queued for another window's browser waits for that
-//! window's `poll`.
+//! `poll`, which pumps too.
+//!
+//! What a dispatch queues for another window's browser, a folder's change say, and what one
+//! window's change of a setting queues for the others, would wait for a frame of that window's
+//! own, which may never come: Rune runs `poll` only before a frame, and a window shown without
+//! the keyboard gets none until something moves in it. So every window with an update queued is
+//! woken to apply it ([`wake_pending`]), after every dispatch and after every setting a window
+//! commits, as each GTK window updates at once.
 
 use std::{
-    cell::OnceCell,
+    cell::{OnceCell, RefCell},
     sync::{
         Mutex,
         atomic::{AtomicU64, Ordering},
@@ -41,6 +47,7 @@ use crate::{
     App, application, commands, folder_views, launch,
     settings::Saved,
     shell,
+    slots::WeakLater,
     startup::{APPLICATION_ID, UiThread},
 };
 
@@ -52,6 +59,9 @@ thread_local! {
     static GLIB: OnceCell<GlibLoop> = const { OnceCell::new() };
     /// The interface thread, for the windows opened after the first.
     static UI: OnceCell<UiThread> = const { OnceCell::new() };
+    /// Every window's queue and handle, the floating choosers' among them: what a dispatch in
+    /// one window, or another window's change of a setting, queues into ([`wake_pending`]).
+    static QUEUES: RefCell<Vec<(WeakLater<App>, AppHandle<App>)>> = const { RefCell::new(Vec::new()) };
 }
 
 /// The open windows' handles by window id, in the order they opened.
@@ -75,8 +85,29 @@ pub(super) fn pump(app: &mut App, tx: &mut Tx) -> bool {
         }
     });
     let settled = shell::settle(app, tx);
+    wake_pending();
     open_asked(app);
     settled
+}
+
+/// Lets [`wake_pending`] wake window `app`, which `handle` reaches.
+pub(super) fn follow_queue(app: &App, handle: AppHandle<App>) {
+    let later = shell::window_later(app).downgrade();
+    QUEUES.with(|queues| queues.borrow_mut().push((later, handle)));
+}
+
+/// Has every window with an update queued apply it now (the module docs, "Windows"). A window
+/// whose queue is empty is not asked, so a wake-up that applies nothing draws nothing.
+pub(crate) fn wake_pending() {
+    QUEUES.with(|queues| {
+        let Ok(mut queues) = queues.try_borrow_mut() else {
+            return;
+        };
+        queues.retain(|(later, _)| later.is_live());
+        for (_, handle) in queues.iter().filter(|(later, _)| later.is_pending()) {
+            handle.update_if(shell::settle);
+        }
+    });
 }
 
 fn poll(app: &mut App, clock: f64, tx: &mut Tx) -> bool {
@@ -232,6 +263,7 @@ fn window(ui: UiThread, settings: Saved, initial: launch::Initial) -> rune::App<
         let mut app = App::new(&ui, Csd::new(frame, Backend::from_env()), settings);
         crate::clipboard::bind(&mut app, clip_for_init);
         crate::dnd::bind(&mut app, dnd_for_init);
+        follow_queue(&app, registered.clone());
         opened(shell::window_id(&app), registered);
         app.start(initial);
         app

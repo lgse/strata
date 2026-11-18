@@ -175,6 +175,43 @@ mod window {
         );
     }
 
+    /// The process's one GLib context is pumped through the window with the keyboard, and what
+    /// that dispatch queued for another window wakes that window: a window shown without the
+    /// keyboard still lists a file added to its folder, as every GTK window does.
+    #[test]
+    #[ignore = "needs a private session: mise run test-platform"]
+    fn a_window_without_the_keyboard_still_hears_its_folder() {
+        let s = Session::start();
+        let launched = launch(&s, &[]);
+        let other = s.runtime_dir().join("home").join("Other");
+        std::fs::create_dir_all(&other).expect("folder");
+        std::fs::write(other.join("plans.txt"), "plans").expect("file");
+        let mut later = s.command(env!("CARGO_BIN_EXE_strata-rune"), Display::Wayland);
+        later.arg(&other);
+        assert!(
+            s.spawn("strata-rune-later", later).wait_exit().success(),
+            "the later launch handed its folder over"
+        );
+        s.wait_window_where("the window on the later launch's folder", |w| {
+            w.pid == launched.app.pid() && w.title == "Other — Strata"
+        });
+        launched
+            .app
+            .wait_for(0, "the Columns view listing the later folder", |line| {
+                lists(line, 1, "Other")
+            });
+
+        s.focus(&launched.window);
+        let took = change_reaches_poll(&launched.app, &other, "later.txt");
+
+        eprintln!("a change in the window without the keyboard reached poll in {took:?}");
+        launched.app.wait_for(
+            0,
+            "the window without the keyboard listing the new file",
+            |line| lists(line, 2, "Other"),
+        );
+    }
+
     /// With a `wake_after` tick in place of the embedded GLib loop, a change took 120 ms shown
     /// and 750 ms covered; a `Waker` alone never delivered it.
     #[test]

@@ -217,6 +217,7 @@ impl Windows {
             ),
         };
         let parts = ChooserParts {
+            settings: self.main.app(shell::share_settings),
             request: request.request,
             source: request.source,
             destination: Some(request.destination),

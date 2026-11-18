@@ -95,7 +95,8 @@ struct Store {
 }
 
 impl Store {
-    /// Queues a [`Saved::follow`] in every window but `changed_by`, through the shell.
+    /// Queues a [`Saved::follow`] in every window but `changed_by`, through the shell, and
+    /// wakes each to apply it: a window without the keyboard gets no frame of its own to.
     fn tell_others(&mut self, changed_by: u64) {
         self.windows.retain(|(_, later)| later.is_live());
         for (id, later) in &self.windows {
@@ -106,6 +107,7 @@ impl Store {
                 later.then(crate::shell::follow_another_window);
             }
         }
+        crate::host::windowed::wake_pending();
     }
 }
 

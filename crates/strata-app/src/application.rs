@@ -32,9 +32,9 @@ use crate::startup::APPLICATION_ID;
 pub(crate) enum Opening {
     /// The process's own launch with no argument: the saved session, or the default folder.
     Plain,
-    /// A later launch with no argument, or an activation: the default folder, in a window
-    /// that keeps no session (`docs/rune/shared-state.md`, "Tab sessions").
-    Fresh,
+    /// A later launch with no argument, or an activation: as GTK's `present`, the saved
+    /// session or the default folder, in a window that persists its tabs.
+    Present,
     /// An argument: a folder opens, a file is shown selected in its folder.
     Argument(Location),
 }
@@ -106,7 +106,7 @@ fn heard(event: Event) {
             command.cwd(),
             command.is_remote(),
         )),
-        Event::Activate(_) => queue([Opening::Fresh]),
+        Event::Activate(_) => queue([Opening::Present]),
         Event::Open { uris, .. } => queue(
             uris.iter()
                 .filter_map(|uri| location_for_file(&gio::File::for_uri(uri)))
@@ -119,12 +119,12 @@ fn heard(event: Event) {
 
 /// What a launch opens: a window for each argument that names a location, resolved against
 /// the launch's working folder `cwd` as GIO resolves a command-line argument; with none, the
-/// plain launch's window, or a fresh one for a launch another process handed over.
+/// plain launch's window, or GTK's `present` for a launch another process handed over.
 fn openings(arguments: &[OsString], cwd: Option<&Path>, handed_over: bool) -> Vec<Opening> {
     let paths = paths(arguments);
     if paths.is_empty() {
         return vec![if handed_over {
-            Opening::Fresh
+            Opening::Present
         } else {
             Opening::Plain
         }];

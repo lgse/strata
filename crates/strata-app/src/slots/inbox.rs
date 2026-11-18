@@ -128,6 +128,15 @@ impl<S> WeakLater<S> {
     pub(crate) fn is_live(&self) -> bool {
         self.inbox.strong_count() > 0
     }
+
+    /// Whether the window's queue is there and holds an update it has not applied.
+    pub(crate) fn is_pending(&self) -> bool {
+        self.inbox.upgrade().is_some_and(|inbox| {
+            inbox
+                .try_borrow()
+                .map_or(true, |queue| !queue.updates.is_empty())
+        })
+    }
 }
 
 impl<S: 'static> Later<S> {

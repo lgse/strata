@@ -28,8 +28,9 @@ use crate::{
     chooser::{floating::FloatingRequest, geometry::chooser_initial_dimensions},
     folder_views,
     portal::Completion,
+    settings::Saved,
     shell,
-    startup::{self, UiThread},
+    startup::UiThread,
 };
 
 /// A chooser open over a browser window.
@@ -68,7 +69,7 @@ pub(crate) fn open_requested(app: &mut App) {
     };
     let ui = UI.with(|cell| cell.get().copied());
     match ui.zip(super::windowed::handle_of(id)) {
-        Some((ui, browser)) => open(ui, (id, browser), request),
+        Some((ui, browser)) => open(ui, (id, browser), shell::share_settings(app), request),
         None => (request.completion)(Err(crate::portal::PortalError::Cancelled(
             "no window to open the chooser over".into(),
         ))),
@@ -131,7 +132,12 @@ fn waking(completion: Completion, browser: AppHandle<App>) -> Completion {
     })
 }
 
-fn open(ui: UiThread, (id, browser): (u64, AppHandle<App>), request: FloatingRequest) {
+fn open(
+    ui: UiThread,
+    (id, browser): (u64, AppHandle<App>),
+    settings: Saved,
+    request: FloatingRequest,
+) {
     let FloatingRequest {
         request,
         source,
@@ -147,7 +153,7 @@ fn open(ui: UiThread, (id, browser): (u64, AppHandle<App>), request: FloatingReq
     let state = App::new_chooser(
         &ui,
         Csd::new(frame, Backend::from_env()),
-        startup::load_settings(),
+        settings,
         (
             request,
             source,
@@ -165,6 +171,7 @@ fn open(ui: UiThread, (id, browser): (u64, AppHandle<App>), request: FloatingReq
         on_close: close_chooser,
     });
     let handle = app.handle();
+    super::windowed::follow_queue(&state, handle.clone());
     let attach = handle.clone();
     let app = app.on_window(move |window: &WindowHandle| {
         csd::attach(window, &attach, shell::csd_of);

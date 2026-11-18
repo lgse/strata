@@ -375,13 +375,13 @@ impl App {
 
     /// Starts the window from `initial`: an explicit directory opens in one tab and leaves
     /// `tabs.toml` alone; a plain launch restores its saved session or opens the default folder,
-    /// and persists its tabs (`tabs::session`); a later launch's window opens the default folder
-    /// or its argument, and leaves `tabs.toml` alone.
+    /// and persists its tabs (`tabs::session`); a later launch with no argument does the same,
+    /// as GTK's `present`; a window on an argument opens it and leaves `tabs.toml` alone.
     pub(crate) fn start(&mut self, initial: launch::Initial) {
         match initial {
             launch::Initial::Explicit(location) => self.open(location),
             launch::Initial::Plain(restored) => tabs::session::queue_plain_start(self, restored),
-            launch::Initial::Fresh => tabs::session::queue_fresh_start(self),
+            launch::Initial::Present => tabs::session::queue_present_start(self),
             launch::Initial::Argument(location) => {
                 crate::application::open_argument(self, location)
             }

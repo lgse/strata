@@ -37,7 +37,7 @@ fn a_launch_asks_for_a_window_for_each_path_it_names() {
     let cwd = Path::new("/srv/launch");
     let cases: [Case; 7] = [
         (&[], false, vec![Opening::Plain]),
-        (&[], true, vec![Opening::Fresh]),
+        (&[], true, vec![Opening::Present]),
         (
             &[b"first", b"/srv/second"],
             true,

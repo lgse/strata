@@ -88,8 +88,10 @@ pub(crate) enum Initial {
     /// A plain launch (`strata-rune` with no argument): restores the saved session when
     /// `Some`, or opens the default folder, and persists this window's tabs.
     Plain(Option<RestoredSession>),
-    /// A later launch with no argument: the default folder, and `tabs.toml` left alone.
-    Fresh,
+    /// A later launch with no argument, as GTK's `present` opens it: the saved session, read
+    /// off the interface thread once the window is up, or the default folder, and this
+    /// window's tabs persisted.
+    Present,
     /// An argument: a folder opens, a file shows selected in its folder, and `tabs.toml` is
     /// left alone (`crate::application::open_argument`).
     Argument(Location),
@@ -118,7 +120,7 @@ pub(crate) fn initial_for(opening: Opening, settings: &Saved) -> Initial {
                 .flatten();
             Initial::Plain(restored)
         }
-        Opening::Fresh => Initial::Fresh,
+        Opening::Present => Initial::Present,
         Opening::Argument(location) => Initial::Argument(location),
     }
 }
@@ -145,9 +147,11 @@ fn open(arguments: Vec<OsString>) -> Result<i32, String> {
     let ui = startup::UiThread::claim()?;
     application::attach(primary);
     let mut openings = application::take().into_iter();
-    let first = openings
-        .next()
-        .ok_or("no argument names a location that can be opened")?;
+    // As GTK's `present_open` skips an argument that is no location, and the application then
+    // ends with no window and status 0.
+    let Some(first) = openings.next() else {
+        return Ok(0);
+    };
     application::queue_first(openings);
     let initial = initial_for(first, &settings);
     host::windowed::run(ui, settings, initial)?;
