@@ -28,23 +28,38 @@ fn find(app: &App) -> Option<&str> {
 /// `marks` with listing row `name`'s highlight (`highlight_listing_name`).
 pub(crate) fn listing_marks(app: &App, name: Option<&str>, mut marks: RowMarks) -> RowMarks {
     if let (Some(query), Some(name)) = (find(app), name) {
-        marks.name_matches = NameMatches::new(match_ranges(name, query));
+        marks.name_matches = within_reach(name, match_ranges(name, query));
     }
     marks
 }
 
 /// `marks` with result `id`'s highlight (`highlight_hit_name`): the find's, else its query's.
 pub(crate) fn hit_marks(app: &App, id: EntryId, mut marks: RowMarks) -> RowMarks {
+    let Some(name) = crate::filter::tenxer::hit_name(app, id) else {
+        return marks;
+    };
     let ranges = match find(app) {
-        Some(query) => {
-            crate::filter::tenxer::hit_name(app, id).map(|name| match_ranges(name, query))
-        }
+        Some(query) => Some(match_ranges(name, query)),
         None => crate::filter::tenxer::hit_name_ranges(app, id),
     };
     if let Some(ranges) = ranges {
-        marks.name_matches = NameMatches::new(ranges);
+        marks.name_matches = within_reach(name, ranges);
     }
     marks
+}
+
+/// `ranges` of `name` as the row draws them: none past [`NameMatches::REACH`], and one across
+/// it ends on the last character boundary before it.
+fn within_reach(name: &str, ranges: Vec<Range<usize>>) -> NameMatches {
+    let reach = (0..=NameMatches::REACH.min(name.len()))
+        .rev()
+        .find(|at| name.is_char_boundary(*at))
+        .unwrap_or(0);
+    NameMatches::new(
+        ranges
+            .into_iter()
+            .map(|range| range.start..range.end.min(reach)),
+    )
 }
 
 /// The byte ranges of `name` where `query` occurs, compared case-folded, each after the last

@@ -524,6 +524,7 @@ impl Pane {
         if restored {
             if let Some(column) = self.shown.and_then(|depth| self.columns.get(depth)) {
                 restore::fall_back(column, &mut self.collection, marks.cursor);
+                restore::take_load_cursor(column, &mut self.collection, marks);
                 restore::keep_provisional(column, &mut self.collection, marks);
             }
             self.restored = Some(Held::of(&self.collection));

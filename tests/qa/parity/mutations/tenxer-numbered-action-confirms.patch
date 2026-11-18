@@ -1,0 +1,12 @@
+diff --git a/crates/strata-app/src/tenxer/chords.rs b/crates/strata-app/src/tenxer/chords.rs
+--- a/crates/strata-app/src/tenxer/chords.rs
++++ b/crates/strata-app/src/tenxer/chords.rs
+@@ -310,7 +310,7 @@ fn complete_numbered_slot(
+         app.tenxer.flash.show(tr(changed), tx);
+         return true;
+     }
+-    let Some(action) = numbered.actions.get(slot - 1).cloned() else {
++    let Some(action) = numbered.actions.get(slot).cloned() else {
+         app.tenxer
+             .flash
+             .show(rust_i18n::t!("No action %{digit}", digit = digit), tx);

@@ -1,0 +1,10 @@
+diff --git a/crates/strata-app/src/trash.rs b/crates/strata-app/src/trash.rs
+--- a/crates/strata-app/src/trash.rs
++++ b/crates/strata-app/src/trash.rs
+@@ -231,5 +231,5 @@ fn confirms_trash_dialog(app: &App) -> bool {
+             .trash
+             .confirm
+             .as_ref()
+-            .is_some_and(|confirm| confirm.kind == Kind::Trash)
++            .is_some_and(|confirm| confirm.kind == Kind::Trash || true)
+ }
