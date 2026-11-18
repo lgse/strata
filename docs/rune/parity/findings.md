@@ -1851,7 +1851,7 @@ sequence only together with the alphabet's version, so the version is part of th
 - **Why:** Rune's `App::on_close` runs before the window goes and cannot keep it (at
   `2a44156`), and nothing else hears a close request.
 - **Concerns:** no run: no scenario closes a window with an operation running.
-- **State:** drafted and worked around by [A21](packages/A21.md)'s Slice 2b (2026-11-18). Rune
+- **State:** drafted and worked around by [A21](packages/A21.md)'s Slice 2b ([#2605](https://github.com/lgse/strata/pull/2605), 2026-11-18). Rune
   packet entry 110 (`docs/rune/upstream/rune/110-refusable-close-request.md`) asks for a close
   request the app can refuse. Until then, `on_close` opens the window's state again in a new
   window, which says why (`crates/strata-app/src/host/windowed/refused.rs`). The same guards
