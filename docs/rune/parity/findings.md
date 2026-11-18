@@ -2323,6 +2323,10 @@ sequence only together with the alphabet's version, so the version is part of th
 - **Seen again** in [A16](packages/A16.md)'s [#2585](https://github.com/lgse/strata/pull/2585)
   review gate at `6501200fd`, at the same line (Rune offscreen 676 of 677). Alone it then passed
   3 of 3. The pull request changes the preview's viewers and the media keys' guard, not undo.
+- **Also seen** in the re-gate of [#2597](https://github.com/lgse/strata/pull/2597) at
+  `8c69f50b3` (rune offscreen 683 of 684), at line 11 again. Alone it then passed three
+  rounds, 1 of 1 on each target. #2597 changes the view's cursor after an undo (A19's
+  `handover::Kept`), not what reaches the disk, which is what line 11 waits on.
 - **State:** open, unowned.
 
 ### #2570: 10xer's find and filter highlights are not drawn in Rune's rows
