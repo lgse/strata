@@ -160,7 +160,7 @@ closed issue is not a fixed finding: the state given here is the finding's.
   fixture did not settle", `src/ui/window/tests/keyboard_dispatch.rs:324`). It passed alone
   (`./scripts/test-headless.py`), and the rerun of `./scripts/quality.sh test` passed whole
   (4074 tests). That change touches no `src/` and no crate the GTK lane builds.
-- **On [A21](packages/A21.md)'s Slice 2a, at `4ed45f2d5`:** the ninth failed once more in
+- **On [#2604](https://github.com/lgse/strata/pull/2604), [A21](packages/A21.md)'s Slice 2a, at `4ed45f2d5`:** the ninth failed once more in
   `./scripts/quality.sh all`, with its message. It then passed alone. The rerun of
   `./scripts/quality.sh test` failed on an eleventh instead, `strata-desktop`'s
   `services::update_install::tests::repository_probe_selects_strata_instead_of_a_dependency`
@@ -935,7 +935,7 @@ sequence only together with the alphabet's version, so the version is part of th
 - **State:** ruled by the coordinator (2026-11-13): C6 stays as it is, since a screen reader
   hears the same name; the run takes an `a11y` twin once it can otherwise flip, after
   [A21](packages/A21.md)'s second window. [A5](packages/A5.md)'s, or whoever flips the run.
-- **Twin written** by [A21](packages/A21.md)'s Slice 2a (2026-11-18):
+- **Twin written** by [A21](packages/A21.md)'s Slice 2a ([#2604](https://github.com/lgse/strata/pull/2604), 2026-11-18):
   `locations/path-completion-dismisses-on-window-switch-rune`, whose lines 6 and 10 wait for the
   `list item`; the run is `parallel`.
 
