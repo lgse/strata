@@ -88,7 +88,7 @@ pub(crate) fn kept_neighbour(
     if !removed || !unplaced(marks) {
         return None;
     }
-    collection.selection.cursor().map(neighbour)
+    collection.selection.cursor().map(|id| neighbour(id, marks))
 }
 
 /// The browser marks no cursor and selects nothing.
@@ -125,15 +125,16 @@ impl Kept {
             self.0 = None;
             return None;
         }
-        Some(neighbour(id))
+        Some(neighbour(id, marks))
     }
 }
 
-/// The browser's empty marks with `id` as the cursor and anchor, unselected.
-fn neighbour(id: EntryId) -> Marks {
+/// The browser's empty `marks` with `id` as the cursor, unselected. The anchor is the
+/// browser's while it holds one, as a later Shift range on GTK extends from it, else `id`.
+fn neighbour(id: EntryId, marks: &Marks) -> Marks {
     Marks {
         cursor: Some(id),
-        anchor: Some(id),
+        anchor: marks.anchor.or(Some(id)),
         ..Marks::default()
     }
 }

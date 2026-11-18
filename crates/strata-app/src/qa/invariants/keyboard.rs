@@ -6,7 +6,7 @@
 //! through: Delete would move files to the trash while a name is typed. And an element must
 //! have the keyboard, or the next key goes nowhere.
 //!
-//! - Something in the tree has the keyboard.
+//! - Something in the tree has the keyboard, unless a floating chooser in front has it.
 //! - A part holds it for a menu only while the tree shows a menu, and for a modal layer only
 //!   while it shows a dialog. A menu or a dialog the tree shows is held for by its own hold or
 //!   by a plain popover: the Sort by menu and the Appearance popover show as one. A part holds
@@ -29,7 +29,8 @@ pub(super) struct Shown<'a> {
 }
 
 pub(super) fn check(app: &App, shown: &Shown<'_>, failures: &mut Failures) {
-    if !shown.focused {
+    // A floating chooser in front has the keyboard, in a window of its own.
+    if !shown.focused && !crate::chooser::floating::is_open(app) {
         failures.fail("keyboard", "no element has the keyboard".to_owned());
     }
     let holds: Vec<(Holds, &str)> = shell::parts(app)

@@ -91,6 +91,12 @@ pub(crate) fn take_raise(app: &mut App) -> bool {
     std::mem::take(&mut app.chooser.floating.raise)
 }
 
+/// Whether a floating chooser is open over the window: it has the keyboard then.
+#[cfg(feature = "qa")]
+pub(crate) fn is_open(app: &App) -> bool {
+    app.chooser.floating.open
+}
+
 /// Whether the window asked for a floating chooser that no host has taken yet.
 #[cfg(feature = "qa")]
 pub(crate) fn has_pending(app: &App) -> bool {
