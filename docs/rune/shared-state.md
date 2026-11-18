@@ -286,10 +286,11 @@ difference reaches the user:
 
 The line numbers are as of the move.
 
-On the Rune side the first two rules are `launch::Initial`'s: only `Initial::Plain`, the
-process's own launch with no argument, restores and persists. A window a later launch opens
-is `Initial::Fresh` or `Initial::Argument`, and leaves `tabs.toml` alone
-([A21](parity/packages/A21.md)).
+On the Rune side the first two rules are `launch::Initial`'s. A window opened with no argument
+restores and persists, as every window GTK's `present` opens does: `Initial::Plain`, the
+process's own launch, and `Initial::Present`, a later launch handed to it, which reads
+`tabs.toml` off the interface thread since it opens after start-up. A window on an argument,
+`Initial::Argument`, leaves `tabs.toml` alone ([A21](parity/packages/A21.md)).
 
 ## The key catalog
 
