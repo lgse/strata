@@ -1,0 +1,13 @@
+diff --git a/crates/strata-app/src/chooser/image_conversion.rs b/crates/strata-app/src/chooser/image_conversion.rs
+index 6f32311bd..9bbf8d250 100644
+--- a/crates/strata-app/src/chooser/image_conversion.rs
++++ b/crates/strata-app/src/chooser/image_conversion.rs
+@@ -286,7 +286,7 @@ pub(crate) fn confirm_conversion(app: &mut App, consent: ConversionConsent) {
+     image_job(
+         app,
+         "Converting to PNG…",
+-        move |cancelled| image_conversion::convert(&path, &target, &cancelled),
++        move |cancelled| image_conversion::convert(&path, &target, &cancelled).map(|_| path.clone()),
+         download::finish_remote,
+     );
+ }
