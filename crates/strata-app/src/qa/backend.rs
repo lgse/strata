@@ -18,18 +18,16 @@ use strata_qa::{
     Orientation, Outcome, Rect, Scope, Scroll, States, TextMatch,
 };
 
-#[cfg(test)]
-use super::input_log::InputLog;
 use super::{
     field, filter,
     host::{Activated, Host},
+    input_log::InputLog,
     invariants,
     staged::Staged,
     tree::{Kept, Node, Seen, Snapshot},
+    windows::Windows,
 };
-#[cfg(test)]
-use crate::host::offscreen::Offscreen;
-use crate::{App, shell};
+use crate::{App, host::offscreen::Offscreen, shell};
 
 const READY_TIMEOUT: Duration = Duration::from_secs(60);
 const READY_POLL: Duration = Duration::from_millis(5);
@@ -40,15 +38,16 @@ const PREVIEW: &str = "Preview";
 const PEEK: &str = "Folder peek";
 const SEARCH_RESULTS: &str = "Search results";
 
-pub(super) struct Rune<H: Host = Staged> {
+pub(super) struct Rune<H: Host = Windows> {
     host: H,
     quitting: Cell<bool>,
 }
 
 impl Rune {
-    #[cfg(test)]
+    /// The browser window on the offscreen host, and the floating chooser it opens.
     pub(super) fn new(host: Offscreen, log: InputLog) -> Self {
-        Self::on(Staged::new(host, log))
+        let size = host.size();
+        Self::on(Windows::new(Staged::new(host, log.clone()), log, size))
     }
 
     /// Opens a folder, as the launch does with its argument.
@@ -103,7 +102,7 @@ impl<H: Host> Rune<H> {
     }
 
     fn read<T>(&self, node: &Node, read: impl FnOnce(&Snapshot, &Seen) -> T) -> Option<T> {
-        let snapshot = self.host.snapshot_of(node);
+        let snapshot = self.snapshot();
         snapshot.get(node).map(|seen| read(&snapshot, seen))
     }
 
@@ -121,7 +120,9 @@ impl<H: Host> Rune<H> {
             clippy::cast_possible_truncation,
             reason = "a scroll offset in window points fits f32"
         )]
-        self.host.scroll_to(&key, x as f32, y as f32).await?;
+        self.host
+            .scroll_to((&node, &key), x as f32, y as f32)
+            .await?;
         let actual = self
             .scroll(&node, orientation)
             .map(|scroll| scroll.value)
@@ -223,19 +224,21 @@ impl<H: Host> Backend for Rune<H> {
         width
     }
 
+    /// The focus while `window` has the keyboard: a window that another one is in front of
+    /// has none, as GTK's inactive window reports none.
     fn focus(&self, window: &Node) -> Option<Node> {
-        let snapshot = self.host.snapshot_of(window);
-        snapshot.focus().and_then(|focus| focus.node.clone())
+        let focus = self.snapshot().focus()?.node.clone()?;
+        focus.is_within(window).then_some(focus)
     }
 
     fn parent(&self, node: &Node) -> Option<Node> {
-        let snapshot = self.host.snapshot_of(node);
+        let snapshot = self.snapshot();
         let parent = snapshot.at(snapshot.get(node)?.parent?)?;
         parent.node.clone()
     }
 
     fn children(&self, node: &Node) -> Vec<Node> {
-        let snapshot = self.host.snapshot_of(node);
+        let snapshot = self.snapshot();
         let Some(seen) = snapshot.get(node) else {
             return Vec::new();
         };
@@ -251,7 +254,7 @@ impl<H: Host> Backend for Rune<H> {
     }
 
     fn attached(&self, node: &Node) -> bool {
-        self.host.snapshot_of(node).get(node).is_some()
+        self.snapshot().get(node).is_some()
     }
 
     fn role(&self, node: &Node) -> &'static str {
@@ -320,8 +323,8 @@ impl<H: Host> Backend for Rune<H> {
     }
 
     /// Rune draws a window and its menus on one surface.
-    fn origin(&self, _node: &Node) -> Result<(f64, f64), String> {
-        self.host.origin()
+    fn origin(&self, node: &Node) -> Result<(f64, f64), String> {
+        self.host.origin(node)
     }
 
     fn layout(&self, node: &Node, _window: &Node) -> Option<Rect> {
@@ -352,8 +355,7 @@ impl<H: Host> Backend for Rune<H> {
     }
 
     fn keep(&self, node: &Node) -> Kept {
-        let snapshot = self.host.snapshot_of(node);
-        snapshot.keep(node).after(self.host.replacements())
+        self.snapshot().keep(node).after(self.host.replacements())
     }
 
     /// A row its column has been replaced in since is another row, as on GTK.
@@ -364,11 +366,11 @@ impl<H: Host> Backend for Rune<H> {
         if replaced {
             return None;
         }
-        self.host.snapshot_of(&kept.node).recall(kept)
+        self.snapshot().recall(kept)
     }
 
-    fn dump(&self, window: &Node) -> String {
-        self.host.snapshot_of(window).dump()
+    fn dump(&self, _window: &Node) -> String {
+        self.snapshot().dump()
     }
 
     async fn settle(&self, _window: &Node) {
@@ -431,9 +433,9 @@ impl<H: Host> Backend for Rune<H> {
         let target = self.read(node, |_, seen| {
             let key = seen.key.clone().filter(|_| seen.has_action("click"))?;
             Some(Activated {
+                node: node.clone(),
                 key,
                 bounds: seen.bounds,
-                window: node.window(),
             })
         });
         target

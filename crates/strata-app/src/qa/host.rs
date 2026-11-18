@@ -18,11 +18,12 @@ use strata_qa::{Chord, ClipboardContent, Keymap, Modifier, Rect};
 use super::tree::{Node, Snapshot};
 use crate::App;
 
-/// What `activate` presses: the element's key, where it is drawn, and the window it is in.
+/// What `activate` presses: the element's key, and where it is drawn.
 pub(super) struct Activated {
+    /// The node pressed, which tells a host with more than one window which one has it.
+    pub(super) node: Node,
     pub(super) key: String,
     pub(super) bounds: Option<Rect>,
-    pub(super) window: Node,
 }
 
 pub(super) trait Host {
@@ -51,10 +52,6 @@ pub(super) trait Host {
 
     /// The tree as of the host's latest frame.
     fn snapshot(&self) -> Rc<Snapshot>;
-    /// The tree of the window `node` is in, as of its latest frame.
-    fn snapshot_of(&self, _node: &Node) -> Rc<Snapshot> {
-        self.snapshot()
-    }
     /// Runs `read` on the window's state, on the thread that owns it.
     fn with_app<T: Send + 'static>(
         &self,
@@ -72,8 +69,8 @@ pub(super) trait Host {
     /// Waits up to `limit` for the host to have work.
     fn pause(&self, limit: Duration);
 
-    /// Where the window's corner is on the screen.
-    fn origin(&self) -> Result<(f64, f64), String>;
+    /// Where the corner of the window that draws `node` is on the screen.
+    fn origin(&self, node: &Node) -> Result<(f64, f64), String>;
     async fn resize(&self, width: f32, height: f32) -> Result<(), String>;
     fn set_layout(&self, keymap: &Keymap) -> Result<(), String>;
 
@@ -87,8 +84,9 @@ pub(super) trait Host {
     async fn button(&self, number: u8, pressed: bool) -> Result<(), String>;
     /// Presses the element as an assistive client's click would. False when it cannot.
     fn activate(&self, target: &Activated) -> bool;
-    /// Instantly scrolls the keyed scroll view `key` to `(x, y)` (`set_scrollbar`).
-    async fn scroll_to(&self, key: &str, x: f32, y: f32) -> Result<(), String>;
+    /// Instantly scrolls a scroll view to `(x, y)` (`set_scrollbar`). `at` is its node and its
+    /// key: the node tells a host with more than one window which one has it.
+    async fn scroll_to(&self, at: (&Node, &str), x: f32, y: f32) -> Result<(), String>;
 
     /// Owns the system clipboard from a second connection (`clipboard_set`). `None` when the
     /// host has no system clipboard (the offscreen host).

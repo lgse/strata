@@ -12,6 +12,8 @@ use strata_test_support::PrivateContext;
 
 use super::*;
 
+mod bounds;
+
 // The cases below port GTK's `src/portal/tests.rs` to this copy of its validation.
 
 fn run_async<T>(future: impl Future<Output = T>) -> T {
@@ -223,56 +225,63 @@ fn open_selection_validates_kind_cardinality_and_locality() {
     let current = Location::local("/tmp");
     let file = entry(Path::new("/tmp/file"), false);
     let folder = entry(Path::new("/tmp/folder"), true);
-    assert_eq!(
-        open_selection(std::slice::from_ref(&file), &current, false, false),
-        Ok(vec![PathBuf::from("/tmp/file")])
-    );
-    assert_eq!(
-        open_selection(&[file.clone(), folder.clone()], &current, false, true),
-        Err("Choose files only")
-    );
-    assert_eq!(
-        open_selection(&[file.clone(), file.clone()], &current, false, false),
-        Err("Choose one item")
-    );
-    assert_eq!(
-        open_selection(&[], &current, false, false),
-        Err("Choose a file")
-    );
-    assert_eq!(
-        open_selection(&[], &current, true, false),
-        Ok(vec![PathBuf::from("/tmp")])
-    );
-    assert_eq!(
-        open_selection(std::slice::from_ref(&file), &current, true, false),
-        Err("Choose folders only")
-    );
     let remote = FileEntry {
         location: Location::uri("smb://server/share/file"),
-        ..folder
+        ..entry(Path::new("/tmp/remote"), true)
     };
-    assert_eq!(
-        open_selection(&[remote], &current, true, false),
-        Err("Choose local items only")
-    );
+    let picked =
+        |path: &str| -> Result<Vec<PathBuf>, &'static str> { Ok(vec![PathBuf::from(path)]) };
+    let cases = [
+        (vec![file.clone()], false, false, picked("/tmp/file")),
+        (
+            vec![file.clone(), folder],
+            false,
+            true,
+            Err("Choose files only"),
+        ),
+        (
+            vec![file.clone(), file.clone()],
+            false,
+            false,
+            Err("Choose one item"),
+        ),
+        (vec![], false, false, Err("Choose a file")),
+        (vec![], true, false, picked("/tmp")),
+        (vec![file], true, false, Err("Choose folders only")),
+        (vec![remote], true, false, Err("Choose local items only")),
+    ];
+    for (entries, directory, multiple, expected) in cases {
+        assert_eq!(
+            open_selection(&entries, &current, directory, multiple),
+            expected,
+            "{} entries, directory={directory}, multiple={multiple}",
+            entries.len()
+        );
+    }
 }
 
 #[test]
 fn cancellation_before_presentation_is_sticky_and_cleanup_is_race_safe() {
     let tracker = Arc::new(RequestTracker::default());
     let first = tracker.begin("same".into()).expect("first request");
-    assert!(tracker.begin("same".into()).is_err());
-    assert!(tracker.cancel("same"));
-    assert!(!tracker.cancel("same"), "a second Close changes nothing");
-    assert!(first.cancelled.load(Ordering::SeqCst));
-
+    let twice = tracker.begin("same".into()).is_err();
+    let closes = [tracker.cancel("same"), tracker.cancel("same")];
+    assert_eq!(
+        (twice, closes, first.cancelled.load(Ordering::SeqCst)),
+        (true, [true, false], true),
+        "one request per token; a second Close changes nothing; the request stays cancelled"
+    );
     drop(first);
     let replacement = tracker.begin("same".into()).expect("replacement request");
-    assert!(!replacement.cancelled.load(Ordering::SeqCst));
-    assert!(tracker.cancel("same"));
-    assert!(replacement.cancelled.load(Ordering::SeqCst));
+    let fresh = !replacement.cancelled.load(Ordering::SeqCst);
+    let closed = tracker.cancel("same");
+    let cancelled = replacement.cancelled.load(Ordering::SeqCst);
     drop(replacement);
-    assert!(!tracker.cancel("same"));
+    assert_eq!(
+        (fresh, closed, cancelled, tracker.cancel("same")),
+        (true, true, true, false),
+        "a replacement starts uncancelled, and a finished one leaves nothing to close"
+    );
 }
 
 #[test]
@@ -343,67 +352,6 @@ fn active_request_count_and_token_length_are_bounded() {
 }
 
 #[test]
-fn untrusted_request_inputs_are_bounded() {
-    let too_long = "x".repeat(MAX_STRING_BYTES + 1);
-    for (title, label, parent) in [
-        (too_long.as_str(), None, None),
-        ("Title", Some(too_long.as_str()), None),
-        ("Title", None, Some(too_long.as_str())),
-        ("Ti\0tle", None, None),
-    ] {
-        assert!(validate_common_request(title, label, parent, &[]).is_err());
-    }
-
-    let choices = (0..=MAX_CHOICES)
-        .map(|index| boolean_choice(&format!("choice-{index}")))
-        .collect::<Vec<_>>();
-    assert!(validate_choices(&choices).is_err());
-    let crowded = |count: usize| PortalChoice {
-        pairs: (0..count)
-            .map(|index| (format!("option-{index}"), "Option".to_owned()))
-            .collect(),
-        ..boolean_choice("choice")
-    };
-    assert!(validate_choices(&[crowded(MAX_CHOICE_OPTIONS + 1)]).is_err());
-    let spread =
-        vec![crowded(MAX_CHOICE_OPTIONS); MAX_TOTAL_CHOICE_OPTIONS / MAX_CHOICE_OPTIONS + 1];
-    assert!(
-        validate_choices(&spread).is_err(),
-        "options are bounded in total"
-    );
-    assert!(validate_choices(&[crowded(MAX_CHOICE_OPTIONS)]).is_ok());
-
-    let bulky = filter(
-        "GitHub accepted types",
-        (0..=FILTER_RULE_WARNING_THRESHOLD)
-            .map(|index| FilterRule::MimeType(format!("application/x-attachment-{index}")))
-            .collect(),
-    );
-    assert!(validate_filters(&[bulky], None).is_ok());
-    let glob = |pattern: &str| filter("Filter", vec![FilterRule::Pattern(pattern.to_owned())]);
-    assert!(
-        validate_filters(&[glob("*a*a*a*z")], None).is_err(),
-        "backtracking-heavy globs must be rejected"
-    );
-    assert!(
-        validate_filters(&[glob("*a**.txt")], None).is_ok(),
-        "two wildcard groups remain supported"
-    );
-    assert!(
-        validate_filters(&[glob(&"a".repeat(MAX_GLOB_BYTES + 1))], None).is_err(),
-        "glob length must be bounded"
-    );
-    assert!(
-        validate_filters(&[], Some(&glob("*a*b*c"))).is_err(),
-        "the current filter too"
-    );
-
-    assert!(validate_filename(&"x".repeat(MAX_FILENAME_BYTES + 1)).is_err());
-    assert!(validate_path(Some(Path::new(&too_long)), "path").is_err());
-    assert!(validate_path(None, "path").is_ok());
-}
-
-#[test]
 fn long_filter_lists_are_accepted() {
     let filters = (0..256)
         .map(|index| {
@@ -431,10 +379,15 @@ fn long_filter_lists_are_accepted() {
 
 #[test]
 fn a_blank_title_or_label_takes_the_portal_default() {
-    assert_eq!(request_title("  ", "Open Files"), "Open Files");
-    assert_eq!(request_title("Pick", "Open Files"), "Pick");
-    assert_eq!(default_accept_label(None, "Open"), "Open");
-    assert_eq!(default_accept_label(Some("Attach"), "Open"), "Attach");
+    assert_eq!(
+        [
+            request_title("  ", "Open Files"),
+            request_title("Pick", "Open Files"),
+            default_accept_label(None, "Open"),
+            default_accept_label(Some("Attach"), "Open"),
+        ],
+        ["Open Files", "Pick", "Open", "Attach"]
+    );
 }
 
 #[test]

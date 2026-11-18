@@ -7,16 +7,16 @@ use serde_json::{Value, json};
 use strata_core::model::Location;
 use strata_qa::{Backend as _, Outcome, Remembered, execute, parse_request};
 
-use super::{super::windows::Windows, SIZE, harness_previews_off, now};
+use super::{SIZE, harness_previews_off, now};
 use crate::{
     application::{self, Opening},
     host::offscreen::Offscreen,
-    qa::{backend::Rune, input_log::InputLog, staged::Staged},
+    qa::{backend::Rune, input_log::InputLog},
     startup::{self, UiThread},
     test_support::{fixture, in_own_process},
 };
 
-fn passes(backend: &Rune<Windows>, kept: &Remembered<Rune<Windows>>, step: &Value) {
+fn passes(backend: &Rune, kept: &Remembered<Rune>, step: &Value) {
     let command = parse_request(&step.to_string()).expect("a step the protocol knows");
     let outcome: Outcome = now(execute(backend, kept, command));
     assert!(
@@ -38,8 +38,7 @@ fn a_launch_handed_over_opens_a_window_the_steps_reach() {
             let host = Offscreen::sized(ui, settings, SIZE).without_animations();
             host.app().open(Location::local(folder.path()));
             let log = InputLog::from_environment().expect("the input log");
-            let windows = Windows::new(ui, Staged::new(host, log.clone()), (log, SIZE));
-            let backend = Rune::on(windows);
+            let backend = Rune::new(host, log);
             now(backend.ready()).expect("the first listing");
             let documents = Location::local(folder.path().join("documents"));
             application::queue_first([Opening::Argument(documents)]);

@@ -2,16 +2,15 @@
 
 //! The command line, and the windows a launch opens.
 
-use std::{
-    env,
-    ffi::{OsStr, OsString},
-    path::PathBuf,
-    process::ExitCode,
-};
+#[cfg(any(test, feature = "qa"))]
+use std::ffi::OsStr;
+use std::{env, ffi::OsString, path::PathBuf, process::ExitCode};
 
 use strata_core::model::Location;
 use strata_desktop::tabs_session::{self, RestoredSession};
-use strata_fs::adapters::{list_archive_entries_direct, location_for_file};
+use strata_fs::adapters::list_archive_entries_direct;
+#[cfg(any(test, feature = "qa"))]
+use strata_fs::adapters::location_for_file;
 use strata_platform::single_instance::{Activation, Claim, Launch};
 use strata_preview::sandbox_helper;
 

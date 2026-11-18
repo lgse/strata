@@ -6,17 +6,15 @@
 scenario = "abandoned-extract-to-no-hijack"
 run = "columns-cancelled-password"
 package = "A13"
-status = "pending"
-reason = "scope"
-blocker = "A20: the floating Extract to chooser (line 11)"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "abandoned-extract-to-no-hijack"
 run = "columns-read-only-destination"
 package = "A13"
-status = "pending"
-reason = "scope"
-blocker = "A20: the floating Extract to chooser (line 53)"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "cancel-compression-allows-another"

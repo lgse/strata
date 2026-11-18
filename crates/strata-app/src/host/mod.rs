@@ -6,6 +6,8 @@
 use std::time::Duration;
 
 // The tests run on it, and the `--qa` mode.
+pub(crate) mod chooser_window;
+pub(crate) mod floating;
 #[cfg(any(test, feature = "qa"))]
 pub(crate) mod offscreen;
 pub(crate) mod portal;

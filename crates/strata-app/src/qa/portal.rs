@@ -17,40 +17,29 @@ use std::{
 };
 
 use strata_components::contract::EntryId;
-use strata_core::model::Location;
-use strata_platform::csd::{Backend, Csd, Policy};
 use strata_qa::{Chord, Keymap, Modifier};
 
 use super::{
     host::{Activated, Host},
     input_log::InputLog,
     staged::Staged,
+    toplevel::{ChooserParts, Placement, Toplevel},
     tree::{Node, Snapshot},
 };
 use crate::{
     App,
     chooser::{geometry::chooser_initial_dimensions, source::ChooserFileSource},
-    host::offscreen::Offscreen,
     portal::{
         ChooserRequest, Completion, PortalError,
         dbus::PortalService,
         inbox::{PortalEvent, PortalInbox},
     },
-    startup::{self, UiThread},
+    startup::UiThread,
 };
 
 /// The QA runner's screen (Xvfb at 1440x900), which the GTK chooser sizes itself against.
 const SCREEN: (i32, i32) = (1440, 900);
 const NO_CHOOSER: &str = "no chooser window is open";
-
-/// One chooser the host has open.
-struct Open {
-    root: Node,
-    token: String,
-    staged: Rc<Staged>,
-    /// Set by the chooser as its request finishes and it closes.
-    closed: Rc<Cell<bool>>,
-}
 
 pub(super) struct PortalStaged {
     ui: UiThread,
@@ -58,7 +47,7 @@ pub(super) struct PortalStaged {
     inbox: PortalInbox,
     _service: PortalService,
     context: glib::MainContext,
-    choosers: RefCell<Vec<Open>>,
+    choosers: RefCell<Vec<Toplevel>>,
     adopted: RefCell<Option<Node>>,
     opened: Cell<u64>,
     keymap: RefCell<Option<Keymap>>,
@@ -104,11 +93,11 @@ impl PortalStaged {
 
     /// Forgets the choosers that have closed.
     fn prune(&self) {
-        let closed: Vec<Open> = {
+        let closed: Vec<Toplevel> = {
             let mut choosers = self.choosers.borrow_mut();
             let (closed, open) = std::mem::take(&mut *choosers)
                 .into_iter()
-                .partition(|open| open.closed.get());
+                .partition(Toplevel::is_closed);
             *choosers = open;
             closed
         };
@@ -169,36 +158,23 @@ impl PortalStaged {
     fn present(&self, request: ChooserRequest, completion: Completion) {
         let id = self.opened.get() + 1;
         self.opened.set(id);
-        let root = format!("window-{id}");
-        let token = request.token.clone();
-        let initial = Location::local(request.initial_directory.clone());
-        let (width, height) = chooser_initial_dimensions(Some(SCREEN), request.parent_size_hint);
-        let closed = Rc::new(Cell::new(false));
-        let mut app = App::new_chooser(
-            &self.ui,
-            Csd::new(Policy::Auto.frame(), Backend::Headless),
-            startup::load_settings(),
-            (request, ChooserFileSource::new(None), None, completion),
-        );
-        if let Some(active) = app.chooser.active.as_mut() {
-            let closed = closed.clone();
-            active.close_window = Some(Box::new(move |_| closed.set(true)));
-        }
-        #[expect(clippy::cast_precision_loss, reason = "a chooser's size fits f32")]
-        let size = (width as f32, height as f32);
-        let host = Offscreen::from_app(self.ui, app, size).without_animations();
-        host.app().open(initial);
-        let staged = Rc::new(Staged::named(root.clone(), host, self.log.clone()));
-        if let Some(keymap) = self.keymap.borrow().as_ref() {
-            let _ = staged.set_layout(keymap);
-        }
-        staged.turn();
-        self.choosers.borrow_mut().push(Open {
-            root: Node(root.into()),
-            token,
-            staged,
-            closed,
-        });
+        let keymap = self.keymap.borrow();
+        let placement = Placement {
+            ui: self.ui,
+            log: &self.log,
+            keymap: keymap.as_ref(),
+            root: format!("window-{id}"),
+            size: chooser_initial_dimensions(Some(SCREEN), request.parent_size_hint),
+        };
+        let parts = ChooserParts {
+            request,
+            source: ChooserFileSource::new(None),
+            destination: None,
+            completion,
+        };
+        let opened = Toplevel::open(placement, parts);
+        drop(keymap);
+        self.choosers.borrow_mut().push(opened);
     }
 
     fn cancel(&self, token: &str) {
@@ -309,8 +285,8 @@ impl Host for PortalStaged {
         timer.destroy();
     }
 
-    fn origin(&self) -> Result<(f64, f64), String> {
-        self.adopted()?.origin()
+    fn origin(&self, node: &Node) -> Result<(f64, f64), String> {
+        self.adopted()?.origin(node)
     }
 
     async fn resize(&self, width: f32, height: f32) -> Result<(), String> {
@@ -364,7 +340,7 @@ impl Host for PortalStaged {
         self.adopted().is_ok_and(|staged| staged.activate(target))
     }
 
-    async fn scroll_to(&self, key: &str, x: f32, y: f32) -> Result<(), String> {
-        self.adopted()?.scroll_to(key, x, y).await
+    async fn scroll_to(&self, at: (&Node, &str), x: f32, y: f32) -> Result<(), String> {
+        self.adopted()?.scroll_to(at, x, y).await
     }
 }

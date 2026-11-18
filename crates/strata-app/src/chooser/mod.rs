@@ -10,6 +10,7 @@
 
 pub(crate) mod accept;
 pub(crate) mod download;
+pub(crate) mod floating;
 pub(crate) mod geometry;
 pub(crate) mod image_conversion;
 mod keys;
@@ -78,6 +79,8 @@ impl Part for ChooserDialog {
 pub(crate) struct Chooser {
     pub(crate) later: Later<App>,
     pub(crate) active: Option<ActiveChooser>,
+    /// The floating chooser a browser window opens for Copy to, Move to and Extract to.
+    pub(crate) floating: floating::Floating,
 }
 
 impl Chooser {
@@ -157,6 +160,7 @@ impl Part for Chooser {
         Self {
             later: setup.later.clone(),
             active: None,
+            floating: floating::Floating::default(),
         }
     }
 

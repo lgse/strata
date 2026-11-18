@@ -67,7 +67,7 @@ fn unused() -> App {
 /// Dispatches what GLib has ready, then applies what the browser's observers queued, and opens
 /// the windows the dispatch asked for. Runs when the helper thread says GLib has work, and in
 /// `poll`: a handler may have attached a source since, which the helper cannot know of.
-fn pump(app: &mut App, tx: &mut Tx) -> bool {
+pub(super) fn pump(app: &mut App, tx: &mut Tx) -> bool {
     shell::publish(app);
     GLIB.with(|glib| {
         if let Some(glib) = glib.get() {
@@ -81,10 +81,13 @@ fn pump(app: &mut App, tx: &mut Tx) -> bool {
 
 fn poll(app: &mut App, clock: f64, tx: &mut Tx) -> bool {
     let pumped = pump(app, tx);
-    shell::poll(app, clock, tx) | pumped
+    let polled = shell::poll(app, clock, tx) | pumped;
+    super::floating::open_requested(app);
+    polled
 }
 
-/// The helper's way into the loop: the active window's, else the first open one's.
+/// The helper's way into the loop: the active window's, else the first open one's, and the
+/// floating choosers', whose services the dispatch may have answered.
 fn notify() {
     let windows = WINDOWS
         .lock()
@@ -95,8 +98,21 @@ fn notify() {
         .find(|(id, _)| *id == active)
         .or_else(|| windows.first());
     if let Some((_, handle)) = handle {
-        handle.update_if(pump);
+        handle.update_if(|app, tx| {
+            let pumped = pump(app, tx);
+            super::floating::settle_open();
+            pumped
+        });
     }
+}
+
+/// The browser window `id`'s handle, while it is open.
+pub(super) fn handle_of(id: u64) -> Option<AppHandle<App>> {
+    let windows = WINDOWS
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let open = windows.iter().find(|(open, _)| *open == id);
+    open.map(|(_, handle)| handle.clone())
 }
 
 fn opened(id: u64, handle: AppHandle<App>) {
@@ -193,6 +209,7 @@ fn window(ui: UiThread, settings: Saved, initial: launch::Initial) -> rune::App<
     // The last write of the per-folder views, before the writer is flushed. A quit runs no
     // `on_close`, so both ask for it; it is written once.
     .on_close(|app: &mut App, _: &mut Tx| {
+        super::floating::close_with_browser(shell::window_id(app));
         folder_views::flush_at_exit(app);
         if closed(shell::window_id(app)) {
             shut_down();
@@ -235,6 +252,7 @@ fn run_initial(
     rune::set_app_id(APPLICATION_ID);
     UI.with(|cell| cell.set(ui))
         .map_err(|_| "the windows are already running on this thread".to_owned())?;
+    super::floating::bind(ui);
     let app = extend(window(ui, settings, initial));
     let glib = GlibLoop::start(glib::MainContext::default(), notify)
         .map_err(|error| format!("unable to start the GLib loop: {error}"))?;

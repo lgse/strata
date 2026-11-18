@@ -31,6 +31,7 @@ mod stage;
 mod staged;
 mod submenus;
 mod tenxer;
+mod toplevel;
 mod tree;
 mod windows;
 
@@ -51,7 +52,7 @@ use strata_core::logging::criticals;
 
 use strata_platform::single_instance::{Claim, Launch};
 
-use self::{backend::Rune, input_log::InputLog, staged::Staged, windows::Windows};
+use self::{backend::Rune, input_log::InputLog};
 use crate::{application, host::offscreen::Offscreen, launch, startup};
 
 /// What a wrong `--qa` command line prints. The release workflow fails a release binary that
@@ -105,8 +106,7 @@ fn serve(directory: &OsStr) -> Result<(), String> {
     application::attach(primary);
     let host = Offscreen::sized(ui, settings, SIZE).without_animations();
     host.app().open(location);
-    let windows = Windows::new(ui, Staged::new(host, log.clone()), (log, SIZE));
-    let backend = Rune::on(windows);
+    let backend = Rune::new(host, log);
     let commands = strata_qa::command_lines();
     block_on(&backend, strata_qa::serve(&backend, protocol, commands));
     Ok(())

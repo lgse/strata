@@ -25,12 +25,11 @@ pub(super) fn is_entry_key(key: &str) -> bool {
 pub(crate) struct Node(pub(super) Rc<str>);
 
 impl Node {
-    /// The root of the window the node is in: the first key of its path.
-    pub(super) fn window(&self) -> Node {
-        match self.0.split_once('/') {
-            Some((root, _)) => Node(root.into()),
-            None => self.clone(),
-        }
+    /// Whether this node is `root` or stands under it.
+    pub(super) fn is_within(&self, root: &Node) -> bool {
+        self.0
+            .strip_prefix(&*root.0)
+            .is_some_and(|rest| rest.is_empty() || rest.starts_with('/'))
     }
 }
 
