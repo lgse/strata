@@ -168,6 +168,12 @@ impl Situation {
             .is_some_and(|path| path.split('/').any(|seg| key_within_part(seg, part)))
     }
 
+    /// Whether the header has the keyboard, one of its buttons or the location bar's crumbs:
+    /// GTK's `top_bar.has_focus()` (`src/ui/top_bar_navigation.rs`).
+    pub(crate) fn in_top_bar(&self) -> bool {
+        self.within("header") || self.within("location")
+    }
+
     /// What owns typing where the press lands, for the aliases (`context_of` in
     /// `src/ui/keys/alias.rs`): a text field, a modal layer's among them, or a popover.
     pub(super) fn typing(&self) -> bool {

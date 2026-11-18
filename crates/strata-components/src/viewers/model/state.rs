@@ -132,6 +132,8 @@ pub struct ModelLabels {
     pub stage: fn(Stage) -> String,
     pub encoding: fn(Encoding) -> String,
     pub triangles: fn(usize) -> String,
+    /// The eyebrow over the title: the file's place among the model files around it.
+    pub position: fn(Position) -> String,
 }
 
 impl Default for ModelLabels {
@@ -173,6 +175,7 @@ impl Default for ModelLabels {
                 1 => "1 triangle".into(),
                 n => format!("{} triangles", grouped(n)),
             },
+            position: Position::caption,
         }
     }
 }

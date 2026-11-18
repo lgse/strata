@@ -31,8 +31,10 @@ mod keys;
 mod labels;
 mod layout;
 mod load;
+mod model;
 mod pdf;
 mod raw;
+mod route;
 mod session;
 mod sheet;
 pub(crate) mod viewer;
@@ -59,6 +61,7 @@ use crate::{
 pub(crate) struct Preview {
     drawer: DrawerState,
     viewer: Viewer,
+    detached: viewer::Detached,
     raw: raw::RawSection,
     header: HeaderInfo,
     loader: Loader,
@@ -165,6 +168,7 @@ impl Part for Preview {
         Self {
             drawer,
             viewer: Viewer::Empty,
+            detached: viewer::Detached::default(),
             raw: raw::RawSection::default(),
             header: HeaderInfo::default(),
             loader,
@@ -217,7 +221,8 @@ impl Part for Preview {
         let viewer = app.preview.viewer.poll(clock, &app.look, tx);
         let archive = viewer::tick_archive_if_active(app, tx);
         let pdf = pdf::poll(app, clock, tx);
-        blocks | viewer | archive | pdf | lit_changed | band_synced | msg_focus
+        let route = route::poll(app, clock, tx);
+        blocks | viewer | archive | pdf | route | lit_changed | band_synced | msg_focus
     }
 
     fn switched(app: &mut App, tx: &mut Tx) {

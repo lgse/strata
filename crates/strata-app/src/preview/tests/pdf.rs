@@ -5,100 +5,48 @@
 //! gone ignored; and the zoom reset read from the key map at the window's stage, ahead of the
 //! text size.
 
-use std::{
-    cell::{Cell, RefCell},
-    io::Cursor,
-    rc::Rc,
-};
-
 use rune::{Key, Mods, Tx};
 use strata_core::model::{FileEntry, Location};
 use strata_desktop::settings::{KeymapOverrides, TextSize};
-use strata_fs::services::{
-    LoadHandle, Preview, PreviewContent, PreviewEvent, PreviewProvider, PreviewRequest,
-};
+use strata_fs::services::PreviewContent;
 
-use super::{super::pdf, wait_for_code_preview};
+use super::{
+    super::pdf,
+    provider::{Recorded, install, png},
+    wait_for_code_preview,
+};
 use super::{MODULE, disable_auto_preview, focus_view, listed, press, select, space};
 use crate::{
     App, shell,
     test_support::{PATIENCE, hosted, hosted_after},
 };
 
-/// A request the fake provider was handed: what it asked, how to answer, and whether its load
-/// was dropped before an answer.
-struct Asked {
-    request: PreviewRequest,
-    emit: Rc<dyn Fn(PreviewEvent)>,
-    answered: Rc<Cell<bool>>,
-    dropped_unanswered: Rc<Cell<bool>>,
-}
-
-/// A provider that keeps every request for the test to answer.
-#[derive(Clone, Default)]
-struct Pages(Rc<RefCell<Vec<Asked>>>);
-
-impl PreviewProvider for Pages {
-    fn load(&self, request: PreviewRequest, emit: Rc<dyn Fn(PreviewEvent)>) -> LoadHandle {
-        let answered = Rc::new(Cell::new(false));
-        let dropped_unanswered = Rc::new(Cell::new(false));
-        let (seen, dropped) = (answered.clone(), dropped_unanswered.clone());
-        self.0.borrow_mut().push(Asked {
-            request,
-            emit,
-            answered,
-            dropped_unanswered,
-        });
-        LoadHandle::new(move || dropped.set(!seen.get()))
-    }
-}
-
-impl Pages {
-    fn count(&self) -> usize {
-        self.0.borrow().len()
-    }
-
-    /// Answers request `index` with its page rendered at the width it asked.
-    fn answer(&self, index: usize) -> usize {
-        let asked = self.0.borrow();
-        let asked = &asked[index];
-        let width = u32::try_from(asked.request.media_size.width).expect("a width");
-        asked.answered.set(true);
-        (asked.emit)(PreviewEvent::Ready(Preview {
-            request_id: asked.request.id,
-            entry: asked.request.entry.clone(),
-            content_type: "application/pdf".to_owned(),
-            content: PreviewContent::Pdf {
-                png: page_png(width),
-                page: asked.request.pdf_page,
-                pages: PAGES,
-                text_layer: None,
-            },
-        }));
-        usize::try_from(asked.request.pdf_page).expect("a page")
-    }
-
-    fn dropped_unanswered(&self, index: usize) -> bool {
-        self.0.borrow()[index].dropped_unanswered.get()
-    }
-}
-
 const PAGES: i32 = 30;
+
+/// Answers request `index` with its page rendered at the width it asked, and says which page.
+fn answer_page(pages: &Recorded, index: usize) -> usize {
+    let request = pages.request(index);
+    let width = u32::try_from(request.media_size.width).expect("a width");
+    pages.answer(
+        index,
+        PreviewContent::Pdf {
+            png: page_png(width),
+            page: request.pdf_page,
+            pages: PAGES,
+            text_layer: None,
+        },
+    );
+    usize::try_from(request.pdf_page).expect("a page")
+}
 
 /// A blank page `width` pixels wide, Letter-shaped.
 fn page_png(width: u32) -> Vec<u8> {
-    let height = width * 11 / 8;
-    let page = image::RgbaImage::from_pixel(width, height, image::Rgba([255, 255, 255, 255]));
-    let mut png = Cursor::new(Vec::new());
-    image::DynamicImage::ImageRgba8(page)
-        .write_to(&mut png, image::ImageFormat::Png)
-        .expect("a PNG");
-    png.into_inner()
+    png(width, width * 11 / 8)
 }
 
 /// Opens the preview on `todo.txt`, then shows a PDF of [`PAGES`] pages in it, opened from a
 /// small first page, with its later pages asked of `pages`.
-fn show_pdf(host: &mut crate::host::offscreen::Offscreen, pages: &Pages) -> tempfile::TempDir {
+fn show_pdf(host: &mut crate::host::offscreen::Offscreen, pages: &Recorded) -> tempfile::TempDir {
     let folder = listed(host);
     disable_auto_preview(host);
     select(host, &Location::local(folder.path().join("todo.txt")));
@@ -109,10 +57,9 @@ fn show_pdf(host: &mut crate::host::offscreen::Offscreen, pages: &Pages) -> temp
     folder
 }
 
-fn open_pdf(host: &mut crate::host::offscreen::Offscreen, pages: &Pages) {
-    let pages = pages.clone();
+fn open_pdf(host: &mut crate::host::offscreen::Offscreen, pages: &Recorded) {
+    install(host, pages);
     host.runtime().update(move |app: &mut App, _: &mut Tx| {
-        app.preview.loader.set_provider(Rc::new(pages));
         let entry: FileEntry = app.preview.current.clone().expect("a previewed file");
         app.preview.viewer = pdf::viewer(entry, (&page_png(80), 0, PAGES), None);
     });
@@ -142,7 +89,7 @@ fn pages_render_one_at_a_time_and_stale_or_unwanted_ones_are_dropped() {
         MODULE,
         "pdf::pages_render_one_at_a_time_and_stale_or_unwanted_ones_are_dropped",
         |mut host| {
-            let pages = Pages::default();
+            let pages = Recorded::default();
             let _folder = show_pdf(&mut host, &pages);
             assert!(
                 host.run_until(PATIENCE, |_| pages.count() == 1),
@@ -153,8 +100,8 @@ fn pages_render_one_at_a_time_and_stale_or_unwanted_ones_are_dropped() {
             }
             assert_eq!(pages.count(), 1, "one render at a time");
 
-            let page = pages.answer(0);
-            let width = u32::try_from(pages.0.borrow()[0].request.media_size.width).unwrap();
+            let page = answer_page(&pages, 0);
+            let width = u32::try_from(pages.request(0).media_size.width).unwrap();
             let landed = host.run_until(PATIENCE, |host| {
                 held(host, page).is_some_and(|[w, _]| w == width)
             });
@@ -175,7 +122,7 @@ fn pages_render_one_at_a_time_and_stale_or_unwanted_ones_are_dropped() {
 
             let last = pages.count() - 1;
             open_pdf(&mut host, &pages);
-            let stale = pages.answer(last);
+            let stale = answer_page(&pages, last);
             for _ in 0..20 {
                 host.turn();
             }
@@ -222,7 +169,7 @@ fn the_pdf_zoom_reset_follows_the_key_map_ahead_of_the_text_size() {
                 cmd: true,
                 ..Mods::default()
             };
-            let _folder = show_pdf(&mut host, &Pages::default());
+            let _folder = show_pdf(&mut host, &Recorded::default());
 
             zoom_in(&mut host);
             press(&mut host, Key::Command('e'), ctrl);
