@@ -24,6 +24,15 @@ pub(super) fn is_entry_key(key: &str) -> bool {
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub(crate) struct Node(pub(super) Rc<str>);
 
+impl Node {
+    /// Whether this node is `root` or stands under it.
+    pub(super) fn is_within(&self, root: &Node) -> bool {
+        self.0
+            .strip_prefix(&*root.0)
+            .is_some_and(|rest| rest.is_empty() || rest.starts_with('/'))
+    }
+}
+
 /// What `remember` holds of a node: its path, and the role it had, so a different element
 /// that later stands at the same place is not taken for it; and for an entry's row, the
 /// browser's replacements as of then (`qa::replaced`), which the backend fills in.

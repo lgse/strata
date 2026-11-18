@@ -14,13 +14,8 @@
 //! - **Destination reveal.** Both compression ([`crate::compress`]) and extraction funnel their
 //!   completion follow-ups through [`Archive`], keeping foreground and docked destination state
 //!   disjoint and clearing abandoned `Extract to` targets on cancellation or failure.
-//!
-//! Left out for [A20]:
-//!
-//! - **Opening the floating `Extract to` folder chooser** (`extract-to` menu row); [`extract_to_chosen`]
-//!   is ready for A20's chooser callback.
-//!
-//! [A20]: ../../../docs/rune/parity/packages/A20.md
+//! - **Extract to.** The `extract-to` menu row opens the floating chooser
+//!   ([`crate::chooser::floating`]), whose answer calls [`extract_to_chosen`].
 
 #[cfg(test)]
 mod tests;
@@ -121,7 +116,12 @@ impl Part for Archive {
         })
     }
 
-    const COMMANDS: &'static [Action<App>] = &[Action::new("extract", extract_here)];
+    const COMMANDS: &'static [Action<App>] = &[
+        Action::new("extract", extract_here),
+        // Opens the floating chooser (`crate::chooser::floating`), which calls
+        // `extract_to_chosen` with the folder chosen.
+        Action::new("extract-to", crate::chooser::floating::extract_to),
+    ];
 }
 
 fn shows_columns(app: &App) -> bool {
@@ -192,13 +192,6 @@ pub(crate) fn extract_entry_to(
 
 /// Starts extraction into `destination` chosen in the `Extract to` picker, navigating there once
 /// the archive finishes extracting (`show_extract_to_dialog` in `src/ui/browser/archive.rs`).
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "wired when A20 lands the floating Extract to chooser"
-    )
-)]
 pub(crate) fn extract_to_chosen(
     app: &mut App,
     entry: FileEntry,

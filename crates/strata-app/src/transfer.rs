@@ -34,6 +34,7 @@ use crate::{
     slots::{Heard, Later, Listener, Part, Place, Scope, Setup},
 };
 
+mod chosen;
 mod collisions;
 mod dock;
 pub(crate) mod reveal;
@@ -42,6 +43,7 @@ mod tenxer;
 mod tests;
 mod words;
 
+pub(crate) use chosen::transfer_to_chosen;
 pub(crate) use tenxer::{paste_preferring, start_in_place_transfer};
 
 #[derive(Clone, PartialEq, Eq)]
@@ -58,6 +60,9 @@ pub(crate) struct Transfer {
     ops: dock::Ops,
     preparing: Vec<PreparingKey>,
     pending_reveal: Option<reveal::PendingReveal>,
+    /// Where a chosen transfer goes once it finishes, unless its reveal went there first
+    /// (`chosen`).
+    pending_navigate: Option<Location>,
 }
 
 /// Mounts the blocking progress dialog in `Slot::Dialogs` while `Transfer` mounts the
@@ -74,6 +79,7 @@ impl Part for Transfer {
             ops: dock::Ops::default(),
             preparing: Vec::new(),
             pending_reveal: None,
+            pending_navigate: None,
         }
     }
 
@@ -105,6 +111,9 @@ impl Part for Transfer {
             &[PASTE.ignoring(Modifiers::empty())],
         )
         .when(|_, at| !at.text() && !at.within("preview"))]),
+        // The entry menu's rows, which open the floating chooser (`crate::chooser::floating`).
+        Action::new("move-to", crate::chooser::floating::move_to),
+        Action::new("copy-to", crate::chooser::floating::copy_to),
         Action::new("duplicate", duplicate)
             .command(DUPLICATE)
             .keys(&[

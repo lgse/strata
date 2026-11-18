@@ -58,6 +58,18 @@ fn params(options: Variant) -> CallParams {
     unpack_call(&call(handle(HANDLE), "", "".to_variant(), options)).expect("well-formed call")
 }
 
+/// What a request shows: its title, its accept label, whether it is modal, the folder it opens
+/// on and its kind.
+fn shown(request: &ChooserRequest) -> (&str, &str, bool, &std::path::Path, &ChooserKind) {
+    (
+        request.title.as_str(),
+        request.accept_label.as_str(),
+        request.modal,
+        request.initial_directory.as_path(),
+        &request.kind,
+    )
+}
+
 fn is_invalid<T>(result: &Result<T, PortalError>) -> bool {
     matches!(result, Err(PortalError::InvalidArgument(_)))
 }
@@ -71,10 +83,16 @@ fn a_call_unpacks_its_handle_parent_and_title() {
         options(&[]),
     ))
     .expect("well-formed call");
-    assert_eq!(parsed.token, HANDLE);
-    assert_eq!(parsed.app_id, "org.example.App");
-    assert_eq!(parsed.parent.as_deref(), Some("wayland:abc"));
-    assert_eq!(parsed.title, "Pick");
+    let unpacked = (
+        parsed.token.as_str(),
+        parsed.app_id.as_str(),
+        parsed.parent.as_deref(),
+        parsed.title.as_str(),
+    );
+    assert_eq!(
+        unpacked,
+        (HANDLE, "org.example.App", Some("wayland:abc"), "Pick")
+    );
     assert_eq!(params(options(&[])).parent, None, "an empty parent is none");
 }
 
@@ -114,18 +132,16 @@ fn a_malformed_call_is_an_invalid_argument() {
 #[test]
 fn open_defaults_match_the_portal_contract() {
     let request = run_async(build_open_request(params(options(&[])))).expect("open request");
-    assert_eq!(request.token, HANDLE);
-    assert!(request.modal);
-    assert_eq!(request.title, "Open Files");
-    assert_eq!(request.accept_label, "Open");
-    assert_eq!(request.initial_directory, default_save_folder());
+    let folder = default_save_folder();
+    let open = ChooserKind::Open {
+        directory: false,
+        multiple: false,
+    };
     assert_eq!(
-        request.kind,
-        ChooserKind::Open {
-            directory: false,
-            multiple: false
-        }
+        shown(&request),
+        ("Open Files", "Open", true, folder.as_path(), &open)
     );
+    assert_eq!(request.token, HANDLE);
     assert!(request.filters.is_empty() && request.choices.is_empty());
 }
 
@@ -192,20 +208,18 @@ fn open_options_keep_filters_choices_and_flags_in_order() {
     ]))))
     .expect("open request");
     let ids: Vec<&str> = request.choices.iter().map(|c| c.id.as_str()).collect();
+    let open = ChooserKind::Open {
+        directory: true,
+        multiple: true,
+    };
     assert_eq!(
-        (request.modal, request.accept_label.as_str(), &request.kind),
-        (
-            false,
-            "Attach",
-            &ChooserKind::Open {
-                directory: true,
-                multiple: true
-            }
-        )
+        shown(&request),
+        ("Open Files", "Attach", false, folder.path(), &open)
     );
-    assert_eq!(request.initial_directory, folder.path());
-    assert_eq!(request.current_filter.as_ref(), Some(&filters[1]));
-    assert_eq!(request.filters, filters);
+    assert_eq!(
+        (&request.filters, request.current_filter.as_ref()),
+        (&filters, Some(&filters[1]))
+    );
     assert_eq!(
         (ids, request.choices[1].pairs.len()),
         (vec!["readonly", "encoding"], 2)
@@ -328,14 +342,12 @@ fn save_file_takes_a_bounded_current_name() {
         ),
     ]))))
     .expect("save request");
-    assert_eq!(request.title, "Save File");
-    assert_eq!(request.accept_label, "Save");
-    assert_eq!(request.initial_directory, folder.path());
+    let save = ChooserKind::SaveFile {
+        current_name: Some(OsString::from("report.txt")),
+    };
     assert_eq!(
-        request.kind,
-        ChooserKind::SaveFile {
-            current_name: Some(OsString::from("report.txt"))
-        }
+        shown(&request),
+        ("Save File", "Save", true, folder.path(), &save)
     );
     let long = run_async(build_save_file_request(params(options(&[(
         "current_name",

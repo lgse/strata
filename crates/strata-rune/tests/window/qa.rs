@@ -127,3 +127,94 @@ fn the_qa_mode_drives_a_real_window_through_the_compositor() {
     passes(&app, &json!({ "wait": { "entry": "inside.txt" } }));
     assert!(!folder.join("beta").join("inside.txt").exists());
 }
+
+/// How many of `pid`'s windows in sway's `tree` are titled `title`.
+fn windows_titled(tree: &Value, pid: u32, title: &str) -> usize {
+    let own = tree["pid"].as_u64() == Some(u64::from(pid)) && tree["name"] == title;
+    let nested = ["nodes", "floating_nodes"]
+        .iter()
+        .filter_map(|key| tree[*key].as_array())
+        .flatten()
+        .map(|node| windows_titled(node, pid, title))
+        .sum::<usize>();
+    usize::from(own) + nested
+}
+
+/// Waits until the window `id` has the keyboard or asks for it: on Wayland Rune can only ask
+/// (`WindowHandle::focus` with no activation token), which sway shows as urgent.
+fn wait_asking_for_attention(s: &Session, id: i64) {
+    let deadline = std::time::Instant::now() + crate::support::timeout();
+    loop {
+        let node = node_of(&s.tree(), id);
+        let asks = node
+            .as_ref()
+            .is_some_and(|node| node["focused"] == true || node["urgent"] == true);
+        if asks {
+            return;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the chooser was neither focused nor urgent: {node:#?}"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+}
+
+/// The node of sway's `tree` with the container id `id`.
+fn node_of(tree: &Value, id: i64) -> Option<Value> {
+    if tree["id"].as_i64() == Some(id) {
+        return Some(tree.clone());
+    }
+    ["nodes", "floating_nodes"]
+        .iter()
+        .filter_map(|key| tree[*key].as_array())
+        .flatten()
+        .find_map(|node| node_of(node, id))
+}
+
+/// Opens the entry menu on `notes.txt` and chooses "Copy to…" in it.
+fn ask_to_copy(app: &Proc) {
+    passes(
+        app,
+        &json!({ "click": { "entry": "notes.txt" }, "button": 3 }),
+    );
+    passes(app, &json!({ "wait": { "menu_items": {} } }));
+    passes(app, &json!({ "click": { "menu_item": "Copy to…" } }));
+    passes(app, &json!({ "wait": { "menu_items": null } }));
+}
+
+/// The floating Copy to chooser is a window of its own, which Rune cannot make transient for
+/// the browser (Rune packet entry 23). So the host does what GTK's transient chooser gets from
+/// its parent: asking again brings it forward (`DestinationLease::acquire`), as far as Rune can
+/// (on Wayland, an attention request), and closing the browser closes it (`bind_host_parent`),
+/// and with it the process.
+#[test]
+#[ignore = "needs a private session: mise run test-platform"]
+fn the_floating_chooser_comes_forward_and_closes_with_its_browser() {
+    let s = Session::start();
+    let folder = s.runtime_dir().join("home").join("Projects");
+    std::fs::create_dir_all(folder.join("alpha")).expect("folder");
+    std::fs::write(folder.join("notes.txt"), "notes").expect("file");
+    let mut app = serve(&s, &folder);
+    let pid = app.pid();
+    let browser = s.wait_window_where("the browser window", |w| {
+        w.pid == pid && w.title == "Projects — Strata"
+    });
+
+    ask_to_copy(&app);
+    let chooser = s.wait_window_where("the Copy to chooser, in front", |w| {
+        w.pid == pid && w.title == "Copy to" && w.focused
+    });
+
+    s.focus(&browser);
+    ask_to_copy(&app);
+    wait_asking_for_attention(&s, chooser.id);
+    let choosers = windows_titled(&s.tree(), pid, "Copy to");
+    assert_eq!(choosers, 1, "asking again opens no second chooser");
+
+    s.sway_command(&format!("[con_id={}] kill", browser.id));
+    assert!(
+        app.wait_exit().success(),
+        "the chooser closes with its browser, and the process exits"
+    );
+}

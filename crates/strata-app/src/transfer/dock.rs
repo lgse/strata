@@ -260,6 +260,9 @@ pub(super) fn on_transfer_started(app: &mut App, start: StartedTransfer, tx: &mu
         .backgroundable
         .filter(|req_id| app.browser.background_file_operation(*req_id));
     app.transfer.ops.just_docked = docked;
+    if docked.is_some() {
+        super::chosen::forget_navigation(app);
+    }
     let op_id = app.transfer.ops.allocate_id();
     let placement = if docked.is_some() {
         Placement::Dock
@@ -372,6 +375,9 @@ pub(super) fn on_transfer_completed(
     bg: Option<OperationRequestId>,
     tx: &mut Tx,
 ) -> bool {
+    if bg.is_none() {
+        super::chosen::navigate_if_unrevealed(app);
+    }
     let Some(tracked) = app.transfer.ops.take_tracked(bg) else {
         return false;
     };
@@ -522,6 +528,7 @@ pub(super) fn on_operation_failed(
     }
     if !from_background {
         app.transfer.pending_reveal = None;
+        super::chosen::forget_navigation(app);
         if archive::on_operation_failed(app, outcome.password_failure, tx) {
             return true;
         }
@@ -540,6 +547,7 @@ pub(super) fn on_operation_cancelled(
     let from_background = bg.is_some() || tracked.as_ref().is_some_and(|op| op.docked);
     if !from_background {
         app.transfer.pending_reveal = None;
+        super::chosen::forget_navigation(app);
         archive::abandon_follow_ups(app);
     }
     if let Some(tracked) = tracked {
