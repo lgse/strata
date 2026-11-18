@@ -223,6 +223,12 @@ closed issue is not a fixed finding: the state given here is the finding's.
   `./scripts/quality.sh all --jobs 4` (shard 0, lane 3; the other three lanes passed) at
   `1ba2778c1909325066429fdf368128030d2ddea1`, and passed 3 times of 3 alone under `./scripts/test-headless.py` (7.7 s each).
   That pull request changes no `src/`.
+- **Sighting on A11's Slice 5b** (`feat/2143-a11-highlight-chords-close`, at `97d5e0e8e`): the
+  eleventh, `unowned_release_binary_keeps_in_place_updates` (`tests.rs:258`, `left: Pacman`),
+  failed in `./scripts/quality.sh all --jobs 4` and again in the one rerun of
+  `./scripts/quality.sh test --jobs 4` (shard 0, lane 3, 79 of 80 each time), as on #2548, and
+  passed 3 times of 3 alone under `./scripts/test-headless.py`. The branch changes no `src/`
+  and no shared crate. Twice on one pull request: not chased further, by the rule above.
 
 ### #2176: a GTK critical after a file appears during a rename on a multiple selection
 
