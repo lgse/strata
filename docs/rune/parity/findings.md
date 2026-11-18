@@ -2581,7 +2581,7 @@ sequence only together with the alphabet's version, so the version is part of th
   holds it, and fails without it.
 - **Concerns:** the sequence, confirmed 3 of 3, is unparked in `tests/qa/fuzz/corpus/drag/`, and
   agrees 6 of 6 replays GTK against Rune. `drag v2` drags only rows not selected.
-- **State:** fixed on `strata-next` in A19's closing follow-up.
+- **State:** fixed on `strata-next` by [#2601](https://github.com/lgse/strata/pull/2601).
 
 ### #2593: opening again a folder that was empty gives GTK's keyboard to the entry it gained, Rune's to none
 
