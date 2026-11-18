@@ -1,7 +1,7 @@
 diff --git a/crates/strata-app/src/shell.rs b/crates/strata-app/src/shell.rs
 --- a/crates/strata-app/src/shell.rs
 +++ b/crates/strata-app/src/shell.rs
-@@ -1210,7 +1210,9 @@
+@@ -1210,6 +1210,8 @@
              if !focused && app.window.held != rune::Mods::default() {
                  modifiers(app, rune::Mods::default(), tx);
              }
@@ -11,4 +11,3 @@ diff --git a/crates/strata-app/src/shell.rs b/crates/strata-app/src/shell.rs
 +            }
          })
  }
- 
