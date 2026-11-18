@@ -254,6 +254,7 @@ fn window(ui: UiThread, settings: Saved, initial: launch::Initial) -> rune::App<
     })
     .on_modifiers(shell::modifiers)
     .on_focus(focused)
+    .on_visibility(shell::window_shown)
     // Rune's own flags (`--snap`, `--tree`) are not this binary's.
     .args(Vec::new())
     .window_options(csd::window_options(frame, WindowOptions::default()));

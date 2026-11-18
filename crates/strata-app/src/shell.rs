@@ -49,6 +49,7 @@ use crate::{
 
 mod held;
 mod preferences;
+mod presence;
 mod siblings;
 pub(crate) mod tabs;
 
@@ -59,6 +60,7 @@ pub(crate) use preferences::{
     language_restart_required, reload_omarchy, sync_default_preferences, sync_folder_sorts,
     sync_freshness, sync_live_preferences, themes,
 };
+pub(crate) use presence::window_shown;
 pub(crate) use siblings::{share_settings, window_id, window_later};
 use tabs::{Here, Tabs};
 
@@ -108,6 +110,8 @@ pub(crate) struct Window {
     csd: Csd,
     /// Whether the window has keyboard focus.
     active: bool,
+    /// Whether the window is on screen ([`presence`]).
+    on_screen: bool,
     /// The modifier keys held down in the window ([`held`]).
     held: rune::Mods,
     /// What the key catalog reads of the settings at each press and label.
@@ -147,6 +151,8 @@ pub(super) struct TabAttach<'a> {
     pub(super) events: &'a Inbox<App>,
     pub(super) folder_views: &'a folder_views::Kept,
     pub(super) power_saver: bool,
+    /// The window's presence, which the new tab's browser starts with ([`presence`]).
+    pub(super) presence: strata_fs::app::Presence,
 }
 
 /// Puts a tab's browser under its parts: it serves the view the tab shows, every part's
@@ -186,6 +192,7 @@ fn attach(
         setup.settings.watch_network_folders,
         ctx.power_saver,
     );
+    presence::give(browser, ctx.presence);
     grouped
 }
 
@@ -579,6 +586,8 @@ impl FirstTab {
                 events,
                 folder_views: &folder_views,
                 power_saver,
+                // A window starts with the keyboard, as `Window::build` says it does.
+                presence: strata_fs::app::Presence::Focused,
             },
             (browser, registry),
             &tab,
@@ -624,6 +633,7 @@ impl Window {
             title: title_for(None),
             csd,
             active: true,
+            on_screen: true,
             held: rune::Mods::default(),
             keys,
             labels: Labels::translated(),
@@ -1207,6 +1217,7 @@ pub(crate) fn view(app: &App, cx: &mut Cx<App>) -> El {
         .on_wheel(crate::appearance::wheel::heard)
         .on_window_focus(|app: &mut App, focused, tx: &mut Tx| {
             app.window.active = focused;
+            presence::follow(app);
             if !focused && app.window.held != rune::Mods::default() {
                 modifiers(app, rune::Mods::default(), tx);
             }

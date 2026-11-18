@@ -85,6 +85,14 @@ impl Staged {
         stage.settle();
     }
 
+    /// Tells the window it took the keyboard focus, or lost it, as a compositor does when another
+    /// window is activated, then settles.
+    pub(super) fn window_focus(&self, focused: bool) {
+        let stage = &mut *self.stage.borrow_mut();
+        stage.host().runtime().window_focus(focused);
+        stage.settle();
+    }
+
     /// Tells Rune and the shell which modifiers are down, as a keyboard does before the key
     /// they modify. The Columns adapter reads them to tell a Shift range from a move.
     fn show_modifiers(&self, stage: &mut Stage) {
