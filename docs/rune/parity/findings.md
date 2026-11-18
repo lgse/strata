@@ -2534,7 +2534,8 @@ sequence only together with the alphabet's version, so the version is part of th
 
 ### #2587: a 10xer move keeps a selection a revisit restored, where GTK's first move drops it
 
-- **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2587), filed on
+- **Code:** `oracle`, by the owner's ruling of 2026-11-17 ([`owner.md`](owner.md#ruled));
+  filed as a `divergence`. [Issue](https://github.com/lgse/strata/issues/2587), filed on
   2026-11-17 as the finding's reference and closed at once: its state is kept here.
 - **Seen:** by [A11](packages/A11.md)'s `tenxer` alphabet (v3, never merged), shrunk GTK
   against Rune to 13 steps and confirmed 3 of 3 (`fuzz-tenxer-v3-0000000000000003`): Space
@@ -2546,6 +2547,9 @@ sequence only together with the alphabet's version, so the version is part of th
   with no fill. Without 10xer a move replaces the selection on both targets.
 - **Concerns:** the views' provisional mark, which [A1](packages/A1.md) and
   [A2](packages/A2.md) own with C1, and 10xer's moves. No ledger run reads it. The sequence is
-  parked in `tests/qa/fuzz/corpus/tenxer/`; the alphabet leaves out `h` from version 4.
-- **State:** open. A fix marks a restored fill that keeps its load cursor provisional, which
-  changes the shared mark the browser-view invariant compares; recorded for A2 to rule on.
+  parked in `tests/qa/fuzz/corpus/tenxer/`. The alphabet left out `h` in version 4; from
+  version 5 `h` leaves only a folder with nothing selected, so a revisit restores no
+  selection.
+- **State:** ruled by the owner, 2026-11-17: GTK's fault. A fill the user made, left and came
+  back to is still the user's, and 10xer's moves keep the marks elsewhere; Rune keeps its
+  behaviour. A fix for GTK, if anyone takes it up, lands on `main`.
