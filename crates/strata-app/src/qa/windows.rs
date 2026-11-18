@@ -19,13 +19,11 @@
 //! QA process is its GApplication's (`crate::application`, claimed as a service, so that its
 //! own launch opens nothing: its folder is the run's). A `launch` step's `strata-rune` hands its
 //! arguments over and exits, and each argument becomes a browser window here, offscreen like the
-//! first, sharing its settings, as `crate::host::windowed` opens a real one ([A21]). Their trees
+//! first, sharing its settings, as `crate::host::windowed` opens a real one (A21). Their trees
 //! stand beside the browser's under roots of their own (`window-2`, `window-3`…), behind it:
 //! the steps act on the run's window, which keeps the keys, the pointer and the focus, while a
 //! target `within` another's toplevel (`other_window`, `some_window`) finds its nodes, and an
 //! `activate` aimed at one presses it there.
-//!
-//! [A21]: ../../../../docs/rune/parity/packages/A21.md
 
 use std::{
     cell::{Cell, RefCell},
