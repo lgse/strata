@@ -2317,6 +2317,9 @@ sequence only together with the alphabet's version, so the version is part of th
   `32b544323` (rune offscreen 673 of 675), at line 11 again. Alone on Rune it then passed three
   times in a row. #2583 changes drops from other applications; this run cuts, pastes and undoes
   with keys.
+- **Seen again** in [A16](packages/A16.md)'s [#2585](https://github.com/lgse/strata/pull/2585)
+  review gate at `6501200fd`, at the same line (Rune offscreen 676 of 677). Alone it then passed
+  3 of 3. The pull request changes the preview's viewers and the media keys' guard, not undo.
 - **State:** open, unowned.
 
 ### #2570: 10xer's find and filter highlights are not drawn in Rune's rows
