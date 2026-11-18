@@ -82,12 +82,14 @@ fn results_label(app: &App, rcx: &RowCx<'_>) -> El {
             .shrink()
             .min_w(0.0)
     };
+    let spans = rcx.state.marks.name_matches.spans(rcx.look);
     let name = line(
         rcx.entry.name.to_owned(),
         LABEL,
         kit.ty.ui_compact,
         kit.c.text_base,
-    );
+    )
+    .spans(spans);
     let mut label = col().shrink().min_w(0.0).child(name);
     if let Some(path) = crate::filter::pane::path_of(app, rcx.entry.id) {
         // Keyed as a name label in a box of its own, so the QA harness reads it as GTK's
