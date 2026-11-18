@@ -203,17 +203,20 @@ fn on_intent(app: &mut App, intent: PdfIntent, _: &mut Tx) {
     }
 }
 
+/// The PDF view's state, or, for a handler Rune queued before the viewer changed, the
+/// preview's detached one (`viewer::Detached`).
 fn pdf_ref(app: &App) -> &PdfState {
     match &app.preview.viewer {
         Viewer::Pdf(pdf) => &pdf.state,
-        _ => unreachable!("PdfView built only while Viewer::Pdf is active"),
+        _ => &app.preview.detached.pdf,
     }
 }
 
 fn pdf_mut(app: &mut App) -> &mut PdfState {
-    match &mut app.preview.viewer {
+    let preview = &mut app.preview;
+    match &mut preview.viewer {
         Viewer::Pdf(pdf) => &mut pdf.state,
-        _ => unreachable!("PdfView mutated only while Viewer::Pdf is active"),
+        _ => &mut preview.detached.pdf,
     }
 }
 

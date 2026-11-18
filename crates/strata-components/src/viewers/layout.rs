@@ -46,7 +46,9 @@ pub struct Position {
 }
 
 impl Position {
-    /// Strata's caption: "2 of 4 in folder", or "2 of 4 in results".
+    /// Strata's caption in English: "2 of 4 in folder", or "2 of 4 in results". The views'
+    /// labels take a host's translated caption in its place (`ModelLabels::position`,
+    /// `RouteLabels::position`).
     pub fn caption(self) -> String {
         let place = if self.results { "results" } else { "folder" };
         format!("{} of {} in {place}", self.index, self.count)

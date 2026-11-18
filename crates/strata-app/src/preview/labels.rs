@@ -8,7 +8,10 @@ use strata_components::{
     document_view::DocumentLabels,
     preview_drawer::DrawerLabels,
     sheet_grid::SheetLabels,
-    viewers::archive::{ArchiveLabels, PromptLabels},
+    viewers::{
+        archive::{ArchiveLabels, PromptLabels},
+        layout::Position,
+    },
 };
 use strata_core::i18n::{count, file_size, integer, tr};
 use strata_desktop::keys::{
@@ -139,4 +142,50 @@ pub(super) fn archive_prompt() -> PromptLabels {
     labels.placeholder = tr("Password");
     labels.unlock = tr("Unlock");
     labels
+}
+
+/// GTK's `ListingPosition::caption`: "2 of 4 in folder", or "in results".
+pub(super) fn position_caption(position: Position) -> String {
+    let (at, of) = (
+        integer(position.index as u64),
+        integer(position.count as u64),
+    );
+    if position.results {
+        rust_i18n::t!(
+            "%{position} of %{count} in results",
+            position = at,
+            count = of
+        )
+    } else {
+        rust_i18n::t!(
+            "%{position} of %{count} in folder",
+            position = at,
+            count = of
+        )
+    }
+    .into_owned()
+}
+
+/// `entry`'s place among the files of its kind (`kind`) the previewed column lists, as GTK
+/// counts them (`model_listing_position`, `listing_position`): in the listing's order, the
+/// hidden files left out while they are hidden.
+pub(super) fn listing_position(
+    app: &crate::App,
+    entry: &strata_core::model::FileEntry,
+    kind: fn(&strata_core::model::FileEntry) -> bool,
+) -> Option<Position> {
+    let depth = app.preview.current_depth?;
+    let show_hidden = app.browser.preferences().show_hidden;
+    let files: Vec<_> = (0..)
+        .map_while(|position| app.browser.entry_at(depth, position))
+        .filter(|file| (show_hidden || !file.is_hidden) && file.is_file() && kind(file))
+        .collect();
+    let index = files
+        .iter()
+        .position(|file| file.location == entry.location)?;
+    Some(Position {
+        index: index + 1,
+        count: files.len(),
+        results: false,
+    })
 }
