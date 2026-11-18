@@ -223,6 +223,15 @@ closed issue is not a fixed finding: the state given here is the finding's.
   `./scripts/quality.sh all --jobs 4` (shard 0, lane 3; the other three lanes passed) at
   `1ba2778c1909325066429fdf368128030d2ddea1`, and passed 3 times of 3 alone under `./scripts/test-headless.py` (7.7 s each).
   That pull request changes no `src/`.
+- **Sighting on [#2599](https://github.com/lgse/strata/pull/2599)** ([A16](packages/A16.md)): the
+  tenth, `repository_probe_selects_strata_instead_of_a_dependency`, failed once more in
+  `./scripts/quality.sh all --jobs 4` (shard 0, lane 3, 79 of 80) at `42a5a67f1`, with the same
+  `ETXTBSY` message, and passed 3 times of 3 alone under `./scripts/test-headless.py`. That pull
+  request touches no shared crate and no `src/`. In its Rune lane on the way there, `mise run
+  test-rune` once failed `footer::tests::clipboard_badge_follows_copy_cut_paste_and_text_copy`
+  (`crates/strata-app/src/footer/tests.rs:213`, "consuming a cut withdraws the clipboard
+  badge": the badge still showed) with the load average near 10. It passed 3 times of 3 alone
+  and in the full rerun (3058 passed); #2599 does not touch the footer or the clipboard.
 
 ### #2176: a GTK critical after a file appears during a rename on a multiple selection
 
