@@ -2588,7 +2588,7 @@ sequence only together with the alphabet's version, so the version is part of th
 
 ### #2595: after the floating chooser closes, GTK's browser has no focus under the QA's Xvfb
 
-- **Code:** `exception` (`toolkit`), ruled by the owner on 2026-11-17 ([`owner.md`](owner.md#ruled)).
+- **Code:** `exception` (`toolkit`), ruled by the owner on 2026-11-17 and extended on 2026-11-18 ([`owner.md`](owner.md#ruled)).
   [Issue](https://github.com/lgse/strata/issues/2595), filed on 2026-11-18 as the finding's
   reference and closed at once: its state is kept here.
 - **Seen:** in the differential smoke tier of [A20](packages/A20.md)'s `chooser` alphabet
@@ -2610,9 +2610,15 @@ sequence only together with the alphabet's version, so the version is part of th
   direction the ruling does not cover.
 - **Concerns:** the `chooser` alphabet's smoke tier. No scenario reads the browser's focus
   around the floating chooser.
-- **State:** the first facet is ruled and excused: four `toolkit` rules in
-  `tests/qa/fuzz/normalisation.map`, each with `"while":{"gtk":{"app.focused_pane":null}}`.
-  `app.focused`, `app.focused_pane` and `app.panes[].focused` excuse GTK's `null` against
-  Rune's value, and `app.directory` excuses any value. The `chooser` alphabet (v3) leaves out
-  the browser's arrow keys, which GTK then skips. The second facet is open, for the owner
-  ([`owner.md`](owner.md), A20 item 1), and A20's smoke tier is not clean until it is ruled.
+- **State:** both facets ruled and excused, by eight `toolkit` rules in
+  `tests/qa/fuzz/normalisation.map`.
+  - The first four apply while GTK's browser has no focused pane: GTK's `null` against
+    Rune's on `app.focused`, `app.focused_pane` and `app.panes[].focused`, and any value of
+    `app.directory`.
+  - The second four apply while Rune's browser has no focused pane and its floating chooser is
+    open (`context.toplevels` is `["Copy to"]`, `["Move to"]` or `["Extract to"]`): Rune's
+    `null` against any of GTK's on the same fields, and any value of `app.directory`.
+
+  The `chooser` alphabet (v3) leaves out the browser's arrow keys, which GTK skips once its
+  browser has no focus. Under the eight rules, the smoke tier (v4) agrees in 19 of 20 seeds;
+  the twentieth is another difference, not this finding's ([A20](packages/A20.md), "Open").

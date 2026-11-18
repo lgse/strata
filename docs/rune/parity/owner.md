@@ -636,23 +636,6 @@ Found by the package's agent, 2026-11-12, against A1's five items above.
    change in `roots.rs` by hand (`docs/rune/shared-state.md`, "Merging from `main`"). Should
    the rule move to a shared crate later, with GTK calling it? Source: A10, 2026-11-14.
 
-### A20: Portal chooser
-
-1. **Focus while a later floating chooser is open, in GTK's fuzz replays** (finding
-   [#2595](https://github.com/lgse/strata/issues/2595), its second facet). The ruling of
-   2026-11-17 below excuses GTK's no focus once the chooser has closed. With it in the map, the
-   `chooser` alphabet's smoke tier (v4) still parts in 19 of 20 seeds, all at one kind of step:
-   the click that opens a second or later Copy to or Move to chooser. There GTK's browser
-   reports the row it had (`app.focused`, `app.focused_pane`, `app.panes[].focused`), and
-   Rune's reports none, as an inactive window has none and as GTK's did at the first chooser.
-   On the QA's Xvfb, with no window manager, GTK's browser is active again from the second
-   chooser on, through every later open and close. It is the same cause, but the other
-   direction: GTK's value against Rune's no focus, which the ruling does not cover. Should the
-   map excuse it too (a rule naming Rune's `null` against GTK's row, which needs a `while` on
-   Rune's side), or should the alphabet open one chooser to a sequence, or something else?
-   Meanwhile: A20 stays `in progress`, and its done-when items 6 and 7 wait on this. Source:
-   A20's closing pull request, [#2598](https://github.com/lgse/strata/pull/2598), 2026-11-18.
-
 ### Packages added later
 
 - **A branch name for a package with no archived issue.** Branch names keep the package's
@@ -856,6 +839,15 @@ Rulings of the owner on the parity work, oldest first.
   `app.focused`, `app.focused_pane` and `app.panes[].focused`, and `app.directory`, the focused
   pane's. A20 adds the map's `while` for it. Source: the owner, 2026-11-17, through the
   coordinator.
+  - **2026-11-18: extended to the second case.** From the second floating chooser of a
+    sequence on, GTK's browser is active again on the bare Xvfb and reports its row while the
+    chooser is open, where Rune's has no focus behind its chooser. GTK's value is excused
+    only while Rune's observation shows no focused pane and its floating chooser open
+    (`context.toplevels`, the windows open beside the browser, which the snapshot's new
+    `toplevels` key gives the fuzz driver): Rune's `null` against any of GTK's on the three
+    focus fields, and `app.directory`. A Rune browser that kept the keyboard behind its
+    chooser still counts, its value being no `null`. Source: the owner, 2026-11-18, through
+    the coordinator.
 
 ## Housekeeping
 
