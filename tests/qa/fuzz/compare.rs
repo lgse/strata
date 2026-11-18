@@ -9,7 +9,7 @@ use super::{
     observe::{Observation, Outcome},
     project::{CRITICALS, Difference, INVARIANTS, RESULT, differences, pattern_of},
     replay::Stream,
-    rules::Ignored,
+    rules::{Ignored, Sides},
 };
 
 /// Where two streams first part: the step, the action that was just taken, and every field
@@ -95,7 +95,14 @@ pub(crate) fn compare(left: &Stream, right: &Stream, ignored: &Ignored) -> Optio
         let mut fields: Vec<Difference> = differences(&ours.value, &theirs.value)
             .into_iter()
             .filter(|difference| at_rest || is_verdict(&difference.field))
-            .filter(|difference| !ignored.excuses(difference, gtk_left))
+            .filter(|difference| {
+                let gtk = match gtk_left {
+                    Some(true) => Some(&ours.value),
+                    Some(false) => Some(&theirs.value),
+                    None => None,
+                };
+                !ignored.excuses(difference, Sides { gtk_left, gtk })
+            })
             .collect();
         if fields.is_empty() {
             fields.extend(shared_fault(ours, theirs));

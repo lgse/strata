@@ -1901,6 +1901,21 @@ not an exception and cannot carry an exception's code, nor the reverse. The
 exception codes are the ones a twin's label takes, from one list in
 `tests/qa/twins.rs`, with `platform`.
 
+A rule of the map may narrow what it excuses with a JSON object after its
+issue. `{"gtk":<value>,"rune":[<value>, …]}` excuses only GTK's value against
+one of Rune's, and `{"gtk":<value>}` GTK's value against any of Rune's.
+`"while":{"gtk":{"app.<key>":<value>, …}}` applies the rule only to an
+observation in which GTK's fields hold those values. It names keys of `app`
+only, with no list, and needs to know which stream is GTK's, so it excuses
+nothing between two replays of one target. With `while`, a rule may leave out
+`"gtk"` and excuse every difference on its field there. `app.dialog`'s rules
+name values; lgse/strata#2595's use `while` to excuse focus only while GTK's
+browser has no focused pane:
+
+```text
+app.focused toolkit lgse/strata#2595 {"gtk":null,"while":{"gtk":{"app.focused_pane":null}}}
+```
+
 The map starts with no rule. **A mask grows only when two GTK replays of a
 seed differ**, and the comment above it says what the differential mode can no
 longer see. Every summary prints both counts, by code, and `check` prints them

@@ -18,6 +18,10 @@
 //! difference between GTK's value and one of Rune's on that field, every other difference on
 //! it still counting: an owner's ruling on one deviation, kept narrow
 //! (`app.dialog`'s, lgse/strata#2405: GTK's popovers are no dialogs, Rune's plain ones are).
+//! Without `"rune"` it leaves out GTK's value against any of Rune's. With
+//! `"while":{"gtk":{"app.<key>":<value>, …}}` it applies only to an observation in which GTK's
+//! fields hold those values (lgse/strata#2595: focus while GTK's browser has no focused pane);
+//! a rule may then name no `"gtk"`, and leaves out every difference on its field there.
 
 use std::{fs, path::Path};
 
@@ -52,25 +56,62 @@ pub(crate) struct Entry {
     pub(crate) only: Option<Only>,
 }
 
-/// A difference a rule excuses: GTK's value `gtk` against one of Rune's `rune`.
+/// A difference a rule excuses: GTK's value `gtk` against one of Rune's `rune`, while GTK's
+/// observation holds `gtk_while`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct Only {
-    pub(crate) gtk: Value,
-    pub(crate) rune: Vec<Value>,
+    /// GTK's value; any, when the rule names none.
+    pub(crate) gtk: Option<Value>,
+    /// Rune's values; any, when the rule names none.
+    pub(crate) rune: Option<Vec<Value>>,
+    /// Fields of GTK's observation, `app.<key>`, and the values they hold for the rule to
+    /// apply.
+    pub(crate) gtk_while: Vec<(String, Value)>,
+}
+
+/// Which stream is GTK's, when the comparison knows, and GTK's observation at the step.
+#[derive(Clone, Copy, Debug, Default)]
+pub(crate) struct Sides<'a> {
+    pub(crate) gtk_left: Option<bool>,
+    pub(crate) gtk: Option<&'a Value>,
 }
 
 impl Only {
-    /// Whether `difference` is GTK's value against one of Rune's: `gtk_left` says which side
-    /// GTK's stream is, when the comparison knows.
-    fn excuses(&self, difference: &Difference, gtk_left: Option<bool>) -> bool {
-        let is = |gtk: &Value, rune: &Value| *gtk == self.gtk && self.rune.contains(rune);
+    /// Whether `difference` is GTK's value against one of Rune's, in an observation of GTK's
+    /// that holds the rule's `while`. A `while` needs GTK's observation, so it excuses nothing
+    /// where the comparison does not know which stream is GTK's.
+    fn excuses(&self, difference: &Difference, sides: Sides<'_>) -> bool {
+        let holds = |(field, value): &(String, Value)| {
+            sides
+                .gtk
+                .is_some_and(|gtk| field_of(gtk, field) == Some(value))
+        };
+        if !self.gtk_while.iter().all(holds) {
+            return false;
+        }
+        let Some(gtk_value) = &self.gtk else {
+            return true;
+        };
+        let is = |gtk: &Value, rune: &Value| {
+            gtk == gtk_value
+                && self
+                    .rune
+                    .as_ref()
+                    .is_none_or(|values| values.contains(rune))
+        };
         let (left, right) = (&difference.left, &difference.right);
-        match gtk_left {
+        match sides.gtk_left {
             Some(true) => is(left, right),
             Some(false) => is(right, left),
             None => is(left, right) || is(right, left),
         }
     }
+}
+
+/// The value of `field`, `app.<key>`, in an observation.
+fn field_of<'a>(observation: &'a Value, field: &str) -> Option<&'a Value> {
+    let key = field.strip_prefix("app.")?;
+    observation.get("app")?.get(key)
 }
 
 /// The fields one comparison leaves out.
@@ -112,13 +153,13 @@ impl Ignored {
     }
 
     /// Whether `difference` is left out: its field is covered, or a rule names its values.
-    /// `gtk_left` says which side GTK's stream is, when the comparison knows.
-    pub(crate) fn excuses(&self, difference: &Difference, gtk_left: Option<bool>) -> bool {
+    /// `sides` says which stream is GTK's, and its observation, when the comparison knows.
+    pub(crate) fn excuses(&self, difference: &Difference, sides: Sides<'_>) -> bool {
         self.covers(&difference.field)
             || self.rules.iter().any(|entry| {
                 entry.only.as_ref().is_some_and(|only| {
                     project::covers(&entry.field, &difference.field)
-                        && only.excuses(difference, gtk_left)
+                        && only.excuses(difference, sides)
                 })
             })
     }
@@ -218,28 +259,61 @@ fn entry(line: &str, codes: &[&str]) -> Result<Entry, String> {
     })
 }
 
-/// The values after an entry's issue: `{"gtk":<value>,"rune":[<value>, …]}`.
+/// The values after an entry's issue: `{"gtk":<value>,"rune":[<value>, …],"while":{"gtk":
+/// {"app.<key>":<value>, …}}}`, with `"gtk"`, or `"while"` alone, at least.
 fn only(text: &str) -> Result<Only, String> {
     let wrong = || {
         format!(
-            "the values an entry names are {{\"gtk\":<value>,\"rune\":[<value>, …]}}, not {text:?}"
+            "the values an entry names are {{\"gtk\":<value>,\"rune\":[<value>, …],\"while\":\
+             {{\"gtk\":{{\"app.<key>\":<value>, …}}}}}}, with \"gtk\" or \"while\" at least and \
+             \"rune\" only beside \"gtk\", not {text:?}"
         )
     };
     let value: Value = serde_json::from_str(text).map_err(|_| wrong())?;
-    let object = value
-        .as_object()
-        .filter(|object| object.len() == 2)
-        .ok_or_else(wrong)?;
-    let (Some(gtk), Some(Value::Array(rune))) = (object.get("gtk"), object.get("rune")) else {
+    let object = value.as_object().ok_or_else(wrong)?;
+    let known = ["gtk", "rune", "while"];
+    if object.is_empty() || object.keys().any(|key| !known.contains(&key.as_str())) {
         return Err(wrong());
+    }
+    let gtk = object.get("gtk").cloned();
+    let rune = match object.get("rune") {
+        None => None,
+        Some(Value::Array(rune)) if !rune.is_empty() && gtk.is_some() => Some(rune.clone()),
+        Some(_) => return Err(wrong()),
     };
-    if rune.is_empty() {
+    let gtk_while = match object.get("while") {
+        None => Vec::new(),
+        Some(condition) => gtk_while(condition).ok_or_else(wrong)?,
+    };
+    if gtk.is_none() && gtk_while.is_empty() {
         return Err(wrong());
     }
     Ok(Only {
-        gtk: gtk.clone(),
-        rune: rune.clone(),
+        gtk,
+        rune,
+        gtk_while,
     })
+}
+
+/// A `while`'s fields of GTK's observation: keys of `app`, with no list.
+fn gtk_while(condition: &Value) -> Option<Vec<(String, Value)>> {
+    let condition = condition.as_object().filter(|object| object.len() == 1)?;
+    let fields = condition
+        .get("gtk")?
+        .as_object()
+        .filter(|fields| !fields.is_empty())?;
+    fields
+        .iter()
+        .map(|(field, value)| {
+            let plain = field.strip_prefix("app.").is_some_and(|key| {
+                !key.is_empty()
+                    && key
+                        .bytes()
+                        .all(|byte| byte.is_ascii_lowercase() || byte == b'_')
+            });
+            (plain && project::names_a_field(field)).then(|| (field.clone(), value.clone()))
+        })
+        .collect()
 }
 
 pub(crate) fn is_issue(text: &str) -> bool {

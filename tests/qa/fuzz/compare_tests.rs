@@ -387,8 +387,9 @@ pub(crate) fn a_rule_that_names_values_excuses_only_those() {
     assert_eq!(
         entries[0].only,
         Some(rules::Only {
-            gtk: Value::Null,
-            rune: vec![json!("Appearance"), json!("Thumbnail size")],
+            gtk: Some(Value::Null),
+            rune: Some(vec![json!("Appearance"), json!("Thumbnail size")]),
+            gtk_while: Vec::new(),
         })
     );
     let ruled = Ignored {
@@ -424,12 +425,94 @@ pub(crate) fn a_rule_that_names_values_excuses_only_those() {
     // A field the rule names no values for is not left out by it.
     assert!(!ruled.covers("app.dialog"));
     for refused in [
-        r#"app.dialog deviation lgse/strata#2405 {"gtk":null}"#,
+        r#"app.dialog deviation lgse/strata#2405 {}"#,
+        r#"app.dialog deviation lgse/strata#2405 {"rune":["Appearance"]}"#,
         r#"app.dialog deviation lgse/strata#2405 {"gtk":null,"rune":[]}"#,
+        r#"app.dialog deviation lgse/strata#2405 {"gtk":null,"other":1}"#,
+        r#"app.dialog deviation lgse/strata#2405 {"while":{"gtk":{}}}"#,
+        r#"app.dialog deviation lgse/strata#2405 {"while":{"rune":{"app.dialog":null}}}"#,
+        r#"app.dialog deviation lgse/strata#2405 {"while":{"gtk":{"fs.readme.md":null}}}"#,
+        r#"app.dialog deviation lgse/strata#2405 {"while":{"gtk":{"app.panes[].focused":null}}}"#,
         r#"app.dialog deviation lgse/strata#2405 null"#,
     ] {
         assert!(rules::parse(refused, &exceptions()).is_err(), "{refused}");
     }
+}
+
+/// Two streams, GTK's and Rune's, whose one observation shows the `app` given.
+fn app_streams(gtk: Value, rune: Value) -> (Stream, Stream) {
+    let (mut left, mut right) = (stream(&["archive"]), stream(&["archive"]));
+    right.header.target = "rune".to_owned();
+    left.observations[0].value = observed(gtk);
+    right.observations[0].value = observed(rune);
+    (left, right)
+}
+
+/// A rule with no `"rune"` excuses GTK's value against any of Rune's, and a `while` applies
+/// only where GTK's observation holds it (lgse/strata#2595: focus while GTK's browser has no
+/// focused pane). A `while` alone excuses any difference on its field there, and nothing where
+/// the comparison does not know which stream is GTK's.
+pub(crate) fn a_rule_s_while_holds_it_to_gtk_s_observation() {
+    let lines = [
+        r#"app.directory toolkit lgse/strata#2595 {"while":{"gtk":{"app.focused_pane":null}}}"#,
+        r#"app.focused toolkit lgse/strata#2595 {"gtk":null,"while":{"gtk":{"app.focused_pane":null}}}"#,
+    ];
+    let ruled = Ignored {
+        rules: rules::parse(&lines.join("\n"), &exceptions()).expect("the rules should parse"),
+        masks: Vec::new(),
+    };
+    let unfocused = |extra: Value| {
+        let mut app = json!({ "focused_pane": null, "focused": null, "directory": "documents" });
+        app.as_object_mut()
+            .expect("an object")
+            .extend(extra.as_object().expect("an object").clone());
+        app
+    };
+    let focused_rune =
+        json!({ "focused_pane": "$root", "focused": "readme.md", "directory": "$root" });
+    let cases = [
+        // GTK has no focused pane: its focus and its directory against Rune's are excused,
+        // but app.focused_pane itself is no rule's.
+        (
+            unfocused(json!({})),
+            focused_rune.clone(),
+            Some("app.focused_pane"),
+        ),
+        (
+            unfocused(json!({})),
+            json!({ "focused_pane": null, "focused": "readme.md", "directory": "$root" }),
+            None,
+        ),
+        // GTK's own focus is not GTK's null: it still counts.
+        (
+            unfocused(json!({ "focused": "todo.txt" })),
+            json!({ "focused_pane": null, "focused": "readme.md", "directory": "documents" }),
+            Some("app.focused"),
+        ),
+        // GTK has a focused pane: nothing is excused.
+        (
+            json!({ "focused_pane": "$root", "focused": null, "directory": "$root" }),
+            json!({ "focused_pane": "$root", "focused": "readme.md", "directory": "$root" }),
+            Some("app.focused"),
+        ),
+        (
+            json!({ "focused_pane": "$root", "focused": null, "directory": "documents" }),
+            json!({ "focused_pane": "$root", "focused": null, "directory": "$root" }),
+            Some("app.directory"),
+        ),
+    ];
+    for (gtk, rune, differs) in cases {
+        let (left, right) = app_streams(gtk.clone(), rune.clone());
+        let found = compare(&left, &right, &ruled).map(|found| found.field().to_owned());
+        assert_eq!(found.as_deref(), differs, "gtk {gtk} against rune {rune}");
+        // The order of the streams does not turn the rule round.
+        let found = compare(&right, &left, &ruled).map(|found| found.field().to_owned());
+        assert_eq!(found.as_deref(), differs, "rune {rune} against gtk {gtk}");
+    }
+    // Two streams of one target name no GTK stream, so no `while` applies.
+    let (mut left, right) = app_streams(unfocused(json!({})), focused_rune);
+    left.header.target = "rune".to_owned();
+    assert!(compare(&left, &right, &ruled).is_some());
 }
 
 /// Another ruling's rule on the same field and code cites its own issue, and each excuses only
