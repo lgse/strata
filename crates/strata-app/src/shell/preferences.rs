@@ -117,6 +117,10 @@ pub(crate) fn follow_another_window(app: &mut App, tx: &mut Tx) -> bool {
     if !app.window.settings.follow() {
         return false;
     }
+    tracing::trace!(
+        window = app.window.id,
+        "followed another window's change of the settings"
+    );
     follow_look_tx(app, tx);
     sync_live_preferences(app, tx);
     let sort = strata_desktop::settings::sort_preferences(preferences(app));

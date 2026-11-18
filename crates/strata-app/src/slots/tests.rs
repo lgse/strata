@@ -443,3 +443,28 @@ fn the_view_shown_later_hears_the_browser_in_place_of_the_one_it_replaces() {
         ]
     );
 }
+
+/// What a process-wide service holds of a window's queue says whether the window has work: a
+/// queued update until it is applied, and nothing once the window's queue has gone.
+#[test]
+fn a_weak_way_into_a_queue_says_whether_it_holds_an_update() {
+    let inbox = Inbox::<Log>::new();
+    let weak = inbox.later().downgrade();
+    assert!(!weak.is_pending(), "an empty queue");
+
+    weak.upgrade()
+        .expect("the queue is there")
+        .then(|log: &mut Log, _| {
+            log.push("applied".to_owned());
+            false
+        });
+    assert!(weak.is_pending(), "a queued update");
+
+    assert!(inbox.pop().is_some());
+    assert!(!weak.is_pending(), "the update taken");
+
+    inbox.later().then(|_: &mut Log, _| false);
+    drop(inbox);
+    assert!(!weak.is_live());
+    assert!(!weak.is_pending(), "a queue that has gone");
+}
