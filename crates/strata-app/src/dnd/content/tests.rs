@@ -4,13 +4,13 @@ use std::{collections::HashMap, io::Cursor};
 
 use rune::Mods;
 use strata_components::contract::dnd::{
-    DragPayload, DropActions, DropData, DropItem, DropOffer, Dropped, URI_LIST,
+    DragPayload, DropActions, DropData, DropItem, DropOffer, DropZone, Dropped, URI_LIST,
 };
 use strata_core::i18n::tr;
 use strata_fs::services::{DroppedFile, WebLink};
 use strata_platform::transfer::ReadError;
 
-use super::{Content, Got, Reads, next_read, offered, read};
+use super::{CONTENT_TYPES, Content, Got, Reads, lists_the_policy, next_read, offered, read};
 
 const ADDRESS: &str = "https://example.com/page";
 
@@ -407,5 +407,18 @@ fn dropped_text_is_read_in_its_charset() {
         read(&unknown),
         saves(vec![text_file("café")]),
         "a charset GLib does not know gives way to the next text form"
+    );
+}
+
+/// The zones that take content list what the policy reads, which both of its walks judge a
+/// drop by; a zone listing anything else is caught (`target_of`'s guard).
+#[test]
+fn a_content_zone_lists_what_the_policy_reads() {
+    let zone = || DropZone::<()>::new(|_, _, _| {});
+    assert!(lists_the_policy(&zone().takes_content(CONTENT_TYPES)));
+    assert!(!lists_the_policy(&zone()), "files only");
+    assert!(
+        !lists_the_policy(&zone().takes_content(&["image/png", "text/plain"])),
+        "another content list"
     );
 }

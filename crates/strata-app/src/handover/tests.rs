@@ -381,3 +381,52 @@ fn a_move_out_mid_list_leaves_the_keyboard_on_the_row_now_at_its_position() {
         name: "a_move_out_mid_list_leaves_the_keyboard_on_the_row_now_at_its_position",
     });
 }
+
+/// An undo bringing a moved entry back marks only its anchor in the browser: the keyboard
+/// stays on the neighbour it went to, with nothing selected, as GTK's list view keeps its
+/// focus (`fuzz-drag-v1-0000000000000004`, shrunk to the move and Ctrl+Z).
+#[test]
+fn an_undone_move_out_leaves_the_keyboard_on_the_neighbour() {
+    let name = "an_undone_move_out_leaves_the_keyboard_on_the_neighbour";
+    hosted_in(MODULE, "list", name, move |mut host| {
+        let folder = fixture();
+        let root = folder.path().to_owned();
+        open(&mut host, LIST, &root);
+        press(&mut host, Key::End, Mods::default());
+        press(&mut host, Key::Up, Mods::default());
+        wait(&mut host, LIST, "the keyboard on readme.md", |seen| {
+            seen.focused.as_deref() == Some("readme.md")
+        });
+        let (from, into) = (root.join("readme.md"), root.join("archive"));
+        host.runtime().update(move |app: &mut App, _| {
+            let sources = vec![Location::local(&from)];
+            crate::transfer::start_drop_transfer(app, Location::local(&into), sources, true);
+        });
+        let moved = root.join("archive/readme.md");
+        assert!(
+            host.run_until(PATIENCE, |_| moved.exists()),
+            "the entry moved"
+        );
+        wait(&mut host, LIST, "the keyboard on the neighbour", |seen| {
+            seen.focused.as_deref() == Some("todo.txt")
+        });
+        let ctrl = Mods {
+            ctrl: true,
+            cmd: true,
+            ..Mods::default()
+        };
+        press(&mut host, Key::Command('z'), ctrl);
+        let back = root.join("readme.md");
+        assert!(
+            host.run_until(PATIENCE, |_| back.exists()),
+            "undo brought it back"
+        );
+        wait(&mut host, LIST, "readme.md listed again", |seen| {
+            seen.entries.iter().any(|[name, _]| name == "readme.md")
+        });
+        idle(&mut host);
+        let seen = wait(&mut host, LIST, "the view at rest", |_| true);
+        assert_eq!(seen.focused.as_deref(), Some("todo.txt"), "{seen:#?}");
+        assert!(seen.selected.is_empty(), "nothing selected: {seen:#?}");
+    });
+}

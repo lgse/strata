@@ -535,7 +535,13 @@ impl Pane {
                     handover::kept_neighbour(before, column, &self.collection, marks)
                 });
             self.adopt(kept.as_ref().unwrap_or(marks));
-            self.kept.keep(kept.as_ref());
+            // A settle that removed nothing leaves a neighbour kept before to `Kept::marks`,
+            // which ends it once the browser marks a cursor or a selection: an undo bringing
+            // the moved entry back marks only its anchor, and GTK keeps the keyboard where it
+            // was.
+            if kept.is_some() {
+                self.kept.keep(kept.as_ref());
+            }
         }
     }
 

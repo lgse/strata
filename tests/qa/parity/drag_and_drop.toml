@@ -13,17 +13,15 @@ host = "offscreen"
 scenario = "drag-cancels-folder-peek"
 run = "icons"
 package = "A19"
-status = "pending"
-reason = "scope"
-blocker = "A19"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "drag-cancels-folder-peek"
 run = "list"
 package = "A19"
-status = "pending"
-reason = "scope"
-blocker = "A19"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "drag-file-onto-folder"
