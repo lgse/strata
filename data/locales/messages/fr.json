@@ -1150,5 +1150,6 @@
   "Press the new key for “%{action}”": "Appuyez sur la nouvelle touche pour « %{action} »",
   "%{escape} cancels, and %{backspace} removes every key of this action.": "%{escape} annule, et %{backspace} retire toutes les touches de cette action.",
   "“%{group}” has no key, so this action cannot run.": "« %{group} » n’a pas de touche, donc cette action ne peut pas s’exécuter.",
-  "Custom action %{number}": "Action personnalisée %{number}"
+  "Custom action %{number}": "Action personnalisée %{number}",
+  "Volume": "Volume"
 }

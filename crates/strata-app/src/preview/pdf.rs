@@ -35,7 +35,10 @@ use strata_fs::services::{
     PreviewRequest, PreviewRequestId,
 };
 
-use super::{load::TEXT_BYTE_LIMIT, viewer::Viewer};
+use super::{
+    load::TEXT_BYTE_LIMIT,
+    viewer::{self, Viewer},
+};
 use crate::{
     App,
     commands::{Action, Call, Keys, Outcome, Situation, Stage},
@@ -208,7 +211,7 @@ fn on_intent(app: &mut App, intent: PdfIntent, _: &mut Tx) {
 fn pdf_ref(app: &App) -> &PdfState {
     match &app.preview.viewer {
         Viewer::Pdf(pdf) => &pdf.state,
-        _ => &app.preview.detached.pdf,
+        _ => viewer::spare("PDF", &app.preview.detached.pdf),
     }
 }
 
@@ -216,7 +219,7 @@ fn pdf_mut(app: &mut App) -> &mut PdfState {
     let preview = &mut app.preview;
     match &mut preview.viewer {
         Viewer::Pdf(pdf) => &mut pdf.state,
-        _ => &mut preview.detached.pdf,
+        _ => viewer::spare("PDF", &mut preview.detached.pdf),
     }
 }
 
