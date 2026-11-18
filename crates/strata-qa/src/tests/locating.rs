@@ -297,7 +297,7 @@ fn what_was_never_kept_is_a_broken_lookup_and_not_a_missing_node() {
 /// `dialog_button` looks in the dialog on top, as `app.dialog` names it: with a message drawn
 /// inside Settings, its Cancel, not Settings' own Cancel before it in the tree.
 #[test]
-fn a_dialog_button_is_the_dialog_on_top_s() {
+fn a_dialog_button_is_the_dialog_on_top() {
     let pressed = |nests: bool| {
         let mut fake = Fake::new();
         fake.nests_dialogs = nests;

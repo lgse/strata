@@ -60,7 +60,9 @@ pub(crate) fn rendered_with_role<'a, B: Backend + ?Sized>(
 /// The descent goes from a dialog to the dialogs drawn inside it, and among several, to the
 /// last drawn, which is on top: a toolkit draws its children in order. It follows `dialog`
 /// only. Rune's messages are `dialog`s, and its `alert`s are live error lines inside a view or
-/// a dialog (the chooser's, a shortcut recorder's), which are no dialog of their own.
+/// a dialog (the chooser's, a shortcut recorder's), which are no dialog of their own. The QA
+/// role map reads Rune's `alert-dialog` as `alert` too, so a nested modal of that kind would
+/// need the descent to follow it.
 pub(crate) fn open_dialog<B: Backend + ?Sized>(
     backend: &B,
     presented: &[B::Node],
