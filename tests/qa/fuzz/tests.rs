@@ -18,7 +18,8 @@ use super::{
     compare_tests::{
         a_divergence_that_does_not_repeat_is_not_confirmed,
         a_perturbation_waits_for_its_step_and_its_state,
-        a_rule_s_while_holds_it_to_gtk_s_observation, a_rule_that_names_values_excuses_only_those,
+        a_rule_s_while_holds_it_to_each_side_s_observation,
+        a_rule_that_names_values_excuses_only_those,
         a_step_not_at_rest_is_compared_by_its_outcome_alone,
         a_warning_a_broken_invariant_or_a_lost_target_diverges_even_when_both_replays_show_it,
         an_entry_is_refused_for_its_form_its_code_or_blinding_a_whole_root,
@@ -86,7 +87,7 @@ unit_tests! {
     a_perturbation_waits_for_its_step_and_its_state,
     the_map_and_the_mask_take_one_sorted_entry_to_a_line,
     a_rule_that_names_values_excuses_only_those,
-    a_rule_s_while_holds_it_to_gtk_s_observation,
+    a_rule_s_while_holds_it_to_each_side_s_observation,
     rules_of_two_rulings_on_one_field_excuse_only_their_own,
     an_entry_is_refused_for_its_form_its_code_or_blinding_a_whole_root,
     a_parked_line_names_a_version_and_a_seed_and_is_sorted_by_both,

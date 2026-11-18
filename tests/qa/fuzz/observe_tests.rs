@@ -168,7 +168,9 @@ pub(crate) fn the_projection_names_every_key_the_snapshot_has() {
         .map(String::as_str)
         .collect();
     keys.sort_unstable();
+    // `toplevels` is kept in the context, which a rule's `while` reads and nothing compares.
     let mut projected = project::APP_KEYS.to_vec();
+    projected.push(project::TOPLEVELS);
     projected.sort_unstable();
     assert_eq!(keys, projected);
 }
@@ -398,6 +400,7 @@ pub(super) fn observation(
                 }),
                 fs: json!({ "todo.txt": "file 644 5 aa" }),
                 settings: json!({}),
+                context: Value::Null,
             },
             settled: true,
             polls: 4,

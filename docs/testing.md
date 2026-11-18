@@ -1902,18 +1902,31 @@ exception codes are the ones a twin's label takes, from one list in
 `tests/qa/twins.rs`, with `platform`.
 
 A rule of the map may narrow what it excuses with a JSON object after its
-issue. `{"gtk":<value>,"rune":[<value>, …]}` excuses only GTK's value against
-one of Rune's, and `{"gtk":<value>}` GTK's value against any of Rune's.
-`"while":{"gtk":{"app.<key>":<value>, …}}` applies the rule only to an
-observation in which GTK's fields hold those values. It names keys of `app`
-only, with no list, and needs to know which stream is GTK's, so it excuses
-nothing between two replays of one target. With `while`, a rule may leave out
-`"gtk"` and excuse every difference on its field there. `app.dialog`'s rules
-name values; lgse/strata#2595's use `while` to excuse focus only while GTK's
-browser has no focused pane:
+issue:
+
+- `{"gtk":<value>,"rune":[<value>, …]}` excuses only GTK's value against one
+  of Rune's.
+- Leave out `"rune"` for GTK's value against any of Rune's, or `"gtk"` for any
+  of GTK's against one of Rune's.
+- `"while":{"gtk":{<field>:<value>, …},"rune":{…}}` applies the rule only at
+  a step at which each side's observation holds those values.
+  - A field is a key of `app`, with no list, or `context.toplevels`.
+  - A value is one value, or `{"one_of":[<value>, …]}`.
+  - With `while`, a rule may name neither side's values, and then excuses every
+    difference on its field there.
+  - A `while` needs to know which stream is whose, so it excuses nothing
+    between two replays of one target.
+
+A field may have more than one rule of one code and issue, sorted by what
+follows the issue. An observation keeps `context.toplevels`, the titles of the
+windows open beside the one the steps act on (the snapshot's `toplevels`),
+for a `while` to read; nothing compares it. `app.dialog`'s rules name values;
+lgse/strata#2595's use `while` to excuse focus on one side only while that
+side's browser has no focused pane:
 
 ```text
 app.focused toolkit lgse/strata#2595 {"gtk":null,"while":{"gtk":{"app.focused_pane":null}}}
+app.focused toolkit lgse/strata#2595 {"rune":[null],"while":{"rune":{"app.focused_pane":null,"context.toplevels":{"one_of":[["Copy to"],["Move to"],["Extract to"]]}}}}
 ```
 
 The map starts with no rule. **A mask grows only when two GTK replays of a

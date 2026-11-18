@@ -389,7 +389,7 @@ pub(crate) fn a_rule_that_names_values_excuses_only_those() {
         Some(rules::Only {
             gtk: Some(Value::Null),
             rune: Some(vec![json!("Appearance"), json!("Thumbnail size")]),
-            gtk_while: Vec::new(),
+            when: Vec::new(),
         })
     );
     let ruled = Ignored {
@@ -426,11 +426,12 @@ pub(crate) fn a_rule_that_names_values_excuses_only_those() {
     assert!(!ruled.covers("app.dialog"));
     for refused in [
         r#"app.dialog deviation lgse/strata#2405 {}"#,
-        r#"app.dialog deviation lgse/strata#2405 {"rune":["Appearance"]}"#,
         r#"app.dialog deviation lgse/strata#2405 {"gtk":null,"rune":[]}"#,
         r#"app.dialog deviation lgse/strata#2405 {"gtk":null,"other":1}"#,
         r#"app.dialog deviation lgse/strata#2405 {"while":{"gtk":{}}}"#,
-        r#"app.dialog deviation lgse/strata#2405 {"while":{"rune":{"app.dialog":null}}}"#,
+        r#"app.dialog deviation lgse/strata#2405 {"while":{"both":{"app.dialog":null}}}"#,
+        r#"app.dialog deviation lgse/strata#2405 {"while":{"gtk":{"context.other":[]}}}"#,
+        r#"app.dialog deviation lgse/strata#2405 {"while":{"gtk":{"app.dialog":{"one_of":[]}}}}"#,
         r#"app.dialog deviation lgse/strata#2405 {"while":{"gtk":{"fs.readme.md":null}}}"#,
         r#"app.dialog deviation lgse/strata#2405 {"while":{"gtk":{"app.panes[].focused":null}}}"#,
         r#"app.dialog deviation lgse/strata#2405 null"#,
@@ -439,80 +440,132 @@ pub(crate) fn a_rule_that_names_values_excuses_only_those() {
     }
 }
 
-/// Two streams, GTK's and Rune's, whose one observation shows the `app` given.
-fn app_streams(gtk: Value, rune: Value) -> (Stream, Stream) {
+/// Two streams, GTK's and Rune's, whose one observation shows the `app` given, and the
+/// windows Rune has open beside the browser (`context.toplevels`).
+fn app_streams((gtk, rune, rune_toplevels): (Value, Value, Value)) -> (Stream, Stream) {
     let (mut left, mut right) = (stream(&["archive"]), stream(&["archive"]));
     right.header.target = "rune".to_owned();
     left.observations[0].value = observed(gtk);
     right.observations[0].value = observed(rune);
+    right.observations[0].value["context"] = json!({ "toplevels": rune_toplevels });
     (left, right)
 }
 
-/// A rule with no `"rune"` excuses GTK's value against any of Rune's, and a `while` applies
-/// only where GTK's observation holds it (lgse/strata#2595: focus while GTK's browser has no
-/// focused pane). A `while` alone excuses any difference on its field there, and nothing where
-/// the comparison does not know which stream is GTK's.
-pub(crate) fn a_rule_s_while_holds_it_to_gtk_s_observation() {
+/// lgse/strata#2595's two rulings on `app.focused`, as the map has them.
+const FOCUS_RULES: [&str; 2] = [
+    r#"app.focused toolkit lgse/strata#2595 {"gtk":null,"while":{"gtk":{"app.focused_pane":null}}}"#,
+    r#"app.focused toolkit lgse/strata#2595 {"rune":[null],"while":{"rune":{"app.focused_pane":null,"context.toplevels":{"one_of":[["Copy to"],["Move to"]]}}}}"#,
+];
+
+/// GTK's and Rune's focus at one step, the windows Rune has open beside its browser, and the
+/// field that still differs under lgse/strata#2595's rules, if any.
+fn focus_cases() -> Vec<(Value, Value, Value, Option<&'static str>)> {
+    let focus = |pane: Value, focused: Value, directory: Value| json!({ "focused_pane": pane, "focused": focused, "directory": directory });
+    let chooser = json!(["Copy to"]);
+    let none = json!([]);
+    vec![
+        // GTK has no focused pane: its focus and directory against Rune's are excused, but
+        // app.focused_pane itself is no rule's here.
+        (
+            focus(Value::Null, Value::Null, json!("documents")),
+            focus(json!("$root"), json!("readme.md"), json!("$root")),
+            none.clone(),
+            Some("app.focused_pane"),
+        ),
+        (
+            focus(Value::Null, Value::Null, json!("documents")),
+            focus(Value::Null, json!("readme.md"), json!("$root")),
+            none.clone(),
+            None,
+        ),
+        // GTK's own row against Rune's is no one's.
+        (
+            focus(Value::Null, json!("todo.txt"), json!("documents")),
+            focus(Value::Null, json!("readme.md"), json!("documents")),
+            none.clone(),
+            Some("app.focused"),
+        ),
+        // GTK has a focused pane and Rune no chooser open: nothing is excused.
+        (
+            focus(json!("$root"), Value::Null, json!("$root")),
+            focus(json!("$root"), json!("readme.md"), json!("$root")),
+            none.clone(),
+            Some("app.focused"),
+        ),
+        (
+            focus(json!("$root"), Value::Null, json!("documents")),
+            focus(json!("$root"), Value::Null, json!("$root")),
+            none.clone(),
+            Some("app.directory"),
+        ),
+        // Rune's browser has no focus behind its open chooser: GTK's row is excused.
+        (
+            focus(json!("$root"), json!("readme.md"), json!("$root")),
+            focus(Value::Null, Value::Null, json!("$root")),
+            chooser.clone(),
+            Some("app.focused_pane"),
+        ),
+        // The same with no chooser open on Rune: it counts.
+        (
+            focus(json!("$root"), json!("readme.md"), json!("$root")),
+            focus(Value::Null, Value::Null, json!("$root")),
+            none.clone(),
+            Some("app.focused"),
+        ),
+        // Rune's browser kept the keyboard behind its chooser: it counts.
+        (
+            focus(json!("$root"), json!("readme.md"), json!("$root")),
+            focus(json!("$root"), json!("todo.txt"), json!("$root")),
+            chooser.clone(),
+            Some("app.focused"),
+        ),
+    ]
+}
+
+/// A rule may leave out either side's values, and a `while` applies it only at a step at which
+/// that side's observation holds it (lgse/strata#2595). GTK's no focus is excused while GTK's
+/// browser has no focused pane; GTK's row against Rune's no focus only while Rune's has none
+/// and a floating chooser is open. A Rune browser that kept the keyboard behind the chooser,
+/// or lost it with no chooser open, still differs, as does anything where the comparison does
+/// not know which stream is whose.
+pub(crate) fn a_rule_s_while_holds_it_to_each_side_s_observation() {
     let lines = [
         r#"app.directory toolkit lgse/strata#2595 {"while":{"gtk":{"app.focused_pane":null}}}"#,
-        r#"app.focused toolkit lgse/strata#2595 {"gtk":null,"while":{"gtk":{"app.focused_pane":null}}}"#,
+        FOCUS_RULES[0],
+        FOCUS_RULES[1],
     ];
     let ruled = Ignored {
         rules: rules::parse(&lines.join("\n"), &exceptions()).expect("the rules should parse"),
         masks: Vec::new(),
     };
-    let unfocused = |extra: Value| {
-        let mut app = json!({ "focused_pane": null, "focused": null, "directory": "documents" });
-        app.as_object_mut()
-            .expect("an object")
-            .extend(extra.as_object().expect("an object").clone());
-        app
-    };
-    let focused_rune =
-        json!({ "focused_pane": "$root", "focused": "readme.md", "directory": "$root" });
-    let cases = [
-        // GTK has no focused pane: its focus and its directory against Rune's are excused,
-        // but app.focused_pane itself is no rule's.
-        (
-            unfocused(json!({})),
-            focused_rune.clone(),
-            Some("app.focused_pane"),
-        ),
-        (
-            unfocused(json!({})),
-            json!({ "focused_pane": null, "focused": "readme.md", "directory": "$root" }),
-            None,
-        ),
-        // GTK's own focus is not GTK's null: it still counts.
-        (
-            unfocused(json!({ "focused": "todo.txt" })),
-            json!({ "focused_pane": null, "focused": "readme.md", "directory": "documents" }),
-            Some("app.focused"),
-        ),
-        // GTK has a focused pane: nothing is excused.
-        (
-            json!({ "focused_pane": "$root", "focused": null, "directory": "$root" }),
-            json!({ "focused_pane": "$root", "focused": "readme.md", "directory": "$root" }),
-            Some("app.focused"),
-        ),
-        (
-            json!({ "focused_pane": "$root", "focused": null, "directory": "documents" }),
-            json!({ "focused_pane": "$root", "focused": null, "directory": "$root" }),
-            Some("app.directory"),
-        ),
-    ];
-    for (gtk, rune, differs) in cases {
-        let (left, right) = app_streams(gtk.clone(), rune.clone());
+    for (gtk, rune, toplevels, differs) in focus_cases() {
+        let (left, right) = app_streams((gtk.clone(), rune.clone(), toplevels.clone()));
         let found = compare(&left, &right, &ruled).map(|found| found.field().to_owned());
-        assert_eq!(found.as_deref(), differs, "gtk {gtk} against rune {rune}");
-        // The order of the streams does not turn the rule round.
+        assert_eq!(
+            found.as_deref(),
+            differs,
+            "gtk {gtk} against rune {rune}, {toplevels}"
+        );
+        // The order of the streams does not turn the rules round.
         let found = compare(&right, &left, &ruled).map(|found| found.field().to_owned());
-        assert_eq!(found.as_deref(), differs, "rune {rune} against gtk {gtk}");
+        assert_eq!(
+            found.as_deref(),
+            differs,
+            "rune {rune} against gtk {gtk}, {toplevels}"
+        );
     }
-    // Two streams of one target name no GTK stream, so no `while` applies.
-    let (mut left, right) = app_streams(unfocused(json!({})), focused_rune);
+    // Two streams of one target name no GTK or Rune stream, so no `while` applies.
+    let (mut left, right) = app_streams((
+        json!({ "focused_pane": null, "focused": null, "directory": "documents" }),
+        json!({ "focused_pane": "$root", "focused": "readme.md", "directory": "$root" }),
+        json!([]),
+    ));
     left.header.target = "rune".to_owned();
     assert!(compare(&left, &right, &ruled).is_some());
+    // Two rules of one field, code and issue are ordered by what follows the issue.
+    let reversed = format!("{}\n{}", FOCUS_RULES[1], FOCUS_RULES[0]);
+    let error = rules::parse(&reversed, &exceptions()).expect_err("out of order");
+    assert!(error.contains("then by what follows the issue"), "{error}");
 }
 
 /// Another ruling's rule on the same field and code cites its own issue, and each excuses only

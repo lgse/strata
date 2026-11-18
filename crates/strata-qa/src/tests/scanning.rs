@@ -123,6 +123,28 @@ fn hidden_and_undrawn_nodes_are_left_out_of_the_snapshot() {
     );
 }
 
+/// The snapshot names the other windows that are drawn, such as a floating chooser, by their
+/// titles, and leaves out the window it reads and a window not drawn.
+#[test]
+fn the_other_drawn_windows_are_named_by_their_titles() {
+    let mut fake = Fake::new();
+    assert!(
+        scan(&fake, &WINDOW)
+            .observation
+            .app_state()
+            .toplevels
+            .is_empty()
+    );
+    fake.add_window(drawn("frame", "Copy to", [8000.0, 0.0, 600.0, 400.0]));
+    fake.add_window(Node {
+        role: "frame",
+        name: "Hidden",
+        ..Node::default()
+    });
+    let state = scan(&fake, &WINDOW).observation.app_state();
+    assert_eq!(state.toplevels, ["Copy to"]);
+}
+
 #[test]
 fn focus_names_the_pane_that_holds_it_and_the_entry_it_is_on() {
     let mut fake = Fake::new();

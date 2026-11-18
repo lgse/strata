@@ -112,9 +112,20 @@ pub fn scan<B: Backend + ?Sized>(backend: &B, window: &B::Node) -> Scene<B::Node
                 .any(|node| rendered(backend, node) && backend.name(node) == labels.peek),
             results: result_names(backend, &presented, &labels),
             field: focused_field(backend, &presented).and_then(|field| backend.field(&field)),
+            toplevels: other_toplevels(backend, window),
         },
         panes: nodes,
     }
+}
+
+/// The titles of the drawn windows other than `window`, in the backend's order.
+fn other_toplevels<B: Backend + ?Sized>(backend: &B, window: &B::Node) -> Vec<String> {
+    backend
+        .toplevels()
+        .into_iter()
+        .filter(|other| other != window && rendered(backend, other))
+        .filter_map(|other| backend.title(&other))
+        .collect()
 }
 
 fn pane_entries<B: Backend + ?Sized>(

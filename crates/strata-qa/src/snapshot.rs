@@ -19,6 +19,8 @@ pub struct Observation {
     pub peek: bool,
     pub results: Option<Vec<String>>,
     pub field: Option<FieldState>,
+    /// The titles of the other drawn windows, such as a floating chooser.
+    pub toplevels: Vec<String>,
 }
 
 /// Offsets count characters, as AT-SPI's text interface does.
@@ -83,6 +85,7 @@ pub struct AppState {
     pub preview: Option<Vec<String>>,
     pub field: Option<FieldState>,
     pub matches: Vec<String>,
+    pub toplevels: Vec<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -104,6 +107,7 @@ pub fn empty_app_state() -> serde_json::Value {
         "preview": null,
         "field": null,
         "matches": [],
+        "toplevels": [],
     })
 }
 
@@ -213,6 +217,7 @@ impl Observation {
             preview: self.preview.clone(),
             field: self.field.clone(),
             matches: self.matches(None),
+            toplevels: self.toplevels.clone(),
         }
     }
 
