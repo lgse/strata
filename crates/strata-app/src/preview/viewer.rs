@@ -36,6 +36,7 @@ use super::{
     document::{self, DecodedMedia, MediaTask, RenderedDocument},
     image::{self, ImageViewer},
     labels,
+    media::{self, MediaViewer},
     model::{self, ModelViewer},
     pdf::{self, PdfViewer},
     route::{self, RouteViewer},
@@ -53,6 +54,7 @@ pub(super) struct Detached {
     pub(super) model: strata_components::viewers::model::ModelState,
     pub(super) route: strata_components::viewers::route::RouteState,
     pub(super) pdf: strata_components::pdf_view::PdfState,
+    pub(super) media: strata_components::media_player::MediaState,
     code: CodeState,
     document: DocumentState,
     sheet: SheetGridState,
@@ -69,6 +71,7 @@ impl Default for Detached {
             model: Default::default(),
             route: Default::default(),
             pdf: Default::default(),
+            media: Default::default(),
             code: CodeState::default(),
             document: DocumentState::default(),
             sheet: SheetGridState::new("preview-detached-sheet"),
@@ -114,6 +117,7 @@ pub(super) enum Viewer {
     Pdf(Box<PdfViewer>),
     Model(Box<ModelViewer>),
     Route(Box<RouteViewer>),
+    Media(Box<MediaViewer>),
     /// A preview whose pictures are being decoded off the UI thread, shown as loading.
     Decoding(u64),
     Archive(Box<ArchiveState>),
@@ -158,6 +162,7 @@ impl Viewer {
             | Self::Pdf(_)
             | Self::Model(_)
             | Self::Route(_)
+            | Self::Media(_)
             | Self::Archive(_)
             | Self::ArchivePrompt(_) => true,
             Self::Message { can_open, .. } => *can_open,
@@ -245,6 +250,7 @@ impl Viewer {
             Self::Pdf(pdf) => pdf.stop(),
             Self::Model(model) => model.stop(),
             Self::Route(route) => route.state.pause(),
+            Self::Media(media) => media.stop(),
             _ => {}
         }
     }
@@ -345,6 +351,7 @@ impl Viewer {
             Self::Pdf(_) => Some(pdf::build_view(app, cx)),
             Self::Model(model) => Some(model::build_view(model, app, cx)),
             Self::Route(route) => Some(route::build_view(route, app, cx)),
+            Self::Media(player) => Some(media::build_view(player, app, cx)),
             Self::Archive(_) => Some(archive::build_archive_view(app, archive_ref, archive_mut)),
             Self::ArchivePrompt(prompt) => {
                 Some(archive::build_prompt_view(prompt, &app.look, prompt_mut))

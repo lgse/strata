@@ -9,8 +9,8 @@
 //!   `Later`; a reply for a preview that has moved on is dropped.
 //! - **Playback** runs on the poll's clock ([`poll`]). The media keys (`media_play_pause`,
 //!   `media_seek_back`, `media_seek_forward`) play, pause and seek it at the dispatcher's
-//!   `video_controls` stage ([`PLAY_PAUSE`], GTK's `handle_video_key`), outside the sidebar, the
-//!   header and text fields (`keys::media_keys_reach`).
+//!   `video_controls` stage (`super::transport`, GTK's `handle_video_key`), outside the
+//!   sidebar, the header and text fields (`keys::media_keys_reach`).
 //! - **Units** follow Settings → Units live: each poll gives the view the saved
 //!   `unit_system`, as GTK binds the preference.
 //!
@@ -20,9 +20,7 @@ use std::cell::Cell;
 
 use rune::{Cx, El, Pixels, Tx};
 use strata_components::viewers::{
-    route::{
-        RouteCommand, RouteData, RouteLabels, RouteSample, RouteState, RouteView, Seek, Units,
-    },
+    route::{RouteCommand, RouteData, RouteLabels, RouteSample, RouteState, RouteView, Units},
     viewport::ViewportState,
 };
 use strata_core::{
@@ -30,30 +28,19 @@ use strata_core::{
     model::FileEntry,
 };
 use strata_desktop::{
-    keys::{
-        Keys as Shown, Modifiers,
-        bindings::{MEDIA_PLAY_PAUSE, MEDIA_SEEK_BACK, MEDIA_SEEK_FORWARD},
-    },
+    keys::{Keys as Shown, bindings::MEDIA_PLAY_PAUSE},
     settings::UnitSystem,
 };
 use strata_fs::services::route_preview::{RouteFormat, RoutePreview};
 
 use super::{
-    keys, labels,
+    labels,
     viewer::{self, Viewer},
 };
-use crate::{
-    App,
-    commands::{Action, Call, Keys, Outcome, Situation, Stage},
-    location::labels::with_keys,
-    shell,
-};
+use crate::{App, location::labels::with_keys, shell};
 
 /// Key of the route viewer inside the preview drawer.
 pub(crate) const ROUTE_KEY: &str = "preview-route";
-
-/// A media key's seek: GTK's `MEDIA_SEEK_STEP_US`, 5 s of the 15 s playback.
-const SEEK_SECONDS: f64 = 5.0;
 
 /// The profile's space when the helper sends no profile: GTK's 800 × 70.
 const PROFILE_PX: [f32; 2] = [800.0, 70.0];
@@ -171,59 +158,11 @@ pub(super) fn poll(app: &mut App, clock: f64, tx: &mut Tx) -> bool {
     route.state.tick(clock, tx) | unit_changed
 }
 
-/// The media keys on a shown route (GTK's `handle_video_key`, which hands a route its play,
-/// pause and seeks), one command each.
-pub(super) const PLAY_PAUSE: Action<App> = Action::new("preview-route-play-pause", play_pause)
-    .command(MEDIA_PLAY_PAUSE)
-    .keys(&[Keys::at(
-        Stage::VideoControls,
-        &[MEDIA_PLAY_PAUSE.ignoring(Modifiers::empty())],
-    )
-    .when(plays_here)]);
-
-pub(super) const SEEK_BACK: Action<App> = Action::new("preview-route-seek-back", seek_back)
-    .command(MEDIA_SEEK_BACK)
-    .keys(&[Keys::at(
-        Stage::VideoControls,
-        &[MEDIA_SEEK_BACK.ignoring(Modifiers::empty())],
-    )
-    .when(plays_here)]);
-
-pub(super) const SEEK_FORWARD: Action<App> =
-    Action::new("preview-route-seek-forward", seek_forward)
-        .command(MEDIA_SEEK_FORWARD)
-        .keys(&[Keys::at(
-            Stage::VideoControls,
-            &[MEDIA_SEEK_FORWARD.ignoring(Modifiers::empty())],
-        )
-        .when(plays_here)]);
-
-/// A route shows, where the preview's media keys reach ([`keys::media_keys_reach`]).
-fn plays_here(app: &App, at: &Situation) -> bool {
-    matches!(app.preview.viewer, Viewer::Route(_)) && keys::media_keys_reach(app, at)
-}
-
-fn play_pause(app: &mut App, _: &Call<'_>, _: &mut Tx) -> Outcome {
-    command(app, RouteCommand::PlayPause)
-}
-
-fn seek_back(app: &mut App, _: &Call<'_>, _: &mut Tx) -> Outcome {
-    command(app, RouteCommand::Seek(Seek::By(-SEEK_SECONDS)))
-}
-
-fn seek_forward(app: &mut App, _: &Call<'_>, _: &mut Tx) -> Outcome {
-    command(app, RouteCommand::Seek(Seek::By(SEEK_SECONDS)))
-}
-
-fn command(app: &mut App, command: RouteCommand) -> Outcome {
-    let taken = match &mut app.preview.viewer {
+/// A media key's command on the shown route (`super::transport`): false when it takes none.
+pub(super) fn command(app: &mut App, command: RouteCommand) -> bool {
+    match &mut app.preview.viewer {
         Viewer::Route(route) => route.state.command(command),
         _ => false,
-    };
-    if taken {
-        Outcome::Ran
-    } else {
-        Outcome::Declined
     }
 }
 

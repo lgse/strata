@@ -50,7 +50,7 @@ use super::{
     archive,
     document::{DocumentSpec, RenderedDocument},
     image::ImageViewer,
-    model, pdf, route, sheet,
+    media, model, pdf, route, sheet,
     viewer::{CodeSource, RenderedBody, Viewer, build_code_state},
 };
 use crate::{
@@ -460,6 +460,9 @@ pub(super) fn render_ready(app: &mut App, loaded: Preview, tx: &mut Tx) {
     app.preview.header_source = Some((loaded.entry.clone(), Some(loaded.content_type.clone())));
     app.preview.header = identity_for(&app.look, &loaded.entry, Some(&loaded.content_type));
     app.preview.viewer = build_ready_viewer(app, loaded, focus_archive, tx);
+    if !matches!(app.preview.viewer, Viewer::Media(_)) {
+        app.preview.media_checks.stop();
+    }
     app.preview.viewer.reset_viewport(tx);
     reapply_active_find(app, tx);
 }
@@ -515,6 +518,9 @@ fn build_ready_viewer(app: &mut App, loaded: Preview, focus_archive: bool, tx: &
         PreviewContent::Rasterized { png } => build_rasterized_viewer(&loaded.entry, &png),
         PreviewContent::Model { png, mesh } => model::ready(app, loaded.entry, png, mesh),
         PreviewContent::Route { preview } => route::ready(app, loaded.entry, preview),
+        PreviewContent::SandboxedMedia { media } => {
+            media::ready(app, loaded.entry, &loaded.content_type, media, tx)
+        }
         PreviewContent::Pdf {
             png,
             page,
@@ -529,7 +535,6 @@ fn build_ready_viewer(app: &mut App, loaded: Preview, focus_archive: bool, tx: &
             detail: Some(tr("Metadata is available for this file type.")),
             can_open: false,
         },
-        _ => unavailable_viewer(None),
     }
 }
 
