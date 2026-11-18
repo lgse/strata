@@ -1,0 +1,4 @@
+{"scenario":"fuzz-drag-v1-0000000000000006","modes":["list"],"prefs":{"type_to_search":false,"single_click_previews":false,"explorer_folder_clicks":1,"explorer_file_clicks":2}}
+{"click":{"entry":"readme.md"},"when":{"all":[{"present":{"entry":"readme.md"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}
+{"drag":{"from":{"entry":"todo.txt"},"to":{"entry":"documents"}},"mods":["ctrl"],"when":{"all":[{"directory":"$root"},{"present":{"entry":"todo.txt"}},{"present":{"entry":"documents"}},{"file":{"path":"$fixture/documents/todo.txt","exists":false}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}
+{"drag":{"from":{"entry":"readme.md"},"to":{"pane":"$root"},"to_at":["50%",-60]},"when":{"all":[{"directory":"$root"},{"present":{"entry":"readme.md"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}

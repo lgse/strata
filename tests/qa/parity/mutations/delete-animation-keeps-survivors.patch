@@ -1,0 +1,13 @@
+diff --git a/crates/strata-app/src/listing.rs b/crates/strata-app/src/listing.rs
+index e813c8026..688bc3b68 100644
+--- a/crates/strata-app/src/listing.rs
++++ b/crates/strata-app/src/listing.rs
+@@ -387,7 +387,7 @@ impl Column {
+                 for (position, removed, mut rows) in splices {
+                     self.keep_keys(&mut rows);
+                     let start = position.min(self.rows.len());
+-                    let end = start.saturating_add(removed).min(self.rows.len());
++                    let end = start.saturating_add(removed * 0).min(self.rows.len());
+                     self.rows.splice(start..end, rows);
+                 }
+                 self.index();
