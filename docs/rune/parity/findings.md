@@ -236,6 +236,12 @@ closed issue is not a fixed finding: the state given here is the finding's.
   `./scripts/quality.sh test --jobs 4` (shard 0, lane 2, 331 of 332 each time; the other lanes
   passed), and passed 3 times of 3 alone under `./scripts/test-headless.py`. The branch's GTK
   lane is `strata-next`'s: no `src/`, shared crate or manifest differs. Not chased further.
+- **Sighting on [#2589](https://github.com/lgse/strata/pull/2589) after the second review** (at
+  `b86787184`, `strata-next` at `8c2ffda4f` merged in): the tenth,
+  `repository_probe_selects_strata_instead_of_a_dependency` (`tests.rs:185`, `ETXTBSY`: "The
+  file is running and cannot be changed"), failed once in `./scripts/quality.sh all --jobs 4`
+  (shard 0, lane 3, 79 of 80; the other lanes passed) and passed 3 times of 3 alone under
+  `./scripts/test-headless.py`. The branch changes no `strata-desktop`.
 
 ### #2176: a GTK critical after a file appears during a rename on a multiple selection
 
