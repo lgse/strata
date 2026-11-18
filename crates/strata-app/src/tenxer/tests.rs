@@ -619,14 +619,14 @@ fn numbered_action_chords_run_the_listed_action_on_the_armed_targets() {
     );
 }
 
-/// A folder holding `pictures` (`diagram.txt` and `photo.txt`) and `readme.md`, opened with
-/// the keyboard in its listing.
+/// A folder holding `pictures` (the folders `aaa` and `bbb`, each with a file) and
+/// `readme.md`, opened with the keyboard in its listing.
 fn open_pictures(host: &mut Offscreen) -> tempfile::TempDir {
     let root = tempfile::tempdir().expect("folder");
     let pictures = root.path().join("pictures");
-    std::fs::create_dir(&pictures).expect("folder");
-    for name in ["diagram.txt", "photo.txt"] {
-        std::fs::write(pictures.join(name), name).expect("file");
+    for name in ["aaa", "bbb"] {
+        std::fs::create_dir_all(pictures.join(name)).expect("folder");
+        std::fs::write(pictures.join(name).join("inside.txt"), name).expect("file");
     }
     std::fs::write(root.path().join("readme.md"), "readme").expect("file");
     host.app().open(Location::local(root.path()));
@@ -643,9 +643,10 @@ fn open_pictures(host: &mut Offscreen) -> tempfile::TempDir {
 }
 
 /// A folder came back to with its first entry selected and the cursor past it: the browser's
-/// load picked that first entry, so it read the restored selection as its own pick echoed and
-/// kept the load's cursor. The view showed the remembered one, and Return or Delete would act
-/// on another entry than the one drawn. Both now hold the remembered cursor.
+/// load picked that first entry, takes the restored selection for its own pick and keeps the
+/// load's cursor. GTK's view draws that cursor, and its rename and Delete act on it (driven on
+/// GTK): so does the view. Nothing is committed, so Columns then opens no child column for
+/// the remembered folder, as GTK's opens none (finding lgse/strata#2437).
 #[test]
 fn a_revisit_keeps_the_view_and_the_browser_on_one_cursor() {
     hosted_after(
@@ -679,7 +680,7 @@ fn a_revisit_keeps_the_view_and_the_browser_on_one_cursor() {
             assert!(host.run_until(PATIENCE, entered("pictures")));
             while host.turn() {}
             tap(&mut host, char_key(" "), Mods::default());
-            assert_eq!(named(&host).as_deref(), Some("photo.txt"), "Space moved on");
+            assert_eq!(named(&host).as_deref(), Some("bbb"), "Space moved on");
 
             tap(&mut host, char_key("h"), Mods::default());
             assert!(host.run_until(PATIENCE, |h| named(h).as_deref() == Some("pictures")));
@@ -699,10 +700,20 @@ fn a_revisit_keeps_the_view_and_the_browser_on_one_cursor() {
                 .focused_item()
                 .map(|(_, _, entry)| shell::id_of(app, &entry.location));
             assert_eq!(view, browser, "the view's cursor is the browser's");
-            assert_eq!(
-                named(&host).as_deref(),
-                Some("photo.txt"),
-                "the remembered one"
+            assert_eq!(named(&host).as_deref(), Some("aaa"), "the load's pick");
+            assert!(app.browser().selection_is_load_cursor(), "still the load's");
+
+            let ctrl = Mods {
+                ctrl: true,
+                cmd: true,
+                ..Mods::default()
+            };
+            tap(&mut host, Key::Command('1'), ctrl);
+            while host.turn() {}
+            assert_eq!(shell::preferences(host.app()).browser_mode, "columns");
+            assert!(
+                host.app().browser().column_entry_counts(1).is_none(),
+                "Columns opens no child column for the load's cursor"
             );
         },
     );

@@ -26,7 +26,9 @@
 //!   folder come from) stays the load's, so Columns shown again opens no child for it
 //!   (`follow_selection_on_return`; finding lgse/strata#2437). Where the browser's selection is
 //!   such a cursor and what came back is the cursor alone, the view's pick stays provisional
-//!   too ([`keep_provisional`]), as the browser's does.
+//!   too ([`keep_provisional`]), as the browser's does. Where what came back selects exactly
+//!   the load's pick with its cursor elsewhere, the browser keeps the load's cursor, and the
+//!   view takes it ([`take_load_cursor`]), as GTK's view draws it.
 //! - **One memory for the window's single-pane views** ([`Memory`]), as GTK's
 //!   `PaneNavigation` is one history whatever the mode: a folder left in Icons comes back in
 //!   List where Icons left it. A view switched away hears nothing, so while the view shown
@@ -184,6 +186,32 @@ pub(super) fn fall_back(
         None => AnchorRule::Move,
     };
     let _ = collection.selection.move_cursor(column, index, anchor);
+    collection.note_selection(column);
+}
+
+/// After a restore landed over the browser's `marks`: where what came back selects exactly the
+/// entries the browser's load picked, the browser reads it as its own pick and keeps the load's
+/// cursor (`classify_reported_fill`'s echo), so the view takes that cursor too. GTK's view
+/// draws it there, not on the remembered row, and its rename and Delete act on it (driven on
+/// GTK, 2026-11-17). Nothing is committed, so Columns shown again opens no child for it
+/// (finding lgse/strata#2437).
+pub(super) fn take_load_cursor(column: &Column, collection: &mut CollectionState, marks: &Marks) {
+    let Some(cursor) = marks.cursor.filter(|_| marks.provisional) else {
+        return;
+    };
+    let selection = &collection.selection;
+    if selection.cursor() == Some(cursor) {
+        return;
+    }
+    let (mut selected, mut picked) = (selection.selected_ids(column), marks.selected.clone());
+    selected.sort_unstable();
+    picked.sort_unstable();
+    let Some(index) = column.index_of(cursor).filter(|_| selected == picked) else {
+        return;
+    };
+    let _ = collection
+        .selection
+        .move_cursor(column, index, AnchorRule::Move);
     collection.note_selection(column);
 }
 
