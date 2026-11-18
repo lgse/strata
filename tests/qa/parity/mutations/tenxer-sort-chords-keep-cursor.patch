@@ -1,7 +1,7 @@
 diff --git a/crates/strata-app/src/tenxer/chords.rs b/crates/strata-app/src/tenxer/chords.rs
 --- a/crates/strata-app/src/tenxer/chords.rs
 +++ b/crates/strata-app/src/tenxer/chords.rs
-@@ -81,7 +81,7 @@ fn sort_choice(press: &KeyPress) -> Option<(SortKey, SortDirection)> {
+@@ -81,6 +81,6 @@ fn sort_choice(press: &KeyPress) -> Option<(SortKey, SortDirection)> {
              STEPS
                  .into_iter()
                  .find(|(step, _)| reversed(*step))
@@ -9,4 +9,3 @@ diff --git a/crates/strata-app/src/tenxer/chords.rs b/crates/strata-app/src/tenx
 +                .map(|(_, sort_key)| (sort_key, SortDirection::Ascending))
          })
  }
- 

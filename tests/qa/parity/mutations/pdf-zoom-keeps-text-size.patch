@@ -1,12 +1,8 @@
 diff --git a/crates/strata-app/src/preview/keys.rs b/crates/strata-app/src/preview/keys.rs
 --- a/crates/strata-app/src/preview/keys.rs
 +++ b/crates/strata-app/src/preview/keys.rs
-@@ -177,7 +177,7 @@ fn in_preview_body_outside_find(app: &App, at: &Situation) -> bool {
- }
- 
+@@ -179,3 +179,3 @@ fn in_preview_body_outside_find(app: &App, at: &Situation) -> bool {
  fn in_tenxer_listing_for_preview(app: &App, at: &Situation) -> bool {
 -    shell::preferences(app).tenxer_mode && at.in_view()
 +    false && shell::preferences(app).tenxer_mode && at.in_view()
  }
- 
- fn in_listing_for_preview(_: &App, at: &Situation) -> bool {
