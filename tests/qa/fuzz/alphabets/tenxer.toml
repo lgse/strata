@@ -16,10 +16,13 @@
 # - Committing the `f` filter: after its Return GTK's listing has no cursor, and Space selects
 #   nothing (lgse/strata#2586, `oracle`; version 2's smoke tier, parked in
 #   `tests/qa/fuzz/corpus/tenxer`). The filter is typed, and abandoned by Escape.
-# - `h` out of a folder with entries selected: a walk back into it restores the selection, and
-#   GTK's first 10xer move there drops it where Rune's keeps it (lgse/strata#2587, `oracle` by
-#   the owner's ruling of 2026-11-17; version 3's smoke tier, parked). `h` leaves only a folder
-#   with nothing selected, so a revisit restores none: version 4 left `h` out altogether.
+# - Leaving a folder with entries selected, by `h` or by `l`: a walk back into it restores the
+#   selection, and GTK's first 10xer move there drops it where Rune's keeps it
+#   (lgse/strata#2587, `oracle` by the owner's ruling of 2026-11-17; version 3's smoke tier,
+#   parked). `h` and `l` leave only a folder with nothing selected, so a revisit restores none:
+#   version 4 left `h` out altogether, and version 5 guarded `h` alone. Each is sent after two
+#   Escapes, which clear a selection as a user would before leaving: in version 6, where they
+#   went alone, a load's pick kept the folder selected and `h` never ran in 20 seeds.
 # - `i` on a filter's result folder: GTK peeks it and Rune does not yet (A11's Open, "The
 #   keyboard peek of a search result"), so the Escape after it lands differently.
 # - `archive`: the fixture's empty folder, where the List alphabet saw GTK lose the parent
@@ -27,7 +30,7 @@
 # - The chords that leave the fixture or open other windows: `g` places, `t` tabs, `;`
 #   actions, `c` copies to the clipboard. They have their scenarios.
 area = "tenxer"
-version = 5
+version = 7
 about = "10xer mode in List on the canonical fixture: j and k, gg and G, Space, Invert and Select All, / find with Enter or Escape over a selection, n and N, i folder peeks and Reload with one open, l and h into and out of folders, the f filter typed and abandoned, sort chords, hidden files, and files made and removed behind the application's back"
 header = '{"modes":["list"],"prefs":{"tenxer_mode":true,"type_to_search":false,"single_click_previews":false}}'
 
@@ -111,14 +114,22 @@ steps = ['{"key":"F5","when":{"not":{"matches":[]}}}']
 [[action]]
 name = "enter"
 weight = 3
-steps = ['{"key":"l","when":{"any":[{"focused":"documents"},{"focused":"pictures"}]}}']
+steps = [
+  '{"key":"Escape"}',
+  '{"key":"Escape"}',
+  '{"key":"l","when":{"all":[{"any":[{"focused":"documents"},{"focused":"pictures"}]},{"selected":[]}]}}',
+]
 
 # The parent of the fixture's own folder is /tmp, which holds other runs' folders; and only
 # from a folder with nothing selected (see above).
 [[action]]
 name = "parent"
 weight = 3
-steps = ['{"key":"h","when":{"all":[{"not":{"directory":"$root"}},{"selected":[]}]}}']
+steps = [
+  '{"key":"Escape"}',
+  '{"key":"Escape"}',
+  '{"key":"h","when":{"all":[{"not":{"directory":"$root"}},{"selected":[]}]}}',
+]
 
 [[action]]
 name = "filter"
