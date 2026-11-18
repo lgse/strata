@@ -19,11 +19,12 @@ use rune::{Cx, El, Tx, col, text};
 use rune_kit::{Button, Spinner};
 use strata_components::{
     code_view::{CodeIntent, CodeState, CodeView, highlight::Highlighter},
+    contract::EntryId,
     document_view::DocumentState,
     preview_drawer::{DocumentView, FindStatus, HostedPreview},
     sheet_grid::SheetGridState,
     viewers::{
-        archive::{ArchiveState, PromptState},
+        archive::{ArchiveDir, ArchiveState, ArchiveTree, PromptState},
         viewport::ViewportState,
     },
 };
@@ -44,14 +45,46 @@ use crate::{App, buttons};
 
 /// Where a handler of a viewer that has gone lands: Rune can dispatch a layout report or a
 /// press it queued for a frame after the viewer was replaced in that frame's update, as a
-/// first load that fails at once replaces the model's frame. The report changes this, which
-/// nothing reads, instead of the viewer now shown.
-#[derive(Default)]
+/// first load that fails at once replaces the model's frame, or a quick move off an image or
+/// a document replaces its view. The report changes this, which nothing reads, instead of the
+/// viewer now shown.
 pub(super) struct Detached {
     pub(super) viewport: ViewportState,
     pub(super) model: strata_components::viewers::model::ModelState,
     pub(super) route: strata_components::viewers::route::RouteState,
     pub(super) pdf: strata_components::pdf_view::PdfState,
+    code: CodeState,
+    document: DocumentState,
+    sheet: SheetGridState,
+    archive: ArchiveState,
+    prompt: PromptState,
+}
+
+impl Default for Detached {
+    fn default() -> Self {
+        // An empty tree reserves no row ids: only its children would.
+        let tree = ArchiveTree::new(ArchiveDir::default(), || EntryId::new(u64::MAX));
+        Self {
+            viewport: ViewportState::default(),
+            model: Default::default(),
+            route: Default::default(),
+            pdf: Default::default(),
+            code: CodeState::default(),
+            document: DocumentState::default(),
+            sheet: SheetGridState::new("preview-detached-sheet"),
+            archive: ArchiveState::new("preview-detached-archive", tree),
+            prompt: PromptState::default(),
+        }
+    }
+}
+
+/// A viewer's accessor falling back to [`Detached`]: says so, and hands the spare state on.
+pub(super) fn spare<T>(viewer: &'static str, state: T) -> T {
+    tracing::debug!(
+        viewer,
+        "a handler of a viewer that has gone landed in its spare state"
+    );
+    state
 }
 
 /// Key of the read-only source/text viewer inside the preview drawer.
@@ -516,14 +549,15 @@ impl HostedPreview for Viewer {
 fn code_ref(app: &App) -> &CodeState {
     match &app.preview.viewer {
         Viewer::Code(code) => code,
-        _ => unreachable!("CodeView built only while Viewer::Code is active"),
+        _ => spare("code", &app.preview.detached.code),
     }
 }
 
 fn code_mut(app: &mut App) -> &mut CodeState {
-    match &mut app.preview.viewer {
+    let preview = &mut app.preview;
+    match &mut preview.viewer {
         Viewer::Code(code) => code,
-        _ => unreachable!("CodeView mutated only while Viewer::Code is active"),
+        _ => spare("code", &mut preview.detached.code),
     }
 }
 
@@ -532,16 +566,17 @@ fn doc_code_ref(app: &App) -> &CodeState {
         Viewer::Document(DocumentViewer {
             source: Some(code), ..
         }) => code,
-        _ => unreachable!("Document source built only while source CodeState exists"),
+        _ => spare("document source", &app.preview.detached.code),
     }
 }
 
 fn doc_code_mut(app: &mut App) -> &mut CodeState {
-    match &mut app.preview.viewer {
+    let preview = &mut app.preview;
+    match &mut preview.viewer {
         Viewer::Document(DocumentViewer {
             source: Some(code), ..
         }) => code,
-        _ => unreachable!("Document source mutated only while source CodeState exists"),
+        _ => spare("document source", &mut preview.detached.code),
     }
 }
 
@@ -551,17 +586,18 @@ fn doc_state_ref(app: &App) -> &DocumentState {
             rendered: Some(RenderedBody::Document(doc)),
             ..
         }) => &doc.state,
-        _ => unreachable!("DocumentView built only while RenderedBody::Document is active"),
+        _ => spare("document", &app.preview.detached.document),
     }
 }
 
 fn doc_state_mut(app: &mut App) -> &mut DocumentState {
-    match &mut app.preview.viewer {
+    let preview = &mut app.preview;
+    match &mut preview.viewer {
         Viewer::Document(DocumentViewer {
             rendered: Some(RenderedBody::Document(doc)),
             ..
         }) => &mut doc.state,
-        _ => unreachable!("DocumentView mutated only while RenderedBody::Document is active"),
+        _ => spare("document", &mut preview.detached.document),
     }
 }
 
@@ -571,24 +607,26 @@ fn sheet_state_ref(app: &App) -> &SheetGridState {
             rendered: Some(RenderedBody::Sheet(sheet)),
             ..
         }) => sheet,
-        _ => unreachable!("SheetGrid built only while RenderedBody::Sheet is active"),
+        _ => spare("sheet", &app.preview.detached.sheet),
     }
 }
 
 fn sheet_state_mut(app: &mut App) -> &mut SheetGridState {
-    match &mut app.preview.viewer {
+    let preview = &mut app.preview;
+    match &mut preview.viewer {
         Viewer::Document(DocumentViewer {
             rendered: Some(RenderedBody::Sheet(sheet)),
             ..
         }) => sheet,
-        _ => unreachable!("SheetGrid mutated only while RenderedBody::Sheet is active"),
+        _ => spare("sheet", &mut preview.detached.sheet),
     }
 }
 
 fn image_viewport_mut(app: &mut App) -> &mut ViewportState {
-    match &mut app.preview.viewer {
+    let preview = &mut app.preview;
+    match &mut preview.viewer {
         Viewer::Image(img) => &mut img.viewport,
-        _ => unreachable!("ImageView mutated only while Viewer::Image is active"),
+        _ => spare("image", &mut preview.detached.viewport),
     }
 }
 
@@ -603,21 +641,23 @@ pub(super) fn tick_archive_if_active(app: &mut App, tx: &mut Tx) -> bool {
 fn archive_ref(app: &App) -> &ArchiveState {
     match &app.preview.viewer {
         Viewer::Archive(state) => state,
-        _ => unreachable!("ArchiveView built only while Viewer::Archive is active"),
+        _ => spare("archive", &app.preview.detached.archive),
     }
 }
 
 fn archive_mut(app: &mut App) -> &mut ArchiveState {
-    match &mut app.preview.viewer {
+    let preview = &mut app.preview;
+    match &mut preview.viewer {
         Viewer::Archive(state) => state,
-        _ => unreachable!("ArchiveView mutated only while Viewer::Archive is active"),
+        _ => spare("archive", &mut preview.detached.archive),
     }
 }
 
 fn prompt_mut(app: &mut App) -> &mut PromptState {
-    match &mut app.preview.viewer {
+    let preview = &mut app.preview;
+    match &mut preview.viewer {
         Viewer::ArchivePrompt(prompt) => prompt,
-        _ => unreachable!("ArchivePrompt mutated only while Viewer::ArchivePrompt is active"),
+        _ => spare("archive prompt", &mut preview.detached.prompt),
     }
 }
 

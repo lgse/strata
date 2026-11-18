@@ -22,6 +22,7 @@ mod model;
 mod pdf;
 mod provider;
 mod route;
+mod spare;
 
 fn listed(host: &mut Offscreen) -> tempfile::TempDir {
     let folder = fixture();

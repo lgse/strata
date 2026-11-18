@@ -38,7 +38,10 @@ use strata_desktop::{
 };
 use strata_fs::services::route_preview::{RouteFormat, RoutePreview};
 
-use super::{keys, labels, viewer::Viewer};
+use super::{
+    keys, labels,
+    viewer::{self, Viewer},
+};
 use crate::{
     App,
     commands::{Action, Call, Keys, Outcome, Situation, Stage},
@@ -306,7 +309,7 @@ fn route_mut(app: &mut App) -> &mut RouteState {
     let preview = &mut app.preview;
     match &mut preview.viewer {
         Viewer::Route(route) => &mut route.state,
-        _ => &mut preview.detached.route,
+        _ => viewer::spare("route", &mut preview.detached.route),
     }
 }
 
@@ -314,6 +317,6 @@ fn viewport_mut(app: &mut App) -> &mut ViewportState {
     let preview = &mut app.preview;
     match &mut preview.viewer {
         Viewer::Route(route) => &mut route.state.viewport,
-        _ => &mut preview.detached.viewport,
+        _ => viewer::spare("route", &mut preview.detached.viewport),
     }
 }
