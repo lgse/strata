@@ -13,9 +13,8 @@
 //! `present`), and closing the browser closes its chooser (`bind_host_parent`'s
 //! `destroy_with_parent`), which cancels it.
 //!
-//! One browser window per process: `strata-rune` opens one, and New Window does not open a
-//! second in process yet. The one `BROWSER` and `OPEN` below assume it; whoever opens a second
-//! browser window in process keeps them per window.
+//! A process has a browser window for each launch ([`super::windowed`], "Windows"), so the
+//! choosers open are kept by the browser window that asked for each.
 
 use std::cell::{OnceCell, RefCell};
 
@@ -29,68 +28,88 @@ use crate::{
     chooser::{floating::FloatingRequest, geometry::chooser_initial_dimensions},
     folder_views,
     portal::Completion,
+    settings::Saved,
     shell,
-    startup::{self, UiThread},
+    startup::UiThread,
 };
 
-thread_local! {
-    /// The browser window's thread and app, from before its first frame.
-    static BROWSER: OnceCell<(UiThread, AppHandle<App>)> = const { OnceCell::new() };
-    /// The open chooser's window and app: the window to bring forward or close, the app for a
-    /// GLib wake-up to settle too.
-    static OPEN: RefCell<Option<(WindowHandle, AppHandle<App>)>> = const { RefCell::new(None) };
+/// A chooser open over a browser window.
+struct Open {
+    /// The browser window that asked for it, and the chooser's own (`shell::window_id`).
+    browser: u64,
+    chooser: u64,
+    /// The window to bring forward or close, and the app for a GLib wake-up to settle too.
+    window: WindowHandle,
+    handle: AppHandle<App>,
 }
 
-/// Lets the browser window open floating choosers.
-pub(crate) fn bind(ui: UiThread, browser: AppHandle<App>) {
-    BROWSER.with(|cell| {
-        let _ = cell.set((ui, browser));
+thread_local! {
+    /// The interface thread, from before the first browser window's first frame.
+    static UI: OnceCell<UiThread> = const { OnceCell::new() };
+    /// The choosers open, one at most for each browser window.
+    static OPEN: RefCell<Vec<Open>> = const { RefCell::new(Vec::new()) };
+}
+
+/// Lets the browser windows open floating choosers.
+pub(crate) fn bind(ui: UiThread) {
+    UI.with(|cell| {
+        let _ = cell.set(ui);
     });
 }
 
 /// Opens the floating chooser the browser asked for, if it asked, or brings the open one
 /// forward when the browser asked again.
 pub(crate) fn open_requested(app: &mut App) {
+    let id = shell::window_id(app);
     if crate::chooser::floating::take_raise(app) {
-        raise_open();
+        raise_open(id);
     }
     let Some(request) = crate::chooser::floating::take(app) else {
         return;
     };
-    match BROWSER.with(|cell| cell.get().cloned()) {
-        Some((ui, browser)) => open(ui, browser, request),
+    let ui = UI.with(|cell| cell.get().copied());
+    match ui.zip(super::windowed::handle_of(id)) {
+        Some((ui, browser)) => open(ui, (id, browser), shell::share_settings(app), request),
         None => (request.completion)(Err(crate::portal::PortalError::Cancelled(
             "no window to open the chooser over".into(),
         ))),
     }
 }
 
-/// Applies what the open chooser's services queued, as the browser's GLib wake-up does for it.
+/// Applies what the open choosers' services queued, as the browser's GLib wake-up does for it.
 pub(super) fn settle_open() {
     OPEN.with(|open| {
-        if let Some((_, handle)) = open.borrow().as_ref() {
-            handle.update_if(shell::settle);
+        for open in open.borrow().iter() {
+            open.handle.update_if(shell::settle);
         }
     });
 }
 
-/// Brings the open chooser forward and gives it the keyboard.
-fn raise_open() {
+/// Brings the chooser open over browser window `browser` forward and gives it the keyboard.
+fn raise_open(browser: u64) {
     OPEN.with(|open| {
-        if let Some((window, _)) = open.borrow().as_ref() {
+        for open in open.borrow().iter().filter(|open| open.browser == browser) {
             tracing::debug!("the open floating chooser was asked for again: brought forward");
-            window.show();
-            window.focus();
+            open.window.show();
+            open.window.focus();
         }
     });
 }
 
-/// Closes the open chooser, whose close cancels it: the browser it answers is closing.
-pub(super) fn close_with_browser() {
-    let open = OPEN.with(|open| open.borrow_mut().take());
-    if let Some((window, _)) = open {
+/// Closes the chooser open over browser window `browser`, whose close cancels it: the browser
+/// it answers is closing.
+pub(super) fn close_with_browser(browser: u64) {
+    let closing: Vec<Open> = OPEN.with(|open| {
+        let (closing, kept) = open
+            .borrow_mut()
+            .drain(..)
+            .partition(|open| open.browser == browser);
+        *open.borrow_mut() = kept;
+        closing
+    });
+    for open in closing {
         tracing::debug!("the browser window closed: its floating chooser closes with it");
-        window.close();
+        open.window.close();
     }
 }
 
@@ -101,7 +120,8 @@ fn chooser_poll(app: &mut App, clock: f64, tx: &mut Tx) -> bool {
 fn close_chooser(app: &mut App, tx: &mut Tx) {
     crate::chooser::cancel(app, tx);
     folder_views::flush_at_exit(app);
-    OPEN.with(|open| open.borrow_mut().take());
+    let chooser = shell::window_id(app);
+    OPEN.with(|open| open.borrow_mut().retain(|open| open.chooser != chooser));
 }
 
 /// The chooser's answer, then a wake-up for the browser, whose inbox holds it.
@@ -112,7 +132,12 @@ fn waking(completion: Completion, browser: AppHandle<App>) -> Completion {
     })
 }
 
-fn open(ui: UiThread, browser: AppHandle<App>, request: FloatingRequest) {
+fn open(
+    ui: UiThread,
+    (id, browser): (u64, AppHandle<App>),
+    settings: Saved,
+    request: FloatingRequest,
+) {
     let FloatingRequest {
         request,
         source,
@@ -128,7 +153,7 @@ fn open(ui: UiThread, browser: AppHandle<App>, request: FloatingRequest) {
     let state = App::new_chooser(
         &ui,
         Csd::new(frame, Backend::from_env()),
-        startup::load_settings(),
+        settings,
         (
             request,
             source,
@@ -137,6 +162,7 @@ fn open(ui: UiThread, browser: AppHandle<App>, request: FloatingRequest) {
         ),
     );
     state.open(initial);
+    let chooser = shell::window_id(&state);
     let app = chooser_app(ChooserWindow {
         size,
         frame,
@@ -145,11 +171,19 @@ fn open(ui: UiThread, browser: AppHandle<App>, request: FloatingRequest) {
         on_close: close_chooser,
     });
     let handle = app.handle();
+    super::windowed::follow_queue(&state, handle.clone());
     let attach = handle.clone();
     let app = app.on_window(move |window: &WindowHandle| {
         csd::attach(window, &attach, shell::csd_of);
     });
     let window = rune::open_window(WindowSpec::from_app(&token, app).state(state));
     tracing::debug!("a floating chooser opened");
-    OPEN.with(|open| open.replace(Some((window, handle))));
+    OPEN.with(|open| {
+        open.borrow_mut().push(Open {
+            browser: id,
+            chooser,
+            window,
+            handle,
+        });
+    });
 }

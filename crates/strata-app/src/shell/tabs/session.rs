@@ -4,10 +4,12 @@
 //! the GTK window's rules (`src/ui/window/launch.rs`, `src/ui/window/composition/tabs.rs` and
 //! `docs/rune/shared-state.md`, "Tab sessions"):
 //!
-//! - `load_restorable()` runs at start-up before the window opens (`crate::launch::initial`),
-//!   never in `poll` or an update.
-//! - Only a plain-launch window sets `persist = true` and restores a saved session; an explicit
-//!   directory launch leaves `tabs.toml` untouched.
+//! - `load_restorable()` runs at start-up before the window opens (`crate::launch::initial_for`),
+//!   or, for a window a later launch opens, off the interface thread ([`queue_present_start`]);
+//!   never on it in `poll` or an update.
+//! - Only a window opened with no argument sets `persist = true` and restores a saved session:
+//!   the process's own launch, or a later one, as every window GTK's `present` opens does. A
+//!   launch on a folder or a file leaves `tabs.toml` untouched.
 //! - Nothing saves while `restoring` is true, and an empty location list is never saved.
 //! - While `restore_tabs` is off, `persist_session` removes `tabs.toml` instead of saving, and
 //!   turning `restore_tabs` off live removes it at once (`crate::settings::Saved::change`).
@@ -39,6 +41,25 @@ pub(crate) fn queue_plain_start(app: &mut App, restored: Option<RestoredSession>
     later.then(move |app, tx| start_plain(app, restored, tx));
     // Wakes the windowed host's embedded GLib loop so `pump` runs without waiting on input.
     glib::idle_add_local_once(|| {});
+}
+
+/// Starts a window a later launch with no argument opened as a plain launch's: GTK's `present`
+/// gives every such window `restore_tabs`, so it restores the saved session and persists its
+/// tabs (`present_target` in `src/ui/window/launch.rs`). The window opens after start-up, so
+/// `tabs.toml` is read off the interface thread, and the start waits for it.
+pub(crate) fn queue_present_start(app: &mut App) {
+    app.window.tabs.persist = true;
+    let later = app.window.events.later();
+    let restore = preferences(app).restore_tabs;
+    glib::MainContext::default().spawn_local(async move {
+        let restored = if restore {
+            let read = gio::spawn_blocking(tabs_session::load_restorable).await;
+            read.ok().flatten()
+        } else {
+            None
+        };
+        later.then(move |app, tx| start_plain(app, restored, tx));
+    });
 }
 
 /// Opens a plain-launch window's tabs: restores `restored` when `restore_tabs` is on and a

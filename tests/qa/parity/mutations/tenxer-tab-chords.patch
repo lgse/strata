@@ -1,0 +1,12 @@
+diff --git a/crates/strata-app/src/tenxer/chords.rs b/crates/strata-app/src/tenxer/chords.rs
+--- a/crates/strata-app/src/tenxer/chords.rs
++++ b/crates/strata-app/src/tenxer/chords.rs
+@@ -157,7 +157,7 @@ fn complete_tab(app: &mut App, press: &KeyPress, tx: &mut Tx) -> bool {
+     } else if press.is(TAB_CHORD_PREVIOUS) {
+         commands::run(app, "tab-previous", On::Focus, tx);
+     } else if let Some(digit) = press.digit_in(TAB_CHORD_NUMBERS) {
+-        let index = (usize::from(digit) + 9) % 10;
++        let index = usize::from(digit) % 10;
+         if let Some(&key) = tabs(app).get(index) {
+             tab_strip::select(app, key, tx);
+         }

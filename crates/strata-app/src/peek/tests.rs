@@ -213,6 +213,60 @@ fn icons_moves_close_the_peek() {
     moves_close_the_peek("icons", "icons_moves_close_the_peek");
 }
 
+fn peeked_names(host: &Offscreen) -> Vec<String> {
+    let entries = &host.app().peek.entries;
+    entries
+        .iter()
+        .map(|entry| entry.display_name.clone())
+        .collect()
+}
+
+/// GTK's card lists the folder as it was when the peek opened: a file made in it later is not
+/// added, and Reload (F5) reloads the view but keeps the peek open on that listing (checked by
+/// hand on GTK with `qa-drive.sh`).
+fn the_peek_keeps_its_listing_through_a_reload(mode: &'static str, name: &str) {
+    in_mode(mode, name, |mut host| {
+        let root = on_folder(&mut host, "documents");
+        letter(&mut host, "i");
+        let listed = |h: &Offscreen| peeked_names(h).len() == 2;
+        assert!(
+            host.run_until(PATIENCE, listed),
+            "the card lists the folder"
+        );
+        let before = peeked_names(&host);
+
+        std::fs::write(root.path().join("documents").join("fresh.txt"), "fresh").expect("file");
+        let grew = host.run_until(std::time::Duration::from_secs(2), |h| {
+            peeked_names(h) != before
+        });
+        assert!(!grew, "a file made after the peek opened is not added");
+
+        press(&mut host, Key::Function(5));
+        let _ = host.run_until(std::time::Duration::from_secs(1), |_| false);
+        assert!(
+            open(&host) && peek_shown(&host),
+            "Reload keeps the peek open"
+        );
+        assert_eq!(peeked_names(&host), before, "on the listing it opened with");
+    });
+}
+
+#[test]
+fn list_the_peek_keeps_its_listing_through_a_reload() {
+    the_peek_keeps_its_listing_through_a_reload(
+        "list",
+        "list_the_peek_keeps_its_listing_through_a_reload",
+    );
+}
+
+#[test]
+fn icons_the_peek_keeps_its_listing_through_a_reload() {
+    the_peek_keeps_its_listing_through_a_reload(
+        "icons",
+        "icons_the_peek_keeps_its_listing_through_a_reload",
+    );
+}
+
 /// A window in `mode`, 10xer or not as `tenxer` says, with "Folder peeking" on.
 fn peeking(mode: &'static str, tenxer: bool, name: &str, run: impl FnOnce(Offscreen)) {
     hosted_after(
@@ -318,4 +372,30 @@ fn pointer_peeking_follows_the_preference_and_a_keyboard_peek_holds_it_on() {
         set_folder_peeking(&mut host, true);
         assert!(enabled(&host), "on again with the preference");
     });
+}
+
+/// A peek a resting pointer opened survives Reload as a keyboard one does: the part notes the
+/// selection it opened over with the same check (`seen`), which a reload's sync leaves alone.
+#[test]
+fn a_pointer_peek_survives_a_reload() {
+    peeking(
+        "list",
+        false,
+        "a_pointer_peek_survives_a_reload",
+        |mut host| {
+            let _root = on_folder(&mut host, "documents");
+            let folder = centre_of(&host, "documents");
+            host.runtime().pointer_move(folder.0 + 1.0, folder.1);
+            host.turn();
+            host.runtime().pointer_move(folder.0, folder.1);
+            let listed = host.run_until(PATIENCE, |h| open(h) && h.app().peek.entries.len() == 2);
+            assert!(listed, "the resting pointer opens the folder's peek");
+            press(&mut host, Key::Function(5));
+            let _ = host.run_until(std::time::Duration::from_secs(1), |_| false);
+            assert!(
+                open(&host) && peek_shown(&host),
+                "Reload keeps the peek open"
+            );
+        },
+    );
 }

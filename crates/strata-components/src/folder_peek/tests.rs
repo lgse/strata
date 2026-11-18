@@ -186,6 +186,11 @@ fn a_peek_whose_folder_leaves_the_view_closes() {
         Change::None,
         "another collection"
     );
+    assert_eq!(
+        st.view(&view("files", &[])),
+        Change::None,
+        "a listing read again shows no rows for a frame"
+    );
     assert_eq!(st.view(&view("files", &[2, 3, 4])), Change::Closed);
     assert_eq!(st.target(), None);
 }

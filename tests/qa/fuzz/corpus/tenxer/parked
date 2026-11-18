@@ -1,0 +1,12 @@
+# 10xer mode's sequences parked against their findings (docs/rune/parity/findings.md):
+#
+#   v<version>-<seed> <code> <issue>
+#
+# Each line is a finding's sequence shrunk GTK against Rune, named for the smoke seed that met
+# it. Versions 2 and 3 were A11's drafts, never merged. Version 2's sequences commit an `f`
+# filter, after which GTK's listing has no cursor (lgse/strata#2586). Version 3's goes back into
+# a folder whose selection the visit restores, and moves: GTK's move drops it, Rune's keeps it
+# (lgse/strata#2587, `oracle` by the owner's ruling of 2026-11-17).
+v2-0000000000000003 oracle lgse/strata#2586
+v2-0000000000000008 oracle lgse/strata#2586
+v3-0000000000000003 oracle lgse/strata#2587

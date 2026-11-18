@@ -215,7 +215,7 @@ mod registry;
 mod worn;
 
 pub(crate) use ids::Ids;
-pub(crate) use inbox::{Heard, Inbox, Later, Listener, Queued, Source, TabKey, Update};
+pub(crate) use inbox::{Heard, Inbox, Later, Listener, Queued, Source, TabKey, Update, WeakLater};
 pub(crate) use registry::{Entry, Registry, ShownView};
 pub(crate) use worn::{SavedGlyph, Worn, color_of, path_customization};
 

@@ -1,0 +1,9 @@
+diff --git a/crates/strata-app/src/tenxer/keys.rs b/crates/strata-app/src/tenxer/keys.rs
+--- a/crates/strata-app/src/tenxer/keys.rs
++++ b/crates/strata-app/src/tenxer/keys.rs
+@@ -260,5 +260,4 @@ fn escape_in_listing(app: &mut App, tx: &mut Tx) -> bool {
+         || find::dismiss_highlight(app)
+         || end_active_range(app)
+         || preview::dismiss_escape(app, tx)
+-        || app.browser.clear_active_selection()
+ }

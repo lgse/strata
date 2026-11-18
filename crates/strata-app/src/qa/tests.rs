@@ -33,6 +33,7 @@ mod rename;
 mod replaced;
 mod right_click;
 mod scroll;
+mod windows;
 
 const INPUT_LOG: &str = "STRATA_INPUT_LOG";
 
