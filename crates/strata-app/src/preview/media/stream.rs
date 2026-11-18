@@ -78,6 +78,21 @@ pub(super) struct Inlet {
     pub(super) deliver: fn(&mut App, u64, u64, Received, &mut Tx) -> bool,
 }
 
+#[cfg(test)]
+thread_local! {
+    /// What starts a decoder in tests: a fixture stream in the sandbox's place.
+    pub(in crate::preview) static START: Cell<Option<fn(SandboxedMedia, u32) -> Result<Session, String>>> =
+        const { Cell::new(None) };
+}
+
+fn start_session(source: SandboxedMedia, tick: u32) -> Result<Session, String> {
+    #[cfg(test)]
+    if let Some(start) = START.get() {
+        return start(source, tick);
+    }
+    Session::start(source, tick)
+}
+
 impl Pump {
     fn start(
         source: SandboxedMedia,
@@ -86,7 +101,7 @@ impl Pump {
         inlet: Inlet,
     ) -> Result<Rc<Self>, String> {
         let pump = Rc::new(Self {
-            session: Session::start(source, tick)?,
+            session: start_session(source, tick)?,
             room: Cell::new(PRESENTATION_QUEUE),
             timer: RefCell::new(None),
         });

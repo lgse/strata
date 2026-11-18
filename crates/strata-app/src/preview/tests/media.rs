@@ -1,0 +1,299 @@
+// SPDX-License-Identifier: MIT
+
+//! The media player's host (`preview::media`): a sandboxed video's frames and clock reach the
+//! player and the media key plays and pauses it; the eyebrow counts only the files whose
+//! probe found media, and the next key steps past text named as video and keeps playing;
+//! a decode that fails shows its error inside the player; and a GIF loops.
+
+use std::{
+    path::{Path, PathBuf},
+    time::Duration,
+};
+
+use rune::Tx;
+use rune::{Key, Mods};
+use strata_components::{
+    media_player::{MediaKind, MediaState},
+    viewers::layout::Position,
+};
+use strata_core::model::{Location, MetadataValue};
+use strata_fs::services::{MetadataUpdate, PreviewContent, SandboxedMedia};
+use strata_preview::{
+    media::Header,
+    sandbox::{
+        MediaPreviewBackend,
+        media::{Session, fixtures},
+    },
+};
+
+use super::{
+    MODULE, Viewer, disable_auto_preview, focus_view, press,
+    provider::{Recorded, install, listed_with},
+    select, space,
+};
+use crate::{
+    App,
+    host::offscreen::Offscreen,
+    preview::{media::START_DECODER, session},
+    test_support::{PATIENCE, hosted},
+};
+
+/// Bytes no text is: what a listing reads as backing a video's name.
+const MP4: &str = "\0\0\0\u{18}ftypmp42\0\0\0\0";
+
+fn state(host: &Offscreen) -> Option<&MediaState> {
+    match &host.app().preview.viewer {
+        Viewer::Media(media) => Some(&media.state),
+        _ => None,
+    }
+}
+
+fn shows(host: &mut Offscreen, done: impl Fn(&MediaState) -> bool, what: &str) {
+    let shown = host.run_until(PATIENCE, |host| state(host).is_some_and(&done));
+    assert!(
+        shown,
+        "the media player: {what}: {:?}",
+        state(host).map(|s| (s.clip().position, s.clip().has_next))
+    );
+}
+
+fn decode_with(start: fn(SandboxedMedia, u32) -> Result<Session, String>) {
+    START_DECODER.set(Some(start));
+}
+
+/// Ten seconds of 16 × 16 frames.
+fn ten_seconds(_: SandboxedMedia, start_tick: u32) -> Result<Session, String> {
+    fixtures::stream(Header {
+        width: 16,
+        height: 16,
+        audio: false,
+        duration_us: 10_000_000,
+        start_tick,
+    })
+}
+
+/// The provider's answer for the media file at `path`.
+fn sandboxed(path: PathBuf) -> PreviewContent {
+    PreviewContent::SandboxedMedia {
+        media: SandboxedMedia {
+            path,
+            size: strata_fs::services::MediaPreviewSize::new(320, 180),
+            backend: MediaPreviewBackend::Software,
+            input_owner: None,
+            audio_only: false,
+        },
+    }
+}
+
+/// Gives the listed `names` a length, as a metadata probe of real media does.
+fn probed(host: &mut Offscreen, names: &'static [&'static str]) {
+    host.runtime().update(move |app: &mut App, _: &mut Tx| {
+        let listed: Vec<_> = (0..).map_while(|at| app.browser.entry_at(0, at)).collect();
+        for (position, entry) in listed.into_iter().enumerate() {
+            if names.contains(&entry.display_name.as_str()) {
+                let update = MetadataUpdate {
+                    location: entry.location,
+                    size: MetadataValue::Unknown,
+                    modified_unix_seconds: MetadataValue::Unknown,
+                    created_unix_seconds: MetadataValue::Unknown,
+                    mode: MetadataValue::Unknown,
+                    image_dimensions: MetadataValue::Known((16, 16)),
+                    child_count: MetadataValue::Unknown,
+                    duration_seconds: MetadataValue::Known(10),
+                    listable: MetadataValue::Unknown,
+                };
+                app.browser.apply_thumbnail_metadata(0, position, update);
+            }
+        }
+    });
+    while host.turn() {}
+}
+
+/// Opens the preview on `name`, answered as `content_type` media.
+fn open(
+    host: &mut Offscreen,
+    provider: &Recorded,
+    files: &[(&str, &str)],
+    name: &str,
+    content_type: &str,
+) -> tempfile::TempDir {
+    install(host, provider);
+    let folder = listed_with(host, files);
+    probed(host, &["alpha.mp4", "beta.mp4"]);
+    disable_auto_preview(host);
+    select(host, &Location::local(folder.path().join(name)));
+    focus_view(host);
+    space(host);
+    provider.wait_for(host, 0);
+    provider.answer_as(0, content_type, sandboxed(folder.path().join(name)));
+    folder
+}
+
+fn ctrl_alt() -> Mods {
+    Mods {
+        ctrl: true,
+        alt: true,
+        ..Mods::default()
+    }
+}
+
+fn play_pause(host: &mut Offscreen) {
+    press(host, Key::Text(" ".to_owned()), ctrl_alt());
+}
+
+#[test]
+fn a_video_plays_on_the_media_key_and_its_clock_moves() {
+    hosted(
+        MODULE,
+        "media::a_video_plays_on_the_media_key_and_its_clock_moves",
+        |mut host| {
+            decode_with(ten_seconds);
+            let provider = Recorded::default();
+            let _folder = open(
+                &mut host,
+                &provider,
+                &[("alpha.mp4", MP4)],
+                "alpha.mp4",
+                "video/mp4",
+            );
+            let ready =
+                |s: &MediaState| s.has_frame() && s.duration() == Some(Duration::from_secs(10));
+            shows(&mut host, ready, "the first frame and the duration");
+            assert_eq!(state(&host).map(|s| s.clip().kind), Some(MediaKind::Video));
+            assert!(
+                state(&host).is_some_and(|s| !s.playing()),
+                "paused, autoplay being off"
+            );
+
+            play_pause(&mut host);
+            shows(&mut host, MediaState::playing, "playing on Ctrl+Alt+Space");
+            let moved = |s: &MediaState| s.position() >= Duration::from_secs(1);
+            shows(&mut host, moved, "the clock moving while it plays");
+            play_pause(&mut host);
+            shows(&mut host, |s| !s.playing(), "paused on Ctrl+Alt+Space");
+        },
+    );
+}
+
+#[test]
+fn next_steps_past_text_named_as_video_and_keeps_playing() {
+    hosted(
+        MODULE,
+        "media::next_steps_past_text_named_as_video_and_keeps_playing",
+        |mut host| {
+            decode_with(ten_seconds);
+            let provider = Recorded::default();
+            let files = [
+                ("alpha.mp4", MP4),
+                ("bait.mp4", "not a video\n"),
+                ("beta.mp4", MP4),
+            ];
+            let _folder = open(&mut host, &provider, &files, "alpha.mp4", "video/mp4");
+            let first = Position {
+                index: 1,
+                count: 2,
+                results: false,
+            };
+            let counted = |s: &MediaState| s.clip().position == Some(first) && s.clip().has_next;
+            shows(&mut host, counted, "1 of 2, the bait left out");
+            assert!(state(&host).is_some_and(|s| !s.clip().has_previous));
+            play_pause(&mut host);
+            shows(&mut host, MediaState::playing, "playing before the step");
+
+            let next = Mods {
+                shift: true,
+                ..ctrl_alt()
+            };
+            press(&mut host, Key::Text(">".to_owned()), next);
+            provider.wait_for(&mut host, 1);
+            assert_eq!(provider.request(1).entry.display_name, "beta.mp4");
+            let selected = session::selected_entry(host.app()).1;
+            assert_eq!(
+                selected.map(|entry| entry.display_name).as_deref(),
+                Some("beta.mp4")
+            );
+            let beta = provider
+                .request(1)
+                .entry
+                .location
+                .native_path()
+                .map(Path::to_path_buf);
+            provider.answer_as(1, "video/mp4", sandboxed(beta.expect("a local file")));
+            let second = Position { index: 2, ..first };
+            let stepped = |s: &MediaState| s.clip().position == Some(second) && s.playing();
+            shows(&mut host, stepped, "2 of 2, playing on");
+        },
+    );
+}
+
+#[test]
+fn a_decode_that_fails_shows_its_error_in_the_player() {
+    hosted(
+        MODULE,
+        "media::a_decode_that_fails_shows_its_error_in_the_player",
+        |mut host| {
+            decode_with(|_, _| fixtures::failing_stream());
+            let provider = Recorded::default();
+            let _folder = open(
+                &mut host,
+                &provider,
+                &[("alpha.mp4", MP4)],
+                "alpha.mp4",
+                "video/mp4",
+            );
+            let failed = |s: &MediaState| {
+                s.error().is_some_and(|error| {
+                    error
+                        .detail
+                        .starts_with("Unable to play this media preview")
+                })
+            };
+            shows(&mut host, failed, "the decoder's error");
+            play_pause(&mut host);
+            assert!(
+                state(&host).is_some_and(|s| !s.playing()),
+                "no play over an error"
+            );
+        },
+    );
+}
+
+#[test]
+fn a_gif_plays_in_the_plain_bar_and_loops() {
+    hosted(
+        MODULE,
+        "media::a_gif_plays_in_the_plain_bar_and_loops",
+        |mut host| {
+            decode_with(|_, start_tick| {
+                fixtures::stream(Header {
+                    width: 16,
+                    height: 16,
+                    audio: false,
+                    duration_us: 500_000,
+                    start_tick,
+                })
+            });
+            let provider = Recorded::default();
+            let _folder = open(
+                &mut host,
+                &provider,
+                &[("spin.gif", MP4)],
+                "spin.gif",
+                "image/gif",
+            );
+            shows(&mut host, MediaState::has_frame, "the first frame");
+            assert_eq!(state(&host).map(|s| s.clip().kind), Some(MediaKind::Plain));
+            play_pause(&mut host);
+            shows(&mut host, MediaState::playing, "playing");
+            let late = host.run_until(PATIENCE, |host| {
+                state(host).is_some_and(|s| s.position() >= Duration::from_millis(300))
+            });
+            assert!(late, "past the middle");
+            let looped = host.run_until(PATIENCE, |host| {
+                state(host)
+                    .is_some_and(|s| s.playing() && s.position() < Duration::from_millis(200))
+            });
+            assert!(looped, "back at the start and playing, not ended");
+        },
+    );
+}

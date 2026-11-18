@@ -50,6 +50,9 @@ mod positions;
 pub(super) mod sequence;
 mod stream;
 
+#[cfg(test)]
+pub(in crate::preview) use stream::START as START_DECODER;
+
 pub(crate) use sequence::Checks;
 use stream::{Inlet, Received, Stream};
 
@@ -308,16 +311,11 @@ fn step(app: &mut App, by: i8, tx: &mut Tx) -> bool {
         return false;
     };
     let (current, playing) = (media.entry.location.clone(), media.stream.playing());
-    let before = app.preview.continue_playback.take();
-    let moved = sequence::step(app, family, &current, by, tx);
-    app.preview.continue_playback = if moved && playing {
-        super::session::selected_entry(app)
-            .1
-            .map(|entry| entry.location)
-    } else {
-        before.filter(|_| !moved)
+    let Some(target) = sequence::step(app, family, &current, by, tx) else {
+        return false;
     };
-    moved
+    app.preview.continue_playback = playing.then_some(target);
+    true
 }
 
 /// GTK's `media_error_feedback`: a missing decoder asks for the plugins, anything else says

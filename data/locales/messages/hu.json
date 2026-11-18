@@ -1150,5 +1150,6 @@
   "Press the new key for “%{action}”": "Nyomja meg az új billentyűt a következőhöz: „%{action}”",
   "%{escape} cancels, and %{backspace} removes every key of this action.": "Az %{escape} megszakítja, a %{backspace} pedig eltávolítja a művelet összes billentyűjét.",
   "“%{group}” has no key, so this action cannot run.": "A(z) „%{group}” nem rendelkezik billentyűvel, így ez a művelet nem futtatható.",
-  "Custom action %{number}": "%{number}. egyéni művelet"
+  "Custom action %{number}": "%{number}. egyéni művelet",
+  "Volume": "Hangerő"
 }

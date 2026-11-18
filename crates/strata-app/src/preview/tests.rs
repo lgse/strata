@@ -18,6 +18,7 @@ use strata_components::preview_drawer::{DocumentView, HostedPreview};
 const MODULE: &str = "preview::tests";
 
 mod follow;
+mod media;
 mod model;
 mod pdf;
 mod provider;

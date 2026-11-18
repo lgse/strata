@@ -192,12 +192,28 @@ pub(super) fn listing(
         .collect();
     let checks = &mut app.preview.media_checks;
     checks.keep_only(&named);
+    let (files, unread) = counted(checks, named, family, current);
+    let later = app.preview.loader.later.clone();
+    checks.read(current, unread, &later);
+    let position = |location: &Location| files.iter().position(|entry| entry.location == *location);
+    let index = around.and_then(position).or_else(|| position(current))?;
+    Some((files, index))
+}
+
+/// Which of `named` count: those known to hold media, and `current`. And those not read yet,
+/// nearest `current` first.
+fn counted(
+    checks: &Checks,
+    named: Vec<FileEntry>,
+    family: Family,
+    current: &Location,
+) -> (Vec<FileEntry>, Vec<(PathBuf, Fingerprint)>) {
     let shown = named
         .iter()
         .position(|entry| entry.location == *current)
         .unwrap_or_default();
     let mut unread = Vec::new();
-    let files: Vec<FileEntry> = named
+    let files = named
         .into_iter()
         .enumerate()
         .filter(|(index, entry)| {
@@ -211,11 +227,7 @@ pub(super) fn listing(
         })
         .map(|(_, entry)| entry)
         .collect();
-    let later = app.preview.loader.later.clone();
-    checks.read(current, nearest_first(unread, shown), &later);
-    let position = |location: &Location| files.iter().position(|entry| entry.location == *location);
-    let index = around.and_then(position).or_else(|| position(current))?;
-    Some((files, index))
+    (files, nearest_first(unread, shown))
 }
 
 /// Outward from the shown file, the next one before the previous at each distance.
@@ -231,34 +243,34 @@ fn nearest_first(
 }
 
 /// Moves the listing's cursor `step` files of the shown family along, as GTK's `step_to`
-/// does: the preview follows the selection. False when there is no such file.
+/// does: the preview follows the selection. The file it moved to, if there is one.
 pub(super) fn step(
     app: &mut App,
     family: Family,
     current: &Location,
     step: i8,
     tx: &mut Tx,
-) -> bool {
+) -> Option<Location> {
     // Repeated presses outrun the preview's debounce, so step from the cursor.
     let cursor = super::super::session::selected_entry(app)
         .1
         .map(|entry| entry.location);
     let Some((files, index)) = listing(app, family, current, cursor.as_ref()) else {
-        return false;
+        return None;
     };
     let Some(target) = index
         .checked_add_signed(isize::from(step))
         .and_then(|index| files.get(index))
     else {
-        return false;
+        return None;
     };
     let (Some(depth), Some(view)) = (app.preview.current_depth, shell::shown_view(app)) else {
-        return false;
+        return None;
     };
     let at = (depth, shell::id_of(app, &target.location));
     (view.rows.select_only)(app, at, tx);
     (view.rows.reveal)(app, at, tx);
-    true
+    Some(target.location.clone())
 }
 
 type Read = (PathBuf, Fingerprint, bool);
@@ -379,3 +391,6 @@ fn by_folder(chunk: Vec<(PathBuf, Fingerprint)>) -> Vec<(PathBuf, Vec<(PathBuf, 
     }
     folders
 }
+
+#[cfg(test)]
+mod tests;
