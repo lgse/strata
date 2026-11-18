@@ -79,11 +79,14 @@ pub(super) struct Inlet {
     pub(super) deliver: fn(&mut App, (u64, u64), Received, &mut Tx) -> bool,
 }
 
+/// What starts a decoder session at a tick.
+#[cfg(test)]
+type Start = fn(SandboxedMedia, u32) -> Result<Session, String>;
+
 #[cfg(test)]
 thread_local! {
     /// What starts a decoder in tests: a fixture stream in the sandbox's place.
-    pub(in crate::preview) static START: Cell<Option<fn(SandboxedMedia, u32) -> Result<Session, String>>> =
-        const { Cell::new(None) };
+    pub(in crate::preview) static START: Cell<Option<Start>> = const { Cell::new(None) };
 }
 
 fn start_session(source: SandboxedMedia, tick: u32) -> Result<Session, String> {

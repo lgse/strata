@@ -254,15 +254,10 @@ pub(super) fn step(
     let cursor = super::super::session::selected_entry(app)
         .1
         .map(|entry| entry.location);
-    let Some((files, index)) = listing(app, family, current, cursor.as_ref()) else {
-        return None;
-    };
-    let Some(target) = index
+    let (files, index) = listing(app, family, current, cursor.as_ref())?;
+    let target = index
         .checked_add_signed(isize::from(step))
-        .and_then(|index| files.get(index))
-    else {
-        return None;
-    };
+        .and_then(|index| files.get(index))?;
     let (Some(depth), Some(view)) = (app.preview.current_depth, shell::shown_view(app)) else {
         return None;
     };
