@@ -281,6 +281,11 @@ fn a_plain_press_inside_a_multi_selection_keeps_the_group_for_the_drag() {
     r.select(&[3, 5, 7]);
     r.down(5, Spot::Name, PLAIN);
     assert_eq!(r.selected(), [3, 5, 7]);
+    assert_eq!(
+        (r.f.sel.cursor(), r.f.sel.anchor()),
+        (Some(id(5)), Some(id(5))),
+        "the keyboard and the anchor move to the pressed entry, as GTK's do"
+    );
     r.to(20.0, 0.0);
     r.up_at(Point::new(20.0, 0.0), PLAIN, false);
     assert!(r.take().iter().any(drag(&[3, 5, 7])));
