@@ -926,6 +926,9 @@ sequence only together with the alphabet's version, so the version is part of th
 - **State:** ruled by the coordinator (2026-11-13): C6 stays as it is, since a screen reader
   hears the same name; the run takes an `a11y` twin once it can otherwise flip, after
   [A21](packages/A21.md)'s second window. [A5](packages/A5.md)'s, or whoever flips the run.
+- **Twin written** by [A21](packages/A21.md)'s Slice 2a (2026-11-18):
+  `locations/path-completion-dismisses-on-window-switch-rune`, whose lines 6 and 10 wait for the
+  `list item`; the run is `parallel`.
 
 ### #2367: withdrawn, an artifact of a fix that did not merge
 
