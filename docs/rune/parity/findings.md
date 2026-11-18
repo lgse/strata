@@ -1174,6 +1174,10 @@ sequence only together with the alphabet's version, so the version is part of th
   `sort::tests::a_columns_menu_sorts_its_own_column` said "the inner folder's column" after its
   30 s wait (`crates/strata-app/src/sort/tests.rs:167`); alone, it passed 3 of 3. It has no
   owner.
+  The sidebar's again on 2026-11-17, in the full lane of [A16](packages/A16.md)'s Slice 2 at
+  `bb330eb69`: after Left the keyboard was on `location-copy` where `header-sidebar-toggle` was
+  wanted (`crates/strata-app/src/sidebar/tests.rs:550`). That slice changes only the preview's
+  viewers; alone, the test passed 3 of 3.
 - **Concerns:** those four tests: the two of [A7](packages/A7.md)'s undo, the sidebar's and
   the sort's.
 - **What it suggests:** a hypothesis, by reading only, not verified: the test presses the redo
@@ -2316,6 +2320,9 @@ sequence only together with the alphabet's version, so the version is part of th
   `32b544323` (rune offscreen 673 of 675), at line 11 again. Alone on Rune it then passed three
   times in a row. #2583 changes drops from other applications; this run cuts, pastes and undoes
   with keys.
+- **Seen again** in [A16](packages/A16.md)'s [#2585](https://github.com/lgse/strata/pull/2585)
+  review gate at `6501200fd`, at the same line (Rune offscreen 676 of 677). Alone it then passed
+  3 of 3. The pull request changes the preview's viewers and the media keys' guard, not undo.
 - **State:** open, unowned.
 
 ### #2570: 10xer's find and filter highlights are not drawn in Rune's rows
@@ -2335,8 +2342,17 @@ sequence only together with the alphabet's version, so the version is part of th
   contract field and spans in all three views' name cells, coloured from the Kit's tokens.
 - **Concerns:** no ledger run; found in the review of #2567. [A11](packages/A11.md)'s fuzz
   alphabet (Slice 5) should exercise `/` then Escape with a selection.
-- **State:** open, [A11](packages/A11.md#open)'s, for Slice 4 or 5 or a `contract` change to
-  the row components.
+- **State:** fixed by [A11](packages/A11.md)'s `contract` change for #2570,
+  [#2582](https://github.com/lgse/strata/pull/2582). `RowMarks::name_matches` carries a name's matched
+  byte ranges, which C1e's default label (the Columns view's names), C3's caption and C4's name
+  cell paint in the Kit's accent. The app fills them as GTK's `refresh_name_highlights` does
+  (`crates/strata-app/src/tenxer/highlight.rs`): a highlighted 10xer find marks its query,
+  case folded, in every name, the listing's and the results', until Escape or the find
+  prompt's Escape dismisses it, and it goes with 10xer mode. Without one, a fuzzy `f` or `s`
+  marks what its query matched in each result (`PathMatcher::name_highlight`, GTK's
+  `search_hit_ranges`; for a direct child the same ranges as GTK's in-place
+  `filter_term_ranges`). Covered by `tenxer::highlight::tests` (Columns, List and Icons) and
+  the component's `collection::element::matches::tests`.
 
 ### #2575: `preview-blank-click-keeps-selection/columns` was still loading its preview once in a full Rune run
 
@@ -2389,6 +2405,13 @@ sequence only together with the alphabet's version, so the version is part of th
   `columns-md` and `columns-rtf` at line 20 (`pha bravo charlie delta`) and `columns-docx` at
   line 21 (`uarterly Report`); alone on the session host it then passed three rounds, 9 of 9.
   #2578 changes no pointer drag or document selection.
+- **Sighting in [A16](packages/A16.md)'s Slice 2 gate** at `0d38d2eb8`, before #2584 merged:
+  the same three runs at the same lines, in the full 35-run session batch (32 of 35). Alone on
+  the session host the twin then passed three rounds, 9 of 9.
+- **Sighting on [#2582](https://github.com/lgse/strata/pull/2582)** (at `5a37f26d0`): the
+  same three runs failed in the full session-host batch, with the same messages; alone on the
+  session host the twin then passed three rounds, 9 of 9. The change draws name highlights
+  only.
 - **Also seen** in the gate of [#2573](https://github.com/lgse/strata/pull/2573) (A18): in two
   full runs (`columns-md` and `columns-docx`, then `columns-docx`), and once in two full Rune
   runs on clean `strata-next` at `1370c6f7b`, and in the re-gate at `cad74ce7e` (`columns-docx`,

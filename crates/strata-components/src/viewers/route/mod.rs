@@ -166,12 +166,8 @@ impl<'a, S: 'static> RouteView<'a, S> {
             })
             .child(picture);
 
-        let details = layout::details_header(
-            &key,
-            data.position.map(layout::Position::caption),
-            &data.name,
-            look,
-        );
+        let details =
+            layout::details_header(&key, data.position.map(labels.position), &data.name, look);
         let mut badges = vec![
             layout::badge(format!("{key}-format"), data.format.clone(), look),
             layout::badge(format!("{key}-distance"), st.total_text(), look),

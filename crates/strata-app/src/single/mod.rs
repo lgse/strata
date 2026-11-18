@@ -32,7 +32,7 @@ use std::{borrow::Cow, cell::Cell, rc::Rc};
 use rune::{El, Mods, Tx, WheelEvent, col};
 use strata_components::{
     collection::{
-        element::{Activation, Collection, CollectionState, Describe, Intent},
+        element::{Activation, Collection, CollectionState, Describe, Intent, RowMarks},
         keyboard::{KeyHandle, KeySettings, Keyboard, Letters, NothingToSelect},
         marquee::Marquee,
         pointer::{ClickModes, PointerIntent, PointerSettings},
@@ -63,6 +63,7 @@ use crate::{
     pane_header, rename, shell,
     slots::{At, Editing, Listener, Rows, Setup, Worn},
     surface::{self, Surface},
+    tenxer::highlight,
 };
 
 /// A single-pane view's state that is not its component's.
@@ -296,10 +297,7 @@ pub(crate) fn collection<V: SinglePane>(app: &App) -> Collection<App> {
     .on_drag_phase(|app: &mut App, d, key, tx| crate::dnd::drag_phase(app, d, key, tx))
     .on_drop(dropped::<V>)
     .drop_action(drop_action::<V>)
-    .marks(|app: &App, id| {
-        let marks = crate::dnd::with_marks(app, id, crate::clipboard::marks(app, id));
-        crate::peek::with_marks(app, V::KEY, id, marks)
-    })
+    .marks(listing_marks::<V>)
     .empty(shown_status::<V>)
     .on_press(|app: &mut App, _, _| {
         interrupted::<V>(app);
@@ -339,13 +337,7 @@ pub(crate) fn results<V: SinglePane>(app: &App) -> Collection<App> {
     .settings(live_pointer::<V>(app).missing_anchor_stays(true))
     .settings(autoscroll_settings(app))
     .on_drag_phase(|app: &mut App, d, key, tx| crate::dnd::drag_phase(app, d, key, tx))
-    .marks(|app: &App, id| {
-        crate::dnd::with_marks(
-            app,
-            id,
-            crate::clipboard::with_marks(app, id, filter::pane::marks(app, id)),
-        )
-    })
+    .marks(result_marks)
     .empty(filter::pane::status)
     // C3 replaces this in Icons with its own, which asks the results grid's hook first.
     .on_wheel(|app: &mut App, e, tx| crate::appearance::wheel::heard(app, e, tx))
@@ -663,6 +655,24 @@ pub(crate) fn moved(app: &mut App, tx: &mut Tx) {
     // The user's own move: the cursor is no first visit's any more.
     shell::restore_memory(app).set_visit_cursor(None);
     shell::settle(app, tx);
+}
+
+/// Listing row `id`'s marks: copied, cut, dragging, its name's find highlight and the peek's
+/// anchor.
+pub(crate) fn listing_marks<V: SinglePane>(app: &App, id: EntryId) -> RowMarks {
+    let marks = crate::dnd::with_marks(app, id, crate::clipboard::marks(app, id));
+    let row = pane::<V>(app)
+        .listing()
+        .and_then(|column| column.row_of(id));
+    let marks = highlight::listing_marks(app, row.map(crate::listing::Row::name), marks);
+    crate::peek::with_marks(app, V::KEY, id, marks)
+}
+
+/// Result `id`'s marks: the filter's Enter target, its name's highlight, copied, cut and
+/// dragging.
+pub(crate) fn result_marks(app: &App, id: EntryId) -> RowMarks {
+    let marks = highlight::hit_marks(app, id, filter::pane::marks(app, id));
+    crate::dnd::with_marks(app, id, crate::clipboard::with_marks(app, id, marks))
 }
 
 /// What the context menu and the rename editor ask of the view's rows.

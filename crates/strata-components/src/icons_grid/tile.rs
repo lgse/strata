@@ -227,7 +227,10 @@ pub(super) fn label_slot<S: 'static>(shared: &Rc<Shared<S>>, b: Built) -> Slot<S
             let cut = b.cut(&build_shared, s, rcx.entry.name);
             let (fill, color, hover) = name_look(rcx);
             let below = (m.caption_height() - (cut.size.1 + m.caption_pad)).max(0.0);
+            let matches = rcx.state.marks.name_matches;
+            let spans = matches.onto(rcx.entry.name, &cut.text).spans(look);
             let mut name = text(cut.text.to_string())
+                .spans(spans)
                 .key(LABEL)
                 .a11y_hidden()
                 .font(m.name_font)

@@ -35,10 +35,24 @@ use super::{
     document::{self, DecodedMedia, MediaTask, RenderedDocument},
     image::{self, ImageViewer},
     labels,
+    model::{self, ModelViewer},
     pdf::{self, PdfViewer},
+    route::{self, RouteViewer},
     sheet,
 };
 use crate::{App, buttons};
+
+/// Where a handler of a viewer that has gone lands: Rune can dispatch a layout report or a
+/// press it queued for a frame after the viewer was replaced in that frame's update, as a
+/// first load that fails at once replaces the model's frame. The report changes this, which
+/// nothing reads, instead of the viewer now shown.
+#[derive(Default)]
+pub(super) struct Detached {
+    pub(super) viewport: ViewportState,
+    pub(super) model: strata_components::viewers::model::ModelState,
+    pub(super) route: strata_components::viewers::route::RouteState,
+    pub(super) pdf: strata_components::pdf_view::PdfState,
+}
 
 /// Key of the read-only source/text viewer inside the preview drawer.
 pub(crate) const CODE_KEY: &str = "preview-code";
@@ -65,6 +79,10 @@ pub(super) enum Viewer {
     Document(DocumentViewer),
     Image(Box<ImageViewer>),
     Pdf(Box<PdfViewer>),
+    Model(Box<ModelViewer>),
+    Route(Box<RouteViewer>),
+    /// A preview whose pictures are being decoded off the UI thread, shown as loading.
+    Decoding(u64),
     Archive(Box<ArchiveState>),
     ArchivePrompt(Box<PromptState>),
     Message {
@@ -105,10 +123,12 @@ impl Viewer {
             | Self::Document(_)
             | Self::Image(_)
             | Self::Pdf(_)
+            | Self::Model(_)
+            | Self::Route(_)
             | Self::Archive(_)
             | Self::ArchivePrompt(_) => true,
             Self::Message { can_open, .. } => *can_open,
-            Self::Empty | Self::Loading => false,
+            Self::Empty | Self::Loading | Self::Decoding(_) => false,
         }
     }
 
@@ -190,6 +210,8 @@ impl Viewer {
         match self {
             Self::Document(doc) => doc.stop(),
             Self::Pdf(pdf) => pdf.stop(),
+            Self::Model(model) => model.stop(),
+            Self::Route(route) => route.state.pause(),
             _ => {}
         }
     }
@@ -283,11 +305,13 @@ impl Viewer {
     pub(super) fn build(&self, app: &App, cx: &mut Cx<App>) -> Option<El> {
         match self {
             Self::Empty => None,
-            Self::Loading => Some(loading_view(&app.look)),
+            Self::Loading | Self::Decoding(_) => Some(loading_view(&app.look)),
             Self::Code(_) => Some(code_view(app, cx, code_ref, code_mut)),
             Self::Document(doc) => doc.build(app, cx),
             Self::Image(img) => Some(image::build_view(img, app, cx, image_viewport_mut)),
             Self::Pdf(_) => Some(pdf::build_view(app, cx)),
+            Self::Model(model) => Some(model::build_view(model, app, cx)),
+            Self::Route(route) => Some(route::build_view(route, app, cx)),
             Self::Archive(_) => Some(archive::build_archive_view(app, archive_ref, archive_mut)),
             Self::ArchivePrompt(prompt) => {
                 Some(archive::build_prompt_view(prompt, &app.look, prompt_mut))
@@ -482,6 +506,7 @@ impl HostedPreview for Viewer {
     fn busy(&self) -> Option<&str> {
         match self {
             Self::Code(code) => code.busy(),
+            Self::Model(model) => model.state.busy(),
             Self::Document(doc) => doc.active_hosted()?.busy(),
             _ => None,
         }

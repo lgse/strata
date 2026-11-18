@@ -184,12 +184,8 @@ impl<'a, S: 'static> ModelView<'a, S> {
         }
 
         let file = st.file();
-        let details = layout::details_header(
-            &key,
-            file.position.map(layout::Position::caption),
-            &file.name,
-            look,
-        );
+        let details =
+            layout::details_header(&key, file.position.map(labels.position), &file.name, look);
         let mut badges = vec![layout::badge(
             format!("{key}-format"),
             st.format_badge(),
