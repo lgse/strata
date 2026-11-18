@@ -213,7 +213,10 @@ closed issue is not a fixed finding: the state given here is the finding's.
   runs it at once to read the version (`terminal/tests.rs:194-203`); a fork on another test
   thread holding the write descriptor fails the probe, and the legacy arguments are chosen.
   #2567 does not touch `terminal/`. The fix, if taken up, is A14's: write the script under a
-  temporary name and rename it, or retry on `ETXTBSY`.
+  temporary name and rename it, or retry on `ETXTBSY`. Seen again in a full `mise run
+  test-rune` for [#2579](https://github.com/lgse/strata/pull/2579) on its way to `ed4a3bdcd`,
+  with the same assertion; it passed alone three times and in the full rerun, and #2579 does not touch
+  `terminal/` either.
 - **Sighting on [#2577](https://github.com/lgse/strata/pull/2577):** the ninth again,
   `fast_delete_animates_only_its_own_success_without_showing_progress`
   (`minimization.rs:182`, `progress transition timed out`), failed once in
@@ -2364,6 +2367,15 @@ sequence only together with the alphabet's version, so the version is part of th
   `columns-docx` failed at line 21: the clipboard held `uarterly Report`. `columns-md` failed
   at line 20: it held `pha bravo charlie delta`. Each selection started a character or two past
   the drag's start. Alone on the session host the twin then passed four rounds, 12 of 12.
+- **Sighting on [#2579](https://github.com/lgse/strata/pull/2579):** the same two runs at the
+  same lines, `columns-docx` holding `uarterly Report` and `columns-md` holding
+  `pha bravo charlie delta`, in `./scripts/qa-parity.sh all` at `2bd56840c` (31 of 33 on the
+  session host; gtk 705 of 705, rune 672 of 672). Alone on the session host the twin passed
+  three rounds, 9 of 9. Again after merging `44a600075`, at `9a8df7673`: `columns-docx` alone,
+  `uarterly Report` (34 of 35 on the session host; gtk 715 of 715, rune 680 of 680), then 9 of 9
+  alone. And after merging `5c107d947`, at `193c69af6`: both runs as at first (33 of 35 on the
+  session host; gtk 715 of 715, rune 680 of 680), then 9 of 9 alone. #2579 changes no pointer
+  drag or document selection.
 - **Concerns:** `quick_preview/rendered-document-word-selection-rune`, [A15](packages/A15.md)'s
   `parallel` twin. #2569 changes no pointer drag or document selection.
 - **Sighting on [#2577](https://github.com/lgse/strata/pull/2577):** in its gate at
@@ -2461,6 +2473,24 @@ sequence only together with the alphabet's version, so the version is part of th
   `crates/strata-qa`, on for the Rune backend only), with no map rule. Under the two rules the
   `settings` alphabet's v5 smoke tier, Reset all included, agrees in 20 of 20, and the unparked
   v3 sequence replays clean. [A18](packages/A18.md)'s.
+
+### #2588: Copy to or Move to that starts no transfer leaves its destination to navigate to on GTK
+
+- **Code:** `oracle`. [Issue](https://github.com/lgse/strata/issues/2588), filed on 2026-11-17
+  as the finding's reference and closed at once: its state is kept here.
+- **Seen:** by reading the source, in the review of [#2579](https://github.com/lgse/strata/pull/2579)
+  ([A20](packages/A20.md)); not reproduced by a run. `finish_copy_move_to`
+  (`src/ui/browser/transfer/destination_dialog.rs`) sets `pending_navigate`, and adds the
+  sources' names to `pending_select`, before `begin_transfer` (`src/ui/browser/transfer.rs`).
+  That can return with nothing started: the request is refused, every source is a no-op (Move
+  to… the folder the items are in), or the same transfer is already preparing. Nothing then
+  clears the destination; only a reveal, a failure, a cancellation or a move to the dock does.
+  A later foreground transfer that reveals nothing, such as a drop with "Open folder after drop"
+  off, navigates there when it completes (`complete_transfer_ui`, `src/ui/browser/events/reveal.rs`).
+- **Concerns:** `transfer::transfer_to_chosen` (`crates/strata-app/src/transfer/chosen.rs`),
+  which ports `pending_navigate` as GTK has it, early returns included. No run or seed reads it.
+- **State:** open, set aside: Rune keeps GTK's behaviour. Any fix belongs on `main`, and Rune
+  follows it.
 
 ### #2590: GTK's Ctrl+drag of a row an earlier drag selected takes it out of the selection and drags it alone
 

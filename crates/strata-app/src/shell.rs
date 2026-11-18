@@ -126,6 +126,9 @@ pub(crate) struct Window {
     _power_monitor: Option<PowerMonitorGuard>,
     /// Whether a modal layer was open at the last poll ([`grab`]).
     grab: grab::Grab,
+    /// The window's size in points, as its last layout left it: what a chooser it opens is
+    /// sized against.
+    size: (f32, f32),
 }
 
 /// A browser over the local file source, as `src/ui/window/launch.rs` builds one, with the
@@ -354,6 +357,14 @@ impl App {
         Self::assemble(look, browser, window, built)
     }
 
+    /// The window's size in whole points, once it has been laid out.
+    pub(crate) fn window_size(&self) -> Option<(i32, i32)> {
+        let (width, height) = self.window.size;
+        #[expect(clippy::cast_possible_truncation, reason = "a window's size fits i32")]
+        let size = (width.round() as i32, height.round() as i32);
+        (size.0.min(size.1) > 0).then_some(size)
+    }
+
     pub(crate) fn open(&self, location: Location) {
         self.browser.navigate(location);
     }
@@ -369,16 +380,16 @@ impl App {
     }
 
     /// Names the window for the shown tab's location, or the one it waits on. False when it
-    /// has not changed.
+    /// has not changed. A chooser keeps its request's title, which its window takes here: the
+    /// host opens it under a fixed one.
     pub(super) fn retitle(&mut self, tx: &mut Tx) -> bool {
-        if self.browser.is_chooser_mode() {
-            return false;
-        }
         let location = tabs::located(self, self.window.here.key);
         if location == self.window.location {
             return false;
         }
-        self.window.title = title_for(location.as_ref());
+        if !self.browser.is_chooser_mode() {
+            self.window.title = title_for(location.as_ref());
+        }
         tx.set_title(self.window.title.clone());
         self.window.location = location;
         true
@@ -613,6 +624,7 @@ impl Window {
             power_saver: services.power_saver,
             _power_monitor: services.power_monitor,
             grab: grab::Grab::default(),
+            size: (0.0, 0.0),
         };
         (first.built, window, look)
     }
@@ -1179,6 +1191,7 @@ pub(crate) fn view(app: &App, cx: &mut Cx<App>) -> El {
         // What the focused element and those around it left of a key, ahead of Rune's own
         // focus navigation. The root takes no focus and no press for it.
         .on_key(commands::from_element)
+        .on_layout(record_window_size)
         // The window's zoom wheel, for what no scroll view holds (`appearance::wheel`).
         .on_wheel(crate::appearance::wheel::heard)
         .on_window_focus(|app: &mut App, focused, tx: &mut Tx| {
@@ -1188,6 +1201,10 @@ pub(crate) fn view(app: &App, cx: &mut Cx<App>) -> El {
             }
             location::window_focused(app, focused, tx);
         })
+}
+
+fn record_window_size(app: &mut App, [_, _, width, height]: [f32; 4]) {
+    app.window.size = (width, height);
 }
 
 /// Rune's `poll` hook: what the browser's observers queued, then each part's own timers,

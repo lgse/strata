@@ -35,6 +35,9 @@ pub(crate) fn apply(
     mut locations: Vec<Location>,
     tx: &mut Tx,
 ) {
+    // Every reveal takes over from a chosen transfer's navigation, as GTK's
+    // `clear_pending_reveal_requests` does on each of these paths.
+    super::chosen::forget_navigation(app);
     if locations.len() > MAX_BULK_REVEAL_SELECTION {
         locations.truncate(1);
     }
