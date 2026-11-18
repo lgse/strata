@@ -32,6 +32,11 @@ impl FindState {
     pub(crate) fn query(&self) -> Option<&str> {
         (!self.query.is_empty()).then_some(self.query.as_str())
     }
+
+    /// The query whose matches are highlighted now (`find_highlight`).
+    pub(crate) fn highlight(&self) -> Option<&str> {
+        self.query().filter(|_| self.highlighted)
+    }
 }
 
 fn contains_case_insensitive(name: &str, query: &str) -> bool {

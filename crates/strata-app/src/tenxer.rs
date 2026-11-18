@@ -29,6 +29,7 @@ use crate::{
 mod bookmarks;
 mod chords;
 mod go;
+pub(crate) mod highlight;
 mod keys;
 mod preview_keys;
 mod prompts;

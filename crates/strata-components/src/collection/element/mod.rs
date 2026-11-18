@@ -194,6 +194,7 @@
 mod a11y;
 mod keys;
 mod lines;
+mod matches;
 mod origin;
 mod route;
 mod row;
@@ -221,6 +222,7 @@ pub use keys::{
 };
 use lines::LineMap;
 pub use lines::{Group, GroupStyle, GroupedRows, Groups, Lines, OnePerLine};
+pub use matches::NameMatches;
 pub(crate) use route::KeyTaken;
 pub use row::{ContentSlot, Describe, Rest, RestReport, RestView, RowCx, RowMarks, RowState, Slot};
 pub use seam::{

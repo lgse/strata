@@ -31,8 +31,10 @@ mod keys;
 mod labels;
 mod layout;
 mod load;
+mod model;
 mod pdf;
 mod raw;
+mod route;
 mod session;
 mod sheet;
 pub(crate) mod viewer;
@@ -59,6 +61,7 @@ use crate::{
 pub(crate) struct Preview {
     drawer: DrawerState,
     viewer: Viewer,
+    detached: viewer::Detached,
     raw: raw::RawSection,
     header: HeaderInfo,
     loader: Loader,
@@ -78,8 +81,6 @@ pub(crate) struct Preview {
     operations: Option<file_activity::Subscription>,
     last_split_width: Option<f32>,
     was_in_band: bool,
-    /// What a PDF view's handler gets once its viewer has gone (`pdf::pdf_mut`).
-    pdf_gone: strata_components::pdf_view::PdfState,
 }
 
 /// The folder a click in Columns is opening, at `depth`, until its column has loaded.
@@ -167,6 +168,7 @@ impl Part for Preview {
         Self {
             drawer,
             viewer: Viewer::Empty,
+            detached: viewer::Detached::default(),
             raw: raw::RawSection::default(),
             header: HeaderInfo::default(),
             loader,
@@ -186,7 +188,6 @@ impl Part for Preview {
             operations: None,
             last_split_width: None,
             was_in_band: false,
-            pdf_gone: strata_components::pdf_view::PdfState::new(pdf::GONE_KEY),
         }
     }
 
@@ -220,7 +221,8 @@ impl Part for Preview {
         let viewer = app.preview.viewer.poll(clock, &app.look, tx);
         let archive = viewer::tick_archive_if_active(app, tx);
         let pdf = pdf::poll(app, clock, tx);
-        blocks | viewer | archive | pdf | lit_changed | band_synced | msg_focus
+        let route = route::poll(app, clock, tx);
+        blocks | viewer | archive | pdf | route | lit_changed | band_synced | msg_focus
     }
 
     fn switched(app: &mut App, tx: &mut Tx) {

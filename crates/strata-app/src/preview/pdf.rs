@@ -43,8 +43,6 @@ use crate::{
 
 /// Key of the PDF viewer inside the preview drawer.
 pub(crate) const PDF_KEY: &str = "preview-pdf";
-/// The key of [`pdf_mut`]'s stand-in, which no element is built from.
-pub(super) const GONE_KEY: &str = "preview-pdf-gone";
 
 /// The renderer's limits: GTK's `PdfRenderSize`, whose width comes through the request's
 /// `MediaPreviewSize`, which stops at 1280 pixels.
@@ -205,19 +203,20 @@ fn on_intent(app: &mut App, intent: PdfIntent, _: &mut Tx) {
     }
 }
 
+/// The PDF view's state, or, for a handler Rune queued before the viewer changed, the
+/// preview's detached one (`viewer::Detached`).
 fn pdf_ref(app: &App) -> &PdfState {
     match &app.preview.viewer {
         Viewer::Pdf(pdf) => &pdf.state,
-        _ => unreachable!("PdfView built only while Viewer::Pdf is active"),
+        _ => &app.preview.detached.pdf,
     }
 }
 
-/// The pages' hover ends as they unmount, after the viewer they showed has gone: what that
-/// handler changes then is a stand-in's, which nothing reads.
 fn pdf_mut(app: &mut App) -> &mut PdfState {
-    match &mut app.preview.viewer {
+    let preview = &mut app.preview;
+    match &mut preview.viewer {
         Viewer::Pdf(pdf) => &mut pdf.state,
-        _ => &mut app.preview.pdf_gone,
+        _ => &mut preview.detached.pdf,
     }
 }
 
