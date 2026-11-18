@@ -1,0 +1,13 @@
+diff --git a/crates/strata-app/src/preview/load.rs b/crates/strata-app/src/preview/load.rs
+index 9a36ba145..807c9e30d 100644
+--- a/crates/strata-app/src/preview/load.rs
++++ b/crates/strata-app/src/preview/load.rs
+@@ -569,7 +569,7 @@ fn unavailable_viewer(reason: Option<&str>) -> Viewer {
+ }
+ 
+ fn build_rasterized_viewer(entry: &FileEntry, png: &[u8]) -> Viewer {
+-    match ImageViewer::from_png(entry, png) {
++    match ImageViewer::from_png(entry, &png[..png.len() / 2]) {
+         Ok(img) => Viewer::Image(Box::new(img)),
+         Err(detail) => Viewer::Message {
+             title: tr("Preview unavailable"),
