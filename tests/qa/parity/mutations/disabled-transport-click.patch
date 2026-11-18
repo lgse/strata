@@ -1,0 +1,13 @@
+diff --git a/crates/strata-app/src/preview/media/mod.rs b/crates/strata-app/src/preview/media/mod.rs
+index d7f658545..6415395f3 100644
+--- a/crates/strata-app/src/preview/media/mod.rs
++++ b/crates/strata-app/src/preview/media/mod.rs
+@@ -204,7 +204,7 @@ fn place(
+                 count: files.len(),
+                 results: false,
+             };
+-            (Some(position), index > 0, index + 1 < files.len())
++            (Some(position), index > 0, true)
+         })
+ }
+
