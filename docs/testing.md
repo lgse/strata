@@ -1872,8 +1872,10 @@ purpose:
 | `tests/qa/fuzz/normalisation.map` | Exceptions: a field on which the two targets may differ, under one of the plan's exception codes (`timing`, `a11y`, `rune`, `oracle`, `toolkit`, `deviation`, `platform`) and an issue | Comparisons between two targets only |
 | `tests/qa/fuzz/calibration.mask` | Noise: a field on which two replays on one target differ, with its cause (`unsettled`, `clock` or `environment`) and an issue | Every comparison |
 
-Both have one entry to a line, `<field> <code> <issue>`, sorted by field, with
-`#` lines for comments, so two branches that each add a line merge cleanly:
+Both have one entry to a line, `<field> <code> <issue>`, sorted by field, code
+and issue number, with `#` lines for comments, so two branches that each add a line merge
+cleanly. A field may have one rule of a code for each ruling, each citing its own
+issue, as `app.dialog`'s two `deviation` rules do:
 
 ```text
 # The size and date of a preview arrive after its text; nothing shows that they are due.

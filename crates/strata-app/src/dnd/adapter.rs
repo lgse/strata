@@ -8,13 +8,18 @@ use std::{cell::RefCell, sync::Arc};
 use rune::{Cx, El, Mods, PointerEvent, Tx, col, text};
 use strata_components::contract::dnd::{
     DragPayload, DropAction, DropActions, DropData, DropHover, DropItem, DropOffer, DropZone,
-    Dropped, URI_LIST, parse_uri_list,
+    Dropped, ReadFailure, URI_LIST, parse_uri_list,
 };
 use strata_kit::{icons::IconName, look::Look};
-use strata_platform::dnd::{
-    Actions, DragAction, DragIcon, DragItem, DropData as P1Data, DropOffer as P1Offer, DropPoint,
-    DropTarget, Hover,
+use strata_platform::{
+    dnd::{
+        Actions, DragAction, DragIcon, DragItem, DropData as P1Data, DropOffer as P1Offer,
+        DropPoint, DropTarget, Hover,
+    },
+    transfer::ReadError,
 };
+
+use super::content::{self, Got, Reads};
 
 /// GNOME's file-list type (`copy\nfile:///...`).
 pub(crate) const GNOME_COPIED_FILES: &str = "x-special/gnome-copied-files";
@@ -182,7 +187,7 @@ pub(crate) fn dropped_of_p1(data: &P1Data) -> Dropped {
         .iter()
         .map(|(mime, bytes)| DropItem::new(mime.clone(), bytes.clone()))
         .collect();
-    let mut body = DropData::new(items);
+    let mut body = DropData::new(items).failed(failures_of_p1(&data.failed));
     if let Some(payload) = data.local::<DragPayload>() {
         offer = offer.uris(payload.uris.clone());
         body = body.local(payload.clone());
@@ -196,13 +201,64 @@ pub(crate) fn dropped_of_p1(data: &P1Data) -> Dropped {
         .point(data.point.map(point_of_p1))
 }
 
+/// Why a read failed, as W1 says it: a read past P1's bound is too large.
+pub(crate) fn failure_of_p1(error: &ReadError) -> ReadFailure {
+    match error {
+        ReadError::TooLarge => ReadFailure::TooLarge,
+        ReadError::TimedOut => ReadFailure::TimedOut,
+        other => ReadFailure::Failed(other.to_string()),
+    }
+}
+
+fn failures_of_p1(failed: &[(String, ReadError)]) -> Vec<(String, ReadFailure)> {
+    failed
+        .iter()
+        .map(|(mime, error)| (mime.clone(), failure_of_p1(error)))
+        .collect()
+}
+
+/// A drop being read by P1, as the content policy sees it: the offered types a content zone
+/// takes, as the walk after the drop sees them (`content_zone_takes`).
+struct Reading<'a> {
+    data: &'a P1Data,
+}
+
+impl Reads for Reading<'_> {
+    fn offered(&self) -> Vec<&str> {
+        let types = self.data.offer.mimes.iter().map(String::as_str);
+        types
+            .filter(|mime| content::content_zone_takes(mime))
+            .collect()
+    }
+
+    fn got(&self, mime: &str) -> Got<'_> {
+        if let Some((_, bytes)) = self.data.items.iter().find(|(m, _)| m == mime) {
+            return Got::Bytes(bytes);
+        }
+        match self.data.failed.iter().find(|(m, _)| m == mime) {
+            Some((_, error)) => Got::Failed(failure_of_p1(error)),
+            None => Got::Unread,
+        }
+    }
+
+    fn local(&self) -> bool {
+        self.data.offer.local
+    }
+}
+
 pub(crate) fn target_of<S: 'static>(zone: DropZone<S>) -> DropTarget<S> {
     let dropped_zone = zone.clone();
-    let mut target = DropTarget::new(move |state: &mut S, data: P1Data, tx: &mut Tx| {
+    let target = DropTarget::new(move |state: &mut S, data: P1Data, tx: &mut Tx| {
         dropped_zone.deliver(state, dropped_of_p1(&data), tx);
     })
-    .mime_types(zone.preferred_mime_types())
-    .read_all();
+    .mime_types(zone.preferred_mime_types());
+    // A zone that takes content reads one type at a time, as GTK reads only the one it uses;
+    // a zone of files reads the file list.
+    let mut target = if content::zone_takes(&zone) {
+        target.read_next(|data| content::next_read(&Reading { data }))
+    } else {
+        target.read_all()
+    };
     if zone.accepts_local() {
         target = target.local::<DragPayload>();
     }

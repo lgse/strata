@@ -34,6 +34,12 @@ impl Area {
             height: rect["height"].as_f64()?,
         })
     }
+
+    /// Whether the point `(x, y)` on the output is inside the box.
+    pub(super) fn contains(&self, (x, y): (i16, i16)) -> bool {
+        let (x, y) = (f64::from(x), f64::from(y));
+        (self.x..self.x + self.width).contains(&x) && (self.y..self.y + self.height).contains(&y)
+    }
 }
 
 pub(super) struct Sway {

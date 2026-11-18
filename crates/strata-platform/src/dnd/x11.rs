@@ -227,11 +227,11 @@ impl InPort for XIn {
         });
     }
 
-    fn read(&self, mime: &str, done: Box<dyn FnOnce(Result<Vec<u8>, String>) + Send>) {
+    fn read(&self, mime: &str, done: Box<dyn FnOnce(Result<Vec<u8>, ReadError>) + Send>) {
         self.handle.post(Cmd::Read {
             serial: self.serial,
             mime: mime.to_owned(),
-            done: Box::new(move |r| done(r.map_err(|e| e.to_string()))),
+            done,
         });
     }
 

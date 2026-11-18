@@ -25,6 +25,7 @@ use super::{
     invariants,
     staged::Staged,
     tree::{Kept, Node, Seen, Snapshot},
+    windows::Windows,
 };
 use crate::{App, host::offscreen::Offscreen, shell};
 
@@ -37,14 +38,16 @@ const PREVIEW: &str = "Preview";
 const PEEK: &str = "Folder peek";
 const SEARCH_RESULTS: &str = "Search results";
 
-pub(super) struct Rune<H: Host = Staged> {
+pub(super) struct Rune<H: Host = Windows> {
     host: H,
     quitting: Cell<bool>,
 }
 
 impl Rune {
+    /// The browser window on the offscreen host, and the floating chooser it opens.
     pub(super) fn new(host: Offscreen, log: InputLog) -> Self {
-        Self::on(Staged::new(host, log))
+        let size = host.size();
+        Self::on(Windows::new(Staged::new(host, log.clone()), log, size))
     }
 
     /// Opens a folder, as the launch does with its argument.
@@ -117,7 +120,9 @@ impl<H: Host> Rune<H> {
             clippy::cast_possible_truncation,
             reason = "a scroll offset in window points fits f32"
         )]
-        self.host.scroll_to(&key, x as f32, y as f32).await?;
+        self.host
+            .scroll_to((&node, &key), x as f32, y as f32)
+            .await?;
         let actual = self
             .scroll(&node, orientation)
             .map(|scroll| scroll.value)
@@ -190,6 +195,13 @@ impl<H: Host> Backend for Rune<H> {
         self.host.windowless()
     }
 
+    /// Settings draws its messages ("Reset all keybinds?", the save notice) inside itself, so
+    /// the one on top is the innermost, as GTK's snapshot names the message over its Settings
+    /// layer (the owner's ruling of 2026-11-17 on lgse/strata#2572).
+    fn nests_dialogs(&self) -> bool {
+        true
+    }
+
     fn window(&self) -> Option<Node> {
         self.host.window()
     }
@@ -212,8 +224,11 @@ impl<H: Host> Backend for Rune<H> {
         width
     }
 
-    fn focus(&self, _window: &Node) -> Option<Node> {
-        self.snapshot().focus().and_then(|focus| focus.node.clone())
+    /// The focus while `window` has the keyboard: a window that another one is in front of
+    /// has none, as GTK's inactive window reports none.
+    fn focus(&self, window: &Node) -> Option<Node> {
+        let focus = self.snapshot().focus()?.node.clone()?;
+        focus.is_within(window).then_some(focus)
     }
 
     fn parent(&self, node: &Node) -> Option<Node> {
@@ -308,8 +323,8 @@ impl<H: Host> Backend for Rune<H> {
     }
 
     /// Rune draws a window and its menus on one surface.
-    fn origin(&self, _node: &Node) -> Result<(f64, f64), String> {
-        self.host.origin()
+    fn origin(&self, node: &Node) -> Result<(f64, f64), String> {
+        self.host.origin(node)
     }
 
     fn layout(&self, node: &Node, _window: &Node) -> Option<Rect> {
@@ -418,6 +433,7 @@ impl<H: Host> Backend for Rune<H> {
         let target = self.read(node, |_, seen| {
             let key = seen.key.clone().filter(|_| seen.has_action("click"))?;
             Some(Activated {
+                node: node.clone(),
                 key,
                 bounds: seen.bounds,
             })

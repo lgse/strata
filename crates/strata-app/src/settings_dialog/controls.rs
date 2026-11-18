@@ -44,7 +44,8 @@ pub(super) fn search_handle() -> SettingsSearch<App> {
     .page_scroll(PAGE_SCROLL)
     .on_navigate(|app: &mut App, to: Navigate, _| {
         if let Some(page) = PageId::from_key(&to.page) {
-            app.settings_dialog.set_page(page);
+            let tenxer_mode = shell::preferences(app).tenxer_mode;
+            app.settings_dialog.select_page(page, tenxer_mode);
         }
     })
     .on_escape(|app: &mut App, _| {
@@ -472,19 +473,17 @@ pub(super) struct SearchField {
     pub(super) edit_mut: fn(&mut App) -> &mut TextEdit,
     /// A fixed width, or none to fill the row.
     pub(super) width: Option<f32>,
-    pub(super) on_change: fn(&mut App),
 }
 
 pub(super) fn search_field(app: &App, spec: SearchField) -> El {
     let look = &app.look;
     let edit = (spec.edit)(app);
-    let (key, edit_mut, on_change) = (spec.key, spec.edit_mut, spec.on_change);
+    let (key, edit_mut) = (spec.key, spec.edit_mut);
     let mut input = TextInput::new(edit)
         .label(spec.label.clone())
         .placeholder(spec.label)
         .width(spec.width)
         .on_edit(edit_mut)
-        .on_change(move |app: &mut App, _: &mut Tx| on_change(app))
         .build(&look.kit)
         .key(key);
     let mut field = row().gap(look.space.xs).items_center();

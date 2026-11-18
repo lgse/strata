@@ -135,7 +135,7 @@ pub(super) struct Drawn {
 }
 
 /// One node as Rune reports it.
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub(super) struct Seen {
     pub(super) node: Option<Node>,
     pub(super) parent: Option<usize>,
@@ -706,6 +706,33 @@ impl Snapshot {
         });
         if let Some(pane) = pane {
             self.nodes[pane].mark = Some(Mark::Pane(view.name));
+        }
+    }
+
+    /// This window's tree with `other`'s, a second toplevel, beside it: every node of both
+    /// stays where its own path names it, and the focus is `other`'s, the window in front
+    /// that takes the keys.
+    pub(super) fn with_toplevel(&self, other: &Snapshot) -> Snapshot {
+        let offset = self.nodes.len();
+        let moved = other.nodes.iter().cloned().map(|mut seen| {
+            seen.parent = seen.parent.map(|parent| parent + offset);
+            for child in &mut seen.children {
+                *child += offset;
+            }
+            seen
+        });
+        let mut index = self.index.clone();
+        index.extend(
+            other
+                .index
+                .iter()
+                .map(|(node, at)| (node.clone(), at + offset)),
+        );
+        Snapshot {
+            nodes: self.nodes.iter().cloned().chain(moved).collect(),
+            index,
+            focus: other.focus.map(|focus| focus + offset),
+            outlined: self.outlined,
         }
     }
 

@@ -13,9 +13,8 @@ host = "offscreen"
 scenario = "compress-then-chooser-extracts"
 run = "columns"
 package = "A6"
-status = "pending"
-reason = "scope"
-blocker = "A20: the floating Extract to chooser (line 25)"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "customization-follows-move-and-trash"
@@ -70,17 +69,15 @@ host = "offscreen"
 scenario = "floating-chooser-transfers-files"
 run = "columns-copy"
 package = "A6"
-status = "pending"
-reason = "scope"
-blocker = "A20: the floating Copy to chooser (line 8), by the coordinator's ruling of 2026-11-14"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "floating-chooser-transfers-files"
 run = "columns-move"
 package = "A6"
-status = "pending"
-reason = "scope"
-blocker = "A20: the floating Move to chooser (line 25), by the coordinator's ruling of 2026-11-14"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "invalid-archive-name-keeps-dialog"
