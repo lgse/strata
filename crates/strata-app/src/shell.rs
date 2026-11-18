@@ -52,6 +52,7 @@ mod held;
 mod preferences;
 mod siblings;
 pub(crate) mod tabs;
+mod thumbnail_budget;
 
 pub(crate) use held::{held_modifiers, modifiers};
 use preferences::{PowerMonitorGuard, WindowServices, sync_browser_freshness};
@@ -120,6 +121,8 @@ pub(crate) struct Window {
     /// The window's decoded thumbnails, which every view that draws them reads, each through
     /// a viewer of its own ([`crate::thumbnails`] has the render pool, one per process).
     thumbnails: ThumbnailStore,
+    /// The store's place in the process's budget ([`thumbnail_budget`]).
+    _thumbnail_share: thumbnail_budget::Share,
     /// The per-folder views, one store for the process ([`crate::folder_views`]).
     folder_views: folder_views::Kept,
     /// Theme library, Omarchy state, and system appearance monitor (`crate::theme`).
@@ -539,7 +542,7 @@ pub(crate) fn csd_of(app: &mut App) -> &mut Csd {
 /// number of workers (`thumbnail_workers`, which GTK hands the pool the same way).
 fn thumbnail_store(saved: &strata_desktop::settings::Preferences) -> ThumbnailStore {
     strata_preview::sandbox::browser::set_worker_limit(saved.thumbnail_workers);
-    let mut store = ThumbnailStore::new(Settings::default());
+    let mut store = ThumbnailStore::new(Settings::default().budget(thumbnail_budget::share()));
     let _ = store.set_enabled(saved.show_thumbnails);
     store
 }
@@ -616,6 +619,7 @@ impl Window {
         let saved = settings.preferences();
         let first = FirstTab::build(parts, saved, &events, (browser, services.power_saver));
         let keys = Live::registered(saved, first_window_reports().as_deref());
+        let thumbnail_share = thumbnail_budget::Share::join(&events.later());
         let thumbnails = thumbnail_store(saved);
         let look = services.themes.build_look(saved, true);
         let window = Self {
@@ -638,6 +642,7 @@ impl Window {
             labels: Labels::translated(),
             applied: (0, 0),
             thumbnails,
+            _thumbnail_share: thumbnail_share,
             folder_views: first.folder_views,
             themes: services.themes,
             animations_allowed: true,
