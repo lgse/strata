@@ -1,0 +1,14 @@
+{"scenario":"fuzz-tenxer-v3-0000000000000003","modes":["list"],"prefs":{"tenxer_mode":true,"type_to_search":false,"single_click_previews":false}}
+{"key":"slash"}
+{"type":"re"}
+{"key":"Return"}
+{"key":"l","when":{"any":[{"focused":"documents"},{"focused":"pictures"}]}}
+{"key":"space"}
+{"key":"space"}
+{"key":"h","when":{"not":{"directory":"$root"}}}
+{"key":"Up"}
+{"key":"slash"}
+{"type":"re"}
+{"key":"Return"}
+{"key":"l","when":{"any":[{"focused":"documents"},{"focused":"pictures"}]}}
+{"key":"k"}

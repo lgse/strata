@@ -97,6 +97,13 @@ sidebar v1 4acfcd20a194fff5
 # field on empty reopen history; version 3 scopes F2 to Columns and guards pointer actions with
 # editable_fields: 0.
 tabs v3 1f8e63a3fc4ed901
+# tenxer: versions 1 and 2 were A11's drafts, never merged: version 1's GTK calibration met
+# Reload over an empty filter's listing, where GTK's two replays of a seed left the keyboard in
+# the pane or nowhere (shrunk to 9 steps, confirmed 0 of 3: noise), and version 2 kept Reload
+# off an empty listing; its smoke tier met lgse/strata#2586 on each committed `f` filter,
+# parked in tests/qa/fuzz/corpus/tenxer. Version 3 abandoned the filter by Escape; its smoke tier
+# met lgse/strata#2587 on a folder visited again, parked there too. Version 4 leaves out `h`.
+tenxer v4 f35e2365dad42c98
 # views: versions 1 and 2 were A8's drafts, never merged: version 1's smoke tier met the plain
 # popover's app.dialog (lgse/strata#2405), Up off a first row, and #2386, since fixed;
 # version 2's, with the Up guard, met lgse/strata#2408, parked in tests/qa/fuzz/corpus/views.
