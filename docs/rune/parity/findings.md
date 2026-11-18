@@ -2289,6 +2289,11 @@ sequence only together with the alphabet's version, so the version is part of th
   at the same first wait. The scenario then passed alone three times in a row (6 of 6 runs
   each). #2583 changes how a drop from another application is read, not the listing or its item
   counts, and this run's drags come from the window itself.
+- **Seen in [#2594](https://github.com/lgse/strata/pull/2594)'s gate too:** as
+  `drag-file-onto-folder/columns-copy`, in its `qa-parity.sh all` at `e631cad2f` (rune
+  offscreen 681 of 682), at the same first wait. The scenario then passed alone (6 of 6 runs).
+  #2594 shares the settings between windows and opens a window per launch, and leaves the
+  listing, item counts and drag and drop as they were.
 - **Concerns:** `drag_and_drop/drag-file-onto-folder/columns-copy`, `list-copy` and `list-move`,
   `required`, [A19](packages/A19.md)'s.
 - **State:** open, unowned. The ledger is unchanged: the run stays `required`. Not traced.
