@@ -129,6 +129,11 @@ impl<S> WeakLater<S> {
         self.inbox.strong_count() > 0
     }
 
+    /// Whether both reach the same window's queue.
+    pub(crate) fn same_as(&self, other: &Self) -> bool {
+        std::rc::Weak::ptr_eq(&self.inbox, &other.inbox)
+    }
+
     /// Whether the window's queue is there and holds an update it has not applied.
     pub(crate) fn is_pending(&self) -> bool {
         self.inbox.upgrade().is_some_and(|inbox| {
