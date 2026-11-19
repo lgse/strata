@@ -10,3 +10,8 @@
 v2-0000000000000003 oracle lgse/strata#2586
 v2-0000000000000008 oracle lgse/strata#2586
 v3-0000000000000003 oracle lgse/strata#2587
+# v7, 0x62: Space on .hidden.txt with hidden files shown, then `.` hides them: the browser keeps
+# its Shift anchor on the hidden entry by location, the view moves its own to the cursor, and
+# F3's browser-view invariant breaks on Rune (lgse/strata#2387's mechanism, an entry hidden
+# rather than removed; F4's round 1). Shrunk on Rune from 65 steps to 7, confirmed 3 of 3.
+v7-0000000000000062 oracle lgse/strata#2387

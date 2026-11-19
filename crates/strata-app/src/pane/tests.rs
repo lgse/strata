@@ -409,3 +409,80 @@ fn a_restored_cursor_whose_entry_went_falls_back_to_the_selection() {
     assert_eq!(selection.selected_ids(fixture.pane.source()), [b]);
     assert_eq!(selection.anchor(), Some(b));
 }
+
+/// A cursor whose entry went while the folder was left, with nothing else selected, falls back
+/// to the browser's own cursor, the load's, as GTK's `restore_selection` leaves it: not to the
+/// entry that took its index (finding lgse/strata#2628, seed 0x64 of `drag v2`: an Undo took
+/// the entry out).
+#[test]
+fn a_restored_cursor_whose_entry_went_alone_falls_back_to_the_browser_s_cursor() {
+    let mut fixture = Fixture::new();
+    let folder = location(0);
+    fixture.visit(&folder, &["a.txt", "b.txt", "c.txt", "d.txt"]);
+    let id = |fixture: &Fixture, name: &str| {
+        fixture
+            .ids
+            .of(&folder.child(std::ffi::OsStr::new(name)).expect("a child"))
+    };
+    let (a, c) = (id(&fixture, "a.txt"), id(&fixture, "c.txt"));
+    fixture.pane.select_only(0, c);
+    fixture.visit(&Location::local("/elsewhere"), &["x.txt"]);
+
+    let load = || Marks {
+        cursor: Some(a),
+        selected: vec![a],
+        anchor: Some(a),
+        provisional: true,
+    };
+    fixture.apply(Change::Added(Added {
+        depth: 0,
+        location: folder.clone(),
+        show_hidden: false,
+        active: true,
+        grouping: None,
+        reveal: false,
+    }));
+    let rows = ["a.txt", "b.txt", "d.txt"]
+        .iter()
+        .map(|name| Row::of(&file(&folder, name), &fixture.ids))
+        .collect();
+    fixture.apply(Change::Rows {
+        depth: 0,
+        edit: Edit::Replace(rows),
+        marks: Some(load()),
+        grouping: None,
+    });
+    fixture.apply(Change::Loaded {
+        depth: 0,
+        load: Load::Listed,
+        marks: load(),
+        grouping: None,
+    });
+
+    assert_eq!(fixture.pane.collection().selection.cursor(), Some(a));
+}
+
+/// As above, where the browser holds no cursor either, as after a folder opened by a click:
+/// the first row takes the cursor, with nothing selected, as GTK's list view focuses it.
+#[test]
+fn a_restored_cursor_whose_entry_went_with_no_browser_cursor_falls_back_to_the_first_row() {
+    let mut fixture = Fixture::new();
+    let folder = location(0);
+    fixture.visit(&folder, &["a.txt", "b.txt", "c.txt", "d.txt"]);
+    let id = |fixture: &Fixture, name: &str| {
+        fixture
+            .ids
+            .of(&folder.child(std::ffi::OsStr::new(name)).expect("a child"))
+    };
+    let (a, c) = (id(&fixture, "a.txt"), id(&fixture, "c.txt"));
+    fixture.pane.select_only(0, c);
+    fixture.visit(&Location::local("/elsewhere"), &["x.txt"]);
+
+    assert_eq!(
+        fixture.visit(&folder, &["a.txt", "b.txt", "d.txt"]),
+        Applied::Returned
+    );
+    let selection = &fixture.pane.collection().selection;
+    assert_eq!(selection.cursor(), Some(a));
+    assert!(selection.selected_ids(fixture.pane.source()).is_empty());
+}

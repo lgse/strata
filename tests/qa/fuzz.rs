@@ -65,6 +65,9 @@ mod report;
 #[path = "fuzz/rules.rs"]
 pub(crate) mod rules;
 
+#[path = "fuzz/rune_adds_tests.rs"]
+mod rune_adds_tests;
+
 #[path = "fuzz/sequence.rs"]
 pub(crate) mod sequence;
 

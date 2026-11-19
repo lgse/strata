@@ -1,0 +1,72 @@
+{"scenario":"fuzz-tenxer-v7-0000000000000020","modes":["list"],"prefs":{"tenxer_mode":true,"type_to_search":false,"single_click_previews":false}}
+{"key":"ctrl+r"}
+{"key":"Escape"}
+{"key":"Escape"}
+{"key":"h","when":{"all":[{"not":{"directory":"$root"}},{"selected":[]}]}}
+{"fs":{"path":"fuzz-a.txt","remove":true}}
+{"key":"k"}
+{"key":"slash"}
+{"type":"zz"}
+{"key":"Return"}
+{"key":"space"}
+{"key":"slash"}
+{"type":"pic"}
+{"key":"Escape"}
+{"key":"k"}
+{"key":"space"}
+{"key":"slash"}
+{"type":"pic"}
+{"key":"Escape"}
+{"key":"Up"}
+{"key":"k"}
+{"key":"i","when":{"all":[{"any":[{"focused":"documents"},{"focused":"pictures"}]},{"not":{"present":{"role":"label","name_matches":"filter: "}}}]}}
+{"key":"Escape"}
+{"key":"Escape"}
+{"key":"h","when":{"all":[{"not":{"directory":"$root"}},{"selected":[]}]}}
+{"key":"Escape"}
+{"key":"Escape"}
+{"key":"h","when":{"all":[{"not":{"directory":"$root"}},{"selected":[]}]}}
+{"key":"Down"}
+{"key":"i","when":{"all":[{"any":[{"focused":"documents"},{"focused":"pictures"}]},{"not":{"present":{"role":"label","name_matches":"filter: "}}}]}}
+{"key":"j"}
+{"key":"shift+g"}
+{"key":"space"}
+{"key":"g"}
+{"key":"g"}
+{"key":"space"}
+{"key":"Escape"}
+{"fs":{"path":"documents/fuzz-b.txt","remove":true}}
+{"key":"slash"}
+{"type":"zz"}
+{"key":"Return"}
+{"key":"slash"}
+{"type":"zz"}
+{"key":"Return"}
+{"key":"i","when":{"all":[{"any":[{"focused":"documents"},{"focused":"pictures"}]},{"not":{"present":{"role":"label","name_matches":"filter: "}}}]}}
+{"key":"i","when":{"all":[{"any":[{"focused":"documents"},{"focused":"pictures"}]},{"not":{"present":{"role":"label","name_matches":"filter: "}}}]}}
+{"key":"F5","when":{"not":{"matches":[]}}}
+{"key":"space"}
+{"key":"slash"}
+{"type":"pic"}
+{"key":"Escape"}
+{"key":"space"}
+{"key":"f"}
+{"type":"zz"}
+{"key":"Escape"}
+{"key":"k"}
+{"key":"space"}
+{"key":"slash"}
+{"type":"re"}
+{"key":"Escape"}
+{"key":"Escape"}
+{"key":"i","when":{"all":[{"any":[{"focused":"documents"},{"focused":"pictures"}]},{"not":{"present":{"role":"label","name_matches":"filter: "}}}]}}
+{"key":"i","when":{"all":[{"any":[{"focused":"documents"},{"focused":"pictures"}]},{"not":{"present":{"role":"label","name_matches":"filter: "}}}]}}
+{"key":"i","when":{"all":[{"any":[{"focused":"documents"},{"focused":"pictures"}]},{"not":{"present":{"role":"label","name_matches":"filter: "}}}]}}
+{"key":"shift+n"}
+{"key":"i","when":{"all":[{"any":[{"focused":"documents"},{"focused":"pictures"}]},{"not":{"present":{"role":"label","name_matches":"filter: "}}}]}}
+{"key":"F5","when":{"not":{"matches":[]}}}
+{"key":"F5","when":{"not":{"matches":[]}}}
+{"key":"Escape"}
+{"key":"Escape"}
+{"key":"l","when":{"all":[{"any":[{"focused":"documents"},{"focused":"pictures"}]},{"selected":[]}]}}
+{"key":"space"}

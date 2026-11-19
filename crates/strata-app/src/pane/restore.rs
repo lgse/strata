@@ -20,7 +20,9 @@
 //!   the same entries whatever order they show in.
 //! - **A cursor falls back** to the first restored selected entry when its own entry is gone,
 //!   or none was remembered, and the anchor to the cursor; with no selection either, to the
-//!   browser's own cursor, so the two never disagree ([`fall_back`]).
+//!   browser's own cursor, so the two never disagree; with neither, to the first row shown,
+//!   as a first visit places it ([`fall_back`]). A remembered cursor whose entry went lets go
+//!   of it for this, rather than take the entry at its index.
 //! - **No choice.** What comes back is handed to the browser without committing it, as GTK's
 //!   `restore_selection` sets the browser's selection alone: a cursor a load placed (Alt+Up's
 //!   folder come from) stays the load's, so Columns shown again opens no child for it
@@ -28,7 +30,9 @@
 //!   such a cursor and what came back is the cursor alone, the view's pick stays provisional
 //!   too ([`keep_provisional`]), as the browser's does. Where what came back selects exactly
 //!   the load's pick with its cursor elsewhere, the browser keeps the load's cursor, and the
-//!   view takes it ([`take_load_cursor`]), as GTK's view draws it.
+//!   view takes it ([`take_load_cursor`]), as GTK's view draws it. Where the browser holds no
+//!   load cursor, what is handed back is a fill there, and the view's pick is no longer a
+//!   load's either ([`follow_fill`]).
 //! - **One memory for the window's single-pane views** ([`Memory`]), as GTK's
 //!   `PaneNavigation` is one history whatever the mode: a folder left in Icons comes back in
 //!   List where Icons left it. A view switched away hears nothing, so while the view shown
@@ -55,6 +59,7 @@ use strata_components::{
     contract::{EntryId, EntrySource},
 };
 use strata_core::model::Location;
+use strata_fs::app::Browser;
 
 use crate::{
     events::Marks,
@@ -178,12 +183,15 @@ pub(super) fn fall_back(
         .filter_map(|id| Some((column.position_of(id)?, id)))
         .min()
         .map(|(_, id)| id);
-    let Some(index) = first.or(browser_cursor).and_then(|id| column.index_of(id)) else {
-        return;
-    };
-    let anchor = match selection.anchor() {
-        Some(_) => AnchorRule::Keep,
-        None => AnchorRule::Move,
+    let fallen = first.or(browser_cursor).and_then(|id| column.index_of(id));
+    let (index, anchor) = match (fallen, selection.anchor()) {
+        (Some(index), Some(_)) => (index, AnchorRule::Keep),
+        (Some(index), None) => (index, AnchorRule::Move),
+        // Nothing to fall back to, as after a folder opened by a click: GTK's list view,
+        // taking the keyboard with no cursor, focuses its first row, as on a first visit
+        // (`single::first_visit`), with nothing selected and no anchor.
+        (None, _) if column.len() > 0 => (0, AnchorRule::Keep),
+        (None, _) => return,
     };
     let _ = collection.selection.move_cursor(column, index, anchor);
     collection.note_selection(column);
@@ -229,4 +237,29 @@ pub(super) fn keep_provisional(column: &Column, collection: &mut CollectionState
         return;
     }
     collection.note_selection(column);
+}
+
+/// After a remembered position was handed back as no choice: the browser keeps a cursor a load
+/// placed through it, but where it holds none, as after a folder opened by a double click, the
+/// position is a fill there, whatever the view remembered of it. So a pick the view brought
+/// back as a load's is the user's in the view too, and the two agree on what the next toggle
+/// and a 10xer verb act on (seed 0x62 of `list v3` and 0x3e of `icons v1`: a folder first
+/// opened by Return, opened again by a double click). Returns whether the selection changed.
+pub(super) fn follow_fill(
+    column: &Column,
+    collection: &mut CollectionState,
+    browser: &Browser,
+    depth: usize,
+) -> bool {
+    let selection = &collection.selection;
+    if !selection.is_provisional() || browser.filled_entries(depth).is_empty() {
+        return false;
+    }
+    let mut position = selection.position(column);
+    position.provisional = false;
+    if !collection.selection.restore(&position).selection {
+        return false;
+    }
+    collection.note_selection(column);
+    true
 }

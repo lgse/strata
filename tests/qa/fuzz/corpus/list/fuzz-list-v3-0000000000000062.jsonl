@@ -1,0 +1,9 @@
+{"scenario":"fuzz-list-v3-0000000000000062","modes":["list"],"prefs":{"type_to_search":false}}
+{"key":"Menu","when":{"all":[{"focused_in_matches":true},{"not":{"field":{"name":"Rename"}}}]}}
+{"click":{"menu_item":"Rename"},"when":{"present":{"menu_item":"Rename"}}}
+{"type":"y","when":{"field":{"name":"Rename"}}}
+{"key":"Return","when":{"field":{"name":"Rename"}}}
+{"key":"Up"}
+{"key":"Return","when":{"any":[{"focused":"documents"},{"focused":"pictures"},{"field":{"name":"Rename"}}]}}
+{"key":"alt+Left","when":{"not":{"directory":"$root"}}}
+{"click":{"entry":"pictures"},"count":2,"when":{"all":[{"present":{"entry":"pictures"}},{"not":{"field":{"name":"Rename"}}}]}}
