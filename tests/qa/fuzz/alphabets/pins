@@ -48,6 +48,9 @@ list v3 53cac7ac7cdfa46c
 # Shift+Tab off the files. Its seeds name the shrunk sequences of its findings, parked in
 # tests/qa/fuzz/corpus/location.
 location v2 c074595ff2aab0b4
+# media: versions 1 to 5 were A16's drafts, never merged (the alphabet's own comment says what
+# each met). Version 6 holds the model, the route and two videos.
+media v7 ce3c1af204626f1e
 # menus: versions 1 to 3 were A6's drafts, never merged: version 1 caught ReferenceState::open
 # leaving a kept query unselected on reopen and sidebar::menu::open leaving focus in the file
 # view on a sidebar menu open (both fixed); version 2 caught menus::open not focusing/activating

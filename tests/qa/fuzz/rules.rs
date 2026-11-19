@@ -18,6 +18,12 @@
 //! difference between GTK's value and one of Rune's on that field, every other difference on
 //! it still counting: an owner's ruling on one deviation, kept narrow
 //! (`app.dialog`'s, lgse/strata#2405: GTK's popovers are no dialogs, Rune's plain ones are).
+//!
+//! On a field whose value is a list, a rule may instead name the elements Rune's list adds:
+//! `<field> <code> <issue> {"rune_adds":[<value>, …]}`. It leaves out a difference only when
+//! GTK's list is Rune's with every element equal to one of them taken out, so the rest of the
+//! list, its order included, still counts: a node Rune names and GTK does not, by a ruling
+//! (`app.preview`'s "Volume", lgse/strata#2606).
 
 use std::{fs, path::Path};
 
@@ -52,18 +58,37 @@ pub(crate) struct Entry {
     pub(crate) only: Option<Only>,
 }
 
-/// A difference a rule excuses: GTK's value `gtk` against one of Rune's `rune`.
+/// A difference a rule excuses.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct Only {
-    pub(crate) gtk: Value,
-    pub(crate) rune: Vec<Value>,
+pub(crate) enum Only {
+    /// GTK's value `gtk` against one of Rune's `rune`.
+    Values { gtk: Value, rune: Vec<Value> },
+    /// A list of Rune's that is GTK's with these elements added, wherever they stand.
+    RuneAdds(Vec<Value>),
 }
 
 impl Only {
-    /// Whether `difference` is GTK's value against one of Rune's: `gtk_left` says which side
-    /// GTK's stream is, when the comparison knows.
+    /// Whether GTK's value `gtk` against Rune's `rune` is what the rule excuses.
+    fn is(&self, gtk: &Value, rune: &Value) -> bool {
+        match self {
+            Self::Values {
+                gtk: ruled,
+                rune: values,
+            } => gtk == ruled && values.contains(rune),
+            Self::RuneAdds(added) => {
+                let (Value::Array(gtk), Value::Array(rune)) = (gtk, rune) else {
+                    return false;
+                };
+                let kept: Vec<&Value> = rune.iter().filter(|item| !added.contains(item)).collect();
+                kept.len() < rune.len() && kept.iter().copied().eq(gtk.iter())
+            }
+        }
+    }
+
+    /// Whether `difference` is what the rule excuses: `gtk_left` says which side GTK's stream
+    /// is, when the comparison knows.
     fn excuses(&self, difference: &Difference, gtk_left: Option<bool>) -> bool {
-        let is = |gtk: &Value, rune: &Value| *gtk == self.gtk && self.rune.contains(rune);
+        let is = |gtk: &Value, rune: &Value| self.is(gtk, rune);
         let (left, right) = (&difference.left, &difference.right);
         match gtk_left {
             Some(true) => is(left, right),
@@ -112,14 +137,26 @@ impl Ignored {
     }
 
     /// Whether `difference` is left out: its field is covered, or a rule names its values.
-    /// `gtk_left` says which side GTK's stream is, when the comparison knows.
+    /// The elements the field's `rune_adds` rules name are taken out together, so a list that
+    /// adds what two rulings allow is GTK's with both taken out. `gtk_left` says which side
+    /// GTK's stream is, when the comparison knows.
     pub(crate) fn excuses(&self, difference: &Difference, gtk_left: Option<bool>) -> bool {
+        let on_field = |entry: &&Entry| project::covers(&entry.field, &difference.field);
+        let added: Vec<Value> = self
+            .rules
+            .iter()
+            .filter(on_field)
+            .filter_map(|entry| match &entry.only {
+                Some(Only::RuneAdds(added)) => Some(added.iter().cloned()),
+                _ => None,
+            })
+            .flatten()
+            .collect();
+        let together = (!added.is_empty()).then_some(Only::RuneAdds(added));
         self.covers(&difference.field)
-            || self.rules.iter().any(|entry| {
-                entry.only.as_ref().is_some_and(|only| {
-                    project::covers(&entry.field, &difference.field)
-                        && only.excuses(difference, gtk_left)
-                })
+            || together.is_some_and(|only| only.excuses(difference, gtk_left))
+            || self.rules.iter().filter(on_field).any(|entry| {
+                matches!(&entry.only, Some(only @ Only::Values { .. }) if only.excuses(difference, gtk_left))
             })
     }
 }
@@ -218,25 +255,35 @@ fn entry(line: &str, codes: &[&str]) -> Result<Entry, String> {
     })
 }
 
-/// The values after an entry's issue: `{"gtk":<value>,"rune":[<value>, …]}`.
+/// The values after an entry's issue: `{"gtk":<value>,"rune":[<value>, …]}`, or
+/// `{"rune_adds":[<value>, …]}`.
 fn only(text: &str) -> Result<Only, String> {
     let wrong = || {
         format!(
-            "the values an entry names are {{\"gtk\":<value>,\"rune\":[<value>, …]}}, not {text:?}"
+            "the values an entry names are {{\"gtk\":<value>,\"rune\":[<value>, …]}} or \
+             {{\"rune_adds\":[<value>, …]}}, not {text:?}"
         )
     };
     let value: Value = serde_json::from_str(text).map_err(|_| wrong())?;
-    let object = value
-        .as_object()
-        .filter(|object| object.len() == 2)
-        .ok_or_else(wrong)?;
-    let (Some(gtk), Some(Value::Array(rune))) = (object.get("gtk"), object.get("rune")) else {
-        return Err(wrong());
-    };
-    if rune.is_empty() {
-        return Err(wrong());
-    }
-    Ok(Only {
+    let object = value.as_object().ok_or_else(wrong)?;
+    rune_adds(object)
+        .or_else(|| values(object))
+        .ok_or_else(wrong)
+}
+
+/// `{"rune_adds":[<value>, …]}`: one key, and at least one value.
+fn rune_adds(object: &serde_json::Map<String, Value>) -> Option<Only> {
+    let added = object.get("rune_adds")?.as_array()?;
+    let alone = object.len() == 1;
+    (alone && !added.is_empty()).then(|| Only::RuneAdds(added.clone()))
+}
+
+/// `{"gtk":<value>,"rune":[<value>, …]}`: both keys and no other, and at least one of Rune's.
+fn values(object: &serde_json::Map<String, Value>) -> Option<Only> {
+    let gtk = object.get("gtk")?;
+    let rune = object.get("rune")?.as_array()?;
+    let both = object.len() == 2;
+    (both && !rune.is_empty()).then(|| Only::Values {
         gtk: gtk.clone(),
         rune: rune.clone(),
     })

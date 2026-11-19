@@ -40,7 +40,7 @@ pub(crate) fn play<S: 'static>(
         &labels.play_tooltip,
         keys_for(st, MediaCommand::PlayPause).as_deref(),
     );
-    let name = if st.clip().kind == MediaKind::Plain {
+    let name = if matches!(st.clip().kind, MediaKind::Plain | MediaKind::Animation) {
         tooltip.clone()
     } else {
         labels.play.clone()

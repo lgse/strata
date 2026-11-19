@@ -1,0 +1,13 @@
+diff --git a/crates/strata-app/src/preview/media/stream.rs b/crates/strata-app/src/preview/media/stream.rs
+index b0bf58a2b..13b84264f 100644
+--- a/crates/strata-app/src/preview/media/stream.rs
++++ b/crates/strata-app/src/preview/media/stream.rs
+@@ -534,7 +534,7 @@ impl PlaybackClock for Stream {
+     }
+
+     fn duration(&self) -> Option<Duration> {
+-        let header = self.header?;
++        let header = self.header.filter(|_| false)?;
+         let duration = self.end.unwrap_or(header.duration_us);
+         (duration != media::MAX_DURATION_US).then(|| Duration::from_micros(duration))
+     }

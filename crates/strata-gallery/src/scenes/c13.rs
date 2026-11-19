@@ -291,7 +291,7 @@ impl Demo {
                 });
                 self.schedule_levels(now + 0.1);
             }
-            MediaKind::Plain => {}
+            MediaKind::Plain | MediaKind::Animation => {}
         }
         if let Some(at) = self.first_frame_at
             && f.kind != MediaKind::Audio

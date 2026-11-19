@@ -38,7 +38,8 @@ pub(crate) const PLATFORM: &str = "platform";
 const PENDING_ONLY: [&str; 3] = ["scope", "harness", "component"];
 /// The Rune filing packet: a `rune` twin cites the entry it expires with.
 const PACKET: &str = "docs/rune/upstream/rune";
-/// The Rune mutation patches, each named for the scenario that must catch it.
+/// The Rune mutation patches, each named for the scenario that must catch it:
+/// `<scenario>.patch` or `<scenario>.<label>.patch`.
 const PATCHES: &str = "tests/qa/parity/mutations";
 const ISSUES: &str = "lgse/strata#";
 
@@ -396,7 +397,7 @@ impl Facts {
 /// mutation patches and the entries of the Rune filing packet.
 pub(crate) struct Corpus {
     scenarios: Vec<Facts>,
-    /// The scenarios the patches under `tests/qa/parity/mutations` are named for.
+    /// The scenarios the patches under `tests/qa/parity/mutations` are named for, each once.
     patches: BTreeSet<String>,
     /// The file names under `docs/rune/upstream/rune`.
     packet: BTreeSet<String>,
@@ -438,10 +439,13 @@ impl Corpus {
     }
 
     pub(crate) fn load() -> Self {
+        // `<scenario>.patch` or `<scenario>.<label>.patch`: the scenario is the name up to a
+        // label's dot, since a scenario's name has none.
         let patch = |name: PathBuf| {
             (name.extension()? == "patch")
                 .then(|| text(name.file_stem()))
                 .flatten()
+                .map(|stem| stem.split('.').next().unwrap_or_default().to_owned())
         };
         let patches: Vec<String> = names(PATCHES).filter_map(patch).collect();
         let packet: Vec<String> = names(PACKET)
