@@ -393,6 +393,7 @@ fn the_rows_with_a_command_act_and_the_rest_are_inert() {
                     "run",
                     "terminal",
                     "open-in-tab",
+                    "open-in-window",
                     "extract",
                     "extract-to",
                     "cut",

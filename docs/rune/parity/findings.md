@@ -265,6 +265,11 @@ closed issue is not a fixed finding: the state given here is the finding's.
   (`crates/strata-app/src/footer/tests.rs:213`, "consuming a cut withdraws the clipboard
   badge": the badge still showed) with the load average near 10. It passed 3 times of 3 alone
   and in the full rerun (3058 passed); #2599 does not touch the footer or the clipboard.
+- **On [#2620](https://github.com/lgse/strata/pull/2620), [A21](packages/A21.md)'s Slice 3, at `ca098e391`:** the tenth failed once more in
+  `./scripts/quality.sh all --jobs 4` (shard 0, lane 3, 79 of 80) with its `ETXTBSY` message, and
+  passed 3 times of 3 alone; a rerun of `./scripts/quality.sh test` passed whole (4076 tests).
+  That change touches no shared crate and no `src/`. In the same gate `./scripts/qa.sh` failed
+  only #2162's run, at its line 34.
 
 ### #2176: a GTK critical after a file appears during a rename on a multiple selection
 
@@ -2834,3 +2839,18 @@ sequence only together with the alphabet's version, so the version is part of th
   and the next Left leaves; the audio view takes the player's keys, as GTK's drawer does.
   Covered by `preview::tests::media::a_gif_plays_in_the_plain_bar_and_loops` and
   `an_audio_player_keeps_left_and_right_and_a_gif_gives_left_back`.
+
+### #2621: a fully covered X11 window is `Hidden` on Rune, where GTK keeps it `Visible`
+
+- **Code:** `deviation`, ruled by the owner on 2026-11-19 ([`owner.md`](owner.md#ruled)). [Issue](https://github.com/lgse/strata/issues/2621),
+  filed on 2026-11-19 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** by the review of [A21](packages/A21.md)'s Slice 2a
+  ([#2604](https://github.com/lgse/strata/pull/2604)). GTK's `presence_of` (`src/ui/presence.rs`)
+  reads only an unmapped window and the toplevel's `SUSPENDED` and `MINIMIZED` states, so a
+  window covered whole by others stays `Visible`. Rune's `App::on_visibility` reports covering
+  on X11 and macOS, and `shell::presence` follows it (`crates/strata-app/src/shell/presence.rs`),
+  so the covered window's browsers are `Hidden` and recheck their folders less often until it
+  is uncovered. The Wayland half, a minimised window that stays `Visible`, is a Rune gap (Rune
+  packet entry 111), not this finding.
+- **Concerns:** no run.
+- **State:** ruled: Rune's report stands (the owner, 2026-11-19, through the coordinator).

@@ -81,6 +81,7 @@ mod shortcuts;
 mod window_keys;
 // A7 Entry management and undo
 mod new_item;
+mod new_window;
 mod rename_failed;
 mod trash;
 mod undo;
@@ -131,6 +132,9 @@ slots::parts! {
     // The slice. The editor's message shows under a menu, so it comes first.
     columns: columns::Columns,
     rename: rename::Rename,
+    // A21's Shift+Enter (`open-in-window`) comes before `menu`'s `activate`, which takes Enter
+    // with any Shift, as GTK asks `opens_focused_in_new` before it activates.
+    new_window: new_window::NewWindow,
     menu: menus::Menu,
     // B3 Commands and key dispatch
     // A1 Icons view and thumbnails
@@ -194,7 +198,7 @@ slots::parts! {
     // A20 Portal chooser
     chooser: chooser::Chooser,
     chooser_dialog: chooser::ChooserDialog,
-    // A21 Window and launch
+    // A21 Window and launch: `new_window` is listed before `menu`.
 }
 
 pub use launch::run;

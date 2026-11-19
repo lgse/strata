@@ -298,10 +298,13 @@ fn hear(event: &BrowserEvent, _: &Browser, heard: &mut Heard<'_, App>) {
 
 /// Readies a state for the new native window it moves into, after a refused close
 /// (`crate::host::windowed`, "Refused closes"): the window counts as on screen again, as a
-/// new window does until Rune says otherwise (the closing one was hidden first), and takes its
-/// title on the next poll.
+/// new window does until Rune says otherwise (the closing one was hidden first), and as
+/// without the keyboard until Rune's first focus event gives it: the new window is created
+/// with no activation token, so on Wayland it may map without the focus, and Rune reports
+/// no loss of a focus it never had. It takes its title on the next poll.
 pub(crate) fn reopened(app: &mut App) {
     app.window.on_screen = true;
+    app.window.active = false;
     presence::follow(app);
     window_later(app).then(|app, tx| {
         retitle_now(app, tx);
