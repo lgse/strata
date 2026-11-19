@@ -11,10 +11,19 @@
 # exception: it goes in calibration.mask. See docs/testing.md, "Fuzzing".
 #
 # A rule may name the values it excuses after its issue, {"gtk":<value>,"rune":[<value>, …]}:
-# it then leaves out only GTK's value against one of Rune's on its field. On a list,
-# {"rune_adds":[<value>, …]} leaves out only a Rune list that is GTK's with those elements added.
-# The rune_adds rules on one field are taken out together, so a list that adds what two
-# rulings allow, as an audio player's "Volume" and "Album art", is GTK's with both taken out.
+# it then leaves out only GTK's value against one of Rune's on its field.
+# Without "rune" it leaves out GTK's value against any of Rune's, and without "gtk" any of GTK's
+# against one of Rune's. With "while":{"gtk":{<field>:<value>, …},"rune":{…}} it applies only at
+# a step at which each side's observation holds those values: a field is a key of app, or of
+# the context, which nothing compares (context.toplevels, the windows open beside the browser;
+# context.window_focused, whether anything in the window has the keyboard), and a value one
+# value or {"one_of":[<value>, …]}. A rule may then name neither side's values, and leaves
+# out every difference on its field there. Rules of one field, code and issue are sorted by what
+# follows the issue.
+# On a list, {"rune_adds":[<value>, …]} leaves out only a Rune list that is GTK's with those
+# elements added. The rune_adds rules on one field are taken out together, so a list that adds
+# what two rulings allow, as an audio player's "Volume" and "Album art", is GTK's with both
+# taken out.
 # A plain popover is a named dialog on Rune and an unnamed panel on GTK, by the owner's ruling
 # of 2026-11-13 (owner.md): only its name against GTK's none is excused, never a real dialog.
 # GTK reports `null` for its popover whether it is open or not, so this rule cannot catch a
@@ -32,7 +41,56 @@ app.dialog deviation lgse/strata#2405 {"gtk":null,"rune":["Appearance","Jobs","T
 # Settings or its menu is open or not, so these rules cannot catch a Rune one left open where
 # GTK's closed; the focus fields after them do.
 app.dialog deviation lgse/strata#2572 {"gtk":null,"rune":["Settings"]}
+# After the floating Copy to or Move to chooser closes, GTK's browser window is not active
+# again on the QA's Xvfb, which runs no window manager to do it, so GTK reports no focus at all;
+# on a desktop both interfaces leave the keyboard in the browser, and Rune's QA host gives it
+# back as a window manager does. The owner ruled on 2026-11-17 (owner.md) that this is excused
+# here, `toolkit`: GTK's focus follows GDK's X11 window activation. The first four rules apply
+# only while GTK's whole window has no keyboard (context.window_focused false: no mapped widget
+# in it has focus, as in an inactive window, or just after the focused widget was unmapped) and
+# its browser no focused pane, and excuse only GTK's no focus against Rune's:
+# - app.focused and app.panes[].focused: GTK's null against any row of Rune's;
+# - app.focused_pane: GTK's null against any pane of Rune's;
+# - app.directory, which is the focused pane's, or the last pane's when none is focused: any
+#   value of Rune's against GTK's.
+# GTK's keyboard on the sidebar, the header, the location bar or a dialog leaves its window
+# focused, so these rules do not apply there and Rune's focus on a row still counts. The map
+# names no step, so they hold for as long as GTK's window has no keyboard: from the chooser's close
+# until a later chooser on the bare Xvfb. What they could hide is a Rune focus bug at such a
+# step: the keyboard on the wrong row, or on a row where it should be elsewhere. No scenario
+# reads the browser's focus after the floating chooser closes:
+# `floating-chooser-transfers-files/*` and `compress-then-chooser-extracts/columns` check the
+# files only, and `abandoned-extract-to-no-hijack/columns-cancelled-password` shows only that
+# a key reaches the browser's password prompt then (line 24). Rune's own coverage is
+# `qa::tests::floating::the_floating_chooser_is_a_toplevel_in_front_of_the_browser` (the
+# browser has the keys again after Escape) and `window::qa`'s raise and close.
+# The second four, by the owner's ruling of 2026-11-18, excuse the other way round: from the
+# second chooser of a sequence on, GTK's browser is active again on the bare Xvfb and reports
+# its row while the chooser is open, where Rune's has no focus behind its chooser, as an
+# inactive window has none. They apply only while Rune's browser has no focused pane and
+# Rune shows a floating chooser open (context.toplevels is ["Copy to"], ["Move to"] or
+# ["Extract to"]), and excuse only Rune's null against any value of GTK's:
+# - app.focused and app.panes[].focused: any row of GTK's against Rune's null;
+# - app.focused_pane: any pane of GTK's against Rune's null;
+# - app.directory: any value of GTK's against Rune's.
+# A Rune browser that kept the keyboard behind its chooser still counts: its focus is then no
+# null. So does a Rune browser that lost the keyboard with no chooser open. What they could
+# hide is GTK's browser keeping the keyboard behind a chooser on a desktop, which no target here
+# can show, and a wrong pane or row of GTK's while Rune's chooser is open. Rune's side is held
+# by `qa::tests::floating::the_floating_chooser_is_a_toplevel_in_front_of_the_browser` (the
+# browser has no focus while the chooser is in front, and the keys again after Escape) and
+# `window::qa`'s raise and close.
+app.directory toolkit lgse/strata#2595 {"while":{"gtk":{"app.focused_pane":null,"context.window_focused":false}}}
+app.directory toolkit lgse/strata#2595 {"while":{"rune":{"app.focused_pane":null,"context.toplevels":{"one_of":[["Copy to"],["Move to"],["Extract to"]]}}}}
+app.focused toolkit lgse/strata#2595 {"gtk":null,"while":{"gtk":{"app.focused_pane":null,"context.window_focused":false}}}
+app.focused toolkit lgse/strata#2595 {"rune":[null],"while":{"rune":{"app.focused_pane":null,"context.toplevels":{"one_of":[["Copy to"],["Move to"],["Extract to"]]}}}}
+app.focused_pane toolkit lgse/strata#2595 {"gtk":null,"while":{"gtk":{"context.window_focused":false}}}
+app.focused_pane toolkit lgse/strata#2595 {"rune":[null],"while":{"rune":{"context.toplevels":{"one_of":[["Copy to"],["Move to"],["Extract to"]]}}}}
+# app.menu's rule is lgse/strata#2572's, with app.dialog's above.
 app.menu deviation lgse/strata#2572 {"gtk":null,"rune":[[]]}
+# app.panes[].focused's rule is lgse/strata#2595's, with app.focused's above.
+app.panes[].focused toolkit lgse/strata#2595 {"gtk":null,"while":{"gtk":{"app.focused_pane":null,"context.window_focused":false}}}
+app.panes[].focused toolkit lgse/strata#2595 {"rune":[null],"while":{"rune":{"app.focused_pane":null,"context.toplevels":{"one_of":[["Copy to"],["Move to"],["Extract to"]]}}}}
 # A PDF's page is one image on GTK; Rune's PDF view also names the document, each page and the
 # page's text layer, by the owner's ruling of 2026-11-19 (owner.md): only those three of the
 # fixture's PDF, tests/fixtures/documents/text.pdf, a page of one, are excused, wherever

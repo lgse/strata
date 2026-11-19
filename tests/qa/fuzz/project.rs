@@ -34,6 +34,13 @@ pub(crate) const APP: &str = "app";
 pub(crate) const FS: &str = "fs";
 pub(crate) const SETTINGS: &str = "settings";
 pub(crate) const ROOTS: [&str; 6] = [RESULT, CRITICALS, INVARIANTS, APP, FS, SETTINGS];
+/// What an observation keeps beside its roots and never compares: the windows open beside the
+/// one the steps act on (the snapshot's `toplevels`), which a rule's `while` may read.
+pub(crate) const CONTEXT: &str = "context";
+/// The context's keys: `context.toplevels`, and `context.window_focused`, whether anything
+/// in the window has the keyboard.
+pub(crate) const TOPLEVELS: &str = "toplevels";
+pub(crate) const WINDOW_FOCUSED: &str = "window_focused";
 /// How an observation writes the fixture directory's name, which is random in every run.
 const ROOT: &str = "$root";
 
@@ -100,6 +107,29 @@ pub(crate) fn app(reply_app: &Value, places: &Places) -> Value {
         })
         .collect();
     Value::Object(kept)
+}
+
+/// The projected context: the titles of the windows open beside the one the steps act on.
+pub(crate) fn context(reply_app: &Value, places: &Places) -> Value {
+    let toplevels = reply_app
+        .get(TOPLEVELS)
+        .cloned()
+        .unwrap_or_else(|| Value::Array(Vec::new()));
+    let focused = reply_app
+        .get(WINDOW_FOCUSED)
+        .cloned()
+        .unwrap_or(Value::Null);
+    serde_json::json!({ TOPLEVELS: places.normalise(&toplevels), WINDOW_FOCUSED: focused })
+}
+
+/// Whether `field` is what a rule's `while` may read: a key of `app`, `context.toplevels` or
+/// `context.window_focused`, with no list.
+pub(crate) fn names_a_condition(field: &str) -> bool {
+    match parts(field).as_slice() {
+        [Part::Key(APP), Part::Key(key)] => APP_KEYS.contains(key),
+        [Part::Key(CONTEXT), Part::Key(TOPLEVELS | WINDOW_FOCUSED)] => true,
+        _ => false,
+    }
 }
 
 /// Whether the application shows a folder outside the fixture: its first pane is neither the

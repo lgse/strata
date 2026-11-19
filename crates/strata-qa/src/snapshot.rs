@@ -19,6 +19,11 @@ pub struct Observation {
     pub peek: bool,
     pub results: Option<Vec<String>>,
     pub field: Option<FieldState>,
+    /// The titles of the other drawn windows, such as a floating chooser.
+    pub toplevels: Vec<String>,
+    /// Whether anything in the window has the keyboard: false while it is inactive, and on GTK
+    /// also just after the focused widget was unmapped.
+    pub window_focused: bool,
 }
 
 /// Offsets count characters, as AT-SPI's text interface does.
@@ -83,6 +88,8 @@ pub struct AppState {
     pub preview: Option<Vec<String>>,
     pub field: Option<FieldState>,
     pub matches: Vec<String>,
+    pub toplevels: Vec<String>,
+    pub window_focused: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -104,6 +111,8 @@ pub fn empty_app_state() -> serde_json::Value {
         "preview": null,
         "field": null,
         "matches": [],
+        "toplevels": [],
+        "window_focused": false,
     })
 }
 
@@ -213,6 +222,8 @@ impl Observation {
             preview: self.preview.clone(),
             field: self.field.clone(),
             matches: self.matches(None),
+            toplevels: self.toplevels.clone(),
+            window_focused: self.window_focused,
         }
     }
 

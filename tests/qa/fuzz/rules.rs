@@ -18,6 +18,13 @@
 //! difference between GTK's value and one of Rune's on that field, every other difference on
 //! it still counting: an owner's ruling on one deviation, kept narrow
 //! (`app.dialog`'s, lgse/strata#2405: GTK's popovers are no dialogs, Rune's plain ones are).
+//! Without `"rune"` it leaves out GTK's value against any of Rune's, and without `"gtk"` any of
+//! GTK's against one of Rune's. With `"while":{"gtk":{<field>:<value>, …},"rune":{…}}` it
+//! applies only to a step at which each side's observation holds those values: a field is a
+//! key of `app`, `context.toplevels` or `context.window_focused`, and a value is one value or
+//! `{"one_of":[<value>, …]}` (lgse/strata#2595: focus while one side's browser has no focused
+//! pane). A rule may then name neither, and leaves out every difference on its field there.
+//! Rules of one field, code and issue are sorted by what follows the issue.
 //!
 //! On a field whose value is a list, a rule may instead name the elements Rune's list adds:
 //! `<field> <code> <issue> {"rune_adds":[<value>, …]}`. It leaves out a difference only when
@@ -61,10 +68,46 @@ pub(crate) struct Entry {
 /// A difference a rule excuses.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum Only {
-    /// GTK's value `gtk` against one of Rune's `rune`.
-    Values { gtk: Value, rune: Vec<Value> },
+    /// GTK's value `gtk` against one of Rune's `rune`, at a step at which each `when` holds.
+    Values {
+        /// GTK's value; any, when the rule names none.
+        gtk: Option<Value>,
+        /// Rune's values; any, when the rule names none.
+        rune: Option<Vec<Value>>,
+        /// What the observations must hold for the rule to apply.
+        when: Vec<Condition>,
+    },
     /// A list of Rune's that is GTK's with these elements added, wherever they stand.
     RuneAdds(Vec<Value>),
+}
+
+/// One side's field, `app.<key>`, `context.toplevels` or `context.window_focused`, and the
+/// values it may hold.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct Condition {
+    pub(crate) rune: bool,
+    pub(crate) field: String,
+    pub(crate) one_of: Vec<Value>,
+}
+
+/// Which stream is GTK's, when the comparison knows, and each target's observation at the
+/// step.
+#[derive(Clone, Copy, Debug, Default)]
+pub(crate) struct Sides<'a> {
+    pub(crate) gtk_left: Option<bool>,
+    pub(crate) gtk: Option<&'a Value>,
+    pub(crate) rune: Option<&'a Value>,
+}
+
+impl Condition {
+    /// Whether its side's observation holds one of its values. It needs the observations, so
+    /// it holds nowhere the comparison does not know which stream is whose.
+    fn holds(&self, sides: Sides<'_>) -> bool {
+        let observation = if self.rune { sides.rune } else { sides.gtk };
+        observation
+            .and_then(|observation| field_of(observation, &self.field))
+            .is_some_and(|value| self.one_of.contains(value))
+    }
 }
 
 impl Only {
@@ -74,7 +117,11 @@ impl Only {
             Self::Values {
                 gtk: ruled,
                 rune: values,
-            } => gtk == ruled && values.contains(rune),
+                ..
+            } => {
+                ruled.as_ref().is_none_or(|value| gtk == value)
+                    && values.as_ref().is_none_or(|values| values.contains(rune))
+            }
             Self::RuneAdds(added) => {
                 let (Value::Array(gtk), Value::Array(rune)) = (gtk, rune) else {
                     return false;
@@ -85,17 +132,28 @@ impl Only {
         }
     }
 
-    /// Whether `difference` is what the rule excuses: `gtk_left` says which side GTK's stream
-    /// is, when the comparison knows.
-    fn excuses(&self, difference: &Difference, gtk_left: Option<bool>) -> bool {
+    /// Whether `difference` is what the rule excuses, at a step at which every condition
+    /// holds. `sides` says which stream is GTK's, when the comparison knows.
+    fn excuses(&self, difference: &Difference, sides: Sides<'_>) -> bool {
+        if let Self::Values { when, .. } = self
+            && !when.iter().all(|condition| condition.holds(sides))
+        {
+            return false;
+        }
         let is = |gtk: &Value, rune: &Value| self.is(gtk, rune);
         let (left, right) = (&difference.left, &difference.right);
-        match gtk_left {
+        match sides.gtk_left {
             Some(true) => is(left, right),
             Some(false) => is(right, left),
             None => is(left, right) || is(right, left),
         }
     }
+}
+
+/// The value of `field`, `<root>.<key>`, in an observation.
+fn field_of<'a>(observation: &'a Value, field: &str) -> Option<&'a Value> {
+    let (root, key) = field.split_once('.')?;
+    observation.get(root)?.get(key)
 }
 
 /// The fields one comparison leaves out.
@@ -138,9 +196,9 @@ impl Ignored {
 
     /// Whether `difference` is left out: its field is covered, or a rule names its values.
     /// The elements the field's `rune_adds` rules name are taken out together, so a list that
-    /// adds what two rulings allow is GTK's with both taken out. `gtk_left` says which side
-    /// GTK's stream is, when the comparison knows.
-    pub(crate) fn excuses(&self, difference: &Difference, gtk_left: Option<bool>) -> bool {
+    /// adds what two rulings allow is GTK's with both taken out. `sides` says which stream is
+    /// GTK's, and its observation, when the comparison knows.
+    pub(crate) fn excuses(&self, difference: &Difference, sides: Sides<'_>) -> bool {
         let on_field = |entry: &&Entry| project::covers(&entry.field, &difference.field);
         let added: Vec<Value> = self
             .rules
@@ -154,9 +212,9 @@ impl Ignored {
             .collect();
         let together = (!added.is_empty()).then_some(Only::RuneAdds(added));
         self.covers(&difference.field)
-            || together.is_some_and(|only| only.excuses(difference, gtk_left))
+            || together.is_some_and(|only| only.excuses(difference, sides))
             || self.rules.iter().filter(on_field).any(|entry| {
-                matches!(&entry.only, Some(only @ Only::Values { .. }) if only.excuses(difference, gtk_left))
+                matches!(&entry.only, Some(only @ Only::Values { .. }) if only.excuses(difference, sides))
             })
     }
 }
@@ -185,39 +243,50 @@ pub(crate) fn read(file: &str, codes: &[&str]) -> Result<Vec<Entry>, String> {
 
 pub(crate) fn parse(text: &str, codes: &[&str]) -> Result<Vec<Entry>, String> {
     let mut entries: Vec<Entry> = Vec::new();
+    let mut last_key: Option<(String, String, u64, String)> = None;
     for (index, line) in text.lines().enumerate() {
         if line.trim().is_empty() || line.starts_with('#') {
             continue;
         }
-        let entry = entry(line, codes).map_err(|error| format!("line {}: {error}", index + 1))?;
+        let (entry, values) =
+            entry(line, codes).map_err(|error| format!("line {}: {error}", index + 1))?;
+        let key = sort_key(&entry, values);
         if let Some(last) = entries.last()
-            && sort_key(last) >= sort_key(&entry)
+            && last_key.as_ref().is_some_and(|last_key| *last_key >= key)
         {
             return Err(format!(
-                "line {}: entries are sorted by field, code and issue and listed once; {} comes \
-                 after {}",
+                "line {}: entries are sorted by field, code and issue, then by what follows the \
+                 issue, and listed once; {} comes after {}",
                 index + 1,
                 entry.field,
                 last.field
             ));
         }
+        last_key = Some(key);
         entries.push(entry);
     }
     Ok(entries)
 }
 
 /// What orders the entries: a field may have a rule of one code for each ruling, each citing
-/// its own issue (`app.dialog`'s, lgse/strata#2405 and lgse/strata#2572), in the issues' order.
-fn sort_key(entry: &Entry) -> (&str, &str, u64) {
+/// its own issue (`app.dialog`'s, lgse/strata#2405 and lgse/strata#2572), in the issues' order,
+/// and one ruling more than one rule, ordered by what follows the issue (lgse/strata#2595's).
+fn sort_key(entry: &Entry, values: &str) -> (String, String, u64, String) {
     let number = entry
         .issue
         .strip_prefix("lgse/strata#")
         .and_then(|number| number.parse().ok())
         .unwrap_or(u64::MAX);
-    (&entry.field, &entry.code, number)
+    (
+        entry.field.clone(),
+        entry.code.clone(),
+        number,
+        values.to_owned(),
+    )
 }
 
-fn entry(line: &str, codes: &[&str]) -> Result<Entry, String> {
+/// An entry, and the text after its issue.
+fn entry<'a>(line: &'a str, codes: &[&str]) -> Result<(Entry, &'a str), String> {
     let mut rest = line.trim();
     let mut columns: Vec<&str> = Vec::new();
     while columns.len() < 3 && !rest.is_empty() {
@@ -247,21 +316,25 @@ fn entry(line: &str, codes: &[&str]) -> Result<Entry, String> {
             "the issue is written lgse/strata#<number>, not {issue:?}"
         ));
     }
-    Ok(Entry {
+    let entry = Entry {
         field: (*field).to_owned(),
         code: (*code).to_owned(),
         issue: (*issue).to_owned(),
         only,
-    })
+    };
+    Ok((entry, rest))
 }
 
-/// The values after an entry's issue: `{"gtk":<value>,"rune":[<value>, …]}`, or
+/// The values after an entry's issue: `{"gtk":<value>,"rune":[<value>, …],"while":{"gtk":
+/// {<field>:<value>, …},"rune":{…}}}`, with one of the three at least, or
 /// `{"rune_adds":[<value>, …]}`.
 fn only(text: &str) -> Result<Only, String> {
     let wrong = || {
         format!(
-            "the values an entry names are {{\"gtk\":<value>,\"rune\":[<value>, …]}} or \
-             {{\"rune_adds\":[<value>, …]}}, not {text:?}"
+            "the values an entry names are {{\"gtk\":<value>,\"rune\":[<value>, …],\"while\":\
+             {{\"gtk\":{{<field>:<value>, …}},\"rune\":{{…}}}}}}, with one of the three at least, a \
+             field app.<key>, context.toplevels or context.window_focused and a value one value \
+             or {{\"one_of\":[<value>, …]}}; or {{\"rune_adds\":[<value>, …]}}, not {text:?}"
         )
     };
     let value: Value = serde_json::from_str(text).map_err(|_| wrong())?;
@@ -278,15 +351,70 @@ fn rune_adds(object: &serde_json::Map<String, Value>) -> Option<Only> {
     (alone && !added.is_empty()).then(|| Only::RuneAdds(added.clone()))
 }
 
-/// `{"gtk":<value>,"rune":[<value>, …]}`: both keys and no other, and at least one of Rune's.
+/// `{"gtk":<value>,"rune":[<value>, …],"while":{…}}`: one of the three at least and no other
+/// key, and at least one of Rune's when it names them.
 fn values(object: &serde_json::Map<String, Value>) -> Option<Only> {
-    let gtk = object.get("gtk")?;
-    let rune = object.get("rune")?.as_array()?;
-    let both = object.len() == 2;
-    (both && !rune.is_empty()).then(|| Only::Values {
-        gtk: gtk.clone(),
-        rune: rune.clone(),
+    let known = ["gtk", "rune", "while"];
+    if object.is_empty() || object.keys().any(|key| !known.contains(&key.as_str())) {
+        return None;
+    }
+    let rune = match object.get("rune") {
+        None => None,
+        Some(Value::Array(rune)) if !rune.is_empty() => Some(rune.clone()),
+        Some(_) => return None,
+    };
+    let when = match object.get("while") {
+        None => Vec::new(),
+        Some(condition) => conditions(condition)?,
+    };
+    Some(Only::Values {
+        gtk: object.get("gtk").cloned(),
+        rune,
+        when,
     })
+}
+
+/// A `while`: for `gtk`, `rune` or both, the fields of that side's observation and their
+/// values.
+fn conditions(condition: &Value) -> Option<Vec<Condition>> {
+    let sides = condition.as_object().filter(|sides| !sides.is_empty())?;
+    let mut when = Vec::new();
+    for (side, fields) in sides {
+        let rune = match side.as_str() {
+            "gtk" => false,
+            "rune" => true,
+            _ => return None,
+        };
+        when.extend(side_conditions(rune, fields)?);
+    }
+    Some(when)
+}
+
+/// One side's fields and values in a `while`.
+fn side_conditions(rune: bool, fields: &Value) -> Option<Vec<Condition>> {
+    let fields = fields.as_object().filter(|fields| !fields.is_empty())?;
+    let condition = |(field, value): (&String, &Value)| {
+        let one_of = alternatives(value).filter(|_| project::names_a_condition(field))?;
+        Some(Condition {
+            rune,
+            field: field.clone(),
+            one_of,
+        })
+    };
+    fields.iter().map(condition).collect()
+}
+
+/// One value, or the values of `{"one_of":[<value>, …]}`.
+fn alternatives(value: &Value) -> Option<Vec<Value>> {
+    match value.as_object() {
+        Some(object) if object.len() == 1 && object.contains_key("one_of") => {
+            let one_of = object["one_of"]
+                .as_array()
+                .filter(|one_of| !one_of.is_empty())?;
+            Some(one_of.clone())
+        }
+        _ => Some(vec![value.clone()]),
+    }
 }
 
 pub(crate) fn is_issue(text: &str) -> bool {

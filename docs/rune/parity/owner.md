@@ -838,6 +838,32 @@ Rulings of the owner on the parity work, oldest first.
   `tenxer` alphabet keeps the case out with a guard citing it (`h` and `l` only out of a
   folder with nothing selected), and its shrunk sequence stays parked as `oracle`. Source: the owner,
   2026-11-17.
+- **2026-11-17: focus after the floating chooser closes is excused in the fuzz map**
+  (finding [#2595](https://github.com/lgse/strata/issues/2595), option (c)). Once the floating
+  Copy to or Move to chooser has closed, GTK's browser reports no focus on the QA's Xvfb, which
+  runs no window manager to make it active again, where Rune's QA host gives the browser the
+  keyboard back as a window manager does. `tests/qa/fuzz/normalisation.map` excuses it under
+  `toolkit`, scoped to GTK's no focus against Rune's while GTK's browser has no focused pane:
+  `app.focused`, `app.focused_pane` and `app.panes[].focused`, and `app.directory`, the focused
+  pane's. A20 adds the map's `while` for it. Source: the owner, 2026-11-17, through the
+  coordinator.
+  - **2026-11-18: extended to the second case.** From the second floating chooser of a
+    sequence on, GTK's browser is active again on the bare Xvfb and reports its row while the
+    chooser is open, where Rune's has no focus behind its chooser. GTK's value is excused
+    only while Rune's observation shows no focused pane and its floating chooser open
+    (`context.toplevels`, the windows open beside the browser, which the snapshot's new
+    `toplevels` key gives the fuzz driver): Rune's `null` against any of GTK's on the three
+    focus fields, and `app.directory`. A Rune browser that kept the keyboard behind its
+    chooser still counts, its value being no `null`. Source: the owner, 2026-11-18, through
+    the coordinator.
+  - **2026-11-19: the first four rules narrowed to the ruling's cause.** A20's review found
+    they applied whenever GTK's browser had no focused pane, in every alphabet, which also
+    excused GTK's keyboard on the sidebar, the header, the location bar or a dialog. They
+    now apply only while GTK's window has no keyboard at all (`context.window_focused` false),
+    which the QA's GTK backend reports when no mapped widget has focus: an inactive window,
+    the ruling's case, or a moment after the focused widget was unmapped. No new
+    ruling: the scope is the ruling's own. Source: A20's closing pull request,
+    [#2598](https://github.com/lgse/strata/pull/2598), review of 2026-11-19.
 - **2026-11-18: the media player's volume slider keeps its "Volume" name**, a ruled
   `deviation` (finding [#2606](https://github.com/lgse/strata/issues/2606)). GTK's volume slider
   is an unnamed `gtk::Scale`; Rune's C13 slider is named "Volume", translated in the 13

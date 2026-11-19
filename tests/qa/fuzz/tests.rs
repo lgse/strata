@@ -54,6 +54,7 @@ use super::{
         a_run_on_two_targets_names_the_replays_that_differ_and_keeps_its_own_folder,
         each_target_is_held_to_itself_and_rune_to_the_first_gtk_replay_under_the_map,
     },
+    while_tests::a_rule_s_while_holds_it_to_each_side_s_observation,
 };
 
 /// The runner has its own harness, so a test runs only when it is listed here;
@@ -88,6 +89,7 @@ unit_tests! {
     a_perturbation_waits_for_its_step_and_its_state,
     the_map_and_the_mask_take_one_sorted_entry_to_a_line,
     a_rule_that_names_values_excuses_only_those,
+    a_rule_s_while_holds_it_to_each_side_s_observation,
     a_rule_that_names_what_rune_adds_excuses_only_those_elements,
     rules_of_two_rulings_on_one_field_excuse_only_their_own,
     rune_adds_rules_of_two_rulings_take_their_elements_out_together,
