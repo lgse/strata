@@ -207,6 +207,13 @@ non-default comparison. Unsorted and camera device order have no label or column
 arrow; a hidden sort column remains active. The List sort menu includes Ascending
 and Descending, including for fields without a matching column header.
 
+The column picker also offers **Duration** for audio and video, **Dimensions**
+for images and video, and **Created** for files and folders. These start hidden.
+Missing or inapplicable values are blank. Sorting by these fields puts missing
+values after known values within the folder and file groups, when Folders first
+is on, or across the whole list otherwise. Dimensions sorts by total pixels.
+Media details load in the background for supported local files.
+
 In Icons, **Ctrl+Alt++** (or **Ctrl+Alt+=**) and **Ctrl+Alt+−**, **Ctrl+Shift+wheel**,
 and in 10xer mode **+** / **−** on the listing step the thumbnail size through 32,
 36, 40, 44, 48, 56, 64, 72, 80, 96, 112, 128, 144, 160, 192, 224, and 256 px; a size

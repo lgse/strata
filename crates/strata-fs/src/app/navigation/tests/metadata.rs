@@ -222,16 +222,12 @@ fn gap_targets_cover_directory_mtimes_but_never_directory_sizes() {
     assert_eq!(
         state
             .column_unknown_sort_metadata(0, crate::model::SortKey::Modified)
-            .map(|targets| {
-                targets
-                    .into_iter()
-                    .map(|(position, location)| (position, location.display_path()))
-                    .collect::<Vec<_>>()
-            }),
-        Some(vec![
+            .map(|(position, location)| (position, location.display_path()))
+            .collect::<Vec<_>>(),
+        vec![
             (0, "/fixture/sub".to_owned()),
             (2, "/fixture/half".to_owned()),
-        ])
+        ]
     );
 }
 
@@ -275,12 +271,12 @@ fn creation_sort_requests_birth_times_without_refilling_complete_size_metadata()
     let state = loaded("/fixture", entries);
     let created = state
         .column_unknown_sort_metadata(0, crate::model::SortKey::Created)
-        .expect("missing creation time");
+        .collect::<Vec<_>>();
     assert_eq!(created.len(), 1);
-    assert_eq!(created[0].1, location("/fixture/missing-birth"));
+    assert_eq!(created[0].1, &location("/fixture/missing-birth"));
     let modified = state
         .column_unknown_sort_metadata(0, crate::model::SortKey::Modified)
-        .expect("missing modification time");
+        .collect::<Vec<_>>();
     assert_eq!(modified.len(), 1);
-    assert_eq!(modified[0].1, location("/fixture/no-birth"));
+    assert_eq!(modified[0].1, &location("/fixture/no-birth"));
 }

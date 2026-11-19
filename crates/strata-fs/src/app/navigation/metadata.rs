@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 
 use crate::{
-    model::{FileEntry, Location, MetadataValue},
+    model::{FileEntry, Location, MetadataValue, SortKey},
     services::{MetadataUpdate, RequestId},
 };
 
@@ -92,31 +92,49 @@ impl NavigationState {
     }
 
     /// Directories qualify for mtime only; directory size stays unknown by design.
-    pub fn column_unknown_sort_metadata(
+    pub(crate) fn column_unknown_sort_metadata(
         &self,
         depth: usize,
-        key: crate::model::SortKey,
-    ) -> Option<Vec<(usize, Location)>> {
-        let column = self.columns.get(depth)?;
-        let gap: Vec<(usize, Location)> = column
-            .entries
-            .iter()
-            .enumerate()
-            .filter(|(_, entry)| {
-                if key == crate::model::SortKey::Created {
-                    entry.created_unix_seconds == MetadataValue::Unknown
-                } else {
-                    entry.modified_unix_seconds == MetadataValue::Unknown
-                        || (!entry.is_directory() && entry.size == MetadataValue::Unknown)
-                }
-            })
-            .map(|(position, entry)| (position, entry.location.clone()))
-            .collect();
-        if gap.is_empty() {
-            return None;
-        }
-        Some(gap)
+        key: SortKey,
+    ) -> impl Iterator<Item = (usize, &Location)> {
+        self.columns
+            .get(depth)
+            .filter(move |_| key.uses_file_stat() || key.uses_media_metadata())
+            .into_iter()
+            .flat_map(|column| column.entries.iter().enumerate())
+            .filter(move |(_, entry)| sort_metadata_missing(key, entry))
+            .map(|(position, entry)| (position, &entry.location))
     }
+}
+
+pub(crate) fn sort_metadata_missing(key: SortKey, entry: &FileEntry) -> bool {
+    match key {
+        SortKey::Created => entry.created_unix_seconds == MetadataValue::Unknown,
+        SortKey::Size | SortKey::Modified => {
+            entry.modified_unix_seconds == MetadataValue::Unknown
+                || (!entry.is_directory() && entry.size == MetadataValue::Unknown)
+        }
+        SortKey::Duration | SortKey::Dimensions => media_sort_metadata_missing(key, entry),
+        _ => false,
+    }
+}
+
+fn media_sort_metadata_missing(key: SortKey, entry: &FileEntry) -> bool {
+    if entry.is_directory() {
+        return false;
+    }
+    let Some(path) = entry.location.native_path() else {
+        return false;
+    };
+    if key == SortKey::Duration {
+        return entry.duration_seconds == MetadataValue::Unknown
+            && crate::services::is_media_path(path);
+    }
+    if entry.image_dimensions != MetadataValue::Unknown {
+        return false;
+    }
+    let (content_type, _) = crate::services::guess_content_type(path);
+    content_type.starts_with("image/") || content_type.starts_with("video/")
 }
 
 impl ColumnState {

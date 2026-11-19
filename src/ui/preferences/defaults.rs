@@ -101,6 +101,7 @@ impl Default for Preferences {
             browser_list_columns: None,
             list_column_order: default_list_column_order(),
             list_hidden_columns: Vec::new(),
+            list_shown_columns: Vec::new(),
             keymap: KeymapOverrides::default(),
         }
     }

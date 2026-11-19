@@ -192,6 +192,9 @@ fn seed_fixture_preferences() -> Rc<PreferenceManager> {
     preferences.set_sidebar_pinned_collapsed(false);
     preferences.set_sidebar_devices_collapsed(false);
     preferences.set_tenxer_mode(false);
+    // A visible media column probes the header-only media fixtures, which then leave
+    // the preview's media sequence.
+    preferences.set_list_column_visible(crate::ui::preferences::ListColumnId::Duration, false);
     preferences
 }
 

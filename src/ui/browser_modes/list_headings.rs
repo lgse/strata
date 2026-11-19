@@ -12,7 +12,7 @@ use gtk::{glib, prelude::*};
 use super::{
     list_columns::{
         ListColumnDrag, ListColumnLayout, column_drop_feedback, column_drop_site,
-        column_resize_handle, column_shown, find_column_at_x, register_list_column_cell,
+        column_resize_handle, find_column_at_x, register_list_column_cell,
     },
     pane::BoundItems,
 };
@@ -72,7 +72,7 @@ pub(super) fn list_headings(
 
     let manager = PreferenceManager::shared();
     let order = manager.list_column_order();
-    let hidden = manager.list_hidden_columns();
+    let visible = manager.list_visible_columns();
     let cells = HeadingCells {
         browser: Rc::downgrade(browser),
         depth,
@@ -81,7 +81,7 @@ pub(super) fn list_headings(
         preferences,
     };
     for col in order {
-        headings.append(&cells.cell(col, column_shown(&hidden, col)));
+        headings.append(&cells.cell(col, visible.contains(&col)));
     }
 
     install_column_reorder(&headings, &columns, bound_items);
@@ -102,7 +102,8 @@ struct HeadingCells<'a> {
 impl HeadingCells<'_> {
     fn cell(&self, col: ListColumnId, is_visible: bool) -> gtk::Box {
         let index = col.index();
-        let (text, key) = heading_label(col);
+        let definition = col.definition();
+        let key = definition.sort_key;
         let width = self.columns.widths[index].get();
         let cell = gtk::Box::new(gtk::Orientation::Horizontal, 0);
         cell.add_css_class("list-heading-cell");
@@ -113,7 +114,7 @@ impl HeadingCells<'_> {
         register_list_column_cell(self.columns, index, &cell);
 
         let row = gtk::Box::new(gtk::Orientation::Horizontal, 5);
-        let label = gtk::Label::new(Some(&crate::i18n::tr(text)));
+        let label = gtk::Label::new(Some(&crate::i18n::tr(definition.title)));
         label.set_xalign(0.0);
         label.set_hexpand(true);
         label.set_ellipsize(gtk::pango::EllipsizeMode::End);
@@ -159,16 +160,6 @@ impl HeadingCells<'_> {
             }
         });
         self.sorting.arrows.borrow_mut().push((key, arrow));
-    }
-}
-
-fn heading_label(col: ListColumnId) -> (&'static str, Option<SortKey>) {
-    match col {
-        ListColumnId::Name => ("Name", Some(SortKey::Name)),
-        ListColumnId::Mode => ("Mode", None),
-        ListColumnId::Size => ("Size", Some(SortKey::Size)),
-        ListColumnId::Type => ("Type", Some(SortKey::Type)),
-        ListColumnId::Modified => ("Modified", Some(SortKey::Modified)),
     }
 }
 

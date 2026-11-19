@@ -7,10 +7,10 @@ use std::{collections::HashMap, path::Path};
 
 use gtk::prelude::*;
 
-use super::{list_pane::list_row_parts, pane::Pane, source_index::source_position_for_view};
+use super::{list_factory::ListRow, pane::Pane, source_index::source_position_for_view};
 use crate::{
     model::{FileEntry, MetadataValue},
-    ui::{accessibility, browser, icons_cell, thumbnail},
+    ui::{accessibility, browser, icons_cell, preferences::ListColumnId, thumbnail},
 };
 
 pub(super) fn set_label_if_changed(label: &gtk::Label, text: &str) {
@@ -155,17 +155,70 @@ fn update_bound_metadata(
     }
 }
 
+pub(super) fn list_cell_text(column: ListColumnId, entry: &FileEntry) -> Option<String> {
+    match column {
+        ListColumnId::Mode => Some(entry_mode(entry)),
+        ListColumnId::Size => Some(entry_size(entry)),
+        ListColumnId::Type => Some(entry_type(entry)),
+        ListColumnId::Duration => Some(match entry.duration_seconds {
+            MetadataValue::Known(seconds) if !entry.is_directory() => format_duration(seconds),
+            _ => String::new(),
+        }),
+        ListColumnId::Dimensions => Some(match entry.image_dimensions {
+            MetadataValue::Known((width, height)) if !entry.is_directory() => {
+                format!("{width}×{height}")
+            }
+            _ => String::new(),
+        }),
+        ListColumnId::Name | ListColumnId::Modified | ListColumnId::Created => None,
+    }
+}
+
+pub(super) fn update_list_date(
+    column: ListColumnId,
+    label: &gtk::Label,
+    entry: Option<&FileEntry>,
+    live: bool,
+) {
+    let seconds = entry.and_then(|entry| match column {
+        ListColumnId::Modified => known_timestamp(&entry.modified_unix_seconds),
+        ListColumnId::Created => known_timestamp(&entry.created_unix_seconds),
+        _ => None,
+    });
+    if !matches!(column, ListColumnId::Modified | ListColumnId::Created) {
+        return;
+    }
+    let fallback = if column == ListColumnId::Modified && entry.is_some() {
+        "—"
+    } else {
+        ""
+    };
+    if live || entry.is_none() {
+        crate::ui::modified_date::set_preferred_date(label, seconds, fallback);
+    } else {
+        let text = seconds.map(|value| {
+            crate::util::modified_date_for_seconds(value, crate::util::DateDisplay::Preferred)
+        });
+        set_label_if_changed(label, text.as_deref().unwrap_or(fallback));
+    }
+}
+
+fn known_timestamp(value: &MetadataValue<i64>) -> Option<i64> {
+    match value {
+        MetadataValue::Known(seconds) => Some(*seconds),
+        _ => None,
+    }
+}
+
 fn update_list_row(item: &gtk::ListItem, row: &gtk::Box, entry: &FileEntry) {
-    let Some((icon, name, _, mode, size, _, modified)) = list_row_parts(row) else {
+    let Some(row) = ListRow::from_widget(row.clone()) else {
         return;
     };
     if entry.is_locked_folder() {
-        thumbnail::show_locked_folder(&icon);
-        accessibility::describe_entry(item, &name.label(), Some(entry));
+        thumbnail::show_locked_folder(&row.icon);
+        accessibility::describe_entry(item, &row.name.label(), Some(entry));
     }
-    mode.set_label(&entry_mode(entry));
-    size.set_label(&entry_size(entry));
-    crate::ui::modified_date::set_modified_date(&modified, Some(entry), "—");
+    row.update_metadata(entry);
 }
 
 fn update_icons_card(item: &gtk::ListItem, card: &gtk::Box, entry: &FileEntry) {

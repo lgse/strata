@@ -76,9 +76,9 @@ use focus::{collection_keeps_cursor, focus_bound_cursor, focus_collection_item};
 pub(super) use icons_controls::disable_scale_long_press_zoom;
 use icons_pane::{DEFAULT_ICONS_THUMBNAIL_SIZE, configure_icons_density};
 use list_columns::{ListColumnLayout, apply_columns_layout, register_list_column_cell};
-use list_pane::{assemble_list_row, list_row_parts};
-use metadata::{entry_mode, entry_type, metadata_fill_position, set_label_if_changed};
+use list_pane::assemble_list_row;
 pub(super) use metadata::{entry_size, icon_details_need_fill};
+use metadata::{metadata_fill_position, set_label_if_changed};
 use pane::{
     BoundModeItem, Pane, PaneSection, bound_edit, focus_pane_surface, install_edit_unbind,
     refresh_mark_pane, register_bound_mode_item, set_mode_mark_style,

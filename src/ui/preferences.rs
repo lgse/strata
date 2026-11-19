@@ -314,6 +314,8 @@ pub(in crate::ui) struct Preferences {
     list_column_order: Vec<ListColumnId>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     list_hidden_columns: Vec<ListColumnId>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    list_shown_columns: Vec<ListColumnId>,
     #[serde(default, skip_serializing_if = "KeymapOverrides::is_empty")]
     keymap: KeymapOverrides,
 }

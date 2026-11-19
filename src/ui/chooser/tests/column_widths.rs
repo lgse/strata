@@ -165,6 +165,7 @@ fn resizable_list_headings(window: &gtk::Window) -> Vec<gtk::Widget> {
     wait_until(|| {
         cells
             .iter()
+            .filter(|cell| cell.is_visible())
             .all(|cell| cell.is_mapped() && cell.width() > 0)
     });
     cells
@@ -290,18 +291,26 @@ fn list_resizes_persist_across_windows_without_changing_the_other_scope() {
                 let cells = resizable_list_headings(&first);
                 drag(&resize_drag(&resize_handle(&cells[1])), (0.0, 0.0), 80.0);
                 let after_mode = saved_list(chooser);
-                assert_eq!(after_mode.name, None);
+                assert_eq!(after_mode.width(ListColumnId::Name), None);
                 assert_eq!(
-                    after_mode.mode,
-                    100 + (80.0 / preferences.interface_scale()).round() as i32
+                    after_mode.width(ListColumnId::Mode),
+                    Some(100 + (80.0 / preferences.interface_scale()).round() as i32)
                 );
                 assert_eq!(
-                    (after_mode.size, after_mode.kind, after_mode.modified),
-                    (72, 90, 130)
+                    (
+                        after_mode.width(ListColumnId::Size),
+                        after_mode.width(ListColumnId::Type),
+                        after_mode.width(ListColumnId::Modified)
+                    ),
+                    (Some(72), Some(90), Some(130))
                 );
                 drag(&resize_drag(&resize_handle(&cells[0])), (0.0, 0.0), 120.0);
                 let saved = saved_list(chooser);
-                assert!(saved.name.is_some_and(|width| width > 0));
+                assert!(
+                    saved
+                        .width(ListColumnId::Name)
+                        .is_some_and(|width| width > 0)
+                );
                 assert_eq!(saved_list(!chooser), other);
                 let key = if chooser {
                     "chooser_list_columns"
@@ -310,7 +319,7 @@ fn list_resizes_persist_across_windows_without_changing_the_other_scope() {
                 };
                 assert_eq!(
                     persisted_settings()[key]["mode"].as_integer(),
-                    Some(i64::from(saved.mode))
+                    saved.width(ListColumnId::Mode).map(i64::from)
                 );
                 first.close();
 
@@ -322,10 +331,15 @@ fn list_resizes_persist_across_windows_without_changing_the_other_scope() {
                 drag(&resize_drag(&resize_handle(&cells[1])), (0.0, 0.0), 40.0);
                 let reopened = saved_list(chooser);
                 assert_eq!(
-                    reopened.mode,
-                    saved.mode + (40.0 / preferences.interface_scale()).round() as i32
+                    reopened.width(ListColumnId::Mode),
+                    saved
+                        .width(ListColumnId::Mode)
+                        .map(|width| width + (40.0 / preferences.interface_scale()).round() as i32)
                 );
-                assert_eq!(reopened.name, saved.name);
+                assert_eq!(
+                    reopened.width(ListColumnId::Name),
+                    saved.width(ListColumnId::Name)
+                );
                 assert_eq!(saved_list(!chooser), other);
                 second.close();
                 preferences.set_text_size(crate::ui::preferences::TextSize::new(26));
@@ -472,8 +486,8 @@ fn failed_chooser_saves_are_only_logged() {
             while gtk::glib::MainContext::default().iteration(false) {}
 
             assert_ne!(
-                saved_list(true).mode,
-                before.mode,
+                saved_list(true).width(ListColumnId::Mode),
+                before.width(ListColumnId::Mode),
                 "the resize still applies"
             );
             assert!(path.is_dir(), "the save failed");
@@ -498,8 +512,6 @@ fn list_column_customizations_update_live_across_windows() {
 
             let first_headings = resizable_list_headings(&first);
             let second_headings = resizable_list_headings(&second);
-            assert_eq!(first_headings.len(), 5);
-            assert_eq!(second_headings.len(), 5);
             assert!(first_headings[1].is_visible());
             assert!(second_headings[1].is_visible());
 
@@ -559,6 +571,9 @@ fn list_column_customizations_update_live_across_windows() {
                     ListColumnId::Mode,
                     ListColumnId::Type,
                     ListColumnId::Modified,
+                    ListColumnId::Duration,
+                    ListColumnId::Dimensions,
+                    ListColumnId::Created,
                 ]
             );
 

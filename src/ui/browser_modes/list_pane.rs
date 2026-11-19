@@ -15,7 +15,7 @@ use super::{
     drag_drop::install_mode_directory_drop_target,
     filter::{PaneFilter, attach_in_place, filter_controls},
     grouped_model::GroupedModel,
-    list_columns::{ListColumnLayout, column_shown, register_list_column_cell},
+    list_columns::{ListColumnLayout, register_list_column_cell},
     list_factory::{ListFactory, refresh_list_section},
     list_headings::{ListSorting, list_headings},
     pane::{
@@ -400,7 +400,8 @@ fn skeleton_heading_width(col: ListColumnId) -> i32 {
         ListColumnId::Mode => 36,
         ListColumnId::Size => 28,
         ListColumnId::Type => 30,
-        ListColumnId::Modified => 58,
+        ListColumnId::Modified | ListColumnId::Created => 58,
+        ListColumnId::Duration | ListColumnId::Dimensions => 50,
     }
 }
 
@@ -410,7 +411,8 @@ fn skeleton_row_width(col: ListColumnId, row: u32) -> i32 {
         ListColumnId::Mode => 60,
         ListColumnId::Size => 38,
         ListColumnId::Type => 56,
-        ListColumnId::Modified => 94,
+        ListColumnId::Modified | ListColumnId::Created => 94,
+        ListColumnId::Duration | ListColumnId::Dimensions => 55,
     }
 }
 
@@ -418,7 +420,7 @@ fn skeleton_row_width(col: ListColumnId, row: u32) -> i32 {
 struct SkeletonColumns<'a> {
     columns: &'a ListColumnLayout,
     order: Vec<ListColumnId>,
-    hidden: Vec<ListColumnId>,
+    visible: Vec<ListColumnId>,
 }
 
 impl SkeletonColumns<'_> {
@@ -428,7 +430,7 @@ impl SkeletonColumns<'_> {
         for &col in &self.order {
             let cell = gtk::Box::new(gtk::Orientation::Horizontal, 0);
             cell.add_css_class("list-heading-cell");
-            if !column_shown(&self.hidden, col) {
+            if !self.visible.contains(&col) {
                 cell.set_visible(false);
             }
             let bar = loading_skeleton::block(skeleton_heading_width(col), 8);
@@ -447,7 +449,7 @@ impl SkeletonColumns<'_> {
             let column = col.index();
             let cell = gtk::Box::new(gtk::Orientation::Horizontal, 12);
             cell.add_css_class("list-metadata-cell");
-            if !column_shown(&self.hidden, col) {
+            if !self.visible.contains(&col) {
                 cell.set_visible(false);
             }
             if column == 0 {
@@ -469,7 +471,7 @@ fn list_loading_skeleton(columns: &ListColumnLayout) -> gtk::Box {
     let layout = SkeletonColumns {
         columns,
         order: manager.list_column_order(),
-        hidden: manager.list_hidden_columns(),
+        visible: manager.list_visible_columns(),
     };
     table.append(&layout.headings());
     for index in 0..loading_skeleton::ROW_COUNT {
@@ -484,27 +486,15 @@ fn list_loading_skeleton(columns: &ListColumnLayout) -> gtk::Box {
 pub(super) fn assemble_list_row() -> gtk::Box {
     let row = gtk::Box::new(gtk::Orientation::Horizontal, 0);
     row.add_css_class("list-row");
-    let name_cell = list_name_cell();
-    let mode_label = list_metadata_label("list-col-mode");
-    let size_label = list_metadata_label("list-col-size");
-    let kind_label = list_metadata_label("list-col-type");
-    let modified_label = list_metadata_label("list-col-modified");
-
     let manager = PreferenceManager::shared();
-    let order = manager.list_column_order();
-    let hidden = manager.list_hidden_columns();
-
-    for col in order {
-        let widget: gtk::Widget = match col {
-            ListColumnId::Name => name_cell.clone().upcast(),
-            ListColumnId::Mode => mode_label.clone().upcast(),
-            ListColumnId::Size => size_label.clone().upcast(),
-            ListColumnId::Type => kind_label.clone().upcast(),
-            ListColumnId::Modified => modified_label.clone().upcast(),
+    let visible = manager.list_visible_columns();
+    for column in manager.list_column_order() {
+        let widget: gtk::Widget = if column == ListColumnId::Name {
+            list_name_cell().upcast()
+        } else {
+            list_metadata_label(column.css_class()).upcast()
         };
-        if !column_shown(&hidden, col) {
-            widget.set_visible(false);
-        }
+        widget.set_visible(visible.contains(&column));
         row.append(&widget);
     }
     row
@@ -513,6 +503,7 @@ pub(super) fn assemble_list_row() -> gtk::Box {
 fn list_name_cell() -> gtk::Box {
     let name_cell = gtk::Box::new(gtk::Orientation::Horizontal, 12);
     name_cell.add_css_class("list-name-cell");
+    name_cell.add_css_class(ListColumnId::Name.css_class());
     let icon = ThumbnailSlot::new(18);
     icon.add_css_class("list-file-icon");
     icon.set_valign(gtk::Align::Center);
@@ -545,70 +536,6 @@ fn list_name_cell() -> gtk::Box {
         }
     });
     name_cell
-}
-
-/// A row's icon, name, rename field, and its mode, size, type, and modified labels.
-pub(super) type ListRowParts = (
-    ThumbnailSlot,
-    gtk::Label,
-    gtk::Entry,
-    gtk::Label,
-    gtk::Label,
-    gtk::Label,
-    gtk::Label,
-);
-
-/// A List row's metadata labels, found by their column classes.
-#[derive(Default)]
-struct MetadataCells {
-    name_cell: Option<gtk::Box>,
-    mode: Option<gtk::Label>,
-    size: Option<gtk::Label>,
-    kind: Option<gtk::Label>,
-    modified: Option<gtk::Label>,
-}
-
-impl MetadataCells {
-    fn collect(row: &gtk::Box) -> Self {
-        let mut cells = Self::default();
-        let mut child = row.first_child();
-        while let Some(current) = child {
-            child = current.next_sibling();
-            cells.take(current);
-        }
-        cells
-    }
-
-    fn take(&mut self, current: gtk::Widget) {
-        if current.has_css_class("list-name-cell") {
-            self.name_cell = current.downcast::<gtk::Box>().ok();
-        } else if current.has_css_class("list-col-mode") {
-            self.mode = current.downcast::<gtk::Label>().ok();
-        } else if current.has_css_class("list-col-size") {
-            self.size = current.downcast::<gtk::Label>().ok();
-        } else if current.has_css_class("list-col-type") {
-            self.kind = current.downcast::<gtk::Label>().ok();
-        } else if current.has_css_class("list-col-modified") {
-            self.modified = current.downcast::<gtk::Label>().ok();
-        }
-    }
-}
-
-pub(super) fn list_row_parts(row: &gtk::Box) -> Option<ListRowParts> {
-    let cells = MetadataCells::collect(row);
-    let name_cell = cells.name_cell?;
-    let icon = name_cell.first_child()?.downcast::<ThumbnailSlot>().ok()?;
-    let name = icon.next_sibling()?.downcast::<gtk::Label>().ok()?;
-    let field = name.next_sibling()?.downcast::<gtk::Entry>().ok()?;
-    Some((
-        icon,
-        name,
-        field,
-        cells.mode?,
-        cells.size?,
-        cells.kind?,
-        cells.modified?,
-    ))
 }
 
 fn list_metadata_label(class: &str) -> gtk::Label {

@@ -4,7 +4,7 @@
 
 use gtk::{gio, prelude::*};
 
-use super::list_pane::list_row_parts;
+use super::list_factory::ListRow;
 use crate::{
     app::{Browser, BrowserColumnSnapshot},
     ui::{
@@ -23,12 +23,14 @@ pub(super) fn set_mode_mark_style(widget: &impl IsA<gtk::Widget>, mark: Clipboar
     }
     if let Some((icon, _)) = crate::ui::icons_cell::parts(widget) {
         icon.set_mark(mark);
-    } else if let Some((icon, ..)) = widget
+    } else if let Some(row) = widget
         .upcast_ref()
-        .downcast_ref::<gtk::Box>()
-        .and_then(list_row_parts)
+        .clone()
+        .downcast::<gtk::Box>()
+        .ok()
+        .and_then(ListRow::from_widget)
     {
-        icon.set_mark(mark);
+        row.icon.set_mark(mark);
     }
 }
 

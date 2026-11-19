@@ -782,6 +782,211 @@ fn modified_sort_fills_directory_mtimes() {
 }
 
 #[test]
+fn duration_sort_waits_for_media_and_skips_unrelated_rows() {
+    let _serial = crate::test_support::ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .expect("the async test lock should not be poisoned");
+    let (browser, events, source) = scripted_browser(ScriptedSource::scripted(
+        vec!["a-long.mp4", "b-notes.txt", "z-short.wav"],
+        vec![FillAnswer::Never, FillAnswer::Never],
+    ));
+    browser.navigate(Location::local("/fixture"));
+    browser.set_sort(0, SortKey::Duration, SortDirection::Ascending);
+    pump_until(|| source.fill_calls.borrow().len() == 1);
+    let (id, emit) = {
+        let calls = source.fill_calls.borrow();
+        let call = &calls[0];
+        assert!(call.include_icon_details);
+        assert_eq!(
+            call.entries,
+            [
+                Location::local("/fixture/a-long.mp4"),
+                Location::local("/fixture/z-short.wav")
+            ]
+        );
+        (call.id, call.emit.clone())
+    };
+    for (name, seconds) in [("a-long.mp4", 120), ("z-short.wav", 30)] {
+        emit(DirectoryEvent::MetadataFilled {
+            request_id: id,
+            updates: vec![duration_update(name, seconds)],
+        });
+        assert_eq!(
+            column_names(&browser, 0),
+            ["a-long.mp4", "b-notes.txt", "z-short.wav"]
+        );
+    }
+    emit(DirectoryEvent::MetadataFinished {
+        request_id: id,
+        outcome: MetadataOutcome::Complete,
+    });
+    pump_until(|| finish_count(&events) == 1);
+    assert_eq!(
+        column_names(&browser, 0),
+        ["z-short.wav", "a-long.mp4", "b-notes.txt"]
+    );
+
+    browser.handle_directory_change(
+        0,
+        &Location::local("/fixture"),
+        DirectoryChange::Upsert(batch_entry("c-middle.flac")),
+    );
+    pump_until(|| source.fill_calls.borrow().len() == 2);
+    let (id, emit) = {
+        let calls = source.fill_calls.borrow();
+        let call = &calls[1];
+        assert_eq!(call.entries, [Location::local("/fixture/c-middle.flac")]);
+        (call.id, call.emit.clone())
+    };
+    emit(DirectoryEvent::MetadataFilled {
+        request_id: id,
+        updates: vec![duration_update("c-middle.flac", 60)],
+    });
+    emit(DirectoryEvent::MetadataFinished {
+        request_id: id,
+        outcome: MetadataOutcome::Complete,
+    });
+    pump_until(|| finish_count(&events) == 2);
+    assert_eq!(
+        column_names(&browser, 0),
+        ["z-short.wav", "c-middle.flac", "a-long.mp4", "b-notes.txt"]
+    );
+    drain_main_context();
+}
+
+#[test]
+fn media_sort_retries_after_a_partial_fill_and_ignores_a_replaced_file() {
+    let _serial = crate::test_support::ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .expect("the async test lock should not be poisoned");
+    let (browser, _, source) = scripted_browser(ScriptedSource::scripted(
+        vec!["a-long.mp4", "z-short.wav"],
+        (0..4).map(|_| FillAnswer::Never).collect(),
+    ));
+    let folder = Location::local("/fixture");
+    browser.navigate(folder.clone());
+    browser.set_sort(0, SortKey::Duration, SortDirection::Ascending);
+    let (id, emit) = await_media_fill(&source, 0, &["a-long.mp4", "z-short.wav"]);
+    emit_duration(id, &emit, "z-short.wav", 30);
+    emit(DirectoryEvent::MetadataFinished {
+        request_id: id,
+        outcome: MetadataOutcome::Truncated,
+    });
+    assert_eq!(column_names(&browser, 0), ["z-short.wav", "a-long.mp4"]);
+
+    let (old_id, old_emit) = await_media_fill(&source, 1, &["a-long.mp4"]);
+    browser.request_visible_metadata_fill(0, 1, Location::local("/fixture/a-long.mp4"), true);
+    let (viewport_id, viewport_emit) = await_media_fill(&source, 2, &["a-long.mp4"]);
+    browser.handle_directory_change(
+        0,
+        &folder,
+        DirectoryChange::Upsert(FileEntry {
+            modified_unix_seconds: MetadataValue::Known(101),
+            ..batch_entry("a-long.mp4")
+        }),
+    );
+    emit_duration(old_id, &old_emit, "a-long.mp4", 120);
+    emit_duration(viewport_id, &viewport_emit, "a-long.mp4", 120);
+    viewport_emit(DirectoryEvent::MetadataFinished {
+        request_id: viewport_id,
+        outcome: MetadataOutcome::Complete,
+    });
+    old_emit(DirectoryEvent::MetadataFinished {
+        request_id: old_id,
+        outcome: MetadataOutcome::Complete,
+    });
+
+    let (id, emit) = await_media_fill(&source, 3, &["a-long.mp4"]);
+    emit_duration(id, &emit, "a-long.mp4", 10);
+    emit(DirectoryEvent::MetadataFinished {
+        request_id: id,
+        outcome: MetadataOutcome::Complete,
+    });
+    assert_eq!(column_names(&browser, 0), ["a-long.mp4", "z-short.wav"]);
+    drain_main_context();
+}
+
+fn await_media_fill(
+    source: &ScriptedSource,
+    index: usize,
+    names: &[&str],
+) -> (RequestId, DirectoryEmit) {
+    super::folder_sorts::poll_until(|| source.fill_calls.borrow().len() > index);
+    let calls = source.fill_calls.borrow();
+    let call = &calls[index];
+    let expected = names
+        .iter()
+        .map(|name| Location::local(format!("/fixture/{name}")))
+        .collect::<Vec<_>>();
+    assert_eq!(call.entries, expected);
+    (call.id, call.emit.clone())
+}
+
+fn emit_duration(id: RequestId, emit: &DirectoryEmit, name: &str, seconds: u64) {
+    emit(DirectoryEvent::MetadataFilled {
+        request_id: id,
+        updates: vec![duration_update(name, seconds)],
+    });
+}
+
+#[test]
+fn media_refresh_survives_a_sort_in_another_column() {
+    let _serial = crate::test_support::ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .expect("the async test lock should not be poisoned");
+    let (browser, events, source) = scripted_browser(ScriptedSource::scripted(
+        vec!["a-long.mp4", "z-short.wav"],
+        vec![FillAnswer::Never, FillAnswer::Never],
+    ));
+    let folder = Location::local("/fixture");
+    browser.navigate(folder.clone());
+    browser.descend(0, Location::local("/fixture/child"));
+    browser.set_sort(0, SortKey::Duration, SortDirection::Ascending);
+    let (id, emit) = await_media_fill(&source, 0, &["a-long.mp4", "z-short.wav"]);
+    emit_duration(id, &emit, "a-long.mp4", 120);
+    emit_duration(id, &emit, "z-short.wav", 30);
+    emit(DirectoryEvent::MetadataFinished {
+        request_id: id,
+        outcome: MetadataOutcome::Complete,
+    });
+
+    browser.handle_directory_change(
+        0,
+        &folder,
+        DirectoryChange::Upsert(batch_entry("b-last.wav")),
+    );
+    super::folder_sorts::poll_until(|| start_count(&events) == 2);
+    browser.set_sort(1, SortKey::Name, SortDirection::Descending);
+
+    let (id, emit) = await_media_fill(&source, 1, &["b-last.wav"]);
+    emit_duration(id, &emit, "b-last.wav", 180);
+    emit(DirectoryEvent::MetadataFinished {
+        request_id: id,
+        outcome: MetadataOutcome::Complete,
+    });
+    assert_eq!(
+        column_names(&browser, 0),
+        ["z-short.wav", "a-long.mp4", "b-last.wav"]
+    );
+    assert_eq!(column_names(&browser, 1), ["z-short.wav", "a-long.mp4"]);
+    drain_main_context();
+}
+
+fn duration_update(name: &str, seconds: u64) -> MetadataUpdate {
+    MetadataUpdate {
+        location: Location::local(format!("/fixture/{name}")),
+        size: MetadataValue::Unknown,
+        modified_unix_seconds: MetadataValue::Unknown,
+        created_unix_seconds: MetadataValue::Unknown,
+        mode: MetadataValue::Unknown,
+        image_dimensions: MetadataValue::Unknown,
+        child_count: MetadataValue::Unknown,
+        duration_seconds: MetadataValue::Known(seconds),
+        listable: MetadataValue::Unknown,
+    }
+}
+
+#[test]
 fn name_options_preserve_a_pending_created_sort() {
     let _serial = crate::test_support::ASYNC_MAIN_CONTEXT_DEFAULT
         .lock()
