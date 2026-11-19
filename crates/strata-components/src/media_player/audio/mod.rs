@@ -60,38 +60,20 @@ pub(crate) fn audio<S: 'static>(
     );
     let byline = time::byline(tags.artist.as_deref(), tags.album.as_deref());
     // Rows keep their space while tags load, so changing tracks doesn't move the layout.
-    let header = row()
+    // The volume sits at the caption's end, the title and byline under both (Strata's
+    // `DetailsHeader`).
+    let caption_row = row()
         .w_full()
-        .gap(look.space.md)
+        .gap(look.space.sm)
         .child(
-            col()
-                .grow(1.0)
+            text(caption.unwrap_or_default())
+                .key(format!("{key}-eyebrow"))
+                .font(k.ty.small)
+                .color(k.c.text_muted)
+                .truncate()
+                .min_h(k.ty.small.size)
                 .min_w(0.0)
-                .gap(look.space.xxs)
-                .child(
-                    text(caption.unwrap_or_default())
-                        .key(format!("{key}-eyebrow"))
-                        .font(k.ty.small)
-                        .color(k.c.text_muted)
-                        .truncate()
-                        .min_h(k.ty.small.size),
-                )
-                .child(
-                    text(title)
-                        .key(format!("{key}-title"))
-                        .font(look.ty.title)
-                        .color(k.c.text_base)
-                        .truncate(),
-                )
-                .child(
-                    text(byline)
-                        .key(format!("{key}-byline"))
-                        .font(k.ty.small)
-                        .color(k.c.text_muted)
-                        .truncate()
-                        .min_h(k.ty.small.size),
-                )
-                .child(super::error(st, key, look)),
+                .grow(1.0),
         )
         .child(super::transport::volume(
             st,
@@ -100,6 +82,29 @@ pub(crate) fn audio<S: 'static>(
             key,
             look,
         ));
+    let header = row().w_full().gap(look.space.md).child(
+        col()
+            .grow(1.0)
+            .min_w(0.0)
+            .gap(look.space.xxs)
+            .child(caption_row)
+            .child(
+                text(title)
+                    .key(format!("{key}-title"))
+                    .font(look.ty.title)
+                    .color(k.c.text_base)
+                    .truncate(),
+            )
+            .child(
+                text(byline)
+                    .key(format!("{key}-byline"))
+                    .font(k.ty.small)
+                    .color(k.c.text_muted)
+                    .truncate()
+                    .min_h(k.ty.small.size),
+            )
+            .child(super::error(st, key, look)),
+    );
 
     let mut panel = col()
         .w_full()

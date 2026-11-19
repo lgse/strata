@@ -4,7 +4,7 @@
 //! the waveform timeline with the storyboard bubble, and the transport, in C14b's shared
 //! player layout.
 
-use rune::{Cx, El, Pixels, SurfaceFit, Tx, col, el, row, text};
+use rune::{Cx, El, Pixels, SurfaceFit, Tx, col, el, text};
 use strata_kit::look::Look;
 use strata_kit::slots::media as slot;
 
@@ -59,28 +59,19 @@ pub(crate) fn video<S: 'static>(
             look,
         );
     }
-    let details = row()
+    // The volume sits at the eyebrow's end, the title under both (Strata's `DetailsHeader`).
+    let volume = super::transport::volume(st, access, emit.clone(), key, look);
+    let details = col()
         .w_full()
-        .gap(look.space.md)
-        .child(
-            col()
-                .grow(1.0)
-                .min_w(0.0)
-                .child(layout::details_header(
-                    key,
-                    st.clip().position.map(st.labels().position),
-                    time::stem(&st.clip().name),
-                    look,
-                ))
-                .child(super::error(st, key, look)),
-        )
-        .child(super::transport::volume(
-            st,
-            access,
-            emit.clone(),
+        .min_w(0.0)
+        .child(layout::details_header_beside(
             key,
+            st.clip().position.map(st.labels().position),
+            Some(volume),
+            time::stem(&st.clip().name),
             look,
-        ));
+        ))
+        .child(super::error(st, key, look));
     layout::section(
         key.to_owned(),
         Areas {

@@ -106,17 +106,32 @@ pub fn section(key: impl Into<String>, areas: Areas, look: &Look) -> El {
 /// Strata's `DetailsHeader`: a muted eyebrow ("2 of 4 in folder") over the title. Without an
 /// eyebrow only the title shows.
 pub fn details_header(key: &str, eyebrow: Option<String>, title: &str, look: &Look) -> El {
+    details_header_beside(key, eyebrow, None, title, look)
+}
+
+/// [`details_header`] with `beside` at the eyebrow's end, the title under both, as Strata's
+/// `DetailsHeader::new(Some(volume))` puts a player's volume (`src/ui/preview/components.rs`).
+pub fn details_header_beside(
+    key: &str,
+    eyebrow: Option<String>,
+    beside: Option<El>,
+    title: &str,
+    look: &Look,
+) -> El {
     let k = &look.kit;
     let mut header = col().key(format!("{key}-details")).gap(look.space.xxs);
-    if let Some(eyebrow) = eyebrow {
-        header = header.child(
-            text(eyebrow)
-                .key(format!("{key}-eyebrow"))
-                .font(k.ty.small)
-                .color(k.c.text_muted)
-                .truncate(),
-        );
-    }
+    let eyebrow = eyebrow.map(|eyebrow| {
+        text(eyebrow)
+            .key(format!("{key}-eyebrow"))
+            .font(k.ty.small)
+            .color(k.c.text_muted)
+            .truncate()
+    });
+    header = match (eyebrow, beside) {
+        (eyebrow, Some(beside)) => header.child(eyebrow_row(eyebrow, beside, look)),
+        (Some(eyebrow), None) => header.child(eyebrow),
+        (None, None) => header,
+    };
     header.child(
         text(title.to_owned())
             .key(format!("{key}-title"))
@@ -124,6 +139,16 @@ pub fn details_header(key: &str, eyebrow: Option<String>, title: &str, look: &Lo
             .color(k.c.text_base)
             .truncate_middle(),
     )
+}
+
+/// The eyebrow, or the space it holds, with `beside` at the row's end.
+fn eyebrow_row(eyebrow: Option<El>, beside: El, look: &Look) -> El {
+    let eyebrow = eyebrow.map_or_else(|| col().min_w(0.0), |eyebrow| eyebrow.min_w(0.0));
+    row()
+        .w_full()
+        .gap(look.space.sm)
+        .child(eyebrow.grow(1.0))
+        .child(beside)
 }
 
 /// A row of badges, keyed `<key>-badges`.
