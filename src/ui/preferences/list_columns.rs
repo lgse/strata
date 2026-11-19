@@ -19,6 +19,7 @@ pub enum ListColumnId {
 }
 
 pub(crate) struct ListColumnDefinition {
+    stored_id: &'static str,
     pub title: &'static str,
     pub css_class: &'static str,
     pub sort_key: Option<SortKey>,
@@ -44,8 +45,9 @@ impl ListColumnId {
     }
 
     pub(crate) fn definition(self) -> ListColumnDefinition {
-        let (title, css_class, sort_key, width, min_width, optional) = match self {
+        let (stored_id, title, css_class, sort_key, width, min_width, optional) = match self {
             Self::Name => (
+                "name",
                 "Name",
                 "list-col-name",
                 Some(SortKey::Name),
@@ -53,10 +55,27 @@ impl ListColumnId {
                 160,
                 false,
             ),
-            Self::Mode => ("Mode", "list-col-mode", None, 160, 80, false),
-            Self::Size => ("Size", "list-col-size", Some(SortKey::Size), 90, 70, false),
-            Self::Type => ("Type", "list-col-type", Some(SortKey::Type), 120, 80, false),
+            Self::Mode => ("mode", "Mode", "list-col-mode", None, 160, 80, false),
+            Self::Size => (
+                "size",
+                "Size",
+                "list-col-size",
+                Some(SortKey::Size),
+                90,
+                70,
+                false,
+            ),
+            Self::Type => (
+                "type",
+                "Type",
+                "list-col-type",
+                Some(SortKey::Type),
+                120,
+                80,
+                false,
+            ),
             Self::Modified => (
+                "modified",
                 "Modified",
                 "list-col-modified",
                 Some(SortKey::Modified),
@@ -65,6 +84,7 @@ impl ListColumnId {
                 false,
             ),
             Self::Duration => (
+                "duration",
                 "Duration",
                 "list-col-duration",
                 Some(SortKey::Duration),
@@ -73,6 +93,7 @@ impl ListColumnId {
                 true,
             ),
             Self::Dimensions => (
+                "dimensions",
                 "Dimensions",
                 "list-col-dimensions",
                 Some(SortKey::Dimensions),
@@ -81,6 +102,7 @@ impl ListColumnId {
                 true,
             ),
             Self::Created => (
+                "created",
                 "Created",
                 "list-col-created",
                 Some(SortKey::Created),
@@ -90,6 +112,7 @@ impl ListColumnId {
             ),
         };
         ListColumnDefinition {
+            stored_id,
             title,
             css_class,
             sort_key,
@@ -108,9 +131,7 @@ impl ListColumnId {
     }
 
     fn stored_name(self) -> &'static str {
-        self.css_class()
-            .strip_prefix("list-col-")
-            .expect("column class prefix")
+        self.definition().stored_id
     }
 }
 
