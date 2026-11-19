@@ -26,6 +26,38 @@
 //! the keyboard gets none until something moves in it. So every window with an update queued is
 //! woken to apply it ([`wake_pending`]), after every dispatch and after every setting a window
 //! commits, as each GTK window updates at once.
+//!
+//! # Refused closes
+//!
+//! GTK refuses a window's close while one of its guards says no (`shell::close_guard`), whoever
+//! asks for it. Rune lets nothing refuse a close the window manager asks for (its title bar,
+//! Alt+F4, the compositor): the window is off screen when `on_close` runs, and its state goes
+//! with it (Rune packet entry 110, finding lgse/strata#2473). So `on_close` keeps the window by
+//! hand ([`refused`]): it moves the state into a window opened in its place, which says why, and
+//! leaves the closing window a stand-in state to go with. The running file operations and jobs
+//! go on in the state kept.
+//!
+//! What moves is the `App`: every tab, its location, selection and history, the browsers with
+//! their operations, undo, and the dialogs open in it. What Rune keeps per native window does
+//! not, so the window comes back without it:
+//!
+//! - its place and size: the window manager places the new window at the default size;
+//! - a maximised or full-screen state;
+//! - the views' scroll offsets, so a long listing comes back at its top, its cursor perhaps off
+//!   screen;
+//! - the focused widget;
+//! - an open menu or popover.
+//!
+//! The old window is seen to go before the new one maps, since Rune hides it before `on_close`.
+//!
+//! **Why not `keep_running`.** With it, Rune's close hides the window and keeps its native
+//! window and state, and `AppHandle::show` brings it back as it was. But at the pin
+//! `keep_running` holds for every close of the window's `App`, refused or not, and nothing drops
+//! one window of several: `AppHandle::quit` ends the whole application. A window whose close
+//! goes ahead would then stay hidden with its state alive (its browsers and their watchers, its
+//! share of the thumbnail budget, a place in `is_last_window`), and the process would have to
+//! quit by hand when the last shown window closes. Rune packet entry 110 asks for the close
+//! request that makes both workarounds unneeded.
 
 use std::{
     cell::{OnceCell, RefCell},
@@ -51,6 +83,8 @@ use crate::{
     startup::{APPLICATION_ID, UiThread},
 };
 
+mod refused;
+
 /// Strata's default window size (`src/ui/window`).
 const SIZE: (f32, f32) = (1200.0, 760.0);
 
@@ -59,10 +93,14 @@ thread_local! {
     static GLIB: OnceCell<GlibLoop> = const { OnceCell::new() };
     /// The interface thread, for the windows opened after the first.
     static UI: OnceCell<UiThread> = const { OnceCell::new() };
-    /// Every window's queue and handle, the floating choosers' among them: what a dispatch in
-    /// one window, or another window's change of a setting, queues into ([`wake_pending`]).
-    static QUEUES: RefCell<Vec<(WeakLater<App>, AppHandle<App>)>> = const { RefCell::new(Vec::new()) };
+    /// Every window's queue and handle by window id, the floating choosers' among them: what a
+    /// dispatch in one window, or another window's change of a setting, queues into
+    /// ([`wake_pending`]).
+    static QUEUES: RefCell<Vec<Queue>> = const { RefCell::new(Vec::new()) };
 }
+
+/// A window's id, its queue and its handle ([`wake_pending`]).
+type Queue = (u64, WeakLater<App>, AppHandle<App>);
 
 /// The open windows' handles by window id, in the order they opened.
 static WINDOWS: Mutex<Vec<(u64, AppHandle<App>)>> = Mutex::new(Vec::new());
@@ -90,10 +128,15 @@ pub(super) fn pump(app: &mut App, tx: &mut Tx) -> bool {
     settled
 }
 
-/// Lets [`wake_pending`] wake window `app`, which `handle` reaches.
+/// Lets [`wake_pending`] wake window `app`, which `handle` reaches, in place of any handle the
+/// window had before (a refused close opens its state in a new window).
 pub(super) fn follow_queue(app: &App, handle: AppHandle<App>) {
-    let later = shell::window_later(app).downgrade();
-    QUEUES.with(|queues| queues.borrow_mut().push((later, handle)));
+    let (id, later) = (shell::window_id(app), shell::window_later(app).downgrade());
+    QUEUES.with(|queues| {
+        let mut queues = queues.borrow_mut();
+        queues.retain(|(open, ..)| *open != id);
+        queues.push((id, later, handle));
+    });
 }
 
 /// Has every window with an update queued apply it now (the module docs, "Windows"). A window
@@ -103,8 +146,8 @@ pub(crate) fn wake_pending() {
         let Ok(mut queues) = queues.try_borrow_mut() else {
             return;
         };
-        queues.retain(|(later, _)| later.is_live());
-        for (_, handle) in queues.iter().filter(|(later, _)| later.is_pending()) {
+        queues.retain(|(_, later, _)| later.is_live());
+        for (_, _, handle) in queues.iter().filter(|(_, later, _)| later.is_pending()) {
             handle.update_if(shell::settle);
         }
     });
@@ -146,11 +189,22 @@ pub(super) fn handle_of(id: u64) -> Option<AppHandle<App>> {
     open.map(|(_, handle)| handle.clone())
 }
 
+/// Keeps window `id`'s handle, in place of one it had before.
 fn opened(id: u64, handle: AppHandle<App>) {
     let mut windows = WINDOWS
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
+    windows.retain(|(open, _)| *open != id);
     windows.push((id, handle));
+}
+
+/// Whether the application ends when window `id` closes: it is the only browser window open,
+/// or no window is registered, as on the offscreen hosts.
+pub(crate) fn is_last_window(id: u64) -> bool {
+    let windows = WINDOWS
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    windows.iter().all(|(open, _)| *open == id)
 }
 
 /// Forgets the window; true when it was the last.
@@ -192,15 +246,26 @@ fn open_asked(app: &App) {
     for application::Asked { opening, token } in asked {
         let settings = shell::share_settings(app);
         let initial = launch::initial_for(opening, &settings);
-        static KEYS: AtomicU64 = AtomicU64::new(2);
-        let key = format!("window-{}", KEYS.fetch_add(1, Ordering::Relaxed));
-        let window = window(ui, settings, initial);
+        let window = window(ui, Start::New(Box::new((settings, initial))));
         // A window whose app's handle has the token is created with it.
         if let Some(token) = token {
             window.handle().activate(token);
         }
-        rune::open_window(WindowSpec::from_app(key, window));
+        rune::open_window(WindowSpec::from_app(next_key(), window));
     }
+}
+
+/// A key no window of the process has had, for `rune::open_window`.
+fn next_key() -> String {
+    static KEYS: AtomicU64 = AtomicU64::new(2);
+    format!("window-{}", KEYS.fetch_add(1, Ordering::Relaxed))
+}
+
+/// What a window starts from: new state on `initial`, or the state of a window whose close was
+/// refused ([`refused`]).
+enum Start {
+    New(Box<(Saved, launch::Initial)>),
+    Kept(Box<App>),
 }
 
 /// Opens the window on `initial` and exits when the last window closes, returning an error if
@@ -227,9 +292,9 @@ pub(crate) fn run_with(
     run_initial(ui, settings, launch::Initial::Explicit(location), extend)
 }
 
-/// One window's app on `initial`: its state, its hooks, and the clipboard, drag and drop and
+/// One window's app from `start`: its state, its hooks, and the clipboard, drag and drop and
 /// frame that attach to each native window it gets.
-fn window(ui: UiThread, settings: Saved, initial: launch::Initial) -> rune::App<App> {
+fn window(ui: UiThread, start: Start) -> rune::App<App> {
     let frame = Policy::Auto.frame();
     let clip =
         strata_platform::clipboard::Clipboard::<App>::new().on_change(crate::clipboard::changed);
@@ -246,6 +311,9 @@ fn window(ui: UiThread, settings: Saved, initial: launch::Initial) -> rune::App<
     // The last write of the per-folder views, before the writer is flushed. A quit runs no
     // `on_close`, so both ask for it; it is written once.
     .on_close(|app: &mut App, _: &mut Tx| {
+        if refused::keep_open(app) {
+            return;
+        }
         super::floating::close_with_browser(shell::window_id(app));
         folder_views::flush_at_exit(app);
         if closed(shell::window_id(app)) {
@@ -267,12 +335,25 @@ fn window(ui: UiThread, settings: Saved, initial: launch::Initial) -> rune::App<
     let handle = app.handle();
     let registered = handle.clone();
     app.init(move || {
-        let mut app = App::new(&ui, Csd::new(frame, Backend::from_env()), settings);
+        let (mut app, initial) = match start {
+            Start::New(new) => {
+                let (settings, initial) = *new;
+                let csd = Csd::new(frame, Backend::from_env());
+                (App::new(&ui, csd, settings), Some(initial))
+            }
+            Start::Kept(app) => {
+                let mut app = *app;
+                shell::reopened(&mut app);
+                (app, None)
+            }
+        };
         crate::clipboard::bind(&mut app, clip_for_init);
         crate::dnd::bind(&mut app, dnd_for_init);
         follow_queue(&app, registered.clone());
         opened(shell::window_id(&app), registered);
-        app.start(initial);
+        if let Some(initial) = initial {
+            app.start(initial);
+        }
         app
     })
     .on_window(move |window: &WindowHandle| {
@@ -292,7 +373,7 @@ fn run_initial(
     UI.with(|cell| cell.set(ui))
         .map_err(|_| "the windows are already running on this thread".to_owned())?;
     super::floating::bind(ui);
-    let app = extend(window(ui, settings, initial));
+    let app = extend(window(ui, Start::New(Box::new((settings, initial)))));
     let glib = GlibLoop::start(glib::MainContext::default(), notify)
         .map_err(|error| format!("unable to start the GLib loop: {error}"))?;
     GLIB.with(|cell| cell.set(glib))

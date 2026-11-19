@@ -23,6 +23,7 @@ use crate::{
     startup::{self, UiThread},
 };
 
+pub(crate) mod held;
 #[cfg(test)]
 mod tests;
 pub(crate) mod view;
