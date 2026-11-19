@@ -30,3 +30,7 @@ app.dialog deviation lgse/strata#2405 {"gtk":null,"rune":["Appearance","Jobs","T
 # GTK's closed; the focus fields after them do.
 app.dialog deviation lgse/strata#2572 {"gtk":null,"rune":["Settings"]}
 app.menu deviation lgse/strata#2572 {"gtk":null,"rune":[[]]}
+# The preview media player's volume slider is named "Volume" on Rune and unnamed on GTK, by the
+# owner's ruling of 2026-11-18 (owner.md): Rune's app.preview is GTK's with "Volume" added, and
+# only that is excused. Every other name of the drawer, and their order, still counts.
+app.preview deviation lgse/strata#2606 {"rune_adds":["Volume"]}
