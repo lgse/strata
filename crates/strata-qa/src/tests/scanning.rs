@@ -154,6 +154,10 @@ fn focus_names_the_pane_that_holds_it_and_the_entry_it_is_on() {
     let report = entry(&mut fake, documents, "report.txt", [200.0, 40.0], false);
 
     assert_eq!(scan(&fake, &WINDOW).observation.focused_pane_name(), None);
+    assert!(
+        !scan(&fake, &WINDOW).observation.app_state().window_focused,
+        "nothing in the window has the keyboard"
+    );
 
     fake.focus = Some(report);
     let observation = scan(&fake, &WINDOW).observation;
@@ -162,6 +166,7 @@ fn focus_names_the_pane_that_holds_it_and_the_entry_it_is_on() {
     assert_eq!(observation.directory(), Some("documents"));
     let state = observation.app_state();
     assert_eq!(state.panes[1].focused.as_deref(), Some("report.txt"));
+    assert!(state.window_focused, "the window has the keyboard");
 
     // The pane itself takes focus while its directory is empty.
     fake.focus = Some(documents_pane);

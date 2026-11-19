@@ -539,7 +539,8 @@ the run. `app` is the snapshot:
   "preview": null,
   "field": null,
   "matches": ["todo.txt"],
-  "toplevels": []
+  "toplevels": [],
+  "window_focused": true
 }
 ```
 
@@ -565,6 +566,8 @@ The `app` keys are exactly these:
   "Search results" inside a dialog (the Rune search palette's) is not a pane's.
 - `toplevels`: the titles of the drawn windows other than the one the steps act
   on, such as a floating chooser's "Copy to"; empty with none.
+- `window_focused`: whether anything in the window has the keyboard; false
+  while the window is inactive.
 
 The snapshot, every target, and the input log belong to the window the run
 started with; reach a floating chooser through a `toplevel` target.

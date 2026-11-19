@@ -20,11 +20,11 @@ archives v5 198d34d05a89aa18
 calibration v3 d06627cec8c47f93
 # chooser: version 1 was A20's draft, never merged: its smoke tier met Up from a column's first
 # row (`owner.md`, A1 item 3) and Rune's `keyboard` invariant broken while the floating chooser
-# had the keyboard (fixed). Version 2, merged, kept Up off the first rows; its smoke tier caught
+# had the keyboard (fixed). Version 2, also a draft, kept Up off the first rows; its smoke tier caught
 # the row kept after a move out dropping the browser's Shift anchor (fixed), and met
 # lgse/strata#2595 in 20 of 20, which the owner ruled excused on 2026-11-17. Version 3 leaves out
 # the browser's arrow keys, which GTK skips once its browser has no focus; its smoke tier met
-# lgse/strata#2356 on a click on an open folder. Version 4, merged, left those clicks out; under
+# lgse/strata#2356 on a click on an open folder. Version 4, also a draft, left those clicks out; under
 # lgse/strata#2595's rules its smoke tier met, on seed 0x03, Up from the first row of the
 # chooser's listing (`owner.md`, A1 item 3). Version 5 leaves Up in the listing out.
 chooser v5 3993ae37c4fafa89

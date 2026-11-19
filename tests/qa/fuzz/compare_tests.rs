@@ -442,24 +442,29 @@ pub(crate) fn a_rule_that_names_values_excuses_only_those() {
 
 /// Two streams, GTK's and Rune's, whose one observation shows the `app` given, and the
 /// windows Rune has open beside the browser (`context.toplevels`).
-fn app_streams((gtk, rune, rune_toplevels): (Value, Value, Value)) -> (Stream, Stream) {
+fn app_streams(
+    (gtk, rune, rune_toplevels, gtk_window_focused): (Value, Value, Value, bool),
+) -> (Stream, Stream) {
     let (mut left, mut right) = (stream(&["archive"]), stream(&["archive"]));
     right.header.target = "rune".to_owned();
     left.observations[0].value = observed(gtk);
+    left.observations[0].value["context"] =
+        json!({ "toplevels": [], "window_focused": gtk_window_focused });
     right.observations[0].value = observed(rune);
-    right.observations[0].value["context"] = json!({ "toplevels": rune_toplevels });
+    right.observations[0].value["context"] =
+        json!({ "toplevels": rune_toplevels, "window_focused": true });
     (left, right)
 }
 
 /// lgse/strata#2595's two rulings on `app.focused`, as the map has them.
 const FOCUS_RULES: [&str; 2] = [
-    r#"app.focused toolkit lgse/strata#2595 {"gtk":null,"while":{"gtk":{"app.focused_pane":null}}}"#,
+    r#"app.focused toolkit lgse/strata#2595 {"gtk":null,"while":{"gtk":{"app.focused_pane":null,"context.window_focused":false}}}"#,
     r#"app.focused toolkit lgse/strata#2595 {"rune":[null],"while":{"rune":{"app.focused_pane":null,"context.toplevels":{"one_of":[["Copy to"],["Move to"]]}}}}"#,
 ];
 
 /// GTK's and Rune's focus at one step, the windows Rune has open beside its browser, and the
 /// field that still differs under lgse/strata#2595's rules, if any.
-fn focus_cases() -> Vec<(Value, Value, Value, Option<&'static str>)> {
+fn focus_cases() -> Vec<(Value, Value, Value, bool, Option<&'static str>)> {
     let focus = |pane: Value, focused: Value, directory: Value| json!({ "focused_pane": pane, "focused": focused, "directory": directory });
     let chooser = json!(["Copy to"]);
     let none = json!([]);
@@ -470,12 +475,14 @@ fn focus_cases() -> Vec<(Value, Value, Value, Option<&'static str>)> {
             focus(Value::Null, Value::Null, json!("documents")),
             focus(json!("$root"), json!("readme.md"), json!("$root")),
             none.clone(),
+            false,
             Some("app.focused_pane"),
         ),
         (
             focus(Value::Null, Value::Null, json!("documents")),
             focus(Value::Null, json!("readme.md"), json!("$root")),
             none.clone(),
+            false,
             None,
         ),
         // GTK's own row against Rune's is no one's.
@@ -483,6 +490,7 @@ fn focus_cases() -> Vec<(Value, Value, Value, Option<&'static str>)> {
             focus(Value::Null, json!("todo.txt"), json!("documents")),
             focus(Value::Null, json!("readme.md"), json!("documents")),
             none.clone(),
+            false,
             Some("app.focused"),
         ),
         // GTK has a focused pane and Rune no chooser open: nothing is excused.
@@ -490,12 +498,14 @@ fn focus_cases() -> Vec<(Value, Value, Value, Option<&'static str>)> {
             focus(json!("$root"), Value::Null, json!("$root")),
             focus(json!("$root"), json!("readme.md"), json!("$root")),
             none.clone(),
+            true,
             Some("app.focused"),
         ),
         (
             focus(json!("$root"), Value::Null, json!("documents")),
             focus(json!("$root"), Value::Null, json!("$root")),
             none.clone(),
+            true,
             Some("app.directory"),
         ),
         // Rune's browser has no focus behind its open chooser: GTK's row is excused.
@@ -503,6 +513,7 @@ fn focus_cases() -> Vec<(Value, Value, Value, Option<&'static str>)> {
             focus(json!("$root"), json!("readme.md"), json!("$root")),
             focus(Value::Null, Value::Null, json!("$root")),
             chooser.clone(),
+            true,
             Some("app.focused_pane"),
         ),
         // The same with no chooser open on Rune: it counts.
@@ -510,6 +521,7 @@ fn focus_cases() -> Vec<(Value, Value, Value, Option<&'static str>)> {
             focus(json!("$root"), json!("readme.md"), json!("$root")),
             focus(Value::Null, Value::Null, json!("$root")),
             none.clone(),
+            true,
             Some("app.focused"),
         ),
         // Rune's browser kept the keyboard behind its chooser: it counts.
@@ -517,6 +529,16 @@ fn focus_cases() -> Vec<(Value, Value, Value, Option<&'static str>)> {
             focus(json!("$root"), json!("readme.md"), json!("$root")),
             focus(json!("$root"), json!("todo.txt"), json!("$root")),
             chooser.clone(),
+            true,
+            Some("app.focused"),
+        ),
+        // GTK's keyboard on the sidebar: its window has the keyboard, so no rule applies, and
+        // Rune's keyboard left on a row still counts.
+        (
+            focus(Value::Null, Value::Null, json!("$root")),
+            focus(json!("$root"), json!("readme.md"), json!("$root")),
+            none.clone(),
+            true,
             Some("app.focused"),
         ),
     ]
@@ -530,7 +552,7 @@ fn focus_cases() -> Vec<(Value, Value, Value, Option<&'static str>)> {
 /// not know which stream is whose.
 pub(crate) fn a_rule_s_while_holds_it_to_each_side_s_observation() {
     let lines = [
-        r#"app.directory toolkit lgse/strata#2595 {"while":{"gtk":{"app.focused_pane":null}}}"#,
+        r#"app.directory toolkit lgse/strata#2595 {"while":{"gtk":{"app.focused_pane":null,"context.window_focused":false}}}"#,
         FOCUS_RULES[0],
         FOCUS_RULES[1],
     ];
@@ -538,8 +560,8 @@ pub(crate) fn a_rule_s_while_holds_it_to_each_side_s_observation() {
         rules: rules::parse(&lines.join("\n"), &exceptions()).expect("the rules should parse"),
         masks: Vec::new(),
     };
-    for (gtk, rune, toplevels, differs) in focus_cases() {
-        let (left, right) = app_streams((gtk.clone(), rune.clone(), toplevels.clone()));
+    for (gtk, rune, toplevels, window, differs) in focus_cases() {
+        let (left, right) = app_streams((gtk.clone(), rune.clone(), toplevels.clone(), window));
         let found = compare(&left, &right, &ruled).map(|found| found.field().to_owned());
         assert_eq!(
             found.as_deref(),
@@ -559,6 +581,7 @@ pub(crate) fn a_rule_s_while_holds_it_to_each_side_s_observation() {
         json!({ "focused_pane": null, "focused": null, "directory": "documents" }),
         json!({ "focused_pane": "$root", "focused": "readme.md", "directory": "$root" }),
         json!([]),
+        false,
     ));
     left.header.target = "rune".to_owned();
     assert!(compare(&left, &right, &ruled).is_some());

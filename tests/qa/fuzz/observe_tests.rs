@@ -168,9 +168,10 @@ pub(crate) fn the_projection_names_every_key_the_snapshot_has() {
         .map(String::as_str)
         .collect();
     keys.sort_unstable();
-    // `toplevels` is kept in the context, which a rule's `while` reads and nothing compares.
+    // `toplevels` and `window_focused` are kept in the context, which a rule's `while` reads
+    // and nothing compares.
     let mut projected = project::APP_KEYS.to_vec();
-    projected.push(project::TOPLEVELS);
+    projected.extend([project::TOPLEVELS, project::WINDOW_FOCUSED]);
     projected.sort_unstable();
     assert_eq!(keys, projected);
 }

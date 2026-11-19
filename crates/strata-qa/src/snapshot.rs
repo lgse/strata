@@ -21,6 +21,8 @@ pub struct Observation {
     pub field: Option<FieldState>,
     /// The titles of the other drawn windows, such as a floating chooser.
     pub toplevels: Vec<String>,
+    /// Whether anything in the window has the keyboard: false while the window is inactive.
+    pub window_focused: bool,
 }
 
 /// Offsets count characters, as AT-SPI's text interface does.
@@ -86,6 +88,7 @@ pub struct AppState {
     pub field: Option<FieldState>,
     pub matches: Vec<String>,
     pub toplevels: Vec<String>,
+    pub window_focused: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -108,6 +111,7 @@ pub fn empty_app_state() -> serde_json::Value {
         "field": null,
         "matches": [],
         "toplevels": [],
+        "window_focused": false,
     })
 }
 
@@ -218,6 +222,7 @@ impl Observation {
             field: self.field.clone(),
             matches: self.matches(None),
             toplevels: self.toplevels.clone(),
+            window_focused: self.window_focused,
         }
     }
 

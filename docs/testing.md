@@ -1749,7 +1749,7 @@ is a fixed projection, and nothing else of a reply is kept:
 | `criticals` | What GLib logged since the last observation. |
 | `invariants` | The invariants the target broke at rest, one line each; empty on GTK, which checks none. |
 | `app.*` | The ten keys of the reply's `app` snapshot: `view_mode`, `directory`, `panes` (each pane's `name`, `selected` and `focused`), `focused`, `focused_pane`, `dialog`, `menu`, `preview`, `field` and `matches`. A runner unit test holds the list to the snapshot's own keys, so a key added there is not left uncompared by oversight. |
-| `context.toplevels` | The snapshot's `toplevels`: the titles of the windows open beside the one the steps act on. Never compared; a map rule's `while` reads it. |
+| `context.toplevels`, `context.window_focused` | The snapshot's `toplevels`, the titles of the windows open beside the one the steps act on, and `window_focused`, whether anything in that window has the keyboard. Never compared; a map rule's `while` reads them. |
 | `fs.<path>` | The fixture tree: `dir <mode>`, `file <mode> <size> <digest of its bytes>` or `link <target>` for each path. |
 | `settings.<key>` | `settings.toml`, parsed, so two files that say the same in another order are equal. |
 
@@ -1919,14 +1919,17 @@ issue:
     between two replays of one target.
 
 A field may have more than one rule of one code and issue, sorted by what
-follows the issue. An observation keeps `context.toplevels`, the titles of the
-windows open beside the one the steps act on (the snapshot's `toplevels`),
-for a `while` to read; nothing compares it. `app.dialog`'s rules name values;
-lgse/strata#2595's use `while` to excuse focus on one side only while that
-side's browser has no focused pane:
+follows the issue. An observation keeps a `context` for a `while` to read,
+which nothing compares: `context.toplevels`, the titles of the windows open
+beside the one the steps act on (the snapshot's `toplevels`), and
+`context.window_focused`, whether anything in that window has the keyboard
+(the snapshot's `window_focused`; GTK's is false only while its window is
+inactive). `app.dialog`'s rules name values; each of lgse/strata#2595's uses
+`while`, GTK's while its window is inactive, Rune's while its browser has no
+focused pane behind an open floating chooser:
 
 ```text
-app.focused toolkit lgse/strata#2595 {"gtk":null,"while":{"gtk":{"app.focused_pane":null}}}
+app.focused toolkit lgse/strata#2595 {"gtk":null,"while":{"gtk":{"app.focused_pane":null,"context.window_focused":false}}}
 app.focused toolkit lgse/strata#2595 {"rune":[null],"while":{"rune":{"app.focused_pane":null,"context.toplevels":{"one_of":[["Copy to"],["Move to"],["Extract to"]]}}}}
 ```
 

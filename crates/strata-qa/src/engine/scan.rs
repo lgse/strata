@@ -113,6 +113,7 @@ pub fn scan<B: Backend + ?Sized>(backend: &B, window: &B::Node) -> Scene<B::Node
             results: result_names(backend, &presented, &labels),
             field: focused_field(backend, &presented).and_then(|field| backend.field(&field)),
             toplevels: other_toplevels(backend, window),
+            window_focused: focus.is_some(),
         },
         panes: nodes,
     }
