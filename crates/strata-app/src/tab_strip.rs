@@ -67,7 +67,7 @@ use crate::{
 
 mod drops;
 mod keys;
-mod open;
+pub(crate) mod open;
 
 /// The strip's state: C7's, its drop classification, and the closed tabs.
 pub(crate) struct TabStrip {

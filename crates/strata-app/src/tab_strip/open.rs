@@ -28,19 +28,20 @@ use crate::{
 };
 
 /// `item_view_has_focus() && !text_has_focus()`.
-fn from_the_listing(_: &App, at: &Situation) -> bool {
+pub(crate) fn from_the_listing(_: &App, at: &Situation) -> bool {
     at.in_view() && !at.text()
 }
 
-/// What Ctrl+Enter acts on (`selected_search_result().or_else(|| browser.focused_entry())`).
-enum Focused {
+/// What Ctrl+Enter acts on (`selected_search_result().or_else(|| browser.focused_entry())`),
+/// and Shift+Enter for a new window (`crate::new_window`).
+pub(crate) enum Focused {
     /// The result under the results' cursor.
     Result(FileEntry),
     /// The browser's cursor entry.
     Entry(FileEntry),
 }
 
-fn focused(app: &App) -> Option<Focused> {
+pub(crate) fn focused(app: &App) -> Option<Focused> {
     let result = crate::filter::targets::under_cursor(app).map(|(_, entry)| Focused::Result(entry));
     result.or_else(|| app.browser.focused_entry().map(Focused::Entry))
 }
