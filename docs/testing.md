@@ -2119,9 +2119,14 @@ hold for its replays:
   second window, a window switch, the portal and drags from another process
   are not reached yet:
   `docs/rune/parity/packages/F5.md` has the plan for them.
-- **Heavier replays.** A sway with software rendering and a lavapipe window
-  per Rune replay take more of the machine than an offscreen one, so a session
-  run is given fewer `--jobs`: "Tiers and budgets" below has what F5 measured.
+- **Heavier replays.** Each Rune replay starts a sway with software rendering
+  and a lavapipe window. The default `--jobs` still fits: "Tiers and budgets"
+  below has what F5 measured.
+- **What only a real window shows.** A divergence the session host shows and
+  the offscreen host does not, on the same seed with `--host offscreen`, is in
+  the windowed path. The first was a command's GLib work that waited for the
+  next input, since the window pumps GLib only before a frame
+  (`commands::wake_glib`).
 
 #### Tiers and budgets
 
@@ -2150,6 +2155,11 @@ What the budgets rest on:
 - **A parked sequence is not run by the smoke tier**, and its line names its
   finding. `replay --parked --alphabet <area> --target gtk,rune` is the survey
   of what each still does; it is no gate.
+- **The session host costs little more.** `session-pointer`'s tier, 14
+  sequences with 6 parked, Rune on the session host at the default 12 at once,
+  took 2 min 44 s on the 24-core machine, the load average ending near 11; its
+  first unparked run of 20 took 3 min 22 s. That is within the smoke budget, so
+  a session alphabet takes the default `--jobs`.
 - **Twenty seeds is a sample, not a proof.** In the pilot, a class met by one
   seed in 20 was met again by others in the next version's 20; a class met
   once in a thousand is the long run's to find.
