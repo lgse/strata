@@ -46,7 +46,10 @@
 //! - **Pump from `poll` too.** A source attached from another thread wakes the helper, because
 //!   GLib signals a context owned elsewhere. A source the interface thread attaches itself,
 //!   in a handler, does not: the helper still waits for what the last `pump` asked. Rune runs
-//!   `poll` after handlers, and the pump there asks again.
+//!   `poll` before a frame, and the pump there asks again, but a handler that changes nothing
+//!   drawn gets no frame until the next input. So after a handler that may have attached
+//!   one, wake the context (`glib::MainContext::wakeup`): the helper's wait holds the
+//!   context's wake-up descriptor, so it notifies, and the pump runs at once.
 //! - **Callbacks don't touch the app state.** `pump` dispatches while Rune holds the state, in
 //!   `poll` or an update. A callback queues what it has; the code after `pump` applies it.
 

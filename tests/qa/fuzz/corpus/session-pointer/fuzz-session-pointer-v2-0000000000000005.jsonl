@@ -1,0 +1,3 @@
+{"scenario":"fuzz-session-pointer-v2-0000000000000005","modes":["list"],"prefs":{"type_to_search":false,"single_click_previews":false,"explorer_folder_clicks":1,"explorer_file_clicks":2}}
+{"drag":{"from":{"entry":"pictures"},"to":{"entry":"documents"}},"when":{"all":[{"directory":"$root"},{"present":{"entry":"pictures"}},{"not":{"all_selected":{"contains":["pictures"]}}},{"present":{"entry":"documents"}},{"file":{"path":"$fixture/documents/pictures","exists":false}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}
+{"click":{"entry":"todo.txt"},"mods":["shift"],"when":{"all":[{"present":{"entry":"todo.txt"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}

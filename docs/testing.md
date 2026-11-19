@@ -1598,6 +1598,7 @@ ruling that parity and fuzzing are run by the agent before merging.
 | `--repeats <n>` | Replays of each sequence on each target; 2 by default. Each target's replays are compared with its first, and on two targets every Rune replay with the first GTK one too. |
 | `--jobs <n>` | Sequences replayed at once; one per CPU by default, half that on two targets. A sequence's own replays on a target run one after another, its two targets' side by side, so on two targets a sequence holds two displays, and at most 256 replays run at once. |
 | `--target gtk\|rune\|gtk,rune` | The target every replay starts; `gtk` by default. `rune` builds `strata-rune` first, as `qa-parity.sh` does. `gtk,rune` is the differential mode, for `run`, `replay` and `shrink`: `--repeats` replays on each target. |
+| `--host offscreen\|session` | Where every Rune replay runs, in place of the host its alphabet names: "On the session host" below. GTK replays stay on Xvfb, so it takes `--target rune` or `gtk,rune`. |
 | `--keep` | Keep the artifacts of sequences that agree too. |
 | `--parked` | `replay`: the parked sequences and no other, as a survey. |
 | `--corpus` | `shrink`: write a confirmed sequence into the area's corpus. |
@@ -1645,6 +1646,7 @@ choose.entry = ["archive", "documents", "readme.md"]
 | `version` | Raised by every change that makes a seed write another sequence. It is part of every sequence's name. |
 | `about` | One line. |
 | `header` | The scenario header of every sequence, as JSON, without `scenario`: the mode, and the tree and preferences when they are not the defaults. |
+| `host` | Optional: `session` for an alphabet whose actions need a compositor, so that its Rune replays run on the session host ("On the session host" below); `offscreen`, the default, otherwise. |
 | `action.name`, `action.weight` | A unique name, and how often the action is picked against the sum of the weights. |
 | `action.steps` | One or more scenario steps, each a line of JSON exactly as a scenario file has it, in TOML's single quotes. |
 | `action.choose.<name>` | The values `<name>` in the steps may take. One is drawn for each name, in name order, every time the action is picked. |
@@ -1653,7 +1655,9 @@ choose.entry = ["archive", "documents", "readme.md"]
 and seed 7 of version 3 are two sequences. So `version` is held to what seeds
 write: `tests/qa/fuzz/alphabets/pins` has one line for each alphabet,
 `<area> v<version> <digest>`, where the digest is of the generator's version,
-the header and every action's name, weight, steps and choices. The runner
+the header and every action's name, weight, steps and choices, and the host
+when it is `session`, so that an alphabet that moves to another host takes a
+new version and its parked sequences stay with the host they met. The runner
 refuses an alphabet whose line does not match, and says what the line should
 be. Changing what seeds write means raising `version` and writing the new
 line; changing a comment or `about` means neither.
@@ -2068,18 +2072,56 @@ one.
 A sequence that differed, did not come to rest, showed a finding or could not
 be replayed (every sequence, with `--keep`) leaves
 `target/qa-fuzz/<area>/<targets>/<sequence>/`, where `<targets>` is `gtk`,
-`rune` or `gtk-rune`: a run on one target never removes what a run on the
-other, or a differential run, kept:
+`rune` or `gtk-rune`, with `-session` after it when the Rune replays ran on the
+session host: a run on one target never removes what a run on the other, a
+differential run, or a run on the other host, kept:
 
 | File | Holds |
 | --- | --- |
 | `sequence.jsonl` | The sequence, a scenario file. |
-| `<target>-<n>.stream.jsonl` | Replay n's stream. Its first line is `{"stream":…}`: the target, the sequence, the alphabet and its version, the rest rule, and `perturbed`. Then one observation to a line: `step`, `action`, `settled`, `polls`, `waited_ms`, `changed_ms` (when, into the rest wait, a read differed from the one before), the two digests and `observed`. A last `{"gone":…}` line says why the target was lost. |
+| `<target>-<n>.stream.jsonl` | Replay n's stream. Its first line is `{"stream":…}`: the target, the display it ran on (`x11`, or `wayland` on the session host; a stream kept before there was a session host says none, and ran on `x11`), the sequence, the alphabet and its version, the rest rule, and `perturbed`. Then one observation to a line: `step`, `action`, `settled`, `polls`, `waited_ms`, `changed_ms` (when, into the rest wait, a read differed from the one before), the two digests and `observed`. A last `{"gone":…}` line says why the target was lost. |
 | `<target>-<n>.transcript.jsonl` | Every command and reply of the replay, the rest wait's reads included. |
 | `<target>-<n>.strata.log` | The application's log. |
 | `<target>-<n>.input.log` | Every synthetic key, motion and button of the replay, as a scenario run's `input.log` has them. |
 | `divergence.json` | The first divergence; then each comparison (`between`), its first differing step and fields outside the map and the mask and with nothing left out, and its issue title; and `perturbed`. |
 | `shrunk.jsonl` | After `shrink`: the shortest sequence. |
+
+#### On the session host
+
+Offscreen, input never crosses winit or a compositor. An alphabet whose actions
+need one says `host = "session"`, and its Rune replays then run as a
+`host = "session"` ledger row runs ("The session host" above): each replay
+starts a private headless sway of its own, in the replay's runtime directory,
+and `strata-rune --qa` serves from a real window there, with every key, press,
+motion and release sent through Wayland's virtual keyboard and pointer and every
+row drag through the compositor's data device. Its GTK replays stay on Xvfb, as
+the GTK side of every parity run does, so GTK is still the reference a session
+replay is held to, and the differential mode compares the two as it compares
+any. `--host session` replays any alphabet's Rune side there, and
+`--host offscreen` a session alphabet's offscreen: a survey, as
+`qa-parity.sh --host session` is, and not a smoke tier's evidence.
+
+```bash
+./scripts/qa-fuzz.sh run --alphabet session-pointer --seeds 1..20 --target gtk,rune   # the smoke tier: Rune in sway
+./scripts/qa-fuzz.sh run --alphabet drag --seeds 1..20 --target gtk,rune --host session   # a survey of an offscreen alphabet
+```
+
+A summary whose Rune replays ran there says so in a `FUZZ hosts:` line, and
+keeps its artifacts under `<targets>-session`. The session host's own limits
+hold for its replays:
+
+- **The US layout only.** A `keymap` step for another layout fails there.
+- **No key during a drag.** wlroots' drag grab gives no client a key while a
+  compositor drag runs and forwards no modifier change, so an alphabet holds a
+  modifier from before the press and sends no key mid-drag; a scenario's `drag`
+  step is whole, press to release, so none falls inside one.
+- **One window.** The session host reads the run's window only. A launch, a
+  second window, a window switch, the portal and drags from another process
+  are not reached yet:
+  `docs/rune/parity/packages/F5.md` has the plan for them.
+- **Heavier replays.** A sway with software rendering and a lavapipe window
+  per Rune replay take more of the machine than an offscreen one, so a session
+  run is given fewer `--jobs`: "Tiers and budgets" below has what F5 measured.
 
 #### Tiers and budgets
 

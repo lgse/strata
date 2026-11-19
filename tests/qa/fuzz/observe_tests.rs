@@ -411,6 +411,7 @@ pub(super) fn stream(focused: &[&str]) -> Stream {
     Stream {
         header: Header {
             target: "gtk".to_owned(),
+            display: "x11".to_owned(),
             sequence: "fuzz-sample-v1-0000000000000007".to_owned(),
             alphabet: "sample".to_owned(),
             version: 1,

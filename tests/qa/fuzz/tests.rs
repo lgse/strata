@@ -37,6 +37,10 @@ use super::{
         an_alphabet_is_refused_for_what_a_replay_could_not_run,
         an_alphabet_s_version_is_pinned_to_what_its_seeds_write,
     },
+    host_tests::{
+        a_rune_replay_runs_on_the_session_host_where_its_alphabet_or_the_command_says,
+        a_session_host_run_names_its_host_and_keeps_its_own_folder,
+    },
     observe_tests::{
         a_field_is_named_by_its_path_and_an_entry_covers_what_is_below_it,
         a_replay_ends_where_the_application_leaves_the_fixture,
@@ -103,4 +107,6 @@ unit_tests! {
     each_target_is_held_to_itself_and_rune_to_the_first_gtk_replay_under_the_map,
     a_run_on_two_targets_names_the_replays_that_differ_and_keeps_its_own_folder,
     an_undo_then_a_redo_puts_the_tree_back_as_it_was_before_the_undo,
+    a_rune_replay_runs_on_the_session_host_where_its_alphabet_or_the_command_says,
+    a_session_host_run_names_its_host_and_keeps_its_own_folder,
 }

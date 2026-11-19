@@ -102,6 +102,27 @@ fn a_timeout_attached_on_the_owning_thread_is_waited_for_after_the_next_pump() {
     });
 }
 
+/// GLib does not wake a context's poll for a source its own owner attaches: a handler's
+/// source waits for the next pump, which needs a frame, until the app wakes the context.
+#[test]
+fn a_source_the_owning_thread_attaches_waits_until_the_context_is_woken() {
+    owned(|o| {
+        assert!(!o.glib.pump(BUDGET));
+        glib::idle_source_new(None, glib::Priority::DEFAULT, o.counting(1)).attach(Some(&o.context));
+        assert_eq!(
+            o.notified.recv_timeout(QUIET),
+            Err(RecvTimeoutError::Timeout),
+            "no notification for the owner's own source"
+        );
+
+        o.context.wakeup();
+        o.wait_for_a_notification();
+
+        assert!(o.glib.pump(BUDGET));
+        assert_eq!(o.ran(), 1);
+    });
+}
+
 #[test]
 fn an_idle_context_sends_no_notification_however_often_it_is_pumped() {
     owned(|o| {

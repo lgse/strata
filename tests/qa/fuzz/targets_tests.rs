@@ -4,6 +4,7 @@
 //! with what, and what a run on two targets says and keeps apart.
 
 use super::{
+    host::Host,
     observe_tests::stream,
     options::Options,
     replay::Stream,
@@ -153,7 +154,7 @@ pub(crate) fn a_run_on_two_targets_names_the_replays_that_differ_and_keeps_its_o
         1,
         2,
     );
-    let mut examined = Examined::new("sample", &sequence, &options.targets);
+    let mut examined = Examined::new("sample", &sequence, &options.targets, Host::Offscreen);
     examined.streams = vec![
         on("gtk", &["archive", "documents"]),
         on("gtk", &["archive", "documents"]),

@@ -1,0 +1,15 @@
+# The session-pointer alphabet's sequences parked against their findings
+# (docs/rune/parity/findings.md):
+#
+#   v<version>-<seed> <code> <issue>
+#
+# Each line is a finding's sequence shrunk GTK against Rune, or a smoke seed whole that meets
+# the same finding, named for the smoke seed that met it. Version 1 was F5's draft, never
+# merged; its one sequence here is not parked, and holds the fix of an undo that waited for
+# input on the session host.
+v2-0000000000000003 divergence lgse/strata#2629
+v2-0000000000000005 divergence lgse/strata#2629
+v2-0000000000000008 divergence lgse/strata#2629
+v2-0000000000000009 oracle lgse/strata#2552
+v2-000000000000000b divergence lgse/strata#2631
+v2-000000000000000e divergence lgse/strata#2630

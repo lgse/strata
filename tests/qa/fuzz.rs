@@ -32,6 +32,12 @@ pub(crate) mod generate;
 #[path = "fuzz/generate_tests.rs"]
 mod generate_tests;
 
+#[path = "fuzz/host.rs"]
+pub(crate) mod host;
+
+#[path = "fuzz/host_tests.rs"]
+mod host_tests;
+
 #[path = "fuzz/observe.rs"]
 pub(crate) mod observe;
 

@@ -17,6 +17,7 @@ use super::{
     command::rule_counts,
     compare::Divergence,
     corpus::Parked,
+    host::Host,
     observe::Outcome,
     options::{Command, Options},
     project::pattern_of,
@@ -26,7 +27,7 @@ use super::{
     shrink::{CONFIRMATIONS, Shrunk},
     targets::{Comparison, Targets},
 };
-use crate::REPOSITORY;
+use crate::{REPOSITORY, target::Target};
 
 /// What every line and file of a run that perturbs carries, so that a difference the
 /// harness put in is never read as the application's.
@@ -64,12 +65,12 @@ enum Verdict<'a> {
 }
 
 impl Examined {
-    pub(crate) fn new(area: &str, sequence: &Sequence, targets: &Targets) -> Self {
+    pub(crate) fn new(area: &str, sequence: &Sequence, targets: &Targets, host: Host) -> Self {
         Self {
             area: area.to_owned(),
             name: sequence.name.clone(),
             steps: sequence.steps.len(),
-            targets: targets.label(),
+            targets: label(targets, host),
             streams: Vec::new(),
             comparisons: Vec::new(),
             error: None,
@@ -203,9 +204,9 @@ pub(crate) struct Run {
     /// Which sequences: the alphabet and its versions, or the corpus.
     pub(crate) what: String,
     command: &'static str,
-    /// The folder under an area's artifacts that the run's sequences are kept in.
-    targets: String,
     differential: bool,
+    /// Whether Rune is among the targets, so that a host can be named.
+    on_rune: bool,
     header: Vec<String>,
     perturbed: bool,
     /// `replay --parked`: a survey of parked sequences, which fails only when it cannot run.
@@ -222,7 +223,8 @@ pub(crate) struct Run {
     /// apart from them those between two targets, which no mask may answer.
     fields: BTreeMap<String, usize>,
     fields_across: BTreeMap<String, usize>,
-    areas: BTreeSet<String>,
+    /// Each area replayed, and the folder under its artifacts its sequences are kept in.
+    areas: BTreeSet<(String, String)>,
     /// Observations that changed after their step's reply, and how long each such change
     /// was in coming after the read before it.
     late: usize,
@@ -271,8 +273,8 @@ impl Run {
                 Command::Shrink => "shrink",
                 _ => "",
             },
-            targets: options.targets.label(),
             differential: options.targets.is_differential(),
+            on_rune: options.targets.all().contains(&Target::Rune),
             header,
             perturbed: options.perturbation.is_some(),
             survey: options.parked,
@@ -298,6 +300,19 @@ impl Run {
             "PARKED {name}: {} {}, not replayed",
             parked.code, parked.issue
         );
+    }
+
+    /// Says which areas' Rune replays run on the session host, when any do: a line of the
+    /// header, so the summary repeats it.
+    pub(crate) fn hosts<'a>(&mut self, areas: impl IntoIterator<Item = (&'a str, Host)>) {
+        let session: BTreeSet<&str> = areas
+            .into_iter()
+            .filter(|(_, host)| *host == Host::Session)
+            .map(|(area, _)| area)
+            .collect();
+        if let Some(line) = hosts_line(&session, self.on_rune) {
+            self.header.push(line);
+        }
     }
 
     pub(crate) fn start(&self, sequences: usize) {
@@ -431,7 +446,8 @@ impl Run {
 
     fn count(&mut self, examined: &Examined) {
         self.sequences += 1;
-        self.areas.insert(examined.area.clone());
+        self.areas
+            .insert((examined.area.clone(), examined.targets.clone()));
         self.replays += examined.streams.len();
         let lengths = || {
             examined
@@ -567,7 +583,7 @@ impl Run {
         lines.extend(
             self.areas
                 .iter()
-                .map(|area| format!("FUZZ artifacts: {ARTIFACTS}/{area}/{}/", self.targets)),
+                .map(|(area, folder)| format!("FUZZ artifacts: {ARTIFACTS}/{area}/{folder}/")),
         );
         lines
     }
@@ -653,6 +669,26 @@ impl Run {
         }
         self.status()
     }
+}
+
+/// The folder under an area's artifacts: the targets, and `-session` when the Rune replays
+/// ran on the session host (`host.rs`).
+fn label(targets: &Targets, host: Host) -> String {
+    format!("{}{}", targets.label(), host.suffix(targets.all()))
+}
+
+/// `FUZZ hosts: …`, when a Rune replay runs on the session host; none otherwise, so the
+/// summaries of the offscreen host read as they did.
+pub(crate) fn hosts_line(session: &BTreeSet<&str>, on_rune: bool) -> Option<String> {
+    if session.is_empty() || !on_rune {
+        return None;
+    }
+    let areas: Vec<&str> = session.iter().copied().collect();
+    Some(format!(
+        "FUZZ hosts: rune on the session host, a real window in a private headless sway, for \
+         {}; gtk on Xvfb",
+        areas.join(", ")
+    ))
 }
 
 /// `target/qa-fuzz/<area>/<targets>/<sequence>`: a run on one target keeps its sequences
@@ -803,7 +839,7 @@ pub(crate) fn keep(examined: &Examined, evidence: &Evidence, keep_all: bool) -> 
 /// file, and gets no issue title: it is not the application's.
 pub(crate) fn shrunk(
     area: &str,
-    targets: &Targets,
+    (targets, host): (&Targets, Host),
     shrunk: &Shrunk,
     shortest: &Sequence,
     evidence: &Evidence,
@@ -835,7 +871,7 @@ pub(crate) fn shrunk(
     if let Some(title) = &title {
         println!("FUZZ title: {title}");
     }
-    let directory = artifacts(area, &targets.label(), &original.name);
+    let directory = artifacts(area, &label(targets, host), &original.name);
     let _ = fs::remove_dir_all(&directory);
     if fs::create_dir_all(&directory).is_err() {
         return;

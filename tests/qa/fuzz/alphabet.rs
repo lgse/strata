@@ -17,7 +17,7 @@ use std::{
 use serde::Deserialize;
 use serde_json::Value;
 
-use super::{DATA, generate::GENERATOR, observe::digest, sequence::Sequence};
+use super::{DATA, generate::GENERATOR, host::Host, observe::digest, sequence::Sequence};
 use crate::REPOSITORY;
 
 #[derive(Debug, Deserialize)]
@@ -31,6 +31,10 @@ pub(crate) struct Alphabet {
     pub(crate) about: String,
     /// The scenario header of every sequence, as JSON, without its `scenario` key.
     pub(crate) header: String,
+    /// Where its Rune replays run: `offscreen` by default, or `session` for an alphabet whose
+    /// actions need a compositor (`host.rs`).
+    #[serde(default)]
+    pub(crate) host: Host,
     #[serde(rename = "action")]
     pub(crate) actions: Vec<Action>,
 }
@@ -111,7 +115,9 @@ fn is_area(name: &str) -> bool {
 
 impl Alphabet {
     /// A digest of everything a seed's sequence depends on: the generator's version, the
-    /// header, and each action's name, weight, steps and choices, in the file's order.
+    /// header, and each action's name, weight, steps and choices, in the file's order; and
+    /// the host, when it is the session host, so that moving an alphabet to another host
+    /// raises its version and its parked sequences stay with the host they were seen on.
     /// Comments and `about` are not in it.
     pub(crate) fn digest(&self) -> String {
         let actions: Vec<Value> = self
@@ -126,11 +132,15 @@ impl Alphabet {
                 })
             })
             .collect();
-        digest(&serde_json::json!({
+        let mut pinned = serde_json::json!({
             "generator": GENERATOR,
             "header": self.header,
             "actions": actions,
-        }))
+        });
+        if self.host != Host::Offscreen {
+            pinned["host"] = Value::from(self.host.name());
+        }
+        digest(&pinned)
     }
 
     /// The line that pins this alphabet as it is.
