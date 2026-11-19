@@ -511,3 +511,39 @@ pub(crate) fn a_rule_that_names_what_rune_adds_excuses_only_those_elements() {
     // GTK's list holding the element is not Rune's adding it.
     assert_eq!(differs(json!(["Volume", "alpha"]), json!(["alpha"])), field);
 }
+
+/// Two rulings' `rune_adds` rules on one field take their elements out together: a list that
+/// adds what both allow is excused, and one that adds something neither names still differs.
+pub(crate) fn rune_adds_rules_of_two_rulings_take_their_elements_out_together() {
+    let two = [
+        r#"app.preview deviation lgse/strata#2606 {"rune_adds":["Volume"]}"#,
+        r#"app.preview oracle lgse/strata#2612 {"rune_adds":["Album art","Audio spectrum"]}"#,
+    ];
+    let both = Ignored {
+        rules: rules::parse(&two.join("\n"), &exceptions()).expect("both rules should parse"),
+        masks: Vec::new(),
+    };
+    let differs = |rune: Value| {
+        let preview = |names: Value| observed(json!({ "preview": names }));
+        let (mut left, mut right) = (stream(&["archive"]), stream(&["archive"]));
+        right.header.target = "rune".to_owned();
+        left.observations[0].value = preview(json!(["Mute/unmute", "tone"]));
+        right.observations[0].value = preview(rune);
+        compare(&left, &right, &both).is_some()
+    };
+    assert!(!differs(json!([
+        "Album art",
+        "Mute/unmute",
+        "Volume",
+        "tone",
+        "Audio spectrum"
+    ])));
+    assert!(!differs(json!(["Mute/unmute", "Volume", "tone"])));
+    assert!(differs(json!([
+        "Album art",
+        "Mute/unmute",
+        "Volume",
+        "tone",
+        "Lyrics"
+    ])));
+}

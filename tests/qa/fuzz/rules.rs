@@ -137,14 +137,26 @@ impl Ignored {
     }
 
     /// Whether `difference` is left out: its field is covered, or a rule names its values.
-    /// `gtk_left` says which side GTK's stream is, when the comparison knows.
+    /// The elements the field's `rune_adds` rules name are taken out together, so a list that
+    /// adds what two rulings allow is GTK's with both taken out. `gtk_left` says which side
+    /// GTK's stream is, when the comparison knows.
     pub(crate) fn excuses(&self, difference: &Difference, gtk_left: Option<bool>) -> bool {
+        let on_field = |entry: &&Entry| project::covers(&entry.field, &difference.field);
+        let added: Vec<Value> = self
+            .rules
+            .iter()
+            .filter(on_field)
+            .filter_map(|entry| match &entry.only {
+                Some(Only::RuneAdds(added)) => Some(added.iter().cloned()),
+                _ => None,
+            })
+            .flatten()
+            .collect();
+        let together = (!added.is_empty()).then_some(Only::RuneAdds(added));
         self.covers(&difference.field)
-            || self.rules.iter().any(|entry| {
-                entry.only.as_ref().is_some_and(|only| {
-                    project::covers(&entry.field, &difference.field)
-                        && only.excuses(difference, gtk_left)
-                })
+            || together.is_some_and(|only| only.excuses(difference, gtk_left))
+            || self.rules.iter().filter(on_field).any(|entry| {
+                matches!(&entry.only, Some(only @ Only::Values { .. }) if only.excuses(difference, gtk_left))
             })
     }
 }
