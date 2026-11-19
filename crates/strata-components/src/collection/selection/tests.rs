@@ -556,6 +556,18 @@ fn invert_flips_every_listed_entry() {
 }
 
 #[test]
+fn invert_over_a_load_s_pick_selects_every_entry() {
+    // A load's pick is no fill: 10xer Ctrl+R straight after a load selects every entry, as
+    // the shared browser's `replace_visible` does (lgse/strata#2625: seed 0x20 of `tenxer v7`, F4's long run).
+    let s = listing(4);
+    let mut sel = Selection::new();
+    sel.auto_select(&s, 0);
+    assert!(sel.invert(&s).selection);
+    assert_eq!(selected(&sel, &s), [0, 1, 2, 3]);
+    assert!(!sel.is_provisional());
+}
+
+#[test]
 fn remove_range_unselects_from_the_anchor() {
     // integration/10xer-mode: `v` starts a range from the cursor and `V` starts an unselect range
     let s = listing(8);

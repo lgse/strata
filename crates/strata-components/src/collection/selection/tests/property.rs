@@ -239,6 +239,9 @@ impl Model {
 
     fn invert(&mut self, s: &ListSource) {
         self.end_gesture();
+        if self.provisional {
+            self.sel.clear();
+        }
         self.provisional = false;
         self.sel = listed(s).filter(|id| !self.sel.contains(id)).collect();
     }
