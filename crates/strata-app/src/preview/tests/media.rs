@@ -317,3 +317,85 @@ fn a_gif_plays_in_the_plain_bar_and_loops() {
         },
     );
 }
+
+/// Ten seconds of sound and no picture.
+fn ten_seconds_of_sound(_: SandboxedMedia, start_tick: u32) -> Result<Session, String> {
+    fixtures::stream(Header {
+        width: 0,
+        height: 0,
+        audio: true,
+        duration_us: 10_000_000,
+        start_tick,
+    })
+}
+
+/// With the keyboard in the drawer, Strata's audio player takes the player's keys, Left and
+/// Right seeking, where a GIF's overlay takes none and Left goes back to the listing.
+#[test]
+fn an_audio_player_keeps_left_and_right_and_a_gif_gives_left_back() {
+    hosted(
+        MODULE,
+        "media::an_audio_player_keeps_left_and_right_and_a_gif_gives_left_back",
+        |mut host| {
+            decode_with(ten_seconds_of_sound);
+            let files = [("tone.wav", MP4), ("spin.gif", MP4)];
+            let (provider, _folder) = open(&mut host, &files, "tone.wav", "audio/vnd.wave");
+            let known = |s: &MediaState| s.duration() == Some(Duration::from_secs(10));
+            shows(&mut host, known, "the audio's length");
+            press(&mut host, Key::Right, Mods::default());
+            let in_player = |host: &mut Offscreen| {
+                focused_key(host).is_some_and(|key| key.starts_with(MEDIA_KEY))
+            };
+            assert!(
+                in_player(&mut host),
+                "Right gives the audio player the keyboard"
+            );
+            // Left at the start seeks nowhere, and the player still keeps it.
+            press(&mut host, Key::Left, Mods::default());
+            assert!(in_player(&mut host), "Left at 0:00 stays in the player");
+            press(&mut host, Key::Right, Mods::default());
+            let ahead = |s: &MediaState| s.position() >= Duration::from_secs(5);
+            shows(&mut host, ahead, "Right seeks forward");
+            press(&mut host, Key::Left, Mods::default());
+            shows(
+                &mut host,
+                |s| s.position() < Duration::from_secs(5),
+                "Left seeks back",
+            );
+            assert!(in_player(&mut host), "the keyboard stays in the player");
+
+            press(&mut host, Key::Left, Mods::default());
+            press(&mut host, Key::Escape, Mods::default());
+            focus_view(&mut host);
+            decode_with(|_, start_tick| {
+                fixtures::stream(Header {
+                    width: 16,
+                    height: 16,
+                    audio: false,
+                    duration_us: 500_000,
+                    start_tick,
+                })
+            });
+            let folder = provider
+                .request(0)
+                .entry
+                .location
+                .native_path()
+                .map(Path::to_path_buf);
+            let gif = folder.expect("a local file").with_file_name("spin.gif");
+            select(&mut host, &Location::local(&gif));
+            space(&mut host);
+            provider.wait_for(&mut host, 1);
+            provider.answer_as(1, "image/gif", sandboxed(gif));
+            let animation = |s: &MediaState| s.clip().kind == MediaKind::Animation;
+            shows(&mut host, animation, "the GIF");
+            press(&mut host, Key::Right, Mods::default());
+            assert!(
+                in_player(&mut host),
+                "Right gives the GIF's frame the keyboard"
+            );
+            press(&mut host, Key::Left, Mods::default());
+            assert!(!in_player(&mut host), "Left goes back to the listing");
+        },
+    );
+}
