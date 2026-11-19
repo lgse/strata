@@ -92,26 +92,18 @@ impl NavigationState {
     }
 
     /// Directories qualify for mtime only; directory size stays unknown by design.
-    pub fn column_unknown_sort_metadata(
+    pub(crate) fn column_unknown_sort_metadata(
         &self,
         depth: usize,
         key: SortKey,
-    ) -> Option<Vec<(usize, Location)>> {
-        if !key.uses_file_stat() && !key.uses_media_metadata() {
-            return None;
-        }
-        let column = self.columns.get(depth)?;
-        let gap: Vec<(usize, Location)> = column
-            .entries
-            .iter()
-            .enumerate()
-            .filter(|(_, entry)| sort_metadata_missing(key, entry))
-            .map(|(position, entry)| (position, entry.location.clone()))
-            .collect();
-        if gap.is_empty() {
-            return None;
-        }
-        Some(gap)
+    ) -> impl Iterator<Item = (usize, &Location)> {
+        self.columns
+            .get(depth)
+            .filter(move |_| key.uses_file_stat() || key.uses_media_metadata())
+            .into_iter()
+            .flat_map(|column| column.entries.iter().enumerate())
+            .filter(move |(_, entry)| sort_metadata_missing(key, entry))
+            .map(|(position, entry)| (position, &entry.location))
     }
 }
 

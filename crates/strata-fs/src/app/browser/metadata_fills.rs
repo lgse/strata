@@ -6,8 +6,8 @@ use std::{
 };
 
 use crate::{
-    app::navigation::EntrySplice,
-    model::{Location, ViewPreferences},
+    app::navigation::{EntrySplice, NavigationState},
+    model::{Location, SortKey, ViewPreferences},
     services::{MetadataOutcome, MetadataRequest, RequestId},
 };
 
@@ -18,6 +18,35 @@ use super::{
 };
 
 const MEDIA_SORT_BATCH_SIZE: usize = 256;
+
+pub(super) struct SortFillBatch {
+    locations: Vec<Location>,
+    remaining: usize,
+}
+
+impl SortFillBatch {
+    pub(super) fn new(state: &NavigationState, depth: usize, key: SortKey) -> Self {
+        let mut targets = state.column_unknown_sort_metadata(depth, key);
+        let limit = if key.uses_media_metadata() {
+            MEDIA_SORT_BATCH_SIZE
+        } else {
+            usize::MAX
+        };
+        let locations: Vec<_> = targets
+            .by_ref()
+            .take(limit)
+            .map(|(_, location)| location.clone())
+            .collect();
+        Self {
+            remaining: locations.len() + targets.count(),
+            locations,
+        }
+    }
+
+    pub(super) fn is_empty(&self) -> bool {
+        self.locations.is_empty()
+    }
+}
 
 impl Browser {
     pub fn request_metadata_fill(
@@ -104,11 +133,7 @@ impl Browser {
         });
     }
 
-    pub(super) fn request_sort_fill(
-        self: &Rc<Self>,
-        pass: SortPass,
-        targets: Vec<(usize, Location)>,
-    ) {
+    pub(super) fn request_sort_fill(self: &Rc<Self>, pass: SortPass, batch: SortFillBatch) {
         let SortPass {
             depth,
             generation,
@@ -126,13 +151,8 @@ impl Browser {
             .uses_media_metadata()
             .then(|| MediaSortFill {
                 revision: self.sort_resync.media_revision(depth, directory_request),
-                remaining_before: targets.len(),
+                remaining_before: batch.remaining,
             });
-        let limit = if media.is_some() {
-            MEDIA_SORT_BATCH_SIZE
-        } else {
-            targets.len()
-        };
         let fill_request = self.new_request_id();
         self.sort_awaiting_fill.borrow_mut().replace(SortFill {
             generation,
@@ -152,11 +172,7 @@ impl Browser {
         let handle = self.source.fill_metadata(
             MetadataRequest {
                 id: fill_request,
-                entries: targets
-                    .into_iter()
-                    .take(limit)
-                    .map(|(_, location)| location)
-                    .collect(),
+                entries: batch.locations,
                 full: true,
                 include_icon_details: media.is_some(),
                 time_budget: DIRECTORY_LOAD_TIME_BUDGET,
@@ -270,7 +286,7 @@ impl Browser {
             .state
             .borrow()
             .column_unknown_sort_metadata(fill.depth, fill.preferences.sort_key)
-            .map_or(0, |targets| targets.len());
+            .count();
         if remaining > 0 && remaining < remaining_before {
             self.schedule_media_sort(fill.depth);
         }
@@ -335,6 +351,7 @@ impl Browser {
             };
             let needs = state
                 .column_unknown_sort_metadata(depth, preferences.sort_key)
+                .next()
                 .is_some();
             (needs, preferences)
         };
@@ -346,18 +363,14 @@ impl Browser {
             return;
         }
         let generation = self.begin_sort(depth);
-        let targets = self
-            .state
-            .borrow()
-            .column_unknown_sort_metadata(depth, preferences.sort_key)
-            .unwrap_or_default();
+        let batch = SortFillBatch::new(&self.state.borrow(), depth, preferences.sort_key);
         let pass = SortPass {
             depth,
             generation,
             origin: SortOrigin::Followed,
             preferences,
         };
-        self.request_sort_fill(pass, targets);
+        self.request_sort_fill(pass, batch);
     }
 
     pub(super) fn flush_metadata_fills(self: &Rc<Self>) {

@@ -4,7 +4,7 @@ use std::{rc::Rc, time::Duration};
 
 use crate::model::{Location, SortDirection, SortKey, ViewPreferences};
 
-use super::metadata_fills::SortPass;
+use super::metadata_fills::{SortFillBatch, SortPass};
 use super::{Browser, BrowserEvent, PublicationPlan, PublishTerminal, SortOrigin};
 
 impl Browser {
@@ -308,10 +308,8 @@ impl Browser {
             }
             // Size/date sorts need the metadata streaming enumeration skipped:
             // fill the whole column first instead of sorting placeholders.
-            let targets = state
-                .column_unknown_sort_metadata(depth, preferences.sort_key)
-                .unwrap_or_default();
-            if !targets.is_empty() {
+            let batch = SortFillBatch::new(&state, depth, preferences.sort_key);
+            if !batch.is_empty() {
                 drop(state);
                 let pass = SortPass {
                     depth,
@@ -319,7 +317,7 @@ impl Browser {
                     origin,
                     preferences,
                 };
-                self.request_sort_fill(pass, targets);
+                self.request_sort_fill(pass, batch);
                 return;
             }
             self.sort_resync.note_attempt(origin, depth, preferences);

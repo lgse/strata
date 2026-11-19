@@ -157,6 +157,7 @@ impl Browser {
             .state
             .borrow()
             .column_unknown_sort_metadata(task.depth, current.sort_key)
+            .next()
             .is_some()
         {
             self.finish_sorted_load(task);
