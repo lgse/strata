@@ -330,7 +330,8 @@ fn ten_seconds_of_sound(_: SandboxedMedia, start_tick: u32) -> Result<Session, S
 }
 
 /// With the keyboard in the drawer, Strata's audio player takes the player's keys, Left and
-/// Right seeking, where a GIF's overlay takes none and Left goes back to the listing.
+/// Right seeking, where a GIF's overlay takes none: Left moves to its play toggle, and a second
+/// Left goes back to the listing.
 #[test]
 fn an_audio_player_keeps_left_and_right_and_a_gif_gives_left_back() {
     hosted(
@@ -395,7 +396,17 @@ fn an_audio_player_keeps_left_and_right_and_a_gif_gives_left_back() {
                 "Right gives the GIF's frame the keyboard"
             );
             press(&mut host, Key::Left, Mods::default());
-            assert!(!in_player(&mut host), "Left goes back to the listing");
+            let play = format!("{MEDIA_KEY}-play");
+            assert_eq!(
+                focused_key(&mut host).as_deref(),
+                Some(play.as_str()),
+                "Left moves to the play toggle, as GTK's directional focus does"
+            );
+            press(&mut host, Key::Left, Mods::default());
+            assert!(
+                !in_player(&mut host),
+                "a second Left goes back to the listing"
+            );
         },
     );
 }
