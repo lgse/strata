@@ -851,6 +851,7 @@ fn duration_sort_waits_for_media_and_skips_unrelated_rows() {
         column_names(&browser, 0),
         ["z-short.wav", "c-middle.flac", "a-long.mp4", "b-notes.txt"]
     );
+    drain_main_context();
 }
 
 #[test]
@@ -902,6 +903,7 @@ fn media_sort_retries_after_a_partial_fill_and_ignores_a_replaced_file() {
         outcome: MetadataOutcome::Complete,
     });
     assert_eq!(column_names(&browser, 0), ["a-long.mp4", "z-short.wav"]);
+    drain_main_context();
 }
 
 fn await_media_fill(
@@ -967,6 +969,7 @@ fn media_refresh_survives_a_sort_in_another_column() {
         ["z-short.wav", "a-long.mp4", "b-last.wav"]
     );
     assert_eq!(column_names(&browser, 1), ["z-short.wav", "a-long.mp4"]);
+    drain_main_context();
 }
 
 fn duration_update(name: &str, seconds: u64) -> MetadataUpdate {
