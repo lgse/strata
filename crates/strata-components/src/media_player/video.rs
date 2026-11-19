@@ -176,8 +176,12 @@ fn frame<S: 'static>(
                 commit_after(s, access, &emit, tx);
             }
         })
+        // Strata's plain media overlay takes none of the player's keys: Left leaves it.
         .on_key(move |s: &mut S, k: &rune::KeyEvent, tx: &mut Tx| {
             let st = access(s);
+            if st.clip().kind != MediaKind::Video {
+                return false;
+            }
             let Some(command) = st.keys().focused_command(k, tx) else {
                 return false;
             };

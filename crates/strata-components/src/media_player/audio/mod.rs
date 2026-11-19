@@ -45,6 +45,7 @@ pub(crate) fn audio<S: 'static>(
 ) -> El {
     let k = &look.kit;
     let p = st.plan();
+    let keys_emit = emit.clone();
     let fixed = fixed_height(look);
     let gap = look.space.lg;
     let tags = st.tags();
@@ -128,8 +129,22 @@ pub(crate) fn audio<S: 'static>(
             .children(art)
             .child(panel)
     };
+    // The view takes the player's keys when it has the keyboard, as Strata's drawer content
+    // does for audio (`media_key_command`): Right from the listing lands here.
     col()
         .key(key.to_owned())
+        .focusable(true)
+        .on_key(move |s: &mut S, k: &rune::KeyEvent, tx: &mut Tx| {
+            let st = access(s);
+            let Some(command) = st.keys().focused_command(k, tx) else {
+                return false;
+            };
+            if !st.command(command) {
+                return false;
+            }
+            commit_after(s, access, &keys_emit, tx);
+            true
+        })
         .w_full()
         .h_full()
         .min_h(0.0)
