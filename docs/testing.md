@@ -973,7 +973,7 @@ scenario folder, a work package, a gate of the slice, or `all`:
 ./scripts/qa-parity.sh A7 --parallel      # a survey: the selection's parallel runs from the shared file, on Rune
 ./scripts/qa-parity.sh g2 --scenario shift-click-range   # only that scenario's runs of the selection
 ./scripts/qa-parity.sh mutations          # the Rune target's mutation patches
-./scripts/qa-parity.sh mutations shift-click-range   # only the patches named: one proven alone
+./scripts/qa-parity.sh mutations shift-click-range   # only the patches named (a scenario: each of its patches): one proven alone
 ./scripts/qa-parity.sh gtk-mutations      # the GTK application's, less the ledger's stale ones
 ```
 
@@ -1044,7 +1044,12 @@ GTK suite with `./scripts/qa.sh`, and `./scripts/quality.sh test`
 `mutations` proves the Rune target's runs can fail, as `scripts/qa-mutation.sh`
 does for the GTK application. Each patch under `tests/qa/parity/mutations/`
 breaks one behaviour of `crates/strata-app` and is named for the scenario that
-must catch it, `<scenario>.patch`. For each, the scenario's runs on the Rune
+must catch it, `<scenario>.patch`. A scenario that catches the breaking of more
+than one behaviour may hold several patches, by the owner's ruling of 2026-11-19:
+each further one is `<scenario>.<label>.patch`, the label lowercase words joined
+by hyphens, as `pdf-zoom-keeps-text-size.window-wheel.patch` beside
+`pdf-zoom-keeps-text-size.patch`. Each is proven on its own, applied alone. For
+each, the scenario's runs on the Rune
 target must pass unpatched, and with the patch applied at least one must fail a
 step and none fail to run. Those runs are the scenario's required runs; a
 twin's are the runs that stand in for its original's parallel ones, and its
@@ -1057,9 +1062,11 @@ in any folder. Add a patch when an area gains its first required runs and with
 every twin, and prove it once, alone, when it is written or changed, when it
 stops applying, or when its runs are suspected of passing for the wrong
 reason (`docs/rune/parity/README.md`, "When a mutation run is right"):
-`./scripts/qa-parity.sh mutations <patch>` runs only the patches it names, each
-by its scenario, `<scenario>.patch` or its path, and refuses a name that is no
-patch before anything runs. With no name it runs every patch.
+`./scripts/qa-parity.sh mutations <patch>` runs only the patches it names, and
+refuses a name that is no patch before anything runs: a scenario's bare name
+selects every patch of it, and `<scenario>.<label>`, a file name
+(`<scenario>.patch`, `<scenario>.<label>.patch`) or a path that patch alone.
+With no name it runs every patch.
 
 #### The ledger
 
@@ -1889,6 +1896,10 @@ value against one of Rune's, as `app.dialog`'s rules do for a popover's name.
 element equal to one of the values out of it leaves GTK's list, order included, so a
 name Rune adds by a ruling is left out and every other name still counts, as
 `app.preview`'s rule for the volume slider's "Volume" does (lgse/strata#2606).
+The `rune_adds` rules on one field are taken out together, so a list that adds
+what two rulings allow, as an audio player's "Volume" (lgse/strata#2606) and its
+"Album art" (lgse/strata#2612), is excused, and a name none of them names still
+counts.
 
 A field is named as an observation names it: `app.focused`,
 `app.panes[].selected` with `[]` for every element of a list,

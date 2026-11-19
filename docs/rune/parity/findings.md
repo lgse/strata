@@ -2284,17 +2284,17 @@ sequence only together with the alphabet's version, so the version is part of th
 - **Concerns:** 12 of 20 smoke seeds of `archives` v1 (never merged), each first differing
   there on a preview opened by `Space`, `Right` or `l`, and seed `0x07` of v3 by `Right` on
   `packed (1).tar`.
-  - *The PDF (A16's), for the owner:* GTK presents the page as one `image`, "PDF page text".
-    Rune's C12 `PdfView` adds the document's name, "PDF document" (`PdfLabels::document`), each
-    page's, "Page 1 of 1" (`PdfLabels::page`), and the page's text layer, its text as one
-    string ("Hello PDF text layer\nsecond line here" for `tests/fixtures/documents/text.pdf`).
-    Seen in A16's `media` fuzz alphabet, version 2, on every PDF opened (`app.preview`).
-    Whether Rune keeps the three, a `deviation` as for #2557 and #2558, or presents the page
-    as GTK does, is the owner's question in [`owner.md`](owner.md#a16-media-pdf-and-model-viewers);
-    the `media` alphabet holds no PDF meanwhile, and no scenario predicate reads them.
+  - *The PDF (A16's), a ruled `deviation`:* GTK presents the page as one `image`, "PDF page
+    text". Rune's C12 `PdfView` adds the document's name, "PDF document"
+    (`PdfLabels::document`), each page's, "Page 1 of 1" (`PdfLabels::page`), and the page's
+    text layer, its text as one string ("Hello PDF text layer\nsecond line here" for
+    `tests/fixtures/documents/text.pdf`). Seen in A16's `media` fuzz alphabet, version 2, on
+    every PDF opened (`app.preview`). The owner ruled on 2026-11-19 that Rune keeps the three,
+    as for #2557, #2558 and #2606 ([`owner.md`](owner.md#ruled)). The fuzz map's `rune_adds`
+    rule names exactly those three, and the `media` alphabet, version 7, opens PDFs again.
 - **State:** open. A13's rows, crumbs and `Unlock` are fixed. Its password field is open, in
   [`A13.md`](packages/A13.md#open). The header is fixed by #2548, and the text preview is
-  #2558's. The PDF's names wait on the owner.
+  #2558's. The PDF's names are a ruled `deviation`, 2026-11-19.
   The same run found one visible difference, which #2561 fixed: until an archive opens, the
   header named its kind `ZIP` (`extension_label`, `crates/strata-app/src/preview/load.rs`)
   where GTK writes the extension as it is, `zip`. `archives` v5 opens the archive tree, and
@@ -2793,18 +2793,27 @@ sequence only together with the alphabet's version, so the version is part of th
   play to the end: `0:02` on GTK, `0:00` on Rune). Version 6 sends no Left while a video shows.
 - **State:** open, set aside: Rune is right. A fix belongs on `main`.
 
-### #2612: the audio player keeps its art and spectrum where GTK's drops them
+### #2612: GTK's QA snapshot reads the audio player's art and spectrum unnamed
 
-- **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2612), filed on
-  2026-11-18 as the finding's reference and closed at once: its state is kept here.
-- **What differs:** in the fuzz window's drawer, GTK's audio layout gives the art and the
-  spectrum no height and hides them (`allocate_at`, `src/ui/preview/audio/layout.rs`), so
-  neither "Album art" nor "Audio spectrum" is in its tree; C13 keeps both
-  (`crates/strata-components/src/media_player/audio/`). Both drop the spectrum, then the art,
-  in a short pane, so the thresholds or the heights they are measured against differ.
-- **Concerns:** [A16](packages/A16.md)'s `media` alphabet, version 1 (`tone.wav`). Version 2 and
-  later hold no audio file.
-- **State:** open, A16's ([`A16.md`](packages/A16.md#open)).
+- **Code:** `oracle`, recoded from `divergence` on 2026-11-19: GTK is at fault.
+  [Issue](https://github.com/lgse/strata/issues/2612), filed on 2026-11-18 as the finding's
+  reference and closed at once: its state is kept here.
+- **What differs:** in the fuzz window's drawer, GTK's `app.preview` holds neither "Album art"
+  nor "Audio spectrum", and Rune's C13 holds both
+  (`crates/strata-components/src/media_player/audio/`). It was first read as GTK's layout
+  hiding them (`src/ui/preview/audio/layout.rs`).
+- **Why GTK is at fault:** GTK's layout does show both there: a probe in the same window
+  allocated the art 330 by 254 and the spectrum 144 high. But GTK names them with a bare
+  `update_property(Property::Label(…))` (`src/ui/preview/audio/artwork.rs` and `spectrum.rs`)
+  rather than `crate::ui::accessibility::set_label`, and GTK has no public getter for an
+  accessible label, so its QA harness reads only the names that helper records
+  (`src/ui/accessibility/qa.rs`, `src/qa/targets/naming.rs`). Both widgets read unnamed, and
+  `app.preview` leaves unnamed nodes out. Rune names them as GTK means to, so Rune is right; the
+  fix, naming them through the helper, belongs on `main`.
+- **Concerns:** [A16](packages/A16.md)'s `media` alphabet, version 1 (`tone.wav`). Version 7
+  holds the WAV again, and the fuzz map's `oracle` rule leaves exactly the two names out of
+  `app.preview`.
+- **State:** open, set aside: Rune is right. A fix belongs on `main`.
 
 ### #2613: a GIF's player shows the whole media bar where GTK's has only Play/Pause
 
@@ -2815,6 +2824,13 @@ sequence only together with the alphabet's version, so the version is part of th
   `src/ui/preview/media_controls.rs`). C13's plain bar adds the "Video frame" button, the
   title, the time (`0:00/0:30` for a one-second GIF), "Playback position", "Mute/unmute" and
   "Volume".
-- **Concerns:** [A16](packages/A16.md)'s `media` alphabet, version 1 (`spin.gif`). Version 2 and
-  later hold no GIF.
-- **State:** open, A16's ([`A16.md`](packages/A16.md#open)).
+- **Concerns:** [A16](packages/A16.md)'s `media` alphabet, version 1 (`spin.gif`). Version 7
+  holds the GIF again, and agrees with GTK.
+- **State:** fixed in [A16](packages/A16.md)'s Slice 4
+  ([#2614](https://github.com/lgse/strata/pull/2614)): C13's `MediaKind::Animation` is the
+  frame and its play toggle alone, plain media show no title and an unnamed frame, and the host
+  opens a GIF as an animation (`crates/strata-app/src/preview/media/mod.rs`). As GTK's
+  overlay takes none of the player's keys, Left from a GIF's frame moves to its play toggle
+  and the next Left leaves; the audio view takes the player's keys, as GTK's drawer does.
+  Covered by `preview::tests::media::a_gif_plays_in_the_plain_bar_and_loops` and
+  `an_audio_player_keeps_left_and_right_and_a_gif_gives_left_back`.

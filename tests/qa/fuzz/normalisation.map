@@ -13,6 +13,8 @@
 # A rule may name the values it excuses after its issue, {"gtk":<value>,"rune":[<value>, …]}:
 # it then leaves out only GTK's value against one of Rune's on its field. On a list,
 # {"rune_adds":[<value>, …]} leaves out only a Rune list that is GTK's with those elements added.
+# The rune_adds rules on one field are taken out together, so a list that adds what two
+# rulings allow, as an audio player's "Volume" and "Album art", is GTK's with both taken out.
 # A plain popover is a named dialog on Rune and an unnamed panel on GTK, by the owner's ruling
 # of 2026-11-13 (owner.md): only its name against GTK's none is excused, never a real dialog.
 # GTK reports `null` for its popover whether it is open or not, so this rule cannot catch a

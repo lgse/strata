@@ -636,25 +636,6 @@ Found by the package's agent, 2026-11-12, against A1's five items above.
    change in `roots.rs` by hand (`docs/rune/shared-state.md`, "Merging from `main`"). Should
    the rule move to a shared crate later, with GTK calling it? Source: A10, 2026-11-14.
 
-### A16: Media, PDF and model viewers
-
-- **Does Rune keep the PDF's names GTK lacks?** In the preview drawer GTK presents a PDF's page
-  as one `image`, "PDF page text". Rune's C12 `PdfView` adds "PDF document", "Page 1 of 1" and
-  the page's text layer, its text as one string (finding
-  [#2560](https://github.com/lgse/strata/issues/2560), its PDF facet). The two readings: a ruled
-  `deviation`, as for [#2557](https://github.com/lgse/strata/issues/2557) and
-  [#2558](https://github.com/lgse/strata/issues/2558), and the `media` fuzz alphabet opens PDFs
-  again under a `rune_adds` rule; or Rune presents the page as GTK does. Default in force: the
-  `media` alphabet holds no PDF, and no scenario predicate reads the three. Source:
-  [A16](packages/A16.md)'s Slice 4, 2026-11-18.
-- **May a scenario hold two Rune mutation patches?** A patch is named for its scenario,
-  `<scenario>.patch`, and `pdf-zoom-keeps-text-size`'s is [A11](packages/A11.md)'s, which breaks
-  10xer's `i`. No other scenario that is required on Rune turns the window's Ctrl+wheel, so
-  A16's zoom wheel has no QA mutation of its own. Default in force: the wheel's own tests
-  (`appearance/tests/wheel.rs`: three of five fail with the wheel's claim taken out) and the
-  `media` alphabet's `window-wheel-text-size` action stand for it. Source:
-  [A16](packages/A16.md)'s Slice 4, 2026-11-18.
-
 ### Packages added later
 
 - **A branch name for a package with no archived issue.** Branch names keep the package's
@@ -864,6 +845,25 @@ Rulings of the owner on the parity work, oldest first.
   [#2558](https://github.com/lgse/strata/issues/2558)'s body names. A run or a fuzz step that
   reads it cites this ruling. Built in [A16](packages/A16.md)'s Slice 3
   ([#2599](https://github.com/lgse/strata/pull/2599)). Source: the owner, 2026-11-18, through
+  the coordinator.
+- **2026-11-19: the PDF view keeps the names GTK lacks**, a ruled `deviation` (finding
+  [#2560](https://github.com/lgse/strata/issues/2560), its PDF facet; A16's item "Does Rune keep
+  the PDF's names GTK lacks?"). In the preview drawer GTK presents a PDF's page as one `image`,
+  "PDF page text"; Rune's C12 `PdfView` also names "PDF document", each page ("Page 1 of 1")
+  and the page's text layer, as for [#2557](https://github.com/lgse/strata/issues/2557),
+  [#2558](https://github.com/lgse/strata/issues/2558) and
+  [#2606](https://github.com/lgse/strata/issues/2606). The fuzz map's `rune_adds` rule names
+  exactly those three of the fixture's PDF, and the `media` alphabet opens PDFs again, with
+  their zoom, its reset and the window's wheel over them. Built in [A16](packages/A16.md)'s
+  Slice 4 ([#2614](https://github.com/lgse/strata/pull/2614)). Source: the owner, 2026-11-19,
+  through the coordinator.
+- **2026-11-19: a scenario may hold several Rune mutation patches** (A16's item "May a scenario
+  hold two Rune mutation patches?"). A patch is `<scenario>.patch` or
+  `<scenario>.<label>.patch`, the label lowercase words joined by hyphens; each is proven on
+  its own by the scenario's runs, and `qa-parity.sh mutations <scenario>` runs every patch of
+  it. `pdf-zoom-keeps-text-size` holds [A11](packages/A11.md)'s patch and A16's
+  `window-wheel` one. Built in [A16](packages/A16.md)'s Slice 4
+  ([#2614](https://github.com/lgse/strata/pull/2614)). Source: the owner, 2026-11-19, through
   the coordinator.
 
 ## Housekeeping
