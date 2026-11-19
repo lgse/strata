@@ -65,14 +65,16 @@ def malformed(available: list[str]) -> list[str]:
     """What is wrong with the patches' names: a label is lowercase words joined by hyphens,
     after one dot."""
 
-    problems = []
-    for patch in available:
-        scenario, dot, label = patch.partition(".")
-        if not scenario or (dot and not LABEL.fullmatch(label)):
-            problems.append(f"{patch}.patch is named neither <scenario>.patch nor "
-                            "<scenario>.<label>.patch, a label being lowercase words joined by "
-                            "hyphens")
-    return problems
+    return [f"{patch}.patch is named neither <scenario>.patch nor <scenario>.<label>.patch, a "
+            "label being lowercase words joined by hyphens"
+            for patch in available if not well_named(patch)]
+
+
+def well_named(patch: str) -> bool:
+    """Whether a patch's name is `<scenario>` or `<scenario>.<label>`."""
+
+    scenario, dot, label = patch.partition(".")
+    return bool(scenario) and (not dot or LABEL.fullmatch(label) is not None)
 
 
 def in_mutations(name: str) -> bool:
@@ -96,10 +98,7 @@ def chosen(names: list[str], available: list[str]) -> tuple[list[str], list[str]
         return list(available), []
     picked, problems = [], []
     for name in names:
-        stem = Path(name).name.removesuffix(".patch")
-        alone = name.endswith(".patch") or "/" in name or "." in stem
-        selected = ([stem] if stem in available else []) if alone else [
-            patch for patch in available if scenario_of(patch) == stem]
+        selected = selection(name, available)
         if not in_mutations(name):
             problems.append(f"{name!r} is no Rune mutation patch: a path names a patch under "
                             f"{MUTATIONS.relative_to(REPOSITORY)}")
@@ -109,6 +108,22 @@ def chosen(names: list[str], available: list[str]) -> tuple[list[str], list[str]
         else:
             picked += [patch for patch in selected if patch not in picked]
     return picked, problems
+
+
+def selection(name: str, available: list[str]) -> list[str]:
+    """The patches one name selects: a scenario's bare name every patch of it; a file name, a
+    path or a labelled patch's bare name that patch alone."""
+
+    stem = Path(name).name.removesuffix(".patch")
+    if names_one_patch(name, stem):
+        return [stem] if stem in available else []
+    return [patch for patch in available if scenario_of(patch) == stem]
+
+
+def names_one_patch(name: str, stem: str) -> bool:
+    """Whether `name` is a patch's file name or path, or a labelled patch's bare name."""
+
+    return name.endswith(".patch") or "/" in name or "." in stem
 
 
 def guards(scenario: str, ledger: dict) -> list[str]:
