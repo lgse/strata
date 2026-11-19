@@ -111,15 +111,23 @@ fn tenxer_stage(app: &mut App, call: &Call<'_>, tx: &mut Tx) -> Outcome {
         cancel_chord(app);
         return Outcome::Declined;
     }
-    window_or_chord(app, press, tx)
+    window_or_chord(app, press, &at, tx)
         .or_else(|| chrome_or_escape(app, press, &at, tx))
         .or_else(|| listing_or_unbound(app, press, &at, tx))
         .unwrap_or(Outcome::Declined)
 }
 
-fn window_or_chord(app: &mut App, press: &KeyPress, tx: &mut Tx) -> Option<Outcome> {
+fn window_or_chord(
+    app: &mut App,
+    press: &KeyPress,
+    at: &Situation,
+    tx: &mut Tx,
+) -> Option<Outcome> {
     if app.tenxer.armed.is_some() {
         return Some(chords::handle_armed_chord(app, press, tx));
+    }
+    if let Some(outcome) = crate::chooser::refuse_key(app, press, at, tx) {
+        return Some(outcome);
     }
     if press.is(CLOSE_WINDOW) {
         shell::close_window(app, tx);
@@ -238,11 +246,14 @@ fn escape_ladder(app: &mut App, tx: &mut Tx) {
     if crate::peek::close(app) {
         return;
     }
-    let _ = if filter::search_active(app) {
+    let dismissed = if filter::search_active(app) {
         escape_in_search(app, tx)
     } else {
         escape_in_listing(app, tx)
     };
+    if !dismissed {
+        crate::chooser::tenxer::cancel_on_escape(app, tx);
+    }
 }
 
 fn escape_in_search(app: &mut App, tx: &mut Tx) -> bool {
@@ -260,7 +271,7 @@ fn escape_in_listing(app: &mut App, tx: &mut Tx) -> bool {
         || find::dismiss_highlight(app)
         || end_active_range(app)
         || preview::dismiss_escape(app, tx)
-        || app.browser.clear_active_selection()
+        || (!crate::chooser::tenxer::keeps_load_cursor(app) && app.browser.clear_active_selection())
 }
 
 fn end_results_range(app: &App) -> bool {
@@ -303,7 +314,7 @@ fn file_keys(app: &mut App, press: &KeyPress, tx: &mut Tx) -> Option<Outcome> {
         chords::arm_actions(app, false);
     } else if press.is(COPY_AS) {
         arm_default_chord(app, ChordKind::Copy);
-    } else if press.is(TAB_CHORD) {
+    } else if press.is(TAB_CHORD) && !app.chooser.is_active() {
         arm_default_chord(app, ChordKind::Tabs);
     } else {
         return None;

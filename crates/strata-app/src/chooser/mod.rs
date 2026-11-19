@@ -14,10 +14,11 @@ pub(crate) mod floating;
 pub(crate) mod geometry;
 pub(crate) mod image_conversion;
 mod keys;
-pub(crate) use keys::declines_key;
+pub(crate) use keys::{declines_key, refuse_key};
 pub(crate) mod options;
 pub(crate) mod source;
 pub(crate) mod state;
+pub(crate) mod tenxer;
 mod view;
 
 #[cfg(test)]
