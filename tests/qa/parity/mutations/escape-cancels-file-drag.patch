@@ -1,11 +1,9 @@
 diff --git a/crates/strata-app/src/tenxer/keys.rs b/crates/strata-app/src/tenxer/keys.rs
 --- a/crates/strata-app/src/tenxer/keys.rs
 +++ b/crates/strata-app/src/tenxer/keys.rs
-@@ -271,7 +271,6 @@ fn escape_in_listing(app: &mut App, tx: &mut Tx) -> bool {
+@@ -271,5 +271,4 @@ fn escape_in_listing(app: &mut App, tx: &mut Tx) -> bool {
          || find::dismiss_highlight(app)
          || end_active_range(app)
          || preview::dismiss_escape(app, tx)
 -        || clear_selection(app)
  }
- 
- /// A chooser's first row, selected as it loads, is not a selection to clear before Escape
