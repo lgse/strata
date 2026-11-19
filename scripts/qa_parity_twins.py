@@ -407,7 +407,7 @@ def corpus(scenarios: Path, patches: Path, packet: Path) -> dict:
     files = qa_parity_check.scenario_files(scenarios)
     return assemble(
         [facts(path.parent.name, path.stem, path.read_text(encoding="utf-8")) for path in files],
-        {path.stem for path in patches.glob("*.patch")},
+        {path.stem.split(".", 1)[0] for path in patches.glob("*.patch")},
         {path.name for path in packet.iterdir()} if packet.is_dir() else set())
 
 
