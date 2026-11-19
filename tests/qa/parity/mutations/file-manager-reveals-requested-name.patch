@@ -1,13 +1,11 @@
 diff --git a/crates/strata-app/src/application.rs b/crates/strata-app/src/application.rs
-index d5e7fecfb..c3da3d4c7 100644
+index d5e7fecfb..92b147d05 100644
 --- a/crates/strata-app/src/application.rs
 +++ b/crates/strata-app/src/application.rs
-@@ -177,6 +177,6 @@ fn revealed(reveal: &Reveal) -> Vec<Opening> {
-     let method = match reveal.method {
-         Called::Folders => RevealMethod::Folders,
--        Called::Items => RevealMethod::Items,
--        Called::ItemProperties => RevealMethod::ItemProperties,
-+        Called::Items => RevealMethod::Folders,
-+        Called::ItemProperties => RevealMethod::Folders,
-     };
-     let requests = reveal_requests(method, &reveal.uris);
+@@ -167,5 +167,5 @@ fn heard(event: Event) {
+         ),
+         // FileManager1's startup id is the caller's activation token, when it has one.
+-        Event::Reveal(reveal) => queue_with(revealed(&reveal), Some(&reveal.startup_id)),
++        Event::Reveal(reveal) => drop(revealed(&reveal)),
+         // No actions are exported.
+         Event::Action { .. } => {}
