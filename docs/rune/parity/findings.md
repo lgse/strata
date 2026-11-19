@@ -2710,5 +2710,6 @@ sequence only together with the alphabet's version, so the version is part of th
     `null` against any of GTK's on the same fields, and any value of `app.directory`.
 
   The `chooser` alphabet (v3) leaves out the browser's arrow keys, which GTK skips once its
-  browser has no focus. Under the eight rules, the smoke tier (v4) agrees in 19 of 20 seeds;
-  the twentieth is another difference, not this finding's ([A20](packages/A20.md), "Open").
+  browser has no focus. Under the eight rules, the smoke tier (v5) agrees in 20 of 20 seeds.
+  v4's twentieth, seed `0x03`, was Up from the first row of the chooser's listing (`owner.md`
+  A1 item 3), not this finding's, and v5 leaves it out ([A20](packages/A20.md)).
