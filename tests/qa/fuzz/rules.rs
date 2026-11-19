@@ -21,9 +21,11 @@
 //!
 //! On a field whose value is a list, a rule may instead name the elements Rune's list adds:
 //! `<field> <code> <issue> {"rune_adds":[<value>, …]}`. It leaves out a difference only when
-//! GTK's list is Rune's with every element equal to one of them taken out, so the rest of the
-//! list, its order included, still counts: a node Rune names and GTK does not, by a ruling
-//! (`app.preview`'s "Volume", lgse/strata#2606).
+//! GTK's list is Rune's with some of them taken out, one copy for each time they are named,
+//! so the rest of the list, its order and a node Rune names twice included, still counts: a
+//! node Rune names and GTK does not, by a ruling (`app.preview`'s "Volume",
+//! lgse/strata#2606). The rules of one field are combined, whatever part of the window each
+//! ruling is about: see `normalisation.map`.
 
 use std::{fs, path::Path};
 
@@ -79,12 +81,36 @@ impl Only {
                 let (Value::Array(gtk), Value::Array(rune)) = (gtk, rune) else {
                     return false;
                 };
-                let kept: Vec<&Value> = rune.iter().filter(|item| !added.contains(item)).collect();
-                kept.len() < rune.len() && kept.iter().copied().eq(gtk.iter())
+                adds_only(gtk, rune, added)
             }
         }
     }
 
+}
+
+/// Whether Rune's list is GTK's with elements added, wherever they stand, each of them one of
+/// `added`, and as many copies of an element as `added` names: a node Rune names twice is not
+/// excused by a ruling that names it once. GTK's list is matched against Rune's in order, and
+/// what is left over is the same whichever way it is matched, so the first match will do.
+fn adds_only(gtk: &[Value], rune: &[Value], added: &[Value]) -> bool {
+    let mut allowed: Vec<&Value> = added.iter().collect();
+    let mut expected = gtk.iter().peekable();
+    let mut extra = 0;
+    for item in rune {
+        if expected.peek() == Some(&item) {
+            expected.next();
+            continue;
+        }
+        let Some(at) = allowed.iter().position(|value| *value == item) else {
+            return false;
+        };
+        allowed.swap_remove(at);
+        extra += 1;
+    }
+    expected.next().is_none() && extra > 0
+}
+
+impl Only {
     /// Whether `difference` is what the rule excuses: `gtk_left` says which side GTK's stream
     /// is, when the comparison knows.
     fn excuses(&self, difference: &Difference, gtk_left: Option<bool>) -> bool {
@@ -138,7 +164,9 @@ impl Ignored {
 
     /// Whether `difference` is left out: its field is covered, or a rule names its values.
     /// The elements the field's `rune_adds` rules name are taken out together, so a list that
-    /// adds what two rulings allow is GTK's with both taken out. `gtk_left` says which side
+    /// adds what two rulings allow is GTK's with both taken out. They are combined by field,
+    /// not by the part of the window a ruling is about: a name one ruling allows in one viewer
+    /// is excused in any other the field reports. `gtk_left` says which side
     /// GTK's stream is, when the comparison knows.
     pub(crate) fn excuses(&self, difference: &Difference, gtk_left: Option<bool>) -> bool {
         let on_field = |entry: &&Entry| project::covers(&entry.field, &difference.field);
