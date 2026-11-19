@@ -4,18 +4,18 @@
 //! middle click: the sidebar's menu rows and its middle click, a crumb's middle click, and a
 //! folder row's middle click in every view, each on its location (`On::Place`). `open-in-tab`
 //! is the tab strip's own, so each opens a tab there, and `customize` the Customize dialog's,
-//! which opens on it; `open-in-window` is a made-up part's, which records what it ran.
+//! which opens on it; `open-in-window` is A21's (`crate::new_window`), which asks the process
+//! for a window on it, read here from the launch queue.
 
 use std::{cell::RefCell, path::Path, time::Duration};
 
-use rune::{Key, KeyEvent, Mods, PointerButton, Tx};
+use rune::{Key, KeyEvent, Mods, PointerButton};
 use strata_components::collection::element::row_key;
 use strata_core::model::Location;
 
-use super::super::{Action, Call, On, Outcome};
-use super::routing::part;
 use crate::{
     App,
+    application::{self, Opening},
     host::offscreen::Offscreen,
     shell::{
         self,
@@ -31,32 +31,24 @@ use crate::{
 const MODULE: &str = "commands::tests::places";
 
 thread_local! {
-    /// Each command the made-up part ran, and the place it ran on.
+    /// Each window `open-in-window` asked for so far, and the place it asked for.
     static RAN: RefCell<Vec<(&'static str, Location)>> = const { RefCell::new(Vec::new()) };
 }
 
-fn ran(command: &'static str, call: &Call<'_>) -> Outcome {
-    let On::Place(location) = &call.on else {
-        return Outcome::Declined;
-    };
-    RAN.with_borrow_mut(|ran| ran.push((command, location.clone())));
-    Outcome::Ran
-}
-
-fn in_window(_: &mut App, call: &Call<'_>, _: &mut Tx) -> Outcome {
-    ran("open-in-window", call)
-}
-
-const PLACES: &[Action<App>] = &[Action::new("open-in-window", in_window)];
-
-/// The registered parts, and one that registers the other commands a place's routes name.
+/// The registered parts: every command a place's routes name is one of theirs.
 fn with_the_commands() -> Vec<Entry<App>> {
-    struct Places;
-    crate::parts_and(vec![part::<Places>("places", PLACES, |_| None)])
+    crate::parts_and(Vec::new())
 }
 
 fn ran_so_far() -> Vec<(&'static str, Location)> {
-    RAN.with_borrow(Clone::clone)
+    RAN.with_borrow_mut(|ran| {
+        for opening in application::take() {
+            if let Opening::Argument(location) = opening {
+                ran.push(("open-in-window", location));
+            }
+        }
+        ran.clone()
+    })
 }
 
 fn home() -> Location {

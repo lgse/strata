@@ -865,6 +865,23 @@ Rulings of the owner on the parity work, oldest first.
   `window-wheel` one. Built in [A16](packages/A16.md)'s Slice 4
   ([#2614](https://github.com/lgse/strata/pull/2614)). Source: the owner, 2026-11-19, through
   the coordinator.
+- **2026-11-19: A21 closes with its listed coverage standing in for its fuzz alphabet**
+  (done-when item 6). The fuzz driver replays with no session bus, has no step that moves the
+  keyboard to another window, and observes the run's window only, so an alphabet of A21's could
+  open windows and never act in them. What stands in: A21's three `required` runs (`launch` and
+  `dbus_send`), [A18](packages/A18.md)'s `preferences-sync-windows-restart` and
+  [A5](packages/A5.md)'s window-switch pair, the ten `window::` tests in a private sway session,
+  and the stores' unit tests. A fuzz driver that can drive windows (a bus and a window-switch
+  step) is later F or H work, noted for [F5](packages/F5.md) and [E1](packages/E1.md). Raised by
+  [A21](packages/A21.md)'s Slice 3 ([#2620](https://github.com/lgse/strata/pull/2620)). Source:
+  the owner, 2026-11-19, through the coordinator.
+- **2026-11-19: a fully covered X11 window reports `Hidden` on Rune**, a ruled `deviation`
+  (finding [#2621](https://github.com/lgse/strata/issues/2621)). Rune's `App::on_visibility`
+  reports covering on X11 and macOS, where GTK's `presence_of` reads only an unmapped window and
+  the `SUSPENDED` and `MINIMIZED` states, so the covered window's browsers recheck their folders
+  less often until it is uncovered. Rune's report stands. Raised by [A21](packages/A21.md)
+  (`crates/strata-app/src/shell/presence.rs`). Source: the owner, 2026-11-19, through the
+  coordinator.
 
 ## Housekeeping
 

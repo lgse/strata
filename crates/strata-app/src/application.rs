@@ -130,6 +130,14 @@ pub(crate) fn queue_first(openings: impl IntoIterator<Item = Opening>) {
     });
 }
 
+/// Asks for a window on `location`, as GTK's `open-window-at` presents one
+/// (`present_location_window` in `src/ui/window/open_argument.rs`): the argument's path, a
+/// folder opened and a file shown selected in its folder, leaving `tabs.toml` alone. The host
+/// opens it after the update ([`take`]).
+pub(crate) fn ask_for_window(location: Location) {
+    queue_with([Opening::Argument(location)], None);
+}
+
 /// Queues `openings`, each to be created with `token`.
 fn queue_with(openings: impl IntoIterator<Item = Opening>, token: Option<&str>) {
     let token = token.filter(|token| !token.is_empty()).map(str::to_owned);
