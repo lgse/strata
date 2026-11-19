@@ -558,7 +558,8 @@ fn invert_flips_every_listed_entry() {
 #[test]
 fn invert_over_a_load_s_pick_selects_every_entry() {
     // A load's pick is no fill: 10xer Ctrl+R straight after a load selects every entry, as
-    // the shared browser's `replace_visible` does (lgse/strata#2625: seed 0x20 of `tenxer v7`, F4's long run).
+    // the shared browser's `replace_visible` does (lgse/strata#2625, seed 0x20 of
+    // `tenxer v7`).
     let s = listing(4);
     let mut sel = Selection::new();
     sel.auto_select(&s, 0);
