@@ -47,11 +47,13 @@ use crate::{
     startup::UiThread,
 };
 
+pub(crate) mod close_guard;
 mod held;
 mod preferences;
 mod presence;
 mod siblings;
 pub(crate) mod tabs;
+mod thumbnail_budget;
 
 pub(crate) use held::{held_modifiers, modifiers};
 use preferences::{PowerMonitorGuard, WindowServices, sync_browser_freshness};
@@ -123,6 +125,8 @@ pub(crate) struct Window {
     /// The window's decoded thumbnails, which every view that draws them reads, each through
     /// a viewer of its own ([`crate::thumbnails`] has the render pool, one per process).
     thumbnails: ThumbnailStore,
+    /// The store's place in the process's budget ([`thumbnail_budget`]).
+    _thumbnail_share: thumbnail_budget::Share,
     /// The per-folder views, one store for the process ([`crate::folder_views`]).
     folder_views: folder_views::Kept,
     /// Theme library, Omarchy state, and system appearance monitor (`crate::theme`).
@@ -290,6 +294,19 @@ fn hear(event: &BrowserEvent, _: &Browser, heard: &mut Heard<'_, App>) {
             false
         });
     }
+}
+
+/// Readies a state for the new native window it moves into, after a refused close
+/// (`crate::host::windowed`, "Refused closes"): the window counts as on screen again, as a
+/// new window does until Rune says otherwise (the closing one was hidden first), and takes its
+/// title on the next poll.
+pub(crate) fn reopened(app: &mut App) {
+    app.window.on_screen = true;
+    presence::follow(app);
+    window_later(app).then(|app, tx| {
+        retitle_now(app, tx);
+        true
+    });
 }
 
 /// Names the window for the shown tab, whether or not its location changed.
@@ -537,7 +554,7 @@ pub(crate) fn csd_of(app: &mut App) -> &mut Csd {
 /// number of workers (`thumbnail_workers`, which GTK hands the pool the same way).
 fn thumbnail_store(saved: &strata_desktop::settings::Preferences) -> ThumbnailStore {
     strata_preview::sandbox::browser::set_worker_limit(saved.thumbnail_workers);
-    let mut store = ThumbnailStore::new(Settings::default());
+    let mut store = ThumbnailStore::new(Settings::default().budget(thumbnail_budget::share()));
     let _ = store.set_enabled(saved.show_thumbnails);
     store
 }
@@ -616,6 +633,7 @@ impl Window {
         let saved = settings.preferences();
         let first = FirstTab::build(parts, saved, &events, (browser, services.power_saver));
         let keys = Live::registered(saved, first_window_reports().as_deref());
+        let thumbnail_share = thumbnail_budget::Share::join(&events.later());
         let thumbnails = thumbnail_store(saved);
         let look = services.themes.build_look(saved, true);
         let window = Self {
@@ -639,6 +657,7 @@ impl Window {
             labels: Labels::translated(),
             applied: (0, 0),
             thumbnails,
+            _thumbnail_share: thumbnail_share,
             folder_views: first.folder_views,
             themes: services.themes,
             animations_allowed: true,
@@ -842,14 +861,13 @@ fn on_window_action(app: &mut App, action: WindowAction, tx: &mut Tx) {
     tracing::debug!(?action, ?outcome, "window button");
 }
 
-/// Closes the window, unless a tab's browser has a file operation running: then GTK's close
-/// guard says so and the window stays (`close_guard::install` in
-/// `src/ui/window/composition/tabs.rs`). The Close buttons and closing the last tab come here;
-/// a close the window manager asks for does not, as Rune lets nothing refuse it.
+/// Closes the window, unless one of GTK's close guards refuses it: then the guard says why and
+/// the window stays ([`close_guard`]). The Close buttons and closing the last tab come here; a
+/// close the window manager asks for is refused by the windowed host.
 pub(crate) fn close_window(app: &mut App, tx: &mut Tx) {
-    let busy = tabs::tabs(app).iter().any(|&key| tabs::is_busy(app, key));
-    if busy {
-        tabs::operations_active(app);
+    let last = crate::host::windowed::is_last_window(window_id(app));
+    if let Some(refusal) = close_guard::refusal(app, last) {
+        close_guard::tell(app, refusal);
         return;
     }
     let outcome = app.window.csd.close(tx);

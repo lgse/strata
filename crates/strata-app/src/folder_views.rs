@@ -36,6 +36,12 @@
 //!
 //! The store is shared with the browser's resolver, which the browser calls while it opens a
 //! folder: a caller of [`views`] drops the borrow before it calls into the browser.
+//!
+//! **One store for the process,** as GTK's windows share their `PreferenceManager`'s: every
+//! window of the process, a floating chooser's included, holds the same [`Shared`] values,
+//! revision and sorts' moves, while one is open. Each window keeps its own timer, its own
+//! write and what its columns last followed; a change in one wakes the others, whose views
+//! read the values again and whose columns follow the sorts ([`follow_others`]).
 
 use std::{
     cell::{Cell, Ref, RefCell},
@@ -63,7 +69,73 @@ use strata_fs::{
     app::{Browser, FolderSortResolver},
 };
 
-use crate::{App, slots::Later};
+use crate::{
+    App,
+    slots::{Later, WeakLater},
+};
+
+/// What every window of the process shares while one is open ([`Kept::load`]).
+struct Shared {
+    /// Shared with each browser's resolver of folders' sorts ([`Kept::follow_sorts`]).
+    store: Rc<RefCell<FolderViewStore>>,
+    /// Moves whenever the values change, in any window or from another process.
+    revision: Cell<u64>,
+    /// Moves when the folders' sorts may have changed.
+    sorts: Cell<u64>,
+    /// Every window's queue, to wake the others when the values change.
+    windows: RefCell<Vec<WeakLater<App>>>,
+}
+
+thread_local! {
+    /// The process's [`Shared`], while a window holds it: the interface thread's.
+    static SHARED: RefCell<std::rc::Weak<Shared>> = const { RefCell::new(std::rc::Weak::new()) };
+}
+
+impl Shared {
+    /// The process's values: read from the file by the first window, then the open ones'.
+    fn join(later: &Later<App>) -> Rc<Self> {
+        let shared = SHARED.with(|shared| {
+            let mut shared = shared.borrow_mut();
+            shared.upgrade().unwrap_or_else(|| {
+                let fresh = Rc::new(Self {
+                    store: Rc::new(RefCell::new(FolderViewStore::load())),
+                    revision: Cell::new(0),
+                    sorts: Cell::new(0),
+                    windows: RefCell::default(),
+                });
+                *shared = Rc::downgrade(&fresh);
+                fresh
+            })
+        });
+        let mut windows = shared.windows.borrow_mut();
+        windows.retain(WeakLater::is_live);
+        windows.push(later.downgrade());
+        drop(windows);
+        shared
+    }
+
+    /// The values changed in the window whose queue is `own`: every other window is woken to
+    /// read them again.
+    fn moved(&self, own: &Later<App>) {
+        self.revision.set(self.revision.get() + 1);
+        let own = own.downgrade();
+        for window in self.windows.borrow().iter() {
+            if window.same_as(&own) {
+                continue;
+            }
+            if let Some(later) = window.upgrade() {
+                later.then(follow_others);
+            }
+        }
+    }
+}
+
+/// Another window changed the values: this one's columns follow the sorts, and its views draw
+/// again.
+fn follow_others(app: &mut App, _: &mut Tx) -> bool {
+    follow_sorts_moved(app);
+    true
+}
 
 /// The one timer a write waits on, on the window's clock (`Tx::clock`).
 #[derive(Debug, Default)]
@@ -110,11 +182,11 @@ impl Timer {
 
 /// The process's store, its timer, and what follows the file.
 pub(crate) struct Kept {
-    /// Shared with the browser's resolver of folders' sorts ([`Kept::follow_sorts`]).
+    /// The process's values ([`Shared`]).
+    shared: Rc<Shared>,
+    /// The shared store, as the browser's resolver of folders' sorts holds it.
     store: Rc<RefCell<FolderViewStore>>,
     timer: Timer,
-    /// Moves whenever the values change, here or from another process.
-    revision: u64,
     later: Later<App>,
     /// Whether the last write before the process ends has started: closing the window and
     /// quitting may both ask for it. Strata does not use Rune's `keep_running`; if it ever
@@ -124,25 +196,36 @@ pub(crate) struct Kept {
     _monitors: [LoadHandle; 2],
     /// The browser's resolver counted a folder only opened as used: a write is owed.
     used: Rc<Cell<bool>>,
-    /// Moves when the folders' sorts may have changed, and what the browser's columns last
-    /// followed.
-    sorts: (u64, u64),
+    /// The sorts' move this window's columns last followed ([`Shared::sorts`]).
+    followed_sorts: u64,
 }
 
 impl Kept {
-    /// Reads the file, once in a process, and follows it through the window's queue.
+    /// Reads the file once in a process, for its first window, and follows it through the
+    /// window's queue; a later window shares what the open ones hold ([`Shared`]).
     pub(crate) fn load(later: Later<App>) -> Self {
         let monitors = [follow_file(later.clone()), follow_settings(later.clone())];
+        let shared = Shared::join(&later);
         Self {
-            store: Rc::new(RefCell::new(FolderViewStore::load())),
+            store: shared.store.clone(),
+            followed_sorts: shared.sorts.get(),
+            shared,
             timer: Timer::default(),
-            revision: 0,
             exiting: false,
             later,
             _monitors: monitors,
             used: Rc::default(),
-            sorts: (0, 0),
         }
+    }
+
+    /// The values changed here: a view reads them again, here and in the other windows.
+    fn moved(&self) {
+        self.shared.moved(&self.later);
+    }
+
+    /// The folders' sorts may have changed: every window's columns follow.
+    fn sorts_moved(&self) {
+        self.shared.sorts.set(self.shared.sorts.get() + 1);
     }
 
     /// Gives `browser` the folders' sorts while `remember_folder_views` is on, as GTK's
@@ -262,7 +345,7 @@ pub(crate) fn forget_all(app: &mut App, tx: &mut Tx) {
         },
         tx,
     );
-    app.window.folder_views_mut().sorts.0 += 1;
+    app.window.folder_views().sorts_moved();
 }
 
 /// The values, as a view reads a folder's. The borrow is dropped before anything calls into
@@ -276,7 +359,7 @@ pub(crate) fn views(app: &App) -> Ref<'_, FolderViews> {
 
 /// Moves whenever the values change: a view that shows a folder's value reads it again.
 pub(crate) fn revision(app: &App) -> u64 {
-    app.window.folder_views().revision
+    app.window.folder_views().shared.revision.get()
 }
 
 /// Changes the values; when `change` says they changed, a write is asked for.
@@ -284,7 +367,7 @@ pub(crate) fn change(app: &mut App, change: impl FnOnce(&mut FolderViews) -> boo
     let kept = app.window.folder_views_mut();
     let changed = change(kept.store.borrow_mut().views_mut());
     if changed {
-        kept.revision += 1;
+        kept.moved();
         kept.schedule(SAVE_DELAY, tx);
     }
 }
@@ -309,7 +392,7 @@ pub(crate) fn change_sorts(
     let before = revision(app);
     change(app, change_views, tx);
     if revision(app) != before {
-        app.window.folder_views_mut().sorts.0 += 1;
+        app.window.folder_views().sorts_moved();
     }
 }
 
@@ -324,10 +407,16 @@ pub(crate) fn poll(app: &mut App, clock: f64, tx: &mut Tx) {
         Tick::Wait(left) => tx.wake_after(left),
         Tick::Due => kept.write(false),
     }
-    // The folders' sorts changed: the open columns follow (`folder_sorts_revision`'s binding).
-    let (changed, followed) = kept.sorts;
-    if changed != followed {
-        kept.sorts.1 = changed;
+    follow_sorts_moved(app);
+}
+
+/// The folders' sorts changed, here or in another window: the open columns follow
+/// (`folder_sorts_revision`'s binding).
+fn follow_sorts_moved(app: &mut App) {
+    let kept = app.window.folder_views_mut();
+    let moved = kept.shared.sorts.get();
+    if moved != kept.followed_sorts {
+        kept.followed_sorts = moved;
         app.browser.resync_column_sorts();
     }
 }
@@ -373,9 +462,9 @@ impl Kept {
     fn adopt(&mut self, saved: FolderViews) -> bool {
         let changed = self.store.borrow_mut().adopt(saved);
         if changed {
-            self.revision += 1;
+            self.moved();
             // What another process saved may hold other sorts.
-            self.sorts.0 += 1;
+            self.sorts_moved();
         }
         changed
     }
@@ -432,9 +521,9 @@ fn adopt_external_defaults(app: &mut App, saved: Preferences, tx: &mut Tx) -> bo
     let sort = sort_preferences(crate::shell::preferences(app));
     crate::shell::sync_default_preferences(app, sort);
     crate::shell::sync_live_preferences(app, tx);
-    let kept = app.window.folder_views_mut();
-    kept.revision += 1;
-    kept.sorts.0 += 1;
+    let kept = app.window.folder_views();
+    kept.moved();
+    kept.sorts_moved();
     crate::shell::settle(app, tx);
     true
 }
