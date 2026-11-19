@@ -2758,3 +2758,18 @@ sequence only together with the alphabet's version, so the version is part of th
   coordinator), consistent with [#2557](https://github.com/lgse/strata/issues/2557) and
   [#2558](https://github.com/lgse/strata/issues/2558). A run or fuzz step that reads it cites
   the ruling.
+
+### #2621: a fully covered X11 window is `Hidden` on Rune, where GTK keeps it `Visible`
+
+- **Code:** `deviation`, ruled by the owner on 2026-11-19 ([`owner.md`](owner.md#ruled)). [Issue](https://github.com/lgse/strata/issues/2621),
+  filed on 2026-11-19 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** by the review of [A21](packages/A21.md)'s Slice 2a
+  ([#2604](https://github.com/lgse/strata/pull/2604)). GTK's `presence_of` (`src/ui/presence.rs`)
+  reads only an unmapped window and the toplevel's `SUSPENDED` and `MINIMIZED` states, so a
+  window covered whole by others stays `Visible`. Rune's `App::on_visibility` reports covering
+  on X11 and macOS, and `shell::presence` follows it (`crates/strata-app/src/shell/presence.rs`),
+  so the covered window's browsers are `Hidden` and recheck their folders less often until it
+  is uncovered. The Wayland half, a minimised window that stays `Visible`, is a Rune gap (Rune
+  packet entry 111), not this finding.
+- **Concerns:** no run.
+- **State:** ruled: Rune's report stands (the owner, 2026-11-19, through the coordinator).

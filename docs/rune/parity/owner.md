@@ -636,26 +636,6 @@ Found by the package's agent, 2026-11-12, against A1's five items above.
    change in `roots.rs` by hand (`docs/rune/shared-state.md`, "Merging from `main`"). Should
    the rule move to a shared crate later, with GTK calling it? Source: A10, 2026-11-14.
 
-### A21: Window and launch
-
-1. **A fuzz alphabet the driver cannot drive** (done-when item 6). The fuzz driver replays with
-   no session bus (`bus: None` in `tests/qa/fuzz/replay.rs`), so a `launch` step has no
-   primary to reach; the QA protocol has no step that moves the keyboard to another window;
-   and the observations are the run's window's. An alphabet of A21's could only open windows
-   (Shift+Enter, now registered) and never act in them. What covers windows instead is listed
-   in A21's Slice 3 record entry: three `required` runs with launches and FileManager1, two
-   other packages' window runs, ten window tests in a private sway session, and the stores'
-   unit tests. The two readings: A21 closes with that coverage standing in for item 6, or it
-   waits for the driver to start a bus and gain a window-switch step (the harness's, an F or H
-   package's). Default in force: A21 stays `in progress` with item 6 open. Source: A21,
-   2026-11-19.
-2. **A fully covered X11 window is `Hidden` on Rune and `Visible` on GTK** (done-when item 7).
-   Rune's `App::on_visibility` reports covering on X11 and macOS; GTK's `presence_of` reads only
-   an unmapped window and the `SUSPENDED` and `MINIMIZED` states. The covered window's browsers
-   recheck their folders less often until it is uncovered (`shell/presence.rs`). Should Rune
-   keep Rune's report, or should Strata ignore covering to match GTK? Default in force, the
-   orchestrating session's: Rune's report stands. Source: A21, 2026-11-19.
-
 ### Packages added later
 
 - **A branch name for a package with no archived issue.** Branch names keep the package's
@@ -866,6 +846,23 @@ Rulings of the owner on the parity work, oldest first.
   reads it cites this ruling. Built in [A16](packages/A16.md)'s Slice 3
   ([#2599](https://github.com/lgse/strata/pull/2599)). Source: the owner, 2026-11-18, through
   the coordinator.
+- **2026-11-19: A21 closes with its listed coverage standing in for its fuzz alphabet**
+  (done-when item 6). The fuzz driver replays with no session bus, has no step that moves the
+  keyboard to another window, and observes the run's window only, so an alphabet of A21's could
+  open windows and never act in them. What stands in: A21's three `required` runs (`launch` and
+  `dbus_send`), [A18](packages/A18.md)'s `preferences-sync-windows-restart` and
+  [A5](packages/A5.md)'s window-switch pair, the ten `window::` tests in a private sway session,
+  and the stores' unit tests. A fuzz driver that can drive windows (a bus and a window-switch
+  step) is later F or H work, noted for [F5](packages/F5.md) and [E1](packages/E1.md). Raised by
+  [A21](packages/A21.md)'s Slice 3 ([#2620](https://github.com/lgse/strata/pull/2620)). Source:
+  the owner, 2026-11-19, through the coordinator.
+- **2026-11-19: a fully covered X11 window reports `Hidden` on Rune**, a ruled `deviation`
+  (finding [#2621](https://github.com/lgse/strata/issues/2621)). Rune's `App::on_visibility`
+  reports covering on X11 and macOS, where GTK's `presence_of` reads only an unmapped window and
+  the `SUSPENDED` and `MINIMIZED` states, so the covered window's browsers recheck their folders
+  less often until it is uncovered. Rune's report stands. Raised by [A21](packages/A21.md)
+  (`crates/strata-app/src/shell/presence.rs`). Source: the owner, 2026-11-19, through the
+  coordinator.
 
 ## Housekeeping
 
