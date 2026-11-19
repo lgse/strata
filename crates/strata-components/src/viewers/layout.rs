@@ -106,15 +106,14 @@ pub fn section(key: impl Into<String>, areas: Areas, look: &Look) -> El {
 /// Strata's `DetailsHeader`: a muted eyebrow ("2 of 4 in folder") over the title. Without an
 /// eyebrow only the title shows.
 pub fn details_header(key: &str, eyebrow: Option<String>, title: &str, look: &Look) -> El {
-    details_header_beside(key, eyebrow, None, title, look)
+    details_header_beside(key, (eyebrow, None), title, look)
 }
 
 /// [`details_header`] with `beside` at the eyebrow's end, the title under both, as Strata's
 /// `DetailsHeader::new(Some(volume))` puts a player's volume (`src/ui/preview/components.rs`).
 pub fn details_header_beside(
     key: &str,
-    eyebrow: Option<String>,
-    beside: Option<El>,
+    (eyebrow, beside): (Option<String>, Option<El>),
     title: &str,
     look: &Look,
 ) -> El {

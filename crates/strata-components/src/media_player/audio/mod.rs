@@ -60,34 +60,13 @@ pub(crate) fn audio<S: 'static>(
     );
     let byline = time::byline(tags.artist.as_deref(), tags.album.as_deref());
     // Rows keep their space while tags load, so changing tracks doesn't move the layout.
-    // The volume sits at the caption's end, the title and byline under both (Strata's
-    // `DetailsHeader`).
-    let caption_row = row()
-        .w_full()
-        .gap(look.space.sm)
-        .child(
-            text(caption.unwrap_or_default())
-                .key(format!("{key}-eyebrow"))
-                .font(k.ty.small)
-                .color(k.c.text_muted)
-                .truncate()
-                .min_h(k.ty.small.size)
-                .min_w(0.0)
-                .grow(1.0),
-        )
-        .child(super::transport::volume(
-            st,
-            access,
-            emit.clone(),
-            key,
-            look,
-        ));
+    let volume = super::transport::volume(st, access, emit.clone(), key, look);
     let header = row().w_full().gap(look.space.md).child(
         col()
             .grow(1.0)
             .min_w(0.0)
             .gap(look.space.xxs)
-            .child(caption_row)
+            .child(caption_row(key, caption.unwrap_or_default(), volume, look))
             .child(
                 text(title)
                     .key(format!("{key}-title"))
@@ -295,4 +274,24 @@ fn spectrum_el<S: 'static>(
             .child(at(el().fill(peak).live_rect(&b.peak)));
     }
     e
+}
+
+/// The caption with the volume at its end, the title and byline going under both (Strata's
+/// `DetailsHeader`).
+fn caption_row(key: &str, caption: String, volume: El, look: &Look) -> El {
+    let k = &look.kit;
+    row()
+        .w_full()
+        .gap(look.space.sm)
+        .child(
+            text(caption)
+                .key(format!("{key}-eyebrow"))
+                .font(k.ty.small)
+                .color(k.c.text_muted)
+                .truncate()
+                .min_h(k.ty.small.size)
+                .min_w(0.0)
+                .grow(1.0),
+        )
+        .child(volume)
 }

@@ -66,8 +66,7 @@ pub(crate) fn video<S: 'static>(
         .min_w(0.0)
         .child(layout::details_header_beside(
             key,
-            st.clip().position.map(st.labels().position),
-            Some(volume),
+            (st.clip().position.map(st.labels().position), Some(volume)),
             time::stem(&st.clip().name),
             look,
         ))

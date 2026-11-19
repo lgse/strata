@@ -254,19 +254,24 @@ fn only(text: &str) -> Result<Only, String> {
     };
     let value: Value = serde_json::from_str(text).map_err(|_| wrong())?;
     let object = value.as_object().ok_or_else(wrong)?;
-    if let [(key, Value::Array(added))] = object.iter().collect::<Vec<_>>().as_slice()
-        && *key == "rune_adds"
-        && !added.is_empty()
-    {
-        return Ok(Only::RuneAdds(added.clone()));
-    }
-    let (Some(gtk), Some(Value::Array(rune))) = (object.get("gtk"), object.get("rune")) else {
-        return Err(wrong());
-    };
-    if object.len() != 2 || rune.is_empty() {
-        return Err(wrong());
-    }
-    Ok(Only::Values {
+    rune_adds(object)
+        .or_else(|| values(object))
+        .ok_or_else(wrong)
+}
+
+/// `{"rune_adds":[<value>, …]}`: one key, and at least one value.
+fn rune_adds(object: &serde_json::Map<String, Value>) -> Option<Only> {
+    let added = object.get("rune_adds")?.as_array()?;
+    let alone = object.len() == 1;
+    (alone && !added.is_empty()).then(|| Only::RuneAdds(added.clone()))
+}
+
+/// `{"gtk":<value>,"rune":[<value>, …]}`: both keys and no other, and at least one of Rune's.
+fn values(object: &serde_json::Map<String, Value>) -> Option<Only> {
+    let gtk = object.get("gtk")?;
+    let rune = object.get("rune")?.as_array()?;
+    let both = object.len() == 2;
+    (both && !rune.is_empty()).then(|| Only::Values {
         gtk: gtk.clone(),
         rune: rune.clone(),
     })
