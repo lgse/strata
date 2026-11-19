@@ -94,6 +94,8 @@ struct Opening {
     volume: f32,
     muted: bool,
     tenxer: bool,
+    /// A GIF: the frame and its play toggle alone (`MediaKind::Animation`).
+    animation: bool,
 }
 
 impl Opening {
@@ -111,6 +113,7 @@ impl Opening {
             volume: prefs.preview_volume as f32,
             muted: prefs.preview_muted,
             tenxer: prefs.tenxer_mode,
+            animation: content_type == GIF,
         }
     }
 }
@@ -178,6 +181,7 @@ fn player(entry: &FileEntry, family: Option<Family>, opening: &Opening) -> Media
         kind: match family {
             Some(Family::Video) => MediaKind::Video,
             Some(Family::Audio) => MediaKind::Audio,
+            None if opening.animation => MediaKind::Animation,
             None => MediaKind::Plain,
         },
         name: entry.display_name.clone(),

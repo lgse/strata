@@ -4,7 +4,8 @@
 //! player and the media key plays and pauses it; the eyebrow counts only the files whose
 //! probe found media, and the next key steps past text named as video, keeps playing and keeps
 //! the keyboard in the player;
-//! a decode that fails shows its error inside the player; and a GIF loops.
+//! a decode that fails shows its error inside the player; and a GIF loops, its bar the play
+//! toggle alone.
 
 use std::{
     path::{Path, PathBuf},
@@ -283,7 +284,25 @@ fn a_gif_plays_in_the_plain_bar_and_loops() {
             let (_provider, _folder) =
                 open(&mut host, &[("spin.gif", MP4)], "spin.gif", "image/gif");
             shows(&mut host, MediaState::has_frame, "the first frame");
-            assert_eq!(state(&host).map(|s| s.clip().kind), Some(MediaKind::Plain));
+            assert_eq!(
+                state(&host).map(|s| s.clip().kind),
+                Some(MediaKind::Animation)
+            );
+            // Strata's GIF bar is its play toggle alone: no time, seek or volume.
+            let keys: Vec<String> = host
+                .runtime()
+                .elements()
+                .into_iter()
+                .filter_map(|el| el.key)
+                .filter(|key| key.starts_with(MEDIA_KEY))
+                .collect();
+            assert!(keys.iter().any(|key| key.ends_with("-play")), "{keys:?}");
+            for part in ["-time", "-timeline", "-mute", "-volume", "-title"] {
+                assert!(
+                    !keys.iter().any(|key| key.ends_with(part)),
+                    "{part} in {keys:?}"
+                );
+            }
             play_pause(&mut host);
             shows(&mut host, MediaState::playing, "playing");
             let late = host.run_until(PATIENCE, |host| {
