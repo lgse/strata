@@ -1,7 +1,7 @@
-{"scenario":"restore-tabs-on-plain-launch-only","modes":["columns"],"layout":"us","mutation":"restore-tabs-folder-argument","setup":[{"fs":{"path":"$config/strata/tabs.toml","write":"version = 1\nactive = 1\n\n[[tabs]]\nkind = \"path\"\nvalue = \"$fixture\"\n\n[[tabs]]\nkind = \"path\"\nvalue = \"$fixture/pictures\"\n"}}],"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":4,"score":28,"note":"Real plain launch restores tab order and active tab; folder-argument launches skip and never overwrite tabs.toml; logic unit-tested in tabs/tests.rs"}}
+{"scenario":"restore-tabs-on-plain-launch-only","modes":["columns"],"layout":"us","mutation":"restore-tabs-folder-argument","setup":[{"fs":{"path":"$config/strata/tabs.toml","write":"version = 1\nactive = 1\n\n[[tabs]]\nkind = \"path\"\nvalue = \"$fixture\"\n\n[[tabs]]\nkind = \"path\"\nvalue = \"$fixture/pictures\"\n"}}],"quality":{"impact":3,"coverage":4,"criticality":4,"diagnostic":3,"score":45,"note":"Real plain launch restores tab order and active tab; folder-argument launches skip and never overwrite tabs.toml; sole launch-routing guard"}}
 {"wait":{"panes":["$root"]},"message":"the launch on the fixture folder to show it"}
 {"expect":{"compare":{"left":{"count":{"role":"page tab"}},"op":"==","right":0}},"timeout_ms":1000,"hold_ms":300,"message":"a launch with a folder argument to restore no saved tab"}
-{"fs":{"path":"$config/strata/tabs.toml","toml":{"active":1,"tabs":[{"kind":"path","value":"$fixture"},{"kind":"path","value":"$fixture/pictures"}]}},"timeout_ms":0,"message":"a launch with a folder argument to leave the saved session alone"}
+{"fs":{"path":"$config/strata/tabs.toml","toml":{"active":1,"tabs":[{"kind":"path","value":"$fixture"},{"kind":"path","value":"$fixture/pictures"}]}},"timeout_ms":0,"hold_ms":500,"message":"a launch with a folder argument to leave the saved session alone"}
 {"restart":{"plain":true}}
 {"wait":{"state":{"target":{"role":"page tab","name":"pictures"},"selected":true}},"message":"a plain launch to restore the saved tabs with 'pictures' active"}
 {"wait":{"directory":"pictures"},"message":"the restored active tab to show 'pictures'"}
@@ -19,7 +19,7 @@
 {"key":"ctrl+t"}
 {"select":{"entry":"archive","dir":"$root"}}
 {"wait":{"state":{"target":{"role":"page tab","name":"archive"},"selected":true}},"message":"a new tab in the folder-argument window to open 'archive'"}
-{"fs":{"path":"$config/strata/tabs.toml","toml_like":"saved"},"timeout_ms":0,"message":"a window opened for a folder argument to leave the saved session alone"}
+{"fs":{"path":"$config/strata/tabs.toml","toml_like":"saved"},"timeout_ms":0,"hold_ms":500,"message":"a window opened for a folder argument to leave the saved session alone"}
 {"restart":{"plain":true}}
 {"wait":{"state":{"target":{"role":"page tab","name":"documents"},"selected":true}},"message":"the next plain launch to restore the earlier session with 'documents' active"}
 {"wait":{"directory":"documents"},"message":"the restored active tab to show 'documents'"}

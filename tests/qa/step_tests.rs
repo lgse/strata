@@ -12,7 +12,7 @@ use serde_json::{Value, json};
 use crate::{
     CONTROLLER_PANIC, REPOSITORY,
     baseline::{DIFFERENT_PIXEL_BUDGET, compare_in, different_fraction, differing_pixels},
-    drive::file_failure,
+    drive::{file_failure, wait_for_fs},
     fixture::{OrderedMap, expand_tree, fixed_fixture_name, manifest},
     fs_check::{FsState, FsStep, contained},
     fs_helpers::{glob_matches, pdf_image, raw_photo},
@@ -187,6 +187,34 @@ pub(crate) fn notes_stand_in_for_what_a_run_reads_and_unknown_variables_are_reje
     assert_eq!(increment("folder-087"), Ok("folder-088".to_owned()));
     assert_eq!(increment("folder-099"), Ok("folder-100".to_owned()));
     assert!(increment("readme").is_err());
+}
+
+pub(crate) fn an_fs_check_can_hold_and_an_fs_action_cannot() {
+    assert!(check_step(&json!({ "fs": { "path": "a", "exists": false }, "hold_ms": 300 })).is_ok());
+    assert!(check_step(&json!({ "fs": { "path": "a", "write": "x" }, "hold_ms": 300 })).is_err());
+    let root = tempfile::tempdir().expect("a scratch directory");
+    let check = |hold_ms: u64| {
+        wait_for_fs(
+            &json!({ "fs": { "path": "late.txt", "exists": false }, "hold_ms": hold_ms, "message": "no late file" }),
+            root.path(),
+            SystemTime::UNIX_EPOCH,
+            &mut FsState::default(),
+        )
+    };
+    assert_eq!(check(150), Ok(()));
+    let late = root.path().join("late.txt");
+    let writer = std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(100));
+        fs::write(late, "late\n").expect("the late file should be written");
+    });
+    let held = check(2_000);
+    writer.join().expect("the writer should finish");
+    assert!(
+        held.as_ref()
+            .is_err_and(|error| error.starts_with("stopped holding after")
+                && error.contains("no late file")),
+        "{held:?}"
+    );
 }
 
 pub(crate) fn fs_actions_make_numbered_directories_and_pin_a_populated_tree() {
