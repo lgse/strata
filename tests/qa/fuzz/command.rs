@@ -523,8 +523,7 @@ fn shrink_one(options: &Options) -> Result<(), String> {
     );
     let mut last = replays;
     let shrunk = shrink(&sequence.steps, &found, options.limit, &mut |steps| {
-        let (divergence, replays) =
-            diverges(&sequence.with_steps(steps.to_vec()), &bench, host)?;
+        let (divergence, replays) = diverges(&sequence.with_steps(steps.to_vec()), &bench, host)?;
         if divergence.is_some() {
             last = replays;
         }
@@ -535,7 +534,13 @@ fn shrink_one(options: &Options) -> Result<(), String> {
         sequence: &sequence,
         replays: &last,
     };
-    report::shrunk(&area, (bench.targets(), host), &shrunk, &shortest, &evidence);
+    report::shrunk(
+        &area,
+        (bench.targets(), host),
+        &shrunk,
+        &shortest,
+        &evidence,
+    );
     if !shrunk.is_confirmed() {
         let what = if bench.targets().is_differential() {
             "noise or a race of one target, not a divergence to file: replay it on each \

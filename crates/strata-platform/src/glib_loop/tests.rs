@@ -108,7 +108,8 @@ fn a_timeout_attached_on_the_owning_thread_is_waited_for_after_the_next_pump() {
 fn a_source_the_owning_thread_attaches_waits_until_the_context_is_woken() {
     owned(|o| {
         assert!(!o.glib.pump(BUDGET));
-        glib::idle_source_new(None, glib::Priority::DEFAULT, o.counting(1)).attach(Some(&o.context));
+        glib::idle_source_new(None, glib::Priority::DEFAULT, o.counting(1))
+            .attach(Some(&o.context));
         assert_eq!(
             o.notified.recv_timeout(QUIET),
             Err(RecvTimeoutError::Timeout),

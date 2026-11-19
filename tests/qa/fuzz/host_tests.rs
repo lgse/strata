@@ -23,7 +23,10 @@ pub(crate) fn a_rune_replay_runs_on_the_session_host_where_its_alphabet_or_the_c
     // Only a Rune replay leaves the display the environment names; GTK is the reference on
     // Xvfb, as in every parity run.
     let environment = DisplayKind::from_environment().expect("the runner's display");
-    assert_eq!(Host::Session.display(Target::Rune), Ok(DisplayKind::Wayland));
+    assert_eq!(
+        Host::Session.display(Target::Rune),
+        Ok(DisplayKind::Wayland)
+    );
     assert_eq!(Host::Session.display(Target::Gtk), Ok(environment));
     assert_eq!(Host::Offscreen.display(Target::Rune), Ok(environment));
 
@@ -50,14 +53,20 @@ pub(crate) fn a_rune_replay_runs_on_the_session_host_where_its_alphabet_or_the_c
     assert!(replayed.contains(&Host::Offscreen), "{replayed:?}");
 
     for (line, expected) in [
-        (format!("{calibration} --host window"), "offscreen or session"),
+        (
+            format!("{calibration} --host window"),
+            "offscreen or session",
+        ),
         (
             "run --alphabet calibration --seeds 1 --target gtk --host session".to_owned(),
             "the Rune target's host",
         ),
     ] {
         let error = parse(&line).expect_err(expected);
-        assert!(error.contains(expected), "{error:?} should say {expected:?}");
+        assert!(
+            error.contains(expected),
+            "{error:?} should say {expected:?}"
+        );
     }
 }
 
@@ -80,14 +89,15 @@ pub(crate) fn a_session_host_run_names_its_host_and_keeps_its_own_folder() {
     assert!(
         summary
             .iter()
-            .any(|line| *line == format!("FUZZ artifacts: target/qa-fuzz/{SESSION}/gtk-rune-session/")),
+            .any(|line| *line
+                == format!("FUZZ artifacts: target/qa-fuzz/{SESSION}/gtk-rune-session/")),
         "{summary:?}"
     );
     assert!(
-        summary
-            .iter()
-            .any(|line| line.starts_with("FUZZ hosts: rune on the session host")
-                && line.ends_with(&format!("for {SESSION}; gtk on Xvfb"))),
+        summary.iter().any(
+            |line| line.starts_with("FUZZ hosts: rune on the session host")
+                && line.ends_with(&format!("for {SESSION}; gtk on Xvfb"))
+        ),
         "{summary:?}"
     );
     // A GTK calibration of the alphabet replays nothing on a host of Rune's: its folder and

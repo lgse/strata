@@ -27,8 +27,8 @@ use super::{
     sequence::{Loaded, strip},
 };
 use crate::{
-    Application, COMMAND_TIMEOUT, CONTAINER_ONLY, CONTROLLER_PANIC, Display, DisplayKind, INPUT_LOG,
-    LAUNCH_TIMEOUT, Launch, STEP_WHEN, WAIT_MARGIN,
+    Application, COMMAND_TIMEOUT, CONTAINER_ONLY, CONTROLLER_PANIC, Display, DisplayKind,
+    INPUT_LOG, LAUNCH_TIMEOUT, Launch, STEP_WHEN, WAIT_MARGIN,
     drive::wait_for_fs,
     fixture::{Manifest, fixture_time},
     fs_check::FsState,
