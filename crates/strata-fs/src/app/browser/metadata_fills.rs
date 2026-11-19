@@ -217,8 +217,8 @@ impl Browser {
         }
     }
 
-    /// Only `Complete` sorts: a partial pass is never published as correct, and
-    /// unfilled rows keep placeholders for their next bind.
+    /// Only a `Complete` stat sort publishes, and unfilled rows keep placeholders for
+    /// their next bind; a media sort also publishes a truncated batch and continues.
     pub(super) fn handle_metadata_finished(
         self: &Rc<Self>,
         request_id: RequestId,
