@@ -386,8 +386,28 @@ fn call(app: &mut App, action: &Action<App>, call: &Call<'_>, tx: &mut Tx) -> Ou
     let outcome = (action.run)(app, call, tx);
     if outcome == Outcome::Ran {
         shell::settle(app, tx);
+        wake_glib();
     }
     outcome
+}
+
+/// Wakes the GLib wait, so what a command attached to the interface thread's context runs
+/// now: undo's check of the disk (`undo::check`), a launch, a properties measurement.
+///
+/// The windowed host waits for GLib on a helper thread (strata-platform's `glib_loop`), and
+/// GLib wakes a context's poll only for a source attached from another thread. One attached
+/// here, in a handler, waits for the next `pump`, which runs in Rune's `poll` before a frame:
+/// a command that changes nothing drawn gets no frame, so its work waited for the next input.
+/// The session host's fuzzing met it (`docs/rune/parity/packages/F5.md`): Ctrl+Z after a
+/// drag-move undid the move only once the pointer moved again, in about half the replays. The
+/// offscreen hosts pump after every step, and this costs them one empty pass.
+///
+/// It covers what runs through here: keys, menu rows, header buttons and the palette. A
+/// handler that does not, a component's own click or a drop say, and that attaches GLib work
+/// without drawing, still waits for the next frame; none is known, and such a handler would
+/// call this too. Held by `commands::tests::wake`.
+fn wake_glib() {
+    glib::MainContext::default().wakeup();
 }
 
 /// Runs the command `id` on `on`: a chosen menu row, a pressed header button, a palette's

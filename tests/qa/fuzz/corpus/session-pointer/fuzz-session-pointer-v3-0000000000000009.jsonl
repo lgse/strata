@@ -1,0 +1,3 @@
+{"scenario":"fuzz-session-pointer-v3-0000000000000009","modes":["list"],"prefs":{"type_to_search":false,"single_click_previews":false,"explorer_folder_clicks":1,"explorer_file_clicks":2}}
+{"click":{"entry":"documents"},"when":{"all":[{"present":{"entry":"documents"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}
+{"click":{"entry":"report.md"},"mods":["shift"],"when":{"all":[{"present":{"entry":"report.md"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}

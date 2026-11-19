@@ -375,17 +375,38 @@ enum Server {
     Wayland(wayland::Sway),
 }
 
-impl Display {
-    fn start(scratch: &Path, runtime: &Path) -> Result<Self, String> {
+/// Which display server a run starts: Xvfb, or a private headless sway.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum DisplayKind {
+    X11,
+    Wayland,
+}
+
+impl DisplayKind {
+    /// The one `STRATA_QA_DISPLAY` names, x11 when it names none.
+    fn from_environment() -> Result<Self, String> {
         match std::env::var(DISPLAY_VARIABLE).as_deref() {
-            Err(std::env::VarError::NotPresent) | Ok("" | "x11") => {
-                Self::start_x11(scratch.join("xvfb.log"))
-            }
-            Ok("wayland") => wayland::start(scratch, runtime),
+            Err(std::env::VarError::NotPresent) | Ok("" | "x11") => Ok(Self::X11),
+            Ok("wayland") => Ok(Self::Wayland),
             Ok(other) => Err(format!(
                 "{DISPLAY_VARIABLE} is x11 or wayland, not {other:?}"
             )),
             Err(error) => Err(format!("{DISPLAY_VARIABLE}: {error}")),
+        }
+    }
+}
+
+impl Display {
+    fn start(scratch: &Path, runtime: &Path) -> Result<Self, String> {
+        Self::start_as(DisplayKind::from_environment()?, scratch, runtime)
+    }
+
+    /// A display of the kind named, whatever `STRATA_QA_DISPLAY` says: a fuzz replay picks
+    /// its own, since one process replays on both targets and each has its host.
+    fn start_as(kind: DisplayKind, scratch: &Path, runtime: &Path) -> Result<Self, String> {
+        match kind {
+            DisplayKind::X11 => Self::start_x11(scratch.join("xvfb.log")),
+            DisplayKind::Wayland => wayland::start(scratch, runtime),
         }
     }
 

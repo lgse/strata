@@ -1,0 +1,187 @@
+# The session host's pointer alphabet (F5): what a user does with the pointer in the List view
+# on the canonical fixture, with Rune's replays in a real window in a private headless sway
+# (`host = "session"`), so every press, motion and release crosses the compositor through
+# Wayland's virtual pointer and every row drag goes through the compositor's data device. GTK's
+# replays stay on Xvfb, the reference as in every parity run. Under single-click folder
+# activation (`explorer_folder_clicks = 1`):
+# - single clicks that open a folder in place, and single, Ctrl and Shift clicks on files and
+#   folders, a slow second click on one file, and clicks on the pane's empty space below its
+#   rows (A9's `pointer`);
+# - marquee drags begun on that empty space or on a row's blank name-column space;
+# - the context menu by the pointer, dismissed with Escape;
+# - a file dragged onto a folder of the fixture's root, which moves it, or with Ctrl held from
+#   the press, copies it; a folder dragged onto another or onto itself; a file dropped on the
+#   pane's own background; and undo of the last transfer (A19's `drag`);
+# - Escape, Back and the parent; and a file made and removed behind the application's back.
+#
+# Type to search and single-click previews are off (`prefs`), so no click opens a preview
+# drawer (A15's). Files keep double-click activation.
+#
+# Left out, with why:
+# - What A9's `pointer` and A19's `drag` leave out, for their reasons: the keyboard's cursor
+#   moves after a marquee (lgse/strata#2552, `oracle`), Settings, a double click on a file
+#   (Open With, A14's), a double click on a folder under single-click activation, the empty
+#   `archive` as a place to walk into, the wheel and middle-click autoscroll, drags from a
+#   row already selected (lgse/strata#2590, `oracle`), spring-loaded folders, multi-selection
+#   drags, and drops onto the sidebar, the tab strip and the location bar.
+# - Escape during a drag, and Shift or Ctrl pressed or let go mid-drag: wlroots' drag grab
+#   gives no client a key during a compositor drag and forwards no modifier change, so on sway
+#   nothing reaches the window (A19.md, "The windowed host, sampled on the session host").
+#   A scenario step's `drag` is whole, press to release, so no key falls inside one; Ctrl is
+#   held from before the press.
+# - The menu's Rename row clicked: while a row is renamed in List, GTK's QA snapshot leaves it
+#   out of `app.matches` and `app.panes` (lgse/strata#2510, open, H3's), as `tabs` keeps its
+#   renames in Columns for.
+# - Drags from or to another process, a second window, launches, the portal and the system
+#   clipboard: later alphabets of F5's (`docs/rune/parity/packages/F5.md`, "Plan").
+#
+# Version 1 was F5's draft, never merged: its smoke tier met lgse/strata#2510 on the menu's
+# Rename row, and on the session host alone an undo that waited for the next input after a
+# drag (fixed: `commands::wake_glib`; its sequence is kept in
+# tests/qa/fuzz/corpus/session-pointer). Version 2 dismissed the menu only when it had a
+# Rename row, so a menu over several selected entries stayed open, and every later step,
+# guarded on no menu, was skipped on both targets (#2637's review); version 3 dismisses any
+# menu, as `chooser` does.
+area = "session-pointer"
+version = 3
+about = "List on the canonical fixture through the compositor (Rune on the session host): folder clicks that open in place, single, Ctrl, Shift and slow second clicks, background clicks, marquees, the context menu by the pointer and dismissed, files dragged or Ctrl-dragged onto the root's folders, folders onto folders, drops on the pane's background, undo, Escape, Back and the parent, and a file made and removed behind the application's back"
+header = '{"modes":["list"],"prefs":{"type_to_search":false,"single_click_previews":false,"explorer_folder_clicks":1,"explorer_file_clicks":2}}'
+host = "session"
+
+# Opens the folder in place: single-click activation.
+[[action]]
+name = "click-folder"
+weight = 5
+steps = ['{"click":{"entry":"<folder>"},"when":{"all":[{"present":{"entry":"<folder>"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}']
+choose.folder = ["documents", "pictures"]
+
+[[action]]
+name = "click-file"
+weight = 5
+steps = ['{"click":{"entry":"<file>"},"when":{"all":[{"present":{"entry":"<file>"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}']
+choose.file = ["readme.md", "todo.txt", "fuzz-a.txt", "notes.txt", "report.md", "spreadsheet.csv", "diagram.txt", "photo.txt"]
+
+# Only an entry not selected: a Ctrl+click that takes one out leaves GTK's browser cursor on
+# the entry before it (`pointer.toml`, as in lgse/strata#2353).
+[[action]]
+name = "ctrl-click"
+weight = 3
+steps = ['{"click":{"entry":"<entry>"},"mods":["ctrl"],"when":{"all":[{"present":{"entry":"<entry>"}},{"not":{"all_selected":{"contains":["<entry>"]}}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}']
+choose.entry = ["documents", "pictures", "readme.md", "todo.txt", "notes.txt", "report.md", "diagram.txt", "photo.txt"]
+
+[[action]]
+name = "shift-click"
+weight = 3
+steps = ['{"click":{"entry":"<entry>"},"mods":["shift"],"when":{"all":[{"present":{"entry":"<entry>"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}']
+choose.entry = ["documents", "pictures", "readme.md", "todo.txt", "notes.txt", "report.md", "diagram.txt", "photo.txt"]
+
+# Two clicks further apart than the double-click interval: the file stays selected and nothing
+# opens. A rename the second click might start is cancelled.
+[[action]]
+name = "slow-second-click"
+weight = 2
+steps = [
+  '{"click":{"entry":"<file>"},"when":{"all":[{"present":{"entry":"<file>"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}',
+  '{"sleep":600}',
+  '{"click":{"entry":"<file>"},"when":{"all":[{"present":{"entry":"<file>"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}',
+  '{"key":"Escape","when":{"field":{"name":"Rename"}}}',
+]
+choose.file = ["readme.md", "todo.txt", "notes.txt", "photo.txt"]
+
+# The pane's empty space below its rows: the folders the walk shows hold at most six rows, so
+# the point is blank on both targets.
+[[action]]
+name = "click-background"
+weight = 2
+steps = ['{"click":{"pane":"<pane>"},"at":["50%",-60],"when":{"all":[{"directory":"<pane>"},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}']
+choose.pane = ["$root", "documents", "pictures"]
+
+[[action]]
+name = "marquee-from-background"
+weight = 4
+steps = ['{"drag":{"from":{"pane":"<pane>"},"from_at":["50%",-60],"to":{"entry":"<entry>"}},"when":{"all":[{"directory":"<pane>"},{"present":{"entry":"<entry>"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}']
+choose.pane = ["$root", "documents", "pictures"]
+choose.entry = ["documents", "pictures", "readme.md", "todo.txt", "notes.txt", "report.md", "spreadsheet.csv", "diagram.txt", "photo.txt"]
+
+# Only from a row not selected: blank space on a selected row drags the selection.
+[[action]]
+name = "marquee-from-name-space"
+weight = 3
+steps = ['{"drag":{"from":{"entry":"<from>","part":"label"},"from_at":["2/3","50%"],"to":{"entry":"<to>"}},"when":{"all":[{"present":{"entry":"<from>"}},{"not":{"all_selected":{"contains":["<from>"]}}},{"present":{"entry":"<to>"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}']
+choose.from = ["todo.txt", "readme.md", "notes.txt", "photo.txt"]
+choose.to = ["documents", "pictures", "report.md", "spreadsheet.csv", "diagram.txt"]
+
+# The Escape is for any menu open: a menu over several selected entries has no Rename row.
+[[action]]
+name = "menu-dismiss"
+weight = 2
+steps = [
+  '{"click":{"entry":"<entry>"},"button":3,"when":{"all":[{"present":{"entry":"<entry>"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}',
+  '{"key":"Escape","when":{"menu_items":{}}}',
+]
+choose.entry = ["documents", "readme.md", "todo.txt", "notes.txt", "diagram.txt"]
+
+# Every drop is guarded on disk so that it never meets a name already there (the conflict
+# dialog is `entry_management`'s), and every drag starts from a row not selected.
+[[action]]
+name = "drag-file-onto-folder"
+weight = 6
+steps = ['{"drag":{"from":{"entry":"<file>"},"to":{"entry":"<folder>"}},"when":{"all":[{"directory":"$root"},{"present":{"entry":"<file>"}},{"not":{"all_selected":{"contains":["<file>"]}}},{"present":{"entry":"<folder>"}},{"file":{"path":"$fixture/<folder>/<file>","exists":false}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}']
+choose.file = ["readme.md", "todo.txt"]
+choose.folder = ["archive", "documents", "pictures"]
+
+[[action]]
+name = "ctrl-drag-file-onto-folder"
+weight = 4
+steps = ['{"drag":{"from":{"entry":"<file>"},"to":{"entry":"<folder>"}},"mods":["ctrl"],"when":{"all":[{"directory":"$root"},{"present":{"entry":"<file>"}},{"not":{"all_selected":{"contains":["<file>"]}}},{"present":{"entry":"<folder>"}},{"file":{"path":"$fixture/<folder>/<file>","exists":false}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}']
+choose.file = ["readme.md", "todo.txt"]
+choose.folder = ["archive", "documents", "pictures"]
+
+# A folder onto another moves it in; onto itself, nothing takes the drop.
+[[action]]
+name = "drag-folder-onto-folder"
+weight = 3
+steps = ['{"drag":{"from":{"entry":"<from>"},"to":{"entry":"<to>"}},"when":{"all":[{"directory":"$root"},{"present":{"entry":"<from>"}},{"not":{"all_selected":{"contains":["<from>"]}}},{"present":{"entry":"<to>"}},{"file":{"path":"$fixture/<to>/<from>","exists":false}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}']
+choose.from = ["archive", "pictures"]
+choose.to = ["archive", "documents"]
+
+[[action]]
+name = "drag-onto-own-background"
+weight = 2
+steps = ['{"drag":{"from":{"entry":"<file>"},"to":{"pane":"$root"},"to_at":["50%",-60]},"when":{"all":[{"directory":"$root"},{"present":{"entry":"<file>"}},{"not":{"all_selected":{"contains":["<file>"]}}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}']
+choose.file = ["readme.md", "todo.txt"]
+
+[[action]]
+name = "undo"
+weight = 2
+steps = ['{"key":"ctrl+z","when":{"all":[{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}']
+
+[[action]]
+name = "dismiss-dialog"
+weight = 1
+steps = ['{"key":"Escape","when":{"dialog":true}}']
+
+[[action]]
+name = "escape"
+weight = 1
+steps = ['{"key":"Escape","when":{"all":[{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}']
+
+# The parent of the fixture's own folder is /tmp, which holds other runs' folders: the parent
+# and Back stay inside the fixture.
+[[action]]
+name = "back"
+weight = 3
+steps = ['{"key":"<key>","when":{"all":[{"not":{"directory":"$root"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}']
+choose.key = ["alt+Left", "alt+Up"]
+
+# `fuzz-a.txt` lists after the root's folders, so it is never a folder's first row, nor its
+# last, which `todo.txt` is.
+[[action]]
+name = "write"
+weight = 1
+steps = ['{"fs":{"path":"fuzz-a.txt","write":"fuzz\n"},"when":{"file":{"path":"$fixture/fuzz-a.txt","exists":false}}}']
+
+[[action]]
+name = "remove"
+weight = 1
+steps = ['{"fs":{"path":"fuzz-a.txt","remove":true},"when":{"file":{"path":"$fixture/fuzz-a.txt","exists":true}}}']

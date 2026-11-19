@@ -12,6 +12,7 @@ use super::{
     compare::{Divergence, compare},
     corpus::{self, Parked},
     generate::{GENERATOR, Origin, generate},
+    host::Host,
     options::{Command, Options, USAGE},
     replay::{Replay, Replayed, Stream, replay},
     report::{self, Evidence, Examined, Run},
@@ -34,6 +35,8 @@ const USAGE_ERROR: u8 = 2;
 pub(crate) struct Job {
     pub(crate) area: String,
     pub(crate) sequence: Sequence,
+    /// Where its Rune replays run: `--host`, or the area's alphabet's.
+    pub(crate) host: Host,
     /// The parked line of a sequence that is replayed on purpose.
     pub(crate) parked: Option<Parked>,
 }
@@ -82,8 +85,12 @@ pub(crate) fn checked() -> Result<Vec<String>, String> {
     }
     for area in areas {
         let alphabet = alphabet::load(&area)?;
+        let host = match alphabet.host {
+            Host::Offscreen => "",
+            Host::Session => ", rune on the session host",
+        };
         lines.push(format!(
-            "FUZZ alphabet {area} v{}: {} actions; {}",
+            "FUZZ alphabet {area} v{}: {} actions{host}; {}",
             alphabet.version,
             alphabet.actions.len(),
             alphabet.about
@@ -200,7 +207,7 @@ pub(crate) fn planned(options: &Options) -> Result<Plan, String> {
         plan.jobs = options
             .files
             .iter()
-            .map(|path| file_job(path))
+            .map(|path| file_job(path, options))
             .collect::<Result<_, _>>()?;
         return Ok(plan);
     }
@@ -209,6 +216,7 @@ pub(crate) fn planned(options: &Options) -> Result<Plan, String> {
         None => corpus::areas(),
     };
     for area in areas {
+        let host = host_of(options, &area)?;
         let parked = corpus::parked(&area)?;
         for (origin, sequence) in corpus::sequences(&area)? {
             let entry = corpus::parked_as(&parked, origin.version, origin.seed).cloned();
@@ -218,6 +226,7 @@ pub(crate) fn planned(options: &Options) -> Result<Plan, String> {
                 (entry, _) => plan.jobs.push(Job {
                     area: area.clone(),
                     sequence,
+                    host,
                     parked: entry,
                 }),
             }
@@ -231,6 +240,7 @@ pub(crate) fn planned(options: &Options) -> Result<Plan, String> {
 fn generated_plan(options: &Options) -> Result<Plan, String> {
     let area = options.alphabet.clone().unwrap_or_default();
     let alphabet = alphabet::load(&area)?;
+    let host = options.host.unwrap_or(alphabet.host);
     let parked = corpus::parked(&area)?;
     let mut plan = Plan {
         what: format!(
@@ -247,6 +257,7 @@ fn generated_plan(options: &Options) -> Result<Plan, String> {
             None => plan.jobs.push(Job {
                 area: area.clone(),
                 sequence,
+                host,
                 parked: None,
             }),
         }
@@ -254,14 +265,23 @@ fn generated_plan(options: &Options) -> Result<Plan, String> {
     Ok(plan)
 }
 
-fn file_job(path: &Path) -> Result<Job, String> {
+fn file_job(path: &Path, options: &Options) -> Result<Job, String> {
     let sequence = Sequence::read(path)?;
     let origin = origin_of(&sequence)?;
     Ok(Job {
+        host: host_of(options, &origin.area)?,
         area: origin.area,
         sequence,
         parked: None,
     })
+}
+
+/// Where an area's Rune replays run: `--host`, or the host its alphabet names.
+fn host_of(options: &Options, area: &str) -> Result<Host, String> {
+    match options.host {
+        Some(host) => Ok(host),
+        None => Ok(alphabet::load(area)?.host),
+    }
 }
 
 fn origin_of(sequence: &Sequence) -> Result<Origin, String> {
@@ -307,10 +327,12 @@ impl<'a> Bench<'a> {
         }
     }
 
-    fn replay(&self, loaded: &Loaded, target: Target, perturbed: bool) -> Result<Replayed, String> {
+    fn replay(&self, loaded: &Loaded, side: On, perturbed: bool) -> Result<Replayed, String> {
+        let (target, host) = side;
         replay(&Replay {
             loaded,
             target,
+            host,
             manifest: &self.manifest,
             rest: self.options.rest,
             perturbation: self.options.perturbation.as_ref().filter(|_| perturbed),
@@ -320,12 +342,12 @@ impl<'a> Bench<'a> {
 
     /// `--repeats` replays on one target, one after another. Only the last replay of the
     /// last target is perturbed, when the command perturbs.
-    fn series(&self, loaded: &Loaded, target: Target) -> (Vec<Replayed>, Option<String>) {
+    fn series(&self, loaded: &Loaded, side: On) -> (Vec<Replayed>, Option<String>) {
         let repeats = self.options.repeats;
         let mut replays = Vec::new();
         for index in 0..repeats {
-            let perturbed = target == self.targets().last() && index + 1 == repeats;
-            match self.replay(loaded, target, perturbed) {
+            let perturbed = side.0 == self.targets().last() && index + 1 == repeats;
+            match self.replay(loaded, side, perturbed) {
                 Ok(replayed) => replays.push(replayed),
                 Err(error) => return (replays, Some(error)),
             }
@@ -335,13 +357,13 @@ impl<'a> Bench<'a> {
 
     /// Every target's series, the targets side by side; the replays in the order the
     /// targets are listed, and the first error met.
-    fn replays(&self, loaded: &Loaded) -> (Vec<Replayed>, Option<String>) {
+    fn replays(&self, loaded: &Loaded, host: Host) -> (Vec<Replayed>, Option<String>) {
         let series: Vec<_> = std::thread::scope(|scope| {
             let started: Vec<_> = self
                 .targets()
                 .all()
                 .iter()
-                .map(|&target| scope.spawn(move || self.series(loaded, target)))
+                .map(|&target| scope.spawn(move || self.series(loaded, (target, host))))
                 .collect();
             started.into_iter().map(|one| one.join()).collect()
         });
@@ -357,6 +379,9 @@ impl<'a> Bench<'a> {
     }
 }
 
+/// A target, and the host its replays run on.
+type On = (Target, Host);
+
 /// A replay's error, with the target it was met on: `on rune: …`.
 fn on(target: Target, error: &str) -> String {
     format!("on {}: {error}", target.name())
@@ -367,6 +392,7 @@ fn examine_all(options: &Options) -> Result<(), String> {
     let mut run = Run::new(options, bench.reported());
     let plan = planned(options)?;
     run.what = plan.what;
+    run.hosts(plan.jobs.iter().map(|job| (job.area.as_str(), job.host)));
     for (name, parked) in &plan.skipped {
         run.parked(name, parked);
     }
@@ -385,8 +411,12 @@ fn examine_all(options: &Options) -> Result<(), String> {
                     let examined =
                         std::panic::catch_unwind(AssertUnwindSafe(|| examine(&job, &bench)))
                             .unwrap_or_else(|_| {
-                                let mut failed =
-                                    Examined::new(&job.area, &job.sequence, bench.targets());
+                                let mut failed = Examined::new(
+                                    &job.area,
+                                    &job.sequence,
+                                    bench.targets(),
+                                    job.host,
+                                );
                                 failed.error =
                                     Some("the replay panicked; the reason is above".to_owned());
                                 failed
@@ -411,7 +441,7 @@ fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
 /// target with itself, then, on two targets, every Rune replay with the first GTK one
 /// (`targets.rs`).
 fn examine(job: &Job, bench: &Bench) -> Examined {
-    let mut examined = Examined::new(&job.area, &job.sequence, bench.targets());
+    let mut examined = Examined::new(&job.area, &job.sequence, bench.targets(), job.host);
     examined.parked.clone_from(&job.parked);
     let loaded = match job.sequence.load() {
         Ok(loaded) => loaded,
@@ -420,7 +450,7 @@ fn examine(job: &Job, bench: &Bench) -> Examined {
             return examined;
         }
     };
-    let (replays, error) = bench.replays(&loaded);
+    let (replays, error) = bench.replays(&loaded, job.host);
     examined.error = error;
     let streams: Vec<Stream> = replays
         .iter()
@@ -446,12 +476,13 @@ fn examine(job: &Job, bench: &Bench) -> Examined {
 fn diverges(
     sequence: &Sequence,
     bench: &Bench,
+    host: Host,
 ) -> Result<(Option<Divergence>, [Replayed; 2]), String> {
     let loaded = sequence.load()?;
     let (reference, other) = bench.targets().pair();
     let (left, right) = std::thread::scope(|scope| {
-        let left = scope.spawn(|| bench.replay(&loaded, reference, false));
-        let right = bench.replay(&loaded, other, true);
+        let left = scope.spawn(|| bench.replay(&loaded, (reference, host), false));
+        let right = bench.replay(&loaded, (other, host), true);
         (left.join(), right)
     });
     let left = left.map_err(|_| on(reference, "a replay panicked"))??;
@@ -472,11 +503,13 @@ fn shrink_one(options: &Options) -> Result<(), String> {
         None => generated(options)?,
     };
     let area = origin_of(&sequence)?.area;
+    let host = host_of(options, &area)?;
     let perturbed = options.perturbation.is_some();
     let mut run = Run::new(options, bench.reported());
     run.what = format!("shrinking {}", sequence.name);
+    run.hosts([(area.as_str(), host)]);
     run.start(1);
-    let (found, replays) = diverges(&sequence, &bench)?;
+    let (found, replays) = diverges(&sequence, &bench, host)?;
     let Some(found) = found else {
         return Err(format!(
             "{}: two replays agree, so there is nothing to shrink",
@@ -490,7 +523,7 @@ fn shrink_one(options: &Options) -> Result<(), String> {
     );
     let mut last = replays;
     let shrunk = shrink(&sequence.steps, &found, options.limit, &mut |steps| {
-        let (divergence, replays) = diverges(&sequence.with_steps(steps.to_vec()), &bench)?;
+        let (divergence, replays) = diverges(&sequence.with_steps(steps.to_vec()), &bench, host)?;
         if divergence.is_some() {
             last = replays;
         }
@@ -501,7 +534,13 @@ fn shrink_one(options: &Options) -> Result<(), String> {
         sequence: &sequence,
         replays: &last,
     };
-    report::shrunk(&area, bench.targets(), &shrunk, &shortest, &evidence);
+    report::shrunk(
+        &area,
+        (bench.targets(), host),
+        &shrunk,
+        &shortest,
+        &evidence,
+    );
     if !shrunk.is_confirmed() {
         let what = if bench.targets().is_differential() {
             "noise or a race of one target, not a divergence to file: replay it on each \

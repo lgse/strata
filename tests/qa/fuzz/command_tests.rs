@@ -20,7 +20,7 @@ use super::{
     targets::Comparison,
 };
 
-fn parse(line: &str) -> Result<Options, String> {
+pub(super) fn parse(line: &str) -> Result<Options, String> {
     Options::parse(line.split_whitespace().map(str::to_owned))
 }
 

@@ -245,6 +245,11 @@ pub(crate) fn an_alphabet_s_version_is_pinned_to_what_its_seeds_write() {
     let reworded = sample.replace("three actions", "3 actions");
     let reworded = alphabet::parse(&reworded).expect("the alphabet should load");
     assert_eq!(reworded.check_pin(&pins), Ok(()));
+    // Nor is the offscreen host, the default; the session host is, so that an alphabet that
+    // moves there takes a new version and its parked sequences stay with the host they met.
+    let offscreen = sample.replace(HEADER, &format!("{HEADER}\nhost = \"offscreen\""));
+    let offscreen = alphabet::parse(&offscreen).expect("the alphabet should load");
+    assert_eq!(offscreen.check_pin(&pins), Ok(()));
     // A change to what seeds write, without a new version, is refused; so is a new
     // version nobody pinned, and an alphabet with no line at all.
     for (changed, expected) in [
@@ -258,6 +263,10 @@ pub(crate) fn an_alphabet_s_version_is_pinned_to_what_its_seeds_write() {
             "raise `version`",
         ),
         (sample.replace("version = 1", "version = 2"), "does not pin"),
+        (
+            sample.replace(HEADER, &format!("{HEADER}\nhost = \"session\"")),
+            "raise `version`",
+        ),
     ] {
         let changed = alphabet::parse(&changed).expect("the alphabet should load");
         let error = changed.check_pin(&pins).expect_err(expected);
