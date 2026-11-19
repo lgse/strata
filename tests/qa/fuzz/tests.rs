@@ -18,7 +18,6 @@ use super::{
     compare_tests::{
         a_divergence_that_does_not_repeat_is_not_confirmed,
         a_perturbation_waits_for_its_step_and_its_state,
-        a_rule_s_while_holds_it_to_each_side_s_observation,
         a_rule_that_names_values_excuses_only_those,
         a_step_not_at_rest_is_compared_by_its_outcome_alone,
         a_warning_a_broken_invariant_or_a_lost_target_diverges_even_when_both_replays_show_it,
@@ -53,6 +52,7 @@ use super::{
         a_run_on_two_targets_names_the_replays_that_differ_and_keeps_its_own_folder,
         each_target_is_held_to_itself_and_rune_to_the_first_gtk_replay_under_the_map,
     },
+    while_tests::a_rule_s_while_holds_it_to_each_side_s_observation,
 };
 
 /// The runner has its own harness, so a test runs only when it is listed here;

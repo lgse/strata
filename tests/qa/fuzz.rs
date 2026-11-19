@@ -77,6 +77,9 @@ pub(crate) mod targets;
 #[path = "fuzz/targets_tests.rs"]
 mod targets_tests;
 
+#[path = "fuzz/while_tests.rs"]
+mod while_tests;
+
 #[path = "fuzz/tests.rs"]
 mod tests;
 
