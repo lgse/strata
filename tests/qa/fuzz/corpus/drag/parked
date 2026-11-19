@@ -12,3 +12,7 @@ v1-0000000000000005 oracle lgse/strata#2590
 v1-000000000000000d oracle lgse/strata#2591
 v1-0000000000000011 oracle lgse/strata#2590
 v2-0000000000000007 divergence lgse/strata#2593
+# v2, 0x6b: Ctrl+Z takes out the entry the unselected cursor is on: GTK's keyboard goes to the
+# neighbour unselected, Rune's selects it (lgse/strata#2627). Shrunk from 40 steps to 3, confirmed
+# 3 of 3 (F4's round 1). v2, 0x64 is kept unparked: its fix (lgse/strata#2628) came with it.
+v2-000000000000006b divergence lgse/strata#2627

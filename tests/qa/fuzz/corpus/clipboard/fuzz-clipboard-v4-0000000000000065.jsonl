@@ -1,0 +1,6 @@
+{"scenario":"fuzz-clipboard-v4-0000000000000065","modes":["columns"],"prefs":{"type_to_search":false}}
+{"click":{"entry":"documents","dir":"$root"},"when":{"all":[{"present":{"entry":"documents","dir":"$root"}},{"absent":{"pane":"documents"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}
+{"click":{"entry":"notes.txt","dir":"documents"},"when":{"all":[{"present":{"entry":"notes.txt","dir":"documents"}},{"present":{"entry":"report.md","dir":"documents"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}
+{"click":{"entry":"report.md","dir":"documents"},"mods":["ctrl"],"when":{"all":[{"present":{"entry":"report.md","dir":"documents"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}
+{"click":{"entry":"notes.txt"},"mods":["ctrl"],"when":{"all":[{"present":{"entry":"notes.txt"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}
+{"key":"Escape","when":{"all":[{"focused_pane":true},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}
