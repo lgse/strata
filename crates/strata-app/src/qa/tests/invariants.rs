@@ -191,13 +191,12 @@ fn a_column_keeps_its_load_cursor_when_its_folder_changes_while_another_is_activ
 /// comes back at its remembered position, its load's cursor: the view and the browser agree
 /// on whether that cursor is still the load's (seed 0x62 of `list v3` and 0x3e of `icons v1`,
 /// the long run of 2026-11-19).
-/// `next` is the key that moves to the next entry in `mode`.
-fn a_revisit_by_double_click_keeps_the_load_cursor(mode: &str, next: &str, name: &str) {
-    shown_in(mode, name, |backend, kept| {
+fn a_revisit_by_double_click_keeps_the_load_cursor<View: Revisited>() {
+    shown_in(View::MODE, View::NAME, |backend, kept| {
         for step in [
             json!({ "wait": { "focused": "archive" } }),
-            json!({ "key": next }),
-            json!({ "key": next }),
+            json!({ "key": View::NEXT }),
+            json!({ "key": View::NEXT }),
             json!({ "wait": { "focused": "pictures" } }),
             json!({ "key": "Return" }),
             json!({ "wait": { "directory": "pictures" } }),
@@ -213,22 +212,38 @@ fn a_revisit_by_double_click_keeps_the_load_cursor(mode: &str, next: &str, name:
     });
 }
 
+/// A single-pane view a folder is revisited in: its saved mode, the key that moves to the
+/// next entry there, and the test's name.
+trait Revisited {
+    const MODE: &'static str;
+    const NEXT: &'static str;
+    const NAME: &'static str;
+}
+
+struct InTheList;
+
+impl Revisited for InTheList {
+    const MODE: &'static str = "list";
+    const NEXT: &'static str = "Down";
+    const NAME: &'static str = "the_list_keeps_the_load_cursor_on_a_revisit_by_double_click";
+}
+
+struct InTheIcons;
+
+impl Revisited for InTheIcons {
+    const MODE: &'static str = "icons";
+    const NEXT: &'static str = "Right";
+    const NAME: &'static str = "the_icons_keep_the_load_cursor_on_a_revisit_by_double_click";
+}
+
 #[test]
 fn the_list_keeps_the_load_cursor_on_a_revisit_by_double_click() {
-    a_revisit_by_double_click_keeps_the_load_cursor(
-        "list",
-        "Down",
-        "the_list_keeps_the_load_cursor_on_a_revisit_by_double_click",
-    );
+    a_revisit_by_double_click_keeps_the_load_cursor::<InTheList>();
 }
 
 #[test]
 fn the_icons_keep_the_load_cursor_on_a_revisit_by_double_click() {
-    a_revisit_by_double_click_keeps_the_load_cursor(
-        "icons",
-        "Right",
-        "the_icons_keep_the_load_cursor_on_a_revisit_by_double_click",
-    );
+    a_revisit_by_double_click_keeps_the_load_cursor::<InTheIcons>();
 }
 
 /// The browser given a Shift anchor the view does not hold, as a handover that lost one

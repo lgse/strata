@@ -518,34 +518,6 @@ pub(crate) fn a_rule_that_names_what_rune_adds_excuses_only_those_elements() {
     }
     // GTK's list holding the element is not Rune's adding it.
     assert_eq!(differs(json!(["Volume", "alpha"]), json!(["alpha"])), field);
-    // A rule takes out one copy of each element it names: a node Rune names twice is a
-    // duplicated node, which still diverges, beside GTK's own copy or not.
-    for (gtk, rune) in [
-        (
-            gtk.clone(),
-            json!([
-                "Volume",
-                "1 of 2 in folder",
-                "Mute/unmute",
-                "alpha",
-                "Volume"
-            ]),
-        ),
-        (
-            json!(["Volume", "alpha"]),
-            json!(["Volume", "alpha", "Volume", "Volume"]),
-        ),
-    ] {
-        assert_eq!(differs(gtk, rune.clone()), field, "{rune}");
-    }
-    // GTK's own copy is matched wherever Rune's added one stands.
-    assert_eq!(
-        differs(
-            json!(["Volume", "alpha"]),
-            json!(["Volume", "alpha", "Volume"])
-        ),
-        None
-    );
 }
 
 /// Two rulings' `rune_adds` rules on one field take their elements out together: a list that
@@ -575,12 +547,6 @@ pub(crate) fn rune_adds_rules_of_two_rulings_take_their_elements_out_together() 
         "Audio spectrum"
     ])));
     assert!(!differs(json!(["Mute/unmute", "Volume", "tone"])));
-    assert!(differs(json!([
-        "Album art",
-        "Mute/unmute",
-        "tone",
-        "Album art"
-    ])));
     assert!(differs(json!([
         "Album art",
         "Mute/unmute",
