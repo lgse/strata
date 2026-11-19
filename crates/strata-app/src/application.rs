@@ -14,16 +14,27 @@
 //! thread through GLib (`MainContext::invoke`), where it is dispatched like any other source:
 //! it only queues ([`Opening`]), and the host opens what is queued after the dispatch
 //! ([`take`]). A primary's own launch is delivered at [`attach`], before the first window.
+//!
+//! The primary also serves `org.freedesktop.FileManager1`, as GTK's
+//! `export_file_manager_interface` does: browsers and other applications call it for "Open file
+//! location". A call is grouped into a window per folder by GTK's own rules
+//! (`strata_fs::adapters::reveal_requests`), and each opens with its items selected
+//! ([`open_reveal`]). The name is queued for, never taken, so while another file manager holds it
+//! the calls keep reaching that one.
 
 mod argument;
+mod reveal;
 
 use std::{cell::RefCell, collections::VecDeque, ffi::OsString, path::Path};
 
 use strata_core::model::Location;
-use strata_fs::adapters::location_for_file;
-use strata_platform::single_instance::{self, AppId, Claim, Event, Launch, Options};
+use strata_fs::adapters::{RevealMethod, RevealRequest, location_for_file, reveal_requests};
+use strata_platform::single_instance::{
+    self, AppId, Claim, Event, Launch, Options, Reveal, RevealMethod as Called,
+};
 
 pub(crate) use argument::open as open_argument;
+pub(crate) use reveal::open as open_reveal;
 
 use crate::startup::APPLICATION_ID;
 
@@ -37,11 +48,23 @@ pub(crate) enum Opening {
     Present,
     /// An argument: a folder opens, a file is shown selected in its folder.
     Argument(Location),
+    /// A FileManager1 call's folder, with the items it named selected, and their Properties
+    /// shown when it was `ShowItemProperties`.
+    Reveal(RevealRequest),
+}
+
+/// A window asked for, with the activation token its asker forwarded: the compositor lets a
+/// window created with it take the focus, as GTK's GApplication hands a launch's token to the
+/// window it presents.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct Asked {
+    pub(crate) opening: Opening,
+    pub(crate) token: Option<String>,
 }
 
 thread_local! {
     /// What the bus asked for since the host last looked: on the interface thread.
-    static QUEUED: RefCell<VecDeque<Opening>> = const { RefCell::new(VecDeque::new()) };
+    static QUEUED: RefCell<VecDeque<Asked>> = const { RefCell::new(VecDeque::new()) };
     /// The primary, kept for the life of the process and released as it quits.
     static PRIMARY: RefCell<Option<single_instance::Primary>> = const { RefCell::new(None) };
 }
@@ -56,6 +79,7 @@ pub(crate) fn claim(launch: Launch, service: bool) -> Claim {
         launch,
         &Options {
             service,
+            file_manager1: true,
             ..Options::default()
         },
     )
@@ -77,44 +101,86 @@ pub(crate) fn release() {
     }
 }
 
-/// The windows asked for since the last call, in the order they were asked for.
-pub(crate) fn take() -> Vec<Opening> {
+/// The windows asked for since the last call, in the order they were asked for, with their
+/// tokens.
+pub(crate) fn take_asked() -> Vec<Asked> {
     QUEUED.with(|queued| queued.borrow_mut().drain(..).collect())
 }
 
-/// Puts `openings` back at the head of the queue, for the host's first pump.
+/// [`take_asked`], for a host whose windows take no activation token.
+pub(crate) fn take() -> Vec<Opening> {
+    take_asked()
+        .into_iter()
+        .map(|asked| asked.opening)
+        .collect()
+}
+
+/// Puts `openings` back at the head of the queue, for the host's first pump. They are the
+/// process's own launch's, whose token Rune gives its first window itself.
 pub(crate) fn queue_first(openings: impl IntoIterator<Item = Opening>) {
     let openings: Vec<Opening> = openings.into_iter().collect();
     QUEUED.with(|queued| {
         let mut queued = queued.borrow_mut();
         for opening in openings.into_iter().rev() {
-            queued.push_front(opening);
+            queued.push_front(Asked {
+                opening,
+                token: None,
+            });
         }
     });
 }
 
+/// Queues `openings`, each to be created with `token`.
+fn queue_with(openings: impl IntoIterator<Item = Opening>, token: Option<&str>) {
+    let token = token.filter(|token| !token.is_empty()).map(str::to_owned);
+    QUEUED.with(|queued| {
+        queued
+            .borrow_mut()
+            .extend(openings.into_iter().map(|opening| Asked {
+                opening,
+                token: token.clone(),
+            }));
+    });
+}
+
+#[cfg(test)]
 fn queue(openings: impl IntoIterator<Item = Opening>) {
-    QUEUED.with(|queued| queued.borrow_mut().extend(openings));
+    queue_with(openings, None);
 }
 
 /// One event of the bus, on the interface thread. A launch is answered as it is dropped, with
 /// status 0, as GTK answers once it has asked for its windows.
 fn heard(event: Event) {
     match event {
-        Event::CommandLine(command) => queue(openings(
-            command.arguments(),
-            command.cwd(),
-            command.is_remote(),
-        )),
-        Event::Activate(_) => queue([Opening::Present]),
-        Event::Open { uris, .. } => queue(
+        Event::CommandLine(command) => queue_with(
+            openings(command.arguments(), command.cwd(), command.is_remote()),
+            command.activation().token(),
+        ),
+        Event::Activate(activation) => queue_with([Opening::Present], activation.token()),
+        Event::Open {
+            uris, activation, ..
+        } => queue_with(
             uris.iter()
                 .filter_map(|uri| location_for_file(&gio::File::for_uri(uri)))
                 .map(Opening::Argument),
+            activation.token(),
         ),
-        // No actions are exported, and the shim serves FileManager1 only when asked to.
-        Event::Action { .. } | Event::Reveal(_) => {}
+        // FileManager1's startup id is the caller's activation token, when it has one.
+        Event::Reveal(reveal) => queue_with(revealed(&reveal), Some(&reveal.startup_id)),
+        // No actions are exported.
+        Event::Action { .. } => {}
     }
+}
+
+/// The windows a FileManager1 call opens: one per folder, as GTK groups them.
+fn revealed(reveal: &Reveal) -> Vec<Opening> {
+    let method = match reveal.method {
+        Called::Folders => RevealMethod::Folders,
+        Called::Items => RevealMethod::Items,
+        Called::ItemProperties => RevealMethod::ItemProperties,
+    };
+    let requests = reveal_requests(method, &reveal.uris);
+    requests.into_iter().map(Opening::Reveal).collect()
 }
 
 /// What a launch opens: a window for each argument that names a location, resolved against

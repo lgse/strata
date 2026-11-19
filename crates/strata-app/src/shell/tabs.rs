@@ -363,6 +363,7 @@ pub(crate) fn open(app: &mut App, location: Option<Location>, at: usize, tx: &mu
             events: &window.events,
             folder_views: &window.folder_views,
             power_saver: window.power_saver,
+            presence: super::presence::of(window),
         },
         (&browser, parts),
         &setup,

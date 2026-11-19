@@ -240,6 +240,15 @@ fn show_focused(app: &mut App) -> Outcome {
     Outcome::Ran
 }
 
+/// The location whose Properties are open, for a test of who opens them.
+#[cfg(test)]
+pub(crate) fn shown_location(app: &App) -> Option<&Location> {
+    match (&app.properties.dialog, app.properties.open) {
+        (Some(Dialog::Single(single)), true) => Some(&single.location),
+        _ => None,
+    }
+}
+
 /// Opens Properties for `location` with no row entry (`show_folder_properties`).
 pub(crate) fn show_location(app: &mut App, location: Location, rename_depth: Option<usize>) {
     if location.is_recent_location() {
