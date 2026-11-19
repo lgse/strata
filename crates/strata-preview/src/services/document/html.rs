@@ -687,7 +687,8 @@ impl HtmlState {
                 self.text(&String::from_utf8_lossy(&text.value));
                 self.check_markup()?;
             }
-            Token::Error(_) => self.malformed = true,
+            // HTML has no processing instructions; html5gum 0.9.2 stopped reporting `<?` as an error.
+            Token::Error(_) | Token::ProcessingInstruction(_) => self.malformed = true,
             Token::Comment(_) | Token::Doctype(_) => {}
         }
         Ok(())
