@@ -68,3 +68,39 @@ fn every_tab_follows_the_window_s_focus_and_visibility() {
         },
     );
 }
+
+/// A refused close moves the state into a new native window (`host::windowed`, "Refused
+/// closes"), which may map without the keyboard: its browsers are `Visible` until Rune's first
+/// focus event says otherwise, not `Focused` as the closing window's were.
+#[test]
+fn a_reopened_window_has_the_keyboard_only_once_rune_gives_it() {
+    use crate::startup::{self, UiThread};
+    use strata_platform::csd::{Backend, Csd, Policy};
+
+    crate::test_support::in_own_process(
+        &format!("{MODULE}::a_reopened_window_has_the_keyboard_only_once_rune_gives_it"),
+        &[],
+        || {
+            let folder = folder_of(&["one.txt"]);
+            let ui = UiThread::claim().expect("the UI thread");
+            let mut host = Offscreen::new(ui, startup::load_settings());
+            host.app().open(Location::local(folder.path()));
+            host.runtime().window_focus(true);
+            settle(&mut host);
+            assert_eq!(presences(host.app()), vec![Presence::Focused]);
+
+            let csd = Csd::new(Policy::Auto.frame(), Backend::from_env());
+            let stand_in = App::new(&ui, csd, crate::shell::share_settings(host.app()));
+            let mut kept = std::mem::replace(host.app_mut(), stand_in);
+            drop(host);
+            crate::shell::reopened(&mut kept);
+            assert_eq!(presences(&kept), vec![Presence::Visible]);
+
+            let mut reopened = Offscreen::from_app(ui, kept, (1200.0, 760.0));
+            settle(&mut reopened);
+            reopened.runtime().window_focus(true);
+            settle(&mut reopened);
+            assert_eq!(presences(reopened.app()), vec![Presence::Focused]);
+        },
+    );
+}
