@@ -291,12 +291,14 @@ fn is_window_announcer(node: &Value) -> bool {
 }
 
 impl Snapshot {
-    /// Reads `tree`, the nested JSON of `Runtime::accessibility_json`, and what the view
-    /// draws that the tree leaves out.
+    /// [`Snapshot::read_named`] under the browser window's root.
+    #[cfg(test)]
     pub(super) fn read(tree: &Value, drawn: &Drawn) -> Self {
         Self::read_named("window", tree, drawn)
     }
 
+    /// Reads `tree`, the nested JSON of `Runtime::accessibility_json`, and what the view
+    /// draws that the tree leaves out, under the root `root_key`.
     pub(super) fn read_named(root_key: &str, tree: &Value, drawn: &Drawn) -> Self {
         let mut snapshot = Self::default();
         if tree.is_object() {

@@ -21,12 +21,14 @@ mod clipboard;
 mod devices;
 mod guard;
 mod link;
+mod portal;
 mod sway;
 #[cfg(test)]
 mod tests;
 
 use std::{
-    cell::{Cell, OnceCell, RefCell},
+    cell::{Cell, RefCell},
+    collections::HashMap,
     ffi::OsStr,
     fs::File,
     future::Future,
@@ -85,14 +87,57 @@ const WINDOW_POLL: Duration = Duration::from_millis(20);
 const IDLE_WAIT: Duration = Duration::from_secs(1);
 
 thread_local! {
-    /// The browsers' replacements, counted on the window's thread, where the browsers are.
-    static REPLACEMENTS: OnceCell<Rc<Replacements>> = const { OnceCell::new() };
+    /// Each window's replacements, by its tree's root, counted on the windows' thread.
+    static REPLACEMENTS: RefCell<HashMap<String, Rc<Replacements>>> =
+        RefCell::new(HashMap::new());
+}
+
+/// The window the session acts on: its link, and the root its tree is read under.
+#[derive(Clone)]
+struct Target {
+    link: Link,
+    root: String,
+}
+
+impl Target {
+    /// The browser window, the only one a folder's session has.
+    fn browser(link: Link) -> Self {
+        Self {
+            link,
+            root: "window".to_owned(),
+        }
+    }
+
+    /// Readies the window for the steps, as the offscreen QA host does: no animations, so a
+    /// column that closes leaves the tree at once, and its replacements counted.
+    fn prepare(&self) -> Result<(), String> {
+        let root = self.root.clone();
+        self.link.change(move |app| {
+            app.look.animations = false;
+            replacements_of(&root, app);
+        })
+    }
+}
+
+/// The replacements of the window whose tree is read under `root`: `app`'s, watched from the
+/// first call. Runs on the windows' thread.
+fn replacements_of(root: &str, app: &App) -> Rc<Replacements> {
+    REPLACEMENTS.with(|watched| {
+        Rc::clone(
+            watched
+                .borrow_mut()
+                .entry(root.to_owned())
+                .or_insert_with(|| Replacements::watch(app)),
+        )
+    })
 }
 
 /// Whether the runner asks for the session host.
 pub(super) fn wanted() -> bool {
     std::env::var_os(VARIABLE).is_some_and(|value| value == "1")
 }
+
+pub(super) use portal::serve as serve_portal;
 
 pub(super) fn serve(directory: &OsStr) -> Result<(), String> {
     // Before the window opens: a refused session touches no display.
@@ -109,17 +154,18 @@ pub(super) fn serve(directory: &OsStr) -> Result<(), String> {
     let ui = UiThread::claim()?;
     windowed::run_with(ui, settings, location, move |app| {
         let link = Link::new(app.handle(), frames);
-        start(link, protocol, log, admitted);
+        start(Target::browser(link), protocol, log, admitted);
         app.on_frame_drawn(move |runtime| recorder.record(runtime))
     })
 }
 
 /// Starts the session's thread. Requests it makes before the loop runs wait for it.
-fn start(link: Link, protocol: File, log: InputLog, admitted: Admitted) {
+fn start(target: Target, protocol: File, log: InputLog, admitted: Admitted) {
+    let link = target.link.clone();
     let spawned = std::thread::Builder::new()
         .name("qa-session".to_owned())
         .spawn(move || {
-            match Session::connect(link.clone(), log, admitted) {
+            match Session::connect(target, log, admitted) {
                 Ok(host) => {
                     let backend = Rune::on(host);
                     let commands = strata_qa::command_lines();
@@ -162,7 +208,7 @@ impl Wake for Unpark {
 
 /// Runs the session on this thread. Its steps block while they wait; the window's loop runs
 /// on its own meanwhile.
-fn block_on(backend: &Rune<Session>, session: impl Future<Output = ()>) {
+fn block_on<H: Host>(backend: &Rune<H>, session: impl Future<Output = ()>) {
     let waker = Waker::from(Arc::new(Unpark(std::thread::current())));
     let mut context = Context::from_waker(&waker);
     let mut session = pin!(session);
@@ -175,13 +221,14 @@ fn block_on(backend: &Rune<Session>, session: impl Future<Output = ()>) {
 }
 
 pub(super) struct Session {
-    link: Link,
+    target: RefCell<Target>,
     devices: Devices,
     sway: Sway,
     log: InputLog,
     /// The modifiers a `hold` or a `key_down` step pressed and has not released.
     held: RefCell<Vec<Modifier>>,
-    seen: RefCell<Option<(u64, Rc<Snapshot>)>>,
+    /// The last snapshot read, with its window's root and its frame's serial.
+    seen: RefCell<Option<(String, u64, Rc<Snapshot>)>>,
     /// The private Wayland client owning the clipboard from `clipboard_set`, kept alive until
     /// replaced or closed by `clipboard`.
     clipboard: RefCell<Option<clipboard::ClipboardOwner>>,
@@ -191,19 +238,15 @@ pub(super) struct Session {
 }
 
 impl Session {
-    fn connect(link: Link, log: InputLog, admitted: Admitted) -> Result<Self, String> {
+    fn connect(target: Target, log: InputLog, admitted: Admitted) -> Result<Self, String> {
         let Admitted { sway, screen } = admitted;
         // The window is on `WAYLAND_DISPLAY`: once the admitted sway lists it, the two are one
         // compositor, and the devices made on `WAYLAND_DISPLAY` are that sway's.
         own_window(&sway)?;
         let devices = Devices::connect(screen)?;
-        // As the offscreen QA host does: a column that closes leaves the tree at once.
-        link.change(|app| {
-            app.look.animations = false;
-            REPLACEMENTS.with(|cell| cell.get_or_init(|| Replacements::watch(app)).now())
-        })?;
+        target.prepare()?;
         Ok(Self {
-            link,
+            target: RefCell::new(target),
             devices,
             sway,
             log,
@@ -214,13 +257,28 @@ impl Session {
         })
     }
 
+    fn link(&self) -> Link {
+        self.target.borrow().link.clone()
+    }
+
+    fn root(&self) -> String {
+        self.target.borrow().root.clone()
+    }
+
+    /// Acts on `target` from the next step on: another of the process's windows.
+    fn retarget(&self, target: Target) -> Result<(), String> {
+        target.prepare()?;
+        *self.target.borrow_mut() = target;
+        Ok(())
+    }
+
     /// Waits up to [`DISPATCH_LIMIT`] for `App::clipboard` to hear the selection change after
     /// `before` and finish any asynchronous file-offer read (`has_files` / `may_paste`).
     fn wait_clipboard_settled(&self, before: u64) {
         let deadline = Instant::now() + DISPATCH_LIMIT;
         while Instant::now() < deadline {
             match self
-                .link
+                .link()
                 .ask(move |app| crate::clipboard::settled_since(app, before))
             {
                 Ok(true) => return,
@@ -240,7 +298,7 @@ impl Session {
         let sent = self.devices.last_sent();
         let deadline = Instant::now() + DISPATCH_LIMIT;
         while Instant::now() < deadline {
-            match self.link.ask(|_| rune::last_input()) {
+            match self.link().ask(|_| rune::last_input()) {
                 Ok(Some(at)) if at >= sent => return true,
                 Ok(_) => std::thread::sleep(DISPATCH_POLL),
                 Err(error) => {
@@ -258,7 +316,7 @@ impl Session {
 
     /// Whether a drag this window started runs: its motions go to the compositor's data device.
     fn dragging_out(&self) -> bool {
-        self.link
+        self.link()
             .ask(|app| crate::dnd::is_dragging(app))
             .unwrap_or(false)
     }
@@ -315,6 +373,15 @@ impl Session {
     }
 }
 
+/// The session host types on the US layout only.
+fn keymap_is_us(keymap: &Keymap) -> Result<(), String> {
+    if keymap::is_plain_us(keymap) {
+        Ok(())
+    } else {
+        Err("the session host types on the US layout only".to_owned())
+    }
+}
+
 /// Whether a press at `at` lands outside this window, shown at `window`: on another client,
 /// such as the foreign drag source the runner drags from. A press inside it is the window's,
 /// however slow the window is to take it, and `taken` waits for it. When sway does not say
@@ -336,15 +403,18 @@ fn presses_elsewhere(
 
 impl Host for Session {
     fn snapshot(&self) -> Rc<Snapshot> {
-        let Some(frame) = self.link.frames.latest() else {
+        let Some(frame) = self.link().frames.latest() else {
             return Rc::default();
         };
+        let root = self.root();
         let mut seen = self.seen.borrow_mut();
         match &*seen {
-            Some((serial, snapshot)) if *serial == frame.serial => Rc::clone(snapshot),
+            Some((read, serial, snapshot)) if *read == root && *serial == frame.serial => {
+                Rc::clone(snapshot)
+            }
             _ => {
-                let snapshot = Rc::new(Snapshot::read(&frame.tree, &frame.drawn));
-                *seen = Some((frame.serial, Rc::clone(&snapshot)));
+                let snapshot = Rc::new(Snapshot::read_named(&root, &frame.tree, &frame.drawn));
+                *seen = Some((root, frame.serial, Rc::clone(&snapshot)));
                 snapshot
             }
         }
@@ -354,39 +424,35 @@ impl Host for Session {
         &self,
         read: impl FnOnce(&App) -> T + Send + 'static,
     ) -> Result<T, String> {
-        self.link.ask(move |app| read(app))
+        self.link().ask(move |app| read(app))
     }
 
     fn replacements(&self) -> u64 {
-        let now = |app: &mut App| {
-            REPLACEMENTS.with(|cell| {
-                cell.get().map_or(0, |watch| {
-                    watch.follow(app);
-                    watch.now()
-                })
-            })
+        let root = self.root();
+        let now = move |app: &mut App| {
+            let watch = replacements_of(&root, app);
+            watch.follow(app);
+            watch.now()
         };
-        self.link.ask(now).unwrap_or_default()
+        self.link().ask(now).unwrap_or_default()
     }
 
     fn replaced_since(&self, entry: EntryId, since: u64) -> bool {
+        let root = self.root();
         let replaced = move |app: &mut App| {
-            REPLACEMENTS.with(|cell| {
-                cell.get().is_some_and(|watch| {
-                    watch.follow(app);
-                    watch.replaced_since(app, entry, since)
-                })
-            })
+            let watch = replacements_of(&root, app);
+            watch.follow(app);
+            watch.replaced_since(app, entry, since)
         };
-        self.link.ask(replaced).unwrap_or_default()
+        self.link().ask(replaced).unwrap_or_default()
     }
 
     /// Has the window commit a change, so it draws, and waits for that frame. A change that
     /// draws nothing new still draws a frame; one that never comes ends the wait at the limit.
     async fn settle(&self) {
-        let before = self.link.frames.serial();
-        let drawn = match self.link.change(|_| ()) {
-            Ok(()) => self.link.frames.wait_past(before, SETTLE_LIMIT),
+        let before = self.link().frames.serial();
+        let drawn = match self.link().change(|_| ()) {
+            Ok(()) => self.link().frames.wait_past(before, SETTLE_LIMIT),
             Err(error) => {
                 eprintln!("strata-rune: the session host: a settle: {error}");
                 return;
@@ -423,11 +489,7 @@ impl Host for Session {
     }
 
     fn set_layout(&self, keymap: &Keymap) -> Result<(), String> {
-        if keymap::is_plain_us(keymap) {
-            Ok(())
-        } else {
-            Err("the session host types on the US layout only".to_owned())
-        }
+        keymap_is_us(keymap)
     }
 
     async fn chord(&self, chord: &Chord) -> Result<(), String> {
@@ -554,10 +616,10 @@ impl Host for Session {
 
     async fn scroll_to(&self, (_, key): (&Node, &str), x: f32, y: f32) -> Result<(), String> {
         let key = key.to_owned();
-        let before = self.link.frames.serial();
-        self.link
+        let before = self.link().frames.serial();
+        self.link()
             .change_tx(move |_, tx| tx.scroll_to_instant(key, x, y))?;
-        let _ = self.link.frames.wait_past(before, SETTLE_LIMIT);
+        let _ = self.link().frames.wait_past(before, SETTLE_LIMIT);
         self.settle().await;
         Ok(())
     }

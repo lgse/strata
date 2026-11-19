@@ -84,9 +84,11 @@ fn the_binary_answers_ready_then_one_reply_for_each_step_and_ends_with_its_input
             "menu",
             "panes",
             "preview",
-            "view_mode"
+            "toplevels",
+            "view_mode",
+            "window_focused"
         ],
-        "the snapshot's ten keys"
+        "the snapshot's twelve keys"
     );
 
     // A step that arrives while the host sleeps wakes it.

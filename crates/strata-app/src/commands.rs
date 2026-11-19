@@ -426,6 +426,7 @@ fn reading(
         |keys: &Keys<App>| keys.stage == stage && keys.reads.reads(press) && (keys.when)(app, at);
     actions(app)
         .filter(|(_, action)| action.keys.iter().any(reads))
+        .filter(|(_, action)| !crate::chooser::declines_key(app, action, stage))
         .collect()
 }
 

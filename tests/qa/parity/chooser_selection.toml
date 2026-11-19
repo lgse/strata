@@ -97,25 +97,22 @@ host = "offscreen"
 scenario = "chooser-pdf-zoom-keeps-text-size"
 run = "list-default"
 package = "A20"
-status = "pending"
-reason = "scope"
-blocker = "A16: the PDF viewer in the chooser's preview drawer, whose page image is named \"PDF page text\" (line 9)"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "chooser-pdf-zoom-keeps-text-size"
 run = "list-tenxer"
 package = "A11"
-status = "pending"
-reason = "scope"
-blocker = "A20: Space opens no preview in the chooser, so line 30 never sees its `PDF page text` image (A16's viewer has landed). Its private D-Bus (`session_bus`) is the offscreen portal host's, as A20's required runs have it"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "chooser-sidebar-drops-survive-resize"
 run = "list"
 package = "A20"
-status = "pending"
-reason = "scope"
-blocker = "A19: a drop from another process onto a sidebar pin (line 7, `tests/qa/foreign_drag_source.py`), its third slice; then A20's session host for `--qa --portal`, which runs on the offscreen host only so far"
+status = "required"
+host = "session"
 
 [[run]]
 scenario = "chooser-tap-drag-keeps-request-open"

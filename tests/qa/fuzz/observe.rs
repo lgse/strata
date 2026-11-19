@@ -20,7 +20,7 @@ use std::{
 use serde_json::{Map, Value, json};
 use sha2::{Digest, Sha256};
 
-use super::project::{APP, CRITICALS, FS, INVARIANTS, RESULT, SETTINGS};
+use super::project::{APP, CONTEXT, CRITICALS, FS, INVARIANTS, RESULT, SETTINGS};
 
 /// How rest is told. Calibration set these (`docs/testing.md`, "Calibration"): GTK goes on
 /// changing for up to about 220 ms after a reply with nothing to see in between, and the
@@ -101,6 +101,8 @@ pub(crate) struct Sample {
     pub(crate) app: Value,
     pub(crate) fs: Value,
     pub(crate) settings: Value,
+    /// Never compared; a rule's `while` reads it (`project::CONTEXT`).
+    pub(crate) context: Value,
 }
 
 /// A sample taken at rest, or the last one when the budget ran out first.
@@ -205,6 +207,7 @@ impl Observation {
                 APP: rested.sample.app,
                 FS: rested.sample.fs,
                 SETTINGS: rested.sample.settings,
+                CONTEXT: rested.sample.context,
             }),
             settled: rested.settled,
             polls: rested.polls,

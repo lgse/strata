@@ -1141,7 +1141,10 @@ where `strata-rune --qa` opens its window and serves the protocol from it
 (`STRATA_QA_WINDOW=1`, which the runner sets on that display;
 `crates/strata-app/src/qa/session.rs`). Input crosses the compositor through
 Wayland's virtual keyboard and pointer, on the US layout only. The run takes
-the same file on GTK, on Xvfb as every GTK run does.
+the same file on GTK, on Xvfb as every GTK run does. A `portal` scenario runs
+there too: `strata-rune --qa --portal` opens each request's chooser in a real
+window, the steps act on the window `adopt` picks, and the input devices
+connect at the first `adopt` (`crates/strata-app/src/qa/session/portal.rs`).
 
 ```bash
 ./scripts/qa-parity.sh A8                   # each Rune run on the host its entry names
@@ -1757,6 +1760,7 @@ is a fixed projection, and nothing else of a reply is kept:
 | `criticals` | What GLib logged since the last observation. |
 | `invariants` | The invariants the target broke at rest, one line each; empty on GTK, which checks none. |
 | `app.*` | The ten keys of the reply's `app` snapshot: `view_mode`, `directory`, `panes` (each pane's `name`, `selected` and `focused`), `focused`, `focused_pane`, `dialog`, `menu`, `preview`, `field` and `matches`. A runner unit test holds the list to the snapshot's own keys, so a key added there is not left uncompared by oversight. |
+| `context.toplevels`, `context.window_focused` | The snapshot's `toplevels`, the titles of the windows open beside the one the steps act on, and `window_focused`, whether anything in that window has the keyboard. Never compared; a map rule's `while` reads them. |
 | `fs.<path>` | The fixture tree: `dir <mode>`, `file <mode> <size> <digest of its bytes>` or `link <target>` for each path. |
 | `settings.<key>` | `settings.toml`, parsed, so two files that say the same in another order are equal. |
 
@@ -1920,6 +1924,38 @@ must not blind a run. The issue is written `lgse/strata#<number>`. A mask is
 not an exception and cannot carry an exception's code, nor the reverse. The
 exception codes are the ones a twin's label takes, from one list in
 `tests/qa/twins.rs`, with `platform`.
+
+A rule of the map may narrow what it excuses with a JSON object after its
+issue:
+
+- `{"gtk":<value>,"rune":[<value>, …]}` excuses only GTK's value against one
+  of Rune's.
+- Leave out `"rune"` for GTK's value against any of Rune's, or `"gtk"` for any
+  of GTK's against one of Rune's.
+- `"while":{"gtk":{<field>:<value>, …},"rune":{…}}` applies the rule only at
+  a step at which each side's observation holds those values.
+  - A field is a key of `app`, with no list, or `context.toplevels`.
+  - A value is one value, or `{"one_of":[<value>, …]}`.
+  - With `while`, a rule may name neither side's values, and then excuses every
+    difference on its field there.
+  - A `while` needs to know which stream is whose, so it excuses nothing
+    between two replays of one target.
+
+A field may have more than one rule of one code and issue, sorted by what
+follows the issue. An observation keeps a `context` for a `while` to read,
+which nothing compares: `context.toplevels`, the titles of the windows open
+beside the one the steps act on (the snapshot's `toplevels`), and
+`context.window_focused`, whether anything in that window has the keyboard
+(the snapshot's `window_focused`; GTK's is false while no mapped widget in its
+window has focus: an inactive window, or a moment after the focused widget was
+unmapped). `app.dialog`'s rules name values; each of lgse/strata#2595's uses
+`while`, GTK's while its window has no keyboard, Rune's while its browser has
+no focused pane behind an open floating chooser:
+
+```text
+app.focused toolkit lgse/strata#2595 {"gtk":null,"while":{"gtk":{"app.focused_pane":null,"context.window_focused":false}}}
+app.focused toolkit lgse/strata#2595 {"rune":[null],"while":{"rune":{"app.focused_pane":null,"context.toplevels":{"one_of":[["Copy to"],["Move to"],["Extract to"]]}}}}
+```
 
 The map starts with no rule. **A mask grows only when two GTK replays of a
 seed differ**, and the comment above it says what the differential mode can no

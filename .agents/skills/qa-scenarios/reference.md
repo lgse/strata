@@ -538,7 +538,9 @@ the run. `app` is the snapshot:
   "menu": null,
   "preview": null,
   "field": null,
-  "matches": ["todo.txt"]
+  "matches": ["todo.txt"],
+  "toplevels": [],
+  "window_focused": true
 }
 ```
 
@@ -562,6 +564,11 @@ The `app` keys are exactly these:
   `gtk::Editable`, so they are the offsets AT-SPI's text interface reports.
 - `matches`: the deepest pane's search results, or else its entries. A list named
   "Search results" inside a dialog (the Rune search palette's) is not a pane's.
+- `toplevels`: the titles of the drawn windows other than the one the steps act
+  on, such as a floating chooser's "Copy to"; empty with none.
+- `window_focused`: whether anything in the window has the keyboard; false
+  while the window is inactive, and on GTK also just after the focused widget
+  was unmapped.
 
 The snapshot, every target, and the input log belong to the window the run
 started with; reach a floating chooser through a `toplevel` target.

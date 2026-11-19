@@ -9,7 +9,7 @@ use super::{
     observe::{Observation, Outcome},
     project::{CRITICALS, Difference, INVARIANTS, RESULT, differences, pattern_of},
     replay::Stream,
-    rules::Ignored,
+    rules::{Ignored, Sides},
 };
 
 /// Where two streams first part: the step, the action that was just taken, and every field
@@ -77,6 +77,21 @@ impl Divergence {
     }
 }
 
+/// Which observation is GTK's and which Rune's, when the comparison knows whose stream is
+/// whose.
+fn sides<'a>(gtk_left: Option<bool>, ours: &'a Observation, theirs: &'a Observation) -> Sides<'a> {
+    let (gtk, rune) = match gtk_left {
+        Some(true) => (Some(&ours.value), Some(&theirs.value)),
+        Some(false) => (Some(&theirs.value), Some(&ours.value)),
+        None => (None, None),
+    };
+    Sides {
+        gtk_left,
+        gtk,
+        rune,
+    }
+}
+
 /// The first step at which the streams differ on a field `ignored` does not cover, or at
 /// which a target logged a GLib warning, broke an invariant or was lost: those are
 /// divergences in themselves, whether or not the other replay did the same.
@@ -95,7 +110,7 @@ pub(crate) fn compare(left: &Stream, right: &Stream, ignored: &Ignored) -> Optio
         let mut fields: Vec<Difference> = differences(&ours.value, &theirs.value)
             .into_iter()
             .filter(|difference| at_rest || is_verdict(&difference.field))
-            .filter(|difference| !ignored.excuses(difference, gtk_left))
+            .filter(|difference| !ignored.excuses(difference, sides(gtk_left, ours, theirs)))
             .collect();
         if fields.is_empty() {
             fields.extend(shared_fault(ours, theirs));

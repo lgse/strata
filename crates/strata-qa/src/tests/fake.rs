@@ -39,6 +39,8 @@ pub(super) struct Fake {
     pub(super) rows: Vec<usize>,
     /// Whether it draws a dialog inside another, as Rune does ([`Backend::nests_dialogs`]).
     pub(super) nests_dialogs: bool,
+    /// Windows beside [`WINDOW`], each a root node titled by its name ([`Fake::add_window`]).
+    windows: Vec<usize>,
 }
 
 pub(super) const WINDOW: usize = 0;
@@ -54,6 +56,15 @@ impl Fake {
         });
         fake.parents.push(None);
         fake
+    }
+
+    /// Another window, a root of its own, titled by `node`'s name.
+    pub(super) fn add_window(&mut self, node: Node) -> usize {
+        self.nodes.push(node);
+        self.parents.push(None);
+        let window = self.nodes.len() - 1;
+        self.windows.push(window);
+        window
     }
 
     pub(super) fn add(&mut self, parent: usize, node: Node) -> usize {
@@ -97,11 +108,18 @@ impl Backend for Fake {
     }
 
     fn toplevels(&self) -> Vec<usize> {
-        vec![WINDOW]
+        std::iter::once(WINDOW)
+            .chain(self.windows.iter().copied())
+            .collect()
     }
 
-    fn title(&self, _window: &usize) -> Option<String> {
-        Some("Strata".to_owned())
+    fn title(&self, window: &usize) -> Option<String> {
+        let title = if *window == WINDOW {
+            "Strata"
+        } else {
+            self.nodes.get(*window)?.name
+        };
+        Some(title.to_owned())
     }
 
     fn window_width(&self, _window: &usize) -> i32 {

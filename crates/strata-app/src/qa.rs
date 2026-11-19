@@ -77,7 +77,9 @@ pub(crate) fn launch(arguments: &[OsString]) -> Option<ExitCode> {
         eprintln!("{USAGE}");
         return Some(ExitCode::from(2));
     };
-    let served = if directory == PORTAL {
+    let served = if directory == PORTAL && session::wanted() {
+        session::serve_portal()
+    } else if directory == PORTAL {
         serve_portal()
     } else if session::wanted() {
         session::serve(directory)
