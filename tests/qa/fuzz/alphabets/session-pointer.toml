@@ -38,9 +38,12 @@
 # Version 1 was F5's draft, never merged: its smoke tier met lgse/strata#2510 on the menu's
 # Rename row, and on the session host alone an undo that waited for the next input after a
 # drag (fixed: `commands::wake_glib`; its sequence is kept in
-# tests/qa/fuzz/corpus/session-pointer).
+# tests/qa/fuzz/corpus/session-pointer). Version 2 dismissed the menu only when it had a
+# Rename row, so a menu over several selected entries stayed open, and every later step,
+# guarded on no menu, was skipped on both targets (#2637's review); version 3 dismisses any
+# menu, as `chooser` does.
 area = "session-pointer"
-version = 2
+version = 3
 about = "List on the canonical fixture through the compositor (Rune on the session host): folder clicks that open in place, single, Ctrl, Shift and slow second clicks, background clicks, marquees, the context menu by the pointer and dismissed, files dragged or Ctrl-dragged onto the root's folders, folders onto folders, drops on the pane's background, undo, Escape, Back and the parent, and a file made and removed behind the application's back"
 header = '{"modes":["list"],"prefs":{"type_to_search":false,"single_click_previews":false,"explorer_folder_clicks":1,"explorer_file_clicks":2}}'
 host = "session"
@@ -108,12 +111,13 @@ steps = ['{"drag":{"from":{"entry":"<from>","part":"label"},"from_at":["2/3","50
 choose.from = ["todo.txt", "readme.md", "notes.txt", "photo.txt"]
 choose.to = ["documents", "pictures", "report.md", "spreadsheet.csv", "diagram.txt"]
 
+# The Escape is for any menu open: a menu over several selected entries has no Rename row.
 [[action]]
 name = "menu-dismiss"
 weight = 2
 steps = [
   '{"click":{"entry":"<entry>"},"button":3,"when":{"all":[{"present":{"entry":"<entry>"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}',
-  '{"key":"Escape","when":{"present":{"menu_item":"Rename"}}}',
+  '{"key":"Escape","when":{"menu_items":{}}}',
 ]
 choose.entry = ["documents", "readme.md", "todo.txt", "notes.txt", "diagram.txt"]
 

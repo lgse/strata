@@ -401,6 +401,11 @@ fn call(app: &mut App, action: &Action<App>, call: &Call<'_>, tx: &mut Tx) -> Ou
 /// The session host's fuzzing met it (`docs/rune/parity/packages/F5.md`): Ctrl+Z after a
 /// drag-move undid the move only once the pointer moved again, in about half the replays. The
 /// offscreen hosts pump after every step, and this costs them one empty pass.
+///
+/// It covers what runs through here: keys, menu rows, header buttons and the palette. A
+/// handler that does not, a component's own click or a drop say, and that attaches GLib work
+/// without drawing, still waits for the next frame; none is known, and such a handler would
+/// call this too. Held by `commands::tests::wake`.
 fn wake_glib() {
     glib::MainContext::default().wakeup();
 }

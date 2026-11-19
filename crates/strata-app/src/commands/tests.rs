@@ -48,6 +48,7 @@ mod places;
 mod refresh_anchor;
 mod routing;
 mod views;
+mod wake;
 
 /// Each registered view answers to exactly one of `modes`, the saved `browser_mode`s a set
 /// of tests runs in, and each of those is a view.
