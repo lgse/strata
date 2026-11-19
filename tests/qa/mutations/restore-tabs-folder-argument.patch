@@ -1,0 +1,13 @@
+diff --git a/src/ui/window/open_argument.rs b/src/ui/window/open_argument.rs
+index 0092237be..49f454fb5 100644
+--- a/src/ui/window/open_argument.rs
++++ b/src/ui/window/open_argument.rs
+@@ -44,7 +44,7 @@ fn present_window(
+         Vec::new(),
+         false,
+         false,
+-        false,
++        true,
+     );
+     classify(browser.clone(), file, location);
+     browser

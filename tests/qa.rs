@@ -581,6 +581,7 @@ impl Application {
         command.arg("--qa");
         match (&relaunch.directory, launch.portal) {
             (Some(directory), _) => command.arg(directory),
+            (None, _) if relaunch.plain => command.arg("--plain"),
             (None, true) => command.arg("--portal"),
             (None, false) => command.arg(launch.fixture),
         };
