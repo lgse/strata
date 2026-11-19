@@ -91,6 +91,13 @@ fn html_contentless_and_malformed_documents_fall_back_to_source() {
         "an unmatched end tag should fall back",
     );
     assert!(malformed.contains("malformed"));
+
+    let processing_instruction = parse_error(
+        DocumentKind::Html,
+        "<?php echo 1; ?><p>text</p>",
+        "a processing instruction is an HTML parse error",
+    );
+    assert!(processing_instruction.contains("malformed"));
 }
 
 #[test]

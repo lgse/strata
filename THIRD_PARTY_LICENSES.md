@@ -134,7 +134,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ### kamadak-exif
 
-RAW photo metadata uses `kamadak-exif` 0.6.1 under the BSD-2-Clause license.
+RAW photo metadata uses `kamadak-exif` 0.6.2 under the BSD-2-Clause license.
 
 Source: <https://github.com/kamadak/exif-rs>
 
