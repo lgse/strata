@@ -32,24 +32,28 @@ fn settle(glib: &GlibLoop, notified: &Receiver<()>) {
 
 #[test]
 fn a_command_wakes_the_glib_wait_without_a_pump() {
-    hosted(MODULE, "wake::a_command_wakes_the_glib_wait_without_a_pump", |mut host| {
-        let _folder = listed(&mut host);
-        let (notify, notified) = mpsc::channel();
-        let glib = GlibLoop::start(glib::MainContext::default(), move || {
-            let _ = notify.send(());
-        })
-        .expect("the test's thread owns the default context");
-        settle(&glib, &notified);
+    hosted(
+        MODULE,
+        "wake::a_command_wakes_the_glib_wait_without_a_pump",
+        |mut host| {
+            let _folder = listed(&mut host);
+            let (notify, notified) = mpsc::channel();
+            let glib = GlibLoop::start(glib::MainContext::default(), move || {
+                let _ = notify.send(());
+            })
+            .expect("the test's thread owns the default context");
+            settle(&glib, &notified);
 
-        let mut ran = None;
-        host.runtime()
-            .update(|app, tx| ran = Some(run(app, "select-all", On::Focus, tx)));
+            let mut ran = None;
+            host.runtime()
+                .update(|app, tx| ran = Some(run(app, "select-all", On::Focus, tx)));
 
-        assert_eq!(ran, Some(Outcome::Ran));
-        assert_eq!(
-            notified.recv_timeout(WOKEN),
-            Ok(()),
-            "the command woke the GLib wait, with no pump after it"
-        );
-    });
+            assert_eq!(ran, Some(Outcome::Ran));
+            assert_eq!(
+                notified.recv_timeout(WOKEN),
+                Ok(()),
+                "the command woke the GLib wait, with no pump after it"
+            );
+        },
+    );
 }
