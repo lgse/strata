@@ -7,12 +7,17 @@
 use rune::Tx;
 use strata_core::i18n::tr;
 use strata_desktop::keys::{
-    KeyPress, Map, Modifiers,
+    Command, KeyPress, Map, Modifiers,
     bindings::{
-        ACTIONS, BOOKMARK_GO, BOOKMARK_SET, CHOOSE_FOLDER, CLOSE_WINDOW, COPY, COPY_TO, CUT, ENTER,
-        ESCAPE, ESCAPE_ANY, ESCAPE_ANY_SHIFT, INVERT_SELECTION, MOVE_TO, OPEN_WITH, PASTE,
-        PASTE_KEEP_BOTH, PASTE_REPLACE, PREVIEW, RENAME, RESTORE, SELECT_ALL, SPACE, UNYANK,
-        VISUAL_SELECT, VISUAL_UNSET, YANK, YANK_CUT,
+        ACTIONS, ACTIONS_COMPRESS, ACTIONS_TERMINAL, BOOKMARK_GO, BOOKMARK_SET, CHOOSE_FOLDER,
+        CLOSE_WINDOW, COPY, COPY_PATH, COPY_TO, CUSTOM_ACTION_1, CUSTOM_ACTION_2, CUSTOM_ACTION_3,
+        CUSTOM_ACTION_4, CUSTOM_ACTION_5, CUSTOM_ACTION_6, CUSTOM_ACTION_7, CUSTOM_ACTION_8,
+        CUSTOM_ACTION_9, CUSTOM_ACTION_10, CUT, DUPLICATE, ENTER, ESCAPE, ESCAPE_ANY,
+        ESCAPE_ANY_SHIFT, INVERT_SELECTION, JUMP_TO_FOLDER, MOVE_TO, NEW_FOLDER_WITH_SELECTION,
+        OPEN_IN_NEW_TAB, OPEN_WITH, PASTE, PASTE_KEEP_BOTH, PASTE_REPLACE, PREVIEW, REDO, RENAME,
+        RESTORE, SEARCH, SELECT_ALL, SETTINGS, SPACE, TAB_CLOSE, TAB_MOVE_LEFT, TAB_MOVE_RIGHT,
+        TAB_NEW, TAB_NEXT, TAB_PREVIOUS, TAB_REOPEN, TERMINAL, UNDO, UNYANK, VISUAL_SELECT,
+        VISUAL_UNSET, YANK, YANK_CUT,
     },
 };
 
@@ -25,6 +30,56 @@ use crate::{
 };
 
 const UNAVAILABLE: &str = "Not available in the file chooser";
+
+/// The window's commands GTK's chooser has no stage for (`PRESSED_STAGES` and
+/// `NAVIGATION_STAGES` in `src/ui/chooser/shortcuts.rs`): outside 10xer mode its Ctrl keys go
+/// to the widgets (`control_keeps_key`) and the rest reach nothing, so these keys do nothing in
+/// a chooser. 10xer mode reads the window's keys there, behind the chooser's refusals.
+const NOT_IN_CHOOSER: &[Command] = &[
+    COPY,
+    CUT,
+    PASTE,
+    DUPLICATE,
+    UNDO,
+    REDO,
+    COPY_PATH,
+    OPEN_WITH,
+    OPEN_IN_NEW_TAB,
+    NEW_FOLDER_WITH_SELECTION,
+    JUMP_TO_FOLDER,
+    TERMINAL,
+    ACTIONS_TERMINAL,
+    ACTIONS_COMPRESS,
+    CUSTOM_ACTION_1,
+    CUSTOM_ACTION_2,
+    CUSTOM_ACTION_3,
+    CUSTOM_ACTION_4,
+    CUSTOM_ACTION_5,
+    CUSTOM_ACTION_6,
+    CUSTOM_ACTION_7,
+    CUSTOM_ACTION_8,
+    CUSTOM_ACTION_9,
+    CUSTOM_ACTION_10,
+    TAB_NEW,
+    TAB_CLOSE,
+    TAB_REOPEN,
+    TAB_NEXT,
+    TAB_PREVIOUS,
+    TAB_MOVE_LEFT,
+    TAB_MOVE_RIGHT,
+    SETTINGS,
+    SEARCH,
+];
+
+/// Whether a key may not run `action` here: a chooser outside 10xer mode, and a command its
+/// key table lacks ([`NOT_IN_CHOOSER`]).
+pub(crate) fn declines_key(app: &App, action: &Action<App>) -> bool {
+    app.chooser.is_active()
+        && !shell::preferences(app).tenxer_mode
+        && action
+            .command
+            .is_some_and(|command| NOT_IN_CHOOSER.contains(&command))
+}
 const SINGLE_ITEM: &str = "Only one item can be chosen";
 
 fn escape_outside_text(app: &mut App, _: &Call<'_>, tx: &mut Tx) -> Outcome {

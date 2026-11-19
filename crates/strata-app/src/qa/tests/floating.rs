@@ -7,7 +7,7 @@ use serde_json::json;
 use strata_core::model::Location;
 use strata_qa::{Backend as _, Remembered};
 
-use super::{launched, passes, staged};
+use super::{launched, passes, staged, staged_after};
 use crate::{
     commands::{self, On},
     shell,
@@ -119,5 +119,107 @@ fn a_move_through_the_chooser_keeps_the_browser_s_shift_anchor() {
                 "the view keeps the browser's anchor"
             );
         },
+    );
+}
+
+/// Default mode: the chooser's key table has no clipboard, as GTK's has none
+/// (`NAVIGATION_STAGES` in `src/ui/chooser/shortcuts.rs`), so Ctrl+C and Ctrl+V on a folder
+/// in the floating chooser copy nothing, and the chooser stays open on its request.
+#[test]
+fn the_floating_chooser_s_keys_copy_and_paste_nothing() {
+    staged(
+        "floating::the_floating_chooser_s_keys_copy_and_paste_nothing",
+        None,
+        |backend| {
+            let folder = launched(&backend);
+            let todo = Location::local(folder.path().join("todo.txt"));
+            backend.update(move |app, tx| {
+                let id = shell::id_of(app, &todo);
+                commands::run(app, "copy-to", On::Row((0, id)), tx);
+            });
+            let kept = Remembered::default();
+            let within = json!({ "toplevel": "Copy to" });
+            for step in [
+                json!({ "wait": { "present": { "role": "button", "name": "Copy here", "within": within } } }),
+                json!({ "key": "Down" }),
+                json!({ "key": "ctrl+c" }),
+                json!({ "key": "ctrl+v" }),
+                json!({ "sleep": 500 }),
+                json!({ "wait": { "present": { "toplevel": "Copy to" } } }),
+            ] {
+                passes(&backend, &kept, &step);
+            }
+            let mut names: Vec<String> = std::fs::read_dir(folder.path())
+                .expect("the fixture")
+                .map(|entry| {
+                    entry
+                        .expect("an entry")
+                        .file_name()
+                        .to_string_lossy()
+                        .into_owned()
+                })
+                .collect();
+            names.sort();
+            assert!(
+                !names.iter().any(|name| name.contains(" (1)")),
+                "nothing pasted: {names:?}"
+            );
+        },
+    );
+}
+
+/// Space on the floating chooser's folder: refused as "Only one item can be chosen" in 10xer
+/// mode, where GTK's chooser refuses its commands (`tenxer_window_keys`), and not refused in
+/// default mode, where Space previews as in the window (`chooser-pdf-zoom-keeps-text-size`).
+fn space_in_the_floating_chooser(name: &str, tenxer: bool) {
+    staged_after(
+        &format!("floating::{name}"),
+        None,
+        || {
+            let config = strata_core::storage::config_directory();
+            std::fs::create_dir_all(&config).expect("the config folder");
+            std::fs::write(
+                config.join("settings.toml"),
+                format!("tenxer_mode = {tenxer}\n"),
+            )
+            .expect("the settings");
+        },
+        |backend| {
+            let folder = launched(&backend);
+            let todo = Location::local(folder.path().join("todo.txt"));
+            backend.update(move |app, tx| {
+                let id = shell::id_of(app, &todo);
+                commands::run(app, "copy-to", On::Row((0, id)), tx);
+            });
+            let kept = Remembered::default();
+            let within = json!({ "toplevel": "Copy to" });
+            let refusal =
+                json!({ "role": "label", "name": "Only one item can be chosen", "within": within });
+            for step in [
+                json!({ "wait": { "present": { "role": "button", "name": "Copy here", "within": within } } }),
+                json!({ "key": "Down" }),
+                json!({ "key": "space" }),
+            ] {
+                passes(&backend, &kept, &step);
+            }
+            let refused = passes(&backend, &kept, &json!({ "holds": { "present": refusal } }));
+            assert_eq!(refused, json!(tenxer), "refused in 10xer mode only");
+        },
+    );
+}
+
+#[test]
+fn space_in_the_floating_chooser_is_refused_in_tenxer_mode() {
+    space_in_the_floating_chooser(
+        "space_in_the_floating_chooser_is_refused_in_tenxer_mode",
+        true,
+    );
+}
+
+#[test]
+fn space_in_the_floating_chooser_is_not_refused_in_default_mode() {
+    space_in_the_floating_chooser(
+        "space_in_the_floating_chooser_is_not_refused_in_default_mode",
+        false,
     );
 }
