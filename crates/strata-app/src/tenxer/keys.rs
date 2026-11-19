@@ -271,7 +271,13 @@ fn escape_in_listing(app: &mut App, tx: &mut Tx) -> bool {
         || find::dismiss_highlight(app)
         || end_active_range(app)
         || preview::dismiss_escape(app, tx)
-        || (!crate::chooser::tenxer::keeps_load_cursor(app) && app.browser.clear_active_selection())
+        || clear_selection(app)
+}
+
+/// A chooser's first row, selected as it loads, is not a selection to clear before Escape
+/// cancels the request (`clear_selection` in `src/ui/window/keyboard/escape.rs`).
+fn clear_selection(app: &App) -> bool {
+    !crate::chooser::tenxer::keeps_load_cursor(app) && app.browser.clear_active_selection()
 }
 
 fn end_results_range(app: &App) -> bool {
