@@ -95,6 +95,9 @@ pub(crate) enum Initial {
     /// An argument: a folder opens, a file shows selected in its folder, and `tabs.toml` is
     /// left alone (`crate::application::open_argument`).
     Argument(Location),
+    /// A FileManager1 call's folder with its items selected, and their Properties for
+    /// `ShowItemProperties` (`crate::application::open_reveal`); `tabs.toml` is left alone.
+    Reveal(strata_fs::adapters::RevealRequest),
 }
 
 /// What a test launch opens: a plain launch without `directory`, that folder with one.
@@ -122,6 +125,7 @@ pub(crate) fn initial_for(opening: Opening, settings: &Saved) -> Initial {
         }
         Opening::Present => Initial::Present,
         Opening::Argument(location) => Initial::Argument(location),
+        Opening::Reveal(request) => Initial::Reveal(request),
     }
 }
 

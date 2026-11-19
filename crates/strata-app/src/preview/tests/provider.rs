@@ -60,11 +60,16 @@ impl Recorded {
 
     /// Answers request `index` with `content`.
     pub(super) fn answer(&self, index: usize, content: PreviewContent) {
+        self.answer_as(index, "application/octet-stream", content);
+    }
+
+    /// Answers request `index` with `content` of the type `content_type`.
+    pub(super) fn answer_as(&self, index: usize, content_type: &str, content: PreviewContent) {
         self.finish(index, |request| {
             PreviewEvent::Ready(Preview {
                 request_id: request.id,
                 entry: request.entry.clone(),
-                content_type: "application/octet-stream".to_owned(),
+                content_type: content_type.to_owned(),
                 content,
             })
         });

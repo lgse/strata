@@ -108,6 +108,11 @@ The checkpoint a package feeds is its wave's, in the plan's
   ([Rules carried over from the slice](README.md#rules-carried-over-from-the-slice)). The one
   ruled exception to never editing a GTK mutation patch is a line of `quick-preview.patch`
   ([`owner.md`](owner.md#ruled)).
+- **A `--pending` survey runs on Rune only.** `./scripts/qa-parity.sh <selection> --pending`
+  ignores `--target gtk`, so its rounds say nothing about GTK. Before a pending run flips,
+  take its GTK rounds through `./scripts/qa.sh <scenario>` or `<scenario>/<run>`, and say so in
+  the pull request; a report that counts survey rounds as GTK rounds is wrong (A11's slice 3,
+  corrected on [#2567](https://github.com/lgse/strata/pull/2567)).
 - **A difference from GTK is not the agent's to decide.** Work down the plan's
   [order of resort](README.md#when-a-run-differs-the-order-of-resort). A `deviation` waits
   for the owner: record it in [`findings.md`](findings.md) and [`owner.md`](owner.md), leave

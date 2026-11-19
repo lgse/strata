@@ -55,7 +55,14 @@ pub(crate) fn rendered_with_role<'a, B: Backend + ?Sized>(
 }
 
 /// The open dialog: the first rendered dialog or alert, and on a toolkit that nests dialogs
-/// ([`Backend::nests_dialogs`]) the innermost rendered dialog inside it, the one on top.
+/// ([`Backend::nests_dialogs`]) the one on top inside it.
+///
+/// The descent goes from a dialog to the dialogs drawn inside it, and among several, to the
+/// last drawn, which is on top: a toolkit draws its children in order. It follows `dialog`
+/// only. Rune's messages are `dialog`s, and its `alert`s are live error lines inside a view or
+/// a dialog (the chooser's, a shortcut recorder's), which are no dialog of their own. The QA
+/// role map reads Rune's `alert-dialog` as `alert` too, so a nested modal of that kind would
+/// need the descent to follow it.
 pub(crate) fn open_dialog<B: Backend + ?Sized>(
     backend: &B,
     presented: &[B::Node],
@@ -67,12 +74,31 @@ pub(crate) fn open_dialog<B: Backend + ?Sized>(
         return Some(first);
     }
     let mut top = first;
-    while let Some(inner) = rendered_with_role(backend, presented, "dialog")
-        .find(|node| is_ancestor(backend, &top, node))
-    {
-        top = inner.clone();
+    while let Some(inner) = drawn_last_inside(backend, presented, &top) {
+        top = inner;
     }
     Some(top)
+}
+
+/// The last drawn of the rendered dialogs inside `outer` that no other dialog inside it holds.
+fn drawn_last_inside<B: Backend + ?Sized>(
+    backend: &B,
+    presented: &[B::Node],
+    outer: &B::Node,
+) -> Option<B::Node> {
+    let inside: Vec<&B::Node> = rendered_with_role(backend, presented, "dialog")
+        .filter(|node| is_ancestor(backend, outer, node))
+        .collect();
+    let held = |node: &B::Node| {
+        inside
+            .iter()
+            .any(|other| *other != node && is_ancestor(backend, other, node))
+    };
+    inside
+        .iter()
+        .rev()
+        .find(|node| !held(node))
+        .map(|node| (*node).clone())
 }
 
 /// The list or table of a filter's search results, and the role its rows have. A list of

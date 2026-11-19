@@ -24,6 +24,12 @@
 //! the steps act on the run's window, which keeps the keys, the pointer and the focus, while a
 //! target `within` another's toplevel (`other_window`, `some_window`) finds its nodes, and an
 //! `activate` aimed at one presses it there.
+//!
+//! A launch's window takes the activation, as a window GTK presents does on the runner's Xvfb:
+//! the windows open before it lose the window focus (`Runtime::window_focus`), so the run's
+//! window reports it lost the keyboard to its parts (the location bar dismisses its
+//! suggestions) and its browsers' presence turns `Visible`. Keys still go to the run's window,
+//! or to the floating chooser in front of it: what the steps send is routed as before.
 
 use std::{
     cell::{Cell, RefCell},
@@ -187,6 +193,11 @@ impl Windows {
         if let Some(keymap) = self.keymap.borrow().as_ref() {
             let _ = staged.set_layout(keymap);
         }
+        self.main.window_focus(false);
+        for launched in self.launched() {
+            launched.window_focus(false);
+        }
+        staged.window_focus(true);
         staged.turn();
         self.launched.borrow_mut().push(Launched {
             root: Node(root.into()),

@@ -6,46 +6,40 @@
 scenario = "video-preview-badges-next-video"
 run = "columns-mp4"
 package = "A16"
-status = "pending"
-reason = "scope"
-blocker = "A16"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "video-preview-badges-next-video"
 run = "list-mp4"
 package = "A16"
-status = "pending"
-reason = "scope"
-blocker = "A16"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "video-preview-badges-next-video"
 run = "icons-mp4"
 package = "A16"
-status = "pending"
-reason = "scope"
-blocker = "A16"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "video-preview-badges-next-video"
 run = "columns-h264"
 package = "A16"
-status = "pending"
-reason = "scope"
-blocker = "A16"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "video-preview-badges-next-video"
 run = "list-h264"
 package = "A16"
-status = "pending"
-reason = "scope"
-blocker = "A16"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "video-preview-badges-next-video"
 run = "columns-264"
 package = "A16"
-status = "pending"
-reason = "scope"
-blocker = "A16"
+status = "required"
+host = "offscreen"

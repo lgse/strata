@@ -211,22 +211,25 @@ fn shut_down() {
     application::release();
 }
 
-/// Opens a window for each launch the bus handed over since the last pump.
+/// Opens a window for each launch the bus handed over since the last pump, each created with
+/// the activation token its launch forwarded, so the compositor lets it take the focus.
 fn open_asked(app: &App) {
-    let asked = application::take();
+    let asked = application::take_asked();
     if asked.is_empty() {
         return;
     }
     let Some(ui) = UI.with(|ui| ui.get().copied()) else {
         return;
     };
-    for opening in asked {
+    for application::Asked { opening, token } in asked {
         let settings = shell::share_settings(app);
         let initial = launch::initial_for(opening, &settings);
-        rune::open_window(WindowSpec::from_app(
-            next_key(),
-            window(ui, Start::New(Box::new((settings, initial)))),
-        ));
+        let window = window(ui, Start::New(Box::new((settings, initial))));
+        // A window whose app's handle has the token is created with it.
+        if let Some(token) = token {
+            window.handle().activate(token);
+        }
+        rune::open_window(WindowSpec::from_app(next_key(), window));
     }
 }
 
@@ -303,6 +306,7 @@ fn window(ui: UiThread, start: Start) -> rune::App<App> {
     })
     .on_modifiers(shell::modifiers)
     .on_focus(focused)
+    .on_visibility(shell::window_shown)
     // Rune's own flags (`--snap`, `--tree`) are not this binary's.
     .args(Vec::new())
     .window_options(csd::window_options(frame, WindowOptions::default()));
@@ -316,8 +320,9 @@ fn window(ui: UiThread, start: Start) -> rune::App<App> {
                 (App::new(&ui, csd, settings), Some(initial))
             }
             Start::Kept(app) => {
-                shell::reopened(&app);
-                (*app, None)
+                let mut app = *app;
+                shell::reopened(&mut app);
+                (app, None)
             }
         };
         crate::clipboard::bind(&mut app, clip_for_init);

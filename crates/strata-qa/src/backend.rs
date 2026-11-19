@@ -87,7 +87,8 @@ pub trait Backend {
     }
     /// True for a toolkit that draws a dialog inside another, the inner one on top: Rune
     /// draws a message inside Settings, where GTK lays every modal layer beside the others. The
-    /// open dialog is then the innermost (`open_dialog`).
+    /// open dialog, which `app.dialog` names and `dialog` and `dialog_button` search, is then
+    /// the one on top (`open_dialog`).
     fn nests_dialogs(&self) -> bool {
         false
     }
