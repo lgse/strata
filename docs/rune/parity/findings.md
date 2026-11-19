@@ -2268,9 +2268,17 @@ sequence only together with the alphabet's version, so the version is part of th
 - **Concerns:** 12 of 20 smoke seeds of `archives` v1 (never merged), each first differing
   there on a preview opened by `Space`, `Right` or `l`, and seed `0x07` of v3 by `Right` on
   `packed (1).tar`.
+  - *The PDF (A16's), for the owner:* GTK presents the page as one `image`, "PDF page text".
+    Rune's C12 `PdfView` adds the document's name, "PDF document" (`PdfLabels::document`), each
+    page's, "Page 1 of 1" (`PdfLabels::page`), and the page's text layer, its text as one
+    string ("Hello PDF text layer\nsecond line here" for `tests/fixtures/documents/text.pdf`).
+    Seen in A16's `media` fuzz alphabet, version 2, on every PDF opened (`app.preview`).
+    Whether Rune keeps the three, a `deviation` as for #2557 and #2558, or presents the page
+    as GTK does, is the owner's question in [`owner.md`](owner.md#a16-media-pdf-and-model-viewers);
+    the `media` alphabet holds no PDF meanwhile, and no scenario predicate reads them.
 - **State:** open. A13's rows, crumbs and `Unlock` are fixed. Its password field is open, in
   [`A13.md`](packages/A13.md#open). The header is fixed by #2548, and the text preview is
-  #2558's.
+  #2558's. The PDF's names wait on the owner.
   The same run found one visible difference, which #2561 fixed: until an archive opens, the
   header named its kind `ZIP` (`extension_label`, `crates/strata-app/src/preview/load.rs`)
   where GTK writes the extension as it is, `zip`. `archives` v5 opens the archive tree, and
@@ -2729,3 +2737,56 @@ sequence only together with the alphabet's version, so the version is part of th
   coordinator), consistent with [#2557](https://github.com/lgse/strata/issues/2557) and
   [#2558](https://github.com/lgse/strata/issues/2558). A run or fuzz step that reads it cites
   the ruling.
+
+### #2610: GTK's player shows a sub-second clip's total as `--:--`
+
+- **Code:** `oracle`. [Issue](https://github.com/lgse/strata/issues/2610), filed on 2026-11-18
+  as the finding's reference and closed at once: its state is kept here.
+- **What is wrong, on GTK:** a video or audio clip shorter than one second shows its total
+  time as `--:--`. `sync_time` (`src/ui/preview/video.rs`, `audio.rs`) returns while the shown
+  seconds equal the ones it last wrote, and they start at `(0, 0)`, which is what a
+  sub-second clip has at its start, so the total label keeps its initial text. Rune shows
+  `0:00`, as GTK does for every clip of a second or more.
+- **Concerns:** [A16](packages/A16.md)'s `media` alphabet, version 3 (0.5 s and 0.7 s clips).
+  Later versions use clips of 1.5 s and 2.5 s.
+- **State:** open, set aside: Rune is right. A fix belongs on `main`.
+
+### #2611: GTK's video player swallows Left and Right after Right into it
+
+- **Code:** `oracle`. [Issue](https://github.com/lgse/strata/issues/2611), filed on 2026-11-18
+  as the finding's reference and closed at once: its state is kept here.
+- **What is wrong, on GTK:** after Right from the listing into a video preview, Left and Right
+  in the player neither seek nor return the keys to the listing. GTK's own table for a
+  keyboard-owned media preview claims them as 5 s seeks (`SEEK_AND_VOLUME`,
+  `media_key_command`, `src/ui/preview/keyboard.rs`), but after Right its keyboard is on an
+  unnamed widget, where the press is swallowed: a 12 s clip seeked to `0:05` stayed there after
+  Left. Rune puts the keyboard on C13's "Video frame" button, whose Left and Right seek.
+- **Concerns:** [A16](packages/A16.md)'s `media` alphabet, version 5, seed `0x03` (Left after a
+  play to the end: `0:02` on GTK, `0:00` on Rune). Version 6 sends no Left while a video shows.
+- **State:** open, set aside: Rune is right. A fix belongs on `main`.
+
+### #2612: the audio player keeps its art and spectrum where GTK's drops them
+
+- **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2612), filed on
+  2026-11-18 as the finding's reference and closed at once: its state is kept here.
+- **What differs:** in the fuzz window's drawer, GTK's audio layout gives the art and the
+  spectrum no height and hides them (`allocate_at`, `src/ui/preview/audio/layout.rs`), so
+  neither "Album art" nor "Audio spectrum" is in its tree; C13 keeps both
+  (`crates/strata-components/src/media_player/audio/`). Both drop the spectrum, then the art,
+  in a short pane, so the thresholds or the heights they are measured against differ.
+- **Concerns:** [A16](packages/A16.md)'s `media` alphabet, version 1 (`tone.wav`). Version 2 and
+  later hold no audio file.
+- **State:** open, A16's ([`A16.md`](packages/A16.md#open)).
+
+### #2613: a GIF's player shows the whole media bar where GTK's has only Play/Pause
+
+- **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2613), filed on
+  2026-11-18 as the finding's reference and closed at once: its state is kept here.
+- **What differs:** GTK's bar for a GIF is its play toggle alone, "Play/Pause (Ctrl+Alt+Space)"
+  (`append_media_controls` returns before the time, the seek slider and the volume,
+  `src/ui/preview/media_controls.rs`). C13's plain bar adds the "Video frame" button, the
+  title, the time (`0:00/0:30` for a one-second GIF), "Playback position", "Mute/unmute" and
+  "Volume".
+- **Concerns:** [A16](packages/A16.md)'s `media` alphabet, version 1 (`spin.gif`). Version 2 and
+  later hold no GIF.
+- **State:** open, A16's ([`A16.md`](packages/A16.md#open)).
