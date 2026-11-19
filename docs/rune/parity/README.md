@@ -676,7 +676,11 @@ rule of 2026-11-12 ([`owner.md`](owner.md#ruled)), one is run only when there is
 whether tests are effective:
 
 - **A Rune mutation patch a package wrote or changed** is proven once, alone:
-  `./scripts/qa-parity.sh mutations <scenario>`, with the files the patch touches clean. It
+  `./scripts/qa-parity.sh mutations <patch>`, with the files the patch touches clean. A
+  scenario may hold several patches, by the owner's ruling of 2026-11-19
+  ([`owner.md`](owner.md#ruled)): `<scenario>.patch` and `<scenario>.<label>.patch`, each
+  proven on its own. Name the one written or changed, `<scenario>.<label>` or
+  `<scenario>.patch`; the scenario's bare name runs every patch of it. It
   runs the scenario's runs on Rune unpatched and sees them pass, applies the patch, sees a
   step fail (a build or launch failure, or a mutated tree that ran nothing, is not a catch),
   and restores the files; see `git status --porcelain` empty before committing anything.

@@ -117,6 +117,8 @@ class TwinTests(unittest.TestCase):
         whole = {"run": [{"folder": "keys", "scenario": "moves", "run": "columns", "package": "A7",
                           "status": "parallel", "twin": "moves-rune/columns"}]}
         self.assertEqual(qa_parity_mutation.unguarded(["moves", "moves-rune"], whole), ["moves"])
+        # A labelled patch of a scenario whose runs are all parallel runs nothing either.
+        self.assertEqual(qa_parity_mutation.unguarded(["moves.other"], whole), ["moves.other"])
 
 
 class TwinCountTests(unittest.TestCase):

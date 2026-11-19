@@ -1,0 +1,11 @@
+diff --git a/crates/strata-app/src/preview/route.rs b/crates/strata-app/src/preview/route.rs
+index a1d33978e..2debe3c93 100644
+--- a/crates/strata-app/src/preview/route.rs
++++ b/crates/strata-app/src/preview/route.rs
+@@ -142,5 +142,5 @@ fn units(app: &App) -> Units {
+     match shell::preferences(app).unit_system {
+         UnitSystem::Metric => Units::Metric,
+-        UnitSystem::Imperial => Units::Imperial,
++        UnitSystem::Imperial => Units::Metric,
+     }
+ }

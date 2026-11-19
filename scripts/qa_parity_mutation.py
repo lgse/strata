@@ -5,15 +5,18 @@ breaks one behaviour of strata-app, and the scenario it is named for must catch 
 
 Checked the way scripts/qa_mutation.py checks the GTK application's patches: the scenario's
 runs pass on the Rune target unpatched, and at least one fails a step with the patch
-applied. A patch is `<scenario>.patch`.
+applied. A patch is `<scenario>.patch`, or `<scenario>.<label>.patch` when the scenario
+catches more than one behaviour's breaking (the owner's ruling of 2026-11-19): each is
+proven on its own, by the scenario's runs. The label is lowercase words joined by hyphens.
 
 A patch may be named for a scenario of any folder: its runs are looked up in the whole
 ledger, tests/qa/parity/<folder>.toml. They are its required runs. A twin's are the runs
 that stand in for its original's parallel ones, and `<scenario>-rune.patch` is the proof
 that the twin can fail, which every twin has.
 
-Named patches run alone: `qa_parity_mutation.py rune <patch>...`, each named as its scenario,
-`<scenario>.patch`, or the patch's path, proves those once, as a patch written, changed or
+Named patches run alone: `qa_parity_mutation.py rune <patch>...`, each named as its scenario
+(every patch of it), as the patch's name, `<scenario>.patch` or `<scenario>.<label>.patch`, or
+the patch's path, proves those once, as a patch written, changed or
 refreshed is proven (docs/rune/parity/README.md, "When a mutation run is right").
 
 With `gtk` it runs the GTK application's own patches for the slice's exit check instead:
@@ -25,6 +28,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import subprocess
 import sys
 import time
@@ -42,10 +46,35 @@ MUTATIONS = REPOSITORY / "tests/qa/parity/mutations"
 OUTPUT = REPOSITORY / "target/qa-parity-mutation"
 
 
+LABEL = re.compile(r"[a-z0-9]+(-[a-z0-9]+)*")
+
+
 def patches(directory: Path | None = None) -> list[str]:
-    """The scenarios the patches are named for."""
+    """The patches' names: `<scenario>` or `<scenario>.<label>`."""
 
     return sorted(path.stem for path in (directory or MUTATIONS).glob("*.patch"))
+
+
+def scenario_of(patch: str) -> str:
+    """The scenario a patch is named for: its name up to a label's dot."""
+
+    return patch.split(".", 1)[0]
+
+
+def malformed(available: list[str]) -> list[str]:
+    """What is wrong with the patches' names: a label is lowercase words joined by hyphens,
+    after one dot."""
+
+    return [f"{patch}.patch is named neither <scenario>.patch nor <scenario>.<label>.patch, a "
+            "label being lowercase words joined by hyphens"
+            for patch in available if not well_named(patch)]
+
+
+def well_named(patch: str) -> bool:
+    """Whether a patch's name is `<scenario>` or `<scenario>.<label>`."""
+
+    scenario, dot, label = patch.partition(".")
+    return bool(scenario) and (not dot or LABEL.fullmatch(label) is not None)
 
 
 def in_mutations(name: str) -> bool:
@@ -61,22 +90,40 @@ def in_mutations(name: str) -> bool:
 
 def chosen(names: list[str], available: list[str]) -> tuple[list[str], list[str]]:
     """The patches `names` select, in the order given and each once, and what is wrong with
-    the names that select none. No names select every patch."""
+    the names that select none. A scenario's bare name selects every patch of it; a patch's
+    file name or path, or a labelled patch's bare name, that patch alone. No names select
+    every patch."""
 
     if not names:
         return list(available), []
     picked, problems = [], []
     for name in names:
-        scenario = Path(name).name.removesuffix(".patch")
+        selected = selection(name, available)
         if not in_mutations(name):
             problems.append(f"{name!r} is no Rune mutation patch: a path names a patch under "
                             f"{MUTATIONS.relative_to(REPOSITORY)}")
-        elif scenario not in available:
+        elif not selected:
             problems.append(f"no Rune mutation patch {name!r}: the patches under "
                             f"{MUTATIONS.relative_to(REPOSITORY)} are {', '.join(available)}")
-        elif scenario not in picked:
-            picked.append(scenario)
+        else:
+            picked += [patch for patch in selected if patch not in picked]
     return picked, problems
+
+
+def selection(name: str, available: list[str]) -> list[str]:
+    """The patches one name selects: a scenario's bare name every patch of it; a file name, a
+    path or a labelled patch's bare name that patch alone."""
+
+    stem = Path(name).name.removesuffix(".patch")
+    if names_one_patch(name, stem):
+        return [stem] if stem in available else []
+    return [patch for patch in available if scenario_of(patch) == stem]
+
+
+def names_one_patch(name: str, stem: str) -> bool:
+    """Whether `name` is a patch's file name or path, or a labelled patch's bare name."""
+
+    return name.endswith(".patch") or "/" in name or "." in stem
 
 
 def guards(scenario: str, ledger: dict) -> list[str]:
@@ -87,11 +134,11 @@ def guards(scenario: str, ledger: dict) -> list[str]:
     return [run for run in on_rune if run.split("/", 1)[0] == scenario]
 
 
-def unguarded(scenarios: list[str], ledger: dict) -> list[str]:
+def unguarded(patches: list[str], ledger: dict) -> list[str]:
     """The patches whose scenario has no run on the Rune target: nothing would be run to
     catch them. A scenario whose runs are all parallel has none: the patch is its twin's."""
 
-    return [scenario for scenario in scenarios if not guards(scenario, ledger)]
+    return [patch for patch in patches if not guards(scenario_of(patch), ledger)]
 
 
 def run_rune(scenario: str, destination: Path) -> tuple[dict[str, str], int]:
@@ -117,7 +164,9 @@ def check(names: list[str] | None = None) -> int:
     if not available:
         print(f"No patch under {MUTATIONS.relative_to(REPOSITORY)}.", file=sys.stderr)
         return 2
-    scenarios, problems = chosen(names or [], available)
+    problems = malformed(available)
+    scenarios, chosen_problems = chosen(names or [], available)
+    problems += chosen_problems
     if problems:
         print("\n".join(problems), file=sys.stderr)
         return 2
@@ -127,18 +176,19 @@ def check(names: list[str] | None = None) -> int:
         return 2
     (OUTPUT / "summary.md").unlink(missing_ok=True)
     reports = []
-    for scenario in scenarios:
-        print(f"== {scenario}: unmodified tree", flush=True)
-        runs, _ = run_rune(scenario, OUTPUT / "baseline" / scenario)
-        report = Report(Scenario(scenario, f"{scenario}.patch"),
+    for patch in scenarios:
+        scenario = scenario_of(patch)
+        print(f"== {patch}: unmodified tree", flush=True)
+        runs, _ = run_rune(scenario, OUTPUT / "baseline" / patch)
+        report = Report(Scenario(scenario, f"{patch}.patch"),
                         baseline_verdict(own_runs(scenario, runs)))
         reports.append(report)
         if not report.baseline.caught:
-            print(f"== {scenario}: skipped, {report.baseline.note}", flush=True)
+            print(f"== {patch}: skipped, {report.baseline.note}", flush=True)
             continue
-        print(f"== {scenario}: mutated tree", flush=True)
-        with Mutation(scenario, mutations=MUTATIONS):
-            runs, status = run_rune(scenario, OUTPUT / "mutations" / scenario)
+        print(f"== {patch}: mutated tree", flush=True)
+        with Mutation(patch, mutations=MUTATIONS):
+            runs, status = run_rune(scenario, OUTPUT / "mutations" / patch)
         report.runs = own_runs(scenario, runs)
         report.mutated = mutated_verdict(report.runs, status)
     summary = write_summary(reports, time.monotonic() - started, OUTPUT)
@@ -196,8 +246,9 @@ def main(arguments: list[str] | None = None) -> int:
                         help="rune: the patches under tests/qa/parity/mutations (the default); "
                              "gtk: the GTK application's, less the ledger's stale ones")
     parser.add_argument("patches", nargs="*", metavar="patch",
-                        help="rune only: the patches to run alone, each named as its scenario, "
-                             "<scenario>.patch or its path; none runs every patch")
+                        help="rune only: the patches to run alone, each named as its scenario "
+                             "(every patch of it), <scenario>.patch, <scenario>.<label>.patch or "
+                             "its path; none runs every patch")
     parser.add_argument("--notes", type=Path,
                         help="a file to append each allowance used to, for the caller's summary")
     options = parser.parse_args(arguments)

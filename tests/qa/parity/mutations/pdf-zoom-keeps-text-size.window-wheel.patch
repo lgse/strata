@@ -1,0 +1,11 @@
+diff --git a/crates/strata-app/src/appearance/wheel.rs b/crates/strata-app/src/appearance/wheel.rs
+index 019b5b1ec..6b79ffe6b 100644
+--- a/crates/strata-app/src/appearance/wheel.rs
++++ b/crates/strata-app/src/appearance/wheel.rs
+@@ -103,5 +103,5 @@ pub(crate) fn heard(app: &mut App, e: WheelEvent, tx: &mut Tx) -> bool {
+     match (steps, sizes) {
+         (0, _) => tx.live_only(),
+-        (steps, Sizes::Text) => super::text_size::step(app, steps),
++        (steps, Sizes::Text) => super::text_size::step(app, steps * 0),
+         (steps, Sizes::Tiles) => icons::size::step(app, steps, tx),
+     }
