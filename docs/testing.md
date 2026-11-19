@@ -2192,9 +2192,9 @@ What the budgets rest on:
 - **A parked sequence is not run by the smoke tier**, and its line names its
   finding. `replay --parked --alphabet <area> --target gtk,rune` is the survey
   of what each still does; it is no gate.
-- **The session host costs little more.** `session-pointer`'s tier, 14
-  sequences with 6 parked, Rune on the session host at the default 12 at once,
-  took 2 min 44 s on the 24-core machine, the load average ending near 11; its
+- **The session host costs little more.** `session-pointer`'s tier, 15
+  sequences with 5 parked, Rune on the session host at the default 12 at once,
+  took 2 min 8 s on the 24-core machine, the load average ending near 12; its
   first unparked run of 20 took 3 min 22 s. That is within the smoke budget, so
   a session alphabet takes the default `--jobs`.
 - **Twenty seeds is a sample, not a proof.** In the pilot, a class met by one

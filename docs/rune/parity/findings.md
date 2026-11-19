@@ -2959,8 +2959,10 @@ sequence only together with the alphabet's version, so the version is part of th
   the kept neighbour, which is right for a Shift+arrow and wrong for a Shift+click. Taking
   only `handover::neighbour`'s anchor away does not change it, since the sync moves it anyway.
 - **Concerns:** `crates/strata-components/src/collection/selection/mod.rs` (`sync`) and the
-  pointer machine's Shift+click, C1's contract; seeds `v2-03`, `v2-05` (shrunk) and `v2-08` of
-  `session-pointer`, parked in `tests/qa/fuzz/corpus/session-pointer/`.
+  pointer machine's Shift+click, C1's contract; seeds `v3-03`, `v3-05` and `v3-08` of
+  `session-pointer`, shrunk to 4, 2 and 2 steps (each a drag-move out, then a Shift+click),
+  confirmed 3 of 3 and 24 of 24 on GTK, parked in `tests/qa/fuzz/corpus/session-pointer/`.
+  Version 2's seeds were parked first, two of them whole.
 - **State:** open, unowned: [A9](packages/A9.md) is told.
 
 ### #2630: when the folder shown is removed, GTK's keyboard goes to the parent's first entry, Rune's to the row at its index
@@ -2975,8 +2977,11 @@ sequence only together with the alphabet's version, so the version is part of th
   GTK's keyboard is on `diagram.txt`, Rune's on `photo.txt`, the row now at `documents`' index.
 - **Where:** not checked. Likely the List view's position when the browser leaves a removed
   folder for its parent, the family of #2593.
-- **Concerns:** the sequence, parked in `tests/qa/fuzz/corpus/session-pointer/`.
-- **State:** open, unowned: [A2](packages/A2.md) is told.
+- **Concerns:** `fuzz-session-pointer-v3-000000000000000e`, in
+  `tests/qa/fuzz/corpus/session-pointer/`.
+- **State:** fixed by [F4](packages/F4.md)'s fix of [#2628](https://github.com/lgse/strata/issues/2628)
+  in [#2636](https://github.com/lgse/strata/pull/2636), the same fault met by another route:
+  the sequence agrees on both targets since, and is kept unparked.
 
 ### #2631: an undo that moves the keyboard's unselected entry out selects the neighbour on Rune, not on GTK
 
@@ -2991,9 +2996,11 @@ sequence only together with the alphabet's version, so the version is part of th
   selectionless removals (`set_selectionless_removals`), so `handover::kept_neighbour` does not
   apply, and C1's `CursorGone::NeighborSelected` selects the neighbour of a cursor that was not
   selected. Not traced further.
-- **Concerns:** `crates/strata-app/src/handover.rs` and C1's sync rule; the sequence, parked in
-  `tests/qa/fuzz/corpus/session-pointer/`.
-- **State:** open, unowned: [A19](packages/A19.md), whose #2571 fixed #2546, is told.
+- **Concerns:** `crates/strata-app/src/handover.rs` and C1's sync rule;
+  `fuzz-session-pointer-v3-000000000000000b`, parked in `tests/qa/fuzz/corpus/session-pointer/`
+  against #2627.
+- **State:** a duplicate of [F4](packages/F4.md)'s [#2627](https://github.com/lgse/strata/issues/2627),
+  filed the same day before either merged; its state is #2627's.
 
 ### #2624: a folder opened again by a double click keeps the load's mark in the Rune view, not in the browser
 
@@ -3095,3 +3102,21 @@ sequence only together with the alphabet's version, so the version is part of th
   whether Rune's player starts again from the start where GTK's stays at the end.
   `v7-000000000000005b` is parked in `tests/qa/fuzz/corpus/media/`.
 - **State:** open, unowned.
+
+### #2638: after a single click opens a folder, a Shift+click ranges from the load's cursor on Rune, selects the entry alone on GTK
+
+- **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2638), filed on
+  2026-11-19 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** in [F5](packages/F5.md)'s `session-pointer v3` smoke tier, in List with
+  single-click folders (`explorer_folder_clicks = 1`). `fuzz-session-pointer-v3-0000000000000009`
+  cut to 2 steps: click `documents` (it opens in place, the keyboard on `notes.txt`, nothing
+  selected), then Shift+click `report.md`. GTK selects `report.md` alone in 24 of 24 replays;
+  Rune ranges from `notes.txt` in 24 of 24 offscreen, and in 4 of 24 on the session host, so
+  timing decides on Rune.
+- **Why:** not traced. #2551 fixed the same after a double click (`single/first_visit.rs`
+  keeps the anchor missing). An in-process hosted test of the single click, with the harness's
+  preferences, the rest's wait and the invariants step, selected `report.md` alone, so it
+  could not hold the fault and was not kept; what the binary does differently is open.
+- **Concerns:** the sequence, parked in `tests/qa/fuzz/corpus/session-pointer/`; A9's
+  `pointer` alphabet clicks a folder then Shift+clicks too, and has not met it in its tiers.
+- **State:** open, unowned: [A9](packages/A9.md) is told.
