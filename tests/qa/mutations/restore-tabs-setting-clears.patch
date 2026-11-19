@@ -1,0 +1,10 @@
+diff --git a/src/ui/preferences/file_settings.rs b/src/ui/preferences/file_settings.rs
+index af5ad4443..e022828fb 100644
+--- a/src/ui/preferences/file_settings.rs
++++ b/src/ui/preferences/file_settings.rs
+@@ -115,5 +115,2 @@ impl PreferenceManager {
+         self.preferences.borrow_mut().restore_tabs = enabled;
+-        if !enabled {
+-            super::super::tabs_session::remove();
+-        }
+         self.save_preferences();

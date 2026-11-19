@@ -174,6 +174,7 @@ These run in the runner (`drive` in `tests/qa/drive.rs`), between process comman
 | --- | --- |
 | `{"restart":true}` | SIGTERM to the app's process group, 5 s, then SIGKILL; starts it again with the same environment, fixture, display, and input log, with a fresh app log. It needs the US layout active (it reads the keymap again) and fails otherwise: after a `layout` step, add `{"layout":"us"}` before it. |
 | `{"restart":{"directory":"$fixture/target","env":{"RUST_LOG":"trace"},"stdout":"closed","stderr":"null"}}` | Restarts on another directory with extra variables, and standard output or error as a closed pipe or `/dev/null`. |
+| `{"restart":{"plain":true}}` | Restarts with no folder argument, as a user launching `strata` does, so the window restores the saved tab session or opens the default folder. Every other launch names a folder, which skips restore. Takes no `directory`. |
 | `{"layout":"ru"}` | Switches the run's keyboard layout. |
 | `{"flag":PREDICATE,"as":"enabled"}` | Keeps whether the predicate holds now; never fails. With `timeout_ms`, polls until it holds or time runs out. |
 | `{"each":"names","as":"name","derive":{"caption":{"number_plus":320,"suffix":"×180"}},"step":STEP}` | Runs a process step once per item of a noted list, `$name` the item; each `derive` variable is the last number in the item's stem plus `number_plus`, between optional `prefix` and `suffix`. |

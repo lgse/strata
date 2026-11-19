@@ -1,0 +1,11 @@
+diff --git a/src/ui/window/composition/tabs.rs b/src/ui/window/composition/tabs.rs
+--- a/src/ui/window/composition/tabs.rs
++++ b/src/ui/window/composition/tabs.rs
+@@ -741,7 +741,6 @@ impl TabWindow {
+             };
+             tab.checking.take();
+             if state.tabs.borrow().len() > 1 && !state.blocked() {
+-                state.discard(id);
+             } else {
+                 super::super::open_default_folder(
+                     &tab.content.browser.browser(),

@@ -602,6 +602,7 @@ pub(crate) fn peer_restart_and_guard_steps_check_their_shape_before_the_run() {
         json!({ "launch": ["$fixture"] }),
         json!({ "launch": ["a-%FF"], "percent_path": true }),
         json!({ "restart": { "directory": "/tmp/x", "env": { "RUST_LOG": "trace" }, "stdout": "closed", "stderr": "null" } }),
+        json!({ "restart": { "plain": true } }),
         json!({ "portal_open": "Title", "options": { "current_folder": "/tmp", "multiple": true } }),
         json!({ "portal_response": { "done": false } }),
         json!({ "portal_response": { "done": true, "status": 0, "names": ["a"] }, "timeout_ms": 20000 }),
@@ -620,6 +621,7 @@ pub(crate) fn peer_restart_and_guard_steps_check_their_shape_before_the_run() {
     for invalid in [
         json!({ "launch": [] }),
         json!({ "restart": { "stdout": "closed" } }),
+        json!({ "restart": { "plain": true, "directory": "/tmp/x" } }),
         json!({ "restart": { "stdout": "piped", "stderr": "null" } }),
         json!({ "restart": { "env": { "DISPLAY": ":1" } } }),
         json!({ "portal_response": { "done": false, "status": 0 } }),
