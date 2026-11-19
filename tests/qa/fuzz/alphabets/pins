@@ -107,6 +107,12 @@ preview v4 8de1587317366095
 # lgse/strata#2356 on `fs-write` into an open cursorless `sized-folder` column, and `Ctrl+click`
 # deselecting `readme.md` before `j` (as in lgse/strata#2353). Version 3 guards those three cases.
 properties v3 103535e459c8641e
+# session-pointer: F5's, on the session host: what `pointer` and `drag` reach, through the
+# compositor. Version 1 was its draft, never merged: it met lgse/strata#2510 on the menu's
+# Rename row, which version 2 leaves out, and an undo that waited for input (fixed). Version 2
+# left a menu over several selected entries open, and the rest of a sequence skipped; version
+# 3 dismisses any menu.
+session-pointer v3 af0187b625605531
 # settings: version 1 was A18's draft, never merged: its smoke tier caught Settings holding the
 # keyboard for a dialog while its choice menu left only the menu in the tree, and the keybind
 # search and table not kept across closing Settings (both fixed), and met GTK's `activate`

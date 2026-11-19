@@ -5,6 +5,7 @@
 use std::{path::PathBuf, time::Duration};
 
 use super::{
+    host::Host,
     observe::{REST, Rest},
     perturb::Perturbation,
     targets::Targets,
@@ -37,6 +38,9 @@ usage: ./scripts/qa-fuzz.sh <command> [selections]
                       differential mode, each sequence replayed on both side by side and
                       every Rune replay compared with the first GTK one (default: the
                       STRATA_QA_TARGET the script sets, else gtk)
+  --host H            offscreen or session: where every Rune replay runs, whatever host
+                      the alphabet names (default: the alphabet's, offscreen unless it says
+                      host = \"session\"); GTK replays stay on Xvfb
   --keep              keep the streams of sequences that agree too
   --corpus            shrink: write a confirmed sequence into the area's corpus
   --limit N           shrink: replays tried before the confirmations (default 200)
@@ -69,6 +73,8 @@ pub(crate) struct Options {
     pub(crate) repeats: usize,
     pub(crate) jobs: usize,
     pub(crate) targets: Targets,
+    /// `--host`: the Rune host every replay takes, in place of its alphabet's.
+    pub(crate) host: Option<Host>,
     pub(crate) keep: bool,
     /// `replay`: the parked sequences, and only those.
     pub(crate) parked: bool,
@@ -101,6 +107,7 @@ impl Options {
             repeats: 2,
             jobs: 0,
             targets: Targets::one(Target::from_environment()?),
+            host: None,
             keep: false,
             parked: false,
             corpus: false,
@@ -122,6 +129,7 @@ impl Options {
                 "--repeats" => options.repeats = positive(&argument, &value()?)?,
                 "--jobs" => options.jobs = positive(&argument, &value()?)?,
                 "--target" => options.targets = Targets::parse(&value()?)?,
+                "--host" => options.host = Some(Host::parse(&value()?)?),
                 "--limit" => options.limit = positive(&argument, &value()?)?,
                 "--keep" => options.keep = true,
                 "--parked" => options.parked = true,
@@ -210,6 +218,11 @@ impl Options {
             (
                 self.targets.is_differential() && !compares,
                 "--target gtk,rune is for run, replay and shrink: the commands that compare",
+            ),
+            (
+                self.host.is_some() && !self.targets.all().contains(&Target::Rune),
+                "--host picks the Rune target's host: GTK replays run on Xvfb, so it takes \
+                 --target rune or gtk,rune",
             ),
             (
                 self.parked && survey_of_files,

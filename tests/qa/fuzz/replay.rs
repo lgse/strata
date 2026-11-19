@@ -18,6 +18,7 @@ use serde_json::{Value, json};
 
 use super::{
     generate::Origin,
+    host::Host,
     observe::{
         Faults, Observation, Outcome, Rest, Rested, Sample, at_rest, milliseconds, settings, tree,
     },
@@ -26,8 +27,8 @@ use super::{
     sequence::{Loaded, strip},
 };
 use crate::{
-    Application, COMMAND_TIMEOUT, CONTAINER_ONLY, CONTROLLER_PANIC, Display, INPUT_LOG,
-    LAUNCH_TIMEOUT, Launch, STEP_WHEN, WAIT_MARGIN,
+    Application, COMMAND_TIMEOUT, CONTAINER_ONLY, CONTROLLER_PANIC, Display, DisplayKind,
+    INPUT_LOG, LAUNCH_TIMEOUT, Launch, STEP_WHEN, WAIT_MARGIN,
     drive::wait_for_fs,
     fixture::{Manifest, fixture_time},
     fs_check::FsState,
@@ -50,6 +51,8 @@ pub(crate) struct Replay<'a> {
     /// The target this replay starts, whatever `STRATA_QA_TARGET` says: the differential
     /// mode replays one sequence on both at once.
     pub(crate) target: Target,
+    /// Where a Rune replay runs; a GTK one runs on Xvfb whatever it says (`host.rs`).
+    pub(crate) host: Host,
     pub(crate) manifest: &'a Manifest,
     pub(crate) rest: Rest,
     /// Changes one observation of this replay: `perturb.rs`.
@@ -63,6 +66,9 @@ pub(crate) struct Replay<'a> {
 pub(crate) struct Header {
     /// `gtk` or `rune`.
     pub(crate) target: String,
+    /// The display the replay ran on: `x11`, or `wayland` for the session host. A stream kept
+    /// before the session host was a fuzz host says nothing, and ran on `x11`.
+    pub(crate) display: String,
     pub(crate) sequence: String,
     pub(crate) alphabet: String,
     pub(crate) version: u32,
@@ -75,6 +81,7 @@ impl Header {
     fn line(&self) -> Value {
         json!({ "stream": {
             "target": self.target,
+            "display": self.display,
             "sequence": self.sequence,
             "alphabet": self.alphabet,
             "version": self.version,
@@ -92,6 +99,7 @@ impl Header {
         let rest = &stream["rest"];
         Some(Self {
             target: stream["target"].as_str()?.to_owned(),
+            display: stream["display"].as_str().unwrap_or(X11).to_owned(),
             sequence: stream["sequence"].as_str()?.to_owned(),
             alphabet: stream["alphabet"].as_str()?.to_owned(),
             version: u32::try_from(stream["version"].as_u64()?).ok()?,
@@ -121,6 +129,16 @@ impl Header {
     }
 }
 
+const X11: &str = "x11";
+
+/// How a stream's header names a display.
+pub(crate) fn display_name(kind: DisplayKind) -> &'static str {
+    match kind {
+        DisplayKind::X11 => X11,
+        DisplayKind::Wayland => "wayland",
+    }
+}
+
 /// How the driver and its files name a target.
 pub(crate) fn target_name(target: Target) -> &'static str {
     match target {
@@ -136,6 +154,7 @@ impl Replay<'_> {
         let origin = Origin::of(name).ok_or("a sequence is named fuzz-<area>-v<version>-<seed>")?;
         Ok(Header {
             target: target_name(self.target).to_owned(),
+            display: display_name(self.host.display(self.target)?).to_owned(),
             sequence: name.clone(),
             alphabet: origin.area,
             version: origin.version,
@@ -315,7 +334,8 @@ pub(crate) fn replay(request: &Replay) -> Result<Replayed, String> {
         let step = unescape(&substitute(step, &variables));
         wait_for_fs(&step, fixture, files.time, &mut files.state)?;
     }
-    let display = Display::start(ground.scratch.path(), &ground.runtime)?;
+    let kind = request.host.display(request.target)?;
+    let display = Display::start_as(kind, ground.scratch.path(), &ground.runtime)?;
     let input_log = ground.scratch.path().join(INPUT_LOG);
     let launch = Launch {
         target: request.target,
