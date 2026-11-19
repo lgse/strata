@@ -1923,10 +1923,11 @@ follows the issue. An observation keeps a `context` for a `while` to read,
 which nothing compares: `context.toplevels`, the titles of the windows open
 beside the one the steps act on (the snapshot's `toplevels`), and
 `context.window_focused`, whether anything in that window has the keyboard
-(the snapshot's `window_focused`; GTK's is false only while its window is
-inactive). `app.dialog`'s rules name values; each of lgse/strata#2595's uses
-`while`, GTK's while its window is inactive, Rune's while its browser has no
-focused pane behind an open floating chooser:
+(the snapshot's `window_focused`; GTK's is false while no mapped widget in its
+window has focus: an inactive window, or a moment after the focused widget was
+unmapped). `app.dialog`'s rules name values; each of lgse/strata#2595's uses
+`while`, GTK's while its window has no keyboard, Rune's while its browser has
+no focused pane behind an open floating chooser:
 
 ```text
 app.focused toolkit lgse/strata#2595 {"gtk":null,"while":{"gtk":{"app.focused_pane":null,"context.window_focused":false}}}

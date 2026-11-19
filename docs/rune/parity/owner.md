@@ -860,7 +860,8 @@ Rulings of the owner on the parity work, oldest first.
     they applied whenever GTK's browser had no focused pane, in every alphabet, which also
     excused GTK's keyboard on the sidebar, the header, the location bar or a dialog. They
     now apply only while GTK's window has no keyboard at all (`context.window_focused` false),
-    which the QA's GTK backend reports only for an inactive window: the ruling's case. No new
+    which the QA's GTK backend reports when no mapped widget has focus: an inactive window,
+    the ruling's case, or a moment after the focused widget was unmapped. No new
     ruling: the scope is the ruling's own. Source: A20's closing pull request,
     [#2598](https://github.com/lgse/strata/pull/2598), review of 2026-11-19.
 - **2026-11-18: the media player's volume slider keeps its "Volume" name**, a ruled

@@ -42,16 +42,16 @@ app.dialog deviation lgse/strata#2572 {"gtk":null,"rune":["Settings"]}
 # on a desktop both interfaces leave the keyboard in the browser, and Rune's QA host gives it
 # back as a window manager does. The owner ruled on 2026-11-17 (owner.md) that this is excused
 # here, `toolkit`: GTK's focus follows GDK's X11 window activation. The first four rules apply
-# only while GTK's whole window has no keyboard (context.window_focused false: nothing in it has
-# focus, which the QA's GTK backend reports only for an inactive window) and its browser no
-# focused pane, and excuse only GTK's no focus against Rune's:
+# only while GTK's whole window has no keyboard (context.window_focused false: no mapped widget
+# in it has focus, as in an inactive window, or just after the focused widget was unmapped) and
+# its browser no focused pane, and excuse only GTK's no focus against Rune's:
 # - app.focused and app.panes[].focused: GTK's null against any row of Rune's;
 # - app.focused_pane: GTK's null against any pane of Rune's;
 # - app.directory, which is the focused pane's, or the last pane's when none is focused: any
 #   value of Rune's against GTK's.
 # GTK's keyboard on the sidebar, the header, the location bar or a dialog leaves its window
 # focused, so these rules do not apply there and Rune's focus on a row still counts. The map
-# names no step, so they hold for as long as GTK's window is inactive: from the chooser's close
+# names no step, so they hold for as long as GTK's window has no keyboard: from the chooser's close
 # until a later chooser on the bare Xvfb. What they could hide is a Rune focus bug at such a
 # step: the keyboard on the wrong row, or on a row where it should be elsewhere. No scenario
 # reads the browser's focus after the floating chooser closes:

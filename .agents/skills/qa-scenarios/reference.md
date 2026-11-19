@@ -567,7 +567,8 @@ The `app` keys are exactly these:
 - `toplevels`: the titles of the drawn windows other than the one the steps act
   on, such as a floating chooser's "Copy to"; empty with none.
 - `window_focused`: whether anything in the window has the keyboard; false
-  while the window is inactive.
+  while the window is inactive, and on GTK also just after the focused widget
+  was unmapped.
 
 The snapshot, every target, and the input log belong to the window the run
 started with; reach a floating chooser through a `toplevel` target.

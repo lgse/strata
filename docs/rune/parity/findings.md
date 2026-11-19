@@ -2781,7 +2781,8 @@ sequence only together with the alphabet's version, so the version is part of th
 - **State:** both facets ruled and excused, by eight `toolkit` rules in
   `tests/qa/fuzz/normalisation.map`.
   - The first four apply while GTK's whole window has no keyboard (`context.window_focused`
-    false, its window inactive) and its browser no focused pane: GTK's `null` against Rune's
+    false: no mapped widget focused, as in an inactive window) and its browser no focused
+    pane: GTK's `null` against Rune's
     on `app.focused`, `app.focused_pane` and `app.panes[].focused`, and any value of
     `app.directory`. Until A20's review (2026-11-19) they applied whenever GTK's browser had
     no focused pane, which also excused GTK's keyboard on the sidebar, the header, the
