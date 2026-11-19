@@ -20,7 +20,9 @@
 //!   the same entries whatever order they show in.
 //! - **A cursor falls back** to the first restored selected entry when its own entry is gone,
 //!   or none was remembered, and the anchor to the cursor; with no selection either, to the
-//!   browser's own cursor, so the two never disagree ([`fall_back`]).
+//!   browser's own cursor, so the two never disagree; with neither, to the first row shown,
+//!   as a first visit places it ([`fall_back`]). A remembered cursor whose entry went lets go
+//!   of it for this, rather than take the entry at its index.
 //! - **No choice.** What comes back is handed to the browser without committing it, as GTK's
 //!   `restore_selection` sets the browser's selection alone: a cursor a load placed (Alt+Up's
 //!   folder come from) stays the load's, so Columns shown again opens no child for it
@@ -181,12 +183,15 @@ pub(super) fn fall_back(
         .filter_map(|id| Some((column.position_of(id)?, id)))
         .min()
         .map(|(_, id)| id);
-    let Some(index) = first.or(browser_cursor).and_then(|id| column.index_of(id)) else {
-        return;
-    };
-    let anchor = match selection.anchor() {
-        Some(_) => AnchorRule::Keep,
-        None => AnchorRule::Move,
+    let fallen = first.or(browser_cursor).and_then(|id| column.index_of(id));
+    let (index, anchor) = match (fallen, selection.anchor()) {
+        (Some(index), Some(_)) => (index, AnchorRule::Keep),
+        (Some(index), None) => (index, AnchorRule::Move),
+        // Nothing to fall back to, as after a folder opened by a click: GTK's list view,
+        // taking the keyboard with no cursor, focuses its first row, as on a first visit
+        // (`single::first_visit`), with nothing selected and no anchor.
+        (None, _) if column.len() > 0 => (0, AnchorRule::Keep),
+        (None, _) => return,
     };
     let _ = collection.selection.move_cursor(column, index, anchor);
     collection.note_selection(column);

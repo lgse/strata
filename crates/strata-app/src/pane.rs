@@ -517,7 +517,13 @@ impl Pane {
     fn settle(&mut self, marks: &Marks, tx: &mut rune::Tx) {
         let before = self.collection.selection.cursor();
         let restoring = self.collection.restore_pending();
-        self.sync_by(handover::settle_rule, tx);
+        // A remembered cursor whose entry went lets go, so that [`restore::fall_back`] places
+        // it as GTK's `restore_selection` does, not on the entry that took its index.
+        let rule = match restoring {
+            true => handover::sync_rule,
+            false => handover::settle_rule,
+        };
+        self.sync_by(rule, tx);
         // A remembered position that came back with the listing is the pane's, as GTK's
         // restore sets the browser's selection to it: the browser's marks don't replace it.
         let restored = restoring && !self.collection.restore_pending();
