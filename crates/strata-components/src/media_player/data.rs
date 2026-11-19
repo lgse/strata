@@ -19,8 +19,11 @@ pub enum MediaKind {
     /// Audio: art (or the record), tags, the spectrum and the waveform timeline.
     Audio,
     /// Media that is neither: the plain media bar (play, time, a seek slider, volume) under
-    /// the frame, as for an animated GIF.
+    /// the frame.
     Plain,
+    /// An animated picture, as a GIF: the frame and its play toggle alone, which is all
+    /// Strata's `append_media_controls` gives a GIF.
+    Animation,
 }
 
 /// The file the player shows. Setting a new one ([`MediaState::set_clip`]) clears

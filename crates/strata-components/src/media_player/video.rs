@@ -9,7 +9,7 @@ use strata_kit::look::Look;
 use strata_kit::slots::media as slot;
 
 use super::badges::badges;
-use super::data::Details;
+use super::data::{Details, MediaKind};
 use super::state::MediaState;
 use super::time;
 use super::{Emit, commit_after};
@@ -46,15 +46,21 @@ pub(crate) fn video<S: 'static>(
     let content = frame(st, access, viewport, emit.clone(), key, pixels, look, cx);
     let aspect = st.aspect().unwrap_or(DEFAULT_ASPECT);
     if plain {
+        // Strata's plain media shows no title, and a GIF's bar is its play toggle alone.
+        let controls = if st.clip().kind == MediaKind::Animation {
+            super::transport::play(st, access, emit, key, look)
+        } else {
+            super::transport::plain_bar(st, access, emit, key, look)
+        };
         return layout::section(
             key.to_owned(),
             Areas {
                 content,
                 aspect,
-                details: layout::details_header(key, None, &st.clip().name, look),
+                details: col(),
                 badges: None,
                 timeline: None,
-                controls: super::transport::plain_bar(st, access, emit, key, look),
+                controls,
             },
             look,
         );
@@ -140,11 +146,16 @@ fn frame<S: 'static>(
         surface = surface.pixels(px);
     }
     // The frame names itself; the surface inside is the picture it shows. A press plays or
-    // pauses, so Rune makes it a button (deviation D9: Strata's is a focusable group).
+    // pauses, so Rune makes it a button (deviation D9: Strata's is a focusable group). Plain
+    // media's frame goes unnamed, as Strata's overlay does.
     let surface = surface.build(look, cx).a11y_hidden();
+    let name = match st.clip().kind {
+        MediaKind::Video => st.labels().video_frame.clone(),
+        MediaKind::Audio | MediaKind::Plain | MediaKind::Animation => String::new(),
+    };
     let mut frame = el()
         .key(format!("{key}-frame"))
-        .label(st.labels().video_frame.clone())
+        .label(name)
         .w_full()
         .h_full()
         .radius(radius)
