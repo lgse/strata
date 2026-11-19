@@ -121,6 +121,39 @@ fn badge_row(st: &MediaState, key: &str, look: &Look) -> El {
     layout::badge_row(key, items, look)
 }
 
+/// The frame's keys. A video's frame takes the player's keys. Strata's plain media overlay
+/// takes none; GTK's directional focus moves Left from it to the play toggle, the one other
+/// control, and Left leaves that.
+fn frame_keys<S: 'static>(
+    access: fn(&mut S) -> &mut MediaState,
+    emit: Emit<S>,
+    play: String,
+) -> impl Fn(&mut S, &rune::KeyEvent, &mut Tx) -> bool + 'static {
+    move |s: &mut S, k: &rune::KeyEvent, tx: &mut Tx| {
+        let st = access(s);
+        if st.clip().kind != MediaKind::Video {
+            return plain_left(k, &play, tx);
+        }
+        let Some(command) = st.keys().focused_command(k, tx) else {
+            return false;
+        };
+        if !st.command(command) {
+            return false;
+        }
+        commit_after(s, access, &emit, tx);
+        true
+    }
+}
+
+/// A plain Left on plain media's frame, which moves to its play toggle, `play`.
+fn plain_left(k: &rune::KeyEvent, play: &str, tx: &mut Tx) -> bool {
+    let left = k.key == rune::Key::Left && k.mods == rune::Mods::default();
+    if left {
+        tx.focus(play.to_owned(), true);
+    }
+    left
+}
+
 /// The frame: the video surface (C14a, fixed), the stand-in before the first frame, the
 /// storyboard cell while a seek runs, and the bubble over the timeline's pointer. A press
 /// toggles playback; it holds the keys as the timeline does.
@@ -176,29 +209,7 @@ fn frame<S: 'static>(
                 commit_after(s, access, &emit, tx);
             }
         })
-        // Strata's plain media overlay takes none of the player's keys; GTK's directional focus
-        // moves Left from it to the play toggle, the one other control, and Left leaves that.
-        .on_key({
-            let play = format!("{key}-play");
-            move |s: &mut S, k: &rune::KeyEvent, tx: &mut Tx| {
-                let st = access(s);
-                if st.clip().kind != MediaKind::Video {
-                    let left = k.key == rune::Key::Left && k.mods == rune::Mods::default();
-                    if left {
-                        tx.focus(play.clone(), true);
-                    }
-                    return left;
-                }
-                let Some(command) = st.keys().focused_command(k, tx) else {
-                    return false;
-                };
-                if !st.command(command) {
-                    return false;
-                }
-                commit_after(s, access, &emit, tx);
-                true
-            }
-        })
+        .on_key(frame_keys(access, emit, format!("{key}-play")))
         .child(surface);
     if st.stand_in_shown() {
         let mut stand_in = el()
