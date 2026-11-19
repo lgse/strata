@@ -86,8 +86,8 @@ pub(crate) struct Preview {
     was_in_band: bool,
     /// Which files of the shown player's kind hold media (`media::sequence`).
     media_checks: media::Checks,
-    /// A step from a playing file: the file it moved to, which plays on once it shows.
-    continue_playback: Option<Location>,
+    /// A step between media files, until the file it moved to shows (`media::Stepped`).
+    stepped: Option<media::Stepped>,
 }
 
 /// The folder a click in Columns is opening, at `depth`, until its column has loaded.
@@ -196,7 +196,7 @@ impl Part for Preview {
             last_split_width: None,
             was_in_band: false,
             media_checks: media::Checks::default(),
-            continue_playback: None,
+            stepped: None,
         }
     }
 

@@ -2,7 +2,8 @@
 
 //! The media player's host (`preview::media`): a sandboxed video's frames and clock reach the
 //! player and the media key plays and pauses it; the eyebrow counts only the files whose
-//! probe found media, and the next key steps past text named as video and keeps playing;
+//! probe found media, and the next key steps past text named as video, keeps playing and keeps
+//! the keyboard in the player;
 //! a decode that fails shows its error inside the player; and a GIF loops.
 
 use std::{
@@ -27,14 +28,17 @@ use strata_preview::{
 };
 
 use super::{
-    MODULE, Viewer, disable_auto_preview, focus_view, press,
+    MODULE, Viewer, disable_auto_preview, focus_view, focused_key, press,
     provider::{Recorded, install, listed_with},
     select, space,
 };
 use crate::{
     App,
     host::offscreen::Offscreen,
-    preview::{media::START_DECODER, session},
+    preview::{
+        media::{MEDIA_KEY, START_DECODER},
+        session,
+    },
     test_support::{PATIENCE, hosted},
 };
 
@@ -193,6 +197,12 @@ fn next_steps_past_text_named_as_video_and_keeps_playing() {
             assert!(state(&host).is_some_and(|s| !s.clip().has_previous));
             play_pause(&mut host);
             shows(&mut host, MediaState::playing, "playing before the step");
+            // The keyboard in the player: the next one takes it (GTK's `keep_keys_in_content`).
+            press(&mut host, Key::Right, Mods::default());
+            let in_player = |host: &mut Offscreen| {
+                focused_key(host).is_some_and(|key| key.starts_with(MEDIA_KEY))
+            };
+            assert!(in_player(&mut host), "Right gives the player the keyboard");
 
             let next = Mods {
                 shift: true,
@@ -216,6 +226,15 @@ fn next_steps_past_text_named_as_video_and_keeps_playing() {
             let second = Position { index: 2, ..first };
             let stepped = |s: &MediaState| s.clip().position == Some(second) && s.playing();
             shows(&mut host, stepped, "2 of 2, playing on");
+            let mut took = in_player(&mut host);
+            for _ in 0..600 {
+                if took {
+                    break;
+                }
+                host.turn();
+                took = in_player(&mut host);
+            }
+            assert!(took, "the next player has the keyboard");
         },
     );
 }
