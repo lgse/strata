@@ -320,12 +320,17 @@ fn file_keys(app: &mut App, press: &KeyPress, tx: &mut Tx) -> Option<Outcome> {
         chords::arm_actions(app, false);
     } else if press.is(COPY_AS) {
         arm_default_chord(app, ChordKind::Copy);
-    } else if press.is(TAB_CHORD) && !app.chooser.is_active() {
+    } else if arms_tab_chord(app, press) {
         arm_default_chord(app, ChordKind::Tabs);
     } else {
         return None;
     }
     Some(Outcome::Ran)
+}
+
+/// `t` arms the tab chord outside a chooser, which has no tabs (`tenxer_file_keys`).
+fn arms_tab_chord(app: &App, press: &KeyPress) -> bool {
+    press.is(TAB_CHORD) && !app.chooser.is_active()
 }
 
 fn alt_navigation(app: &mut App, press: &KeyPress, tx: &mut Tx) -> Option<Outcome> {
