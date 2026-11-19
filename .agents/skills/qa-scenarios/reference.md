@@ -41,6 +41,7 @@ Line 1 of the file, one JSON object. Unknown keys are rejected.
 | `env` | no | Variables added to the app's environment, `$variables` replaced. Never one the runner owns (`RUNNER_OWNED_ENVIRONMENT`, `XDG_DIRECTORIES`, and `QA_ENVIRONMENT` in `tests/qa.rs`): the display, buses, runtime, HOME and XDG directories, input log, shader cache, and accessibility switches. |
 | `session_bus` | no | `true` starts a private session bus with no service directories, shared by the app and the `dbus_send`, `launch`, and `foreign` steps (all three require it). Without it the app gets a bus address that cannot connect. |
 | `portal` | no | `true` (requires `session_bus`) starts `strata --qa --portal`, the FileChooser portal backend, instead of the browser. There is no window until `portal_open`; `adopt` then drives the chooser. Until a chooser opens, the snapshot is empty. |
+| `volume_monitor` | no | `true` (requires `session_bus`) starts a fake GVfs volume monitor on the run's bus before the app, and gives the app GIO's remote volume monitor client; see "Fake devices" in `docs/testing.md`. Steps then plug devices with `{"dbus_send":["--print-reply","--dest=org.strata.QaVolumeMonitor","/org/strata/QaVolumeMonitor","org.strata.QaVolumeMonitor.Add","string:{\"id\":\"stick\",\"name\":\"QA Stick\",\"root\":\"$environment/media/stick\"}"]}` and unplug them with `...Remove` and `string:stick`. A device's JSON takes `id`, `name`, `root` (the folder its mount shows), and optionally `mounted` (false), `drive` (true), `can_eject` (true; false makes Strata offer Unmount) and `mount_error` (a message every mount fails with, as `G_IO_ERROR_FAILED`). Each call the app makes is a `<method> <id>` line of `$environment/volume-monitor.calls`: `VolumeMount`, `MountUnmount` or `DriveEject`. Eject unplugs the device; Unmount keeps its volume. |
 | `input_method` | no | An fcitx5 input method name such as `chewing` or `pinyin` (requires `session_bus`): starts a private fcitx5 on the run's display and bus whose group holds the US keyboard and that method; Ctrl+Space switches to it. Pick the toolkit path with `env` (`GTK_IM_MODULE`). Host runs only, since the pinned image has no fcitx5; give such a scenario a `skip` reason. See "Wayland and input methods" in `docs/testing.md`. |
 | `fixture_root` | no | `/tmp/<name>`: builds the tree at that fixed path instead of a fresh one, for a screenshot where the path renders. The path must not exist (never reused); runs with a `fixture_root` never overlap one another. |
 | `mutation` | no | The name of a patch in `tests/qa/mutations/` (without `.patch`) that must make the scenario fail; each patch belongs to one scenario. `./scripts/qa-mutation.sh` checks it. Not combinable with `skip`. |
@@ -204,10 +205,11 @@ These run in the runner (`drive` in `tests/qa/drive.rs`), between process comman
 
 ## fs steps
 
-`{"fs":{"path":..., <one kind>...}, "timeout_ms":..., "message":...}`. A
+`{"fs":{"path":..., <one kind>...}, "timeout_ms":..., "hold_ms":..., "message":...}`. A
 relative path is under the fixture; an absolute one (`$data/Trash/files`)
-stands alone. Checks poll until they hold (`timeout_ms` 0 asserts once);
-actions act at once. Actions that remove, rename, or generate refuse a path
+stands alone. Checks poll until they hold (`timeout_ms` 0 asserts once); with
+`hold_ms` a check that held must keep holding that long, so a negative check
+also catches a write that lands late. Actions act at once and take neither. Actions that remove, rename, or generate refuse a path
 whose resolved parent lies outside the fixture, `$environment`, and the
 run's scratch directory.
 
