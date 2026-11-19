@@ -11,7 +11,8 @@
 # exception: it goes in calibration.mask. See docs/testing.md, "Fuzzing".
 #
 # A rule may name the values it excuses after its issue, {"gtk":<value>,"rune":[<value>, …]}:
-# it then leaves out only GTK's value against one of Rune's on its field.
+# it then leaves out only GTK's value against one of Rune's on its field. On a list,
+# {"rune_adds":[<value>, …]} leaves out only a Rune list that is GTK's with those elements added.
 # A plain popover is a named dialog on Rune and an unnamed panel on GTK, by the owner's ruling
 # of 2026-11-13 (owner.md): only its name against GTK's none is excused, never a real dialog.
 # GTK reports `null` for its popover whether it is open or not, so this rule cannot catch a

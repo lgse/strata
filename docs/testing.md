@@ -1882,6 +1882,14 @@ issue, as `app.dialog`'s two `deviation` rules do:
 app.preview unsettled lgse/strata#NNNN
 ```
 
+A rule of the map, never a mask, may name what it excuses after its issue, and then
+excuses nothing else on its field. `{"gtk":<value>,"rune":[<value>, …]}` excuses GTK's
+value against one of Rune's, as `app.dialog`'s rules do for a popover's name.
+`{"rune_adds":[<value>, …]}` is for a list: it excuses Rune's list only when taking every
+element equal to one of the values out of it leaves GTK's list, order included, so a
+name Rune adds by a ruling is left out and every other name still counts, as
+`app.preview`'s rule for the volume slider's "Volume" does (lgse/strata#2606).
+
 A field is named as an observation names it: `app.focused`,
 `app.panes[].selected` with `[]` for every element of a list,
 `fs.documents/notes.txt`, `settings.show_hidden`, `settings.keymap.default`.
