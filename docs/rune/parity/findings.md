@@ -2779,7 +2779,7 @@ sequence only together with the alphabet's version, so the version is part of th
   in the player neither seek nor return the keys to the listing. GTK's own table for a
   keyboard-owned media preview claims them as 5 s seeks (`SEEK_AND_VOLUME`,
   `media_key_command`, `src/ui/preview/keyboard.rs`), but after Right its keyboard is on an
-  unnamed widget, where the press is swallowed: a 12 s clip seeked to `0:05` stayed there after
+  unnamed widget, where the press is swallowed: a 12 s clip moved to `0:05` stayed there after
   Left. Rune puts the keyboard on C13's "Video frame" button, whose Left and Right seek.
 - **Concerns:** [A16](packages/A16.md)'s `media` alphabet, version 5, seed `0x03` (Left after a
   play to the end: `0:02` on GTK, `0:00` on Rune). Version 6 sends no Left while a video shows.
