@@ -265,6 +265,11 @@ closed issue is not a fixed finding: the state given here is the finding's.
   (`crates/strata-app/src/footer/tests.rs:213`, "consuming a cut withdraws the clipboard
   badge": the badge still showed) with the load average near 10. It passed 3 times of 3 alone
   and in the full rerun (3058 passed); #2599 does not touch the footer or the clipboard.
+- **On [#2620](https://github.com/lgse/strata/pull/2620), [A21](packages/A21.md)'s Slice 3, at `ca098e391`:** the tenth failed once more in
+  `./scripts/quality.sh all --jobs 4` (shard 0, lane 3, 79 of 80) with its `ETXTBSY` message, and
+  passed 3 times of 3 alone; a rerun of `./scripts/quality.sh test` passed whole (4076 tests).
+  That change touches no shared crate and no `src/`. In the same gate `./scripts/qa.sh` failed
+  only #2162's run, at its line 34.
 
 ### #2176: a GTK critical after a file appears during a rename on a multiple selection
 
@@ -2470,7 +2475,7 @@ sequence only together with the alphabet's version, so the version is part of th
   failed at `qa.rs:53`, the second `ask_to_copy`'s `menu_items` wait, the same symptom, and the
   failing suite took 20 s against about 4 s.
 - **Concerns:** `strata-rune`'s window test above, [A20](packages/A20.md)'s.
-- **State:** open, unowned.
+- **State:** open, [A20](packages/A20.md)'s to watch (its "Open", 2026-11-19).
 
 ### #2580: `rendered-document-word-selection-rune` lost the selection's first characters twice in a full session-host run
 
@@ -2766,6 +2771,48 @@ sequence only together with the alphabet's version, so the version is part of th
   [#2558](https://github.com/lgse/strata/issues/2558). A run or fuzz step that reads it cites
   the ruling.
 
+### #2595: after the floating chooser closes, GTK's browser has no focus under the QA's Xvfb
+
+- **Code:** `exception` (`toolkit`), ruled by the owner on 2026-11-17 and extended on 2026-11-18 ([`owner.md`](owner.md#ruled)).
+  [Issue](https://github.com/lgse/strata/issues/2595), filed on 2026-11-18 as the finding's
+  reference and closed at once: its state is kept here.
+- **Seen:** in the differential smoke tier of [A20](packages/A20.md)'s `chooser` alphabet
+  (`chooser v2`, 20 seeds of 40 actions). All 20 first part on `app.focused`,
+  `app.focused_pane` and `app.panes[].focused` around the floating Copy to or Move to chooser.
+  Once it has closed (Copy here, Move here or Escape), GTK reports no focus in the browser, and
+  Rune reports the browser's row. GTK's QA backend reports focus only for a widget with
+  `has_focus()`, which needs its window active (`src/qa/backend.rs`, `focus`), and GTK's
+  destination chooser leaves making the browser active again to the window manager
+  (`present_destination_chooser`, `bind_host_parent` in `src/ui/chooser/`). The QA's Xvfb runs
+  none. Rune's QA host gives the browser the keyboard back as a window manager does
+  (`qa::windows`). It also moved `app.directory`, the focused pane's, and a step guarded on
+  `focused_pane` ran on Rune only. A trial with the three focus fields set aside (v2) still
+  left 17 of 20 parting on those two, not none, as an earlier version of this entry said.
+- **Second facet, met under the rule (v4):** from the second chooser of a sequence on, GTK's
+  browser reports its row while the chooser is open and through every later close, where
+  Rune's reports none while a chooser is open, as GTK's did at the first. 19 of 20 seeds part
+  there, each at the click that opens a later chooser: GTK's row against Rune's no focus, the
+  direction the ruling does not cover.
+- **Concerns:** the `chooser` alphabet's smoke tier. No scenario reads the browser's focus
+  around the floating chooser.
+- **State:** both facets ruled and excused, by eight `toolkit` rules in
+  `tests/qa/fuzz/normalisation.map`.
+  - The first four apply while GTK's whole window has no keyboard (`context.window_focused`
+    false: no mapped widget focused, as in an inactive window) and its browser no focused
+    pane: GTK's `null` against Rune's
+    on `app.focused`, `app.focused_pane` and `app.panes[].focused`, and any value of
+    `app.directory`. Until A20's review (2026-11-19) they applied whenever GTK's browser had
+    no focused pane, which also excused GTK's keyboard on the sidebar, the header, the
+    location bar or a dialog in every alphabet.
+  - The second four apply while Rune's browser has no focused pane and its floating chooser is
+    open (`context.toplevels` is `["Copy to"]`, `["Move to"]` or `["Extract to"]`): Rune's
+    `null` against any of GTK's on the same fields, and any value of `app.directory`.
+
+  The `chooser` alphabet (v3) leaves out the browser's arrow keys, which GTK skips once its
+  browser has no focus. Under the eight rules, the smoke tier (v5) agrees in 20 of 20 seeds.
+  v4's twentieth, seed `0x03`, was Up from the first row of the chooser's listing (`owner.md`
+  A1 item 3), not this finding's, and v5 leaves it out ([A20](packages/A20.md)).
+
 ### #2610: GTK's player shows a sub-second clip's total as `--:--`
 
 - **Code:** `oracle`. [Issue](https://github.com/lgse/strata/issues/2610), filed on 2026-11-18
@@ -2834,6 +2881,21 @@ sequence only together with the alphabet's version, so the version is part of th
   and the next Left leaves; the audio view takes the player's keys, as GTK's drawer does.
   Covered by `preview::tests::media::a_gif_plays_in_the_plain_bar_and_loops` and
   `an_audio_player_keeps_left_and_right_and_a_gif_gives_left_back`.
+
+### #2621: a fully covered X11 window is `Hidden` on Rune, where GTK keeps it `Visible`
+
+- **Code:** `deviation`, ruled by the owner on 2026-11-19 ([`owner.md`](owner.md#ruled)). [Issue](https://github.com/lgse/strata/issues/2621),
+  filed on 2026-11-19 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** by the review of [A21](packages/A21.md)'s Slice 2a
+  ([#2604](https://github.com/lgse/strata/pull/2604)). GTK's `presence_of` (`src/ui/presence.rs`)
+  reads only an unmapped window and the toplevel's `SUSPENDED` and `MINIMIZED` states, so a
+  window covered whole by others stays `Visible`. Rune's `App::on_visibility` reports covering
+  on X11 and macOS, and `shell::presence` follows it (`crates/strata-app/src/shell/presence.rs`),
+  so the covered window's browsers are `Hidden` and recheck their folders less often until it
+  is uncovered. The Wayland half, a minimised window that stays `Visible`, is a Rune gap (Rune
+  packet entry 111), not this finding.
+- **Concerns:** no run.
+- **State:** ruled: Rune's report stands (the owner, 2026-11-19, through the coordinator).
 
 ### #2624: a folder opened again by a double click keeps the load's mark in the Rune view, not in the browser
 

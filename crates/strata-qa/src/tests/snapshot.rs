@@ -140,6 +140,8 @@ fn the_snapshot_reports_selection_and_focus_per_pane() {
                 "selection": [0, 4], "focused": true,
             },
             "matches": ["archive", "todo.txt"],
+            "toplevels": [],
+            "window_focused": false,
         })
     );
 }

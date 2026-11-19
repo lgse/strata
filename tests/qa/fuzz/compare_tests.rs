@@ -18,7 +18,7 @@ use super::{
     shrink::{CONFIRMATIONS, shrink},
 };
 
-fn observed(app: Value) -> Value {
+pub(crate) fn observed(app: Value) -> Value {
     json!({ "result": "ok", "criticals": [], "app": app, "fs": {}, "settings": {} })
 }
 
@@ -387,8 +387,9 @@ pub(crate) fn a_rule_that_names_values_excuses_only_those() {
     assert_eq!(
         entries[0].only,
         Some(rules::Only::Values {
-            gtk: Value::Null,
-            rune: vec![json!("Appearance"), json!("Thumbnail size")],
+            gtk: Some(Value::Null),
+            rune: Some(vec![json!("Appearance"), json!("Thumbnail size")]),
+            when: Vec::new(),
         })
     );
     let ruled = Ignored {
@@ -424,8 +425,15 @@ pub(crate) fn a_rule_that_names_values_excuses_only_those() {
     // A field the rule names no values for is not left out by it.
     assert!(!ruled.covers("app.dialog"));
     for refused in [
-        r#"app.dialog deviation lgse/strata#2405 {"gtk":null}"#,
+        r#"app.dialog deviation lgse/strata#2405 {}"#,
         r#"app.dialog deviation lgse/strata#2405 {"gtk":null,"rune":[]}"#,
+        r#"app.dialog deviation lgse/strata#2405 {"gtk":null,"other":1}"#,
+        r#"app.dialog deviation lgse/strata#2405 {"while":{"gtk":{}}}"#,
+        r#"app.dialog deviation lgse/strata#2405 {"while":{"both":{"app.dialog":null}}}"#,
+        r#"app.dialog deviation lgse/strata#2405 {"while":{"gtk":{"context.other":[]}}}"#,
+        r#"app.dialog deviation lgse/strata#2405 {"while":{"gtk":{"app.dialog":{"one_of":[]}}}}"#,
+        r#"app.dialog deviation lgse/strata#2405 {"while":{"gtk":{"fs.readme.md":null}}}"#,
+        r#"app.dialog deviation lgse/strata#2405 {"while":{"gtk":{"app.panes[].focused":null}}}"#,
         r#"app.dialog deviation lgse/strata#2405 null"#,
         r#"app.dialog deviation lgse/strata#2405 {"rune_adds":[]}"#,
         r#"app.dialog deviation lgse/strata#2405 {"rune_adds":"Volume"}"#,

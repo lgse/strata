@@ -38,15 +38,18 @@
 //! go on in the state kept.
 //!
 //! What moves is the `App`: every tab, its location, selection and history, the browsers with
-//! their operations, undo, and the dialogs open in it. What Rune keeps per native window does
-//! not, so the window comes back without it:
+//! their operations, undo, and the dialogs open in it. Strata's own menus and popovers are
+//! `App` state too (the context menu's `ContextMenuState`, the plain popovers' open flags), so
+//! one open at the close comes back open in the new window, at the point it had in the old
+//! one. What Rune keeps per native window does not move, so the window comes back without it:
 //!
 //! - its place and size: the window manager places the new window at the default size;
 //! - a maximised or full-screen state;
 //! - the views' scroll offsets, so a long listing comes back at its top, its cursor perhaps off
 //!   screen;
-//! - the focused widget;
-//! - an open menu or popover.
+//! - the focused widget, and the keyboard until Rune's first focus event gives it
+//!   (`shell::reopened`);
+//! - Rune's own transient UI, such as a tooltip.
 //!
 //! The old window is seen to go before the new one maps, since Rune hides it before `on_close`.
 //!

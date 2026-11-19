@@ -838,6 +838,32 @@ Rulings of the owner on the parity work, oldest first.
   `tenxer` alphabet keeps the case out with a guard citing it (`h` and `l` only out of a
   folder with nothing selected), and its shrunk sequence stays parked as `oracle`. Source: the owner,
   2026-11-17.
+- **2026-11-17: focus after the floating chooser closes is excused in the fuzz map**
+  (finding [#2595](https://github.com/lgse/strata/issues/2595), option (c)). Once the floating
+  Copy to or Move to chooser has closed, GTK's browser reports no focus on the QA's Xvfb, which
+  runs no window manager to make it active again, where Rune's QA host gives the browser the
+  keyboard back as a window manager does. `tests/qa/fuzz/normalisation.map` excuses it under
+  `toolkit`, scoped to GTK's no focus against Rune's while GTK's browser has no focused pane:
+  `app.focused`, `app.focused_pane` and `app.panes[].focused`, and `app.directory`, the focused
+  pane's. A20 adds the map's `while` for it. Source: the owner, 2026-11-17, through the
+  coordinator.
+  - **2026-11-18: extended to the second case.** From the second floating chooser of a
+    sequence on, GTK's browser is active again on the bare Xvfb and reports its row while the
+    chooser is open, where Rune's has no focus behind its chooser. GTK's value is excused
+    only while Rune's observation shows no focused pane and its floating chooser open
+    (`context.toplevels`, the windows open beside the browser, which the snapshot's new
+    `toplevels` key gives the fuzz driver): Rune's `null` against any of GTK's on the three
+    focus fields, and `app.directory`. A Rune browser that kept the keyboard behind its
+    chooser still counts, its value being no `null`. Source: the owner, 2026-11-18, through
+    the coordinator.
+  - **2026-11-19: the first four rules narrowed to the ruling's cause.** A20's review found
+    they applied whenever GTK's browser had no focused pane, in every alphabet, which also
+    excused GTK's keyboard on the sidebar, the header, the location bar or a dialog. They
+    now apply only while GTK's window has no keyboard at all (`context.window_focused` false),
+    which the QA's GTK backend reports when no mapped widget has focus: an inactive window,
+    the ruling's case, or a moment after the focused widget was unmapped. No new
+    ruling: the scope is the ruling's own. Source: A20's closing pull request,
+    [#2598](https://github.com/lgse/strata/pull/2598), review of 2026-11-19.
 - **2026-11-18: the media player's volume slider keeps its "Volume" name**, a ruled
   `deviation` (finding [#2606](https://github.com/lgse/strata/issues/2606)). GTK's volume slider
   is an unnamed `gtk::Scale`; Rune's C13 slider is named "Volume", translated in the 13
@@ -865,6 +891,43 @@ Rulings of the owner on the parity work, oldest first.
   `window-wheel` one. Built in [A16](packages/A16.md)'s Slice 4
   ([#2614](https://github.com/lgse/strata/pull/2614)). Source: the owner, 2026-11-19, through
   the coordinator.
+- **2026-11-19: A21 closes with its listed coverage standing in for its fuzz alphabet**
+  (done-when item 6). The fuzz driver replays with no session bus, has no step that moves the
+  keyboard to another window, and observes the run's window only, so an alphabet of A21's could
+  open windows and never act in them. What stands in: A21's three `required` runs (`launch` and
+  `dbus_send`), [A18](packages/A18.md)'s `preferences-sync-windows-restart` and
+  [A5](packages/A5.md)'s window-switch pair, the ten `window::` tests in a private sway session,
+  and the stores' unit tests. A fuzz driver that can drive windows (a bus and a window-switch
+  step) is later F or H work, noted for [F5](packages/F5.md) and [E1](packages/E1.md). Raised by
+  [A21](packages/A21.md)'s Slice 3 ([#2620](https://github.com/lgse/strata/pull/2620)). Source:
+  the owner, 2026-11-19, through the coordinator.
+- **2026-11-19: a fully covered X11 window reports `Hidden` on Rune**, a ruled `deviation`
+  (finding [#2621](https://github.com/lgse/strata/issues/2621)). Rune's `App::on_visibility`
+  reports covering on X11 and macOS, where GTK's `presence_of` reads only an unmapped window and
+  the `SUSPENDED` and `MINIMIZED` states, so the covered window's browsers recheck their folders
+  less often until it is uncovered. Rune's report stands. Raised by [A21](packages/A21.md)
+  (`crates/strata-app/src/shell/presence.rs`). Source: the owner, 2026-11-19, through the
+  coordinator.
+- **2026-11-19: H5's work goes to an integration branch, `h5-integration`**: "build H5 in
+  another integration branch for now". The deny-advisory fix H5's pull requests need goes
+  there too: "Build in same integration branch as H5"
+  ([#2618](https://github.com/lgse/strata/pull/2618)). The branch is cut from `main` at
+  `9ea79324a`, and [H5](packages/H5.md)'s [#2609](https://github.com/lgse/strata/pull/2609) was
+  retargeted there. The coordinator's context, not part of the ruling: it had reported `main`
+  as blocked for merging, and its stated plan is that the owner merges the branch into `main`
+  later, from where it reaches `strata-next` by merge. Source: the owner, 2026-11-19, through
+  the coordinator.
+- **2026-11-19: the test image is rebuilt for devices and mounts**: "Yes, rebuild the image".
+  Built in [H5](packages/H5.md)'s round 2 ([#2619](https://github.com/lgse/strata/pull/2619)),
+  in `h5-integration`, as `gvfs` in the pinned image, for GIO's remote volume monitor client,
+  and a fake volume monitor the QA runner starts on a run's private bus. Source: the owner,
+  2026-11-19, through the coordinator.
+- **2026-11-19: the `deny.toml` ignores of [#2618](https://github.com/lgse/strata/pull/2618) are
+  accepted**: "Accept the ignores". They are the five #2618 adds: `zip` 8.6.0's
+  RUSTSEC-2026-0545, -0546, -0547 and -0548, which come only through `docx-rs`, and `chrono`'s
+  RUSTSEC-2026-0543 (unmaintained), which comes only through `fitparser`. When to remove the
+  `zip` entries is #2618's own `deny.toml` comment ("once docx-rs releases on zip 9"), not part
+  of the ruling. Source: the owner, 2026-11-19, through the coordinator.
 
 ## Housekeeping
 

@@ -581,6 +581,7 @@ impl<'a> Session<'a> {
                 app: Value::Null,
                 fs: self.names.normalise(&tree(self.fixture)),
                 settings: self.names.normalise(&settings(&self.settings)),
+                context: Value::Null,
             },
             settled: outcome == Outcome::Closed,
             polls: 0,
@@ -600,6 +601,7 @@ impl<'a> Session<'a> {
             return Err(error.to_owned());
         }
         let app = project::app(&reply["app"], &self.names);
+        let context = project::context(&reply["app"], &self.names);
         let fs = self.names.normalise(&tree(self.fixture));
         Ok(Sample {
             // Out there the listing changes with every other run on the machine, so it
@@ -611,6 +613,7 @@ impl<'a> Session<'a> {
             },
             fs,
             settings: self.names.normalise(&settings(&self.settings)),
+            context,
         })
     }
 }

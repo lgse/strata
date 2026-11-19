@@ -141,7 +141,10 @@ pub(super) fn complete(app: &mut App, press: &KeyPress, tx: &mut Tx) -> bool {
             }
         }
         GoTarget::Prompt => super::prompts::open_go(app, tx),
+        GoTarget::Pin(_) if crate::chooser::tenxer::refuses_pin(app, tx) => {}
         GoTarget::Pin(pin) => change_pin(app, pin, tx),
+        GoTarget::Place { location, .. }
+            if crate::chooser::tenxer::refuses_place(app, &location, tx) => {}
         GoTarget::Place { location, validate } => {
             shell::publish(app);
             let browser = app.browser.clone();

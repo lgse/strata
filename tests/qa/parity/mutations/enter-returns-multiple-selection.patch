@@ -1,0 +1,12 @@
+diff --git a/crates/strata-app/src/chooser/accept.rs b/crates/strata-app/src/chooser/accept.rs
+index a251a06d1..07bf4e74b 100644
+--- a/crates/strata-app/src/chooser/accept.rs
++++ b/crates/strata-app/src/chooser/accept.rs
+@@ -127,6 +127,7 @@ fn accept_open(app: &mut App, directory: bool, multiple: bool, tx: &mut Tx) {
+     };
+     let entries: Vec<FileEntry> = chosen_entries(app, !directory)
+         .into_iter()
++        .take(1)
+         .filter(|entry| entry.is_directory() == directory && app.browser.allows_entry(entry))
+         .collect();
+     let validate = app

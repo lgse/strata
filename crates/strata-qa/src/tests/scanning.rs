@@ -123,6 +123,28 @@ fn hidden_and_undrawn_nodes_are_left_out_of_the_snapshot() {
     );
 }
 
+/// The snapshot names the other windows that are drawn, such as a floating chooser, by their
+/// titles, and leaves out the window it reads and a window not drawn.
+#[test]
+fn the_other_drawn_windows_are_named_by_their_titles() {
+    let mut fake = Fake::new();
+    assert!(
+        scan(&fake, &WINDOW)
+            .observation
+            .app_state()
+            .toplevels
+            .is_empty()
+    );
+    fake.add_window(drawn("frame", "Copy to", [8000.0, 0.0, 600.0, 400.0]));
+    fake.add_window(Node {
+        role: "frame",
+        name: "Hidden",
+        ..Node::default()
+    });
+    let state = scan(&fake, &WINDOW).observation.app_state();
+    assert_eq!(state.toplevels, ["Copy to"]);
+}
+
 #[test]
 fn focus_names_the_pane_that_holds_it_and_the_entry_it_is_on() {
     let mut fake = Fake::new();
@@ -132,6 +154,10 @@ fn focus_names_the_pane_that_holds_it_and_the_entry_it_is_on() {
     let report = entry(&mut fake, documents, "report.txt", [200.0, 40.0], false);
 
     assert_eq!(scan(&fake, &WINDOW).observation.focused_pane_name(), None);
+    assert!(
+        !scan(&fake, &WINDOW).observation.app_state().window_focused,
+        "nothing in the window has the keyboard"
+    );
 
     fake.focus = Some(report);
     let observation = scan(&fake, &WINDOW).observation;
@@ -140,6 +166,7 @@ fn focus_names_the_pane_that_holds_it_and_the_entry_it_is_on() {
     assert_eq!(observation.directory(), Some("documents"));
     let state = observation.app_state();
     assert_eq!(state.panes[1].focused.as_deref(), Some("report.txt"));
+    assert!(state.window_focused, "the window has the keyboard");
 
     // The pane itself takes focus while its directory is empty.
     fake.focus = Some(documents_pane);
