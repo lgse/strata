@@ -2454,7 +2454,7 @@ sequence only together with the alphabet's version, so the version is part of th
   failed at `qa.rs:53`, the second `ask_to_copy`'s `menu_items` wait, the same symptom, and the
   failing suite took 20 s against about 4 s.
 - **Concerns:** `strata-rune`'s window test above, [A20](packages/A20.md)'s.
-- **State:** open, unowned.
+- **State:** open, [A20](packages/A20.md)'s to watch (its "Open", 2026-11-19).
 
 ### #2580: `rendered-document-word-selection-rune` lost the selection's first characters twice in a full session-host run
 
@@ -2776,9 +2776,12 @@ sequence only together with the alphabet's version, so the version is part of th
   around the floating chooser.
 - **State:** both facets ruled and excused, by eight `toolkit` rules in
   `tests/qa/fuzz/normalisation.map`.
-  - The first four apply while GTK's browser has no focused pane: GTK's `null` against
-    Rune's on `app.focused`, `app.focused_pane` and `app.panes[].focused`, and any value of
-    `app.directory`.
+  - The first four apply while GTK's whole window has no keyboard (`context.window_focused`
+    false, its window inactive) and its browser no focused pane: GTK's `null` against Rune's
+    on `app.focused`, `app.focused_pane` and `app.panes[].focused`, and any value of
+    `app.directory`. Until A20's review (2026-11-19) they applied whenever GTK's browser had
+    no focused pane, which also excused GTK's keyboard on the sidebar, the header, the
+    location bar or a dialog in every alphabet.
   - The second four apply while Rune's browser has no focused pane and its floating chooser is
     open (`context.toplevels` is `["Copy to"]`, `["Move to"]` or `["Extract to"]`): Rune's
     `null` against any of GTK's on the same fields, and any value of `app.directory`.

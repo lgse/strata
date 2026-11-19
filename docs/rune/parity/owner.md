@@ -856,6 +856,13 @@ Rulings of the owner on the parity work, oldest first.
     focus fields, and `app.directory`. A Rune browser that kept the keyboard behind its
     chooser still counts, its value being no `null`. Source: the owner, 2026-11-18, through
     the coordinator.
+  - **2026-11-19: the first four rules narrowed to the ruling's cause.** A20's review found
+    they applied whenever GTK's browser had no focused pane, in every alphabet, which also
+    excused GTK's keyboard on the sidebar, the header, the location bar or a dialog. They
+    now apply only while GTK's window has no keyboard at all (`context.window_focused` false),
+    which the QA's GTK backend reports only for an inactive window: the ruling's case. No new
+    ruling: the scope is the ruling's own. Source: A20's closing pull request,
+    [#2598](https://github.com/lgse/strata/pull/2598), review of 2026-11-19.
 - **2026-11-18: the media player's volume slider keeps its "Volume" name**, a ruled
   `deviation` (finding [#2606](https://github.com/lgse/strata/issues/2606)). GTK's volume slider
   is an unnamed `gtk::Scale`; Rune's C13 slider is named "Volume", translated in the 13
