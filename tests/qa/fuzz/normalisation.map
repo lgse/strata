@@ -91,6 +91,12 @@ app.menu deviation lgse/strata#2572 {"gtk":null,"rune":[[]]}
 # app.panes[].focused's rule is lgse/strata#2595's, with app.focused's above.
 app.panes[].focused toolkit lgse/strata#2595 {"gtk":null,"while":{"gtk":{"app.focused_pane":null,"context.window_focused":false}}}
 app.panes[].focused toolkit lgse/strata#2595 {"rune":[null],"while":{"rune":{"app.focused_pane":null,"context.toplevels":{"one_of":[["Copy to"],["Move to"],["Extract to"]]}}}}
+# The three app.preview rules below are combined: a Rune list is excused when it is GTK's with
+# some of their names added, one copy for each time a rule names it, so a name Rune shows
+# twice still diverges. They are combined by field, not by viewer: app.preview is the drawer's
+# names and says nothing of which viewer shows them, so a PDF name in the audio player's
+# drawer, or "Volume" in a PDF's, is excused too. A rule scoped to one viewer would need the
+# observation to name the viewer, and the map refuses a `while` on a `rune_adds` rule.
 # A PDF's page is one image on GTK; Rune's PDF view also names the document, each page and the
 # page's text layer, by the owner's ruling of 2026-11-19 (owner.md): only those three of the
 # fixture's PDF, tests/fixtures/documents/text.pdf, a page of one, are excused, wherever

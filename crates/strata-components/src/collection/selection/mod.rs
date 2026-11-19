@@ -667,9 +667,14 @@ impl Selection {
         self.finish(changed)
     }
 
-    /// Selects exactly the listed entries that weren't selected: 10xer Ctrl+R.
+    /// Selects exactly the listed entries that weren't selected: 10xer Ctrl+R. A provisional
+    /// pick is no fill, as the shared browser's `replace_visible` reads a load's cursor, so
+    /// inverting it selects every entry.
     pub fn invert<S: EntrySource + ?Sized>(&mut self, source: &S) -> Changed {
         self.gesture = Gesture::None;
+        if self.provisional {
+            let _ = self.members.clear();
+        }
         self.provisional = false;
         let changed = Changed {
             selection: self.members.invert(source),

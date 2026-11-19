@@ -48,6 +48,7 @@ use super::{
         the_projection_names_every_key_the_snapshot_has,
         two_streams_are_compared_only_when_they_answer_one_another,
     },
+    rune_adds_tests::a_rune_adds_rule_takes_out_one_copy_for_each_time_it_names_an_element,
     stream_tests::an_undo_then_a_redo_puts_the_tree_back_as_it_was_before_the_undo,
     targets_tests::{
         a_command_takes_one_target_or_gtk_and_rune_and_the_comparing_commands_take_both,
@@ -91,6 +92,7 @@ unit_tests! {
     a_rule_that_names_values_excuses_only_those,
     a_rule_s_while_holds_it_to_each_side_s_observation,
     a_rule_that_names_what_rune_adds_excuses_only_those_elements,
+    a_rune_adds_rule_takes_out_one_copy_for_each_time_it_names_an_element,
     rules_of_two_rulings_on_one_field_excuse_only_their_own,
     rune_adds_rules_of_two_rulings_take_their_elements_out_together,
     an_entry_is_refused_for_its_form_its_code_or_blinding_a_whole_root,

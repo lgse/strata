@@ -6,3 +6,12 @@
 # it. Versions 1 and 2 were A9's drafts, never merged.
 v3-000000000000000c oracle lgse/strata#2552
 v3-000000000000000d oracle lgse/strata#2552
+# v3, 0x16 and 0x26: a marquee, then a return to the folder or a file written behind the
+# application: GTK starts from the band's end (lgse/strata#2552). Shrunk from 43 and 60 steps to
+# 4 and 2, confirmed 3 of 3 (F4's round 1).
+# v3, 0x18: a click opens documents, a Shift+click on report.md: GTK selects report.md alone,
+# Rune ranges from the load's cursor, the case lgse/strata#2551's fix holds in its hosted tests
+# but the binary still shows (F4's round 1). Shrunk from 60 steps to 2, confirmed 3 of 3.
+v3-0000000000000016 oracle lgse/strata#2552
+v3-0000000000000018 divergence lgse/strata#2551
+v3-0000000000000026 oracle lgse/strata#2552
