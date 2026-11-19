@@ -176,20 +176,28 @@ fn frame<S: 'static>(
                 commit_after(s, access, &emit, tx);
             }
         })
-        // Strata's plain media overlay takes none of the player's keys: Left leaves it.
-        .on_key(move |s: &mut S, k: &rune::KeyEvent, tx: &mut Tx| {
-            let st = access(s);
-            if st.clip().kind != MediaKind::Video {
-                return false;
+        // Strata's plain media overlay takes none of the player's keys; GTK's directional focus
+        // moves Left from it to the play toggle, the one other control, and Left leaves that.
+        .on_key({
+            let play = format!("{key}-play");
+            move |s: &mut S, k: &rune::KeyEvent, tx: &mut Tx| {
+                let st = access(s);
+                if st.clip().kind != MediaKind::Video {
+                    let left = k.key == rune::Key::Left && k.mods == rune::Mods::default();
+                    if left {
+                        tx.focus(play.clone(), true);
+                    }
+                    return left;
+                }
+                let Some(command) = st.keys().focused_command(k, tx) else {
+                    return false;
+                };
+                if !st.command(command) {
+                    return false;
+                }
+                commit_after(s, access, &emit, tx);
+                true
             }
-            let Some(command) = st.keys().focused_command(k, tx) else {
-                return false;
-            };
-            if !st.command(command) {
-                return false;
-            }
-            commit_after(s, access, &emit, tx);
-            true
         })
         .child(surface);
     if st.stand_in_shown() {
