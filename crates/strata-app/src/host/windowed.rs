@@ -36,6 +36,28 @@
 //! hand ([`refused`]): it moves the state into a window opened in its place, which says why, and
 //! leaves the closing window a stand-in state to go with. The running file operations and jobs
 //! go on in the state kept.
+//!
+//! What moves is the `App`: every tab, its location, selection and history, the browsers with
+//! their operations, undo, and the dialogs open in it. What Rune keeps per native window does
+//! not, so the window comes back without it:
+//!
+//! - its place and size: the window manager places the new window at the default size;
+//! - a maximised or full-screen state;
+//! - the views' scroll offsets, so a long listing comes back at its top, its cursor perhaps off
+//!   screen;
+//! - the focused widget;
+//! - an open menu or popover.
+//!
+//! The old window is seen to go before the new one maps, since Rune hides it before `on_close`.
+//!
+//! **Why not `keep_running`.** With it, Rune's close hides the window and keeps its native
+//! window and state, and `AppHandle::show` brings it back as it was. But at the pin
+//! `keep_running` holds for every close of the window's `App`, refused or not, and nothing drops
+//! one window of several: `AppHandle::quit` ends the whole application. A window whose close
+//! goes ahead would then stay hidden with its state alive (its browsers and their watchers, its
+//! share of the thumbnail budget, a place in `is_last_window`), and the process would have to
+//! quit by hand when the last shown window closes. Rune packet entry 110 asks for the close
+//! request that makes both workarounds unneeded.
 
 use std::{
     cell::{OnceCell, RefCell},
