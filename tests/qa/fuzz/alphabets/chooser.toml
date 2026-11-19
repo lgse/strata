@@ -1,8 +1,8 @@
 # The chooser alphabet (A20): the floating Copy to and Move to chooser, the folder chooser a file
 # manager opens over its window, in Columns on the canonical fixture, type to search off:
 # - opening it from an entry's context menu on a file or folder of `$root`;
-# - in it, the path field (Ctrl+L, a folder of the fixture typed, Return), the listing's arrow
-#   keys, Escape, and its "Copy here" or "Move here";
+# - in it, the path field (Ctrl+L, a folder of the fixture typed, Return), the listing's Down and
+#   Right, Escape, and its "Copy here" or "Move here";
 # - the "File already exists" dialog a repeated copy raises, answered with Keep Both, Replace or
 #   Skip;
 # - the browser's own clicks, so that the chooser opens on other folders.
@@ -26,11 +26,16 @@
 #   guarded on the browser's focus is skipped on GTK and sent on Rune. The owner's ruling of
 #   2026-11-17 excuses the focus fields then, in tests/qa/fuzz/normalisation.map, and not a step
 #   one target takes and the other skips. Clicks reach the browser on both.
+# - Up in the chooser's listing: from its first row GTK moves the keyboard to the pane header and
+#   leaves the load cursor provisional, so Move here takes the current folder, where Rune's
+#   Columns re-selects the row and Move here takes it (`owner.md`, A1 item 3, which the menus
+#   and clipboard alphabets leave out too). The listing is empty or one row deep in most of the
+#   fixture's folders, where every Up starts at the first row.
 # - A click on a folder whose column is open: GTK's list view puts its keyboard on the column's
 #   first row, Rune's keeps it off the rows (`oracle` finding lgse/strata#2356), as the clipboard
 #   alphabet leaves out.
 area = "chooser"
-version = 4
+version = 5
 about = "Columns, type to search off: the floating Copy to and Move to chooser from an entry's menu, its path field, listing keys, Escape and Copy here or Move here, the conflict dialog a repeated copy raises, and the browser's own clicks between"
 header = '{"modes":["columns"],"prefs":{"type_to_search":false}}'
 
@@ -67,7 +72,7 @@ choose.title = ["Copy to", "Move to"]
 name = "chooser-keys"
 weight = 5
 steps = ['{"key":"<key>","when":{"all":[{"present":{"toplevel":"<title>"}},{"absent":{"field":true,"within":{"toplevel":"<title>"}}}]}}']
-choose.key = ["Down", "Up", "Right"]
+choose.key = ["Down", "Right"]
 choose.title = ["Copy to", "Move to"]
 
 [[action]]
