@@ -74,21 +74,18 @@ pub(crate) fn step<S: 'static>(
 ) -> El {
     let labels = st.labels();
     let audio = st.clip().kind == MediaKind::Audio;
-    let label = match (audio, next) {
-        (false, false) => &labels.previous_video,
-        (false, true) => &labels.next_video,
-        (true, false) => &labels.previous_audio,
-        (true, true) => &labels.next_audio,
+    let (label, template) = match (audio, next) {
+        (false, false) => (&labels.previous_video, &labels.previous_video_tooltip),
+        (false, true) => (&labels.next_video, &labels.next_video_tooltip),
+        (true, false) => (&labels.previous_audio, &labels.previous_audio_tooltip),
+        (true, true) => (&labels.next_audio, &labels.next_audio_tooltip),
     };
     let command = if next {
         MediaCommand::Next
     } else {
         MediaCommand::Previous
     };
-    let tooltip = with_keys(
-        &labels.step_tooltip.replace("{label}", label),
-        keys_for(st, command).as_deref(),
-    );
+    let tooltip = with_keys(template, keys_for(st, command).as_deref());
     let enabled = if next {
         st.clip().has_next
     } else {

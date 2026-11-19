@@ -856,6 +856,14 @@ Rulings of the owner on the parity work, oldest first.
     focus fields, and `app.directory`. A Rune browser that kept the keyboard behind its
     chooser still counts, its value being no `null`. Source: the owner, 2026-11-18, through
     the coordinator.
+- **2026-11-18: the media player's volume slider keeps its "Volume" name**, a ruled
+  `deviation` (finding [#2606](https://github.com/lgse/strata/issues/2606)). GTK's volume slider
+  is an unnamed `gtk::Scale`; Rune's C13 slider is named "Volume", translated in the 13
+  catalogs, as for [#2557](https://github.com/lgse/strata/issues/2557)'s picture name and
+  [#2558](https://github.com/lgse/strata/issues/2558)'s body names. A run or a fuzz step that
+  reads it cites this ruling. Built in [A16](packages/A16.md)'s Slice 3
+  ([#2599](https://github.com/lgse/strata/pull/2599)). Source: the owner, 2026-11-18, through
+  the coordinator.
 
 ## Housekeeping
 

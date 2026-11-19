@@ -59,18 +59,16 @@ scenario = "disabled-transport-click"
 run = "columns-audio"
 package = "A16"
 gate = "G2"
-status = "pending"
-reason = "scope"
-blocker = "C9 and C13: the preview drawer and its media transport (`preview`)"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "disabled-transport-click"
 run = "columns-video"
 package = "A16"
 gate = "G2"
-status = "pending"
-reason = "scope"
-blocker = "C9 and C13: the preview drawer and its media transport (`preview`)"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "empty-column-clears-other-columns"

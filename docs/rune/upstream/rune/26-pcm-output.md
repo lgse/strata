@@ -4,8 +4,8 @@
 | --- | --- |
 | Kind | New issue (related #30, #100, #112) |
 | Drafts | U-P7-1 |
-| Affects | P7 (media audio), C13 (media player) |
-| Retires | P7's GStreamer `appsrc` sink and its clock |
+| Affects | P7 (media audio), C13 (media player), A16 (the preview's players, silent until then) |
+| Retires | P7's GStreamer `appsrc` sink and its clock; A16's silent clock (`crates/strata-app/src/preview/media/stream.rs`), which plays the decoder's frames on the poll's clock and drops their PCM |
 | Checked | Re-checked at `2a44156` by source: `Player` off macOS still uses `video/unsupported.rs` (`video/mod.rs:38–41`), which fails every player at once (`unsupported.rs:15–16`). `MediaSource` is still `File` or `Url` only (`video/mod.rs:102–105`), and no crate in the workspace takes PCM (the only other audio code is `Recorder`, which captures). #30, #100 and #112 are still open, with #506 (`Player` volume) and #366 (a Windows backend) beside them; none asks for PCM. P7's GStreamer `appsrc` sink is still there (`strata-platform/src/media/mod.rs:71`, `:85–87`). No program needed. Earlier: by source at `5d421fd` and `04b38ae`. |
 | Status | Ready to file (re-verified at 2a44156, 2026-11-10; no duplicate as of 2026-11-10) |
 

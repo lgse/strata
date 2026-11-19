@@ -2,8 +2,7 @@ diff --git a/crates/strata-app/src/dnd/content/decode.rs b/crates/strata-app/src
 index b7f17e0a7..0b359497d 100644
 --- a/crates/strata-app/src/dnd/content/decode.rs
 +++ b/crates/strata-app/src/dnd/content/decode.rs
-@@ -26,6 +26,9 @@ pub(super) fn png_of(bytes: &[u8]) -> Option<Vec<u8>> {
- 
+@@ -27,5 +27,8 @@ pub(super) fn png_of(bytes: &[u8]) -> Option<Vec<u8>> {
  /// The name in `application/octet-stream;name="…"`, its escapes undone.
  pub(super) fn supplied_name(mime: &str) -> Option<String> {
 +    if !mime.is_empty() {

@@ -8,6 +8,7 @@ use std::{
     borrow::Cow,
     cell::{Cell, RefCell},
     rc::Rc,
+    time::Duration,
 };
 
 use rune::{Drag, DragOutcome, El, Phase, Pick, Picked, Tx, el};
@@ -24,7 +25,7 @@ use super::{
     adapter::{
         action_to_p1, drag_item, encode_uri_list, offer_of_p1, point_of_p1, set_running, target_of,
     },
-    drag::{Change, Gesture, Hit, InWindowDrag, Launch, TailProbe},
+    drag::{Change, Gesture, Hit, InWindowDrag, Launch, StandIn, TailProbe},
     registry::{self, Landing, PointZone, Probe, Registry, scoped_id},
 };
 use crate::{App, shell};
@@ -280,6 +281,7 @@ impl Wiring {
             seq: 0,
             origin_tab: shell::tabs::shown_tab(app),
             tab_tail: None,
+            stand_in: StandIn::Waiting,
             on_end: Some(launch.on_end),
         });
     }
@@ -301,6 +303,7 @@ impl Wiring {
             seq: 0,
             origin_tab: shell::tabs::shown_tab(app),
             tab_tail: None,
+            stand_in: StandIn::Waiting,
             on_end: Some(launch.on_end),
         }
     }
@@ -573,14 +576,31 @@ impl Wiring {
         Dropped::new(drag.offer, data, mods).point(point)
     }
 
-    pub(crate) fn keep_alive(&self, app: &App) -> Option<El> {
+    /// Steps the drag's stand-in ([`StandIn`]) once a frame, before the view is built: due
+    /// when the source has left, mounted in the next frame, which it wakes. True when the view
+    /// has to be built again to mount it.
+    pub(crate) fn poll_stand_in(&self, app: &App, tx: &mut Tx) -> bool {
         let shown_tab = shell::tabs::shown_tab(app);
-        let slot = self.0.in_window.borrow();
-        let drag = slot.as_ref()?;
-        let tail = drag.tab_tail.as_deref()?;
-        if drag.origin_tab == shown_tab && drag.source_mounted(app) {
-            return None;
+        let mut slot = self.0.in_window.borrow_mut();
+        let Some(drag) = slot.as_mut().filter(|d| d.tab_tail.is_some()) else {
+            return false;
+        };
+        let needed = drag.origin_tab != shown_tab || !drag.source_mounted(app);
+        let (next, rebuild) = drag.stand_in.step(needed);
+        drag.stand_in = next;
+        if next == StandIn::Due {
+            // The source's subtree unmounts at once rather than fading out, so its scene entry
+            // is gone when the stand-in, which Rune gives the source's id, mounts next frame.
+            tx.instant();
+            tx.wake_after(Duration::ZERO);
         }
+        rebuild
+    }
+
+    pub(crate) fn keep_alive(&self, _app: &App) -> Option<El> {
+        let slot = self.0.in_window.borrow();
+        let drag = slot.as_ref().filter(|d| d.stand_in == StandIn::Mounted)?;
+        let tail = drag.tab_tail.as_deref()?;
         Some(
             el().key(tail.join("/"))
                 .size(0.0, 0.0)

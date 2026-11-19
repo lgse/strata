@@ -22,6 +22,9 @@ publish = false
 [features]
 default = []
 
+# Constructors other crates' tests use (`single_instance::CommandLine::unanswered`).
+test-support = []
+
 # P1 drag and drop: src/dnd/
 dnd = ["_transfer", "x11rb/shape", "x11rb/xinput"]
 

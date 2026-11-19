@@ -49,8 +49,7 @@ use strata_preview::sandbox::{DocumentFormat, MediaPreviewBackend, polaris_gpu_a
 use super::{
     archive,
     document::{DocumentSpec, RenderedDocument},
-    image::ImageViewer,
-    model, pdf, route, sheet,
+    model, pictures, sheet,
     viewer::{CodeSource, RenderedBody, Viewer, build_code_state},
 };
 use crate::{
@@ -460,6 +459,9 @@ pub(super) fn render_ready(app: &mut App, loaded: Preview, tx: &mut Tx) {
     app.preview.header_source = Some((loaded.entry.clone(), Some(loaded.content_type.clone())));
     app.preview.header = identity_for(&app.look, &loaded.entry, Some(&loaded.content_type));
     app.preview.viewer = build_ready_viewer(app, loaded, focus_archive, tx);
+    if !matches!(app.preview.viewer, Viewer::Media(_)) {
+        app.preview.media_checks.stop();
+    }
     app.preview.viewer.reset_viewport(tx);
     reapply_active_find(app, tx);
 }
@@ -512,24 +514,7 @@ fn build_ready_viewer(app: &mut App, loaded: Preview, focus_archive: bool, tx: &
             );
             Viewer::rendered_only(body)
         }
-        PreviewContent::Rasterized { png } => build_rasterized_viewer(&loaded.entry, &png),
-        PreviewContent::Model { png, mesh } => model::ready(app, loaded.entry, png, mesh),
-        PreviewContent::Route { preview } => route::ready(app, loaded.entry, preview),
-        PreviewContent::Pdf {
-            png,
-            page,
-            pages,
-            text_layer,
-        } => pdf::viewer(loaded.entry, (&png, page, pages), text_layer),
-        PreviewContent::Image | PreviewContent::Media => {
-            unavailable_viewer(Some("The sandboxed renderer returned no preview"))
-        }
-        PreviewContent::Unsupported => Viewer::Message {
-            title: tr("No visual preview"),
-            detail: Some(tr("Metadata is available for this file type.")),
-            can_open: false,
-        },
-        _ => unavailable_viewer(None),
+        content => pictures::viewer(app, Preview { content, ..loaded }, tx),
     }
 }
 
@@ -552,25 +537,6 @@ fn reapply_active_find(app: &mut App, tx: &mut Tx) {
         let query = app.preview.drawer.find_query().to_owned();
         app.preview.viewer.find(&query);
         tx.wake_after(Duration::ZERO);
-    }
-}
-
-fn unavailable_viewer(reason: Option<&str>) -> Viewer {
-    Viewer::Message {
-        title: tr("Preview unavailable"),
-        detail: reason.map(tr),
-        can_open: false,
-    }
-}
-
-fn build_rasterized_viewer(entry: &FileEntry, png: &[u8]) -> Viewer {
-    match ImageViewer::from_png(entry, png) {
-        Ok(img) => Viewer::Image(Box::new(img)),
-        Err(detail) => Viewer::Message {
-            title: tr("Preview unavailable"),
-            detail: Some(detail),
-            can_open: false,
-        },
     }
 }
 

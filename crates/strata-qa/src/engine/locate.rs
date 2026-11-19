@@ -244,8 +244,9 @@ pub fn locate<B: Backend>(
             find(backend, &menu, "menu item", label)?
         }
         Target::DialogButton(label) => {
-            let dialog = first_rendered(backend, root, |node| backend.role(node) == "dialog")
-                .or_else(|| first_rendered(backend, root, |node| backend.role(node) == "alert"))
+            // The dialog on top, as `app.dialog` names it, so a message's button wins over its
+            // dialog's of the same name.
+            let dialog = open_dialog(backend, &presented(backend, root))
                 .ok_or_else(|| missing("no dialog is open"))?;
             find(backend, &dialog, "button", label)?
         }

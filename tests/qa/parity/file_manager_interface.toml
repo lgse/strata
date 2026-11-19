@@ -6,14 +6,12 @@
 scenario = "file-manager-reveals-requested-name"
 run = "columns-showitems"
 package = "A21"
-status = "pending"
-reason = "scope"
-blocker = "A21's second slice: org.freedesktop.FileManager1 on the primary (P8's `Options::file_manager1`), its reveal and Properties windows"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "file-manager-reveals-requested-name"
 run = "columns-showitemproperties"
 package = "A21"
-status = "pending"
-reason = "scope"
-blocker = "A21's second slice: org.freedesktop.FileManager1 on the primary (P8's `Options::file_manager1`), its reveal and Properties windows"
+status = "required"
+host = "offscreen"

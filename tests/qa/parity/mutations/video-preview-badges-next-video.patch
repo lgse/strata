@@ -1,0 +1,13 @@
+diff --git a/crates/strata-app/src/preview/media/sequence.rs b/crates/strata-app/src/preview/media/sequence.rs
+index 9abd58dfc..7a2b7defc 100644
+--- a/crates/strata-app/src/preview/media/sequence.rs
++++ b/crates/strata-app/src/preview/media/sequence.rs
+@@ -256,7 +256,7 @@ pub(super) fn step(
+         .map(|entry| entry.location);
+     let (files, index) = listing(app, family, current, cursor.as_ref())?;
+     let target = index
+-        .checked_add_signed(isize::from(step))
++        .checked_add_signed(isize::from(step) * 0)
+         .and_then(|index| files.get(index))?;
+     let (Some(depth), Some(view)) = (app.preview.current_depth, shell::shown_view(app)) else {
+         return None;

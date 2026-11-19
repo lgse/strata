@@ -108,6 +108,17 @@ impl CommandLine {
         }
     }
 
+    /// A launch nobody waits on, for a test of what handles [`Event::CommandLine`]: its
+    /// answer and its output go nowhere.
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn unanswered(launch: Launch) -> CommandLine {
+        CommandLine {
+            launch,
+            status: 0,
+            reply: None,
+        }
+    }
+
     /// The whole argument vector, the program first.
     pub fn arguments(&self) -> &[OsString] {
         &self.launch.args

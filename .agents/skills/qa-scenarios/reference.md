@@ -295,7 +295,7 @@ click lands.
 | `{"named":"Apply to All","within":{"dialog":true}}` | Any role by name, inside another target. |
 | `{"menu_item":"New File"}` | A menu item, in the open menu if there is one. |
 | `{"sidebar":"Home"}`, `{"header":"Choose sort field"}` | A sidebar place; a column header button. |
-| `{"dialog":true}`, `{"dialog_button":"Close"}` | The modal dialog; a button in it. |
+| `{"dialog":true}`, `{"dialog_button":"Close"}` | The modal dialog, the innermost where a toolkit nests dialogs; a button in it. |
 | `{"field":true}`, `{"field":"filter"}`, `{"field":true,"within":TARGET}` | The focused editable text, the one remembered as `filter`, or the editable text inside another target. |
 | `{"focused_widget":true}`, `{"remembered":"focused"}` | The focused widget; a widget `remember` kept. |
 | `{"preview":true}` | The quick preview drawer. |
@@ -552,7 +552,8 @@ The `app` keys are exactly these:
   order, and its focused entry or null. A focused widget that is not mapped
   (a row scrolled away) holds no focus.
 - `focused`: the name of the entry holding focus.
-- `dialog`: the open dialog's name, or null.
+- `dialog`: the open dialog's name, or null: the innermost, where a toolkit nests dialogs
+  (Rune draws Settings' messages inside Settings), the last drawn among several.
 - `menu`: the open menu's items, or null.
 - `preview`: every non-empty name and text in the open preview drawer in tree
   order, or null when it is closed.

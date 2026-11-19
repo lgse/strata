@@ -19,11 +19,12 @@ use rune::{Cx, El, Tx, col, text};
 use rune_kit::{Button, Spinner};
 use strata_components::{
     code_view::{CodeIntent, CodeState, CodeView, highlight::Highlighter},
+    contract::EntryId,
     document_view::DocumentState,
     preview_drawer::{DocumentView, FindStatus, HostedPreview},
     sheet_grid::SheetGridState,
     viewers::{
-        archive::{ArchiveState, PromptState},
+        archive::{ArchiveDir, ArchiveState, ArchiveTree, PromptState},
         viewport::ViewportState,
     },
 };
@@ -35,6 +36,7 @@ use super::{
     document::{self, DecodedMedia, MediaTask, RenderedDocument},
     image::{self, ImageViewer},
     labels,
+    media::{self, MediaViewer},
     model::{self, ModelViewer},
     pdf::{self, PdfViewer},
     route::{self, RouteViewer},
@@ -44,14 +46,48 @@ use crate::{App, buttons};
 
 /// Where a handler of a viewer that has gone lands: Rune can dispatch a layout report or a
 /// press it queued for a frame after the viewer was replaced in that frame's update, as a
-/// first load that fails at once replaces the model's frame. The report changes this, which
-/// nothing reads, instead of the viewer now shown.
-#[derive(Default)]
+/// first load that fails at once replaces the model's frame, or a quick move off an image or
+/// a document replaces its view. The report changes this, which nothing reads, instead of the
+/// viewer now shown.
 pub(super) struct Detached {
     pub(super) viewport: ViewportState,
     pub(super) model: strata_components::viewers::model::ModelState,
     pub(super) route: strata_components::viewers::route::RouteState,
     pub(super) pdf: strata_components::pdf_view::PdfState,
+    pub(super) media: strata_components::media_player::MediaState,
+    code: CodeState,
+    document: DocumentState,
+    sheet: SheetGridState,
+    archive: ArchiveState,
+    prompt: PromptState,
+}
+
+impl Default for Detached {
+    fn default() -> Self {
+        // An empty tree reserves no row ids: only its children would.
+        let tree = ArchiveTree::new(ArchiveDir::default(), || EntryId::new(u64::MAX));
+        Self {
+            viewport: ViewportState::default(),
+            model: Default::default(),
+            route: Default::default(),
+            pdf: Default::default(),
+            media: Default::default(),
+            code: CodeState::default(),
+            document: DocumentState::default(),
+            sheet: SheetGridState::new("preview-detached-sheet"),
+            archive: ArchiveState::new("preview-detached-archive", tree),
+            prompt: PromptState::default(),
+        }
+    }
+}
+
+/// A viewer's accessor falling back to [`Detached`]: says so, and hands the spare state on.
+pub(super) fn spare<T>(viewer: &'static str, state: T) -> T {
+    tracing::debug!(
+        viewer,
+        "a handler of a viewer that has gone landed in its spare state"
+    );
+    state
 }
 
 /// Key of the read-only source/text viewer inside the preview drawer.
@@ -81,6 +117,7 @@ pub(super) enum Viewer {
     Pdf(Box<PdfViewer>),
     Model(Box<ModelViewer>),
     Route(Box<RouteViewer>),
+    Media(Box<MediaViewer>),
     /// A preview whose pictures are being decoded off the UI thread, shown as loading.
     Decoding(u64),
     Archive(Box<ArchiveState>),
@@ -125,6 +162,7 @@ impl Viewer {
             | Self::Pdf(_)
             | Self::Model(_)
             | Self::Route(_)
+            | Self::Media(_)
             | Self::Archive(_)
             | Self::ArchivePrompt(_) => true,
             Self::Message { can_open, .. } => *can_open,
@@ -212,6 +250,7 @@ impl Viewer {
             Self::Pdf(pdf) => pdf.stop(),
             Self::Model(model) => model.stop(),
             Self::Route(route) => route.state.pause(),
+            Self::Media(media) => media.stop(),
             _ => {}
         }
     }
@@ -312,6 +351,7 @@ impl Viewer {
             Self::Pdf(_) => Some(pdf::build_view(app, cx)),
             Self::Model(model) => Some(model::build_view(model, app, cx)),
             Self::Route(route) => Some(route::build_view(route, app, cx)),
+            Self::Media(player) => Some(media::build_view(player, app, cx)),
             Self::Archive(_) => Some(archive::build_archive_view(app, archive_ref, archive_mut)),
             Self::ArchivePrompt(prompt) => {
                 Some(archive::build_prompt_view(prompt, &app.look, prompt_mut))
@@ -513,83 +553,129 @@ impl HostedPreview for Viewer {
     }
 }
 
-fn code_ref(app: &App) -> &CodeState {
-    match &app.preview.viewer {
-        Viewer::Code(code) => code,
-        _ => unreachable!("CodeView built only while Viewer::Code is active"),
+/// The state `pick` finds in the shown viewer, or, for a handler Rune queued before the viewer
+/// changed, the spare one `spare_of` names ([`Detached`]).
+fn shown<'a, T>(
+    app: &'a App,
+    viewer: &'static str,
+    pick: fn(&Viewer) -> Option<&T>,
+    spare_of: fn(&Detached) -> &T,
+) -> &'a T {
+    let preview = &app.preview;
+    pick(&preview.viewer).unwrap_or_else(|| spare(viewer, spare_of(&preview.detached)))
+}
+
+/// [`shown`], to change.
+fn shown_mut<'a, T>(
+    app: &'a mut App,
+    viewer: &'static str,
+    pick: fn(&mut Viewer) -> Option<&mut T>,
+    spare_of: fn(&mut Detached) -> &mut T,
+) -> &'a mut T {
+    let preview = &mut app.preview;
+    match pick(&mut preview.viewer) {
+        Some(state) => state,
+        None => spare(viewer, spare_of(&mut preview.detached)),
     }
+}
+
+impl Viewer {
+    fn document_source(&self) -> Option<&CodeState> {
+        match self {
+            Self::Document(doc) => doc.source.as_deref(),
+            _ => None,
+        }
+    }
+
+    fn document_source_mut(&mut self) -> Option<&mut CodeState> {
+        match self {
+            Self::Document(doc) => doc.source.as_deref_mut(),
+            _ => None,
+        }
+    }
+
+    fn rendered(&self) -> Option<&RenderedBody> {
+        match self {
+            Self::Document(doc) => doc.rendered.as_ref(),
+            _ => None,
+        }
+    }
+
+    fn rendered_mut(&mut self) -> Option<&mut RenderedBody> {
+        match self {
+            Self::Document(doc) => doc.rendered.as_mut(),
+            _ => None,
+        }
+    }
+}
+
+fn code_ref(app: &App) -> &CodeState {
+    let pick: fn(&Viewer) -> Option<&CodeState> = |viewer| match viewer {
+        Viewer::Code(code) => Some(code),
+        _ => None,
+    };
+    shown(app, "code", pick, |spare| &spare.code)
 }
 
 fn code_mut(app: &mut App) -> &mut CodeState {
-    match &mut app.preview.viewer {
-        Viewer::Code(code) => code,
-        _ => unreachable!("CodeView mutated only while Viewer::Code is active"),
-    }
+    let pick: fn(&mut Viewer) -> Option<&mut CodeState> = |viewer| match viewer {
+        Viewer::Code(code) => Some(code),
+        _ => None,
+    };
+    shown_mut(app, "code", pick, |spare| &mut spare.code)
 }
 
 fn doc_code_ref(app: &App) -> &CodeState {
-    match &app.preview.viewer {
-        Viewer::Document(DocumentViewer {
-            source: Some(code), ..
-        }) => code,
-        _ => unreachable!("Document source built only while source CodeState exists"),
-    }
+    shown(app, "document source", Viewer::document_source, |spare| {
+        &spare.code
+    })
 }
 
 fn doc_code_mut(app: &mut App) -> &mut CodeState {
-    match &mut app.preview.viewer {
-        Viewer::Document(DocumentViewer {
-            source: Some(code), ..
-        }) => code,
-        _ => unreachable!("Document source mutated only while source CodeState exists"),
-    }
+    let pick = Viewer::document_source_mut;
+    shown_mut(app, "document source", pick, |spare| &mut spare.code)
 }
 
 fn doc_state_ref(app: &App) -> &DocumentState {
-    match &app.preview.viewer {
-        Viewer::Document(DocumentViewer {
-            rendered: Some(RenderedBody::Document(doc)),
-            ..
-        }) => &doc.state,
-        _ => unreachable!("DocumentView built only while RenderedBody::Document is active"),
-    }
+    let pick: fn(&Viewer) -> Option<&DocumentState> = |viewer| match viewer.rendered()? {
+        RenderedBody::Document(doc) => Some(&doc.state),
+        RenderedBody::Sheet(_) => None,
+    };
+    shown(app, "document", pick, |spare| &spare.document)
 }
 
 fn doc_state_mut(app: &mut App) -> &mut DocumentState {
-    match &mut app.preview.viewer {
-        Viewer::Document(DocumentViewer {
-            rendered: Some(RenderedBody::Document(doc)),
-            ..
-        }) => &mut doc.state,
-        _ => unreachable!("DocumentView mutated only while RenderedBody::Document is active"),
-    }
+    let pick: fn(&mut Viewer) -> Option<&mut DocumentState> =
+        |viewer| match viewer.rendered_mut()? {
+            RenderedBody::Document(doc) => Some(&mut doc.state),
+            RenderedBody::Sheet(_) => None,
+        };
+    shown_mut(app, "document", pick, |spare| &mut spare.document)
 }
 
 fn sheet_state_ref(app: &App) -> &SheetGridState {
-    match &app.preview.viewer {
-        Viewer::Document(DocumentViewer {
-            rendered: Some(RenderedBody::Sheet(sheet)),
-            ..
-        }) => sheet,
-        _ => unreachable!("SheetGrid built only while RenderedBody::Sheet is active"),
-    }
+    let pick: fn(&Viewer) -> Option<&SheetGridState> = |viewer| match viewer.rendered()? {
+        RenderedBody::Sheet(sheet) => Some(sheet),
+        RenderedBody::Document(_) => None,
+    };
+    shown(app, "sheet", pick, |spare| &spare.sheet)
 }
 
 fn sheet_state_mut(app: &mut App) -> &mut SheetGridState {
-    match &mut app.preview.viewer {
-        Viewer::Document(DocumentViewer {
-            rendered: Some(RenderedBody::Sheet(sheet)),
-            ..
-        }) => sheet,
-        _ => unreachable!("SheetGrid mutated only while RenderedBody::Sheet is active"),
-    }
+    let pick: fn(&mut Viewer) -> Option<&mut SheetGridState> =
+        |viewer| match viewer.rendered_mut()? {
+            RenderedBody::Sheet(sheet) => Some(sheet),
+            RenderedBody::Document(_) => None,
+        };
+    shown_mut(app, "sheet", pick, |spare| &mut spare.sheet)
 }
 
 fn image_viewport_mut(app: &mut App) -> &mut ViewportState {
-    match &mut app.preview.viewer {
-        Viewer::Image(img) => &mut img.viewport,
-        _ => unreachable!("ImageView mutated only while Viewer::Image is active"),
-    }
+    let pick: fn(&mut Viewer) -> Option<&mut ViewportState> = |viewer| match viewer {
+        Viewer::Image(image) => Some(&mut image.viewport),
+        _ => None,
+    };
+    shown_mut(app, "image", pick, |spare| &mut spare.viewport)
 }
 
 pub(super) fn tick_archive_if_active(app: &mut App, tx: &mut Tx) -> bool {
@@ -601,24 +687,27 @@ pub(super) fn tick_archive_if_active(app: &mut App, tx: &mut Tx) -> bool {
 }
 
 fn archive_ref(app: &App) -> &ArchiveState {
-    match &app.preview.viewer {
-        Viewer::Archive(state) => state,
-        _ => unreachable!("ArchiveView built only while Viewer::Archive is active"),
-    }
+    let pick: fn(&Viewer) -> Option<&ArchiveState> = |viewer| match viewer {
+        Viewer::Archive(state) => Some(state),
+        _ => None,
+    };
+    shown(app, "archive", pick, |spare| &spare.archive)
 }
 
 fn archive_mut(app: &mut App) -> &mut ArchiveState {
-    match &mut app.preview.viewer {
-        Viewer::Archive(state) => state,
-        _ => unreachable!("ArchiveView mutated only while Viewer::Archive is active"),
-    }
+    let pick: fn(&mut Viewer) -> Option<&mut ArchiveState> = |viewer| match viewer {
+        Viewer::Archive(state) => Some(state),
+        _ => None,
+    };
+    shown_mut(app, "archive", pick, |spare| &mut spare.archive)
 }
 
 fn prompt_mut(app: &mut App) -> &mut PromptState {
-    match &mut app.preview.viewer {
-        Viewer::ArchivePrompt(prompt) => prompt,
-        _ => unreachable!("ArchivePrompt mutated only while Viewer::ArchivePrompt is active"),
-    }
+    let pick: fn(&mut Viewer) -> Option<&mut PromptState> = |viewer| match viewer {
+        Viewer::ArchivePrompt(prompt) => Some(prompt),
+        _ => None,
+    };
+    shown_mut(app, "archive prompt", pick, |spare| &mut spare.prompt)
 }
 
 fn code_view(

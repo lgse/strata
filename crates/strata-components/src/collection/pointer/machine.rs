@@ -10,7 +10,7 @@ use rune::Mods;
 use super::clicks::Clicks;
 use super::rename::{Due, PendingRename};
 use super::settings::{ClickCount, PointerSettings};
-use crate::collection::selection::{Changed, Extend, Selection};
+use crate::collection::selection::{AnchorRule, Changed, Extend, Selection};
 use crate::contract::{EntryId, EntrySource, Point};
 
 /// The button behind a press.
@@ -502,6 +502,12 @@ fn primary_multi(
         modified_press(&mut g, (index, selected, on_entry), settings, s);
     } else if on_entry && selected && len > 1 {
         g.kept_group = true;
+        // The keyboard and the anchor move to the entry now, as GTK's do in every view; the
+        // group stays for a drag (#2592).
+        apply(s, |sel, src| match sel.is_provisional() {
+            true => Changed::NONE,
+            false => sel.move_cursor(src, index, AnchorRule::Move),
+        });
     } else {
         apply(s, |sel, src| sel.select_only(src, index));
     }

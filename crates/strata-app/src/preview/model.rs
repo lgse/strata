@@ -35,7 +35,10 @@ use strata_fs::services::{
 };
 use strata_kit::{look::Look, theme::Rgba8};
 
-use super::{labels, load, viewer::Viewer};
+use super::{
+    labels, load,
+    viewer::{self, Viewer},
+};
 use crate::App;
 
 /// Key of the model viewer inside the preview drawer.
@@ -332,7 +335,7 @@ fn model_mut(app: &mut App) -> &mut ModelState {
     let preview = &mut app.preview;
     match &mut preview.viewer {
         Viewer::Model(model) => &mut model.state,
-        _ => &mut preview.detached.model,
+        _ => viewer::spare("model", &mut preview.detached.model),
     }
 }
 
@@ -340,6 +343,6 @@ fn viewport_mut(app: &mut App) -> &mut ViewportState {
     let preview = &mut app.preview;
     match &mut preview.viewer {
         Viewer::Model(model) => &mut model.state.viewport,
-        _ => &mut preview.detached.viewport,
+        _ => viewer::spare("model", &mut preview.detached.viewport),
     }
 }

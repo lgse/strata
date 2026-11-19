@@ -315,3 +315,36 @@ fn the_open_dialog_is_the_innermost_where_the_toolkit_nests_them() {
     assert_eq!(opened(true).as_deref(), Some("Reset all keybinds?"));
     assert_eq!(opened(false).as_deref(), Some("Settings"));
 }
+
+/// Among messages drawn side by side inside a dialog, the one on top is the last drawn; a live
+/// error line, an `alert` inside a dialog, is no dialog of its own and leaves it as it is.
+#[test]
+fn the_dialog_on_top_is_the_last_drawn_and_an_error_line_is_none() {
+    let opened = |nests: bool| {
+        let mut fake = Fake::new();
+        fake.nests_dialogs = nests;
+        let settings = fake.add(
+            WINDOW,
+            drawn("dialog", "Settings", [0.0, 0.0, 800.0, 600.0]),
+        );
+        fake.add(
+            settings,
+            drawn("alert", "Ctrl+C is taken", [10.0, 10.0, 200.0, 20.0]),
+        );
+        fake.add(
+            settings,
+            drawn("dialog", "Under", [100.0, 100.0, 400.0, 200.0]),
+        );
+        let over = fake.add(
+            settings,
+            drawn("dialog", "Over", [120.0, 120.0, 400.0, 200.0]),
+        );
+        fake.add(
+            over,
+            drawn("alert", "Name is empty", [130.0, 130.0, 200.0, 20.0]),
+        );
+        scan(&fake, &WINDOW).observation.dialog
+    };
+    assert_eq!(opened(true).as_deref(), Some("Over"));
+    assert_eq!(opened(false).as_deref(), Some("Settings"));
+}
