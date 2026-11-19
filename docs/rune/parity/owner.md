@@ -882,6 +882,26 @@ Rulings of the owner on the parity work, oldest first.
   less often until it is uncovered. Rune's report stands. Raised by [A21](packages/A21.md)
   (`crates/strata-app/src/shell/presence.rs`). Source: the owner, 2026-11-19, through the
   coordinator.
+- **2026-11-19: H5's work goes to an integration branch, `h5-integration`**: "build H5 in
+  another integration branch for now". The deny-advisory fix H5's pull requests need goes
+  there too: "Build in same integration branch as H5"
+  ([#2618](https://github.com/lgse/strata/pull/2618)). The branch is cut from `main` at
+  `9ea79324a`, and [H5](packages/H5.md)'s [#2609](https://github.com/lgse/strata/pull/2609) was
+  retargeted there. The coordinator's context, not part of the ruling: it had reported `main`
+  as blocked for merging, and its stated plan is that the owner merges the branch into `main`
+  later, from where it reaches `strata-next` by merge. Source: the owner, 2026-11-19, through
+  the coordinator.
+- **2026-11-19: the test image is rebuilt for devices and mounts**: "Yes, rebuild the image".
+  Built in [H5](packages/H5.md)'s round 2 ([#2619](https://github.com/lgse/strata/pull/2619)),
+  in `h5-integration`, as `gvfs` in the pinned image, for GIO's remote volume monitor client,
+  and a fake volume monitor the QA runner starts on a run's private bus. Source: the owner,
+  2026-11-19, through the coordinator.
+- **2026-11-19: the `deny.toml` ignores of [#2618](https://github.com/lgse/strata/pull/2618) are
+  accepted**: "Accept the ignores". They are the five #2618 adds: `zip` 8.6.0's
+  RUSTSEC-2026-0545, -0546, -0547 and -0548, which come only through `docx-rs`, and `chrono`'s
+  RUSTSEC-2026-0543 (unmaintained), which comes only through `fitparser`. When to remove the
+  `zip` entries is #2618's own `deny.toml` comment ("once docx-rs releases on zip 9"), not part
+  of the ruling. Source: the owner, 2026-11-19, through the coordinator.
 
 ## Housekeeping
 
