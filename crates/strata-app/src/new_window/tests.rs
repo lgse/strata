@@ -59,3 +59,65 @@ fn shift_enter_asks_for_a_window_on_the_cursors_folder() {
         },
     );
 }
+
+/// GTK's `open-window-at` and `open-tab-at` are a browser window's actions: a chooser's window
+/// has neither, so a Ctrl or Shift middle click on one of its folders, or its menu, opens
+/// nothing. Here the floating Copy to chooser the entry menu asks for.
+#[test]
+fn a_chooser_opens_no_window_and_no_tab() {
+    use strata_platform::csd::{Backend, Csd, Policy};
+
+    use crate::{App, chooser::floating, host::offscreen::Offscreen, portal::Completion};
+
+    hosted(
+        MODULE,
+        "a_chooser_opens_no_window_and_no_tab",
+        |mut host| {
+            let folder = fixture();
+            host.app().open(Location::local(folder.path()));
+            let listed = |host: &Offscreen| host.app().browser().column_entry_counts(0).is_some();
+            assert!(host.run_until(PATIENCE, listed), "the folder's listing");
+            idle(&mut host);
+            let notes = Location::local(folder.path().join("todo.txt"));
+            let id = shell::id_of(host.app(), &notes);
+            host.runtime().update(move |app, tx| {
+                assert_eq!(run(app, "copy-to", On::Row((0, id)), tx), Outcome::Ran);
+            });
+            idle(&mut host);
+            let request = floating::take(host.app_mut()).expect("a chooser");
+            let completion: Completion = Box::new(|_| {});
+            let chooser = App::new_chooser(
+                &host.ui(),
+                Csd::new(Policy::Auto.frame(), Backend::Headless),
+                shell::share_settings(host.app()),
+                (
+                    request.request,
+                    request.source,
+                    Some(request.destination),
+                    completion,
+                ),
+            );
+            let mut chooser = Offscreen::from_app(host.ui(), chooser, (900.0, 600.0));
+            chooser.app().open(Location::local(folder.path()));
+            assert!(chooser.run_until(PATIENCE, listed), "the chooser's listing");
+            let _ = application::take();
+
+            let archive = Location::local(folder.path().join("archive"));
+            for command in ["open-in-window", "open-in-tab"] {
+                let mut ran = Outcome::Ran;
+                let on = archive.clone();
+                chooser
+                    .runtime()
+                    .update(|app, tx| ran = run(app, command, On::Place(on), tx));
+                assert_eq!(ran, Outcome::Declined, "{command}");
+            }
+            idle(&mut chooser);
+            assert_eq!(application::take(), []);
+            assert_eq!(
+                crate::shell::tabs::tabs(chooser.app()).len(),
+                1,
+                "no tab opened"
+            );
+        },
+    );
+}

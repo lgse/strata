@@ -14,6 +14,9 @@
 //!   a file opens as Enter opens it (`open_focused_in_new`, `activate_focused`). With neither,
 //!   the key goes on.
 //!
+//! A chooser opens no tab on any of them: GTK's `open-tab-at` is a browser window's action,
+//! which a chooser's window has none of, and `open_focused_in_new` declines there.
+//!
 //! 10xer's own Ctrl+Enter (`tenxer_open_focused_in_new`) is A11's.
 
 use rune::Tx;
@@ -68,6 +71,11 @@ fn open_focused(app: &mut App, tx: &mut Tx) -> Outcome {
 }
 
 fn opened(app: &mut App, call: &Call<'_>, tx: &mut Tx) -> Outcome {
+    // GTK's `open-tab-at` is a browser window's action, which a chooser has none of, and
+    // `open_focused_in_new` declines there, so Ctrl+Enter goes on.
+    if app.browser.is_chooser_mode() {
+        return Outcome::Declined;
+    }
     match &call.on {
         On::Place(location) => open_in_new_tab(app, location.clone(), tx),
         On::Row((depth, id)) => {

@@ -12,8 +12,10 @@
 //!   among them opens nothing.
 //! - **Shift+Enter**, from the listing and not from a field (`opens_focused_in_new` in
 //!   `src/ui/window/keyboard/items.rs`): the result under the results' cursor, else the
-//!   cursor's entry. A folder opens in a new window; a file opens as Enter opens it. A chooser
-//!   opens no window (`open_focused_in_new` declines there).
+//!   cursor's entry. A folder opens in a new window; a file opens as Enter opens it.
+//!
+//! A chooser opens no window on any of them: GTK's `open-window-at` is a browser window's
+//! action, which a chooser's window has none of, and `open_focused_in_new` declines there.
 //!
 //! The window is asked for through the process's queue (`application::ask_for_window`), which
 //! the windowed host and the QA host open from, so it leaves `tabs.toml` alone.
@@ -53,6 +55,11 @@ fn listing_of_a_browser(app: &App, at: &Situation) -> bool {
 }
 
 fn opened(app: &mut App, call: &Call<'_>, tx: &mut Tx) -> Outcome {
+    // GTK's `open-window-at` is a browser window's action, which a chooser has none of: a
+    // row's middle click there finds it unavailable (`columns/rows/click.rs`).
+    if app.browser.is_chooser_mode() {
+        return Outcome::Declined;
+    }
     match &call.on {
         On::Place(location) => application::ask_for_window(location.clone()),
         On::Row((depth, id)) => {
