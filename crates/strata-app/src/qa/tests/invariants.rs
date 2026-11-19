@@ -187,6 +187,50 @@ fn a_column_keeps_its_load_cursor_when_its_folder_changes_while_another_is_activ
     );
 }
 
+/// A folder opened by Return and left by Alt+Left, then opened again by a double click,
+/// comes back at its remembered position, its load's cursor: the view and the browser agree
+/// on whether that cursor is still the load's (seed 0x62 of `list v3` and 0x3e of `icons v1`,
+/// the long run of 2026-11-19).
+/// `next` is the key that moves to the next entry in `mode`.
+fn a_revisit_by_double_click_keeps_the_load_cursor(mode: &str, next: &str, name: &str) {
+    shown_in(mode, name, |backend, kept| {
+        for step in [
+            json!({ "wait": { "focused": "archive" } }),
+            json!({ "key": next }),
+            json!({ "key": next }),
+            json!({ "wait": { "focused": "pictures" } }),
+            json!({ "key": "Return" }),
+            json!({ "wait": { "directory": "pictures" } }),
+            json!({ "key": "alt+Left" }),
+            json!({ "wait": { "focused": "pictures" } }),
+            json!({ "click": { "entry": "pictures" }, "count": 2 }),
+            json!({ "wait": { "directory": "pictures" } }),
+            json!({ "sleep": 300 }),
+        ] {
+            passes(backend, kept, &step);
+        }
+        assert_eq!(failed(backend, kept), json!([]), "after the revisit");
+    });
+}
+
+#[test]
+fn the_list_keeps_the_load_cursor_on_a_revisit_by_double_click() {
+    a_revisit_by_double_click_keeps_the_load_cursor(
+        "list",
+        "Down",
+        "the_list_keeps_the_load_cursor_on_a_revisit_by_double_click",
+    );
+}
+
+#[test]
+fn the_icons_keep_the_load_cursor_on_a_revisit_by_double_click() {
+    a_revisit_by_double_click_keeps_the_load_cursor(
+        "icons",
+        "Right",
+        "the_icons_keep_the_load_cursor_on_a_revisit_by_double_click",
+    );
+}
+
 /// The browser given a Shift anchor the view does not hold, as a handover that lost one
 /// leaves it (findings lgse/strata#2354 and lgse/strata#2355): after a reload the view takes
 /// the browser's, and a Shift range starts from an entry the user did not anchor.

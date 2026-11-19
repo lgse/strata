@@ -2834,3 +2834,25 @@ sequence only together with the alphabet's version, so the version is part of th
   and the next Left leaves; the audio view takes the player's keys, as GTK's drawer does.
   Covered by `preview::tests::media::a_gif_plays_in_the_plain_bar_and_loops` and
   `an_audio_player_keeps_left_and_right_and_a_gif_gives_left_back`.
+
+### #2624: a folder opened again by a double click keeps the load's mark in the Rune view, not in the browser
+
+- **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2624), filed on
+  2026-11-19 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** by [F3](packages/F3.md)'s `browser-view` invariant, on Rune, in [F4](packages/F4.md)'s
+  long run: `column 0's load cursor is true in the view and false in the browser`, in List
+  (`list v3`, seed `0x62`, shrunk from 58 steps to 8) and Icons (`icons v1`, seed `0x3e`). By
+  hand: Down, Down, Return on `pictures`, Alt+Left, a double click on `pictures`. A double
+  click opens the folder with no load cursor in the browser; the single pane brings back the
+  position it remembered for `pictures`, the load's pick, still marked as the load's
+  (`pane/restore.rs`), and hands it back as no choice (`handover::hand_back`). A browser with
+  no load cursor takes it as a fill (`adopt_reported_fill`), so the two disagree. Return in
+  the last step, or a first visit by a double click, does not break it.
+- **What a user sees:** nothing found. The mark decides what the next 10xer Space or verb acts
+  on, in the view alone.
+- **State:** fixed in [F4](packages/F4.md)'s round 1: after a hand-back the pane follows the
+  browser, and a pick the browser took as a fill is no longer the load's in the view
+  (`restore::follow_fill`). Held by `qa::tests::invariants::the_list_keeps_the_load_cursor_on_a_revisit_by_double_click`
+  and its Icons twin, which fail without the fix. `list v3` `0x62` is kept in
+  `tests/qa/fuzz/corpus/list`, parked against [#2510](https://github.com/lgse/strata/issues/2510),
+  where it first parts across the targets.

@@ -28,7 +28,9 @@
 //!   such a cursor and what came back is the cursor alone, the view's pick stays provisional
 //!   too ([`keep_provisional`]), as the browser's does. Where what came back selects exactly
 //!   the load's pick with its cursor elsewhere, the browser keeps the load's cursor, and the
-//!   view takes it ([`take_load_cursor`]), as GTK's view draws it.
+//!   view takes it ([`take_load_cursor`]), as GTK's view draws it. Where the browser holds no
+//!   load cursor, what is handed back is a fill there, and the view's pick is no longer a
+//!   load's either ([`follow_fill`]).
 //! - **One memory for the window's single-pane views** ([`Memory`]), as GTK's
 //!   `PaneNavigation` is one history whatever the mode: a folder left in Icons comes back in
 //!   List where Icons left it. A view switched away hears nothing, so while the view shown
@@ -55,6 +57,7 @@ use strata_components::{
     contract::{EntryId, EntrySource},
 };
 use strata_core::model::Location;
+use strata_fs::app::Browser;
 
 use crate::{
     events::Marks,
@@ -229,4 +232,29 @@ pub(super) fn keep_provisional(column: &Column, collection: &mut CollectionState
         return;
     }
     collection.note_selection(column);
+}
+
+/// After a remembered position was handed back as no choice: the browser keeps a cursor a load
+/// placed through it, but where it holds none, as after a folder opened by a double click, the
+/// position is a fill there, whatever the view remembered of it. So a pick the view brought
+/// back as a load's is the user's in the view too, and the two agree on what the next toggle
+/// and a 10xer verb act on (seed 0x62 of `list v3` and 0x3e of `icons v1`: a folder first
+/// opened by Return, opened again by a double click). Returns whether the selection changed.
+pub(super) fn follow_fill(
+    column: &Column,
+    collection: &mut CollectionState,
+    browser: &Browser,
+    depth: usize,
+) -> bool {
+    let selection = &collection.selection;
+    if !selection.is_provisional() || browser.filled_entries(depth).is_empty() {
+        return false;
+    }
+    let mut position = selection.position(column);
+    position.provisional = false;
+    if !collection.selection.restore(&position).selection {
+        return false;
+    }
+    collection.note_selection(column);
+    true
 }

@@ -579,9 +579,13 @@ impl Pane {
             column,
             collection: &self.collection,
         };
-        match self.restored.take() == Some(Held::of(&self.collection)) {
+        let restored = self.restored.take() == Some(Held::of(&self.collection));
+        match restored {
             true => handover::hand_back(&shown, browser, &mut self.held),
             false => handover::hand_over(&shown, browser, &mut self.held),
+        }
+        if restored && restore::follow_fill(column, &mut self.collection, browser, depth) {
+            self.held = Held::of(&self.collection);
         }
     }
 
