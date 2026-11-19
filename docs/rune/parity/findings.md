@@ -2121,6 +2121,15 @@ sequence only together with the alphabet's version, so the version is part of th
   `tests/qa/fuzz/corpus/open-with/parked`. `src/ui/settings/keyboard.rs` (`confirm_reset_all`):
   no run or seed reads it yet; A18's `settings` alphabet leaves `Escape` on that confirmation
   out.
+- **Excused since [#2598](https://github.com/lgse/strata/pull/2598), the Cancel and Close dialog
+  half:** GTK's focus nowhere after either leaves no widget of its window focused, so
+  `context.window_focused` is false, and the map's `toolkit` rules for
+  [#2595](https://github.com/lgse/strata/issues/2595) excuse GTK's null focus against Rune's row
+  there. So `open-with v2` `0x01`, `0x0a` and `0x0d`, whose only difference is that half, agree
+  under the map ([F4](packages/F4.md)'s round 1 survey, and the review of
+  [#2636](https://github.com/lgse/strata/pull/2636)), and no longer show it; `v1` `0x08`, the
+  `Escape` half, still differs. The three stay parked: their finding is not fixed, and a
+  replay that agrees only under another finding's rule is no evidence that it is.
 - **State:** open, set aside: Rune behaves as intended, and any fix belongs on `main`.
   `open-with v3` leaves `Escape`, Cancel and Close dialog on "Run this action?" out and confirms
   only with Run; the custom actions' unit tests in `crates/strata-app/src/custom_actions/tests.rs`
@@ -2168,7 +2177,9 @@ sequence only together with the alphabet's version, so the version is part of th
   runner's own reads between the steps (`query state`, `invariants`) passes too. What the
   binary does that the hosted backend does not is not found yet: [F4](packages/F4.md)'s round
   2. `v3-0000000000000018` is parked in `tests/qa/fuzz/corpus/pointer/` against this finding.
-- **State:** fixed by [A9](packages/A9.md)'s closing pull request. The first visit keeps the
+- **State:** open again, [F4](packages/F4.md)'s round 2: the binary still shows it (the bullet
+  above), and `pointer v3` `0x18` is parked against it as a `divergence`. What A9's closing pull
+  request fixed holds in the hosted tests, and stays: the first visit keeps the
   anchor missing, `sync` moves only an anchor whose entry left, and `clear` keeps the anchor.
   The keyboard's Shift+arrow still starts at the cursor when nothing is selected, as GTK's
   `resume_native_selection` does, since the keyboard machine moves the anchor there first
@@ -3011,8 +3022,9 @@ sequence only together with the alphabet's version, so the version is part of th
 - **State:** fixed in [F4](packages/F4.md)'s round 1: the landing syncs with the rule that lets go
   of a gone cursor, and `fall_back` ends on the first row shown when nothing else is left.
   Held by `pane::tests::a_restored_cursor_whose_entry_went_alone_falls_back_to_the_browser_s_cursor`
-  and `..._with_no_browser_cursor_falls_back_to_the_first_row`, the first of which fails without
-  the fix. `drag v2` `0x64` is kept unparked and agrees on both targets. It fixes
+  and `..._with_no_browser_cursor_falls_back_to_the_first_row`. Both fail without the landing
+  rule, and the second without the first-row fallback (checked by the review of
+  [#2636](https://github.com/lgse/strata/pull/2636)). `drag v2` `0x64` is kept unparked and agrees on both targets. It fixes
   [#2593](https://github.com/lgse/strata/issues/2593) too.
 
 ### #2632: the audio player's time after a seek past the end and play or pause: GTK's stays at the end, Rune's reads 0:00
