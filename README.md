@@ -323,7 +323,7 @@ sudo dnf install bubblewrap ffmpeg-free ffmpegthumbnailer fontconfig \
   gstreamer1 gstreamer1-plugin-libav gstreamer1-plugins-base gstreamer1-plugins-good \
   gtk4 gtksourceview5 gvfs poppler-glib
 # Optional SMB, AppImage icon, and broader camera RAW support:
-sudo dnf install gvfs-smb ImageMagick LibRaw dcraw squashfs-tools
+sudo dnf install gvfs-smb ImageMagick LibRaw-samples dcraw squashfs-tools
 ```
 
 GTK **4.12 or newer** and glibc **2.39 or newer** are required. Other glibc-based distributions may work when they provide equivalent runtime libraries, but their package names and binary compatibility vary. Systems with an older glibc must [build Strata from source](#development-and-documentation).
