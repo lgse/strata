@@ -13,7 +13,8 @@
 //!   `Map::Default` at `Stage::DirectCommands`, and exposes [`numbered_actions`] and
 //!   [`run_numbered`] for [A11]'s 10xer `;` / `; .` chords.
 //! - **Jobs dashboard** (`src/ui/jobs.rs`): feeds [`JobService`] snapshots into C16's [`Jobs`]
-//!   button and popover in the window footer (`footer.rs`).
+//!   button and popover in the window footer (`footer.rs`). The service is the process's, as
+//!   GTK's `SHARED_JOBS` is, so a job outlives the window it started in (`shared`).
 //!
 //! [A11]: ../../../docs/rune/parity/packages/A11.md
 
@@ -21,6 +22,7 @@ mod dialog;
 mod icons;
 mod jobs;
 mod menu;
+mod shared;
 mod slots;
 #[cfg(test)]
 mod tests;
@@ -30,7 +32,7 @@ use std::{cell::Cell, rc::Rc};
 use rune::Tx;
 use strata_components::progress_dock::jobs::{JobRow, JobsState};
 use strata_fs::{
-    adapters::{LocalActionRunner, LocalActionStore},
+    adapters::LocalActionStore,
     services::{ActionRegistry, JobId, JobService, ListenerGuard},
 };
 
@@ -53,7 +55,9 @@ use crate::{
 
 struct Services {
     registry: Rc<ActionRegistry>,
+    /// The process's job service ([`shared`]).
     jobs: Rc<JobService>,
+    /// This window's observer of it, for its Jobs dashboard.
     _jobs_guard: ListenerGuard<Rc<dyn Fn()>>,
 }
 
@@ -136,7 +140,7 @@ impl CustomActions {
         let later = self.later.clone();
         self.services.get_or_insert_with(move || {
             let registry = ActionRegistry::new(LocalActionStore::new());
-            let jobs = JobService::new(LocalActionRunner::new());
+            let jobs = shared::join();
             let jobs_later = later;
             let jobs_guard = jobs.observe(Rc::new(move || {
                 jobs_later.then(|app, _| jobs::sync_rows(app));
@@ -166,6 +170,20 @@ pub(crate) fn shared_registry(app: &mut App) -> Rc<ActionRegistry> {
         glib::MainContext::default().spawn_local(registry.clone().reload());
     }
     registry
+}
+
+/// Whether a job still runs or waits, without starting the job service if nothing has
+/// (GTK's last-window guard, `src/ui/jobs.rs`).
+pub(crate) fn jobs_active(app: &App) -> bool {
+    app.custom_actions
+        .job_service()
+        .is_some_and(|service| jobs::has_active_jobs(&service))
+}
+
+/// The process's job service, if this window has joined it yet.
+#[cfg(test)]
+pub(crate) fn job_service(app: &App) -> Option<Rc<JobService>> {
+    app.custom_actions.job_service()
 }
 
 pub(crate) fn shared_jobs(app: &mut App) -> Rc<JobService> {

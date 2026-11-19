@@ -211,3 +211,60 @@ fn a_sort_chosen_in_a_remembered_folder_is_kept_for_it() {
         },
     );
 }
+
+/// As GTK's windows share one `PreferenceManager`: a sort chosen in one window's remembered
+/// folder is the other window's at once, before any write reaches the file, and the other
+/// window's column of that folder follows it.
+#[test]
+fn the_windows_of_a_process_share_one_store() {
+    use crate::{
+        host::offscreen::Offscreen,
+        shell,
+        startup::{self, UiThread},
+        test_support::in_own_process,
+    };
+    let size_down = (SortKey::Size, SortDirection::Descending, Default::default());
+    in_own_process(
+        "folder_views::tests::the_windows_of_a_process_share_one_store",
+        &[],
+        || {
+            make_sorted_folder();
+            let ui = UiThread::claim().expect("the UI thread");
+            let mut first = Offscreen::new(ui, startup::load_settings());
+            let mut second = Offscreen::new(ui, shell::share_settings(first.app()));
+            for host in [&mut first, &mut second] {
+                host.app().open(Location::local(sorted_folder()));
+                let whole = host.run_until(PATIENCE, |host| listed(host, 0).len() == 3);
+                assert!(whole, "the folder listed whole");
+            }
+            let before = super::revision(second.app());
+
+            first
+                .app()
+                .browser
+                .set_sort(0, SortKey::Size, SortDirection::Descending);
+            let key = key_for_location(&Location::local(sorted_folder())).expect("a key");
+            let kept = first.run_until(PATIENCE, |host| {
+                super::views(host.app()).view(&key).sort == Some(size_down)
+            });
+            assert!(kept, "the first window keeps the sort");
+
+            let followed = second.run_until(PATIENCE, |host| {
+                listed(host, 0) == ["c.txt", "b.txt", "a.txt"]
+            });
+            assert!(followed, "the second window lists {:?}", listed(&second, 0));
+            assert_ne!(
+                super::revision(second.app()),
+                before,
+                "the second window's views move"
+            );
+            let key = key_for_location(&Location::local(sorted_folder())).expect("a key");
+            assert_eq!(super::views(second.app()).view(&key).sort, Some(size_down));
+            assert_eq!(
+                folder_sort_saved(&sorted_folder()),
+                None,
+                "nothing was written yet"
+            );
+        },
+    );
+}

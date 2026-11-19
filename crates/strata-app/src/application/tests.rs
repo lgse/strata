@@ -349,3 +349,76 @@ fn a_reveal_left_before_it_lists_shows_no_properties_later() {
         },
     );
 }
+
+/// As GTK's `on_load_failed` keeps `pending_properties` and its next listing takes it: a
+/// `ShowItemProperties` window whose folder fails to list, then is made readable and reloaded
+/// in place, lists it with nothing focused, since the reveal's selection went with the failed
+/// load, and so shows no Properties; nor does a later reload, with the file focused, once the
+/// request is used up. A GTK `BrowserView` probe of this path, with the folder left readable as
+/// its control, showed the same: no Properties modal after the reload, one in the control.
+#[test]
+fn a_reveal_that_fails_to_list_uses_its_properties_up_at_the_reload() {
+    use std::{cell::Cell, os::unix::fs::PermissionsExt, rc::Rc};
+
+    use strata_fs::app::{Browser, BrowserEvent};
+
+    hosted(
+        MODULE,
+        "a_reveal_that_fails_to_list_uses_its_properties_up_at_the_reload",
+        |mut host| {
+            let folder = folder_of(&["file.txt"]);
+            let here = Location::local(folder.path());
+            let file = Location::local(folder.path().join("file.txt"));
+            let mode = |bits| std::fs::Permissions::from_mode(bits);
+            std::fs::set_permissions(folder.path(), mode(0o000)).expect("chmod 000");
+            let (failed, listed) = (Rc::new(Cell::new(false)), Rc::new(Cell::new(0)));
+            let (heard_failed, heard_listed) = (failed.clone(), listed.clone());
+            host.app().browser.observe(move |event| match event {
+                BrowserEvent::LoadFailed { .. } => heard_failed.set(true),
+                BrowserEvent::LoadFinished { .. } => heard_listed.set(heard_listed.get() + 1),
+                _ => {}
+            });
+            let request = RevealRequest {
+                directory: here.clone(),
+                selection: vec![file.clone()],
+                properties: true,
+            };
+            host.start(Initial::Reveal(request));
+            let unreadable = host.run_until(PATIENCE, |_| failed.get());
+            std::fs::set_permissions(folder.path(), mode(0o755)).expect("chmod 755");
+            assert!(unreadable, "the unreadable folder failed to list");
+            assert_eq!(host.app().location(), Some(&here));
+
+            let reload = |host: &mut Offscreen, listed: &Rc<Cell<usize>>| {
+                let before = listed.get();
+                let browser = host.app().browser.clone();
+                host.runtime().update(move |_, _| browser.reload_active());
+                let done = host.run_until(PATIENCE, |_| listed.get() > before);
+                assert!(done, "the reload listed the folder");
+                host.run_until(Duration::from_millis(300), |_| false);
+            };
+            reload(&mut host, &listed);
+            let focused = Browser::focused_item(&host.app().browser).map(|item| item.2.location);
+            assert_eq!(focused, None, "the failed load took the reveal's selection");
+            assert_eq!(properties::shown_location(host.app()), None);
+
+            let names = ["file.txt".to_owned()];
+            let browser = host.app().browser.clone();
+            host.runtime().update(move |_, _| {
+                let _ = browser.select_entries_by_name_at(0, &names);
+            });
+            reload(&mut host, &listed);
+            let focused = Browser::focused_item(&host.app().browser).map(|item| item.2.location);
+            assert_eq!(
+                focused,
+                Some(file),
+                "the file is focused for the second reload"
+            );
+            assert_eq!(
+                properties::shown_location(host.app()),
+                None,
+                "the request was used up"
+            );
+        },
+    );
+}

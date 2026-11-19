@@ -25,14 +25,13 @@ use crate::{
     },
     slots::TabKey,
     test_support::{
-        PATIENCE, fixture, hosted, send_key,
+        PATIENCE, fixture, held, hosted, send_key,
         view::{all, field, hosted_in, hosted_with, idle, press, text},
     },
 };
 
 mod badges;
 mod drops;
-mod held;
 
 const MODULE: &str = "tab_strip::tests";
 
