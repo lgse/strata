@@ -272,15 +272,7 @@ fn a_gif_plays_in_the_plain_bar_and_loops() {
         MODULE,
         "media::a_gif_plays_in_the_plain_bar_and_loops",
         |mut host| {
-            decode_with(|_, start_tick| {
-                fixtures::stream(Header {
-                    width: 16,
-                    height: 16,
-                    audio: false,
-                    duration_us: 500_000,
-                    start_tick,
-                })
-            });
+            decode_with(half_a_second_of_pictures);
             let (_provider, _folder) =
                 open(&mut host, &[("spin.gif", MP4)], "spin.gif", "image/gif");
             shows(&mut host, MediaState::has_frame, "the first frame");
@@ -329,24 +321,36 @@ fn ten_seconds_of_sound(_: SandboxedMedia, start_tick: u32) -> Result<Session, S
     })
 }
 
+/// Half a second of 16 by 16 pictures and no sound, as a GIF decodes.
+fn half_a_second_of_pictures(_: SandboxedMedia, start_tick: u32) -> Result<Session, String> {
+    fixtures::stream(Header {
+        width: 16,
+        height: 16,
+        audio: false,
+        duration_us: 500_000,
+        start_tick,
+    })
+}
+
+/// Whether the player has the keyboard.
+fn in_player(host: &mut Offscreen) -> bool {
+    focused_key(host).is_some_and(|key| key.starts_with(MEDIA_KEY))
+}
+
 /// With the keyboard in the drawer, Strata's audio player takes the player's keys, Left and
-/// Right seeking, where a GIF's overlay takes none: Left moves to its play toggle, and a second
-/// Left goes back to the listing.
+/// Right seeking, and keeps the keyboard.
 #[test]
-fn an_audio_player_keeps_left_and_right_and_a_gif_gives_left_back() {
+fn an_audio_player_keeps_left_and_right() {
     hosted(
         MODULE,
-        "media::an_audio_player_keeps_left_and_right_and_a_gif_gives_left_back",
+        "media::an_audio_player_keeps_left_and_right",
         |mut host| {
             decode_with(ten_seconds_of_sound);
-            let files = [("tone.wav", MP4), ("spin.gif", MP4)];
-            let (provider, _folder) = open(&mut host, &files, "tone.wav", "audio/vnd.wave");
+            let files = [("tone.wav", MP4)];
+            let (_provider, _folder) = open(&mut host, &files, "tone.wav", "audio/vnd.wave");
             let known = |s: &MediaState| s.duration() == Some(Duration::from_secs(10));
             shows(&mut host, known, "the audio's length");
             press(&mut host, Key::Right, Mods::default());
-            let in_player = |host: &mut Offscreen| {
-                focused_key(host).is_some_and(|key| key.starts_with(MEDIA_KEY))
-            };
             assert!(
                 in_player(&mut host),
                 "Right gives the audio player the keyboard"
@@ -358,36 +362,24 @@ fn an_audio_player_keeps_left_and_right_and_a_gif_gives_left_back() {
             let ahead = |s: &MediaState| s.position() >= Duration::from_secs(5);
             shows(&mut host, ahead, "Right seeks forward");
             press(&mut host, Key::Left, Mods::default());
-            shows(
-                &mut host,
-                |s| s.position() < Duration::from_secs(5),
-                "Left seeks back",
-            );
+            let back = |s: &MediaState| s.position() < Duration::from_secs(5);
+            shows(&mut host, back, "Left seeks back");
             assert!(in_player(&mut host), "the keyboard stays in the player");
+        },
+    );
+}
 
-            press(&mut host, Key::Left, Mods::default());
-            press(&mut host, Key::Escape, Mods::default());
-            focus_view(&mut host);
-            decode_with(|_, start_tick| {
-                fixtures::stream(Header {
-                    width: 16,
-                    height: 16,
-                    audio: false,
-                    duration_us: 500_000,
-                    start_tick,
-                })
-            });
-            let folder = provider
-                .request(0)
-                .entry
-                .location
-                .native_path()
-                .map(Path::to_path_buf);
-            let gif = folder.expect("a local file").with_file_name("spin.gif");
-            select(&mut host, &Location::local(&gif));
-            space(&mut host);
-            provider.wait_for(&mut host, 1);
-            provider.answer_as(1, "image/gif", sandboxed(gif));
+/// A GIF's overlay takes none of the player's keys, as Strata's does: Left moves to its play
+/// toggle, as GTK's directional focus does, and a second Left goes back to the listing.
+#[test]
+fn a_gif_gives_left_to_its_play_toggle_then_back() {
+    hosted(
+        MODULE,
+        "media::a_gif_gives_left_to_its_play_toggle_then_back",
+        |mut host| {
+            decode_with(half_a_second_of_pictures);
+            let (_provider, _folder) =
+                open(&mut host, &[("spin.gif", MP4)], "spin.gif", "image/gif");
             let animation = |s: &MediaState| s.clip().kind == MediaKind::Animation;
             shows(&mut host, animation, "the GIF");
             press(&mut host, Key::Right, Mods::default());
@@ -400,7 +392,7 @@ fn an_audio_player_keeps_left_and_right_and_a_gif_gives_left_back() {
             assert_eq!(
                 focused_key(&mut host).as_deref(),
                 Some(play.as_str()),
-                "Left moves to the play toggle, as GTK's directional focus does"
+                "Left moves to the play toggle"
             );
             press(&mut host, Key::Left, Mods::default());
             assert!(
