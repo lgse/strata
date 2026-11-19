@@ -160,6 +160,15 @@ closed issue is not a fixed finding: the state given here is the finding's.
   fixture did not settle", `src/ui/window/tests/keyboard_dispatch.rs:324`). It passed alone
   (`./scripts/test-headless.py`), and the rerun of `./scripts/quality.sh test` passed whole
   (4074 tests). That change touches no `src/` and no crate the GTK lane builds.
+- **On [#2604](https://github.com/lgse/strata/pull/2604), [A21](packages/A21.md)'s Slice 2a, at `4ed45f2d5`:** the ninth failed once more in
+  `./scripts/quality.sh all`, with its message. It then passed alone. The rerun of
+  `./scripts/quality.sh test` failed on an eleventh instead, `strata-desktop`'s
+  `services::update_install::tests::repository_probe_selects_strata_instead_of_a_dependency`
+  (`crates/strata-desktop/src/services/update_install/tests.rs:185`: "could not query the
+  package repository: The file is running and cannot be changed", an `ETXTBSY` on the fake tool
+  it writes and runs), which then passed alone 3 of 3. A second rerun passed whole (4074 tests).
+  That change touches `strata-fs`'s FileManager1 adapter (two items made public) and the Rune
+  side, neither the keyboard fixture nor `strata-desktop`.
 - **State:** open, set aside. Whoever meets one of these in a red shard reads the failure
   first: if the change could reach the test, it is the change's; if not, say why on the pull
   request, rerun the whole workflow once, and stop if the same test fails twice. A new flaky
@@ -935,6 +944,9 @@ sequence only together with the alphabet's version, so the version is part of th
 - **State:** ruled by the coordinator (2026-11-13): C6 stays as it is, since a screen reader
   hears the same name; the run takes an `a11y` twin once it can otherwise flip, after
   [A21](packages/A21.md)'s second window. [A5](packages/A5.md)'s, or whoever flips the run.
+- **Twin written** by [A21](packages/A21.md)'s Slice 2a ([#2604](https://github.com/lgse/strata/pull/2604), 2026-11-18):
+  `locations/path-completion-dismisses-on-window-switch-rune`, whose lines 6 and 10 wait for the
+  `list item`; the run is `parallel`.
 
 ### #2367: withdrawn, an artifact of a fix that did not merge
 
@@ -2437,6 +2449,10 @@ sequence only together with the alphabet's version, so the version is part of th
   on #2594's own code with its three new window tests skipped, the 6 tests `strata-next` has,
   0 of 10. So it tracks the three extra sway sessions running beside it, not the code in its
   path. Not traced further.
+- **Seen again** by the review of [#2604](https://github.com/lgse/strata/pull/2604) (A21's Slice
+  2a) at `dbf11553d`: 1 failure in 3 runs of `window::`, whose suite there has 9 tests. It
+  failed at `qa.rs:53`, the second `ask_to_copy`'s `menu_items` wait, the same symptom, and the
+  failing suite took 20 s against about 4 s.
 - **Concerns:** `strata-rune`'s window test above, [A20](packages/A20.md)'s.
 - **State:** open, unowned.
 

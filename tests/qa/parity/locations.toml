@@ -48,9 +48,10 @@ host = "offscreen"
 scenario = "path-completion-dismisses-on-window-switch"
 run = "columns"
 package = "A5"
-status = "pending"
-reason = "scope"
-blocker = "A21's second slice: the second window opens (A21's first slice) but takes no activation from the first offscreen, and the window's presence does not reach the location bar's suggestion. Line 6 first: the suggestion is a `list item` named `documents/` on Rune, a `label` in its row on GTK, lgse/strata#2365, ruled an `a11y` twin once the run can otherwise flip"
+status = "parallel"
+exception = "a11y"
+twin = "path-completion-dismisses-on-window-switch-rune/columns"
+ref = "lgse/strata#2365"
 
 [[run]]
 scenario = "refresh-reconciles-external-changes"

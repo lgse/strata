@@ -37,8 +37,9 @@ pub struct RevealRequest {
     pub properties: bool,
 }
 
+/// Which of the interface's calls a request came by.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum Method {
+pub enum Method {
     Folders,
     Items,
     ItemProperties,
@@ -101,8 +102,10 @@ pub fn export_file_manager(
 }
 
 /// Groups the named URIs into one request per directory, keeping the order
-/// the caller listed them in so the first URI opens the first window.
-fn reveal_requests(method: Method, uris: &[String]) -> Vec<RevealRequest> {
+/// the caller listed them in so the first URI opens the first window. The
+/// Rune interface serves the interface through strata-platform and groups its
+/// calls here too.
+pub fn reveal_requests(method: Method, uris: &[String]) -> Vec<RevealRequest> {
     let mut requests: Vec<RevealRequest> = Vec::new();
     for uri in uris {
         let target = gio::File::for_uri(uri);
