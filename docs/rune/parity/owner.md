@@ -865,24 +865,26 @@ Rulings of the owner on the parity work, oldest first.
   `window-wheel` one. Built in [A16](packages/A16.md)'s Slice 4
   ([#2614](https://github.com/lgse/strata/pull/2614)). Source: the owner, 2026-11-19, through
   the coordinator.
-- **2026-11-19: H5's work lands in `h5-integration`**, not `main`. The branch is cut from `main`
-  at `7cc1543e9`; `main`'s protection needs an approving review, which the agents' shared
-  account cannot give. H5's pull requests merge into `h5-integration` once a session other than
-  the author's has reviewed them and their checks have passed, and the owner merges the branch
-  into `main` later; it then reaches `strata-next` by merge. The deny-advisory fix that H5's
-  pull requests need ([#2618](https://github.com/lgse/strata/pull/2618)) lands there too.
-  [H5](packages/H5.md)'s [#2609](https://github.com/lgse/strata/pull/2609) was retargeted there.
-  Source: the owner, 2026-11-19, through the coordinator.
-- **2026-11-19: the test image's base is rebuilt for devices and mounts**: `gvfs` in the pinned
-  image, for GIO's remote volume monitor client, and a fake volume monitor the QA runner starts
-  on a run's private bus. Built in [H5](packages/H5.md)'s round 2
-  ([#2619](https://github.com/lgse/strata/pull/2619)), in `h5-integration`. Source: the owner,
+- **2026-11-19: H5's work goes to an integration branch, `h5-integration`**: "build H5 in
+  another integration branch for now". The deny-advisory fix H5's pull requests need goes
+  there too: "Build in same integration branch as H5"
+  ([#2618](https://github.com/lgse/strata/pull/2618)). The branch is cut from `main` at
+  `9ea79324a`, and [H5](packages/H5.md)'s [#2609](https://github.com/lgse/strata/pull/2609) was
+  retargeted there. The coordinator's context, not part of the ruling: it had reported `main`
+  as blocked for merging, and its stated plan is that the owner merges the branch into `main`
+  later, from where it reaches `strata-next` by merge. Source: the owner, 2026-11-19, through
+  the coordinator.
+- **2026-11-19: the test image is rebuilt for devices and mounts**: "Yes, rebuild the image".
+  Built in [H5](packages/H5.md)'s round 2 ([#2619](https://github.com/lgse/strata/pull/2619)),
+  in `h5-integration`, as `gvfs` in the pinned image, for GIO's remote volume monitor client,
+  and a fake volume monitor the QA runner starts on a run's private bus. Source: the owner,
   2026-11-19, through the coordinator.
 - **2026-11-19: the `deny.toml` ignores of [#2618](https://github.com/lgse/strata/pull/2618) are
-  accepted**: `zip` 8.6.0's RUSTSEC-2026-0545, -0546, -0547 and -0548, which come only through
-  `docx-rs`, and `chrono`'s RUSTSEC-2026-0543 (unmaintained), which comes only through
-  `fitparser`. Revisit them when `docx-rs` releases on `zip` 9 or `fitparser` drops `chrono`.
-  Source: the owner, 2026-11-19, through the coordinator.
+  accepted**: "Accept the ignores". They are the five #2618 adds: `zip` 8.6.0's
+  RUSTSEC-2026-0545, -0546, -0547 and -0548, which come only through `docx-rs`, and `chrono`'s
+  RUSTSEC-2026-0543 (unmaintained), which comes only through `fitparser`. When to remove the
+  `zip` entries is #2618's own `deny.toml` comment ("once docx-rs releases on zip 9"), not part
+  of the ruling. Source: the owner, 2026-11-19, through the coordinator.
 
 ## Housekeeping
 
