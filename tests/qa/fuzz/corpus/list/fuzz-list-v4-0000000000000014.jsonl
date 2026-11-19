@@ -1,0 +1,4 @@
+{"scenario":"fuzz-list-v4-0000000000000014","modes":["list"],"prefs":{"type_to_search":false}}
+{"click":{"entry":"pictures"},"count":2,"when":{"all":[{"present":{"entry":"pictures"}}]}}
+{"key":"alt+Left","when":{"not":{"directory":"$root"}}}
+{"key":"Return","when":{"any":[{"focused":"documents"},{"focused":"pictures"}]}}

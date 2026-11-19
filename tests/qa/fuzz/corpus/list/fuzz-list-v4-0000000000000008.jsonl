@@ -1,0 +1,7 @@
+{"scenario":"fuzz-list-v4-0000000000000008","modes":["list"],"prefs":{"type_to_search":false}}
+{"click":{"entry":"documents"},"count":2,"when":{"all":[{"present":{"entry":"documents"}}]}}
+{"click":{"entry":"spreadsheet.csv"},"when":{"all":[{"present":{"entry":"spreadsheet.csv"}}]}}
+{"key":"alt+Up","when":{"not":{"directory":"$root"}}}
+{"key":"shift+Down","when":{"not":{"focused":{"one_of":["todo.txt","spreadsheet.csv","photo.txt"]}}}}
+{"key":"shift+Up","when":{"not":{"focused":{"one_of":["archive","notes.txt","diagram.txt","fuzz-b.txt"]}}}}
+{"key":"Return","when":{"any":[{"focused":"documents"},{"focused":"pictures"}]}}

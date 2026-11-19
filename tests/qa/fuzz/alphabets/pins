@@ -52,8 +52,16 @@ entries v3 8fb7d5c38ff6b880
 # lgse/strata#2494's account, adds Appearance's Group by file type and Hidden files, and keeps
 # result arrows and clicks to non-empty queries.
 filter v2 7fa8d82cb078b442
-icons v1 c800a440ffbc265a
-list v3 53cac7ac7cdfa46c
+# icons: version 1 was A1's, merged before the differential tier; F4's round 1 met in all its
+# seeds across the targets the classes list v3 met and the Icons grid's edges. Version 2
+# guards them, and met lgse/strata#2640 (fixed) and lgse/strata#2641 at Return: a draft of F4's
+# round 2, never merged. Version 3 keeps Return off a multi-selection.
+icons v3 e587c505bcbf1071
+# list: version 3 was A2's, merged before the differential tier; F4's round 1 met renames
+# (lgse/strata#2510), Up off a first row, Ctrl+A and Shift+click after a load in nearly every
+# seed across the targets. Version 4 guards them, and met lgse/strata#2640 (fixed) at Return: a
+# draft of F4's round 2, never merged. Version 5 keeps Return off a multi-selection.
+list v5 e54f0180a258e54a
 # location: version 1 was A5's draft, never merged: version 2 keeps clicks off a shown dialog and
 # Shift+Tab off the files. Its seeds name the shrunk sequences of its findings, parked in
 # tests/qa/fuzz/corpus/location.
