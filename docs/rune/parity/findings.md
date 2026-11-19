@@ -265,7 +265,7 @@ closed issue is not a fixed finding: the state given here is the finding's.
   (`crates/strata-app/src/footer/tests.rs:213`, "consuming a cut withdraws the clipboard
   badge": the badge still showed) with the load average near 10. It passed 3 times of 3 alone
   and in the full rerun (3058 passed); #2599 does not touch the footer or the clipboard.
-- **On [A21](packages/A21.md)'s Slice 3, at `ca098e391`:** the tenth failed once more in
+- **On [#2620](https://github.com/lgse/strata/pull/2620), [A21](packages/A21.md)'s Slice 3, at `ca098e391`:** the tenth failed once more in
   `./scripts/quality.sh all --jobs 4` (shard 0, lane 3, 79 of 80) with its `ETXTBSY` message, and
   passed 3 times of 3 alone; a rerun of `./scripts/quality.sh test` passed whole (4076 tests).
   That change touches no shared crate and no `src/`. In the same gate `./scripts/qa.sh` failed
