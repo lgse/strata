@@ -1,0 +1,11 @@
+diff --git a/crates/strata-app/src/application/reveal.rs b/crates/strata-app/src/application/reveal.rs
+index fcddbe278..b7f2c8ee2 100644
+--- a/crates/strata-app/src/application/reveal.rs
++++ b/crates/strata-app/src/application/reveal.rs
+@@ -33,5 +33,5 @@ pub(crate) fn open(app: &mut App, request: RevealRequest) {
+         show_properties_once_listed(app, directory.clone());
+     }
+-    if app.browser.reveal_locations(directory, selection) && properties {
++    if app.browser.reveal_locations(directory, Vec::new()) && properties {
+         // Revealed in place: no load is coming.
+         shell::window_later(app).then(show_focused_properties);
