@@ -386,7 +386,7 @@ pub(crate) fn a_rule_that_names_values_excuses_only_those() {
     let entries = rules::parse(line, &exceptions()).expect("the rule should parse");
     assert_eq!(
         entries[0].only,
-        Some(rules::Only {
+        Some(rules::Only::Values {
             gtk: Some(Value::Null),
             rune: Some(vec![json!("Appearance"), json!("Thumbnail size")]),
             when: Vec::new(),
@@ -435,6 +435,9 @@ pub(crate) fn a_rule_that_names_values_excuses_only_those() {
         r#"app.dialog deviation lgse/strata#2405 {"while":{"gtk":{"fs.readme.md":null}}}"#,
         r#"app.dialog deviation lgse/strata#2405 {"while":{"gtk":{"app.panes[].focused":null}}}"#,
         r#"app.dialog deviation lgse/strata#2405 null"#,
+        r#"app.dialog deviation lgse/strata#2405 {"rune_adds":[]}"#,
+        r#"app.dialog deviation lgse/strata#2405 {"rune_adds":"Volume"}"#,
+        r#"app.dialog deviation lgse/strata#2405 {"rune_adds":["Volume"],"gtk":null}"#,
     ] {
         assert!(rules::parse(refused, &exceptions()).is_err(), "{refused}");
     }
@@ -459,4 +462,96 @@ pub(crate) fn rules_of_two_rulings_on_one_field_excuse_only_their_own() {
         let (left, right) = dialog_streams(Value::Null, json!(rune));
         assert_eq!(compare(&left, &right, &both).is_none(), excused, "{rune}");
     }
+}
+
+/// A rule that names what Rune's list adds (`app.preview`'s "Volume", lgse/strata#2606)
+/// excuses only a list that is GTK's with those elements added: one moved, one more missing or
+/// added, the elements the other way round, and a value that is no list still differ.
+pub(crate) fn a_rule_that_names_what_rune_adds_excuses_only_those_elements() {
+    let line = r#"app.preview deviation lgse/strata#2606 {"rune_adds":["Volume"]}"#;
+    let entries = rules::parse(line, &exceptions()).expect("the rule should parse");
+    assert_eq!(
+        entries[0].only,
+        Some(rules::Only::RuneAdds(vec![json!("Volume")]))
+    );
+    let ruled = Ignored {
+        rules: entries,
+        masks: Vec::new(),
+    };
+    let differs = |gtk: Value, rune: Value| {
+        let preview = |names: Value| observed(json!({ "preview": names }));
+        let (mut left, mut right) = (stream(&["archive"]), stream(&["archive"]));
+        right.header.target = "rune".to_owned();
+        left.observations[0].value = preview(gtk);
+        right.observations[0].value = preview(rune);
+        compare(&left, &right, &ruled).map(|found| found.field().to_owned())
+    };
+    let gtk = json!(["1 of 2 in folder", "Mute/unmute", "alpha"]);
+    let field = Some("app.preview".to_owned());
+    assert_eq!(
+        differs(
+            gtk.clone(),
+            json!(["1 of 2 in folder", "Mute/unmute", "Volume", "alpha"])
+        ),
+        None
+    );
+    assert_eq!(
+        differs(
+            gtk.clone(),
+            json!(["Volume", "1 of 2 in folder", "Mute/unmute", "alpha"])
+        ),
+        None
+    );
+    for rune in [
+        json!(["1 of 2 in folder", "alpha", "Mute/unmute", "Volume"]),
+        json!(["1 of 2 in folder", "Mute/unmute", "Volume"]),
+        json!([
+            "1 of 2 in folder",
+            "Mute/unmute",
+            "Volume",
+            "alpha",
+            "Album art"
+        ]),
+        json!("Volume"),
+    ] {
+        assert_eq!(differs(gtk.clone(), rune.clone()), field, "{rune}");
+    }
+    // GTK's list holding the element is not Rune's adding it.
+    assert_eq!(differs(json!(["Volume", "alpha"]), json!(["alpha"])), field);
+}
+
+/// Two rulings' `rune_adds` rules on one field take their elements out together: a list that
+/// adds what both allow is excused, and one that adds something neither names still differs.
+pub(crate) fn rune_adds_rules_of_two_rulings_take_their_elements_out_together() {
+    let two = [
+        r#"app.preview deviation lgse/strata#2606 {"rune_adds":["Volume"]}"#,
+        r#"app.preview oracle lgse/strata#2612 {"rune_adds":["Album art","Audio spectrum"]}"#,
+    ];
+    let both = Ignored {
+        rules: rules::parse(&two.join("\n"), &exceptions()).expect("both rules should parse"),
+        masks: Vec::new(),
+    };
+    let differs = |rune: Value| {
+        let preview = |names: Value| observed(json!({ "preview": names }));
+        let (mut left, mut right) = (stream(&["archive"]), stream(&["archive"]));
+        right.header.target = "rune".to_owned();
+        left.observations[0].value = preview(json!(["Mute/unmute", "tone"]));
+        right.observations[0].value = preview(rune);
+        compare(&left, &right, &both).is_some()
+    };
+    assert!(!differs(json!([
+        "Album art",
+        "Mute/unmute",
+        "Volume",
+        "tone",
+        "Audio spectrum"
+    ])));
+    assert!(!differs(json!(["Mute/unmute", "Volume", "tone"])));
+    assert!(differs(json!([
+        "Album art",
+        "Mute/unmute",
+        "Volume",
+        "tone",
+        "Lyrics"
+    ])));
 }

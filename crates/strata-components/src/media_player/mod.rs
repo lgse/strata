@@ -398,7 +398,7 @@ impl<'a, S: 'static> MediaPlayer<'a, S> {
             MediaKind::Video => {
                 video::video(st, access, viewport, emit, &key, pixels, false, look, cx)
             }
-            MediaKind::Plain => {
+            MediaKind::Plain | MediaKind::Animation => {
                 video::video(st, access, viewport, emit, &key, pixels, true, look, cx)
             }
             MediaKind::Audio => audio::audio(st, access, emit, &key, look),

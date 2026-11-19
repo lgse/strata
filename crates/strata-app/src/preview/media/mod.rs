@@ -94,6 +94,8 @@ struct Opening {
     volume: f32,
     muted: bool,
     tenxer: bool,
+    /// A GIF: the frame and its play toggle alone (`MediaKind::Animation`).
+    animation: bool,
 }
 
 impl Opening {
@@ -111,6 +113,7 @@ impl Opening {
             volume: prefs.preview_volume as f32,
             muted: prefs.preview_muted,
             tenxer: prefs.tenxer_mode,
+            animation: content_type == GIF,
         }
     }
 }
@@ -138,8 +141,16 @@ pub(super) fn ready(app: &mut App, arrived: Arrived, tx: &mut Tx) -> Viewer {
     };
     let mut stream = Stream::new(media, inlet, opening.start_percent, tx.clock());
     stream.set_loop(content_type == GIF);
-    if opening.autoplay || plays_on(app, family, &entry) {
+    let stepped = app
+        .preview
+        .stepped
+        .take()
+        .filter(|stepped| stepped.to == entry.location && family.is_some());
+    if opening.autoplay || stepped.as_ref().is_some_and(|stepped| stepped.playing) {
         stream.play();
+    }
+    if stepped.is_some_and(|stepped| stepped.keys) {
+        app.preview.drawer.focus_content_when_shown(tx);
     }
     let mut viewer = MediaViewer {
         state: player(&entry, family, &opening),
@@ -155,14 +166,13 @@ pub(super) fn ready(app: &mut App, arrived: Arrived, tx: &mut Tx) -> Viewer {
     Viewer::Media(Box::new(viewer))
 }
 
-/// Whether a step from a playing file landed on `entry`, which then plays on.
-fn plays_on(app: &mut App, family: Option<Family>, entry: &FileEntry) -> bool {
-    let stepped_here = app
-        .preview
-        .continue_playback
-        .take()
-        .is_some_and(|location| location == entry.location);
-    stepped_here && family.is_some()
+/// A step from one media file to the next (GTK's `step_media`): the file it moved to plays on
+/// if the one it left was playing, and takes the keyboard if the player had it
+/// (`keep_keys_in_content`).
+pub(super) struct Stepped {
+    to: Location,
+    playing: bool,
+    keys: bool,
 }
 
 /// The player's state for `entry`: its view, words, keys and volume.
@@ -171,6 +181,7 @@ fn player(entry: &FileEntry, family: Option<Family>, opening: &Opening) -> Media
         kind: match family {
             Some(Family::Video) => MediaKind::Video,
             Some(Family::Audio) => MediaKind::Audio,
+            None if opening.animation => MediaKind::Animation,
             None => MediaKind::Plain,
         },
         name: entry.display_name.clone(),
@@ -345,10 +356,11 @@ fn step(app: &mut App, by: i8, tx: &mut Tx) -> bool {
         return false;
     };
     let (current, playing) = (media.entry.location.clone(), media.stream.playing());
-    let Some(target) = sequence::step(app, (family, &current), by, tx) else {
+    let keys = tx.focused().is_some_and(|key| key.starts_with(MEDIA_KEY));
+    let Some(to) = sequence::step(app, (family, &current), by, tx) else {
         return false;
     };
-    app.preview.continue_playback = playing.then_some(target);
+    app.preview.stepped = Some(Stepped { to, playing, keys });
     true
 }
 

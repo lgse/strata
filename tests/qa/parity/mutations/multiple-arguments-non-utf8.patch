@@ -1,0 +1,13 @@
+diff --git a/crates/strata-app/src/application/argument.rs b/crates/strata-app/src/application/argument.rs
+index d8f4234c6..0b775238b 100644
+--- a/crates/strata-app/src/application/argument.rs
++++ b/crates/strata-app/src/application/argument.rs
+@@ -61,6 +61,6 @@ fn shown(
+     }
+     match (kind, reveal_target_for_file(file)) {
+-        (Some(Kind::Item), Some((parent, item))) => {
+-            browser.reveal_locations(parent, vec![item]);
++        (Some(Kind::Item), Some((parent, _item))) => {
++            browser.navigate_location(parent, true);
+         }
+         _ => browser.navigate_location(location, true),

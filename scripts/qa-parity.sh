@@ -28,10 +28,13 @@
 #                                             host, whatever host its row names
 #   ./scripts/qa-parity.sh mutations          each patch under tests/qa/parity/mutations must
 #                                             make the scenario it is named for fail on Rune;
-#                                             <scenario>-rune.patch is a twin's
+#                                             <scenario>-rune.patch is a twin's, and
+#                                             <scenario>.<label>.patch one of a scenario's
+#                                             several
 #   ./scripts/qa-parity.sh mutations shift-click-range
-#                                             only the patches named, by scenario,
-#                                             <scenario>.patch or path: one proven alone
+#                                             only the patches named: a scenario (each of its
+#                                             patches), <scenario>.<label>, <scenario>.patch
+#                                             or a path (that patch): one proven alone
 #   ./scripts/qa-parity.sh gtk-mutations      each patch under tests/qa/mutations must make its
 #                                             scenario fail on GTK, but the ones the ledger
 #                                             names as stale, which must be stale still

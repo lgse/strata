@@ -2,8 +2,10 @@
 
 //! The media player's host (`preview::media`): a sandboxed video's frames and clock reach the
 //! player and the media key plays and pauses it; the eyebrow counts only the files whose
-//! probe found media, and the next key steps past text named as video and keeps playing;
-//! a decode that fails shows its error inside the player; and a GIF loops.
+//! probe found media, and the next key steps past text named as video, keeps playing and keeps
+//! the keyboard in the player;
+//! a decode that fails shows its error inside the player; and a GIF loops, its bar the play
+//! toggle alone.
 
 use std::{
     path::{Path, PathBuf},
@@ -27,14 +29,17 @@ use strata_preview::{
 };
 
 use super::{
-    MODULE, Viewer, disable_auto_preview, focus_view, press,
+    MODULE, Viewer, disable_auto_preview, focus_view, focused_key, press,
     provider::{Recorded, install, listed_with},
     select, space,
 };
 use crate::{
     App,
     host::offscreen::Offscreen,
-    preview::{media::START_DECODER, session},
+    preview::{
+        media::{MEDIA_KEY, START_DECODER},
+        session,
+    },
     test_support::{PATIENCE, hosted},
 };
 
@@ -193,6 +198,12 @@ fn next_steps_past_text_named_as_video_and_keeps_playing() {
             assert!(state(&host).is_some_and(|s| !s.clip().has_previous));
             play_pause(&mut host);
             shows(&mut host, MediaState::playing, "playing before the step");
+            // The keyboard in the player: the next one takes it (GTK's `keep_keys_in_content`).
+            press(&mut host, Key::Right, Mods::default());
+            let in_player = |host: &mut Offscreen| {
+                focused_key(host).is_some_and(|key| key.starts_with(MEDIA_KEY))
+            };
+            assert!(in_player(&mut host), "Right gives the player the keyboard");
 
             let next = Mods {
                 shift: true,
@@ -216,6 +227,15 @@ fn next_steps_past_text_named_as_video_and_keeps_playing() {
             let second = Position { index: 2, ..first };
             let stepped = |s: &MediaState| s.clip().position == Some(second) && s.playing();
             shows(&mut host, stepped, "2 of 2, playing on");
+            let mut took = in_player(&mut host);
+            for _ in 0..600 {
+                if took {
+                    break;
+                }
+                host.turn();
+                took = in_player(&mut host);
+            }
+            assert!(took, "the next player has the keyboard");
         },
     );
 }
@@ -252,19 +272,29 @@ fn a_gif_plays_in_the_plain_bar_and_loops() {
         MODULE,
         "media::a_gif_plays_in_the_plain_bar_and_loops",
         |mut host| {
-            decode_with(|_, start_tick| {
-                fixtures::stream(Header {
-                    width: 16,
-                    height: 16,
-                    audio: false,
-                    duration_us: 500_000,
-                    start_tick,
-                })
-            });
+            decode_with(half_a_second_of_pictures);
             let (_provider, _folder) =
                 open(&mut host, &[("spin.gif", MP4)], "spin.gif", "image/gif");
             shows(&mut host, MediaState::has_frame, "the first frame");
-            assert_eq!(state(&host).map(|s| s.clip().kind), Some(MediaKind::Plain));
+            assert_eq!(
+                state(&host).map(|s| s.clip().kind),
+                Some(MediaKind::Animation)
+            );
+            // Strata's GIF bar is its play toggle alone: no time, seek or volume.
+            let keys: Vec<String> = host
+                .runtime()
+                .elements()
+                .into_iter()
+                .filter_map(|el| el.key)
+                .filter(|key| key.starts_with(MEDIA_KEY))
+                .collect();
+            assert!(keys.iter().any(|key| key.ends_with("-play")), "{keys:?}");
+            for part in ["-time", "-timeline", "-mute", "-volume", "-title"] {
+                assert!(
+                    !keys.iter().any(|key| key.ends_with(part)),
+                    "{part} in {keys:?}"
+                );
+            }
             play_pause(&mut host);
             shows(&mut host, MediaState::playing, "playing");
             let late = host.run_until(PATIENCE, |host| {
@@ -276,6 +306,99 @@ fn a_gif_plays_in_the_plain_bar_and_loops() {
                     .is_some_and(|s| s.playing() && s.position() < Duration::from_millis(200))
             });
             assert!(looped, "back at the start and playing, not ended");
+        },
+    );
+}
+
+/// Ten seconds of sound and no picture.
+fn ten_seconds_of_sound(_: SandboxedMedia, start_tick: u32) -> Result<Session, String> {
+    fixtures::stream(Header {
+        width: 0,
+        height: 0,
+        audio: true,
+        duration_us: 10_000_000,
+        start_tick,
+    })
+}
+
+/// Half a second of 16 by 16 pictures and no sound, as a GIF decodes.
+fn half_a_second_of_pictures(_: SandboxedMedia, start_tick: u32) -> Result<Session, String> {
+    fixtures::stream(Header {
+        width: 16,
+        height: 16,
+        audio: false,
+        duration_us: 500_000,
+        start_tick,
+    })
+}
+
+/// Whether the player has the keyboard.
+fn in_player(host: &mut Offscreen) -> bool {
+    focused_key(host).is_some_and(|key| key.starts_with(MEDIA_KEY))
+}
+
+/// With the keyboard in the drawer, Strata's audio player takes the player's keys, Left and
+/// Right seeking, and keeps the keyboard.
+#[test]
+fn an_audio_player_keeps_left_and_right() {
+    hosted(
+        MODULE,
+        "media::an_audio_player_keeps_left_and_right",
+        |mut host| {
+            decode_with(ten_seconds_of_sound);
+            let files = [("tone.wav", MP4)];
+            let (_provider, _folder) = open(&mut host, &files, "tone.wav", "audio/vnd.wave");
+            let known = |s: &MediaState| s.duration() == Some(Duration::from_secs(10));
+            shows(&mut host, known, "the audio's length");
+            press(&mut host, Key::Right, Mods::default());
+            assert!(
+                in_player(&mut host),
+                "Right gives the audio player the keyboard"
+            );
+            // Left at the start seeks nowhere, and the player still keeps it.
+            press(&mut host, Key::Left, Mods::default());
+            assert!(in_player(&mut host), "Left at 0:00 stays in the player");
+            press(&mut host, Key::Right, Mods::default());
+            let ahead = |s: &MediaState| s.position() >= Duration::from_secs(5);
+            shows(&mut host, ahead, "Right seeks forward");
+            press(&mut host, Key::Left, Mods::default());
+            let back = |s: &MediaState| s.position() < Duration::from_secs(5);
+            shows(&mut host, back, "Left seeks back");
+            assert!(in_player(&mut host), "the keyboard stays in the player");
+        },
+    );
+}
+
+/// A GIF's overlay takes none of the player's keys, as Strata's does: Left moves to its play
+/// toggle, as GTK's directional focus does, and a second Left goes back to the listing.
+#[test]
+fn a_gif_gives_left_to_its_play_toggle_then_back() {
+    hosted(
+        MODULE,
+        "media::a_gif_gives_left_to_its_play_toggle_then_back",
+        |mut host| {
+            decode_with(half_a_second_of_pictures);
+            let (_provider, _folder) =
+                open(&mut host, &[("spin.gif", MP4)], "spin.gif", "image/gif");
+            let animation = |s: &MediaState| s.clip().kind == MediaKind::Animation;
+            shows(&mut host, animation, "the GIF");
+            press(&mut host, Key::Right, Mods::default());
+            assert!(
+                in_player(&mut host),
+                "Right gives the GIF's frame the keyboard"
+            );
+            press(&mut host, Key::Left, Mods::default());
+            let play = format!("{MEDIA_KEY}-play");
+            assert_eq!(
+                focused_key(&mut host).as_deref(),
+                Some(play.as_str()),
+                "Left moves to the play toggle"
+            );
+            press(&mut host, Key::Left, Mods::default());
+            assert!(
+                !in_player(&mut host),
+                "a second Left goes back to the listing"
+            );
         },
     );
 }

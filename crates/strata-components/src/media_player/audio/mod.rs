@@ -45,6 +45,7 @@ pub(crate) fn audio<S: 'static>(
 ) -> El {
     let k = &look.kit;
     let p = st.plan();
+    let keys_emit = emit.clone();
     let fixed = fixed_height(look);
     let gap = look.space.lg;
     let tags = st.tags();
@@ -60,46 +61,30 @@ pub(crate) fn audio<S: 'static>(
     );
     let byline = time::byline(tags.artist.as_deref(), tags.album.as_deref());
     // Rows keep their space while tags load, so changing tracks doesn't move the layout.
-    let header = row()
-        .w_full()
-        .gap(look.space.md)
-        .child(
-            col()
-                .grow(1.0)
-                .min_w(0.0)
-                .gap(look.space.xxs)
-                .child(
-                    text(caption.unwrap_or_default())
-                        .key(format!("{key}-eyebrow"))
-                        .font(k.ty.small)
-                        .color(k.c.text_muted)
-                        .truncate()
-                        .min_h(k.ty.small.size),
-                )
-                .child(
-                    text(title)
-                        .key(format!("{key}-title"))
-                        .font(look.ty.title)
-                        .color(k.c.text_base)
-                        .truncate(),
-                )
-                .child(
-                    text(byline)
-                        .key(format!("{key}-byline"))
-                        .font(k.ty.small)
-                        .color(k.c.text_muted)
-                        .truncate()
-                        .min_h(k.ty.small.size),
-                )
-                .child(super::error(st, key, look)),
-        )
-        .child(super::transport::volume(
-            st,
-            access,
-            emit.clone(),
-            key,
-            look,
-        ));
+    let volume = super::transport::volume(st, access, emit.clone(), key, look);
+    let header = row().w_full().gap(look.space.md).child(
+        col()
+            .grow(1.0)
+            .min_w(0.0)
+            .gap(look.space.xxs)
+            .child(caption_row(key, caption.unwrap_or_default(), volume, look))
+            .child(
+                text(title)
+                    .key(format!("{key}-title"))
+                    .font(look.ty.title)
+                    .color(k.c.text_base)
+                    .truncate(),
+            )
+            .child(
+                text(byline)
+                    .key(format!("{key}-byline"))
+                    .font(k.ty.small)
+                    .color(k.c.text_muted)
+                    .truncate()
+                    .min_h(k.ty.small.size),
+            )
+            .child(super::error(st, key, look)),
+    );
 
     let mut panel = col()
         .w_full()
@@ -144,8 +129,22 @@ pub(crate) fn audio<S: 'static>(
             .children(art)
             .child(panel)
     };
+    // The view takes the player's keys when it has the keyboard, as Strata's drawer content
+    // does for audio (`media_key_command`): Right from the listing lands here.
     col()
         .key(key.to_owned())
+        .focusable(true)
+        .on_key(move |s: &mut S, k: &rune::KeyEvent, tx: &mut Tx| {
+            let st = access(s);
+            let Some(command) = st.keys().focused_command(k, tx) else {
+                return false;
+            };
+            if !st.command(command) {
+                return false;
+            }
+            commit_after(s, access, &keys_emit, tx);
+            true
+        })
         .w_full()
         .h_full()
         .min_h(0.0)
@@ -290,4 +289,24 @@ fn spectrum_el<S: 'static>(
             .child(at(el().fill(peak).live_rect(&b.peak)));
     }
     e
+}
+
+/// The caption with the volume at its end, the title and byline going under both (Strata's
+/// `DetailsHeader`).
+fn caption_row(key: &str, caption: String, volume: El, look: &Look) -> El {
+    let k = &look.kit;
+    row()
+        .w_full()
+        .gap(look.space.sm)
+        .child(
+            text(caption)
+                .key(format!("{key}-eyebrow"))
+                .font(k.ty.small)
+                .color(k.c.text_muted)
+                .truncate()
+                .min_h(k.ty.small.size)
+                .min_w(0.0)
+                .grow(1.0),
+        )
+        .child(volume)
 }

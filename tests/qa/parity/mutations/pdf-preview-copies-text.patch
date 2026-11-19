@@ -1,0 +1,13 @@
+diff --git a/crates/strata-app/src/preview/pdf.rs b/crates/strata-app/src/preview/pdf.rs
+index d691b1090..334888425 100644
+--- a/crates/strata-app/src/preview/pdf.rs
++++ b/crates/strata-app/src/preview/pdf.rs
+@@ -130,7 +130,7 @@ fn decode(png: &[u8], text: Option<&PdfTextLayer>) -> Result<PageReply, String>
+         width,
+         height,
+         rgba: rgba.into_raw(),
+-        text: text.map(|layer| {
++        text: text.filter(|_| false).map(|layer| {
+             TextLayer::new(
+                 layer.width,
+                 layer.height,

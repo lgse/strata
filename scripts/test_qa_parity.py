@@ -518,6 +518,39 @@ class MutationTests(unittest.TestCase):
         # A pending run is not run, so it cannot catch anything.
         self.assertEqual(qa_parity_mutation.unguarded(found, ledger), ["rename-with-f2"])
 
+    def test_a_scenario_may_hold_several_patches_each_labelled_and_proven_by_its_runs(self):
+        ledger = load()
+        with tempfile.TemporaryDirectory() as directory:
+            for name in ("escape-clears-selection", "escape-clears-selection.second-press",
+                         "rename-with-f2.inline"):
+                (Path(directory) / f"{name}.patch").write_text("", encoding="utf-8")
+            found = qa_parity_mutation.patches(Path(directory))
+        self.assertEqual(found, ["escape-clears-selection", "escape-clears-selection.second-press",
+                                 "rename-with-f2.inline"])
+        self.assertEqual([qa_parity_mutation.scenario_of(patch) for patch in found],
+                         ["escape-clears-selection", "escape-clears-selection", "rename-with-f2"])
+        # A labelled patch is guarded by its scenario's runs, as an unlabelled one is.
+        self.assertEqual(qa_parity_mutation.unguarded(found, ledger), ["rename-with-f2.inline"])
+        self.assertEqual(qa_parity_mutation.malformed(found), [])
+        for bad in ("escape-clears-selection.", "escape-clears-selection.Second", "a.b.c", ".label"):
+            with self.subTest(bad):
+                self.assertEqual(len(qa_parity_mutation.malformed([bad])), 1)
+        for case, names, picked in (
+            ("a scenario is every patch of it", ["escape-clears-selection"],
+             ["escape-clears-selection", "escape-clears-selection.second-press"]),
+            ("a patch's name is that patch alone", ["escape-clears-selection.second-press"],
+             ["escape-clears-selection.second-press"]),
+            ("and its path, once with its scenario",
+             ["tests/qa/parity/mutations/rename-with-f2.inline.patch", "rename-with-f2"],
+             ["rename-with-f2.inline"]),
+            ("a file name is that file alone, the unlabelled one too",
+             ["escape-clears-selection.patch"], ["escape-clears-selection"]),
+        ):
+            with self.subTest(case):
+                self.assertEqual(qa_parity_mutation.chosen(names, found), (picked, []))
+        # A label of no patch selects nothing, though its scenario has some.
+        self.assertEqual(len(qa_parity_mutation.chosen(["rename-with-f2.outline"], found)[1]), 1)
+
     def test_patches_named_run_alone_in_the_order_given_and_a_name_of_no_patch_is_refused(self):
         available = ["escape-clears-selection", "rename-with-f2", "shift-click-range"]
         for case, names, picked in (
@@ -563,6 +596,7 @@ class RepositoryTests(unittest.TestCase):
         ledger = qa_parity.load()
         scenarios = qa_parity_mutation.patches()
         self.assertGreaterEqual(len(scenarios), 2)
+        self.assertEqual(qa_parity_mutation.malformed(scenarios), [])
         self.assertEqual(qa_parity_mutation.unguarded(scenarios, ledger), [])
         for scenario in scenarios:
             patch = qa_parity_mutation.MUTATIONS / f"{scenario}.patch"

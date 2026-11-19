@@ -21,10 +21,16 @@
 //! Without `"rune"` it leaves out GTK's value against any of Rune's, and without `"gtk"` any of
 //! GTK's against one of Rune's. With `"while":{"gtk":{<field>:<value>, …},"rune":{…}}` it
 //! applies only to a step at which each side's observation holds those values: a field is a
-//! key of `app` or `context.toplevels`, and a value is one value or `{"one_of":[<value>, …]}`
-//! (lgse/strata#2595: focus while one side's browser has no focused pane). A rule may then name
-//! neither, and leaves out every difference on its field there. Rules of one field, code and
-//! issue are sorted by what follows the issue.
+//! key of `app`, `context.toplevels` or `context.window_focused`, and a value is one value or
+//! `{"one_of":[<value>, …]}` (lgse/strata#2595: focus while one side's browser has no focused
+//! pane). A rule may then name neither, and leaves out every difference on its field there.
+//! Rules of one field, code and issue are sorted by what follows the issue.
+//!
+//! On a field whose value is a list, a rule may instead name the elements Rune's list adds:
+//! `<field> <code> <issue> {"rune_adds":[<value>, …]}`. It leaves out a difference only when
+//! GTK's list is Rune's with every element equal to one of them taken out, so the rest of the
+//! list, its order included, still counts: a node Rune names and GTK does not, by a ruling
+//! (`app.preview`'s "Volume", lgse/strata#2606).
 
 use std::{fs, path::Path};
 
@@ -59,19 +65,24 @@ pub(crate) struct Entry {
     pub(crate) only: Option<Only>,
 }
 
-/// A difference a rule excuses: GTK's value `gtk` against one of Rune's `rune`, at a step at
-/// which each `when` holds.
+/// A difference a rule excuses.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct Only {
-    /// GTK's value; any, when the rule names none.
-    pub(crate) gtk: Option<Value>,
-    /// Rune's values; any, when the rule names none.
-    pub(crate) rune: Option<Vec<Value>>,
-    /// What the observations must hold for the rule to apply.
-    pub(crate) when: Vec<Condition>,
+pub(crate) enum Only {
+    /// GTK's value `gtk` against one of Rune's `rune`, at a step at which each `when` holds.
+    Values {
+        /// GTK's value; any, when the rule names none.
+        gtk: Option<Value>,
+        /// Rune's values; any, when the rule names none.
+        rune: Option<Vec<Value>>,
+        /// What the observations must hold for the rule to apply.
+        when: Vec<Condition>,
+    },
+    /// A list of Rune's that is GTK's with these elements added, wherever they stand.
+    RuneAdds(Vec<Value>),
 }
 
-/// One side's field, `app.<key>` or `context.toplevels`, and the values it may hold.
+/// One side's field, `app.<key>`, `context.toplevels` or `context.window_focused`, and the
+/// values it may hold.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct Condition {
     pub(crate) rune: bool,
@@ -88,31 +99,48 @@ pub(crate) struct Sides<'a> {
     pub(crate) rune: Option<&'a Value>,
 }
 
+impl Condition {
+    /// Whether its side's observation holds one of its values. It needs the observations, so
+    /// it holds nowhere the comparison does not know which stream is whose.
+    fn holds(&self, sides: Sides<'_>) -> bool {
+        let observation = if self.rune { sides.rune } else { sides.gtk };
+        observation
+            .and_then(|observation| field_of(observation, &self.field))
+            .is_some_and(|value| self.one_of.contains(value))
+    }
+}
+
 impl Only {
-    /// Whether `difference` is GTK's value against one of Rune's, at a step at which every
-    /// condition holds. A condition needs the observations, so it excuses nothing where the
-    /// comparison does not know which stream is whose.
+    /// Whether GTK's value `gtk` against Rune's `rune` is what the rule excuses.
+    fn is(&self, gtk: &Value, rune: &Value) -> bool {
+        match self {
+            Self::Values {
+                gtk: ruled,
+                rune: values,
+                ..
+            } => {
+                ruled.as_ref().is_none_or(|value| gtk == value)
+                    && values.as_ref().is_none_or(|values| values.contains(rune))
+            }
+            Self::RuneAdds(added) => {
+                let (Value::Array(gtk), Value::Array(rune)) = (gtk, rune) else {
+                    return false;
+                };
+                let kept: Vec<&Value> = rune.iter().filter(|item| !added.contains(item)).collect();
+                kept.len() < rune.len() && kept.iter().copied().eq(gtk.iter())
+            }
+        }
+    }
+
+    /// Whether `difference` is what the rule excuses, at a step at which every condition
+    /// holds. `sides` says which stream is GTK's, when the comparison knows.
     fn excuses(&self, difference: &Difference, sides: Sides<'_>) -> bool {
-        let holds = |condition: &Condition| {
-            let observation = if condition.rune {
-                sides.rune
-            } else {
-                sides.gtk
-            };
-            observation
-                .and_then(|observation| field_of(observation, &condition.field))
-                .is_some_and(|value| condition.one_of.contains(value))
-        };
-        if !self.when.iter().all(holds) {
+        if let Self::Values { when, .. } = self
+            && !when.iter().all(|condition| condition.holds(sides))
+        {
             return false;
         }
-        let is = |gtk: &Value, rune: &Value| {
-            self.gtk.as_ref().is_none_or(|value| gtk == value)
-                && self
-                    .rune
-                    .as_ref()
-                    .is_none_or(|values| values.contains(rune))
-        };
+        let is = |gtk: &Value, rune: &Value| self.is(gtk, rune);
         let (left, right) = (&difference.left, &difference.right);
         match sides.gtk_left {
             Some(true) => is(left, right),
@@ -167,14 +195,26 @@ impl Ignored {
     }
 
     /// Whether `difference` is left out: its field is covered, or a rule names its values.
-    /// `sides` says which stream is GTK's, and its observation, when the comparison knows.
+    /// The elements the field's `rune_adds` rules name are taken out together, so a list that
+    /// adds what two rulings allow is GTK's with both taken out. `sides` says which stream is
+    /// GTK's, and its observation, when the comparison knows.
     pub(crate) fn excuses(&self, difference: &Difference, sides: Sides<'_>) -> bool {
+        let on_field = |entry: &&Entry| project::covers(&entry.field, &difference.field);
+        let added: Vec<Value> = self
+            .rules
+            .iter()
+            .filter(on_field)
+            .filter_map(|entry| match &entry.only {
+                Some(Only::RuneAdds(added)) => Some(added.iter().cloned()),
+                _ => None,
+            })
+            .flatten()
+            .collect();
+        let together = (!added.is_empty()).then_some(Only::RuneAdds(added));
         self.covers(&difference.field)
-            || self.rules.iter().any(|entry| {
-                entry.only.as_ref().is_some_and(|only| {
-                    project::covers(&entry.field, &difference.field)
-                        && only.excuses(difference, sides)
-                })
+            || together.is_some_and(|only| only.excuses(difference, sides))
+            || self.rules.iter().filter(on_field).any(|entry| {
+                matches!(&entry.only, Some(only @ Only::Values { .. }) if only.excuses(difference, sides))
             })
     }
 }
@@ -286,32 +326,48 @@ fn entry<'a>(line: &'a str, codes: &[&str]) -> Result<(Entry, &'a str), String> 
 }
 
 /// The values after an entry's issue: `{"gtk":<value>,"rune":[<value>, …],"while":{"gtk":
-/// {<field>:<value>, …},"rune":{…}}}`, with one of the three at least.
+/// {<field>:<value>, …},"rune":{…}}}`, with one of the three at least, or
+/// `{"rune_adds":[<value>, …]}`.
 fn only(text: &str) -> Result<Only, String> {
     let wrong = || {
         format!(
             "the values an entry names are {{\"gtk\":<value>,\"rune\":[<value>, …],\"while\":\
              {{\"gtk\":{{<field>:<value>, …}},\"rune\":{{…}}}}}}, with one of the three at least, a \
-             field app.<key> or context.toplevels and a value one value or \
-             {{\"one_of\":[<value>, …]}}, not {text:?}"
+             field app.<key>, context.toplevels or context.window_focused and a value one value \
+             or {{\"one_of\":[<value>, …]}}; or {{\"rune_adds\":[<value>, …]}}, not {text:?}"
         )
     };
     let value: Value = serde_json::from_str(text).map_err(|_| wrong())?;
     let object = value.as_object().ok_or_else(wrong)?;
+    rune_adds(object)
+        .or_else(|| values(object))
+        .ok_or_else(wrong)
+}
+
+/// `{"rune_adds":[<value>, …]}`: one key, and at least one value.
+fn rune_adds(object: &serde_json::Map<String, Value>) -> Option<Only> {
+    let added = object.get("rune_adds")?.as_array()?;
+    let alone = object.len() == 1;
+    (alone && !added.is_empty()).then(|| Only::RuneAdds(added.clone()))
+}
+
+/// `{"gtk":<value>,"rune":[<value>, …],"while":{…}}`: one of the three at least and no other
+/// key, and at least one of Rune's when it names them.
+fn values(object: &serde_json::Map<String, Value>) -> Option<Only> {
     let known = ["gtk", "rune", "while"];
     if object.is_empty() || object.keys().any(|key| !known.contains(&key.as_str())) {
-        return Err(wrong());
+        return None;
     }
     let rune = match object.get("rune") {
         None => None,
         Some(Value::Array(rune)) if !rune.is_empty() => Some(rune.clone()),
-        Some(_) => return Err(wrong()),
+        Some(_) => return None,
     };
     let when = match object.get("while") {
         None => Vec::new(),
-        Some(condition) => conditions(condition).ok_or_else(wrong)?,
+        Some(condition) => conditions(condition)?,
     };
-    Ok(Only {
+    Some(Only::Values {
         gtk: object.get("gtk").cloned(),
         rune,
         when,

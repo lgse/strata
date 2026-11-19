@@ -4,12 +4,12 @@
 //! the waveform timeline with the storyboard bubble, and the transport, in C14b's shared
 //! player layout.
 
-use rune::{Cx, El, Pixels, SurfaceFit, Tx, col, el, row, text};
+use rune::{Cx, El, Pixels, SurfaceFit, Tx, col, el, text};
 use strata_kit::look::Look;
 use strata_kit::slots::media as slot;
 
 use super::badges::badges;
-use super::data::Details;
+use super::data::{Details, MediaKind};
 use super::state::MediaState;
 use super::time;
 use super::{Emit, commit_after};
@@ -46,41 +46,37 @@ pub(crate) fn video<S: 'static>(
     let content = frame(st, access, viewport, emit.clone(), key, pixels, look, cx);
     let aspect = st.aspect().unwrap_or(DEFAULT_ASPECT);
     if plain {
+        // Strata's plain media shows no title, and a GIF's bar is its play toggle alone.
+        let controls = if st.clip().kind == MediaKind::Animation {
+            super::transport::play(st, access, emit, key, look)
+        } else {
+            super::transport::plain_bar(st, access, emit, key, look)
+        };
         return layout::section(
             key.to_owned(),
             Areas {
                 content,
                 aspect,
-                details: layout::details_header(key, None, &st.clip().name, look),
+                details: col(),
                 badges: None,
                 timeline: None,
-                controls: super::transport::plain_bar(st, access, emit, key, look),
+                controls,
             },
             look,
         );
     }
-    let details = row()
+    // The volume sits at the eyebrow's end, the title under both (Strata's `DetailsHeader`).
+    let volume = super::transport::volume(st, access, emit.clone(), key, look);
+    let details = col()
         .w_full()
-        .gap(look.space.md)
-        .child(
-            col()
-                .grow(1.0)
-                .min_w(0.0)
-                .child(layout::details_header(
-                    key,
-                    st.clip().position.map(st.labels().position),
-                    time::stem(&st.clip().name),
-                    look,
-                ))
-                .child(super::error(st, key, look)),
-        )
-        .child(super::transport::volume(
-            st,
-            access,
-            emit.clone(),
+        .min_w(0.0)
+        .child(layout::details_header_beside(
             key,
+            (st.clip().position.map(st.labels().position), Some(volume)),
+            time::stem(&st.clip().name),
             look,
-        ));
+        ))
+        .child(super::error(st, key, look));
     layout::section(
         key.to_owned(),
         Areas {
@@ -125,6 +121,39 @@ fn badge_row(st: &MediaState, key: &str, look: &Look) -> El {
     layout::badge_row(key, items, look)
 }
 
+/// The frame's keys. A video's frame takes the player's keys. Strata's plain media overlay
+/// takes none; GTK's directional focus moves Left from it to the play toggle, the one other
+/// control, and Left leaves that.
+fn frame_keys<S: 'static>(
+    access: fn(&mut S) -> &mut MediaState,
+    emit: Emit<S>,
+    play: String,
+) -> impl Fn(&mut S, &rune::KeyEvent, &mut Tx) -> bool + 'static {
+    move |s: &mut S, k: &rune::KeyEvent, tx: &mut Tx| {
+        let st = access(s);
+        if st.clip().kind != MediaKind::Video {
+            return plain_left(k, &play, tx);
+        }
+        let Some(command) = st.keys().focused_command(k, tx) else {
+            return false;
+        };
+        if !st.command(command) {
+            return false;
+        }
+        commit_after(s, access, &emit, tx);
+        true
+    }
+}
+
+/// A plain Left on plain media's frame, which moves to its play toggle, `play`.
+fn plain_left(k: &rune::KeyEvent, play: &str, tx: &mut Tx) -> bool {
+    let left = k.key == rune::Key::Left && k.mods == rune::Mods::default();
+    if left {
+        tx.focus(play.to_owned(), true);
+    }
+    left
+}
+
 /// The frame: the video surface (C14a, fixed), the stand-in before the first frame, the
 /// storyboard cell while a seek runs, and the bubble over the timeline's pointer. A press
 /// toggles playback; it holds the keys as the timeline does.
@@ -150,11 +179,16 @@ fn frame<S: 'static>(
         surface = surface.pixels(px);
     }
     // The frame names itself; the surface inside is the picture it shows. A press plays or
-    // pauses, so Rune makes it a button (deviation D9: Strata's is a focusable group).
+    // pauses, so Rune makes it a button (deviation D9: Strata's is a focusable group). Plain
+    // media's frame goes unnamed, as Strata's overlay does.
     let surface = surface.build(look, cx).a11y_hidden();
+    let name = match st.clip().kind {
+        MediaKind::Video => st.labels().video_frame.clone(),
+        MediaKind::Audio | MediaKind::Plain | MediaKind::Animation => String::new(),
+    };
     let mut frame = el()
         .key(format!("{key}-frame"))
-        .label(st.labels().video_frame.clone())
+        .label(name)
         .w_full()
         .h_full()
         .radius(radius)
@@ -175,17 +209,7 @@ fn frame<S: 'static>(
                 commit_after(s, access, &emit, tx);
             }
         })
-        .on_key(move |s: &mut S, k: &rune::KeyEvent, tx: &mut Tx| {
-            let st = access(s);
-            let Some(command) = st.keys().focused_command(k, tx) else {
-                return false;
-            };
-            if !st.command(command) {
-                return false;
-            }
-            commit_after(s, access, &emit, tx);
-            true
-        })
+        .on_key(frame_keys(access, emit, format!("{key}-play")))
         .child(surface);
     if st.stand_in_shown() {
         let mut stand_in = el()

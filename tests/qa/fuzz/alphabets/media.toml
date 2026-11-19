@@ -1,0 +1,145 @@
+# The media, model and route viewers' alphabet (A16): what a user does to the preview drawer's
+# PDF, 3D model, GPS route, video, audio and GIF players in Columns, type to search off:
+# - Opening each by `Space` or a click (`page.pdf` -> C12's PDF view, `sample.stl` -> C14b's
+#   model view, `route.gpx` -> its route view, `alpha.mp4` (1.5 s) and `beta.mp4` (2.5 s) ->
+#   C13's video player, `tone.wav` (2 s) -> its audio player, `spin.gif` -> its animation),
+#   moving between them with the drawer open, closing by `Escape` or `Close preview (Space)`,
+#   and entering the drawer (`Right`) and leaving it (`Left`);
+# - A PDF's own Ctrl+wheel zoom over its page, and Ctrl+0 after a click on the page;
+# - The window's Ctrl+wheel over the listing and over an open video, PDF, route or audio
+#   player, and Ctrl+0 there, which step and reset the interface's text size
+#   (`settings.text_size`);
+# - The media keys: the seeks (`Ctrl+Alt+Left`, `Ctrl+Alt+Right`) on a video, the audio or a
+#   route, a play from a video's or the audio's end (`Ctrl+Alt+Right`, then `Ctrl+Alt+Space`),
+#   the GIF's play toggle (`Ctrl+Alt+Space`), and Previous and Next (`Ctrl+Alt+<`,
+#   `Ctrl+Alt+>`) between the two videos, with the keyboard in the listing or in the player.
+#
+# What the normalisation map's `rune_adds` rules leave out of `app.preview`, each rule naming
+# its elements alone, so every other name of the drawer, in its order, still counts:
+# - The volume slider's name, "Volume" on Rune and unnamed on GTK, a ruled `deviation`
+#   (lgse/strata#2606, owner.md, 2026-11-18).
+# - The PDF view's "PDF document", "Page 1 of 1" and the page's text, where GTK presents one
+#   image, a ruled `deviation` (lgse/strata#2560's PDF facet, owner.md, 2026-11-19).
+# - The audio player's "Album art" and "Audio spectrum", which GTK names too but with
+#   update_property rather than accessibility::set_label, so GTK's QA snapshot reads them
+#   unnamed: GTK's harness at fault, an `oracle` finding (lgse/strata#2612).
+# A GIF's bar is its play toggle alone on both since C13's `MediaKind::Animation`
+# (lgse/strata#2613, fixed).
+#
+# Left out, with why:
+# - Text and documents: `app.preview` reads every presented descendant's accessible name and
+#   text, and the text and document bodies differ (lgse/strata#2558). The fixture holds no text
+#   file, and no file named as video that holds text.
+# - A player playing at a step boundary: its time moves on the clock, so two replays would
+#   read it at different seconds (the route's marker too). So a play starts from a clip's end
+#   and ends at once, and the route only seeks; the GIF loops, and no observation reads its
+#   frame.
+# - A clip shorter than a second: GTK writes its total as `--:--` (lgse/strata#2610, `oracle`).
+# - Left while a video shows: GTK's player swallows it after Right into it, where Rune's seeks
+#   (lgse/strata#2611, `oracle`).
+# - The volume keys and the volume slider's steps.
+#
+# Versions 1 to 6 were this pull request's drafts: version 1 met the players' header order,
+# fixed in C13, the "Volume" name, and #2612 and #2613; version 2 met #2560's PDF facet, the
+# keyboard lost on a step from the player (fixed), and the time read while playing; version 3
+# met #2610 and the route's marker moving between a play and its pause; version 4 named the
+# video frame's role, which C13's ruled D9 makes a button; version 5 met #2611; version 6 left
+# out PDFs, audio and GIFs until the owner's rulings of 2026-11-19. Version 7 met the audio
+# player's and the GIF's keys (fixed in C13 to match GTK's).
+area = "media"
+version = 7
+about = "Columns with a PDF, an STL model, a GPX route, two videos, a WAV and a GIF, type to search off: Space and click previews, moving with the drawer open, Escape and Close, Right/Left focus, the PDF's Ctrl+wheel zoom and Ctrl+0, window Ctrl+wheel and Ctrl+0 text size, seeks, a play from a clip's end, the GIF's play toggle, Previous/Next"
+header = '{"modes":["columns"],"prefs":{"type_to_search":false,"single_click_previews":false},"tree":{"sample.stl":"solid sample\nfacet normal 0 0 1\nouter loop\nvertex 0 0 0\nvertex 1 0 0\nvertex 0 1 0\nendloop\nendfacet\nendsolid\n","route.gpx":"<gpx><trk><trkseg><trkpt lat=\"51\" lon=\"0\"><ele>10</ele><time>2026-10-24T10:00:00Z</time></trkpt><trkpt lat=\"51.002\" lon=\"0.003\"><ele>30</ele></trkpt><trkpt lat=\"51.004\" lon=\"0.001\"><ele>20</ele><time>2026-10-24T10:30:00Z</time></trkpt></trkseg></trk></gpx>"},"setup":[{"fs":{"path":"page.pdf","from_repository":"tests/fixtures/documents/text.pdf"}},{"fs":{"path":"alpha.mp4","ffmpeg":["-f","lavfi","-i","testsrc2=size=320x180:rate=24:duration=1.5","-c:v","libx264","-threads","1","-pix_fmt","yuv420p","-an"]}},{"fs":{"path":"beta.mp4","ffmpeg":["-f","lavfi","-i","testsrc2=size=320x180:rate=24:duration=2.5","-c:v","libx264","-threads","1","-pix_fmt","yuv420p","-an"]}},{"fs":{"path":"tone.wav","ffmpeg":["-f","lavfi","-i","sine=frequency=440:sample_rate=44100:duration=2","-c:a","pcm_s16le"]}},{"fs":{"path":"spin.gif","ffmpeg":["-f","lavfi","-i","testsrc=size=32x32:rate=5:duration=1"]}}]}'
+
+[[action]]
+name = "down"
+weight = 6
+steps = ['{"key":"Down","when":{"all":[{"focused_pane":true},{"not":{"matches":[]}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}']
+
+[[action]]
+name = "up"
+weight = 4
+steps = ['{"key":"Up","when":{"all":[{"focused_pane":true},{"focused_in_matches":true},{"not":{"focused":"alpha.mp4"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}']
+
+[[action]]
+name = "toggle-preview"
+weight = 7
+steps = ['{"key":"space","when":{"all":[{"focused_pane":true},{"focused_in_matches":true},{"not":{"selected":[]}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}']
+
+[[action]]
+name = "click-file"
+weight = 6
+steps = ['{"click":{"entry":"<entry>"},"when":{"all":[{"present":{"entry":"<entry>"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}']
+choose.entry = ["alpha.mp4", "beta.mp4", "page.pdf", "route.gpx", "sample.stl", "spin.gif", "tone.wav"]
+
+[[action]]
+name = "escape"
+weight = 4
+steps = ['{"key":"Escape","when":{"all":[{"any":[{"preview":true},{"focused_pane":true}]},{"not":{"dialog":true}},{"menu_items":null}]}}']
+
+[[action]]
+name = "close-preview-button"
+weight = 2
+steps = ['{"click":{"role":"button","name":"Close preview (Space)","within":{"preview":true}},"when":{"all":[{"preview":true},{"present":{"role":"button","name":"Close preview (Space)","within":{"preview":true}}},{"not":{"dialog":true}},{"menu_items":null}]}}']
+
+[[action]]
+name = "enter-preview"
+weight = 4
+steps = ['{"key":"Right","when":{"all":[{"focused_pane":true},{"preview":true},{"focused_in_matches":true},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}']
+
+[[action]]
+name = "leave-preview"
+weight = 4
+steps = ['{"key":"Left","when":{"all":[{"preview":true},{"not":{"preview":"Video frame"}},{"not":{"focused_pane":true}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}']
+
+[[action]]
+name = "pdf-wheel-zoom"
+weight = 3
+steps = ['{"wheel":{"role":"image","name":"PDF page text","within":{"preview":true}},"clicks":<clicks>,"direction":"<direction>","mods":["ctrl"],"when":{"all":[{"present":{"role":"image","name":"PDF page text","within":{"preview":true}}},{"not":{"dialog":true}},{"menu_items":null}]}}']
+choose.clicks = ["1", "2"]
+choose.direction = ["up", "down"]
+
+[[action]]
+name = "pdf-zoom-reset"
+weight = 2
+steps = [
+  '{"click":{"role":"image","name":"PDF page text","within":{"preview":true}},"when":{"all":[{"present":{"role":"image","name":"PDF page text","within":{"preview":true}}},{"not":{"dialog":true}},{"menu_items":null}]}}',
+  '{"key":"ctrl+0","when":{"all":[{"present":{"role":"image","name":"PDF page text","within":{"preview":true}}},{"not":{"focused_pane":true}},{"not":{"dialog":true}},{"menu_items":null}]}}',
+]
+
+[[action]]
+name = "window-wheel-text-size"
+weight = 3
+steps = ['{"wheel":{"entry":"<entry>"},"clicks":1,"direction":"<direction>","mods":["ctrl"],"when":{"all":[{"present":{"entry":"<entry>"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}']
+choose.direction = ["up", "down"]
+choose.entry = ["alpha.mp4", "page.pdf", "route.gpx", "tone.wav"]
+
+[[action]]
+name = "text-size-reset"
+weight = 2
+steps = ['{"key":"ctrl+0","when":{"all":[{"focused_pane":true},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}']
+
+[[action]]
+name = "play-at-end"
+weight = 4
+steps = [
+  '{"key":"ctrl+alt+Right","when":{"all":[{"any":[{"preview":"Video frame"},{"preview":"tone.wav"}]},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}',
+  '{"key":"ctrl+alt+space","when":{"all":[{"any":[{"preview":"Video frame"},{"preview":"tone.wav"}]},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}',
+]
+
+[[action]]
+name = "seek"
+weight = 3
+steps = ['{"key":"ctrl+alt+<arrow>","when":{"all":[{"preview":true},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}']
+choose.arrow = ["Left", "Right"]
+
+[[action]]
+name = "step-media"
+weight = 3
+steps = ['{"key":"ctrl+alt+shift+<sign>","when":{"all":[{"preview":true},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}']
+choose.sign = ["<", ">"]
+
+[[action]]
+name = "animation-play-toggle"
+weight = 2
+steps = ['{"key":"ctrl+alt+space","when":{"all":[{"preview":"spin.gif"},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}']

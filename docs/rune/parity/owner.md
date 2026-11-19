@@ -872,6 +872,62 @@ Rulings of the owner on the parity work, oldest first.
   reads it cites this ruling. Built in [A16](packages/A16.md)'s Slice 3
   ([#2599](https://github.com/lgse/strata/pull/2599)). Source: the owner, 2026-11-18, through
   the coordinator.
+- **2026-11-19: the PDF view keeps the names GTK lacks**, a ruled `deviation` (finding
+  [#2560](https://github.com/lgse/strata/issues/2560), its PDF facet; A16's item "Does Rune keep
+  the PDF's names GTK lacks?"). In the preview drawer GTK presents a PDF's page as one `image`,
+  "PDF page text"; Rune's C12 `PdfView` also names "PDF document", each page ("Page 1 of 1")
+  and the page's text layer, as for [#2557](https://github.com/lgse/strata/issues/2557),
+  [#2558](https://github.com/lgse/strata/issues/2558) and
+  [#2606](https://github.com/lgse/strata/issues/2606). The fuzz map's `rune_adds` rule names
+  exactly those three of the fixture's PDF, and the `media` alphabet opens PDFs again, with
+  their zoom, its reset and the window's wheel over them. Built in [A16](packages/A16.md)'s
+  Slice 4 ([#2614](https://github.com/lgse/strata/pull/2614)). Source: the owner, 2026-11-19,
+  through the coordinator.
+- **2026-11-19: a scenario may hold several Rune mutation patches** (A16's item "May a scenario
+  hold two Rune mutation patches?"). A patch is `<scenario>.patch` or
+  `<scenario>.<label>.patch`, the label lowercase words joined by hyphens; each is proven on
+  its own by the scenario's runs, and `qa-parity.sh mutations <scenario>` runs every patch of
+  it. `pdf-zoom-keeps-text-size` holds [A11](packages/A11.md)'s patch and A16's
+  `window-wheel` one. Built in [A16](packages/A16.md)'s Slice 4
+  ([#2614](https://github.com/lgse/strata/pull/2614)). Source: the owner, 2026-11-19, through
+  the coordinator.
+- **2026-11-19: A21 closes with its listed coverage standing in for its fuzz alphabet**
+  (done-when item 6). The fuzz driver replays with no session bus, has no step that moves the
+  keyboard to another window, and observes the run's window only, so an alphabet of A21's could
+  open windows and never act in them. What stands in: A21's three `required` runs (`launch` and
+  `dbus_send`), [A18](packages/A18.md)'s `preferences-sync-windows-restart` and
+  [A5](packages/A5.md)'s window-switch pair, the ten `window::` tests in a private sway session,
+  and the stores' unit tests. A fuzz driver that can drive windows (a bus and a window-switch
+  step) is later F or H work, noted for [F5](packages/F5.md) and [E1](packages/E1.md). Raised by
+  [A21](packages/A21.md)'s Slice 3 ([#2620](https://github.com/lgse/strata/pull/2620)). Source:
+  the owner, 2026-11-19, through the coordinator.
+- **2026-11-19: a fully covered X11 window reports `Hidden` on Rune**, a ruled `deviation`
+  (finding [#2621](https://github.com/lgse/strata/issues/2621)). Rune's `App::on_visibility`
+  reports covering on X11 and macOS, where GTK's `presence_of` reads only an unmapped window and
+  the `SUSPENDED` and `MINIMIZED` states, so the covered window's browsers recheck their folders
+  less often until it is uncovered. Rune's report stands. Raised by [A21](packages/A21.md)
+  (`crates/strata-app/src/shell/presence.rs`). Source: the owner, 2026-11-19, through the
+  coordinator.
+- **2026-11-19: H5's work goes to an integration branch, `h5-integration`**: "build H5 in
+  another integration branch for now". The deny-advisory fix H5's pull requests need goes
+  there too: "Build in same integration branch as H5"
+  ([#2618](https://github.com/lgse/strata/pull/2618)). The branch is cut from `main` at
+  `9ea79324a`, and [H5](packages/H5.md)'s [#2609](https://github.com/lgse/strata/pull/2609) was
+  retargeted there. The coordinator's context, not part of the ruling: it had reported `main`
+  as blocked for merging, and its stated plan is that the owner merges the branch into `main`
+  later, from where it reaches `strata-next` by merge. Source: the owner, 2026-11-19, through
+  the coordinator.
+- **2026-11-19: the test image is rebuilt for devices and mounts**: "Yes, rebuild the image".
+  Built in [H5](packages/H5.md)'s round 2 ([#2619](https://github.com/lgse/strata/pull/2619)),
+  in `h5-integration`, as `gvfs` in the pinned image, for GIO's remote volume monitor client,
+  and a fake volume monitor the QA runner starts on a run's private bus. Source: the owner,
+  2026-11-19, through the coordinator.
+- **2026-11-19: the `deny.toml` ignores of [#2618](https://github.com/lgse/strata/pull/2618) are
+  accepted**: "Accept the ignores". They are the five #2618 adds: `zip` 8.6.0's
+  RUSTSEC-2026-0545, -0546, -0547 and -0548, which come only through `docx-rs`, and `chrono`'s
+  RUSTSEC-2026-0543 (unmaintained), which comes only through `fitparser`. When to remove the
+  `zip` entries is #2618's own `deny.toml` comment ("once docx-rs releases on zip 9"), not part
+  of the ruling. Source: the owner, 2026-11-19, through the coordinator.
 
 ## Housekeeping
 

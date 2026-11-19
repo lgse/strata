@@ -5,8 +5,10 @@
 //! Properties of the entry the reveal leaves under the cursor show once the folder has listed,
 //! as GTK's `pending_properties` waits for its load (`reveal_loaded_names` in
 //! `src/ui/browser/events/listing.rs`), and forget it on a reset to another location, as GTK's
-//! `on_reset` does. A listing that fails keeps it, as GTK's `on_load_failed` does, so the
-//! Properties show once a reload in place lists the folder. The window leaves `tabs.toml` alone.
+//! `on_reset` does. A listing that fails keeps it, as GTK's `on_load_failed` does. A reload in
+//! place then lists the folder with nothing focused, since the failed load took the reveal's
+//! selection, and uses the request up: no Properties show, on GTK either. The window leaves
+//! `tabs.toml` alone.
 
 use std::{cell::Cell, rc::Rc};
 
