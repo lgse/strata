@@ -19,13 +19,16 @@ use formats::ClipboardFiles;
 use gtk::prelude::*;
 use gtk::{glib, graphene};
 use std::cell::{Cell, RefCell};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::os::unix::ffi::OsStrExt;
 use std::path::Path;
 use std::rc::{Rc, Weak};
 use std::time::Duration;
 
 pub(crate) mod formats;
+mod matching;
+
+use matching::{LocationSet, same_locations};
 
 const DRAG_PROXY_PADDING: f64 = 3.0;
 const DRAG_PROXY_STACK_OFFSET: f64 = 5.0;
@@ -1151,7 +1154,7 @@ pub(super) fn clipboard_may_paste() -> bool {
     })
 }
 
-fn retain_shared_untransferred(transferred: &[Location]) {
+fn retain_shared_untransferred(transferred: &LocationSet<'_>) {
     SHARED_CUT_LOCATIONS.with(|cut| retain_untransferred(&mut cut.borrow_mut(), transferred));
     refresh_cut_views();
 }
@@ -1199,35 +1202,8 @@ pub(super) fn locations_equal(left: &Location, right: &Location) -> bool {
     left == right || gio_file_for_location(left).equal(&gio_file_for_location(right))
 }
 
-fn same_locations(left: &[Location], right: &[Location]) -> bool {
-    if left.is_empty() || left.len() != right.len() {
-        return false;
-    }
-    let left_set: HashSet<_> = left.iter().collect();
-    let right_set: HashSet<_> = right.iter().collect();
-    if left_set.len() == right_set.len() && left_set == right_set {
-        return true;
-    }
-    let mut used = vec![false; right.len()];
-    left.iter().all(|location| {
-        let Some((index, _)) = right
-            .iter()
-            .enumerate()
-            .find(|(index, candidate)| !used[*index] && locations_equal(location, candidate))
-        else {
-            return false;
-        };
-        used[index] = true;
-        true
-    })
-}
-
-fn retain_untransferred(cut: &mut Vec<Location>, transferred: &[Location]) {
-    cut.retain(|location| {
-        !transferred
-            .iter()
-            .any(|moved| locations_equal(location, moved))
-    });
+fn retain_untransferred(cut: &mut Vec<Location>, transferred: &LocationSet<'_>) {
+    cut.retain(|location| !transferred.contains(location));
 }
 
 impl ViewState {
@@ -1263,13 +1239,14 @@ impl ViewState {
     }
 
     pub(super) fn complete_cut_transfer(&self, transferred: &[Location]) {
+        let transferred = LocationSet::new(transferred);
         let consumed = shared_cut_locations()
             .iter()
-            .any(|cut| transferred.iter().any(|moved| locations_equal(cut, moved)));
+            .any(|cut| transferred.contains(cut));
         if !consumed {
             return;
         }
-        retain_shared_untransferred(transferred);
+        retain_shared_untransferred(&transferred);
         let remaining = shared_cut_locations();
         let Some(display) = gtk::gdk::Display::default() else {
             return;
