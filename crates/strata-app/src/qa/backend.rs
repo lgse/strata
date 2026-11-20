@@ -80,7 +80,8 @@ impl Rune {
     /// the windowed host's quit does: the session ends once stdin closes, and the next launch
     /// reads what this one saved, `tabs.toml` and `folder-views.toml` included.
     pub(super) fn flush_at_exit(&self) {
-        self.host.update(|app, _| crate::folder_views::flush_at_exit(app));
+        self.host
+            .update(|app, _| crate::folder_views::flush_at_exit(app));
         strata_core::storage::writer::flush_at_exit();
     }
 }
