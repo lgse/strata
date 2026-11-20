@@ -3163,3 +3163,17 @@ sequence only together with the alphabet's version, so the version is part of th
   `session-drops v2` leaves image drops out.
 - **State:** open: the toolkit exception is the owner's to rule if a fuzz alphabet is to drop
   images; nothing waits on it meanwhile.
+
+### #2651: `archive-conflict-keyboard-choices/columns-replace` missed its compression undo once on GTK
+
+- **Code:** none of the plan's: a flaky required GTK run, labelled `testing`.
+  [Issue](https://github.com/lgse/strata/issues/2651), filed on 2026-11-19 as the finding's
+  reference and closed at once: its state is kept here.
+- **Seen:** in [F5](packages/F5.md)'s slice 3 gate on `strata-next` `befef6714`,
+  `./scripts/qa-parity.sh A13`: GTK 42 of 43 (Rune 43 of 43). The run failed at line 38, the
+  compression undo's restore of the replaced `archive.zip` (`"text":"original archive"`): it
+  timed out with the file not yet valid text, so the archive was still the new one. Alone it
+  then passed three times in a row. F5's change touches only the fuzz driver.
+- **Concerns:** `archive_conflicts/archive-conflict-keyboard-choices/columns-replace`,
+  [A13](packages/A13.md)'s, `required`.
+- **State:** open, unowned. Not traced.
