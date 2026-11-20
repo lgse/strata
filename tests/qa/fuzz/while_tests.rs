@@ -181,3 +181,30 @@ pub(crate) fn a_rule_s_while_holds_it_to_each_side_s_observation() {
     let error = rules::parse(&reversed, &exceptions()).expect_err("out of order");
     assert!(error.contains("then by what follows the issue"), "{error}");
 }
+
+/// The tree's map leaves `app.directory` compared in a single-pane view while GTK's window has
+/// no keyboard, as after a `session-drops` drop takes GTK's X focus (the owner's ruling of
+/// 2026-11-20): only in Columns, where the directory is the focused pane's, is GTK's no focus
+/// excused there (lgse/strata#2595).
+pub(crate) fn the_map_keeps_the_directory_compared_outside_columns_while_gtk_has_no_keyboard() {
+    let map = Ignored::load(false).unwrap_or_else(|error| panic!("{error}"));
+    let at = |mode: &str, directory: &str| json!({ "view_mode": mode, "focused_pane": null, "focused": null, "directory": directory });
+    for (mode, differs) in [
+        ("List", Some("app.directory")),
+        ("Icons", Some("app.directory")),
+        ("Columns", None),
+    ] {
+        let (left, right) =
+            app_streams((at(mode, "documents"), at(mode, "$root"), json!([]), false));
+        let found = compare(&left, &right, &map).map(|found| found.field().to_owned());
+        assert_eq!(found.as_deref(), differs, "{mode}");
+    }
+    // And where GTK's window has the keyboard, a directory difference counts in every view.
+    let (left, right) = app_streams((
+        at("Columns", "documents"),
+        at("Columns", "$root"),
+        json!([]),
+        true,
+    ));
+    assert!(compare(&left, &right, &map).is_some());
+}

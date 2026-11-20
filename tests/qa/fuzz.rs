@@ -47,6 +47,9 @@ mod observe_tests;
 #[path = "fuzz/options.rs"]
 pub(crate) mod options;
 
+#[path = "fuzz/peers.rs"]
+pub(crate) mod peers;
+
 #[path = "fuzz/perturb.rs"]
 pub(crate) mod perturb;
 

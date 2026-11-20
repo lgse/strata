@@ -1672,12 +1672,15 @@ The rules an alphabet keeps, the first three checked when it loads:
   `remove`, …), or a `wait` or `settle` where the area knows what the
   application shows when it is done. Steps that only ask (`expect`, `holds`,
   `query`, `note`, `during`) have no place: every step is observed anyway.
-  Runner steps other than `fs` are not replayed yet.
+  Of the runner's own steps, `fs` and a drag source in another process
+  (`foreign`, `foreign_label`, `foreign_stop`; "Drops from another process"
+  below) are replayed, and no other yet.
 - **A step stands alone.** It takes no `if`, `unless`, `as`, `modes` or
   `variants`, since a shrunk sequence keeps a step without its neighbours.
-  `when` is its one condition.
+  `when` is its one condition. The one `as` allowed names the source a
+  `foreign` step starts, for a `drag` from `kept` in the same action.
 - **One run.** The header gives one mode and no variants, and none of
-  `session_bus`, `portal`, `input_method`, `fixture_root`, `layout`,
+  `portal`, `input_method`, `fixture_root`, `layout`,
   `teardown`, `images`, `mutation`, `known_bug`, `skip`, `parity` or
   `targets`.
 - **Targets by role and name.** Never a screen point or an offset tied to one
@@ -2152,8 +2155,7 @@ hold for its replays:
   modifier from before the press and sends no key mid-drag; a scenario's `drag`
   step is whole, press to release, so none falls inside one.
 - **One window.** The session host reads the run's window only. A launch, a
-  second window, a window switch, the portal and drags from another process
-  are not reached yet:
+  second window, a window switch and the portal are not reached yet:
   `docs/rune/parity/packages/F5.md` has the plan for them.
 - **Heavier replays.** Each Rune replay starts a sway with software rendering
   and a lavapipe window. The default `--jobs` still fits: "Tiers and budgets"
@@ -2163,6 +2165,31 @@ hold for its replays:
   the windowed path. The first was a command's GLib work that waited for the
   next input, since the window pumps GLib only before a frame
   (`commands::wake_glib`).
+
+#### Drops from another process
+
+A sequence starts a drag source in another process as a `content_drops`
+scenario does: `{"foreign":{…},"as":"foreign"}` starts the runner's
+`tests/qa/foreign_drag_source.py` on the target's own display (a GTK window on
+Xvfb, a native Wayland one beside the window on the session host's sway) and
+keeps it as a target, `{"drag":{"from":{"kept":"foreign"},…}}` drags from it,
+`{"foreign_label":"Foreign drag finished"}` waits for the source to hear the
+drag end, which a refused drop reports too, and `{"foreign_stop":true}` stops
+it. The replay hands them to the scenario runner's own step
+(`tests/qa/fuzz/peers.rs`), and stops a source still running with the replay. A
+source that fails to start, or one a step finds already running, is a refused
+step; a label that never comes is a failed one. A drop is one action, all of
+these steps, so a shrunk sequence that keeps a drag without the step that
+started its source has the drag refused on every target alike.
+
+Starting the source takes the X focus from GTK's window on the
+window-manager-less Xvfb, which nothing gives back, and GTK then reports no
+focus at all. The `toolkit` rules of lgse/strata#2595 excuse GTK's no focus
+while its window has no keyboard (`context.window_focused` false), by the
+owner's ruling of 2026-11-20, so an alphabet of drops compares no focus after
+its first drop. The directory stays compared in a single-pane view: its rule
+applies in Columns only, where the directory is the focused pane's. Sway leaves
+Rune's window the keyboard. `session-drops` is the alphabet (F5's).
 
 #### Tiers and budgets
 
@@ -2362,8 +2389,10 @@ sequence that agrees is not thereby fixed.
   needs a narrower guard of its own.
 - **Outside the fixture.** `left` ends a replay at any visit to the trash,
   Recent, Home or a search across folders, as above.
-- **Runner steps other than `fs`.** `restart`, `layout`, the session bus and
-  its peers, portals and input methods are refused when a sequence loads.
+- **Runner steps other than `fs` and the foreign drag source.** `restart`,
+  `layout`, `launch`, `dbus_send`, the image server, portals and input methods
+  are refused when a sequence loads. A header's `session_bus` is taken: the
+  replay starts a private bus for it, as a scenario run does.
 - **Invariants.** Properties of one target with no GTK peer to compare are
   F3's (lgse/strata#2139): the application's own, asked for at rest
   ("Invariants" above), and a check of one stream, which reads `Stream` and

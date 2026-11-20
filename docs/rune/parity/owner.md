@@ -937,6 +937,21 @@ Rulings of the owner on the parity work, oldest first.
   is, which a band leaves out. Asked by [F4](packages/F4.md)'s round 2. Source: the owner,
   2026-11-20, through the coordinator.
 
+- **2026-11-20: a window another client activates on the bare Xvfb is #2595's artefact**
+  (finding [#2595](https://github.com/lgse/strata/issues/2595), F5's question). Starting
+  `session-drops`' foreign drag source takes the X focus from GTK's browser on the QA's Xvfb,
+  which runs no window manager to give it back, and GTK then reports no focus. That is
+  excused as #2595's rules say; after the first drop the alphabet still compares the files
+  created, names, contents, selection, directory. `app.directory`'s GTK-side rule for #2595 is
+  narrowed to Columns, where the directory is the focused pane's, so a single-pane view's
+  directory stays compared (`tests/qa/fuzz/normalisation.map`). Source: the owner, 2026-11-20,
+  through the coordinator.
+- **2026-11-20: images dropped from another process are left to the scenario** (finding
+  [#2645](https://github.com/lgse/strata/issues/2645), F5's question). GTK re-encodes a dropped
+  PNG through GDK and Rune saves the bytes offered: the same pixels, other bytes. The fuzz
+  alphabet stays text-only, with no map rule, and `foreign-content-saves-new-files` guards
+  image drops by their pixels. Source: the owner, 2026-11-20, through the coordinator.
+
 ## Housekeeping
 
 - Merged branches still on `lgse/strata`: H1's `feat/2122-h1-whole-corpus-ledger` and

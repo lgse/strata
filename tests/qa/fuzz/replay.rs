@@ -22,6 +22,7 @@ use super::{
     observe::{
         Faults, Observation, Outcome, Rest, Rested, Sample, at_rest, milliseconds, settings, tree,
     },
+    peers,
     perturb::Perturbation,
     project::{self, Places as Names},
     sequence::{Loaded, strip},
@@ -29,11 +30,12 @@ use super::{
 use crate::{
     Application, COMMAND_TIMEOUT, CONTAINER_ONLY, CONTROLLER_PANIC, Display, DisplayKind,
     INPUT_LOG, LAUNCH_TIMEOUT, Launch, STEP_WHEN, WAIT_MARGIN,
-    drive::wait_for_fs,
+    drive::{Context, wait_for_fs},
     fixture::{Manifest, fixture_time},
     fs_check::FsState,
     host_run, in_container,
-    process::wait_for_exit,
+    peer_steps::Peers,
+    process::{Bus, wait_for_exit},
     scenario::Scenario,
     seed,
     steps::run_steps,
@@ -322,21 +324,15 @@ pub(crate) fn replay(request: &Replay) -> Result<Replayed, String> {
     }
     let mut files = ground.files(request.manifest);
     let (fixture, manifest) = (ground.fixture.path(), request.manifest);
-    seed(
-        manifest,
-        scenario,
-        run,
-        &ground.home,
-        &ground.runtime,
-        fixture,
-    )?;
-    for step in &scenario.header.setup {
-        let step = unescape(&substitute(step, &variables));
-        wait_for_fs(&step, fixture, files.time, &mut files.state)?;
-    }
+    prepare(request.loaded, &ground, &variables, (manifest, &mut files))?;
     let kind = request.host.display(request.target)?;
     let display = Display::start_as(kind, ground.scratch.path(), &ground.runtime)?;
     let input_log = ground.scratch.path().join(INPUT_LOG);
+    // A sequence whose header asks for one gets a private bus, as a scenario does.
+    let bus = match scenario.header.session_bus {
+        true => Some(Bus::start(&ground.runtime)?),
+        false => None,
+    };
     let launch = Launch {
         target: request.target,
         manifest,
@@ -347,23 +343,29 @@ pub(crate) fn replay(request: &Replay) -> Result<Replayed, String> {
         log: ground.scratch.path().join("strata.log"),
         input_log: &input_log,
         extra: environment(scenario, &variables),
-        bus: None,
+        bus: bus.as_ref().map(|bus| bus.address.as_str()),
         portal: false,
         audit: None,
     };
+    // What the runner's own peer steps read of the run (`peers.rs`).
+    let context = Context {
+        steps: &scenario.steps,
+        initial_layout: &scenario.header.layout,
+        manifest,
+        display: &display,
+        fixture,
+        fixture_time: files.time,
+        screens: ground.scratch.path(),
+        artifacts: ground.scratch.path(),
+        launch: &launch,
+    };
     let mut session = Session::start(&launch, &ground, request.rest)?;
-    // A step is sent with the run's own paths in it and recorded as the sequence writes
-    // it, so the action a divergence names is the same in every replay.
-    let steps: Vec<Step> = scenario
-        .steps
-        .iter()
-        .zip(&sent)
-        .map(|((_, written), (_, sent))| Step {
-            written,
-            sent: unescape(sent),
-        })
-        .collect();
-    let mut stream = session.run(&steps, request.perturbation, &mut files);
+    let steps = steps_of(scenario, &sent);
+    let mut acting = Acting {
+        files: &mut files,
+        context: &context,
+    };
+    let mut stream = session.run(&steps, request.perturbation, &mut acting);
     stream.header = header;
     session.application.stop();
     Ok(Replayed {
@@ -374,9 +376,54 @@ pub(crate) fn replay(request: &Replay) -> Result<Replayed, String> {
     })
 }
 
+/// Seeds the fixture and the home as a scenario run does, and runs the header's `setup`.
+fn prepare(
+    loaded: &Loaded,
+    ground: &Ground,
+    variables: &[(String, String)],
+    (manifest, files): (&Manifest, &mut Files),
+) -> Result<(), String> {
+    let Loaded { scenario, run } = loaded;
+    let fixture = ground.fixture.path();
+    seed(
+        manifest,
+        scenario,
+        run,
+        &ground.home,
+        &ground.runtime,
+        fixture,
+    )?;
+    for step in &scenario.header.setup {
+        let step = unescape(&substitute(step, variables));
+        wait_for_fs(&step, fixture, files.time, &mut files.state)?;
+    }
+    Ok(())
+}
+
 struct Step<'a> {
     written: &'a Value,
     sent: Value,
+}
+
+/// Each step as the sequence writes it, recorded so, and as it is sent, with the run's own
+/// paths in it, so the action a divergence names is the same in every replay.
+fn steps_of<'s>(scenario: &'s Scenario, sent: &[(usize, Value)]) -> Vec<Step<'s>> {
+    scenario
+        .steps
+        .iter()
+        .zip(sent)
+        .map(|((_, written), (_, sent))| Step {
+            written,
+            sent: unescape(sent),
+        })
+        .collect()
+}
+
+/// What a replay's steps act with: the files the runner's `fs` steps change, and what its
+/// other steps read of the run (`peers.rs`).
+struct Acting<'r, 'c> {
+    files: &'r mut Files,
+    context: &'r Context<'c>,
 }
 
 struct Session<'a> {
@@ -390,6 +437,9 @@ struct Session<'a> {
     criticals: Vec<String>,
     /// The step that asks the target for its invariants, for a target that checks any.
     invariants: Option<Value>,
+    /// The processes the runner's own steps started for the replay (`peers.rs`), stopped
+    /// with it.
+    peers: Peers,
 }
 
 impl<'a> Session<'a> {
@@ -406,6 +456,7 @@ impl<'a> Session<'a> {
             transcript: String::new(),
             criticals: Vec::new(),
             invariants: launch.target.invariants_step(),
+            peers: Peers::default(),
         };
         let hello = session.application.receive(LAUNCH_TIMEOUT)?;
         session.record(&json!({ "launch": true }), &hello);
@@ -425,7 +476,7 @@ impl<'a> Session<'a> {
         &mut self,
         steps: &[Step],
         perturbation: Option<&Perturbation>,
-        files: &mut Files,
+        acting: &mut Acting,
     ) -> Stream {
         let mut stream = Stream::default();
         let (launched, mut gone) = self.observe((0, Value::Null), Outcome::Ok);
@@ -436,7 +487,7 @@ impl<'a> Session<'a> {
                 break;
             }
             let place = (index + 1, step.written.clone());
-            let (outcome, lost) = self.take(&step.sent, files);
+            let (outcome, lost) = self.take(&step.sent, acting);
             let (mut observation, unseen) = if outcome.ends_the_replay() {
                 (self.unseen(place, outcome), None)
             } else {
@@ -487,7 +538,7 @@ impl<'a> Session<'a> {
 
     /// Sends one step, or acts on the fixture for an `fs` step. The second value says why
     /// the target is gone, when the step lost it.
-    fn take(&mut self, step: &Value, files: &mut Files) -> (Outcome, Option<String>) {
+    fn take(&mut self, step: &Value, acting: &mut Acting) -> (Outcome, Option<String>) {
         if let Some(condition) = step.get(STEP_WHEN)
             && let Some(ended) = self.guard(condition)
         {
@@ -495,7 +546,18 @@ impl<'a> Session<'a> {
         }
         let step = strip(step, STEP_WHEN);
         if step.get("fs").is_some() {
-            return self.act_on_files(&step, files);
+            return self.act_on_files(&step, acting.files);
+        }
+        let taken = peers::take(
+            &mut self.application,
+            &mut self.peers,
+            acting.context,
+            &step,
+        );
+        if let Some(taken) = taken {
+            let (command, reply) = taken.record;
+            self.record(&command, &reply);
+            return (taken.outcome, taken.gone);
         }
         let timeout = step
             .get("timeout_ms")

@@ -52,7 +52,11 @@ app.dialog deviation lgse/strata#2572 {"gtk":null,"rune":["Settings"]}
 # - app.focused and app.panes[].focused: GTK's null against any row of Rune's;
 # - app.focused_pane: GTK's null against any pane of Rune's;
 # - app.directory, which is the focused pane's, or the last pane's when none is focused: any
-#   value of Rune's against GTK's.
+#   value of Rune's against GTK's, in Columns only. In a single-pane view the directory is the
+#   folder shown, which GTK reports with no focus as with it, so it stays compared there.
+# By the owner's ruling of 2026-11-20, a window another client activates on the bare Xvfb (the
+# foreign drag source a `session-drops` drop starts) is the same artefact, excused alike; after
+# a drop the files, names, contents, selection and directory are still compared.
 # GTK's keyboard on the sidebar, the header, the location bar or a dialog leaves its window
 # focused, so these rules do not apply there and Rune's focus on a row still counts. The map
 # names no step, so they hold for as long as GTK's window has no keyboard: from the chooser's close
@@ -80,7 +84,7 @@ app.dialog deviation lgse/strata#2572 {"gtk":null,"rune":["Settings"]}
 # by `qa::tests::floating::the_floating_chooser_is_a_toplevel_in_front_of_the_browser` (the
 # browser has no focus while the chooser is in front, and the keys again after Escape) and
 # `window::qa`'s raise and close.
-app.directory toolkit lgse/strata#2595 {"while":{"gtk":{"app.focused_pane":null,"context.window_focused":false}}}
+app.directory toolkit lgse/strata#2595 {"while":{"gtk":{"app.focused_pane":null,"app.view_mode":"Columns","context.window_focused":false}}}
 app.directory toolkit lgse/strata#2595 {"while":{"rune":{"app.focused_pane":null,"context.toplevels":{"one_of":[["Copy to"],["Move to"],["Extract to"]]}}}}
 app.focused toolkit lgse/strata#2595 {"gtk":null,"while":{"gtk":{"app.focused_pane":null,"context.window_focused":false}}}
 app.focused toolkit lgse/strata#2595 {"rune":[null],"while":{"rune":{"app.focused_pane":null,"context.toplevels":{"one_of":[["Copy to"],["Move to"],["Extract to"]]}}}}

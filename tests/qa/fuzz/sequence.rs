@@ -4,12 +4,14 @@
 //!
 //! The file is the ordinary format and goes through the ordinary loader. The replay runs
 //! fewer kinds of step than `drive` does, so a sequence is held to those: a process step
-//! that acts or waits, or an `fs` action, each optionally under a `when`.
+//! that acts or waits, an `fs` action, or one of the runner's own steps for a drag source in
+//! another process (`peers.rs`), each optionally under a `when`.
 
 use std::{fs, path::Path};
 
 use serde_json::Value;
 
+use super::peers;
 use crate::{
     DEFAULT_LAYOUT, STEP_IF, STEP_MODES, STEP_UNLESS, STEP_VARIANTS, STEP_WHEN,
     fs_check::FsStep,
@@ -127,13 +129,12 @@ impl Sequence {
     }
 }
 
-/// What the replay does not start: a session bus, a portal, an input method, a fixed
+/// What the replay does not start: a portal, an input method, a fixed
 /// fixture path, another keyboard layout; and what belongs to a scenario and not to a
 /// sequence. A header that asks for one is refused, not replayed without it.
 fn check_header(scenario: &Scenario) -> Result<(), String> {
     let header = &scenario.header;
     let unsupported = [
-        ("session_bus", header.session_bus),
         ("portal", header.portal),
         ("input_method", header.input_method.is_some()),
         ("fixture_root", header.fixture_root.is_some()),
@@ -157,10 +158,19 @@ fn check_header(scenario: &Scenario) -> Result<(), String> {
 /// A step the replay can run: one process command that acts or waits, or one `fs` action.
 pub(crate) fn check_step(step: &Value) -> Result<(), String> {
     let object = step.as_object().ok_or("a step must be an object")?;
-    if let Some(key) = TYING.iter().find(|key| object.contains_key(**key)) {
+    let peer = peers::kind(object);
+    // A source a `foreign` step starts is named `as`, for a `drag` from `kept` to drag from.
+    let naming = |key: &str| key == "as" && peer == Some(peers::NAMING);
+    if let Some(key) = TYING
+        .iter()
+        .find(|key| object.contains_key(**key) && !naming(key))
+    {
         return Err(format!(
             "a fuzz step stands alone, so it takes no {key}; {STEP_WHEN} is its one condition"
         ));
+    }
+    if peer.is_some() {
+        return Ok(());
     }
     if object.contains_key("fs") {
         let parsed: FsStep = serde_json::from_value(strip(step, STEP_WHEN))
