@@ -2436,6 +2436,10 @@ sequence only together with the alphabet's version, so the version is part of th
   [#2602](https://github.com/lgse/strata/pull/2602) at `5d50d32e8` (rune offscreen 704 of 705):
   the same first wait timed out. Alone it then passed 6 of 6 on each target. #2602 changes
   strata-qa's dialog lookup, not the listing, item counts or drag and drop.
+- **Also seen** in [F4](packages/F4.md)'s round 2 re-gate (`./scripts/qa-parity.sh all` at
+  `391bf4f90`, Rune offscreen 709 of 710): `drag-file-onto-folder/list-copy` at line 2, the same
+  `No items` label not shown within 15 s. Alone the scenario passed 3 of 3 on both targets right
+  after.
 - **State:** open, unowned. The ledger is unchanged: the run stays `required`. Not traced.
 
 ### #2568: `undo-restores-completed-move/columns` did not put the file back once in a full Rune run
