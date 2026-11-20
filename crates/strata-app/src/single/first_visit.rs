@@ -10,7 +10,7 @@
 //! replay shows a difference: with nothing selected there is nothing for a command or
 //! `follow_selection_on_return` to take (finding lgse/strata#2427).
 
-use strata_components::collection::selection::AnchorRule;
+use strata_components::{collection::selection::AnchorRule, contract::EntryId};
 
 use crate::{
     listing::Load,
@@ -86,8 +86,11 @@ impl FirstVisit {
 /// Keeps the cursor a first visit placed on the first row `pane` shows, while no input has
 /// moved it ([`Memory::visit_cursor`]): GTK's browser holds no cursor then, and each of its
 /// views rebuilt shows its own first row, so a regroup or a view switch puts it there (finding
-/// lgse/strata#2427). The memory follows it there. A pane that shows anything else (another
-/// folder, another cursor, a selection) forgets it. True when the cursor moved.
+/// lgse/strata#2427). The memory follows it there. Only a change of the first row with the same
+/// number of rows is a rebuild: an entry added or gone is none, and GTK's list keeps its focus
+/// on the same row then (finding lgse/strata#2642, `icons v3` seed `0x5a`: a file written that
+/// lists first). A pane that shows anything else (another folder, another cursor, a selection)
+/// forgets it. True when the cursor moved.
 pub(super) fn keep_on_first_row(pane: &mut Pane, memory: &Memory) -> bool {
     let Some((depth, id)) = memory.visit_cursor() else {
         return false;
@@ -103,7 +106,10 @@ pub(super) fn keep_on_first_row(pane: &mut Pane, memory: &Memory) -> bool {
         memory.set_visit_cursor(None);
         return false;
     }
-    if source.is_empty() || source.id_at(0) == id {
+    let rows = (source.len(), (!source.is_empty()).then(|| source.id_at(0)));
+    let before = memory.visit_rows();
+    memory.set_visit_rows(rows);
+    if !rebuilt(before, rows, id) {
         return false;
     }
     let _ = collection
@@ -112,6 +118,14 @@ pub(super) fn keep_on_first_row(pane: &mut Pane, memory: &Memory) -> bool {
     collection.note_selection(source);
     memory.set_visit_cursor(Some((depth, source.id_at(0))));
     true
+}
+
+/// Whether the rows shown, how many and the first, went from `before` to `now` by a rebuild that
+/// shows another first row than the cursor `id`'s: the same number of rows in another order.
+fn rebuilt(before: (usize, Option<EntryId>), now: (usize, Option<EntryId>), id: EntryId) -> bool {
+    let same_rows = now.0 == before.0;
+    let new_first = now.1 != before.1;
+    same_rows && new_first && now.1.is_some_and(|first| first != id)
 }
 
 #[cfg(test)]

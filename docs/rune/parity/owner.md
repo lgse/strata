@@ -928,6 +928,14 @@ Rulings of the owner on the parity work, oldest first.
   RUSTSEC-2026-0543 (unmaintained), which comes only through `fitparser`. When to remove the
   `zip` entries is #2618's own `deny.toml` comment ("once docx-rs releases on zip 9"), not part
   of the ruling. Source: the owner, 2026-11-19, through the coordinator.
+- **2026-11-20: a marquee leaves no Shift anchor on Rune**, a ruled `deviation` (finding
+  [#2667](https://github.com/lgse/strata/issues/2667), a facet of
+  [#2552](https://github.com/lgse/strata/issues/2552)). GTK's selection sync makes the first
+  entry a band reaches the browser's anchor, so its Shift+click after a band ranges from it;
+  Rune's marquee sets none, and its Shift+click selects the clicked entry alone. Rune's stands.
+  The `pointer` alphabet sends a Shift+click only where the focused entry is selected or nothing
+  is, which a band leaves out. Asked by [F4](packages/F4.md)'s round 2. Source: the owner,
+  2026-11-20, through the coordinator.
 
 - **2026-11-20: a window another client activates on the bare Xvfb is #2595's artefact**
   (finding [#2595](https://github.com/lgse/strata/issues/2595), F5's question). Starting

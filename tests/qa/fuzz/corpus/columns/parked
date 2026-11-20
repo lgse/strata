@@ -4,6 +4,11 @@
 #
 # Versions 1 and 2 were the pilot's drafts: their lines are each finding's sequence shrunk GTK
 # against Rune. Version 3's are the smoke tier's seeds that meet a finding still open.
+# v3-0000000000000037: a file written into a column a click opened: GTK reports its first row
+# focused (F4's round 2).
+# v3-000000000000003c: a second click on an open folder (F4's round 2).
+# v3-000000000000001e: a Shift+click then j: GTK moves from the old cursor (F4's round 2).
+# v3-0000000000000022: a Shift+click while the Menu key's menu is open (F4's round 2).
 v1-0000000000000002 oracle lgse/strata#2351
 v1-0000000000000008 oracle lgse/strata#2350
 v1-000000000000000d oracle lgse/strata#2353
@@ -13,3 +18,7 @@ v2-0000000000000012 divergence lgse/strata#2357
 v3-0000000000000009 oracle lgse/strata#2353
 v3-0000000000000011 toolkit lgse/strata#2445
 v3-0000000000000014 toolkit lgse/strata#2445
+v3-000000000000001e oracle lgse/strata#2353
+v3-0000000000000022 divergence lgse/strata#2644
+v3-0000000000000037 oracle lgse/strata#2356
+v3-000000000000003c oracle lgse/strata#2356

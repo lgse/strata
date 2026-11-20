@@ -218,6 +218,12 @@ impl NavigationState {
         true
     }
 
+    pub fn clear_selection_anchor(&mut self, depth: usize) {
+        if let Some(column) = self.columns.get_mut(depth) {
+            column.selection_anchor = None;
+        }
+    }
+
     pub fn selected_positions(&self, depth: usize) -> Vec<usize> {
         let Some(column) = self.columns.get(depth) else {
             return Vec::new();

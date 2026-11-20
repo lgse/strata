@@ -1,0 +1,9 @@
+{"scenario":"fuzz-entries-v3-0000000000000038","modes":["columns"],"prefs":{"type_to_search":false}}
+{"key":"ctrl+shift+n","when":{"not":{"field":{"name":"Rename"}}}}
+{"key":"Return","when":{"field":{"name":"Rename","focused":true}}}
+{"key":"Up","when":{"not":{"field":{"name":"Rename"}}}}
+{"key":"Right","when":{"not":{"field":{"name":"Rename"}}}}
+{"key":"ctrl+shift+n","when":{"not":{"field":{"name":"Rename"}}}}
+{"type":"a/b/","when":{"field":{"name":"Rename","focused":true}}}
+{"key":"Return","when":{"field":{"name":"Rename","focused":true}}}
+{"click":{"entry":"report.md"},"mods":["shift"],"when":{"all":[{"present":{"entry":"report.md"}},{"not":{"field":{"name":"Rename"}}}]}}

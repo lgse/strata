@@ -1,8 +1,8 @@
 # The Icons view's alphabet (A1): what a user does in the Icons grid on the canonical
 # fixture, by the keys and pointer GTK's Icons view and the Rune Icons view both take today.
-# It is the List alphabet (`list.toml`, `list v3`, A2's) with its own header and the
+# It is the List alphabet (`list.toml`, `list v6`, A2's) with its own header and the
 # sideways moves an Icons grid has; every other action is List's, for List's reasons, which
-# that file gives.
+# that file gives, its guards and what it leaves out included.
 #
 # Type to search is off (the header's `prefs`), so h, j, k and l are Left, Down, Up and
 # Right, as GTK reads them then (`Context::of` in `src/ui/keys/alias.rs`).
@@ -16,28 +16,29 @@
 # written file moves to the front only rarely. Right and l only with a tile focused: with
 # none, where Right lands is the question `owner.md` asks of the List view (A2 item 1).
 #
+# Every tile of the fixture's folders is on the grid's one row, so Up, Down, j, k and the page
+# keys are always at the grid's edge, where GTK commits the cursor's entry and Rune's grid does
+# nothing (`owner.md`, A1 items 1, 3 and 12; lgse/strata#2414): left out, as `views` does in
+# Icons. Right and l at a folder's last tile are that edge too, and are guarded by name.
+#
+# Version 1 met List's classes and these in every seed across the targets (F4's round 1);
+# version 2, F4's round 2 draft, guarded them and met lgse/strata#2640 (fixed) and
+# lgse/strata#2641 at Return; version 3 kept Return off a multi-selection, and met
+# lgse/strata#2642 (fixed) and lgse/strata#2644 where its menu's Escape, guarded on a Rename
+# row, left a menu over several entries open; version 4 dismisses any menu.
+#
 # Left out, besides List's: the thumbnail size (Ctrl+Alt+plus, minus and 0, and
 # Ctrl+Shift+wheel, which both targets take since lgse/strata#2275), for a later version to
 # add; and grouping, which a header would hold for the whole alphabet.
 area = "icons"
-version = 1
-about = "Icons on the canonical fixture, type to search off: keyboard navigation and selection with the four arrows, h, j, k and l, clicks, Ctrl and Shift clicks and background clicks by name, opening folders in place, Back and the parent, the context menu by pointer and by the Menu key, rename by F2 and by the menu, hidden files, and files made and removed behind the application's back"
+version = 4
+about = "Icons on the canonical fixture, type to search off: keyboard navigation and selection with the sideways arrows, h and l, Home and End, off the grid's edges, clicks, Ctrl and Shift clicks and background clicks by name, opening folders in place, Back and the parent, the context menu by pointer, hidden files, and files made and removed behind the application's back"
 header = '{"modes":["icons"],"prefs":{"type_to_search":false}}'
-
-[[action]]
-name = "down"
-weight = 8
-steps = ['{"key":"Down"}']
-
-[[action]]
-name = "up"
-weight = 6
-steps = ['{"key":"Up"}']
 
 [[action]]
 name = "right"
 weight = 6
-steps = ['{"key":"<key>","when":{"focused_in_matches":true}}']
+steps = ['{"key":"<key>","when":{"all":[{"focused_in_matches":true},{"not":{"focused":{"one_of":["todo.txt","spreadsheet.csv","photo.txt"]}}}]}}']
 choose.key = ["Right", "l"]
 
 [[action]]
@@ -47,51 +48,46 @@ steps = ['{"key":"<key>","when":{"any":[{"focused":"readme.md"},{"focused":"todo
 choose.key = ["Left", "h"]
 
 [[action]]
-name = "letters"
-weight = 4
-steps = ['{"key":"<key>"}']
-choose.key = ["j", "k"]
-
-[[action]]
 name = "edge"
-weight = 4
+weight = 3
 steps = ['{"key":"<key>"}']
-choose.key = ["Home", "End", "Page_Down", "Page_Up"]
+choose.key = ["Home", "End"]
 
 [[action]]
-name = "extend"
-weight = 6
-steps = ['{"key":"shift+<key>"}']
-choose.key = ["Down", "Up", "Left", "Right", "Home", "End"]
+name = "extend-right"
+weight = 3
+steps = ['{"key":"shift+Right","when":{"all":[{"focused_in_matches":true},{"not":{"focused":{"one_of":["todo.txt","spreadsheet.csv","photo.txt"]}}}]}}']
 
 [[action]]
-name = "select-all"
-weight = 1
-steps = ['{"key":"ctrl+a"}']
+name = "extend-left"
+weight = 3
+steps = ['{"key":"shift+Left","when":{"any":[{"focused":"readme.md"},{"focused":"todo.txt"},{"focused":"report.md"},{"focused":"spreadsheet.csv"},{"focused":"photo.txt"}]}}']
 
 [[action]]
 name = "escape"
 weight = 3
 steps = ['{"key":"Escape"}']
 
-# Return only on the two folders the walk visits, and in the rename editor. On a file it
-# asks for the file's default application, which the QA image has none of: GTK then opens
-# Strata's Open With chooser, which takes the keyboard (reproduced), and Rune opens nothing,
-# so the keys after it go to different places. Not on `archive`, the fixture's one empty
+# Return only on the two folders the walk visits, and only with nothing else selected: with a
+# multi-selection GTK's Return activates the selection, opening Open With for its files, where
+# Rune's opens the focused folder (lgse/strata#2641, beside #2358; `icons v2` seed `0x08`).
+# On a file it asks for the file's default application, which the QA image has none of: GTK
+# then opens Strata's Open With chooser, which takes the keyboard (reproduced), and Rune opens
+# nothing, so the keys after it go to different places. Not on `archive`, the fixture's one empty
 # folder, where GTK lost Back and the parent key in the walk (observed in the walk, not
 # reproduced: both work there by hand). And not off the rows: on GTK, Up off the first row
 # takes the keyboard to the pane header, where Return leaves the fixture.
 [[action]]
 name = "open"
 weight = 2
-steps = ['{"key":"Return","when":{"any":[{"focused":"documents"},{"focused":"pictures"},{"field":{"name":"Rename"}}]}}']
+steps = ['{"key":"Return","when":{"all":[{"any":[{"focused":"documents"},{"focused":"pictures"}]},{"any":[{"selected":[]},{"selected":["documents"]},{"selected":["pictures"]}]}]}}']
 
 # A folder opened by the pointer, as a double click opens it in the Icons view, wherever the
 # keyboard is: on GTK the keyboard is often off the rows, where Return is not sent.
 [[action]]
 name = "open-folder"
 weight = 4
-steps = ['{"click":{"entry":"<folder>"},"count":2,"when":{"all":[{"present":{"entry":"<folder>"}},{"not":{"field":{"name":"Rename"}}}]}}']
+steps = ['{"click":{"entry":"<folder>"},"count":2,"when":{"all":[{"present":{"entry":"<folder>"}}]}}']
 choose.folder = ["documents", "pictures"]
 
 # The parent of the fixture's own folder is /tmp, which holds other runs' folders: the
@@ -110,15 +106,20 @@ steps = ['{"key":"alt+Left","when":{"not":{"directory":"$root"}}}']
 [[action]]
 name = "click"
 weight = 5
-steps = ['{"click":{"entry":"<entry>"},"when":{"all":[{"present":{"entry":"<entry>"}},{"not":{"field":{"name":"Rename"}}}]}}']
+steps = ['{"click":{"entry":"<entry>"},"when":{"all":[{"present":{"entry":"<entry>"}}]}}']
 choose.entry = ["documents", "pictures", "readme.md", "todo.txt", "notes.txt", "report.md", "spreadsheet.csv", "diagram.txt", "photo.txt"]
 
 [[action]]
-name = "click-with"
-weight = 4
-steps = ['{"click":{"entry":"<entry>"},"mods":["<modifier>"],"when":{"all":[{"present":{"entry":"<entry>"}},{"not":{"field":{"name":"Rename"}}}]}}']
+name = "ctrl-click"
+weight = 2
+steps = ['{"click":{"entry":"<entry>"},"mods":["ctrl"],"when":{"all":[{"present":{"entry":"<entry>"}},{"not":{"all_selected":{"contains":["<entry>"]}}}]}}']
 choose.entry = ["documents", "readme.md", "todo.txt", "notes.txt", "report.md", "spreadsheet.csv", "diagram.txt", "photo.txt"]
-choose.modifier = ["ctrl", "shift"]
+
+[[action]]
+name = "shift-click"
+weight = 2
+steps = ['{"click":{"entry":"<entry>"},"mods":["shift"],"when":{"all":[{"present":{"entry":"<entry>"}},{"not":{"selected":[]}}]}}']
+choose.entry = ["documents", "readme.md", "todo.txt", "notes.txt", "report.md", "spreadsheet.csv", "diagram.txt", "photo.txt"]
 
 # A click on the pane's empty space below its tiles, as `background-click-clears-selection`
 # makes it: the folders the walk shows fill at most one row of tiles, so the point is blank
@@ -126,60 +127,20 @@ choose.modifier = ["ctrl", "shift"]
 [[action]]
 name = "click-background"
 weight = 2
-steps = ['{"click":{"pane":"<pane>"},"at":["50%",-60],"when":{"all":[{"directory":"<pane>"},{"not":{"field":{"name":"Rename"}}}]}}']
+steps = ['{"click":{"pane":"<pane>"},"at":["50%",-60],"when":{"all":[{"directory":"<pane>"}]}}']
 choose.pane = ["$root", "documents", "pictures"]
 
-# The context menu by the pointer, then a dismissal, or its Rename then cancelled: entries
-# are named, so a rename committed here would leave later clicks nothing to find.
+# The context menu by the pointer, then a dismissal. The Escape is for any menu open: a menu
+# over several selected entries has no Rename row, and left open it takes the next click
+# (lgse/strata#2644), as F5 found of `pointer v3`.
 [[action]]
 name = "menu-dismiss"
 weight = 2
 steps = [
-  '{"click":{"entry":"<entry>"},"button":3,"when":{"all":[{"present":{"entry":"<entry>"}},{"not":{"field":{"name":"Rename"}}}]}}',
-  '{"key":"Escape","when":{"present":{"menu_item":"Rename"}}}',
+  '{"click":{"entry":"<entry>"},"button":3,"when":{"all":[{"present":{"entry":"<entry>"}}]}}',
+  '{"key":"Escape","when":{"menu_items":{}}}',
 ]
 choose.entry = ["documents", "readme.md", "todo.txt", "notes.txt", "report.md", "diagram.txt"]
-
-[[action]]
-name = "menu-pointer-rename"
-weight = 2
-steps = [
-  '{"click":{"entry":"<entry>"},"button":3,"when":{"all":[{"present":{"entry":"<entry>"}},{"not":{"field":{"name":"Rename"}}}]}}',
-  '{"click":{"menu_item":"Rename"},"when":{"present":{"menu_item":"Rename"}}}',
-  '{"key":"Escape","when":{"field":{"name":"Rename"}}}',
-]
-choose.entry = ["readme.md", "todo.txt", "notes.txt", "photo.txt"]
-
-# The context menu by the keyboard on the next entry, its Rename, a name typed over the
-# selected stem, then committed or cancelled. The Down first: after an editor, a menu or a
-# folder opened, GTK reports no entry under the keyboard until a key moves it, where Rune
-# keeps it on the entry, and a rename from no entry would be skipped.
-[[action]]
-name = "menu-rename"
-weight = 4
-steps = [
-  '{"key":"Down","when":{"not":{"field":{"name":"Rename"}}}}',
-  '{"key":"Menu","when":{"all":[{"focused_in_matches":true},{"not":{"field":{"name":"Rename"}}}]}}',
-  '{"click":{"menu_item":"Rename"},"when":{"present":{"menu_item":"Rename"}}}',
-  '{"type":"<text>","when":{"field":{"name":"Rename"}}}',
-  '{"key":"<end>","when":{"field":{"name":"Rename"}}}',
-]
-choose.end = ["Escape", "Escape", "Return"]
-choose.text = ["y", "-3"]
-
-# A rename by F2 on the next entry, the same way. Two in three are cancelled, so the named
-# entries the clicks look for mostly stay.
-[[action]]
-name = "rename"
-weight = 5
-steps = [
-  '{"key":"Down","when":{"not":{"field":{"name":"Rename"}}}}',
-  '{"key":"F2","when":{"all":[{"focused_in_matches":true},{"not":{"field":{"name":"Rename"}}}]}}',
-  '{"type":"<text>","when":{"field":{"name":"Rename"}}}',
-  '{"key":"<end>","when":{"field":{"name":"Rename"}}}',
-]
-choose.end = ["Escape", "Escape", "Return"]
-choose.text = ["x", "-2", "renamed"]
 
 [[action]]
 name = "refresh"

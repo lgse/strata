@@ -1,0 +1,3 @@
+{"scenario":"fuzz-icons-v3-000000000000005a","modes":["icons"],"prefs":{"type_to_search":false}}
+{"click":{"entry":"documents"},"count":2,"when":{"all":[{"present":{"entry":"documents"}}]}}
+{"fs":{"path":"documents/fuzz-b.txt","write":"fuzz\n"}}
