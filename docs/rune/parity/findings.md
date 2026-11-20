@@ -3394,3 +3394,25 @@ sequence only together with the alphabet's version, so the version is part of th
   focused entry is selected or nothing is, which a band, leaving the focus where it was, does
   not reach. Its gap: a band over the focused row still does. `pointer v4` `0x3a` is parked as
   `deviation` against this finding in `tests/qa/fuzz/corpus/pointer/`.
+
+### #2668: a foreign text drop onto a tab not shown saves nothing on GTK, and selects the tab and saves there on Rune
+
+- **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2668), filed on
+  2026-11-20 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** in [F5](packages/F5.md)'s `session-drops` drafts, GTK against Rune, List, Rune on
+  the session host. Version 5, in 4 of 20 seeds: `fuzz-session-drops-v5-000000000000000e`,
+  shrunk to 4 steps, confirmed 3 of 3 and agreeing with itself in 24 of 24 GTK replays: Ctrl+T
+  at the root (two tabs of the root), text from another process dropped onto the page tab named
+  for the root, the first of the two. Rune saves `dropped text.txt` in the root; GTK saves
+  nothing. Version 6, which kept the drop off a tab of the folder shown, met it again in seed
+  `0x08`: with `archive` shown, the drop onto the `$root` tab selected that tab and saved
+  `dropped text (2).txt` there on Rune; GTK stayed in `archive` and saved nothing.
+- **Why:** not traced on GTK's side, whose tab takes content drops
+  (`install_file_drop` in `src/ui/window/composition/tabs/strip.rs`). Both sightings drop onto a
+  tab that is not the one shown; `foreign-content-reaches-every-drop-target/columns-tab`, which
+  passes on both targets, drops onto the tab shown. Rune selects a tab a drag rests on
+  (`HOVER_DELAY`, 450 ms) and drops into its folder, as GTK's code would.
+- **Concerns:** the sequence, parked in `tests/qa/fuzz/corpus/session-drops/`;
+  `session-drops` v7 leaves tab drops out.
+- **State:** open, unowned: [A4](packages/A4.md)'s tab strip or [A19](packages/A19.md)'s drops.
+

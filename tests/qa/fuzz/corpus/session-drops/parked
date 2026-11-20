@@ -1,0 +1,8 @@
+# The session-drops alphabet's sequences parked against their findings
+# (docs/rune/parity/findings.md):
+#
+#   v<version>-<seed> <code> <issue>
+#
+# Each line is a finding's sequence shrunk GTK against Rune, named for the smoke seed that met
+# it. Versions 1 to 5 were F5's drafts, never merged.
+v5-000000000000000e divergence lgse/strata#2668

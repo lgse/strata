@@ -128,8 +128,9 @@ properties v3 103535e459c8641e
 # Version 2 ran about one drop in three; version 3, a draft, dropped into the folder shown,
 # onto tabs, the root's crumb and by path; version 4 guards a drop's wait and stop with what
 # the drop leaves as it was, and drops onto folders made away from the root; version 5
-# weighs the way back to the root more.
-session-drops v5 393c1a741d4b8816
+# weighs the way back to the root more; version 6 keeps tab drops off a tab of the folder
+# shown (lgse/strata#2668); version 7 leaves tab drops out and the wait and the stop unguarded.
+session-drops v7 e2dd0799a8996392
 # session-pointer: F5's, on the session host: what `pointer` and `drag` reach, through the
 # compositor. Version 1 was its draft, never merged: it met lgse/strata#2510 on the menu's
 # Rename row, which version 2 leaves out, and an undo that waited for input (fixed). Version 2

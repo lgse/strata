@@ -7,7 +7,7 @@
 # - text offered as content, dropped onto a folder of the fixture's root or an `inner` folder
 #   made inside `documents` or `pictures`, which saves it there
 #   as a new file (`dropped text.txt`, a numbered name when it is taken), onto the background of
-#   whatever folder is shown, subfolders included, onto a tab, or onto the root's crumb;
+#   whatever folder is shown, subfolders included, or onto the root's crumb;
 # - a file offered by its path, dropped onto a folder of the root, which copies it there, and
 #   dropped again where its name is taken, which asks "File already exists", answered with
 #   Keep Both or Replace, or dismissed;
@@ -17,12 +17,11 @@
 # Each drop is one action: the offer written to the run's environment, the source started and
 # named `foreign`, the drag from it, the wait for the source to hear the drag end ("Foreign drag
 # finished", which a refused drop reports too, and a copied file), and the source stopped. The
-# source, the drag, the wait and the stop share one guard, so an action its guard skips skips
-# whole, not with a wait refused for want of a source; a file dropped where its name is taken
-# leaves "File already exists" open, and any file drop takes the name its guard found free or
-# taken, so the wait and the stop leave out of their guard what the drop itself changes: the
-# dialog, and whether the name is there. A shrunk sequence that keeps a drag without its source has the drag
-# refused on both targets alike.
+# source and the drag share one guard; the wait and the stop take none, since the replay skips
+# them when no source runs, so an action its guard skips skips whole. (A guard on them goes
+# stale: a drop changes what it read, as a file drop takes the name, or a tab's folder shows.)
+# A shrunk sequence that keeps a drag without its source has the drag refused on both targets
+# alike.
 #
 # Starting the source takes the X focus from GTK's window on the window-manager-less Xvfb,
 # which nothing gives back, so GTK reports no focus after a sequence's first drop and
@@ -41,6 +40,9 @@
 #   which a sequence does not start yet.
 # - Drops onto the sidebar, and onto a crumb above the root: their places are outside the
 #   fixture (`content_drops` covers the sidebar as a scenario).
+# - Drops onto a tab: onto one not shown, Rune selects it and saves there and GTK saves nothing
+#   (lgse/strata#2668); `foreign-content-reaches-every-drop-target`' `tab` runs drop onto the
+#   tab shown on both targets.
 # - Escape during the drag and modifiers changed during it: wlroots' drag grab gives no client
 #   a key then (A19.md, "Open").
 # Version 1 was F5's draft, never merged: it dropped PNG content too, which met
@@ -51,10 +53,13 @@
 # stayed running into the next drop's. Version 4 guards them with what the drop leaves as it
 # was, and drops onto an `inner` folder made away from the root. Version 5, with the replay
 # skipping a wait or a stop that finds no source running, weighs the way back to the root and
-# the inner folders more, where the folder rows' drops run.
+# the inner folders more, where the folder rows' drops run. Version 6 keeps tab drops off a
+# tab of the folder shown (lgse/strata#2668, met by version 5 in 4 of 20 seeds). Version 7
+# leaves tab drops out, as version 6 met #2668 onto a tab of another folder, and leaves the
+# wait and the stop unguarded, as a tab drop's guard went stale and kept a source running.
 area = "session-drops"
-version = 5
-about = "List on the canonical fixture through the compositor (Rune on the session host): text dragged from another process onto the root's folders, the folder shown, a tab and the root's crumb, a file offered by path copied onto a folder and its name conflict answered, folders opened in place, tabs, the parent and Back, clicks on files, undo, and a file made and removed behind the application's back"
+version = 7
+about = "List on the canonical fixture through the compositor (Rune on the session host): text dragged from another process onto the root's folders, the folder shown, folders made away from the root and the root's crumb, a file offered by path copied onto a folder and its name conflict answered, folders opened in place, tabs, the parent and Back, clicks on files, undo, and a file made and removed behind the application's back"
 header = '{"modes":["list"],"session_bus":true,"prefs":{"type_to_search":false,"single_click_previews":false,"explorer_folder_clicks":1,"explorer_file_clicks":2}}'
 host = "session"
 
@@ -65,8 +70,8 @@ steps = [
   '{"fs":{"path":"$environment/offer.txt","write":"Selected words\nsecond line"}}',
   '{"foreign":{"offers":[{"mime":"text/plain;charset=utf-8","path":"$environment/offer.txt"}]},"as":"foreign","when":{"all":[{"directory":"$root"},{"present":{"entry":"<folder>"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}',
   '{"drag":{"from":{"kept":"foreign"},"to":{"entry":"<folder>"}},"when":{"all":[{"directory":"$root"},{"present":{"entry":"<folder>"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}',
-  '{"foreign_label":"Foreign drag finished","when":{"all":[{"directory":"$root"},{"present":{"entry":"<folder>"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}',
-  '{"foreign_stop":true,"when":{"all":[{"directory":"$root"},{"present":{"entry":"<folder>"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}',
+  '{"foreign_label":"Foreign drag finished"}',
+  '{"foreign_stop":true}',
 ]
 choose.folder = ["archive", "documents", "pictures"]
 
@@ -79,22 +84,9 @@ steps = [
   '{"fs":{"path":"$environment/offer.txt","write":"Selected words\nsecond line"}}',
   '{"foreign":{"offers":[{"mime":"text/plain;charset=utf-8","path":"$environment/offer.txt"}]},"as":"foreign","when":{"all":[{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}',
   '{"drag":{"from":{"kept":"foreign"},"to":{"pane":null},"to_at":["50%",-60]},"when":{"all":[{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}',
-  '{"foreign_label":"Foreign drag finished","when":{"all":[{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}',
-  '{"foreign_stop":true,"when":{"all":[{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}',
+  '{"foreign_label":"Foreign drag finished"}',
+  '{"foreign_stop":true}',
 ]
-
-# A tab of the strip, which a second tab shows: the drop saves into that tab's folder.
-[[action]]
-name = "drop-text-onto-tab"
-weight = 3
-steps = [
-  '{"fs":{"path":"$environment/offer.txt","write":"Selected words\nsecond line"}}',
-  '{"foreign":{"offers":[{"mime":"text/plain;charset=utf-8","path":"$environment/offer.txt"}]},"as":"foreign","when":{"all":[{"present":{"role":"page tab","name":"<tab>"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}',
-  '{"drag":{"from":{"kept":"foreign"},"to":{"role":"page tab","name":"<tab>"}},"when":{"all":[{"present":{"role":"page tab","name":"<tab>"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}',
-  '{"foreign_label":"Foreign drag finished","when":{"all":[{"present":{"role":"page tab","name":"<tab>"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}',
-  '{"foreign_stop":true,"when":{"all":[{"present":{"role":"page tab","name":"<tab>"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}',
-]
-choose.tab = ["$root", "archive", "documents", "pictures"]
 
 # The root's crumb in the location bar, as `foreign-content-reaches-every-drop-target` drops
 # on it: it saves into the root from any folder of the fixture.
@@ -105,8 +97,8 @@ steps = [
   '{"fs":{"path":"$environment/offer.txt","write":"Selected words\nsecond line"}}',
   '{"foreign":{"offers":[{"mime":"text/plain;charset=utf-8","path":"$environment/offer.txt"}]},"as":"foreign","when":{"all":[{"present":{"role":"button","name":"$root"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}',
   '{"drag":{"from":{"kept":"foreign"},"to":{"role":"button","name":"$root"},"to_at":["90%","50%"]},"when":{"all":[{"present":{"role":"button","name":"$root"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}',
-  '{"foreign_label":"Foreign drag finished","when":{"all":[{"present":{"role":"button","name":"$root"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}',
-  '{"foreign_stop":true,"when":{"all":[{"present":{"role":"button","name":"$root"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}',
+  '{"foreign_label":"Foreign drag finished"}',
+  '{"foreign_stop":true}',
 ]
 
 # A file offered by its path, copied onto a folder where its name is free.
@@ -117,8 +109,8 @@ steps = [
   '{"fs":{"path":"$environment/offer-file.txt","write":"offered file\n"}}',
   '{"foreign":{"paths":["$environment/offer-file.txt"]},"as":"foreign","when":{"all":[{"directory":"$root"},{"present":{"entry":"<folder>"}},{"file":{"path":"$fixture/<folder>/offer-file.txt","exists":false}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}',
   '{"drag":{"from":{"kept":"foreign"},"to":{"entry":"<folder>"}},"when":{"all":[{"directory":"$root"},{"present":{"entry":"<folder>"}},{"file":{"path":"$fixture/<folder>/offer-file.txt","exists":false}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}',
-  '{"foreign_label":"Foreign drag finished","when":{"all":[{"directory":"$root"},{"present":{"entry":"<folder>"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}',
-  '{"foreign_stop":true,"when":{"all":[{"directory":"$root"},{"present":{"entry":"<folder>"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}',
+  '{"foreign_label":"Foreign drag finished"}',
+  '{"foreign_stop":true}',
 ]
 choose.folder = ["archive", "documents", "pictures"]
 
@@ -130,8 +122,8 @@ steps = [
   '{"fs":{"path":"$environment/offer-file.txt","write":"offered file\n"}}',
   '{"foreign":{"paths":["$environment/offer-file.txt"]},"as":"foreign","when":{"all":[{"directory":"$root"},{"present":{"entry":"<folder>"}},{"file":{"path":"$fixture/<folder>/offer-file.txt","exists":true}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}',
   '{"drag":{"from":{"kept":"foreign"},"to":{"entry":"<folder>"}},"when":{"all":[{"directory":"$root"},{"present":{"entry":"<folder>"}},{"file":{"path":"$fixture/<folder>/offer-file.txt","exists":true}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}',
-  '{"foreign_label":"Foreign drag finished","when":{"all":[{"directory":"$root"},{"present":{"entry":"<folder>"}},{"editable_fields":0},{"menu_items":null}]}}',
-  '{"foreign_stop":true,"when":{"all":[{"directory":"$root"},{"present":{"entry":"<folder>"}},{"editable_fields":0},{"menu_items":null}]}}',
+  '{"foreign_label":"Foreign drag finished"}',
+  '{"foreign_stop":true}',
 ]
 choose.folder = ["archive", "documents", "pictures"]
 
@@ -158,8 +150,8 @@ steps = [
   '{"fs":{"path":"$environment/offer.txt","write":"Selected words\nsecond line"}}',
   '{"foreign":{"offers":[{"mime":"text/plain;charset=utf-8","path":"$environment/offer.txt"}]},"as":"foreign","when":{"all":[{"present":{"entry":"inner"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}',
   '{"drag":{"from":{"kept":"foreign"},"to":{"entry":"inner"}},"when":{"all":[{"present":{"entry":"inner"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}',
-  '{"foreign_label":"Foreign drag finished","when":{"all":[{"present":{"entry":"inner"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}',
-  '{"foreign_stop":true,"when":{"all":[{"present":{"entry":"inner"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}',
+  '{"foreign_label":"Foreign drag finished"}',
+  '{"foreign_stop":true}',
 ]
 
 # Opens the folder in place: single-click activation.
