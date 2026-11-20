@@ -132,7 +132,7 @@ pub(crate) fn an_alphabet_is_refused_for_what_a_replay_could_not_run() {
             "unknown field",
         ),
         (
-            with_header(r#"{"modes":["columns"],"portal":true}"#),
+            with_header(r#"{"modes":["columns"],"portal":true,"session_bus":true}"#),
             "does not take the header's portal",
         ),
         (
