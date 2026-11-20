@@ -97,8 +97,9 @@ open-with v3 f764b759e0adf95c
 # Ctrl+click (as in lgse/strata#2353). Version 3 sends no keyboard cursor moves and guards both;
 # its seeds name the shrunk sequences of lgse/strata#2552, parked in tests/qa/fuzz/corpus/pointer.
 # Version 3's menu Escape, guarded on a Rename row, left a menu over several entries open (F5's
-# review of lgse/strata#2637); version 4 dismisses any menu (F4's round 2).
-pointer v4 76146a2b8bce47da
+# review of lgse/strata#2637); version 4 dismisses any menu (F4's round 2). Version 5 sends no
+# Shift+click after a band, by the owner's ruling (lgse/strata#2667).
+pointer v5 9737c0216796b582
 # preview: version 1 was A15's draft, never merged: its smoke tier caught Map::Tenxer `i` firing
 # with tenxer_mode off, default-mode Space inside the drawer closing the preview instead of
 # activating header buttons, `Open in default application` hiding instead of disabling on a

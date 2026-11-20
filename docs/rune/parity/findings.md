@@ -2231,8 +2231,8 @@ sequence only together with the alphabet's version, so the version is part of th
   there, and `icons v1` `0x1a` (Shift+Home, then F5). A facet the round met too, `pointer v4`
   `0x3a`: after a marquee GTK's Shift+click ranges from the entry the band reached first, which
   its selection sync gave the browser as cursor and so as anchor, where Rune's marquee leaves no
-  anchor. Parked here as GTK's; whether a marquee should leave a Shift anchor is the owner's
-  ([`owner.md`](owner.md), F4 item 1).
+  anchor. Ruled a `deviation` on 2026-11-20: Rune's stands (finding
+  [#2667](https://github.com/lgse/strata/issues/2667)).
 - **State:** open, set aside: no Rune change. `pointer v3` sends no keyboard cursor moves, and
   any fix belongs on `main`.
 
@@ -3149,7 +3149,11 @@ sequence only together with the alphabet's version, so the version is part of th
   could not hold the fault and was not kept; what the binary does differently is open.
 - **Concerns:** the sequence, parked in `tests/qa/fuzz/corpus/session-pointer/`; A9's
   `pointer` alphabet clicks a folder then Shift+clicks too, and has not met it in its tiers.
-- **State:** open, unowned: [A9](packages/A9.md) is told.
+- **State:** fixed by [F4](packages/F4.md)'s round 2, [#2660](https://github.com/lgse/strata/pull/2660),
+  with [#2551](https://github.com/lgse/strata/issues/2551)'s binary half, both of its halves: a
+  view with no anchor hands the browser none (`Browser::clear_selection_anchor`), and
+  `handover::adopt` takes none for none (found by the review of #2656). `session-pointer v3`
+  `0x09` agrees in 12 of 12 offscreen replays, where it differed in 24 of 24, and is unparked.
 
 ### #2640: a folder opened again by Return drops its remembered position on Rune
 
@@ -3301,3 +3305,19 @@ sequence only together with the alphabet's version, so the version is part of th
   in some of six Rune replays each, with `strata-next`'s hand-over as with the round's. A race,
   not traced.
 - **State:** open, unowned. Parked unshrunk in `tests/qa/fuzz/corpus/tabs/`.
+
+### #2667: a marquee leaves no Shift anchor on Rune, where GTK's band does
+
+- **Code:** `deviation`. [Issue](https://github.com/lgse/strata/issues/2667), filed on
+  2026-11-20 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** in [F4](packages/F4.md)'s round 2, `pointer v4` `0x3a` (3 steps: a click on
+  `documents`, a marquee from empty space up to `report.md`, a Shift+click on `notes.txt`).
+  GTK's selection sync gives the browser the first entry the band reaches as its cursor, and
+  so its anchor ([#2552](https://github.com/lgse/strata/issues/2552)'s mechanism): GTK selects
+  `notes.txt` to `spreadsheet.csv`. Rune's marquee sets no anchor: it selects `notes.txt` alone.
+- **State:** ruled a `deviation` by the owner on 2026-11-20 ([`owner.md`](owner.md#ruled)):
+  Rune's stands. No map rule can tell a Shift+click after a band from one after a click, since a
+  rule sees only its own step's observation, so `pointer v5` sends a Shift+click only where the
+  focused entry is selected or nothing is, which a band, leaving the focus where it was, does
+  not reach. Its gap: a band over the focused row still does. `pointer v4` `0x3a` is parked as
+  `deviation` against this finding in `tests/qa/fuzz/corpus/pointer/`.

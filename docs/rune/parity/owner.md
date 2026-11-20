@@ -636,15 +636,6 @@ Found by the package's agent, 2026-11-12, against A1's five items above.
    change in `roots.rs` by hand (`docs/rune/shared-state.md`, "Merging from `main`"). Should
    the rule move to a shared crate later, with GTK calling it? Source: A10, 2026-11-14.
 
-### F4: Fuzz rotation
-
-1. **Should a marquee leave a Shift anchor?** GTK's selection sync gives the shared browser, as
-   its cursor, the last entry each change newly selected, and so the first entry a band reaches
-   becomes the anchor a later Shift+click ranges from; Rune's marquee leaves no anchor, so its
-   Shift+click after a band selects the clicked entry alone (`pointer v4` seed `0x3a`, finding
-   [#2552](https://github.com/lgse/strata/issues/2552)). Meanwhile: Rune's, and the sequence is
-   parked against #2552 as `oracle`. Source: [F4](packages/F4.md)'s round 2, 2026-11-20.
-
 ### Packages added later
 
 - **A branch name for a package with no archived issue.** Branch names keep the package's
@@ -937,6 +928,14 @@ Rulings of the owner on the parity work, oldest first.
   RUSTSEC-2026-0543 (unmaintained), which comes only through `fitparser`. When to remove the
   `zip` entries is #2618's own `deny.toml` comment ("once docx-rs releases on zip 9"), not part
   of the ruling. Source: the owner, 2026-11-19, through the coordinator.
+- **2026-11-20: a marquee leaves no Shift anchor on Rune**, a ruled `deviation` (finding
+  [#2667](https://github.com/lgse/strata/issues/2667), a facet of
+  [#2552](https://github.com/lgse/strata/issues/2552)). GTK's selection sync makes the first
+  entry a band reaches the browser's anchor, so its Shift+click after a band ranges from it;
+  Rune's marquee sets none, and its Shift+click selects the clicked entry alone. Rune's stands.
+  The `pointer` alphabet sends a Shift+click only where the focused entry is selected or nothing
+  is, which a band leaves out. Asked by [F4](packages/F4.md)'s round 2. Source: the owner,
+  2026-11-20, through the coordinator.
 
 ## Housekeeping
 
