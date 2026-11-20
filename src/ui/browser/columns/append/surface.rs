@@ -238,6 +238,7 @@ impl ViewState {
             is_item: crate::ui::marquee::item_content_predicate(
                 marquee_targets,
                 Rc::new(crate::ui::pointer::hits_item_content),
+                true,
             ),
             clear_selection: Rc::new(move || {
                 if let Some(state) = weak_for_clear.upgrade() {

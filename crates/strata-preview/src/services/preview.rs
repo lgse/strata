@@ -1,0 +1,687 @@
+// SPDX-License-Identifier: MIT
+
+use std::{
+    borrow::Cow,
+    ffi::OsStr,
+    path::{Path, PathBuf},
+    rc::Rc,
+    sync::Arc,
+};
+
+use crate::model::FileEntry;
+
+use super::DocumentLayout;
+use crate::model::{ArchiveFormat, LoadHandle};
+
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub struct PreviewRequestId(pub u64);
+
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub struct MediaPreviewSize {
+    pub width: i32,
+    pub height: i32,
+}
+
+impl MediaPreviewSize {
+    pub const MAX_EDGE: i32 = 1280;
+
+    pub fn new(width: i32, height: i32) -> Self {
+        Self {
+            width: width.clamp(16, Self::MAX_EDGE),
+            height: height.clamp(16, Self::MAX_EDGE),
+        }
+    }
+
+    pub fn for_viewport(width: i32, height: i32, scale: i32) -> Self {
+        Self::new(width.saturating_mul(scale), height.saturating_mul(scale))
+    }
+}
+
+/// Redacts diagnostic output; does not scrub plaintext from memory.
+#[derive(Clone, Eq, PartialEq)]
+pub struct SecretString(String);
+
+impl SecretString {
+    pub fn new(secret: String) -> Self {
+        Self(secret)
+    }
+
+    pub fn expose(&self) -> &str {
+        &self.0
+    }
+}
+
+impl std::fmt::Debug for SecretString {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("[REDACTED]")
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct PreviewRequest {
+    pub id: PreviewRequestId,
+    pub entry: FileEntry,
+    pub text_byte_limit: usize,
+    pub render_document: bool,
+    pub pdf_page: i32,
+    pub media_size: MediaPreviewSize,
+    pub model_palette: super::ModelPalette,
+    pub model_view: super::ModelView,
+    pub archive_password: Option<SecretString>,
+}
+
+/// A decode request, not a playable file. Only the sandbox may open `path`.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SandboxedMedia {
+    pub path: PathBuf,
+    pub size: MediaPreviewSize,
+    pub backend: crate::sandbox::MediaPreviewBackend,
+    pub input_owner: Option<PreviewInputLease>,
+    /// Audio-name hint: skip attached pictures, but preserve any real video found by the probe.
+    pub audio_only: bool,
+}
+
+impl SandboxedMedia {
+    pub fn retain_input(mut self, owner: impl Send + Sync + 'static) -> Self {
+        self.input_owner = Some(PreviewInputLease(std::sync::Arc::new(owner)));
+        self
+    }
+}
+
+/// Keeps a staged source alive across player clones, seeks, and worker teardown.
+#[derive(Clone)]
+pub struct PreviewInputLease(std::sync::Arc<dyn Send + Sync>);
+
+impl std::fmt::Debug for PreviewInputLease {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("PreviewInputLease")
+    }
+}
+
+impl PartialEq for PreviewInputLease {
+    fn eq(&self, other: &Self) -> bool {
+        std::sync::Arc::ptr_eq(&self.0, &other.0)
+    }
+}
+impl Eq for PreviewInputLease {}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum PreviewContent {
+    Text {
+        content: String,
+        truncated: bool,
+    },
+    Document {
+        source: String,
+        document: Option<DocumentLayout>,
+        fallback_reason: Option<String>,
+        warnings: Vec<String>,
+        truncated: bool,
+    },
+    Rendered {
+        document: DocumentLayout,
+        warnings: Vec<String>,
+    },
+    Image,
+    Media,
+    Rasterized {
+        png: Vec<u8>,
+    },
+    Route {
+        preview: super::route_preview::RoutePreview,
+    },
+    Model {
+        png: Vec<u8>,
+        mesh: Option<super::ModelMesh>,
+    },
+    SandboxedMedia {
+        media: SandboxedMedia,
+    },
+    Pdf {
+        png: Vec<u8>,
+        page: i32,
+        pages: i32,
+        text_layer: Option<Arc<PdfTextLayer>>,
+    },
+    Archive {
+        tree: ArchivePreviewTree,
+    },
+    Unsupported,
+}
+
+/// Extracted text and per-character bounds for one rendered PDF page.
+/// `glyphs[i]` locates the i-th char of `text` in rendered PNG pixels.
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct PdfTextLayer {
+    pub width: f32,
+    pub height: f32,
+    pub text: String,
+    pub glyphs: Vec<[f32; 4]>,
+}
+
+#[derive(Clone, Debug)]
+pub struct Preview {
+    pub request_id: PreviewRequestId,
+    pub entry: FileEntry,
+    pub content_type: String,
+    pub content: PreviewContent,
+}
+
+pub const INCORRECT_ARCHIVE_PASSWORD: &str = "The password is incorrect.";
+
+#[derive(Clone, Debug)]
+pub enum PreviewEvent {
+    Progress {
+        request_id: PreviewRequestId,
+        stage: ModelPreviewStage,
+    },
+    Ready(Preview),
+    Failed {
+        request_id: PreviewRequestId,
+        entry: FileEntry,
+        message: String,
+    },
+    NeedsPassword {
+        request_id: PreviewRequestId,
+        entry: FileEntry,
+    },
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum ModelPreviewStage {
+    Reading,
+    Thumbnail,
+    Rendering { triangles: usize },
+    Finishing,
+}
+
+impl ModelPreviewStage {
+    /// Localized progress text.
+    pub fn label(self) -> String {
+        match self {
+            Self::Reading => crate::i18n::tr("Reading model…"),
+            Self::Thumbnail => crate::i18n::tr("Reading thumbnail…"),
+            Self::Finishing => crate::i18n::tr("Finishing preview…"),
+            Self::Rendering { triangles } => crate::i18n::count("rendering_triangles", triangles),
+        }
+    }
+}
+
+pub trait PreviewProvider {
+    fn load(&self, request: PreviewRequest, emit: Rc<dyn Fn(PreviewEvent)>) -> LoadHandle;
+}
+
+/// Leading bytes read to decide a local file's preview family.
+pub const CONTENT_SAMPLE_BYTES: usize = 8 * 1024;
+
+/// Elementary video streams the shared MIME database does not name.
+const RAW_VIDEO_STREAMS: &[(&str, &str)] = &[
+    ("h264", "video/h264"),
+    ("264", "video/h264"),
+    ("h265", "video/h265"),
+    ("265", "video/h265"),
+    ("hevc", "video/h265"),
+];
+
+fn raw_video_stream_type(path: &Path) -> Option<&'static str> {
+    let extension = path.extension()?.as_encoded_bytes();
+    RAW_VIDEO_STREAMS
+        .iter()
+        .find(|(suffix, _)| extension.eq_ignore_ascii_case(suffix.as_bytes()))
+        .map(|(_, content_type)| *content_type)
+}
+
+/// Raw elementary streams can only seek by decoding up to the target position.
+pub fn is_raw_video_stream(content_type: &str) -> bool {
+    RAW_VIDEO_STREAMS
+        .iter()
+        .any(|(_, raw_type)| *raw_type == content_type)
+}
+
+pub fn guess_content_type(path: &Path) -> (String, bool) {
+    if let Some(content_type) = raw_video_stream_type(path) {
+        return (content_type.to_owned(), false);
+    }
+    let (guessed, uncertain) = gio::content_type_guess(Some(path), None::<&[u8]>);
+    if !guessed.starts_with("image/") && crate::sandbox::raw_metadata::is_raw(path) {
+        return ("image/x-dcraw".to_owned(), false);
+    }
+    (guessed.to_string(), uncertain)
+}
+
+/// A sniffed type that only says "binary" defers to the name, so Properties agrees with
+/// the preview about formats the MIME database lacks; any byte-backed type wins.
+pub fn refine_reported_content_type(reported: &str, name: &Path) -> String {
+    if reported == "application/octet-stream" {
+        guess_content_type(name).0
+    } else {
+        reported.to_owned()
+    }
+}
+
+fn content_type_for_path(path: &Path) -> String {
+    guess_content_type(path).0
+}
+
+pub fn is_image_path(path: &Path) -> bool {
+    content_type_for_path(path).starts_with("image/")
+}
+
+pub fn is_media_path(path: &Path) -> bool {
+    let content_type = content_type_for_path(path);
+    content_type.starts_with("audio/") || content_type.starts_with("video/")
+}
+
+pub fn read_head_sample(path: &Path) -> std::io::Result<Vec<u8>> {
+    use std::io::Read;
+    let file = super::file_activity::open(path)?;
+    let mut sample = Vec::with_capacity(CONTENT_SAMPLE_BYTES);
+    file.take(CONTENT_SAMPLE_BYTES as u64)
+        .read_to_end(&mut sample)?;
+    Ok(sample)
+}
+
+/// Whether a local file's leading bytes still back the visual family its name claims,
+/// so metadata probes skip source files that merely share a media extension.
+pub fn bytes_support_named_family(path: &Path) -> bool {
+    read_supports_named_family(path).unwrap_or(true)
+}
+
+/// [`bytes_support_named_family`] that reports a failed read instead of trusting the name.
+pub fn read_supports_named_family(path: &Path) -> std::io::Result<bool> {
+    let sample = read_head_sample(path)?;
+    let mut content_type = content_type_for_path(path).to_string();
+    let mut content = content_family(&content_type);
+    reconcile_with_sample(&mut content_type, &mut content, &sample);
+    Ok(!matches!(content, PreviewContent::Text { .. }))
+}
+
+/// Text is NUL-free and either valid UTF-8 (allowing a sequence cut by the sample
+/// boundary) or a legacy single-byte encoding with few control bytes; UTF-16 announces
+/// itself with a byte-order mark.
+pub fn looks_like_text(sample: &[u8]) -> bool {
+    if sample.starts_with(&[0xFF, 0xFE]) || sample.starts_with(&[0xFE, 0xFF]) {
+        return true;
+    }
+    if sample.contains(&0) {
+        return false;
+    }
+    let utf8 = match std::str::from_utf8(sample) {
+        Ok(_) => true,
+        Err(error) => error.error_len().is_none(),
+    };
+    if utf8 {
+        return true;
+    }
+    let control = sample
+        .iter()
+        .filter(|byte| matches!(byte, 0x01..=0x08 | 0x0E..=0x1A | 0x1C..=0x1F))
+        .count();
+    control * 32 < sample.len()
+}
+
+fn content_type_from_bytes(sample: &[u8]) -> (String, bool) {
+    let (content_type, uncertain) = gio::content_type_guess(None::<&Path>, Some(sample));
+    (content_type.to_string(), uncertain)
+}
+
+fn same_family(left: &PreviewContent, right: &PreviewContent) -> bool {
+    std::mem::discriminant(left) == std::mem::discriminant(right)
+}
+
+/// Lets the file's leading bytes override a name-derived preview family: text is never
+/// handed to a media or image decoder and binary data is never shown as text. Visual
+/// families survive only when the bytes carry their signature, or for XML-based images
+/// such as SVG whose source is legitimately text.
+pub fn reconcile_with_sample(
+    content_type: &mut String,
+    content: &mut PreviewContent,
+    sample: &[u8],
+) {
+    let (from_bytes, bytes_uncertain) = content_type_from_bytes(sample);
+    let bytes_family = content_family(&from_bytes);
+    let is_text = matches!(content, PreviewContent::Text { .. });
+    let is_visual = matches!(
+        content,
+        PreviewContent::Image | PreviewContent::Media | PreviewContent::Pdf { .. }
+    );
+    if looks_like_text(sample) {
+        if is_text {
+            // A text name hides nothing unless the bytes carry a visual signature.
+            if !bytes_uncertain
+                && matches!(
+                    bytes_family,
+                    PreviewContent::Image | PreviewContent::Pdf { .. }
+                )
+            {
+                *content_type = from_bytes;
+                *content = bytes_family;
+            }
+            return;
+        }
+        if is_visual {
+            let bytes_agree = same_family(content, &bytes_family);
+            let xml_image = matches!(content, PreviewContent::Image)
+                && gio::content_type_is_a(content_type, "application/xml");
+            if bytes_agree || xml_image {
+                return;
+            }
+            *content_type = "text/plain".to_owned();
+        }
+        *content = PreviewContent::Text {
+            content: String::new(),
+            truncated: false,
+        };
+    } else if is_text {
+        *content_type = from_bytes;
+        *content = match bytes_family {
+            PreviewContent::Text { .. } => PreviewContent::Unsupported,
+            family => family,
+        };
+    }
+}
+
+pub fn supports_remote_video(name: &OsStr) -> bool {
+    Path::new(name)
+        .extension()
+        .and_then(OsStr::to_str)
+        .is_some_and(|extension| matches!(extension.to_ascii_lowercase().as_str(), "mov" | "mp4"))
+}
+
+/// Remote G-code keeps the text preview: its thumbnail is read from the file in place.
+pub fn model_format(entry: &FileEntry) -> Option<super::ModelFormat> {
+    super::ModelFormat::for_name(&entry.native_name).filter(|format| {
+        *format != super::ModelFormat::Gcode || entry.location.native_path().is_some()
+    })
+}
+
+pub fn is_model(entry: &FileEntry) -> bool {
+    model_format(entry).is_some()
+}
+
+pub fn has_plain_text_extension(name: &OsStr) -> bool {
+    Path::new(name)
+        .extension()
+        .and_then(OsStr::to_str)
+        .is_some_and(|extension| matches!(extension.to_ascii_lowercase().as_str(), "conf" | "ini"))
+}
+
+pub fn normalize_preview_text(text: &str) -> Cow<'_, str> {
+    if text.contains('\0') {
+        Cow::Owned(text.replace('\0', "\u{FFFD}"))
+    } else {
+        Cow::Borrowed(text)
+    }
+}
+
+pub fn is_extensionless_dotfile(name: &OsStr) -> bool {
+    let bytes = name.as_encoded_bytes();
+    bytes.len() > 1 && bytes.starts_with(b".") && Path::new(name).extension().is_none()
+}
+
+pub fn is_non_executable_extensionless_dotfile(name: &OsStr, unix_mode: Option<u32>) -> bool {
+    is_extensionless_dotfile(name) && unix_mode.is_some_and(|mode| mode & 0o111 == 0)
+}
+
+pub fn content_family(content_type: &str) -> PreviewContent {
+    if content_type == "application/pdf" {
+        PreviewContent::Pdf {
+            png: Vec::new(),
+            page: 0,
+            pages: 0,
+            text_layer: None,
+        }
+    } else if content_type == "image/gif" {
+        PreviewContent::Media
+    } else if content_type.starts_with("image/") {
+        PreviewContent::Image
+    } else if content_type.starts_with("audio/") || content_type.starts_with("video/") {
+        PreviewContent::Media
+    } else if content_type.starts_with("text/")
+        || matches!(
+            content_type,
+            "application/json"
+                | "application/ld+json"
+                | "application/toml"
+                | "application/yaml"
+                | "application/x-yaml"
+                | "application/xml"
+                | "application/javascript"
+                | "application/x-javascript"
+                | "application/x-shellscript"
+                | "application/typescript"
+                | "application/x-typescript"
+        )
+        || content_type.ends_with("+json")
+        || content_type.ends_with("+xml")
+    {
+        PreviewContent::Text {
+            content: String::new(),
+            truncated: false,
+        }
+    } else {
+        PreviewContent::Unsupported
+    }
+}
+
+/// Names are archive data, never paths to resolve against the host filesystem.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ArchiveFileEntry {
+    pub name: String,
+    pub directory: bool,
+    pub size: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ArchiveDirectory {
+    pub name: String,
+    pub children: Vec<ArchiveNode>,
+}
+
+impl Drop for ArchiveDirectory {
+    // Recursive drop glue can overflow the stack on attacker-controlled nesting.
+    fn drop(&mut self) {
+        if self.children.is_empty() {
+            return;
+        }
+        let mut stack = vec![std::mem::take(&mut self.children)];
+        while let Some(mut children) = stack.pop() {
+            for child in children.drain(..) {
+                if let ArchiveNode::Directory(mut directory) = child {
+                    stack.push(std::mem::take(&mut directory.children));
+                }
+            }
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum ArchiveNode {
+    Directory(ArchiveDirectory),
+    File { name: String, size: u64 },
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ArchivePreviewTree {
+    pub root: ArchiveDirectory,
+    pub file_count: usize,
+}
+
+/// Keep dots and backslashes literal; collapse empty slash components for virtual navigation.
+/// The listing budget must use the same split to bound synthesized directory nodes.
+pub fn split_archive_name(name: &str) -> Vec<&str> {
+    name.split('/')
+        .filter(|segment| !segment.is_empty())
+        .collect()
+}
+
+/// Callers must enforce the listing name budget before constructing this unbounded tree.
+pub fn archive_preview_tree(entries: Vec<ArchiveFileEntry>) -> ArchivePreviewTree {
+    #[derive(Default)]
+    struct Builder {
+        directory: bool,
+        name: String,
+        size: u64,
+        children: Vec<Builder>,
+        // Index only directories: duplicate files must remain distinct members.
+        dirs: std::collections::HashMap<String, usize>,
+    }
+
+    fn insert(seed: &mut Builder, segments: Vec<&str>, directory: bool, size: u64) {
+        let Some(last) = segments.as_slice().split_last() else {
+            return;
+        };
+        let mut current = seed;
+        for parent in last.1 {
+            let next = match current.dirs.get(*parent).copied() {
+                Some(index) => &mut current.children[index],
+                None => {
+                    current
+                        .dirs
+                        .insert((*parent).to_owned(), current.children.len());
+                    current.children.push(Builder {
+                        directory: true,
+                        name: (*parent).to_owned(),
+                        ..Builder::default()
+                    });
+                    let last = current.children.len() - 1;
+                    &mut current.children[last]
+                }
+            };
+            current = next;
+        }
+        if directory {
+            if !current.dirs.contains_key(*last.0) {
+                current
+                    .dirs
+                    .insert((*last.0).to_owned(), current.children.len());
+                current.children.push(Builder {
+                    directory: true,
+                    name: (*last.0).to_owned(),
+                    ..Builder::default()
+                });
+            }
+        } else {
+            current.children.push(Builder {
+                directory: false,
+                name: (*last.0).to_owned(),
+                size,
+                ..Builder::default()
+            });
+        }
+    }
+
+    fn sort_and_convert(children: Vec<Builder>) -> (Vec<ArchiveNode>, usize) {
+        // Use heap frames so hostile nesting cannot exhaust the call stack.
+        struct Frame {
+            name: String,
+            children: Vec<Builder>,
+            next: usize,
+            nodes: Vec<ArchiveNode>,
+            file_count: usize,
+        }
+
+        fn sort_level(children: &mut [Builder]) {
+            children.sort_by_cached_key(|child| {
+                (
+                    std::cmp::Reverse(child.directory),
+                    child.name.to_ascii_lowercase(),
+                    child.name.clone(),
+                )
+            });
+        }
+
+        let mut root_children = children;
+        sort_level(&mut root_children);
+        let mut stack = vec![Frame {
+            name: String::new(),
+            children: root_children,
+            next: 0,
+            nodes: Vec::new(),
+            file_count: 0,
+        }];
+        while !stack.is_empty() {
+            let advanced = {
+                let Some(frame) = stack.last_mut() else {
+                    break;
+                };
+                if frame.next >= frame.children.len() {
+                    None
+                } else {
+                    let child = std::mem::take(&mut frame.children[frame.next]);
+                    frame.next += 1;
+                    Some(child)
+                }
+            };
+            let Some(child) = advanced else {
+                let frame = stack
+                    .pop()
+                    .expect("levels complete before the stack empties");
+                match stack.last_mut() {
+                    Some(parent) => {
+                        parent.file_count += frame.file_count;
+                        parent.nodes.push(ArchiveNode::Directory(ArchiveDirectory {
+                            name: frame.name,
+                            children: frame.nodes,
+                        }));
+                    }
+                    None => return (frame.nodes, frame.file_count),
+                }
+                continue;
+            };
+            if child.directory {
+                let mut grandchildren = child.children;
+                sort_level(&mut grandchildren);
+                stack.push(Frame {
+                    name: child.name,
+                    children: grandchildren,
+                    next: 0,
+                    nodes: Vec::new(),
+                    file_count: 0,
+                });
+            } else {
+                let Some(frame) = stack.last_mut() else {
+                    unreachable!("a file always has a level awaiting it");
+                };
+                frame.file_count += 1;
+                frame.nodes.push(ArchiveNode::File {
+                    name: child.name,
+                    size: child.size,
+                });
+            }
+        }
+        unreachable!("archive levels complete before the stack empties");
+    }
+
+    let mut root = Builder {
+        directory: true,
+        ..Builder::default()
+    };
+    for entry in entries {
+        let segments = split_archive_name(&entry.name);
+        insert(&mut root, segments, entry.directory, entry.size);
+    }
+    let (children, file_count) = sort_and_convert(root.children);
+    ArchivePreviewTree {
+        root: ArchiveDirectory {
+            name: String::new(),
+            children,
+        },
+        file_count,
+    }
+}
+
+pub fn archive_preview_format(name: &OsStr) -> Option<ArchiveFormat> {
+    match ArchiveFormat::from_extension(&name.to_string_lossy()) {
+        Some(
+            format @ (ArchiveFormat::Zip
+            | ArchiveFormat::SevenZ
+            | ArchiveFormat::TarGz
+            | ArchiveFormat::Tar),
+        ) => Some(format),
+        _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests;

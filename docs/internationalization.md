@@ -29,7 +29,7 @@ use and their English value is the plain word: `completion.complete`,
 `dropped_text.name`, and `action_icon.*`.
 `settings_keywords.<target id>` keys hold space-separated search synonyms for a
 Settings search target; their English value is the English alias list. All catalogs
-are build inputs: `build.rs` embeds them as static tables served by the
+are build inputs: `crates/strata-core/build.rs` embeds them as static tables served by the
 `i18n::Catalogs` backend, so changing only a translation still rebuilds them.
 The installer embeds its messages from the same rust-i18n source catalog so it
 needs no translation files, Python, or installed Strata binary at runtime. It
@@ -141,7 +141,7 @@ such as "Could not open “%{path}”: %{error}", use `services::io_error_detail
 localized reason: they lower-case the first letter in French, Spanish, Italian,
 Brazilian Portuguese, Russian and Vietnamese, and leave acronyms such as "HTTP"
 alone. Network failures go through `NetworkError`
-(`src/services/network_error.rs`), which reduces a `ureq` error to
+(`crates/strata-fs/src/services/network_error.rs`), which reduces a `ureq` error to
 language-neutral data: an HTTP status, an English catalog reason, or
 untranslatable library text. Store that value, not a formatted sentence, in
 caches or anywhere else it may be shown later, and localize it with `message()`

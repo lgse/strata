@@ -45,7 +45,7 @@ There is no `update_command`. pacman cannot update an AUR package -- no configur
 
 Strata reads it once at start-up, relative to its own install prefix (`<prefix>/share/strata/install-source.toml`). When it is present, Strata checks the AUR first and reports a release only after that package version is available. **Settings → Updates** opens the installed AUR helper in a terminal with a full-system update command, or opens the package’s AUR page when no supported helper is available. Strata looks for the helpers on `PATH` once per run, off the interface thread, when it first needs the update method; a helper installed while Strata runs is offered after a restart. `services::install_update` still refuses to replace the package-owned binary outright. Every field is optional and unknown keys are ignored, so the parser can evolve without breaking an older binary. A marker that exists but cannot be parsed still counts as packaged, which fails safe.
 
-This is currently an official Strata metadata format for these two AUR packages, not a public cross-distribution packaging API. Supporting Debian, RPM, Flatpak, or other providers requires an explicit design for ownership, availability checks, channels, and update actions rather than assuming AUR semantics.
+This is currently an official Strata metadata format for these two AUR packages, not a public cross-distribution packaging API. Supporting Debian, RPM, Flatpak, or other providers requires an explicit design for ownership, availability checks, channels, and update actions rather than assuming AUR semantics. The [COPR package](#fedora-copr) avoids the question by compiling the updater out and installing no marker.
 
 The [Nix package](#nix) is the one other marker. It installs `nix/install-source.toml` (`manager = "Nix"`, `package = "strata"`, nothing else) so Diagnostics reports `Installed by Nix as strata.` It is safe only because that package compiles with `STRATA_UPDATER=disabled`: `update_method()` treats every marker as an AUR install, so a Nix build with the updater enabled would query the AUR for a package named `strata`. Give the marker a provider field before enabling the updater for Nix.
 
@@ -133,9 +133,86 @@ address this problem.
 
 The default folder handler stays a user-level `xdg-mime` association because it stores only the desktop ID, which does not change between builds; Home Manager users set it through `xdg.mimeApps.defaultApplications`. The Omarchy shortcut block has no Nix equivalent, and the udiskie hook is a `services.udiskie.settings` entry.
 
+## Fedora COPR
+
+`packaging/rpm/strata.spec.in` builds Strata from source for [COPR](https://copr.fedorainfracloud.org), which serves it as a dnf repository for Fedora on `x86_64` and `aarch64`. `scripts/build_srpm.py` renders the spec for a release tag and writes a source RPM holding three files: a `git archive` of the tag, a tarball of vendored crates, and the rendered spec.
+
+```
+packaging/rpm/
+  strata.spec.in              the template; never commit a rendered spec
+scripts/
+  build_srpm.py               renders the spec and builds the source RPM
+  test_build_srpm.py
+.github/workflows/
+  publish-copr.yml            submits a release to COPR
+  rpm.yml                     builds, lints, and installs the RPM for every change it depends on
+```
+
+Unlike the AUR packages, nothing rendered is committed: the source RPM is built from the tagged commit itself, so the only reviewed inputs are the template and the script.
+
+### What the build changes
+
+- **No RAR support.** UnRAR's license is not on Fedora's list of allowed licenses, and COPR accepts only material under those licenses, including unused sources in a source RPM. The only UnRAR source code reaches the build through the `unrar_sys` crate. The spec builds with `--no-default-features`, and `cargo vendor-filterer` vendors only the crates that build needs for Linux on the two supported architectures, replacing every other crate in `Cargo.lock` with an empty stub so Cargo can still resolve it offline. `build_srpm.py` refuses to write a source RPM unless `unrar` and `unrar_sys` are such stubs, and it lists every stub so the package does not claim to bundle it. The repository archive still carries `data/licenses/UnRAR.txt` and the MIT-licensed RAR test fixtures; neither is UnRAR code, and the package installs neither.
+- **No in-app updater.** The spec builds with [`STRATA_UPDATER=disabled`](#building-without-the-in-app-updater), so dnf owns updates and Diagnostics reports in-app updates as disabled. It installs no `install-source.toml`: the marker means an AUR install to the updater code.
+- **Runtime integrations stay enabled.** `/usr/bin/strata` does not move between updates, so the runtime installers work as they do for a release archive. The FileManager1 service is installed only as the inactive template under `/usr/share/strata`, as the AUR packages do.
+- **Offline, vendored build.** COPR builders have no network access by default. `%cargo_prep -v vendor` points Cargo at the vendored crates and sets it offline.
+
+`STRATA_BUILD_COMMIT`, `STRATA_RELEASE_TAG`, and `STRATA_BUILD_KIND` are set from the tag, so `strata --version` and Diagnostics identify the release exactly as a release-archive build does.
+
+### Versions and channels
+
+RPM sorts a `~` suffix before the version it is attached to, so prereleases map onto versions that order before their final release:
+
+```
+1.2.1 < 1.3.0~alpha.1 < 1.3.0~beta.1 < 1.3.0~rc.1 < 1.3.0~rc.2 < 1.3.0
+```
+
+Nightlies are not packaged, for the reason given for the AUR packages, and `build_srpm.py` rejects them.
+
+The two channels are separate COPR projects, both with a package named `strata`:
+
+| Project variable | Receives |
+| --- | --- |
+| `COPR_PROJECT` | Stable releases |
+| `COPR_PREVIEW_PROJECT` | Alpha, beta, RC, and stable releases |
+
+A stable release also goes to the Preview project so that channel never stays on a prerelease older than the latest stable release. Users enable one of the two.
+
+### Licensing metadata
+
+The `License` tag is generated: `cargo2rpm license-summary` lists the licenses of the crates linked into the binary, and `build_srpm.py` adds the licenses of the assets compiled into it (`ASSET_LICENSES`; see [third-party notices](../THIRD_PARTY_LICENSES.md)). Update `ASSET_LICENSES` whenever a bundled asset with a new license is added. The package installs the per-crate breakdown as `LICENSE.dependencies` and `cargo-vendor.txt`, from which RPM generates a `bundled(crate(…))` provide for every vendored crate.
+
+### Building locally
+
+On Fedora, or in a Fedora container:
+
+```bash
+sudo dnf install git rpm-build rpmlint cargo-rpm-macros cargo-vendor-filterer 'dnf-command(builddep)'
+python3 scripts/build_srpm.py --tag v1.2.1                    # a published tag
+python3 scripts/build_srpm.py --tag v1.2.1 --ref HEAD         # the working commit, named as v1.2.1
+sudo dnf builddep target/rpm/strata-*.src.rpm
+rpmbuild --rebuild target/rpm/strata-*.src.rpm
+rpmlint target/rpm/strata-*.src.rpm ~/rpmbuild/RPMS/*/strata-*.rpm
+```
+
+`--ref` packages any commit under a release tag's identity, which `.github/workflows/rpm.yml` uses to build pull requests. That workflow runs on every change to the package's inputs, including the workspace's `Cargo.toml` files and `Cargo.lock`, because a dependency update can add a crate under a license COPR does not accept. It builds on `x86_64` with the newest Fedora only; the COPR builds at release time cover the other releases and `aarch64`, and a failed one can be retried with `publish-copr.yml`. `--release` raises the RPM release number to rebuild a version that is already published.
+
+### Publishing
+
+`.github/workflows/publish-copr.yml` builds the source RPM for a published release, uploads it as a workflow artifact, submits it to the projects that release belongs to, and waits for every COPR build. The Release workflow calls it after publishing every non-nightly release. Run it manually to retry a failed submission, rebuild with a higher `release` number, or backfill an older release. It always uses the packaging tools from the workflow's own revision and only the source archive from the release tag, so tags older than the spec can be packaged too, back to `v1.2.0-rc.1`. `build_srpm.py` refuses earlier tags: their `build.rs` ignores `STRATA_UPDATER`, so the package would keep the in-app updater.
+
+It stays disabled unless the repository variable `COPR_PUBLISH_ENABLED` is exactly `true`. To set it up:
+
+1. Create the two COPR projects with the `fedora-*` chroots for `x86_64` and `aarch64` that should be supported. Leave **Enable internet access during builds** off; the build must not need it.
+2. Set the repository variables `COPR_PROJECT` and `COPR_PREVIEW_PROJECT` to `<owner>/<project>`. Leave `COPR_PREVIEW_PROJECT` empty to publish stable releases only.
+3. Create the protected `copr-production` environment, restricted to the default branch, with a `COPR_CONFIG` secret holding the contents of the `~/.config/copr` file shown at <https://copr.fedorainfracloud.org/api/>.
+4. Set `COPR_PUBLISH_ENABLED` to `true`.
+
+COPR API tokens expire after 180 days. Renew the token on the same page and replace `COPR_CONFIG` before it expires; an expired token fails the publish job, which can then be rerun manually.
+
 ## Other distributions
 
-Debian/Ubuntu, Fedora, Flatpak, and AppImage each have their own dependency, sandboxing, update, and review requirements and are tracked as separate issues. The AUR marker must not be reused for them until those provider-specific semantics are designed; the Nix marker above relies on the updater being compiled out, not on such a design.
+Debian/Ubuntu, Flatpak, and AppImage each have their own dependency, sandboxing, update, and review requirements and are tracked as separate issues. The AUR marker must not be reused for them until those provider-specific semantics are designed; the Nix marker above and the COPR package rely on the updater being compiled out, not on such a design.
 
 ### Building without the in-app updater
 
@@ -155,4 +232,4 @@ A package that cannot let Strata write its own integration files at runtime, bec
 STRATA_INTEGRATIONS=package cargo build --locked --release
 ```
 
-Such a build never writes, removes, or refreshes the file chooser portal, the FileManager1 service, the Omarchy shortcut block, or the udiskie unlock hook. Settings → General → Desktop integration keeps the **System file manager** and **Unlock encrypted volumes** rows, so search still finds them, but each explains that the package provides the integration instead of showing status indicators and setup actions. The command-line modes `--install-portal`, `--uninstall-portal`, `--dismiss-portal-prompt`, `--install-udiskie-unlock`, and `--uninstall-udiskie-unlock` exit with the same explanation, and the start-up check that restarts a stale per-user portal backend is skipped. The `--portal`, `--gapplication-service`, and `--udiskie-hook` modes that the shipped files invoke are unaffected. `STRATA_INTEGRATIONS` accepts only `runtime` (the default) and `package`; any other value fails the build. The package must then install the files `src/portal_setup.rs` would have written, with `Exec` lines that point at the executable users launch (the wrapper on Nix), and document how to enable them; the [Nix section](#nix) is the reference implementation.
+Such a build never writes, removes, or refreshes the file chooser portal, the FileManager1 service, the Omarchy shortcut block, or the udiskie unlock hook. Settings → General → Desktop integration keeps the **System file manager** and **Unlock encrypted volumes** rows, so search still finds them, but each explains that the package provides the integration instead of showing status indicators and setup actions. The command-line modes `--install-portal`, `--uninstall-portal`, `--dismiss-portal-prompt`, `--install-udiskie-unlock`, and `--uninstall-udiskie-unlock` exit with the same explanation, and the start-up check that restarts a stale per-user portal backend is skipped. The `--portal`, `--gapplication-service`, and `--udiskie-hook` modes that the shipped files invoke are unaffected. `STRATA_INTEGRATIONS` accepts only `runtime` (the default) and `package`; any other value fails the build. The package must then install the files `crates/strata-desktop/src/portal_setup.rs` would have written, with `Exec` lines that point at the executable users launch (the wrapper on Nix), and document how to enable them; the [Nix section](#nix) is the reference implementation.

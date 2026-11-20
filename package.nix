@@ -64,6 +64,7 @@ rustPlatform.buildRustPackage (finalAttrs: {
       ./Cargo.lock
       ./build.rs
       ./src
+      ./crates
       ./data
       ./integrations
       ./LICENSE

@@ -68,7 +68,7 @@ GLib 2.80.
 
 ### Verified Trash result
 
-Location: `src/adapters/local_operations/environment.rs::System::trash`
+Location: `crates/strata-fs/src/adapters/local_operations/environment.rs::System::trash`
 
 Reason: GLib can return FALSE from `g_file_trash` without setting an error
 (GLib #4060). gio-rs asserts in debug builds that FALSE always carries an
@@ -84,7 +84,7 @@ nothing is caught too.
 
 ### File handles
 
-Location: `src/adapters/local_operations/native_fs.rs::file_handle`
+Location: `crates/strata-fs/src/adapters/local_operations/native_fs.rs::file_handle`
 
 Reason: on NFS and ext2/3/4 without birth times, a freed inode number goes straight to the next
 file, and only the file handle's generation tells the two apart. rustix does not wrap
@@ -94,7 +94,7 @@ call keeps no pointer. It keeps a 64-bit digest of the handle type and bytes, no
 
 ### Checked descriptor close
 
-Location: `src/adapters/local_operations/fs_ops.rs::System::close`
+Location: `crates/strata-fs/src/adapters/local_operations/fs_ops.rs::System::close`
 
 Reason: `OwnedFd` and rustix discard close errors, but NFS, SMB and FUSE can report
 failed writes only at close. The safe wrapper consumes the owned descriptor and
@@ -105,7 +105,7 @@ to fail without deleting originals.
 
 ### Background close of enumerators and streams
 
-Location: `src/adapters/gio_close.rs::Closable::close_in_background`
+Location: `crates/strata-fs/src/adapters/gio_close.rs::Closable::close_in_background`
 
 Reason: GLib closes an enumerator or stream still open at its last unref in place, so one
 the UI thread lets go of would close there, waiting on a dead NFS or SMB server, a stopped
@@ -126,7 +126,7 @@ requires each close to run off the UI thread.
 
 ### File and folder monitors made off the UI thread
 
-Location: `src/adapters/local_files/monitors.rs::BareMonitor`
+Location: `crates/strata-fs/src/adapters/local_files/monitors.rs::BareMonitor`
 
 Reason: GLib's inotify backend creates, cancels and delivers every file and directory monitor
 under one global lock, and creating one walks the watched path, which blocks on a mount that
@@ -149,7 +149,7 @@ leaked rather than cancelled on the UI thread.
 
 ### Browser sandbox fork boundary
 
-Location: `src/sandbox/browser/process.rs::{fork,namespaces}`
+Location: `crates/strata-preview/src/sandbox/browser/process.rs::{fork,namespaces}`
 
 Reason: reusing a codec-free supervisor's process image avoids per-file helper
 exec and namespace-tool startup while keeping native decoders disposable and

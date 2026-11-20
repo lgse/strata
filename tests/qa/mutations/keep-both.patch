@@ -1,7 +1,7 @@
-diff --git a/src/adapters/local_operations/paste/item.rs b/src/adapters/local_operations/paste/item.rs
+diff --git a/crates/strata-fs/src/adapters/local_operations/paste/item.rs b/crates/strata-fs/src/adapters/local_operations/paste/item.rs
 index 8eb310c2..2a9ec038 100644
---- a/src/adapters/local_operations/paste/item.rs
-+++ b/src/adapters/local_operations/paste/item.rs
+--- a/crates/strata-fs/src/adapters/local_operations/paste/item.rs
++++ b/crates/strata-fs/src/adapters/local_operations/paste/item.rs
 @@ -241,7 +241,15 @@ impl<'a> Sequential<'a> {
          // copy left after an original was replaced without Trash.
          let created_location = target_location

@@ -46,7 +46,7 @@ other desktop entry, including an application launcher, opens as before.
 
 ## Testing
 
-`src/services/dropped_content/tests.rs` covers address and name validation,
+`crates/strata-fs/src/services/dropped_content/tests.rs` covers address and name validation,
 link round trips, image recognition, and no-clobber saving by both renaming and
 writing in place; `src/ui/browser/content_drop/tests.rs` covers how dropped
 values are classified, including refused mixed lists.

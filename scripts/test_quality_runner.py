@@ -98,7 +98,8 @@ class QualityRunnerTests(unittest.TestCase):
         condition = re.search(r"^    if: (.+)$", build, re.M).group(1)
         self.assertNotIn("github.event_name != 'push'", condition)
         self.assertIn("STRATA_QUALITY_TASK: build", build)
-        self.assertIn("if: github.event_name == 'push' && github.ref == 'refs/heads/main'", build)
+        self.assertIn("if: github.event_name == 'push' && (github.ref == 'refs/heads/main' "
+                      "|| github.ref == 'refs/heads/strata-next')", build)
         packaging = (REPOSITORY / ".github/workflows/packaging.yml").read_text()
         renderer = packaging.split("- name: Test the package renderer\n", 1)[1].split("\n      - name:", 1)[0]
         self.assertIn("if: ${{ github.event_name != 'push' }}", renderer)

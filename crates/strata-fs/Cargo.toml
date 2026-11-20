@@ -1,0 +1,64 @@
+[package]
+name = "strata-fs"
+version = "0.0.0"
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Strata's listing, file operations, search, jobs and browser state, on GIO without GTK"
+publish = false
+
+[lints]
+workspace = true
+
+[features]
+default = ["rar"]
+# RAR archives can be listed and extracted.
+rar = ["strata-core/rar", "strata-preview/rar"]
+# Exact but slow consistency checks; tests and QA builds turn them on.
+invariant-checks = []
+# Test hooks and test-only items that other crates' tests use. Never in a release build.
+test-support = [
+    "dep:strata-test-support",
+    "strata-core/test-support",
+    "strata-preview/test-support",
+]
+
+[dependencies]
+strata-core.workspace = true
+strata-preview.workspace = true
+strata-test-support = { workspace = true, optional = true }
+flate2.workspace = true
+frizbee.workspace = true
+futures-channel.workspace = true
+futures-lite.workspace = true
+gdk-pixbuf.workspace = true
+gio.workspace = true
+gio-unix.workspace = true
+glib.workspace = true
+ignore.workspace = true
+image.workspace = true
+libc.workspace = true
+pango.workspace = true
+ring.workspace = true
+rust-i18n.workspace = true
+rustix.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sevenz-rust2.workspace = true
+tar.workspace = true
+tempfile.workspace = true
+tracing.workspace = true
+unicode-normalization.workspace = true
+ureq.workspace = true
+zip.workspace = true
+
+[build-dependencies]
+glib-build-tools.workspace = true
+
+[dev-dependencies]
+strata-core = { workspace = true, features = ["test-support"] }
+strata-preview = { workspace = true, features = ["test-support"] }
+strata-test-support.workspace = true
+cairo-rs.workspace = true
+resvg.workspace = true

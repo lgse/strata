@@ -1,0 +1,843 @@
+// SPDX-License-Identifier: MIT
+
+use std::{
+    fs, io,
+    path::{Path, PathBuf},
+    sync::mpsc::{self, Receiver},
+    time::{Duration, SystemTime, UNIX_EPOCH},
+};
+
+use serde::{Deserialize, Serialize};
+
+use super::update_install::{
+    InstallRequest, UPDATE_MANIFEST_ASSETS, UpdateMethod, aur_repository_version,
+    omarchy_repository_version, package_repository_version,
+};
+use super::{
+    DocumentBlock,
+    network_error::NetworkError,
+    parse_markdown,
+    release_channel::{
+        BuildKind, Channel, ReleaseSummary, Version, best_update, installable_releases,
+        rollback_target,
+    },
+};
+
+const API_ROOT: &str = "https://api.github.com/repos/lgse/strata/releases";
+const COMMITS_ROOT: &str = "https://api.github.com/repos/lgse/strata/commits";
+const RELEASES_URL: &str = "https://github.com/lgse/strata/releases";
+/// GitHub does not count requests to this endpoint against the API rate limit.
+const CONNECTION_TEST_URL: &str = "https://api.github.com/rate_limit";
+const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
+/// Minimum interval between automatic checks against the same channel.
+const CHECK_INTERVAL: Duration = Duration::from_secs(6 * 60 * 60);
+/// How many of the most recent releases (final and prerelease) the preview
+/// feed enumerates. Only ever used to find a release *newer* than the
+/// installed one, so a bounded page is safe: an update this page cannot
+/// reach is older than one it can.
+const PREVIEW_PAGE_SIZE: u32 = 30;
+/// GitHub's largest page.
+const RELEASE_LIST_PAGE_SIZE: u32 = 100;
+/// Keeps one menu open well inside GitHub's unauthenticated rate limit.
+const RELEASE_LIST_MAX_PAGES: u32 = 5;
+
+impl BuildKind {
+    /// The build kind's name in the app language, for display.
+    pub fn localized_label(self) -> String {
+        crate::i18n::tr(match self {
+            BuildKind::Stable => "Stable",
+            BuildKind::Nightly => "build_kind.nightly",
+            BuildKind::Alpha => "Alpha",
+            BuildKind::Beta => "Beta",
+            BuildKind::Rc => "Release candidate",
+        })
+    }
+}
+
+/// Everything the update/rollback dialogs need to identify and describe a
+/// release before installing it: what build it is, its exact tag and
+/// display version, where it was published, and its rendered notes.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ReleaseMetadata {
+    /// The full, prerelease-bearing version for display, e.g. `0.5.0-rc.1`.
+    pub version: String,
+    pub url: String,
+    pub notes: String,
+    pub note_blocks: Vec<DocumentBlock>,
+    pub kind: BuildKind,
+    /// The exact tag as published on GitHub, e.g. `v0.5.0-rc.1`.
+    pub tag: String,
+    pub published_at: Option<String>,
+    pub commit: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[expect(
+    clippy::large_enum_variant,
+    reason = "one result per background check, not stored in bulk"
+)]
+pub enum UpdateCheck {
+    UpToDate,
+    Available {
+        release: ReleaseMetadata,
+        install: InstallRequest,
+    },
+    Failed(String),
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ReleaseChoice {
+    pub release: ReleaseMetadata,
+    pub install: InstallRequest,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum ReleaseNotes {
+    Found(ReleaseMetadata),
+    Unavailable { url: String },
+    Failed { message: String, url: String },
+}
+
+#[derive(Deserialize)]
+struct ReleaseResponse {
+    tag_name: String,
+    #[serde(default)]
+    body: Option<String>,
+    #[serde(default)]
+    assets: Vec<ReleaseAsset>,
+    #[serde(default)]
+    draft: bool,
+    #[serde(default)]
+    prerelease: bool,
+    published_at: Option<String>,
+}
+
+/// The single field this code needs from GitHub's commit representation.
+#[derive(Deserialize)]
+struct CommitResponse {
+    sha: String,
+}
+
+#[derive(Deserialize)]
+struct ReleaseAsset {
+    name: String,
+    browser_download_url: String,
+}
+
+/// The asset naming convention published by `.github/workflows/release.yml`.
+pub(super) fn archive_name(version: &str) -> String {
+    format!(
+        "strata-{version}-{}-unknown-linux-gnu.tar.gz",
+        std::env::consts::ARCH
+    )
+}
+
+fn agent() -> ureq::Agent {
+    ureq::Agent::config_builder()
+        .timeout_global(Some(REQUEST_TIMEOUT))
+        .build()
+        .into()
+}
+
+fn request_json<T: serde::de::DeserializeOwned>(url: &str) -> Result<T, ureq::Error> {
+    agent()
+        .get(url)
+        .header("Accept", "application/vnd.github+json")
+        .header("X-GitHub-Api-Version", "2022-11-28")
+        .header("User-Agent", "strata-file-manager")
+        .call()
+        .and_then(|mut response| response.body_mut().read_json::<T>())
+}
+
+/// Reaches the update server the way an update check does, without using its rate limit.
+pub fn test_connection() -> Result<(), NetworkError> {
+    agent()
+        .get(CONNECTION_TEST_URL)
+        .header("Accept", "application/vnd.github+json")
+        .header("X-GitHub-Api-Version", "2022-11-28")
+        .header("User-Agent", "strata-file-manager")
+        .call()
+        .map(drop)
+        .map_err(|error| NetworkError::from_ureq(&error))
+}
+
+/// Converts a GitHub API release into [`release_channel`]'s pure
+/// representation. This is the only place `update_check` interprets
+/// `ReleaseResponse`'s wire shape.
+///
+/// Returns `None` when `tag_name` does not match the tag grammar --
+/// [`Version::parse`] is the sole authority on that, so a malformed release
+/// is dropped here rather than reaching any eligibility check.
+///
+/// `download_url` is `None` when no asset matches [`archive_name`] for this
+/// architecture; `is_eligible` treats that the same as a draft, since an
+/// update the user cannot install must never be offered.
+fn to_release_summary(release: &ReleaseResponse) -> Option<ReleaseSummary> {
+    let version = Version::parse(&release.tag_name)?;
+    let archive = archive_name(&version.to_string());
+    let download_url = release
+        .assets
+        .iter()
+        .find(|asset| asset.name == archive)
+        .map(|asset| asset.browser_download_url.clone());
+    Some(ReleaseSummary {
+        tag: release.tag_name.clone(),
+        version,
+        draft: release.draft,
+        prerelease: release.prerelease,
+        download_url,
+        published_at: release.published_at.clone(),
+        notes: release.body.clone().unwrap_or_default(),
+    })
+}
+
+/// Renders a [`ReleaseSummary`] into the display-ready shape the settings
+/// dialogs consume.
+fn release_metadata(release: &ReleaseSummary) -> ReleaseMetadata {
+    ReleaseMetadata {
+        version: release.version.to_string(),
+        url: release_page_url(&release.tag),
+        notes: release.notes.clone(),
+        note_blocks: parse_markdown(&release.notes).blocks,
+        kind: release.version.build_kind(),
+        tag: release.tag.clone(),
+        published_at: release.published_at.clone(),
+        // Resolved by `resolve_commit` on the worker thread; a release's own
+        // JSON carries no usable commit. See [`fetch_commit`].
+        commit: None,
+    }
+}
+
+/// Fetches the single newest final release from GitHub's `/releases/latest`,
+/// which itself never returns a draft or prerelease.
+///
+/// Kept as its own function, deliberately never enumerating the full release
+/// list: this is the strongest form of channel isolation, since prerelease
+/// data for a Stable user never even enters the process. Its result is still
+/// additionally run through [`is_eligible`] by [`select_update`] -- both
+/// checks are required, per issue #61's stated redundancy requirement.
+fn fetch_stable(etag: Option<&str>) -> ChannelFetch {
+    match request_json_conditional::<ReleaseResponse>(&format!("{API_ROOT}/latest"), etag) {
+        Ok(Some((release, etag))) => ChannelFetch::Fetched {
+            releases: to_release_summary(&release).into_iter().collect(),
+            etag,
+        },
+        Ok(None) => ChannelFetch::Unchanged,
+        Err(ureq::Error::StatusCode(404)) => ChannelFetch::Fetched {
+            releases: Vec::new(),
+            etag: None,
+        },
+        Err(error) => ChannelFetch::Failed(error),
+    }
+}
+
+/// Fetches the most recent releases, final and prerelease alike, for the
+/// preview channel.
+///
+/// Kept as its own function rather than reused for [`Channel::Stable`]: a
+/// Stable user's code path must call [`fetch_stable`] instead, never this,
+/// so prerelease metadata never reaches that path at all.
+fn fetch_preview(etag: Option<&str>) -> ChannelFetch {
+    match request_json_conditional::<Vec<ReleaseResponse>>(
+        &format!("{API_ROOT}?per_page={PREVIEW_PAGE_SIZE}"),
+        etag,
+    ) {
+        Ok(Some((releases, etag))) => ChannelFetch::Fetched {
+            releases: releases.iter().filter_map(to_release_summary).collect(),
+            etag,
+        },
+        Ok(None) => ChannelFetch::Unchanged,
+        Err(error) => ChannelFetch::Failed(error),
+    }
+}
+
+// Release target_commitish can be a branch name; the commits API dereferences annotated tags.
+fn fetch_commit(tag: &str) -> Option<String> {
+    request_json::<CommitResponse>(&format!("{COMMITS_ROOT}/{tag}"))
+        .ok()
+        .map(|commit| commit.sha)
+}
+
+/// Fills in the commit the update dialog displays, off the GTK thread.
+/// Kept out of [`release_metadata`] so that every selection step stays
+/// pure and network-free.
+fn resolve_commit(release: &mut ReleaseMetadata) {
+    release.commit = fetch_commit(&release.tag);
+}
+
+fn cache_dir() -> PathBuf {
+    glib::user_cache_dir().join("strata")
+}
+
+fn update_check_cache_path() -> PathBuf {
+    cache_dir().join("update-check.toml")
+}
+
+fn release_notes_cache_path() -> PathBuf {
+    cache_dir().join("release-notes.toml")
+}
+
+fn read_cache_file<T: serde::de::DeserializeOwned>(path: &Path) -> Option<T> {
+    toml::from_str(&fs::read_to_string(path).ok()?).ok()
+}
+
+fn write_cache_file<T: Serialize>(path: &Path, value: &T) {
+    let result = (|| -> io::Result<()> {
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        let value = toml::to_string_pretty(value).map_err(io::Error::other)?;
+        crate::storage::atomic_write(path, value.as_bytes())
+    })();
+    if let Err(error) = result {
+        tracing::warn!(%error, path = %path.display(), "unable to save update-check cache");
+    }
+}
+
+fn unix_seconds_now() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|elapsed| elapsed.as_secs())
+        .unwrap_or(0)
+}
+
+/// The installed tag's notes, or when GitHub last had no release for it. An entry for
+/// a missing release has no `notes`, so older versions that require them refetch.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+struct CachedReleaseNotes {
+    tag: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    notes: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    published_at: Option<String>,
+    /// Rechecked after [`CHECK_INTERVAL`], so notes published later still appear.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    unavailable_at: Option<u64>,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+struct CachedRelease {
+    tag: String,
+    draft: bool,
+    prerelease: bool,
+    download_url: Option<String>,
+    published_at: Option<String>,
+    notes: String,
+    #[serde(default)]
+    commit: Option<String>,
+}
+
+fn to_cached_release(release: &ReleaseSummary) -> CachedRelease {
+    CachedRelease {
+        tag: release.tag.clone(),
+        draft: release.draft,
+        prerelease: release.prerelease,
+        download_url: release.download_url.clone(),
+        published_at: release.published_at.clone(),
+        notes: release.notes.clone(),
+        commit: None,
+    }
+}
+
+fn from_cached_release(cached: &CachedRelease) -> Option<ReleaseSummary> {
+    Some(ReleaseSummary {
+        tag: cached.tag.clone(),
+        version: Version::parse(&cached.tag)?,
+        draft: cached.draft,
+        prerelease: cached.prerelease,
+        download_url: cached.download_url.clone(),
+        published_at: cached.published_at.clone(),
+        notes: cached.notes.clone(),
+    })
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+struct UpdateCheckCache {
+    channel: String,
+    checked_at: u64,
+    #[serde(default)]
+    etag: Option<String>,
+    #[serde(default)]
+    releases: Vec<CachedRelease>,
+    /// Older versions cached the failure already translated; such a cache is stale.
+    #[serde(default, rename = "error", skip_serializing)]
+    legacy_error: Option<String>,
+    #[serde(default)]
+    failure: Option<NetworkError>,
+}
+
+fn cache_is_fresh(cache: &UpdateCheckCache, channel: Channel, force: bool, now: u64) -> bool {
+    !force
+        && cache.legacy_error.is_none()
+        && cache.channel == channel.as_str()
+        && now.saturating_sub(cache.checked_at) < CHECK_INTERVAL.as_secs()
+}
+
+/// Returns `None` when the server responds with `304 Not Modified`.
+fn request_json_conditional<T: serde::de::DeserializeOwned>(
+    url: &str,
+    etag: Option<&str>,
+) -> Result<Option<(T, Option<String>)>, ureq::Error> {
+    let mut request = agent()
+        .get(url)
+        .header("Accept", "application/vnd.github+json")
+        .header("X-GitHub-Api-Version", "2022-11-28")
+        .header("User-Agent", "strata-file-manager");
+    if let Some(etag) = etag {
+        request = request.header("If-None-Match", etag);
+    }
+    let mut response = request.call()?;
+    if response.status().as_u16() == 304 {
+        return Ok(None);
+    }
+    let etag = response
+        .headers()
+        .get("etag")
+        .and_then(|value| value.to_str().ok())
+        .map(str::to_owned);
+    let body = response.body_mut().read_json::<T>()?;
+    Ok(Some((body, etag)))
+}
+
+enum ChannelFetch {
+    Fetched {
+        releases: Vec<ReleaseSummary>,
+        etag: Option<String>,
+    },
+    Unchanged,
+    Failed(ureq::Error),
+}
+
+/// Builds the `UpdateCheck` for an eligible release, or `UpToDate` in the
+/// defensive case where it has no installable asset -- which should be
+/// unreachable, since every caller of this function has already filtered
+/// through [`is_eligible`], but this avoids ever unwrapping the `Option`.
+fn available_check(release: &ReleaseSummary) -> UpdateCheck {
+    match install_request(release) {
+        Some(install) => UpdateCheck::Available {
+            release: release_metadata(release),
+            install,
+        },
+        None => UpdateCheck::UpToDate,
+    }
+}
+
+fn install_request(release: &ReleaseSummary) -> Option<InstallRequest> {
+    Some(InstallRequest {
+        tag: release.tag.clone(),
+        asset_name: archive_name(&release.version.to_string()),
+        advertised_url: release.download_url.clone()?,
+    })
+}
+
+fn has_update_manifest(release: &ReleaseResponse) -> bool {
+    UPDATE_MANIFEST_ASSETS
+        .iter()
+        .all(|name| release.assets.iter().any(|asset| asset.name == *name))
+}
+
+/// The releases `channel` offers that this machine can install, newest first.
+fn release_choices(channel: Channel, releases: &[ReleaseResponse]) -> Vec<ReleaseChoice> {
+    let summaries: Vec<_> = releases
+        .iter()
+        .filter(|release| has_update_manifest(release))
+        .filter_map(to_release_summary)
+        .collect();
+    installable_releases(channel, &summaries)
+        .into_iter()
+        .filter_map(|release| {
+            Some(ReleaseChoice {
+                install: install_request(release)?,
+                release: release_metadata(release),
+            })
+        })
+        .collect()
+}
+
+/// Unlike the update check, Stable also enumerates every release: GitHub has
+/// no final-only listing, so [`is_eligible`] alone drops the prereleases.
+fn fetch_release_choices(channel: Channel) -> Result<Vec<ReleaseChoice>, String> {
+    signed_release_pages(|page| {
+        request_json::<Vec<ReleaseResponse>>(&format!(
+            "{API_ROOT}?per_page={RELEASE_LIST_PAGE_SIZE}&page={page}"
+        ))
+    })
+    .map(|releases| release_choices(channel, &releases))
+    .map_err(|error| request_error_message(&error))
+}
+
+/// Pages through releases, newest first, until a page ends on a release
+/// published before signed manifests existed: everything after it is older still.
+fn signed_release_pages<E>(
+    mut fetch_page: impl FnMut(u32) -> Result<Vec<ReleaseResponse>, E>,
+) -> Result<Vec<ReleaseResponse>, E> {
+    let mut releases = Vec::new();
+    for page in 1..=RELEASE_LIST_MAX_PAGES {
+        let batch = fetch_page(page)?;
+        let last = batch.len() < RELEASE_LIST_PAGE_SIZE as usize
+            || batch
+                .last()
+                .is_none_or(|release| !has_update_manifest(release));
+        releases.extend(batch);
+        if last {
+            break;
+        }
+    }
+    Ok(releases)
+}
+
+/// The pure selection step of [`check_for_updates`], split out so it can be
+/// exercised against fixtures with no network involved. Delegates every
+/// eligibility and ordering judgement to [`best_update`].
+fn select_update(
+    channel: Channel,
+    installed: &Version,
+    releases: &[ReleaseSummary],
+) -> UpdateCheck {
+    let candidate = if channel == Channel::Stable && installed.build_kind() != BuildKind::Stable {
+        // Selecting Stable while running a prerelease is an explicit channel
+        // transition, so offer the newest final release even when that is a
+        // semantic downgrade. Keeping this in the ordinary update result lets
+        // Settings present one channel-aware status/action card instead of a
+        // separate, competing rollback flow.
+        rollback_target(releases).filter(|release| release.version != *installed)
+    } else {
+        best_update(channel, installed, releases)
+    };
+    match candidate {
+        Some(release) => available_check(release),
+        None => UpdateCheck::UpToDate,
+    }
+}
+
+fn select_and_resolve(
+    channel: Channel,
+    installed: &Version,
+    releases: &[ReleaseSummary],
+) -> UpdateCheck {
+    let mut check = select_update(channel, installed, releases);
+    if let UpdateCheck::Available { release, .. } = &mut check {
+        resolve_commit(release);
+    }
+    check
+}
+
+fn cached_releases(releases: &[ReleaseSummary], check: &UpdateCheck) -> Vec<CachedRelease> {
+    let resolved = match check {
+        UpdateCheck::Available { release, .. } => Some((&release.tag, &release.commit)),
+        UpdateCheck::UpToDate | UpdateCheck::Failed(_) => None,
+    };
+    releases
+        .iter()
+        .map(|release| {
+            let mut cached = to_cached_release(release);
+            if let Some((_, commit)) = resolved.filter(|(tag, _)| **tag == release.tag) {
+                cached.commit.clone_from(commit);
+            }
+            cached
+        })
+        .collect()
+}
+
+fn select_cached_update(
+    channel: Channel,
+    installed: &Version,
+    cached: &[CachedRelease],
+) -> UpdateCheck {
+    let releases: Vec<_> = cached.iter().filter_map(from_cached_release).collect();
+    let mut check = select_update(channel, installed, &releases);
+    if let UpdateCheck::Available { release, .. } = &mut check {
+        release.commit = cached
+            .iter()
+            .find(|cached| cached.tag == release.tag)
+            .and_then(|cached| cached.commit.clone());
+    }
+    check
+}
+
+fn check_from_cache(
+    cache: &UpdateCheckCache,
+    channel: Channel,
+    installed: &Version,
+) -> UpdateCheck {
+    match &cache.failure {
+        Some(failure) => UpdateCheck::Failed(request_failure_message(failure)),
+        None => select_cached_update(channel, installed, &cache.releases),
+    }
+}
+
+fn fetch_update(channel: Channel, installed: &Version, force: bool) -> UpdateCheck {
+    let path = update_check_cache_path();
+    let cache = read_cache_file::<UpdateCheckCache>(&path);
+    let now = unix_seconds_now();
+
+    if let Some(cache) = cache
+        .as_ref()
+        .filter(|cache| cache_is_fresh(cache, channel, force, now))
+    {
+        return check_from_cache(cache, channel, installed);
+    }
+
+    let same_channel = cache
+        .as_ref()
+        .filter(|cache| cache.channel == channel.as_str());
+    let etag = same_channel.and_then(|cache| cache.etag.clone());
+    let outcome = match channel {
+        Channel::Stable => fetch_stable(etag.as_deref()),
+        Channel::Preview | Channel::Nightly => fetch_preview(etag.as_deref()),
+    };
+
+    match outcome {
+        ChannelFetch::Fetched { releases, etag } => {
+            let check = select_and_resolve(channel, installed, &releases);
+            write_cache_file(
+                &path,
+                &UpdateCheckCache {
+                    channel: channel.as_str().to_owned(),
+                    checked_at: now,
+                    etag,
+                    releases: cached_releases(&releases, &check),
+                    legacy_error: None,
+                    failure: None,
+                },
+            );
+            check
+        }
+        ChannelFetch::Unchanged => {
+            let cached_releases = same_channel
+                .map(|cache| cache.releases.clone())
+                .unwrap_or_default();
+            write_cache_file(
+                &path,
+                &UpdateCheckCache {
+                    channel: channel.as_str().to_owned(),
+                    checked_at: now,
+                    etag: same_channel.and_then(|cache| cache.etag.clone()),
+                    releases: cached_releases.clone(),
+                    legacy_error: None,
+                    failure: None,
+                },
+            );
+            select_cached_update(channel, installed, &cached_releases)
+        }
+        ChannelFetch::Failed(error) => {
+            let failure = NetworkError::from_ureq(&error);
+            let message = request_failure_message(&failure);
+            // Keep prior data for conditional retries, but preserve the failure outcome.
+            write_cache_file(
+                &path,
+                &UpdateCheckCache {
+                    channel: channel.as_str().to_owned(),
+                    checked_at: now,
+                    etag: same_channel.and_then(|cache| cache.etag.clone()),
+                    releases: same_channel
+                        .map(|cache| cache.releases.clone())
+                        .unwrap_or_default(),
+                    legacy_error: None,
+                    failure: Some(failure),
+                },
+            );
+            UpdateCheck::Failed(message)
+        }
+    }
+}
+
+fn fetch_package_update(
+    installed: &Version,
+    repository_version: impl FnOnce() -> Result<Version, String>,
+) -> UpdateCheck {
+    let available = match repository_version() {
+        Ok(version) => version,
+        Err(error) => return UpdateCheck::Failed(error),
+    };
+    if available <= *installed {
+        return UpdateCheck::UpToDate;
+    }
+
+    let tag = format!("v{available}");
+    match request_json::<ReleaseResponse>(&format!("{API_ROOT}/tags/{tag}")) {
+        Ok(response) => match package_update_from_response(&available, &response) {
+            UpdateCheck::Available {
+                mut release,
+                install,
+            } => {
+                resolve_commit(&mut release);
+                UpdateCheck::Available { release, install }
+            }
+            check => check,
+        },
+        Err(error) => UpdateCheck::Failed(request_error_message(&error)),
+    }
+}
+
+fn package_update_from_response(available: &Version, response: &ReleaseResponse) -> UpdateCheck {
+    // Prerelease packages (strata-rc-bin) legitimately point at prerelease tags.
+    let accepts_prerelease = available.build_kind() != BuildKind::Stable;
+    match to_release_summary(response).filter(|release| {
+        release.version == *available && (!release.prerelease || accepts_prerelease)
+    }) {
+        Some(summary) => available_check(&summary),
+        None => UpdateCheck::Failed(crate::i18n::tr(
+            "package repository version has no matching stable release",
+        )),
+    }
+}
+
+fn fetch_exact_release(tag: &str) -> ReleaseNotes {
+    let path = release_notes_cache_path();
+    let now = unix_seconds_now();
+    let cached = read_cache_file::<CachedReleaseNotes>(&path)
+        .and_then(|cached| cached_release_notes(cached, tag, now));
+    if let Some(notes) = cached {
+        return notes;
+    }
+    let response = request_json::<ReleaseResponse>(&format!("{API_ROOT}/tags/{tag}"));
+    let (notes, cache) = exact_release_outcome(tag, response, now);
+    if let Some(cache) = cache {
+        write_cache_file(&path, &cache);
+    }
+    notes
+}
+
+fn cached_release_notes(cached: CachedReleaseNotes, tag: &str, now: u64) -> Option<ReleaseNotes> {
+    if cached.tag != tag {
+        return None;
+    }
+    let url = release_page_url(tag);
+    if let Some(checked_at) = cached.unavailable_at {
+        // A check stamped in the future came from a clock that ran ahead; recheck now.
+        let fresh = checked_at <= now && now - checked_at < CHECK_INTERVAL.as_secs();
+        return fresh.then_some(ReleaseNotes::Unavailable { url });
+    }
+    let (notes, version) = cached.notes.zip(Version::parse(tag))?;
+    Some(ReleaseNotes::Found(ReleaseMetadata {
+        version: version.to_string(),
+        url,
+        note_blocks: parse_markdown(&notes).blocks,
+        notes,
+        kind: version.build_kind(),
+        tag: tag.to_owned(),
+        published_at: cached.published_at,
+        commit: None,
+    }))
+}
+
+fn exact_release_outcome(
+    tag: &str,
+    response: Result<ReleaseResponse, ureq::Error>,
+    now: u64,
+) -> (ReleaseNotes, Option<CachedReleaseNotes>) {
+    let mut cache = CachedReleaseNotes {
+        tag: tag.to_owned(),
+        notes: None,
+        published_at: None,
+        unavailable_at: Some(now),
+    };
+    let url = release_page_url(tag);
+    match response.as_ref().map(to_release_summary) {
+        Ok(Some(summary)) => {
+            cache.notes = Some(summary.notes.clone());
+            cache.published_at = summary.published_at.clone();
+            cache.unavailable_at = None;
+            (ReleaseNotes::Found(release_metadata(&summary)), Some(cache))
+        }
+        Ok(None) | Err(ureq::Error::StatusCode(404)) => {
+            (ReleaseNotes::Unavailable { url }, Some(cache))
+        }
+        Err(error) => {
+            let message = request_error_message(error);
+            (ReleaseNotes::Failed { message, url }, None)
+        }
+    }
+}
+
+fn request_error_message(error: &ureq::Error) -> String {
+    request_failure_message(&NetworkError::from_ureq(error))
+}
+
+fn request_failure_message(failure: &NetworkError) -> String {
+    match failure {
+        NetworkError::Status { code: 403 | 429 } => {
+            crate::i18n::tr("GitHub API rate limit reached")
+        }
+        NetworkError::Status { code } => {
+            rust_i18n::t!("GitHub API returned HTTP %{code}", code = code).into_owned()
+        }
+        other => {
+            rust_i18n::t!("Network request failed: %{error}", error = other.detail()).into_owned()
+        }
+    }
+}
+
+fn release_page_url(tag: &str) -> String {
+    format!("{RELEASES_URL}/tag/{tag}")
+}
+
+/// Checks the applicable release source off the GTK thread.
+/// `force` bypasses the cache interval for in-place update checks.
+pub fn check_for_updates(
+    channel: Channel,
+    installed: Version,
+    update_method: UpdateMethod,
+    force: bool,
+) -> Receiver<UpdateCheck> {
+    let (sender, receiver) = mpsc::channel();
+    let spawned = std::thread::Builder::new()
+        .name("strata-update-check".into())
+        .spawn(move || {
+            let result = match update_method {
+                UpdateMethod::InPlace => fetch_update(channel, &installed, force),
+                UpdateMethod::Aur => fetch_package_update(&installed, aur_repository_version),
+                UpdateMethod::Omarchy => {
+                    fetch_package_update(&installed, omarchy_repository_version)
+                }
+                UpdateMethod::Pacman => {
+                    fetch_package_update(&installed, package_repository_version)
+                }
+            };
+            let _sent = sender.send(result);
+        });
+    drop(spawned);
+    receiver
+}
+
+/// Lists the releases `channel` lets the user install, off the GTK thread.
+pub fn fetch_releases(channel: Channel) -> Receiver<Result<Vec<ReleaseChoice>, String>> {
+    let (sender, receiver) = mpsc::channel();
+    let spawned = std::thread::Builder::new()
+        .name("strata-release-list".into())
+        .spawn(move || {
+            let _sent = sender.send(fetch_release_choices(channel));
+        });
+    drop(spawned);
+    receiver
+}
+
+/// Resolves the source commit of a picked release, off the GTK thread.
+pub fn resolve_release_commit(mut release: ReleaseMetadata) -> Receiver<ReleaseMetadata> {
+    let (sender, receiver) = mpsc::channel();
+    let spawned = std::thread::Builder::new()
+        .name("strata-release-commit".into())
+        .spawn(move || {
+            resolve_commit(&mut release);
+            let _sent = sender.send(release);
+        });
+    drop(spawned);
+    receiver
+}
+
+/// Fetches the release whose tag exactly matches `tag`, e.g.
+/// [`crate::build_info::RELEASE_TAG`].
+pub fn fetch_release_notes(tag: &'static str) -> Receiver<ReleaseNotes> {
+    let (sender, receiver) = mpsc::channel();
+    let spawned = std::thread::Builder::new()
+        .name("strata-release-notes".into())
+        .spawn(move || {
+            let _sent = sender.send(fetch_exact_release(tag));
+        });
+    drop(spawned);
+    receiver
+}
+
+#[cfg(test)]
+mod tests;

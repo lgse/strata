@@ -110,6 +110,7 @@ fn all_preference_setters_publish_and_persist_without_duplicate_notifications() 
                 |m| m.set_browser_list_columns(None),
                 |m| m.set_list_column_order(default_list_column_order()),
                 |m| m.set_list_hidden_columns(Vec::new()),
+                |m| m.set_list_column_visible(ListColumnId::Duration, false),
                 |m| m.set_cross_volume_drop_strategy(CrossVolumeDropStrategy::Copy),
                 |m| m.set_date_format(crate::util::DateFormat::Long),
                 |m| m.set_default_directory(None),

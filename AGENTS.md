@@ -80,8 +80,8 @@ pass before merge.
   the push. CI continues to run its existing lint and formatting checks.
 - Use `scripts/test-headless.py` for native targeted Rust tests, for example
   `./scripts/test-headless.py services::operations::tests`; its arguments are
-  forwarded after the fixed `cargo test --all-targets --all-features` arguments.
-  This filters test names across targets, not compilation to one target.
+  forwarded after the fixed `cargo test --workspace --all-targets --all-features`
+  arguments. This filters test names across targets, not compilation to one target.
   The selected filter must match at least one test, including relevant views,
   callers, or preferences coverage.
 - QA selections name scenarios, or `<scenario>/<run>` for one run, for
@@ -185,10 +185,20 @@ pass before merge.
 - Keep lasting behavior and test guidance in maintained documentation; put task checklists, test results, and review history in the issue or PR instead.
 - Pull request titles must pass `.github/workflows/pr-title.yml`; do not bypass or weaken the Conventional Commit title check.
 
+## Workspace crates
+
+- Code that needs no GTK lives in the crates under `crates/`; the root package is the GTK
+  application. Follow `docs/workspace.md` for the layering, which `cargo deny check`
+  enforces, and for how visibility, translations and log targets work across crates.
+- Never add `gtk4`, `gdk4`, `sourceview5` or `gstreamer` to a crate under `crates/`.
+- Test-only code that another crate's tests use is gated with
+  `#[cfg(any(test, feature = "test-support"))]`; a `tests` module is never compiled
+  outside tests. Run tests with `--all-features`.
+
 ## Test organization
 
 - Do not place test implementations inline with production code.
-- Put module unit tests in an adjacent test module, such as `src/app/navigation/tests.rs`, and declare it from the implementation with `#[cfg(test)] mod tests;`.
+- Put module unit tests in an adjacent test module, such as `crates/strata-fs/src/app/navigation/tests.rs`, and declare it from the implementation with `#[cfg(test)] mod tests;`.
 - Use the top-level `tests/` directory for integration tests that exercise the crate through its public API.
 
 ### Test value

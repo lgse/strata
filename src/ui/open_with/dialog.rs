@@ -513,7 +513,7 @@ fn connect_open(confirm: &gtk::Button, request: OpenRequest, dismiss: Rc<dyn Fn(
         if request.always_use.is_active() {
             set_as_default(&entry.app, &request.content_types);
         }
-        let context = crate::child_environment::launch_context(&list.display());
+        let context = crate::ui::launch_context::for_display(&list.display());
         let launched = launch(
             &entry.app,
             &request.files,

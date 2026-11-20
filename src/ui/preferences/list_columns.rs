@@ -13,45 +13,125 @@ pub enum ListColumnId {
     #[serde(rename = "type")]
     Type,
     Modified,
+    Duration,
+    Dimensions,
+    Created,
+}
+
+pub(crate) struct ListColumnDefinition {
+    stored_id: &'static str,
+    pub title: &'static str,
+    pub css_class: &'static str,
+    pub sort_key: Option<SortKey>,
+    pub width: i32,
+    pub min_width: i32,
+    pub optional: bool,
 }
 
 impl ListColumnId {
-    pub const ALL: [Self; 5] = [
+    pub const ALL: [Self; 8] = [
         Self::Name,
         Self::Mode,
         Self::Size,
         Self::Type,
         Self::Modified,
+        Self::Duration,
+        Self::Dimensions,
+        Self::Created,
     ];
 
     pub fn index(self) -> usize {
-        match self {
-            Self::Name => 0,
-            Self::Mode => 1,
-            Self::Size => 2,
-            Self::Type => 3,
-            Self::Modified => 4,
+        self as usize
+    }
+
+    pub(crate) fn definition(self) -> ListColumnDefinition {
+        let (stored_id, title, css_class, sort_key, width, min_width, optional) = match self {
+            Self::Name => (
+                "name",
+                "Name",
+                "list-col-name",
+                Some(SortKey::Name),
+                160,
+                160,
+                false,
+            ),
+            Self::Mode => ("mode", "Mode", "list-col-mode", None, 160, 80, false),
+            Self::Size => (
+                "size",
+                "Size",
+                "list-col-size",
+                Some(SortKey::Size),
+                90,
+                70,
+                false,
+            ),
+            Self::Type => (
+                "type",
+                "Type",
+                "list-col-type",
+                Some(SortKey::Type),
+                120,
+                80,
+                false,
+            ),
+            Self::Modified => (
+                "modified",
+                "Modified",
+                "list-col-modified",
+                Some(SortKey::Modified),
+                150,
+                110,
+                false,
+            ),
+            Self::Duration => (
+                "duration",
+                "Duration",
+                "list-col-duration",
+                Some(SortKey::Duration),
+                105,
+                80,
+                true,
+            ),
+            Self::Dimensions => (
+                "dimensions",
+                "Dimensions",
+                "list-col-dimensions",
+                Some(SortKey::Dimensions),
+                130,
+                105,
+                true,
+            ),
+            Self::Created => (
+                "created",
+                "Created",
+                "list-col-created",
+                Some(SortKey::Created),
+                150,
+                110,
+                true,
+            ),
+        };
+        ListColumnDefinition {
+            stored_id,
+            title,
+            css_class,
+            sort_key,
+            width,
+            min_width,
+            optional,
         }
     }
 
     pub fn title(self) -> &'static str {
-        match self {
-            Self::Name => "Name",
-            Self::Mode => "Mode",
-            Self::Size => "Size",
-            Self::Type => "Type",
-            Self::Modified => "Modified",
-        }
+        self.definition().title
     }
 
     pub fn css_class(self) -> &'static str {
-        match self {
-            Self::Name => "list-col-name",
-            Self::Mode => "list-col-mode",
-            Self::Size => "list-col-size",
-            Self::Type => "list-col-type",
-            Self::Modified => "list-col-modified",
-        }
+        self.definition().css_class
+    }
+
+    fn stored_name(self) -> &'static str {
+        self.definition().stored_id
     }
 }
 
@@ -80,23 +160,27 @@ pub(crate) fn sanitize_list_hidden_columns(hidden: &[ListColumnId]) -> Vec<ListC
         .filter(|col| *col != ListColumnId::Name && seen.insert(*col))
         .collect()
 }
-/// Unscaled pixels; an unset `name` lets Name absorb the remaining space.
-#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
-pub struct ListColumns {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub name: Option<i32>,
-    pub mode: i32,
-    pub size: i32,
-    #[serde(rename = "type")]
-    pub kind: i32,
-    pub modified: i32,
-}
+/// Unscaled pixels; an unset Name lets it absorb the remaining space.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(transparent)]
+pub struct ListColumns(std::collections::BTreeMap<String, i32>);
 
 impl ListColumns {
+    pub fn width(&self, column: ListColumnId) -> Option<i32> {
+        self.0.get(column.stored_name()).copied()
+    }
+
     pub(super) fn is_valid(&self) -> bool {
-        self.name.is_none_or(|width| width > 0)
-            && [self.mode, self.size, self.kind, self.modified]
-                .iter()
-                .all(|width| *width > 0)
+        self.0.values().all(|width| *width > 0)
+    }
+}
+
+impl FromIterator<(ListColumnId, i32)> for ListColumns {
+    fn from_iter<T: IntoIterator<Item = (ListColumnId, i32)>>(iter: T) -> Self {
+        Self(
+            iter.into_iter()
+                .map(|(column, width)| (column.stored_name().to_owned(), width))
+                .collect(),
+        )
     }
 }

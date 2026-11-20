@@ -259,6 +259,25 @@ impl BrowserView {
         self.state.cancel_location_edit();
     }
 
+    pub(in crate::ui) fn install_location_cancellation(&self, root: &impl IsA<gtk::Widget>) {
+        let view = self.clone();
+        let gesture = gtk::GestureClick::new();
+        gesture.set_propagation_phase(gtk::PropagationPhase::Capture);
+        gesture.connect_pressed(move |gesture, _, x, y| {
+            if !view.location_edit_is_active() {
+                return;
+            }
+            let on_location_edit = gesture
+                .widget()
+                .and_then(|widget| widget.pick(x, y, gtk::PickFlags::DEFAULT))
+                .is_some_and(|target| view.location_edit_contains(&target));
+            if !on_location_edit {
+                view.cancel_location_edit();
+            }
+        });
+        root.add_controller(gesture);
+    }
+
     /// Opens a path or URI typed outside the location bar. A relative path
     /// resolves against the open native folder; errors use the location bar's
     /// dialog and leave the current folder open.

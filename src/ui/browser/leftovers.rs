@@ -407,7 +407,7 @@ impl ViewState {
                     let Some(row) = rows.get(&reviewed.name) else {
                         continue;
                     };
-                    crate::util::set_full_modified_date(&row.date, reviewed.modified);
+                    crate::ui::modified_date::set_full_modified_date(&row.date, reviewed.modified);
                     match describe(&reviewed.inside) {
                         Some(Inside::Contains(text)) => {
                             row.inside.set_text(&text);

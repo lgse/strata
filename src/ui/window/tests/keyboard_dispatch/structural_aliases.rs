@@ -68,6 +68,7 @@ fn aliased_tab_and_enter_synthesize() {
             fixture.sidebar.state.focus_active_place();
             wait_until(sidebar_focused);
             assert!(press(Key::F7));
+            settle_idles();
             pump(50);
             assert_eq!(
                 focus(&fixture),

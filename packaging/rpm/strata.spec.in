@@ -1,0 +1,110 @@
+# Generated from packaging/rpm/strata.spec.in by scripts/build_srpm.py; do not edit directly.
+
+# Line tables keep backtraces symbolized while bounding LTO memory on builders.
+%global rustflags_debuginfo 1
+
+Name:           strata
+Version:        @VERSION@
+Release:        @RELEASE@%{?dist}
+Summary:        Fast, keyboard-first file manager for Linux
+
+# Strata is MIT. Bundled assets: MathJax (Apache-2.0), JetBrains Mono (OFL-1.1),
+# Lucide (ISC), Catppuccin icons and Tinted Theming (MIT). The remaining terms come
+# from the statically linked Rust crates; LICENSE.dependencies lists each one.
+License:        @LICENSE@
+URL:            https://github.com/lgse/strata
+Source0:        %{url}/archive/@TAG@/strata-@TAG_VERSION@.tar.gz
+# Crates for the RAR-free build only; see scripts/build_srpm.py.
+Source1:        strata-@TAG_VERSION@-vendor.tar.gz
+# The crates Source1 replaces with empty stubs.
+Source2:        strata-@TAG_VERSION@-vendor-stubs.txt
+
+# The architectures Strata releases and tests.
+ExclusiveArch:  x86_64 aarch64
+
+BuildRequires:  cargo-rpm-macros >= 26
+BuildRequires:  desktop-file-utils
+BuildRequires:  gcc
+BuildRequires:  /usr/bin/glib-compile-resources
+BuildRequires:  pkgconfig(fontconfig)
+BuildRequires:  pkgconfig(gio-unix-2.0)
+BuildRequires:  pkgconfig(gstreamer-1.0) >= 1.20
+BuildRequires:  pkgconfig(gstreamer-app-1.0) >= 1.20
+BuildRequires:  pkgconfig(gtk4) >= 4.12
+BuildRequires:  pkgconfig(gtksourceview-5)
+BuildRequires:  pkgconfig(poppler-glib)
+
+# Executed rather than linked, so no automatic dependency covers them.
+Requires:       bubblewrap
+Requires:       gvfs
+Requires:       hicolor-icon-theme
+Requires:       xdg-utils
+
+Recommends:     /usr/bin/ffmpeg
+Recommends:     dcraw
+Recommends:     ffmpegthumbnailer
+Recommends:     gstreamer1-plugin-libav
+Recommends:     gstreamer1-plugins-good
+Recommends:     gvfs-smb
+Recommends:     ImageMagick
+Recommends:     LibRaw-samples
+Recommends:     squashfs-tools
+Recommends:     xdg-terminal-exec
+
+%description
+Strata is a fast, keyboard-first file manager for Linux built with GTK 4. It
+offers column, list, and icon views, previews and thumbnails rendered in a
+sandbox, archives, remote locations, and file operations that stay responsive
+on large directories.
+
+This build leaves out RAR extraction and the in-app updater; updates come from
+the package repository.
+
+%prep
+%autosetup -n strata-@TAG_VERSION@ -a1 -p1
+%cargo_prep -v vendor
+
+%build
+export STRATA_UPDATER=disabled
+export STRATA_BUILD_COMMIT=@COMMIT@
+export STRATA_RELEASE_TAG=@TAG@
+export STRATA_BUILD_KIND=@BUILD_KIND@
+%cargo_build -n
+%{cargo_license_summary -n}
+%{cargo_license -n} > LICENSE.dependencies
+%cargo_vendor_manifest
+# cargo2rpm lists every crate in Cargo.lock, but stubs are not bundled.
+grep -vxF -f %{SOURCE2} cargo-vendor.txt > cargo-vendor.txt.bundled || [ $? -eq 1 ]
+mv cargo-vendor.txt.bundled cargo-vendor.txt
+
+%install
+install -Dpm 0755 target/rpm/strata %{buildroot}%{_bindir}/strata
+install -Dpm 0644 data/io.github.lgse.Strata.desktop \
+    %{buildroot}%{_datadir}/applications/io.github.lgse.Strata.desktop
+install -Dpm 0644 data/icons/scalable/apps/io.github.lgse.Strata.svg \
+    %{buildroot}%{_datadir}/icons/hicolor/scalable/apps/io.github.lgse.Strata.svg
+# An inactive template: installing Strata must not claim org.freedesktop.FileManager1.
+install -Dpm 0644 data/io.github.lgse.Strata.FileManager1.service \
+    %{buildroot}%{_datadir}/strata/io.github.lgse.Strata.FileManager1.service
+
+%check
+desktop-file-validate %{buildroot}%{_datadir}/applications/io.github.lgse.Strata.desktop
+%{buildroot}%{_bindir}/strata --version
+
+%files
+%license LICENSE THIRD_PARTY_LICENSES.md LICENSE.dependencies cargo-vendor.txt
+%license data/licenses/Catppuccin-VSCode-Icons-MIT.txt
+%license data/licenses/JetBrainsMono-OFL-1.1.txt
+%license data/licenses/Lucide-ISC.txt
+%license data/licenses/MathJax-Apache-2.0.txt
+%license data/licenses/Tinted-Theming-MIT.txt
+%doc README.md docs/portal-file-chooser.md
+%{_bindir}/strata
+%{_datadir}/applications/io.github.lgse.Strata.desktop
+%{_datadir}/icons/hicolor/scalable/apps/io.github.lgse.Strata.svg
+%dir %{_datadir}/strata
+%{_datadir}/strata/io.github.lgse.Strata.FileManager1.service
+
+%changelog
+* @CHANGELOG_DATE@ Strata release automation <41898282+github-actions[bot]@users.noreply.github.com> - @VERSION@-@RELEASE@
+- Strata @TAG@

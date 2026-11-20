@@ -1,0 +1,59 @@
+[package]
+name = "strata-preview"
+version = "0.0.0"
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Strata's sandbox launcher, preview helper and document parsers"
+publish = false
+
+[lints]
+workspace = true
+
+[features]
+default = ["rar"]
+# RAR listing and extraction through UnRAR.
+rar = ["dep:unrar", "dep:unrar_sys", "strata-core/rar"]
+# Test-only items that other crates' tests use. Never in a release build.
+test-support = ["strata-core/test-support"]
+
+[dependencies]
+strata-core.workspace = true
+cairo-rs.workspace = true
+calamine.workspace = true
+csv.workspace = true
+docx-rs.workspace = true
+fitparser.workspace = true
+flate2.workspace = true
+futures-channel.workspace = true
+gdk-pixbuf.workspace = true
+gio.workspace = true
+glib.workspace = true
+html5gum.workspace = true
+image.workspace = true
+kamadak-exif.workspace = true
+landlock.workspace = true
+libc.workspace = true
+mermaid-svg.workspace = true
+pango.workspace = true
+poppler.workspace = true
+pulldown-cmark.workspace = true
+quick-xml.workspace = true
+resvg.workspace = true
+rquickjs.workspace = true
+rust-i18n.workspace = true
+rustix.workspace = true
+seccompiler.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tempfile.workspace = true
+tracing.workspace = true
+unrar = { workspace = true, optional = true }
+unrar_sys = { workspace = true, optional = true }
+zip.workspace = true
+
+[dev-dependencies]
+strata-core = { workspace = true, features = ["test-support"] }
+strata-test-support.workspace = true
+tar.workspace = true

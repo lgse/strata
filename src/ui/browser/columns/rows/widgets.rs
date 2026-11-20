@@ -16,6 +16,7 @@ pub(super) struct RowWidgets {
     pub(super) size: gtk::Label,
     pub(super) path: gtk::Label,
     pub(super) chevron: gtk::Image,
+    pub(super) modified: gtk::Label,
 }
 
 fn name_label() -> gtk::Label {
@@ -109,9 +110,31 @@ impl RowWidgets {
         let chevron = crate::assets::primary_icon(crate::assets::icons::CHEVRON_RIGHT, 15);
         chevron.add_css_class("file-chevron");
         chevron.set_valign(gtk::Align::Center);
+        let modified = gtk::Label::new(None);
+        modified.add_css_class("column-row-modified");
+        modified.set_visible(false);
         row.append(&icon);
         row.append(&middle);
         row.append(&chevron);
+        row.append(&modified);
+
+        crate::ui::entry_tooltip::EntryTooltip::install(&row, {
+            let name_label = label.clone();
+            let modified_label = modified.clone();
+            move |_, _, _| {
+                let name = name_label.text();
+                if name.is_empty() || !name_label.is_visible() {
+                    return None;
+                }
+                let date = modified_label.text();
+                crate::ui::entry_tooltip::name_text(
+                    &name,
+                    name_label.layout().is_ellipsized(),
+                    Some(date.as_str()),
+                )
+            }
+        });
+
         Self {
             row,
             icon,
@@ -121,6 +144,7 @@ impl RowWidgets {
             size,
             path,
             chevron,
+            modified,
         }
     }
 
@@ -136,6 +160,7 @@ impl RowWidgets {
         let spacer = rename.next_sibling().and_downcast::<gtk::Box>()?;
         let size = middle.last_child().and_downcast::<gtk::Label>()?;
         let chevron = middle.next_sibling().and_downcast::<gtk::Image>()?;
+        let modified = chevron.next_sibling().and_downcast::<gtk::Label>()?;
         Some(Self {
             row,
             icon,
@@ -145,6 +170,7 @@ impl RowWidgets {
             size,
             path,
             chevron,
+            modified,
         })
     }
 
@@ -165,6 +191,7 @@ impl RowWidgets {
             edit,
             spacer: self.spacer,
             size: self.size,
+            modified: self.modified,
         }
     }
 

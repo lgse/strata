@@ -1,0 +1,1281 @@
+// SPDX-License-Identifier: MIT
+
+#[cfg(test)]
+mod tests;
+
+mod omarchy;
+pub mod udiskie;
+
+use std::{
+    env, fs, io,
+    io::{Read as _, Write as _},
+    os::unix::{
+        ffi::OsStrExt as _,
+        fs::{MetadataExt, OpenOptionsExt, PermissionsExt},
+        process::CommandExt as _,
+    },
+    path::{Path, PathBuf},
+    process::{Command, Output, Stdio},
+    thread,
+    time::{Duration, Instant},
+};
+
+use serde::{Deserialize, Serialize};
+
+use glib::{KeyFile, KeyFileFlags};
+
+pub use omarchy::omarchy_is_present;
+
+const FILE_CHOOSER_KEY: &str = "org.freedesktop.impl.portal.FileChooser";
+const PORTAL_FILE: &str = "strata.portal";
+const SERVICE_FILE: &str = "org.freedesktop.impl.portal.desktop.strata.service";
+const STATE_DIRECTORY: &str = "strata/portal-install";
+const STATE_FILE: &str = "state.toml";
+const PORTAL_BACKEND_UNIT: &str = "dbus-:*-org.freedesktop.impl.portal.desktop.strata@*.service";
+const DESKTOP_ID: &str = "io.github.lgse.Strata.desktop";
+const FILE_MANAGER_SERVICE: &str = "io.github.lgse.Strata.FileManager1.service";
+const FILE_MANAGER_STATE_DIRECTORY: &str = "strata/file-manager-install";
+const FILE_MANAGER_STATE_FILE: &str = "state.toml";
+const INODE_DIRECTORY: &str = "inode/directory";
+
+pub const PACKAGE_PROVIDED: &str = "The package that installed this build provides its desktop integrations. Configure them in your system configuration instead.";
+
+/// A `STRATA_INTEGRATIONS=package` build never writes, removes, or refreshes the
+/// files its package ships.
+fn require_runtime_integrations() -> Result<(), String> {
+    if crate::build_info::runtime_integrations_enabled() {
+        Ok(())
+    } else {
+        Err(crate::i18n::tr(PACKAGE_PROVIDED))
+    }
+}
+
+pub fn install() -> Result<String, String> {
+    require_runtime_integrations()?;
+    let executable = crate::services::installed_executable().map_err(|error| {
+        rust_i18n::t!(
+            "Could not locate the Strata executable: %{error}",
+            error = error
+        )
+        .into_owned()
+    })?;
+    let context = SetupContext::from_environment()?;
+    let config = install_at(&context, &executable)?;
+    dismiss_prompt_at(&context)?;
+    let restart_warning = refresh_portals();
+    Ok(format!(
+        "Installed Strata as the per-user file chooser.\nConfiguration: {}{}",
+        config.display(),
+        restart_warning
+    ))
+}
+
+pub fn uninstall() -> Result<String, String> {
+    require_runtime_integrations()?;
+    let context = SetupContext::from_environment()?;
+    let preserved_edits = uninstall_at(&context)?;
+    dismiss_prompt_at(&context)?;
+    let restart_warning = refresh_portals();
+    let edit_note = if preserved_edits {
+        "\nKept the remaining portal configuration and removed only Strata."
+    } else {
+        ""
+    };
+    Ok(format!(
+        "Removed the per-user Strata file chooser integration.{edit_note}{restart_warning}"
+    ))
+}
+
+pub fn install_file_manager() -> Result<String, String> {
+    require_runtime_integrations()?;
+    let executable = crate::services::installed_executable().map_err(|error| {
+        rust_i18n::t!(
+            "Could not locate the Strata executable: %{error}",
+            error = error
+        )
+        .into_owned()
+    })?;
+    let context = SetupContext::from_environment()?;
+    let previous = query_default_file_manager().filter(|id| id != DESKTOP_ID);
+    install_file_manager_at(&context, &executable, previous.as_deref())?;
+    set_default_file_manager()?;
+    omarchy::install(&context, &executable)?;
+    reload_dbus();
+    Ok("Installed Strata as the default file manager. Reveal and Open Containing Folder from other apps will now use Strata.".into())
+}
+
+pub fn uninstall_file_manager() -> Result<String, String> {
+    require_runtime_integrations()?;
+    let context = SetupContext::from_environment()?;
+    let restored = restore_file_manager_at(&context, |previous| {
+        let restored = restore_folder_handler(
+            query_default_file_manager().as_deref(),
+            previous,
+            detected_nautilus,
+            restore_default_file_manager,
+        )?;
+        omarchy::restore(&context)?;
+        Ok(restored)
+    })?;
+    reload_dbus();
+    Ok(if let Some(restored) = restored {
+        format!(
+            "Removed the Strata file manager integration. Restored the folder handler: {restored}."
+        )
+    } else {
+        "Removed the Strata file manager integration. Your system default file manager will handle folders again.".into()
+    })
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct FileManagerStatus {
+    pub default: bool,
+    pub has_service: bool,
+    pub has_installation: bool,
+    pub shortcuts: Option<bool>,
+}
+
+pub fn file_manager_status() -> Result<FileManagerStatus, String> {
+    let context = SetupContext::from_environment()?;
+    file_manager_status_at(&context)
+}
+
+fn install_file_manager_at(
+    context: &SetupContext,
+    executable: &Path,
+    previous: Option<&str>,
+) -> Result<(), String> {
+    let executable = secure_executable(executable)?;
+    let executable = executable
+        .to_str()
+        .ok_or_else(|| crate::i18n::tr("Strata must be installed at a UTF-8 path"))?;
+    if executable
+        .chars()
+        .any(|character| character.is_whitespace() || matches!(character, '\\' | '\'' | '"'))
+    {
+        return Err(crate::i18n::tr(
+            "The Strata executable path contains characters unsupported by D-Bus activation",
+        ));
+    }
+
+    let service_directory = context.data_home.join("dbus-1/services");
+    fs::create_dir_all(&service_directory)
+        .map_err(|error| path_error("create", &service_directory, error))?;
+
+    let target = service_directory.join(FILE_MANAGER_SERVICE);
+    let conflict = find_file_manager_conflict(&service_directory)?;
+    if let Some(conflict) = conflict {
+        return Err(rust_i18n::t!(
+            "Another per-user FileManager1 provider is already installed: %{path}",
+            path = conflict
+        )
+        .into_owned());
+    }
+
+    let service = include_str!("../../../data/io.github.lgse.Strata.FileManager1.service")
+        .replace("/usr/bin/strata", executable);
+    let state_directory = context.data_home.join(FILE_MANAGER_STATE_DIRECTORY);
+    if read_file_manager_state(&state_directory)?.is_none() {
+        let state = FileManagerInstallState {
+            previous_default: previous.map(str::to_owned),
+        };
+        write_file_manager_state(&state_directory, &state)?;
+    }
+    write_public(&target, service.as_bytes())?;
+
+    Ok(())
+}
+
+#[cfg(test)]
+fn uninstall_file_manager_at(context: &SetupContext) -> Result<Option<String>, String> {
+    restore_file_manager_at(context, |previous| Ok(previous.map(str::to_owned)))
+}
+
+fn restore_file_manager_at(
+    context: &SetupContext,
+    restore: impl FnOnce(Option<&str>) -> Result<Option<String>, String>,
+) -> Result<Option<String>, String> {
+    let state_directory = context.data_home.join(FILE_MANAGER_STATE_DIRECTORY);
+    let restored =
+        read_file_manager_state(&state_directory)?.and_then(|state| state.previous_default);
+    let restored = restore(restored.as_deref())?;
+    let service = context
+        .data_home
+        .join("dbus-1/services")
+        .join(FILE_MANAGER_SERVICE);
+    remove_if_exists(&service)?;
+
+    remove_file_manager_state(&state_directory)?;
+    Ok(restored)
+}
+
+fn detected_nautilus() -> Option<String> {
+    use gio::prelude::AppInfoExt as _;
+
+    ["org.gnome.Nautilus.desktop", "nautilus.desktop"]
+        .into_iter()
+        .find(|id| {
+            gio_unix::DesktopAppInfo::new(id)
+                .is_some_and(|app| glib::find_program_in_path(app.executable()).is_some())
+        })
+        .map(str::to_owned)
+}
+
+fn restore_folder_handler(
+    current: Option<&str>,
+    previous: Option<&str>,
+    nautilus: impl FnOnce() -> Option<String>,
+    restore: impl FnOnce(&str) -> Result<(), String>,
+) -> Result<Option<String>, String> {
+    if current.is_some_and(|id| id != DESKTOP_ID) {
+        return Ok(None);
+    }
+    let target = previous.map(str::to_owned).or_else(nautilus).ok_or_else(|| {
+        crate::i18n::tr("No previous folder handler was recorded and Nautilus was not detected. Choose another default file manager first, then retry Restore default.")
+    })?;
+    restore(&target)?;
+    Ok(Some(target))
+}
+
+fn file_manager_status_at(context: &SetupContext) -> Result<FileManagerStatus, String> {
+    let service = context
+        .data_home
+        .join("dbus-1/services")
+        .join(FILE_MANAGER_SERVICE);
+    let has_service = if service.exists() {
+        let config = KeyFile::new();
+        config
+            .load_from_data(&read_utf8(&service)?, KeyFileFlags::NONE)
+            .map_err(|error| {
+                rust_i18n::t!(
+                    "Could not parse FileManager1 service: %{error}",
+                    error = error
+                )
+                .into_owned()
+            })?;
+        config
+            .string("D-BUS Service", "Name")
+            .is_ok_and(|name| name == "org.freedesktop.FileManager1")
+            && config.string("D-BUS Service", "Exec").is_ok_and(|exec| {
+                crate::services::installed_executable()
+                    .is_ok_and(|path| exec == format!("{} --gapplication-service", path.display()))
+            })
+    } else {
+        false
+    };
+    let has_service = has_service
+        && find_file_manager_conflict(&context.data_home.join("dbus-1/services"))?.is_none();
+    let has_installation = service.exists()
+        || context
+            .data_home
+            .join(FILE_MANAGER_STATE_DIRECTORY)
+            .join(FILE_MANAGER_STATE_FILE)
+            .exists()
+        || omarchy::has_installation(context)?;
+    let default = query_default_file_manager().as_deref() == Some(DESKTOP_ID);
+    Ok(FileManagerStatus {
+        default,
+        has_service,
+        has_installation,
+        shortcuts: omarchy::shortcuts_configured(context)?,
+    })
+}
+
+fn find_file_manager_conflict(service_directory: &Path) -> Result<Option<String>, String> {
+    let entries = match fs::read_dir(service_directory) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(path_error("read", service_directory, error)),
+    };
+    for entry in entries {
+        let path = entry
+            .map_err(|error| path_error("read", service_directory, error))?
+            .path();
+        if path
+            .file_name()
+            .is_some_and(|name| name == FILE_MANAGER_SERVICE)
+            || path
+                .extension()
+                .is_none_or(|extension| extension != "service")
+        {
+            continue;
+        }
+        let config = KeyFile::new();
+        config
+            .load_from_data(&read_utf8(&path)?, KeyFileFlags::NONE)
+            .map_err(|error| {
+                rust_i18n::t!(
+                    "Could not parse %{path}: %{error}",
+                    path = path.display(),
+                    error = error
+                )
+                .into_owned()
+            })?;
+        if config
+            .string("D-BUS Service", "Name")
+            .is_ok_and(|name| name == "org.freedesktop.FileManager1")
+        {
+            return Ok(Some(path.display().to_string()));
+        }
+    }
+    Ok(None)
+}
+
+fn query_default_file_manager() -> Option<String> {
+    let mut command = crate::trusted_command::command("xdg-mime").ok()?;
+    command
+        .args(["query", "default", INODE_DIRECTORY])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null());
+    output_within(&mut command, SESSION_COMMAND_DEADLINE)
+        .filter(|output| output.status.success())
+        .and_then(|output| String::from_utf8(output.stdout).ok())
+        .map(|output| output.trim().to_owned())
+        .filter(|output| !output.is_empty())
+}
+
+fn set_default_file_manager() -> Result<(), String> {
+    let mut command =
+        crate::trusted_command::command("xdg-mime").map_err(default_file_manager_error)?;
+    command.args(["default", DESKTOP_ID, INODE_DIRECTORY]);
+    if !succeeds_within(&mut command) {
+        return Err(crate::i18n::tr("The folder association did not change"));
+    }
+    let current = query_default_file_manager();
+    if current.as_deref() != Some(DESKTOP_ID) {
+        return Err(rust_i18n::t!(
+            "The folder association did not change (current value: %{value})",
+            value = format!("{current:?}")
+        )
+        .into_owned());
+    }
+    Ok(())
+}
+
+fn restore_default_file_manager(previous: &str) -> Result<(), String> {
+    let mut command =
+        crate::trusted_command::command("xdg-mime").map_err(restore_file_manager_error)?;
+    command.args(["default", previous, INODE_DIRECTORY]);
+    if !succeeds_within(&mut command) || query_default_file_manager().as_deref() != Some(previous) {
+        return Err(crate::i18n::tr(
+            "Could not restore the previous file manager",
+        ));
+    }
+    Ok(())
+}
+
+fn default_file_manager_error(error: impl std::fmt::Display) -> String {
+    rust_i18n::t!(
+        "Could not set the default file manager: %{error}",
+        error = error
+    )
+    .into_owned()
+}
+
+fn restore_file_manager_error(error: impl std::fmt::Display) -> String {
+    rust_i18n::t!(
+        "Could not restore the previous file manager: %{error}",
+        error = error
+    )
+    .into_owned()
+}
+
+fn reload_dbus() {
+    let _ = reload_dbus_config();
+}
+
+fn reload_dbus_config() -> bool {
+    run_trusted(
+        "gdbus",
+        &[
+            "call",
+            "--session",
+            "--timeout",
+            "5",
+            "--dest",
+            "org.freedesktop.DBus",
+            "--object-path",
+            "/org/freedesktop/DBus",
+            "--method",
+            "org.freedesktop.DBus.ReloadConfig",
+        ],
+    )
+}
+
+/// A session bus that accepts the connection but never answers the handshake blocks
+/// gdbus, systemctl and xdg-mime's dbus-send before their own timeouts start.
+const SESSION_COMMAND_DEADLINE: Duration = Duration::from_secs(5);
+
+fn succeeds_within(command: &mut Command) -> bool {
+    command.stdout(Stdio::null()).stderr(Stdio::null());
+    output_within(command, SESSION_COMMAND_DEADLINE).is_some_and(|output| output.status.success())
+}
+
+/// Runs the command in its own process group so a stuck helper started by a wrapper
+/// script is killed along with it.
+fn output_within(command: &mut Command, limit: Duration) -> Option<Output> {
+    use rustix::process::{Pid, Signal, WaitId, WaitIdOptions, kill_process_group, waitid};
+
+    let mut child = command.process_group(0).spawn().ok()?;
+    let group = Pid::from_child(&child);
+    let deadline = Instant::now() + limit;
+    let exited = loop {
+        match waitid(
+            WaitId::Pid(group),
+            WaitIdOptions::EXITED | WaitIdOptions::NOWAIT | WaitIdOptions::NOHANG,
+        ) {
+            Ok(Some(_)) => break true,
+            Ok(None) if Instant::now() < deadline => thread::sleep(Duration::from_millis(20)),
+            _ => break false,
+        }
+    };
+    // The leader is not reaped yet, so its group id cannot have been reused.
+    let _ = kill_process_group(group, Signal::KILL);
+    let status = child.wait().ok()?;
+    if !exited {
+        return None;
+    }
+    let mut stdout = Vec::new();
+    if let Some(mut pipe) = child.stdout.take() {
+        let _ = pipe.read_to_end(&mut stdout);
+    }
+    Some(Output {
+        status,
+        stdout,
+        stderr: Vec::new(),
+    })
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+struct FileManagerInstallState {
+    previous_default: Option<String>,
+}
+
+fn write_file_manager_state(
+    directory: &Path,
+    state: &FileManagerInstallState,
+) -> Result<(), String> {
+    fs::create_dir_all(directory).map_err(|error| path_error("create", directory, error))?;
+    let path = directory.join(FILE_MANAGER_STATE_FILE);
+    let contents = toml::to_string(state).map_err(|error| {
+        rust_i18n::t!(
+            "Could not serialize file manager state: %{error}",
+            error = error
+        )
+        .into_owned()
+    })?;
+    crate::storage::atomic_write(&path, contents.as_bytes())
+        .map_err(|error| path_error("write", &path, error))
+}
+
+fn read_file_manager_state(directory: &Path) -> Result<Option<FileManagerInstallState>, String> {
+    let path = directory.join(FILE_MANAGER_STATE_FILE);
+    if !path.exists() {
+        return Ok(None);
+    }
+    let contents = read_utf8(&path)?;
+    let state: FileManagerInstallState = toml::from_str(&contents).map_err(|error| {
+        rust_i18n::t!("Could not read file manager state: %{error}", error = error).into_owned()
+    })?;
+    Ok(Some(state))
+}
+
+fn remove_file_manager_state(directory: &Path) -> Result<(), String> {
+    remove_if_exists(&directory.join(FILE_MANAGER_STATE_FILE))?;
+    match fs::remove_dir(directory) {
+        Ok(()) => Ok(()),
+        Err(error)
+            if matches!(
+                error.kind(),
+                io::ErrorKind::NotFound | io::ErrorKind::DirectoryNotEmpty
+            ) =>
+        {
+            Ok(())
+        }
+        Err(error) => Err(path_error("remove", directory, error)),
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct PortalStatus {
+    pub configured: bool,
+    pub has_installation: bool,
+}
+
+pub fn status() -> Result<PortalStatus, String> {
+    status_at(&SetupContext::from_environment()?)
+}
+
+pub fn refresh_after_in_place_update() -> Result<(), String> {
+    if !crate::build_info::runtime_integrations_enabled() {
+        return Ok(());
+    }
+    let context = SetupContext::from_environment()?;
+    refresh_configured_portal_at(&context, refresh_portals)
+}
+
+pub fn refresh_stale_portal() -> Result<(), String> {
+    if !crate::build_info::runtime_integrations_enabled() {
+        return Ok(());
+    }
+    let context = SetupContext::from_environment()?;
+    let executable = crate::services::installed_executable().map_err(|error| {
+        rust_i18n::t!(
+            "Could not locate the Strata executable: %{error}",
+            error = error
+        )
+        .into_owned()
+    })?;
+    refresh_stale_portal_at(&context, &executable, Path::new("/proc"), || {
+        refresh_portals()
+    })
+}
+
+fn refresh_stale_portal_at(
+    context: &SetupContext,
+    executable: &Path,
+    proc_root: &Path,
+    refresh: impl FnOnce() -> &'static str,
+) -> Result<(), String> {
+    if !portal_backend_is_stale_at(context, executable, proc_root)? {
+        return Ok(());
+    }
+    refresh_configured_portal_at(context, refresh)
+}
+
+fn refresh_configured_portal_at(
+    context: &SetupContext,
+    refresh: impl FnOnce() -> &'static str,
+) -> Result<(), String> {
+    if !status_at(context)?.configured {
+        return Ok(());
+    }
+    match refresh() {
+        "" => Ok(()),
+        warning => Err(crate::i18n::tr(warning.trim())),
+    }
+}
+
+fn portal_backend_is_stale_at(
+    context: &SetupContext,
+    executable: &Path,
+    proc_root: &Path,
+) -> Result<bool, String> {
+    if !status_at(context)?.configured {
+        return Ok(false);
+    }
+    let service = context.data_home.join("dbus-1/services").join(SERVICE_FILE);
+    let expected_exec = format!("Exec={} --portal", executable.display());
+    // Do not interfere with a portal explicitly installed from another Strata build.
+    if !read_utf8(&service)?
+        .lines()
+        .any(|line| line == expected_exec)
+    {
+        return Ok(false);
+    }
+    let installed = fs::metadata(executable).map_err(|error| {
+        path_error("inspect the installed Strata executable", executable, error)
+    })?;
+    let entries = fs::read_dir(proc_root)
+        .map_err(|error| path_error("inspect running processes", proc_root, error))?;
+    for entry in entries.flatten() {
+        if entry
+            .file_name()
+            .to_str()
+            .is_none_or(|name| name.parse::<u32>().is_err())
+        {
+            continue;
+        }
+        let Ok(arguments) = fs::read(entry.path().join("cmdline")) else {
+            continue;
+        };
+        let mut arguments = arguments.split(|byte| *byte == 0);
+        if arguments.next() != Some(executable.as_os_str().as_bytes())
+            || arguments.next() != Some(b"--portal")
+        {
+            continue;
+        }
+        let Ok(running) = fs::metadata(entry.path().join("exe")) else {
+            continue;
+        };
+        // Replacing a running executable preserves its old inode under /proc.
+        if (running.dev(), running.ino()) != (installed.dev(), installed.ino()) {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+fn status_at(context: &SetupContext) -> Result<PortalStatus, String> {
+    let metadata = context
+        .data_home
+        .join("xdg-desktop-portal/portals")
+        .join(PORTAL_FILE);
+    let service = context.data_home.join("dbus-1/services").join(SERVICE_FILE);
+    let has_installation = metadata.exists()
+        || service.exists()
+        || context.state_directory().join(STATE_FILE).exists();
+    let preferred = if let Some(path) = active_config(context) {
+        let config = KeyFile::new();
+        config
+            .load_from_data(&read_utf8(&path)?, KeyFileFlags::NONE)
+            .map_err(|error| {
+                rust_i18n::t!(
+                    "Could not parse portal configuration: %{error}",
+                    error = error
+                )
+                .into_owned()
+            })?;
+        config
+            .value("preferred", FILE_CHOOSER_KEY)
+            .or_else(|_| config.value("preferred", "default"))
+            .is_ok_and(|value| {
+                backend_values(&value)
+                    .first()
+                    .is_some_and(|name| name == "strata")
+            })
+    } else {
+        false
+    };
+    Ok(PortalStatus {
+        configured: preferred && metadata.is_file() && service.is_file(),
+        has_installation,
+    })
+}
+
+pub fn dismiss_prompt() -> Result<String, String> {
+    require_runtime_integrations()?;
+    dismiss_prompt_at(&SetupContext::from_environment()?)?;
+    Ok("File chooser offer dismissed. You can enable it later in Settings → General → System file manager.".into())
+}
+
+#[cfg(test)]
+fn take_prompt_offer_at(context: &SetupContext) -> Result<bool, String> {
+    if prompt_path(context).exists() {
+        return Ok(false);
+    }
+    if status_at(context)?.configured {
+        dismiss_prompt_at(context)?;
+        return Ok(false);
+    }
+    dismiss_prompt_at(context)
+}
+
+fn prompt_path(context: &SetupContext) -> PathBuf {
+    context.config_home.join("strata/portal-opt-in-v1")
+}
+
+fn dismiss_prompt_at(context: &SetupContext) -> Result<bool, String> {
+    let path = prompt_path(context);
+    let directory = path.parent().expect("portal prompt has a parent");
+    fs::create_dir_all(directory).map_err(|error| path_error("create", directory, error))?;
+    // The installer, CLI, and every app window share one first-offer marker.
+    match fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o600)
+        .open(&path)
+    {
+        Ok(mut file) => {
+            file.write_all(b"1\n")
+                .map_err(|error| path_error("write", &path, error))?;
+            Ok(true)
+        }
+        Err(error) if error.kind() == io::ErrorKind::AlreadyExists => Ok(false),
+        Err(error) => Err(path_error("create", &path, error)),
+    }
+}
+
+#[derive(Debug)]
+struct SetupContext {
+    data_home: PathBuf,
+    config_home: PathBuf,
+    search_roots: Vec<PathBuf>,
+    config_names: Vec<String>,
+}
+
+impl SetupContext {
+    fn from_environment() -> Result<Self, String> {
+        let home = env::var_os("HOME").filter(|value| !value.is_empty());
+        let data_home = xdg_home("XDG_DATA_HOME", home.as_deref(), ".local/share")?;
+        let config_home = xdg_home("XDG_CONFIG_HOME", home.as_deref(), ".config")?;
+
+        let mut search_roots = vec![config_home.clone()];
+        search_roots.extend(xdg_directories("XDG_CONFIG_DIRS", "/etc/xdg"));
+        search_roots.push(PathBuf::from("/etc"));
+        search_roots.push(data_home.clone());
+        search_roots.extend(xdg_directories(
+            "XDG_DATA_DIRS",
+            "/usr/local/share:/usr/share",
+        ));
+
+        let mut config_names = env::var("XDG_CURRENT_DESKTOP")
+            .unwrap_or_default()
+            .split(':')
+            .filter_map(portal_config_name)
+            .collect::<Vec<_>>();
+        config_names.push("portals.conf".to_owned());
+        config_names.dedup();
+
+        Ok(Self {
+            data_home,
+            config_home,
+            search_roots,
+            config_names,
+        })
+    }
+
+    fn portal_directory(&self) -> PathBuf {
+        self.config_home.join("xdg-desktop-portal")
+    }
+
+    fn state_directory(&self) -> PathBuf {
+        self.data_home.join(STATE_DIRECTORY)
+    }
+}
+
+fn xdg_home(
+    variable: &str,
+    home: Option<&std::ffi::OsStr>,
+    fallback: &str,
+) -> Result<PathBuf, String> {
+    let path = env::var_os(variable)
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+        .or_else(|| home.map(Path::new).map(|path| path.join(fallback)))
+        .ok_or_else(|| {
+            rust_i18n::t!("Neither %{variable} nor HOME is set", variable = variable).into_owned()
+        })?;
+    path.is_absolute().then_some(path).ok_or_else(|| {
+        rust_i18n::t!(
+            "%{variable} must resolve to an absolute path",
+            variable = variable
+        )
+        .into_owned()
+    })
+}
+
+fn xdg_directories(variable: &str, default: &str) -> Vec<PathBuf> {
+    let value = env::var_os(variable)
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| default.into());
+    env::split_paths(&value)
+        .filter(|path| path.is_absolute())
+        .collect()
+}
+
+fn portal_config_name(desktop: &str) -> Option<String> {
+    let desktop = desktop.trim().to_ascii_lowercase();
+    (!desktop.is_empty()
+        && desktop
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.')))
+    .then(|| format!("{desktop}-portals.conf"))
+}
+
+fn install_at(context: &SetupContext, executable: &Path) -> Result<PathBuf, String> {
+    let executable = secure_executable(executable)?;
+    let executable = executable
+        .to_str()
+        .ok_or_else(|| crate::i18n::tr("Strata must be installed at a UTF-8 path"))?;
+    if executable
+        .chars()
+        .any(|character| character.is_whitespace() || matches!(character, '\\' | '\'' | '"'))
+    {
+        return Err(crate::i18n::tr(
+            "The Strata executable path contains characters unsupported by D-Bus activation",
+        ));
+    }
+
+    let config_directory = context.portal_directory();
+    let state_directory = context.state_directory();
+    let (target, state, installed) = if let Some(state) = read_state(&state_directory)? {
+        let target = config_directory.join(&state.target_name);
+        ensure_regular_or_missing(&target)?;
+        let current = if target.exists() {
+            read_utf8(&target)?
+        } else {
+            state.installed.clone()
+        };
+        (target, None, enable_config(&current)?)
+    } else {
+        let source = active_config(context);
+        let target_name = source
+            .as_ref()
+            .and_then(|path| path.file_name())
+            .and_then(|name| name.to_str())
+            .unwrap_or("portals.conf")
+            .to_owned();
+        let target = config_directory.join(&target_name);
+        ensure_regular_or_missing(&target)?;
+        let target_existed = target.exists();
+        let original = target_existed.then(|| read_utf8(&target)).transpose()?;
+        let base = match &original {
+            Some(contents) => contents.clone(),
+            None => source
+                .as_ref()
+                .map_or_else(|| Ok(String::new()), |path| read_utf8(path))?,
+        };
+        let original = original
+            .as_deref()
+            .map(disable_config)
+            .transpose()?
+            .unwrap_or_default();
+        let installed = enable_config(&base)?;
+        (
+            target,
+            Some(InstallState {
+                target_name,
+                target_existed,
+                original,
+                installed: installed.clone(),
+            }),
+            installed,
+        )
+    };
+
+    let portal_directory = context.data_home.join("xdg-desktop-portal/portals");
+    let service_directory = context.data_home.join("dbus-1/services");
+    for directory in [&portal_directory, &service_directory, &config_directory] {
+        fs::create_dir_all(directory).map_err(|error| path_error("create", directory, error))?;
+    }
+    write_public(
+        &portal_directory.join(PORTAL_FILE),
+        include_bytes!("../../../data/portal/strata.portal"),
+    )?;
+    let service =
+        include_str!("../../../data/portal/org.freedesktop.impl.portal.desktop.strata.service.in")
+            .replace("@STRATA_EXECUTABLE@", executable);
+    write_public(&service_directory.join(SERVICE_FILE), service.as_bytes())?;
+    if let Some(state) = state {
+        write_state(&state_directory, &state)?;
+    }
+    write_config(&target, installed.as_bytes(), file_mode(&target))?;
+    Ok(target)
+}
+
+fn secure_executable(path: &Path) -> Result<PathBuf, String> {
+    let user = rustix::process::geteuid().as_raw();
+    secure_executable_for_user(path, user, &|group| {
+        let read = |file| fs::read_to_string(file).unwrap_or_default();
+        group_is_private(user, group, &read("/etc/passwd"), &read("/etc/group"))
+    })
+}
+
+fn secure_executable_for_user(
+    path: &Path,
+    effective_user: u32,
+    private_group: &dyn Fn(u32) -> bool,
+) -> Result<PathBuf, String> {
+    let path = fs::canonicalize(path)
+        .map_err(|error| path_error("resolve the Strata executable", path, error))?;
+    for (index, component) in path.ancestors().enumerate() {
+        let metadata = fs::metadata(component)
+            .map_err(|error| path_error("inspect the Strata executable path", component, error))?;
+        if index == 0 {
+            if !metadata.is_file() || metadata.permissions().mode() & 0o111 == 0 {
+                return Err(crate::i18n::tr(
+                    "The Strata executable must be a regular executable file",
+                ));
+            }
+        } else if !metadata.is_dir() {
+            return Err(crate::i18n::tr(
+                "The Strata executable path must contain only directories",
+            ));
+        }
+        if !trusted_owner(metadata.uid(), effective_user) {
+            return Err(crate::i18n::tr(
+                "The Strata executable path must be owned by the current user or root",
+            ));
+        }
+        let mode = metadata.permissions().mode();
+        if mode & 0o002 != 0 || (mode & 0o020 != 0 && !private_group(metadata.gid())) {
+            return Err(crate::i18n::tr(
+                "The Strata executable path must not be writable by other users",
+            ));
+        }
+    }
+    Ok(path)
+}
+
+/// Distributions that give each user a private group and a umask of 002 leave the user's own
+/// folders group-writable. A group the databases do not describe counts as shared.
+fn group_is_private(user: u32, group: u32, passwd: &str, groups: &str) -> bool {
+    let mut name = None;
+    for fields in passwd
+        .lines()
+        .map(|line| line.split(':').collect::<Vec<_>>())
+    {
+        let [login, _, uid, primary, ..] = fields[..] else {
+            continue;
+        };
+        if uid.parse() == Ok(user) {
+            name = Some(login);
+        } else if primary.parse() == Ok(group) {
+            return false;
+        }
+    }
+    let Some(name) = name else {
+        return false;
+    };
+    let mut listed = false;
+    for fields in groups
+        .lines()
+        .map(|line| line.split(':').collect::<Vec<_>>())
+    {
+        let [_, _, id, members] = fields[..] else {
+            continue;
+        };
+        if id.parse() != Ok(group) {
+            continue;
+        }
+        listed = true;
+        if members
+            .split(',')
+            .any(|member| !member.is_empty() && member != name)
+        {
+            return false;
+        }
+    }
+    listed
+}
+
+fn trusted_owner(owner: u32, effective_user: u32) -> bool {
+    owner == 0 || owner == effective_user
+}
+
+fn uninstall_at(context: &SetupContext) -> Result<bool, String> {
+    let state_directory = context.state_directory();
+    let mut preserved_edits = false;
+    if let Some(state) = read_state(&state_directory)? {
+        let target = context.portal_directory().join(&state.target_name);
+        if target.exists() {
+            let current = read_utf8(&target)?;
+            if current == state.installed {
+                if state.target_existed {
+                    write_config(&target, state.original.as_bytes(), file_mode(&target))?;
+                } else {
+                    remove_if_exists(&target)?;
+                }
+            } else {
+                let disabled = disable_config(&current)?;
+                write_config(&target, disabled.as_bytes(), file_mode(&target))?;
+                preserved_edits = true;
+            }
+        }
+        remove_state(&state_directory)?;
+    } else {
+        preserved_edits = disable_user_configs(context)?;
+    }
+    remove_if_exists(
+        &context
+            .data_home
+            .join("xdg-desktop-portal/portals")
+            .join(PORTAL_FILE),
+    )?;
+    remove_if_exists(&context.data_home.join("dbus-1/services").join(SERVICE_FILE))?;
+    Ok(preserved_edits)
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+struct InstallState {
+    target_name: String,
+    target_existed: bool,
+    original: String,
+    installed: String,
+}
+
+fn write_state(directory: &Path, state: &InstallState) -> Result<(), String> {
+    fs::create_dir_all(directory).map_err(|error| path_error("create", directory, error))?;
+    let path = directory.join(STATE_FILE);
+    let contents = toml::to_string(state).map_err(|error| {
+        rust_i18n::t!(
+            "Could not serialize portal installation state: %{error}",
+            error = error
+        )
+        .into_owned()
+    })?;
+    crate::storage::atomic_write(&path, contents.as_bytes())
+        .map_err(|error| path_error("write", &path, error))
+}
+
+fn read_state(directory: &Path) -> Result<Option<InstallState>, String> {
+    let path = directory.join(STATE_FILE);
+    if !path.exists() {
+        return Ok(None);
+    }
+    let contents = read_utf8(&path)?;
+    let state: InstallState = toml::from_str(&contents).map_err(|error| {
+        rust_i18n::t!(
+            "Could not read portal installation state: %{error}",
+            error = error
+        )
+        .into_owned()
+    })?;
+    if portal_config_name_is_unsafe(&state.target_name) {
+        return Err(crate::i18n::tr(
+            "The saved portal configuration filename is invalid",
+        ));
+    }
+    Ok(Some(state))
+}
+
+fn portal_config_name_is_unsafe(name: &str) -> bool {
+    name.is_empty()
+        || Path::new(name).file_name().and_then(|value| value.to_str()) != Some(name)
+        || !(name == "portals.conf" || name.ends_with("-portals.conf"))
+}
+
+fn remove_state(directory: &Path) -> Result<(), String> {
+    remove_if_exists(&directory.join(STATE_FILE))?;
+    match fs::remove_dir(directory) {
+        Ok(()) => Ok(()),
+        Err(error)
+            if matches!(
+                error.kind(),
+                io::ErrorKind::NotFound | io::ErrorKind::DirectoryNotEmpty
+            ) =>
+        {
+            Ok(())
+        }
+        Err(error) => Err(path_error("remove", directory, error)),
+    }
+}
+
+fn active_config(context: &SetupContext) -> Option<PathBuf> {
+    context.search_roots.iter().find_map(|root| {
+        context.config_names.iter().find_map(|name| {
+            let path = root.join("xdg-desktop-portal").join(name);
+            path.is_file().then_some(path)
+        })
+    })
+}
+
+fn enable_config(contents: &str) -> Result<String, String> {
+    update_config(contents, true)
+}
+
+fn disable_config(contents: &str) -> Result<String, String> {
+    update_config(contents, false)
+}
+
+fn update_config(contents: &str, enable: bool) -> Result<String, String> {
+    let config = KeyFile::new();
+    if !contents.is_empty() {
+        config
+            .load_from_data(contents, KeyFileFlags::KEEP_COMMENTS)
+            .map_err(|error| {
+                rust_i18n::t!(
+                    "Could not parse portal configuration: %{error}",
+                    error = error
+                )
+                .into_owned()
+            })?;
+    }
+    let chooser = config.value("preferred", FILE_CHOOSER_KEY).ok();
+    if chooser.is_none() && !enable {
+        return Ok(contents.to_owned());
+    }
+
+    let mut fallback = config
+        .value("preferred", "default")
+        .map_or_else(|_| vec!["*".to_owned()], |value| backend_values(&value));
+    fallback.retain(|value| value != "strata");
+    if fallback.is_empty() {
+        fallback.push("*".to_owned());
+    }
+    let mut values = chooser
+        .as_deref()
+        .map_or_else(|| fallback.clone(), backend_values);
+    values.retain(|value| value != "strata");
+
+    if enable {
+        if values.is_empty() {
+            values = fallback;
+        }
+        values.insert(0, "strata".to_owned());
+        config.set_value(
+            "preferred",
+            FILE_CHOOSER_KEY,
+            &format!("{};", values.join(";")),
+        );
+    } else if values.is_empty() || values == fallback {
+        config
+            .remove_key("preferred", FILE_CHOOSER_KEY)
+            .map_err(|error| {
+                rust_i18n::t!(
+                    "Could not remove portal preference: %{error}",
+                    error = error
+                )
+                .into_owned()
+            })?;
+    } else {
+        config.set_value(
+            "preferred",
+            FILE_CHOOSER_KEY,
+            &format!("{};", values.join(";")),
+        );
+    }
+    Ok(config.to_data().to_string())
+}
+
+fn backend_values(value: &str) -> Vec<String> {
+    value
+        .split(';')
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_owned)
+        .collect()
+}
+
+fn disable_user_configs(context: &SetupContext) -> Result<bool, String> {
+    let directory = context.portal_directory();
+    let entries = match fs::read_dir(&directory) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(false),
+        Err(error) => return Err(path_error("read", &directory, error)),
+    };
+    let mut changed = false;
+    for entry in entries {
+        let path = entry
+            .map_err(|error| path_error("read", &directory, error))?
+            .path();
+        let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
+            continue;
+        };
+        if portal_config_name_is_unsafe(name) || !path.is_file() {
+            continue;
+        }
+        let current = read_utf8(&path)?;
+        let disabled = disable_config(&current)?;
+        if current != disabled {
+            write_config(&path, disabled.as_bytes(), file_mode(&path))?;
+            changed = true;
+        }
+    }
+    Ok(changed)
+}
+
+fn read_utf8(path: &Path) -> Result<String, String> {
+    fs::read_to_string(path).map_err(|error| path_error("read", path, error))
+}
+
+fn write_public(path: &Path, contents: &[u8]) -> Result<(), String> {
+    crate::storage::atomic_write(path, contents)
+        .map_err(|error| path_error("write", path, error))?;
+    fs::set_permissions(path, fs::Permissions::from_mode(0o644))
+        .map_err(|error| path_error("set permissions on", path, error))
+}
+
+fn write_config(path: &Path, contents: &[u8], mode: u32) -> Result<(), String> {
+    crate::storage::atomic_write(path, contents)
+        .map_err(|error| path_error("write", path, error))?;
+    fs::set_permissions(path, fs::Permissions::from_mode(mode))
+        .map_err(|error| path_error("set permissions on", path, error))
+}
+
+fn file_mode(path: &Path) -> u32 {
+    fs::metadata(path)
+        .map(|metadata| metadata.permissions().mode())
+        .unwrap_or(0o600)
+}
+
+fn ensure_regular_or_missing(path: &Path) -> Result<(), String> {
+    match fs::symlink_metadata(path) {
+        Ok(metadata) if metadata.is_file() => Ok(()),
+        Ok(_) => Err(rust_i18n::t!(
+            "Refusing to replace non-regular portal configuration %{path}",
+            path = path.display()
+        )
+        .into_owned()),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(path_error("inspect", path, error)),
+    }
+}
+
+fn remove_if_exists(path: &Path) -> Result<(), String> {
+    match fs::remove_file(path) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(path_error("remove", path, error)),
+    }
+}
+
+fn path_error(action: &str, path: &Path, error: io::Error) -> String {
+    let path = path.display();
+    let error = crate::services::io_error_message(&error);
+    match action {
+        "create" => rust_i18n::t!(
+            "Could not create %{path}: %{error}",
+            path = path,
+            error = error
+        ),
+        "read" => rust_i18n::t!(
+            "Could not read %{path}: %{error}",
+            path = path,
+            error = error
+        ),
+        "write" => rust_i18n::t!(
+            "Could not write %{path}: %{error}",
+            path = path,
+            error = error
+        ),
+        "remove" => rust_i18n::t!(
+            "Could not remove %{path}: %{error}",
+            path = path,
+            error = error
+        ),
+        "inspect" | "inspect the installed Strata executable" | "inspect running processes" => {
+            rust_i18n::t!(
+                "Could not inspect %{path}: %{error}",
+                path = path,
+                error = error
+            )
+        }
+        "back up" => {
+            rust_i18n::t!(
+                "Could not back up %{path}: %{error}",
+                path = path,
+                error = error
+            )
+        }
+        "set permissions on" => rust_i18n::t!(
+            "Could not set permissions on %{path}: %{error}",
+            path = path,
+            error = error
+        ),
+        "resolve the Strata executable" => rust_i18n::t!(
+            "Could not resolve the Strata executable %{path}: %{error}",
+            path = path,
+            error = error
+        ),
+        "inspect the Strata executable path" => rust_i18n::t!(
+            "Could not inspect the Strata executable path %{path}: %{error}",
+            path = path,
+            error = error
+        ),
+        _ => return format!("Could not {action} {path}: {error}"),
+    }
+    .into_owned()
+}
+
+fn refresh_portals() -> &'static str {
+    let backend_stopped = run_trusted("systemctl", &["--user", "stop", PORTAL_BACKEND_UNIT]);
+    let dbus_reloaded = reload_dbus_config();
+    let portal_restarted = run_trusted(
+        "systemctl",
+        &["--user", "restart", "xdg-desktop-portal.service"],
+    );
+    if backend_stopped && dbus_reloaded && portal_restarted {
+        ""
+    } else {
+        "\nCould not reload every portal service. Ensure xdg-desktop-portal is installed, then log out and back in before testing."
+    }
+}
+
+fn run_trusted(name: &str, args: &[&str]) -> bool {
+    crate::trusted_command::command(name).is_ok_and(|mut command| {
+        command.args(args);
+        succeeds_within(&mut command)
+    })
+}

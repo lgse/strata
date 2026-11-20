@@ -1,9 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 // The process's own parser, so a malformed step fails at load, not as a failure `known_bug` could excuse.
-#[path = "../src/qa/protocol/mod.rs"]
-#[expect(dead_code, reason = "the runner only validates commands")]
-mod protocol;
+use strata_qa as protocol;
 
 #[path = "qa/peers.rs"]
 mod peers;

@@ -1,7 +1,7 @@
-diff --git a/src/adapters/local_operations/rename.rs b/src/adapters/local_operations/rename.rs
+diff --git a/crates/strata-fs/src/adapters/local_operations/rename.rs b/crates/strata-fs/src/adapters/local_operations/rename.rs
 index 90db8a7e..ac05eac7 100644
---- a/src/adapters/local_operations/rename.rs
-+++ b/src/adapters/local_operations/rename.rs
+--- a/crates/strata-fs/src/adapters/local_operations/rename.rs
++++ b/crates/strata-fs/src/adapters/local_operations/rename.rs
 @@ -22,6 +22,9 @@ pub(super) fn rename(request: RenameRequest, emit: Rc<dyn Fn(OperationEvent)>) -
              .unwrap_or_else(|| {
                  gio::File::for_uri(request.entry.location.uri_value().unwrap_or_default())

@@ -1,0 +1,17 @@
+[package]
+name = "strata-qa"
+version = "0.0.0"
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "The JSON-lines protocol of Strata's scripted QA mode: steps, targets and predicates"
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+regex.workspace = true
+serde.workspace = true
+serde_json.workspace = true

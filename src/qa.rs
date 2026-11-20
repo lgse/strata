@@ -12,7 +12,6 @@ mod observe;
 mod onscreen;
 mod pixels;
 mod pointer;
-mod protocol;
 mod reveal;
 mod samples;
 mod state;
@@ -28,6 +27,7 @@ use std::{
     panic::AssertUnwindSafe,
     time::{Duration, Instant},
 };
+use strata_qa as protocol;
 
 use futures_channel::mpsc;
 use futures_lite::{FutureExt as _, StreamExt};

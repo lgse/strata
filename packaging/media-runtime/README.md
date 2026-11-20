@@ -238,7 +238,7 @@ Strata executable. The next shipping implementation needs to:
    Run the full pinned repository checks when changing release/build infrastructure.
 6. Wire the verified runtime build into `.github/workflows/release.yml` before
    archive creation, failing the build on source/checksum/patch mismatches or failed
-   regressions. Teach `install.sh`, `src/services/update_install.rs`, and relevant
+   regressions. Teach `install.sh`, `crates/strata-desktop/src/services/update_install.rs`, and relevant
    distribution packages about a versioned runtime directory and atomic bundle
    updates. Copying only the executable (the current updater behavior) must not
    produce a partially updated or unpatched installation. Include runtime provenance

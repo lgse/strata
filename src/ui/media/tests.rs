@@ -35,7 +35,7 @@ fn fake_loader(calls: &Rc<RefCell<Vec<u32>>>) -> TestLoader {
     let calls = calls.clone();
     Rc::new(move |_source: SandboxedMedia, tick: u32| {
         calls.borrow_mut().push(tick);
-        crate::sandbox::media::tests::stream(test_header(tick))
+        crate::sandbox::media::fixtures::stream(test_header(tick))
     })
 }
 
@@ -139,7 +139,7 @@ fn resume_where_the_preview_closed() {
     let audio_calls = calls.clone();
     media.imp().loader.replace(Some(Rc::new(move |_, tick| {
         audio_calls.borrow_mut().push(tick);
-        crate::sandbox::media::tests::stream(Header {
+        crate::sandbox::media::fixtures::stream(Header {
             width: 0,
             height: 0,
             audio: true,
@@ -258,7 +258,7 @@ fn start_at_the_configured_percent() {
         let loader_calls = calls.clone();
         media.imp().loader.replace(Some(Rc::new(move |_, tick| {
             loader_calls.borrow_mut().push(tick);
-            crate::sandbox::media::tests::stream(Header {
+            crate::sandbox::media::fixtures::stream(Header {
                 start_tick: tick,
                 ..header
             })
@@ -359,7 +359,7 @@ fn open_with(
     let loader_calls = calls.clone();
     media.imp().loader.replace(Some(Rc::new(move |_, tick| {
         loader_calls.borrow_mut().push(tick);
-        crate::sandbox::media::tests::stream(Header {
+        crate::sandbox::media::fixtures::stream(Header {
             start_tick: tick,
             ..header
         })
@@ -889,7 +889,7 @@ fn shrinking_the_pane_keeps_the_decode_and_only_real_growth_restarts_it() {
             let loader_calls = calls.clone();
             media.imp().loader.replace(Some(Rc::new(move |_, tick| {
                 loader_calls.borrow_mut().push(tick);
-                crate::sandbox::media::tests::stream(Header {
+                crate::sandbox::media::fixtures::stream(Header {
                     width: 320,
                     height: 240,
                     ..test_header(tick)
@@ -951,9 +951,9 @@ fn a_seek_the_file_cannot_serve_returns_to_where_playback_was() {
             media.imp().loader.replace(Some(Rc::new(move |_, tick| {
                 loader_calls.borrow_mut().push(tick);
                 if tick >= 900 {
-                    crate::sandbox::media::tests::failing_stream()
+                    crate::sandbox::media::fixtures::failing_stream()
                 } else {
-                    crate::sandbox::media::tests::stream(test_header(tick))
+                    crate::sandbox::media::fixtures::stream(test_header(tick))
                 }
             })));
             media.upcast_ref::<gtk::MediaStream>().play();

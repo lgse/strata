@@ -55,16 +55,24 @@ RUN (getent group "$TEST_GID" || groupadd --gid "$TEST_GID" strata-test) \
 FROM runtime AS toolchain
 RUN sh /opt/strata-install-packages.sh install base-devel glib2-devel pkgconf rustup \
     && rm -rf /var/cache/pacman/pkg/* /var/lib/pacman/sync/*
-ENV RUSTUP_HOME=/opt/rustup RUSTUP_TOOLCHAIN=1.98.1
-RUN rustup toolchain install 1.98.1 --no-self-update --profile minimal --component clippy,rustfmt \
+ENV RUSTUP_HOME=/opt/rustup RUSTUP_TOOLCHAIN=1.99.1
+RUN rustup toolchain install 1.99.1 --no-self-update --profile minimal --component clippy,rustfmt \
     && chmod -R a+rX /opt/rustup
 
 FROM toolchain AS dependencies
 WORKDIR /build
 ENV CARGO_PROFILE_DEV_DEBUG=0 CARGO_INCREMENTAL=0
 COPY Cargo.toml Cargo.lock ./
-RUN mkdir src && printf 'fn main() {}\n' > src/main.rs \
+COPY crates crates
+# Only third-party dependencies are built here, so each workspace crate is reduced to its
+# manifest and an empty target: a crate's own build script or sources must not run.
+RUN find crates -type f ! -name Cargo.toml -delete \
+    && for manifest in crates/*/Cargo.toml; do \
+        mkdir -p "$(dirname "$manifest")/src" && : > "$(dirname "$manifest")/src/lib.rs"; \
+    done \
+    && mkdir src && printf 'fn main() {}\n' > src/main.rs \
     && printf 'fn main() {}\n' > build.rs \
     && cargo build --locked --bin strata \
-    && rm -rf src build.rs target/debug/strata target/debug/deps/strata* \
-        target/debug/.fingerprint/strata-* target/debug/build/strata-*
+    && rm -rf src build.rs crates target/debug/strata target/debug/deps/strata* \
+        target/debug/deps/libstrata* target/debug/.fingerprint/strata-* \
+        target/debug/build/strata-*

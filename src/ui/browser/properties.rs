@@ -496,7 +496,7 @@ impl ViewState {
             )
         });
         let modified = properties_row(&details, "MODIFIED", "—");
-        crate::util::set_full_modified_date(
+        crate::ui::modified_date::set_full_modified_date(
             &modified,
             entry
                 .as_ref()
@@ -850,7 +850,7 @@ impl ViewState {
                 size.set_text(&format_file_size(info.size().max(0) as u64));
             }
             if let Some(time) = info.modification_date_time() {
-                crate::util::set_full_modified_date(&modified, Some(time.to_unix()));
+                crate::ui::modified_date::set_full_modified_date(&modified, Some(time.to_unix()));
             }
             hidden.set_text(&crate::i18n::tr(if crate::adapters::info_is_hidden(&info) {
                 "Yes"

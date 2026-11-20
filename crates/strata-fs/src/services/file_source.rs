@@ -1,0 +1,701 @@
+// SPDX-License-Identifier: MIT
+
+#[cfg(test)]
+mod tests;
+
+use std::{
+    fmt,
+    path::Path,
+    rc::Rc,
+    time::{Duration, SystemTime},
+};
+
+use super::{ItemIdentity, Proof};
+pub use crate::error_text::{
+    UNEXPECTED_SYSTEM_ERROR, error_detail, io_error_detail, io_error_message, io_error_reason,
+    system_error_text,
+};
+pub use crate::model::LoadHandle;
+use crate::model::{
+    FileEntry, GIO_URI_BUILD_FLAGS, GIO_URI_PARSE_FLAGS, Location, MetadataValue,
+    uri_contains_credentials,
+};
+
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub struct RequestId(pub u64);
+
+#[derive(Clone, Debug)]
+pub struct DirectoryRequest {
+    pub id: RequestId,
+    pub location: Location,
+    pub batch_size: usize,
+    /// When true, entries arrive with size and modification time. Size/date sorts set it;
+    /// other sorts stream identity only and fill the visible window afterwards.
+    pub include_metadata: bool,
+    /// Caps how many entries a single load will retain/render, bounding worst-case time and
+    /// memory on an adversarially large or unbounded directory.
+    pub max_entries: usize,
+    /// Caps how long a single load may run before it is reported as truncated.
+    /// Complete camera Photos scans use `Duration::MAX` to disable the deadline;
+    /// their `max_entries` is `usize::MAX`. Bounded peeks retain finite limits.
+    pub time_budget: Duration,
+    pub background: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum LocationValidationError {
+    Empty,
+    InvalidUri,
+    NotAbsolute,
+    Missing,
+    NotDirectory,
+    Inaccessible,
+    NotMounted(Location),
+    Mountable(Location),
+    Unavailable(String),
+    /// An English source message, translated by [`LocationValidationError::message`].
+    UnsupportedShorthand(&'static str),
+    UnsupportedScheme(String),
+    /// A chooser policy refusal, held as an English source message.
+    Refused(&'static str),
+    EmbeddedCredential,
+    /// Polkit refused an `admin://` operation, or its prompt was dismissed; GVfs reports both
+    /// as `PERMISSION_DENIED`.
+    NotAuthorized,
+    /// Already localized by [`backend_unavailable_message`].
+    BackendUnavailable(String),
+}
+
+impl From<std::io::Error> for LocationValidationError {
+    fn from(error: std::io::Error) -> Self {
+        match error.kind() {
+            std::io::ErrorKind::NotFound => Self::Missing,
+            std::io::ErrorKind::PermissionDenied => Self::Inaccessible,
+            std::io::ErrorKind::NotADirectory => Self::NotDirectory,
+            _ => Self::Unavailable(io_error_detail(&error)),
+        }
+    }
+}
+
+impl fmt::Display for LocationValidationError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Empty => formatter.write_str("Enter a location."),
+            Self::InvalidUri => formatter.write_str("Enter a valid URI."),
+            Self::NotAbsolute => formatter.write_str("Enter an absolute path."),
+            Self::Missing => formatter.write_str("That location does not exist."),
+            Self::NotDirectory => formatter.write_str("That location is not a directory."),
+            Self::Inaccessible => {
+                formatter.write_str("You do not have permission to open that location.")
+            }
+            Self::NotMounted(_) => formatter.write_str("That location is not mounted yet."),
+            Self::Mountable(_) => formatter.write_str("That location needs to be mounted first."),
+            Self::Unavailable(message) => {
+                write!(formatter, "Unable to open that location: {message}")
+            }
+            Self::UnsupportedShorthand(message) | Self::Refused(message) => {
+                formatter.write_str(message)
+            }
+            Self::UnsupportedScheme(scheme) => write!(
+                formatter,
+                "The {scheme}:// scheme isn't supported. Use an absolute local path or one of: \
+                 smb://, sftp://, ftp://, ftps://, dav://, davs://, admin://, or recent:///."
+            ),
+            Self::EmbeddedCredential => formatter.write_str(
+                "Passwords typed into the address bar aren't accepted. Enter the address \
+                 without a password, you'll be prompted to sign in securely.",
+            ),
+            Self::NotAuthorized => formatter.write_str("Administrator access wasn't granted."),
+            Self::BackendUnavailable(message) => formatter.write_str(message),
+        }
+    }
+}
+
+impl LocationValidationError {
+    /// Localized text for dialogs; `Display` stays English.
+    pub fn message(&self) -> String {
+        use crate::i18n::tr;
+        match self {
+            Self::Empty => tr("Enter a location."),
+            Self::InvalidUri => tr("Enter a valid URI."),
+            Self::NotAbsolute => tr("Enter an absolute path."),
+            Self::Missing => tr("That location does not exist."),
+            Self::NotDirectory => tr("That location is not a directory."),
+            Self::Inaccessible => tr("You do not have permission to open that location."),
+            Self::NotMounted(_) => tr("That location is not mounted yet."),
+            Self::Mountable(_) => tr("That location needs to be mounted first."),
+            Self::Unavailable(message) => rust_i18n::t!(
+                "Unable to open that location: %{error}",
+                error = message
+            )
+            .into_owned(),
+            Self::UnsupportedShorthand(message) | Self::Refused(message) => tr(message),
+            Self::UnsupportedScheme(scheme) => rust_i18n::t!(
+                "The %{scheme}:// scheme isn't supported. Use an absolute local path or one of: smb://, sftp://, ftp://, ftps://, dav://, davs://, admin://, or recent:///.",
+                scheme = scheme
+            )
+            .into_owned(),
+            Self::EmbeddedCredential => tr(
+                "Passwords typed into the address bar aren't accepted. Enter the address without a password, you'll be prompted to sign in securely.",
+            ),
+            Self::NotAuthorized => tr("Administrator access wasn't granted."),
+            Self::BackendUnavailable(message) => message.clone(),
+        }
+    }
+}
+
+pub const INVALID_NAME_REASON: &str = "The name isn\u{2019}t valid at this location";
+
+/// Localized common GIO failures; application-owned errors retain their detail.
+pub fn gio_error_message(error: &glib::Error) -> String {
+    gio_error_reason(error)
+        .map(crate::i18n::tr)
+        .unwrap_or_else(|| error.message().to_owned())
+}
+
+/// Platform backend wording is diagnostic detail, not an application-owned message.
+pub fn gio_backend_error_message(error: &glib::Error) -> String {
+    let reason = gio_error_reason(error)
+        .or_else(|| describes_refused_credentials(error.message()).then_some("Permission denied"))
+        .unwrap_or_else(|| {
+            tracing::debug!(
+                error = %sanitize_failure_message(error.message()),
+                "unrecognized GIO backend error"
+            );
+            UNEXPECTED_SYSTEM_ERROR
+        });
+    crate::i18n::tr(reason)
+}
+
+/// GVfs' SMB backend reports rejected credentials as `G_IO_ERROR_FAILED` on
+/// some versions, preserving the distinction only in its message.
+pub fn describes_refused_credentials(message: &str) -> bool {
+    let message = message.to_ascii_lowercase();
+    [
+        "permission denied",
+        "authentication failed",
+        "authentication required",
+        "auth fail",
+        "too many authentication failures",
+        "logon failure",
+        "invalid credentials",
+    ]
+    .iter()
+    .any(|reason| message.contains(reason))
+}
+
+/// [`gio_error_message`] for mount, unmount and eject failures. UDisks and
+/// eject(1) report a busy device as `G_IO_ERROR_FAILED`, with the cause only
+/// in the system's own text.
+pub fn gio_device_error_message(error: &glib::Error) -> String {
+    if error.matches(gio::IOErrorEnum::Failed) && describes_busy_device(error.message()) {
+        return crate::i18n::tr("The item is in use");
+    }
+    gio_error_message(error)
+}
+
+/// Whole phrases, because these messages also carry device labels and mount paths.
+fn describes_busy_device(message: &str) -> bool {
+    let message = message.to_ascii_lowercase();
+    ["resource busy", "mount point busy", "target is busy"]
+        .iter()
+        .any(|reason| message.contains(reason))
+}
+
+fn gio_error_reason(error: &glib::Error) -> Option<&'static str> {
+    use gio::IOErrorEnum;
+    Some(match error.kind::<IOErrorEnum>() {
+        Some(IOErrorEnum::NotFound) => "No such file or folder",
+        Some(IOErrorEnum::PermissionDenied) => "Permission denied",
+        Some(IOErrorEnum::NotDirectory) => "Not a folder",
+        Some(IOErrorEnum::NoSpace) => "There is not enough space on the device",
+        Some(IOErrorEnum::ReadOnly) => "The file system is read-only",
+        Some(IOErrorEnum::TimedOut) => "The operation timed out",
+        Some(IOErrorEnum::Exists) => "An item with that name already exists",
+        Some(IOErrorEnum::NotEmpty) => "The folder is not empty",
+        Some(IOErrorEnum::IsDirectory) => "The item is a folder",
+        Some(IOErrorEnum::FilenameTooLong) => "The name is too long",
+        Some(IOErrorEnum::InvalidFilename) => INVALID_NAME_REASON,
+        Some(IOErrorEnum::Busy) => "The item is in use",
+        Some(IOErrorEnum::ConnectionRefused) => "The connection was refused",
+        Some(IOErrorEnum::HostUnreachable) => "The server cannot be reached",
+        Some(IOErrorEnum::NetworkUnreachable) => "The network is unreachable",
+        Some(IOErrorEnum::HostNotFound) => "Could not find the server",
+        Some(IOErrorEnum::TooManyLinks) => "There are too many levels of symbolic links",
+        Some(IOErrorEnum::NotMounted) => "The location is not mounted",
+        _ => return None,
+    })
+}
+
+/// [`gio_error_message`] for the `%{error}` slot after a colon; see [`error_detail`].
+pub fn gio_error_detail(error: &glib::Error) -> String {
+    error_detail(gio_error_message(error))
+}
+
+fn backend_package_hint(scheme: &str) -> Option<(&'static str, &'static str)> {
+    match scheme.to_ascii_lowercase().as_str() {
+        "smb" => Some(("gvfs-smb", "gvfs-backends")),
+        "sftp" | "ftp" | "ftps" | "dav" | "davs" => Some(("gvfs", "gvfs-backends")),
+        _ => None,
+    }
+}
+
+/// Localized, because every caller presents it directly.
+pub fn backend_unavailable_message(uri: &str) -> String {
+    let scheme = uri.split("://").next().unwrap_or(uri);
+    match backend_package_hint(scheme) {
+        Some((package, alternative)) => rust_i18n::t!(
+            "The %{scheme}:// backend isn't installed. Install your distribution's GVfs %{scheme} backend, commonly packaged as %{package} or %{alternative}, then try again.",
+            scheme = scheme,
+            package = package,
+            alternative = alternative
+        ),
+        None => rust_i18n::t!(
+            "The %{scheme}:// backend isn't installed on this system, so %{scheme}:// locations can't be opened. Install the matching GVfs backend from your distribution, then try again.",
+            scheme = scheme
+        ),
+    }
+    .into_owned()
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct UriCredentials {
+    pub username: String,
+    pub password: String,
+}
+
+/// Host text (authority minus user-info and port) of a `scheme://` URI, verbatim.
+fn host_text(uri: &str) -> Option<&str> {
+    let rest = &uri[uri.find("://")? + 3..];
+    let authority_end = rest.find(['/', '?', '#']).unwrap_or(rest.len());
+    let authority = &rest[..authority_end];
+    let hostport = authority.rsplit('@').next().unwrap_or(authority);
+    if hostport.is_empty() {
+        return None;
+    }
+    if let Some(bracketed) = hostport.strip_prefix('[') {
+        let end = bracketed.find(']')?;
+        Some(&hostport[..end + 2])
+    } else {
+        Some(hostport.split(':').next().filter(|host| !host.is_empty())?)
+    }
+}
+
+/// Like `Uri::to_str`, but the host keeps the input's original spelling.
+/// GUri IDNA-encodes non-ASCII hosts on re-serialization, which turns gvfs
+/// device URIs (mtp device names may contain CJK) into `xn--` names that the
+/// gvfs backend cannot resolve.
+fn to_str_preserving_host(input: &str, uri: &glib::Uri) -> String {
+    let normalized = uri.to_str().to_string();
+    match (host_text(input), host_text(&normalized)) {
+        (Some(raw_host), Some(norm_host)) if !raw_host.is_empty() && !norm_host.is_empty() => {
+            normalized.replacen(norm_host, raw_host, 1)
+        }
+        _ => normalized,
+    }
+}
+
+/// Removes URI user-info secrets while preserving the username separately.
+/// Path, query and fragment keep GIO's percent-encoding so non-UTF-8 names survive.
+/// The host is preserved verbatim from `input`: GUri re-serialization IDNA-encodes
+/// non-ASCII hosts (`mtp://OnePlus_一加_...` becomes `mtp://xn--...`), which gvfs
+/// backends cannot match to their device names (the location then never resolves).
+pub fn sanitize_uri_credentials(
+    input: &str,
+) -> Result<(String, Option<UriCredentials>), LocationValidationError> {
+    let uri = glib::Uri::parse(input, GIO_URI_PARSE_FLAGS)
+        .map_err(|_| LocationValidationError::InvalidUri)?;
+    if !uri_contains_credentials(&uri) {
+        return Ok((to_str_preserving_host(input, &uri), None));
+    }
+
+    let mut username = uri.user().map(|user| user.to_string()).unwrap_or_default();
+    let mut password = uri.password().map(|password| password.to_string());
+    let mut auth_params = uri.auth_params().map(|params| params.to_string());
+
+    if password.is_none()
+        && let Some((user, embedded_password)) = username.split_once(':')
+    {
+        password = Some(embedded_password.to_owned());
+        username = user.to_owned();
+    }
+    if auth_params.is_none()
+        && let Some((user, embedded_params)) = username.split_once(';')
+    {
+        auth_params = Some(embedded_params.to_owned());
+        username = user.to_owned();
+    }
+    if password.is_none() {
+        password = auth_params
+            .as_deref()
+            .and_then(|params| params.strip_prefix("password="))
+            .map(str::to_owned);
+    }
+
+    let rebuilt = glib::Uri::build_with_user(
+        GIO_URI_BUILD_FLAGS,
+        &uri.scheme(),
+        (!username.is_empty()).then_some(username.as_str()),
+        None,
+        None,
+        uri.host().as_deref(),
+        uri.port(),
+        &uri.path(),
+        uri.query().as_deref(),
+        uri.fragment().as_deref(),
+    );
+    let sanitized = to_str_preserving_host(input, &rebuilt);
+    let credentials = UriCredentials {
+        username,
+        password: password.unwrap_or_default(),
+    };
+    Ok((sanitized, Some(credentials)))
+}
+
+/// Removes URI user-info, query and fragment from backend failure text before display or logging.
+pub fn sanitize_failure_message(message: &str) -> String {
+    message
+        .split_inclusive(char::is_whitespace)
+        .map(|token| {
+            let Some((scheme, rest)) = token.split_once("://") else {
+                return token.to_owned();
+            };
+            let authority_end = rest.find(['/', '?', '#']).unwrap_or(rest.len());
+            let clean_rest = match rest[..authority_end].rfind('@') {
+                Some(userinfo_end) => &rest[userinfo_end + 1..],
+                None => rest,
+            };
+            let end = clean_rest.find(['?', '#']).unwrap_or(clean_rest.len());
+            format!("{scheme}://{}", &clean_rest[..end])
+        })
+        .collect()
+}
+
+/// Rejects URI password and authentication-parameter fields, including encoded delimiters,
+/// and returns the URI in GIO's percent-encoded form.
+pub fn validate_uri_credentials(uri: &str) -> Result<String, LocationValidationError> {
+    match sanitize_uri_credentials(uri)? {
+        (_, Some(_)) => Err(LocationValidationError::EmbeddedCredential),
+        (sanitized, None) => Ok(sanitized),
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum DirectoryChange {
+    Upsert(FileEntry),
+    Remove(Location),
+    Move { from: Location, entry: FileEntry },
+    Rescan,
+}
+
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub enum MountToken {
+    Native(u64),
+    Remote(String),
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct DirectoryStamp {
+    pub modified: (i64, u32),
+    pub changed: Option<(i64, u32)>,
+    pub identity: Option<ItemIdentity>,
+    pub mount: Option<MountToken>,
+    pub outside_writers: bool,
+    pub coarse_window: Option<Duration>,
+    pub daemon_cache: Option<Duration>,
+    pub read_at: SystemTime,
+}
+
+impl DirectoryStamp {
+    pub fn moved_since(&self, baseline: &Self) -> bool {
+        self.modified != baseline.modified
+            || self.changed != baseline.changed
+            || self.replaced(baseline)
+    }
+
+    pub fn replaced(&self, baseline: &Self) -> bool {
+        match (&self.identity, &baseline.identity) {
+            (Some(identity), Some(baseline)) => identity.proof(baseline) == Proof::Different,
+            (None, None) => false,
+            _ => true,
+        }
+    }
+
+    fn settles_at(&self, window: Duration) -> Option<SystemTime> {
+        let latest = self
+            .changed
+            .map_or(self.modified, |changed| changed.max(self.modified));
+        u64::try_from(latest.0).ok().and_then(|seconds| {
+            (SystemTime::UNIX_EPOCH + Duration::new(seconds, latest.1)).checked_add(window)
+        })
+    }
+
+    pub fn may_hide_changes(&self) -> bool {
+        let Some(window) = self.coarse_window else {
+            return false;
+        };
+        self.settles_at(window)
+            .is_none_or(|settled| self.read_at < settled)
+    }
+
+    pub fn confirm_after(&self) -> Option<Duration> {
+        let whole_seconds =
+            self.modified.1 == 0 && self.changed.is_none_or(|changed| changed.1 == 0);
+        let window = self
+            .coarse_window
+            .filter(|_| whole_seconds && self.may_hide_changes())?;
+        let settles = self.settles_at(window).map_or(window, |settled| {
+            settled.duration_since(self.read_at).unwrap_or_default()
+        });
+        Some(settles.max(self.daemon_cache.unwrap_or_default()))
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum Responsiveness {
+    #[default]
+    Answering,
+    Stalled,
+    NotResponding,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Watching {
+    Live,
+    Unavailable,
+}
+
+#[derive(Clone, Debug)]
+pub enum StampAnswer {
+    Stamp(Box<DirectoryStamp>),
+    Missing,
+    Inaccessible,
+    Unreachable,
+    Unresponsive,
+    Unsupported,
+}
+
+#[derive(Clone, Debug)]
+pub enum DirectoryEvent {
+    Stamp {
+        request_id: RequestId,
+        stamp: Box<DirectoryStamp>,
+    },
+    Batch {
+        request_id: RequestId,
+        entries: Vec<FileEntry>,
+    },
+    ListingDigest {
+        request_id: RequestId,
+        names_digest: u64,
+    },
+    Finished {
+        request_id: RequestId,
+        /// `true` if the load stopped short of covering the full directory, because it hit the
+        /// entry or time budget; already-emitted `Batch` entries are then a lower bound.
+        truncated: bool,
+        /// Whether this location supports moving entries to Trash, resolved from an
+        /// entry in the directory. `None` when the location is empty or the capability
+        /// couldn't be answered; treated as "assume trashable" by consumers, since that
+        /// matches offering Trash and letting the operation itself fail if unsupported.
+        can_trash: Option<bool>,
+        /// Whether entries here can be permanently deleted, resolved the same way as
+        /// `can_trash`. `None` carries the same "assume deletable" meaning.
+        can_delete: Option<bool>,
+    },
+    /// Consumers must not present these partial values as a completed sort.
+    MetadataIncomplete { request_id: RequestId },
+    Failed {
+        request_id: RequestId,
+        message: String,
+        refused: bool,
+        /// Permissions keep the user out of a native folder that exists.
+        denied: bool,
+    },
+    /// Size/mtime arrivals for already-listed entries, positioned by the receiver
+    /// against stable locations. Zero or more chunks, then exactly one `MetadataFinished`
+    /// (dropping the `LoadHandle` first cancels the fill with no terminal event).
+    MetadataFilled {
+        request_id: RequestId,
+        updates: Vec<MetadataUpdate>,
+    },
+    /// Terminal outcome for a metadata fill: exactly one per fill, including empty fills.
+    /// Sorts wait for this event, never for a chunk, so a partial pass can never be
+    /// mistaken for a complete one.
+    MetadataFinished {
+        request_id: RequestId,
+        outcome: MetadataOutcome,
+    },
+}
+
+/// Terminal outcome for a metadata fill.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MetadataOutcome {
+    Complete,
+    /// The budget expired partway; emitted chunks still apply, the rest keep placeholders.
+    Truncated,
+    /// The provider cannot stat these entries; rows keep their placeholders.
+    Unsupported,
+    /// No trustworthy pass; rows keep placeholders and waiting sorts are abandoned.
+    Failed,
+    /// The fill was dropped before finishing. Providers never emit this; owners synthesize
+    /// it when they discard a fill's handle while a sort still waits on it.
+    Cancelled,
+}
+
+/// Fresh metadata for one listed entry. Fields may stay `Unknown`/`Unavailable`
+/// when the stat failed; the row keeps its placeholder for a later retry.
+#[derive(Clone, Debug)]
+pub struct MetadataUpdate {
+    pub location: Location,
+    pub size: MetadataValue<u64>,
+    pub modified_unix_seconds: MetadataValue<i64>,
+    pub created_unix_seconds: MetadataValue<i64>,
+    pub mode: MetadataValue<u32>,
+    pub image_dimensions: MetadataValue<(u32, u32)>,
+    pub child_count: MetadataValue<u64>,
+    pub duration_seconds: MetadataValue<u64>,
+    pub listable: MetadataValue<bool>,
+}
+
+#[derive(Clone, Debug)]
+pub struct WatchRequest {
+    pub location: Location,
+    pub include_hidden: bool,
+    /// The folder's identity from the load that asked for the watch.
+    pub began_on: Option<ItemIdentity>,
+}
+
+#[derive(Clone, Debug)]
+pub struct MetadataRequest {
+    /// Fills for a superseded load are dropped, never applied to a reloaded column.
+    pub id: RequestId,
+    pub entries: Vec<Location>,
+    /// When true, stat the whole list (a sort's full pass); otherwise a viewport window.
+    pub full: bool,
+    /// Keep false for full sort passes to avoid probing off-screen media.
+    pub include_icon_details: bool,
+    pub time_budget: Duration,
+}
+
+pub trait FileSource {
+    /// Enforces a source's navigation boundary even on trusted internal/history routes.
+    /// This does not replace normal asynchronous location validation.
+    fn allows_navigation(&self, _location: &Location) -> bool {
+        true
+    }
+
+    /// Applies source-specific visibility to entries found outside directory enumeration.
+    /// This runs on the caller's thread, including for indexed search results.
+    fn allows_entry(&self, _entry: &FileEntry) -> bool {
+        true
+    }
+
+    fn confined_to(&self) -> Option<&Path> {
+        None
+    }
+
+    /// Whether a native folder the user can't read may be reopened through `admin://`.
+    fn offers_administrator_access(&self) -> bool {
+        false
+    }
+
+    fn validate_location(&self, location: &Location) -> Result<(), LocationValidationError>;
+
+    /// Validates a location without blocking the caller. Providers should override this when
+    /// validation can involve network or removable-media I/O.
+    fn validate_location_async(
+        &self,
+        location: Location,
+        emit: Rc<dyn Fn(Result<(), LocationValidationError>)>,
+    ) -> LoadHandle {
+        emit(self.validate_location(&location));
+        LoadHandle::new(|| {})
+    }
+
+    fn enumerate(&self, request: DirectoryRequest, emit: Rc<dyn Fn(DirectoryEvent)>) -> LoadHandle;
+    fn supports_metadata_fill(&self, _location: &Location) -> bool {
+        false
+    }
+
+    /// Overrides must emit zero or more `MetadataFilled` chunks followed by exactly one
+    /// `MetadataFinished` terminal outcome, including for empty fills. Dropping the
+    /// returned `LoadHandle` aborts the fill without any terminal event.
+    fn fill_metadata(
+        &self,
+        request: MetadataRequest,
+        emit: Rc<dyn Fn(DirectoryEvent)>,
+    ) -> LoadHandle {
+        emit(DirectoryEvent::MetadataFinished {
+            request_id: request.id,
+            outcome: MetadataOutcome::Unsupported,
+        });
+        LoadHandle::new(|| {})
+    }
+
+    fn watch(
+        &self,
+        _location: Location,
+        _include_hidden: bool,
+        _notify: Rc<dyn Fn(DirectoryChange)>,
+    ) -> Option<LoadHandle> {
+        None
+    }
+
+    fn start_watch(
+        &self,
+        request: WatchRequest,
+        notify: Rc<dyn Fn(DirectoryChange)>,
+        report: Rc<dyn Fn(Watching)>,
+    ) -> LoadHandle {
+        match self.watch(request.location, request.include_hidden, notify) {
+            Some(watch) => {
+                report(Watching::Live);
+                watch
+            }
+            None => {
+                report(Watching::Unavailable);
+                LoadHandle::new(|| {})
+            }
+        }
+    }
+
+    fn probe_stamp(&self, _location: Location, emit: Rc<dyn Fn(StampAnswer)>) -> LoadHandle {
+        emit(StampAnswer::Unsupported);
+        LoadHandle::new(|| {})
+    }
+
+    fn responsiveness(&self, _location: &Location) -> Responsiveness {
+        Responsiveness::Answering
+    }
+
+    fn follow_responsiveness(&self, _notify: Rc<dyn Fn()>) -> LoadHandle {
+        LoadHandle::new(|| {})
+    }
+
+    /// `locations` must share one mount: the check runs on the first one's lane.
+    fn check_stamps(
+        &self,
+        locations: Vec<Location>,
+        emit: Rc<dyn Fn(Location, StampAnswer)>,
+    ) -> LoadHandle {
+        for location in locations {
+            emit(location, StampAnswer::Unsupported);
+        }
+        LoadHandle::new(|| {})
+    }
+
+    /// Finds where the folder last seen at `departed` went by its `identity`: renamed in
+    /// place, or carried along by an ancestor renamed in place. Only the nearest existing
+    /// ancestor of `departed` is searched. Emits `None` when nothing matches or that
+    /// ancestor cannot be listed.
+    fn find_by_identity(
+        &self,
+        _departed: Location,
+        _identity: ItemIdentity,
+        emit: Rc<dyn Fn(Option<Location>)>,
+    ) -> LoadHandle {
+        emit(None);
+        LoadHandle::new(|| {})
+    }
+}

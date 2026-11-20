@@ -33,7 +33,8 @@ class ImageIdentityTests(unittest.TestCase):
     def test_dependency_identity_changes_only_with_environment_or_dependency_inputs(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            files = (*IMAGE_INPUTS, "Cargo.toml", "Cargo.lock", ".dockerignore")
+            files = (*IMAGE_INPUTS, "Cargo.toml", "Cargo.lock", ".dockerignore",
+                     "crates/example/Cargo.toml")
             for name in files:
                 path = root / name
                 path.parent.mkdir(parents=True, exist_ok=True)

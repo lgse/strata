@@ -84,7 +84,7 @@ def test_source_key(repository):
 def build():
     BUNDLE.mkdir(parents=True, exist_ok=True)
     result = subprocess.run(
-        ["cargo", "test", "--locked", "--all-targets", "--all-features", "--no-run",
+        ["cargo", "test", "--locked", "--workspace", "--all-targets", "--all-features", "--no-run",
          "--message-format=json"], cwd=ROOT, text=True, stdout=subprocess.PIPE,
     )
     artifacts = {}

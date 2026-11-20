@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use super::*;
+use crate::test_support::gtk_test_with_env;
 
 #[test]
 fn saved_language_applies_before_settings_and_changes_only_after_restart() {
@@ -342,7 +343,7 @@ fn saved_date_format_renders_before_settings_and_updates_bound_labels() {
                 .map(|window| {
                     let label = gtk::Label::new(None);
                     window.set_child(Some(&label));
-                    crate::util::set_modified_date(&label, Some(&entry), "—");
+                    crate::ui::modified_date::set_modified_date(&label, Some(&entry), "—");
                     label
                 })
                 .collect();
@@ -353,14 +354,14 @@ fn saved_date_format_renders_before_settings_and_updates_bound_labels() {
             for label in &labels {
                 assert_eq!(label.label(), absolute("%B %-d, %Y, %H:%M"));
             }
-            crate::util::set_modified_date(&labels[0], None, "unknown");
+            crate::ui::modified_date::set_modified_date(&labels[0], None, "unknown");
             manager.set_date_format(crate::util::DateFormat::Relative);
             assert_eq!(labels[0].label(), "unknown");
             let text = labels[1].label();
             assert!(text == "Just now" || text.ends_with(" ago"), "{text}");
             let mut rebound = entry.clone();
             rebound.modified_unix_seconds = MetadataValue::Known(seconds - 86400);
-            crate::util::set_modified_date(&labels[0], Some(&rebound), "—");
+            crate::ui::modified_date::set_modified_date(&labels[0], Some(&rebound), "—");
             manager.set_date_format(crate::util::DateFormat::Iso8601);
             let expected = glib::DateTime::from_unix_local(seconds - 86400)
                 .expect("rebound date")
@@ -370,7 +371,7 @@ fn saved_date_format_renders_before_settings_and_updates_bound_labels() {
             assert_eq!(labels[1].label(), absolute("%Y-%m-%d %H:%M"));
             let rebuilt = gtk::Label::new(None);
             windows[1].set_child(Some(&rebuilt));
-            crate::util::set_modified_date(&rebuilt, Some(&entry), "—");
+            crate::ui::modified_date::set_modified_date(&rebuilt, Some(&entry), "—");
             assert_eq!(rebuilt.label(), absolute("%Y-%m-%d %H:%M"));
             manager.set_date_format(crate::util::DateFormat::Long);
             assert_eq!(rebuilt.label(), absolute("%B %-d, %Y, %H:%M"));
@@ -379,4 +380,79 @@ fn saved_date_format_renders_before_settings_and_updates_bound_labels() {
             }
         },
     );
+}
+
+#[test]
+fn window_buttons_default_visible_on_gnome_even_with_a_close_only_layout() {
+    assert_desktop_window_button_defaults(
+        "window_buttons_default_visible_on_gnome_even_with_a_close_only_layout",
+        "GNOME",
+        "appmenu:close",
+        true,
+    );
+}
+
+#[test]
+fn window_buttons_default_hidden_on_tilers_even_with_a_full_button_layout() {
+    assert_desktop_window_button_defaults(
+        "window_buttons_default_hidden_on_tilers_even_with_a_full_button_layout",
+        "KDE: hYpRlAnD ",
+        "icon:minimize,maximize,close",
+        false,
+    );
+}
+
+fn assert_desktop_window_button_defaults(
+    test: &str,
+    desktop: &str,
+    decoration_layout: &str,
+    default_visible: bool,
+) {
+    gtk_test_with_env(
+        &format!("ui::preferences::tests::preferences::loading::{test}"),
+        [("XDG_CURRENT_DESKTOP", desktop)],
+        || {
+            let settings = gtk::Settings::default().expect("GTK settings");
+            settings.set_gtk_decoration_layout(Some(decoration_layout));
+            assert_window_button_preferences(default_visible);
+        },
+    );
+}
+
+fn assert_window_button_preferences(default_visible: bool) {
+    let buttons = |preferences: &Preferences| {
+        [
+            preferences.window_show_minimize,
+            preferences.window_show_maximize,
+            preferences.window_show_close,
+        ]
+    };
+    assert_eq!(buttons(&Preferences::default()), [default_visible; 3]);
+    let keys = [
+        "window_show_minimize",
+        "window_show_maximize",
+        "window_show_close",
+    ];
+    for overrides in [
+        [None, None, None],
+        [Some(false), Some(false), Some(false)],
+        [Some(true), Some(true), Some(true)],
+        [Some(false), None, Some(true)],
+        [None, Some(true), Some(false)],
+    ] {
+        let mut saved =
+            toml::Table::try_from(non_default_preferences()).expect("saved preferences");
+        for (key, value) in keys.into_iter().zip(overrides) {
+            saved.remove(key);
+            if let Some(value) = value {
+                saved.insert(key.into(), toml::Value::Boolean(value));
+            }
+        }
+        let parsed: Preferences = saved.try_into().expect("valid preferences");
+        assert_eq!(
+            buttons(&parsed),
+            overrides.map(|value| value.unwrap_or(default_visible)),
+            "saved overrides {overrides:?}"
+        );
+    }
 }

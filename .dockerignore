@@ -2,6 +2,9 @@
 !Cargo.toml
 !Cargo.lock
 !build.rs
+!crates/
+crates/*/*
+!crates/*/Cargo.toml
 !src/
 !src/**
 !data/

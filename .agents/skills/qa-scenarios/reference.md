@@ -2,7 +2,7 @@
 
 The full catalogue behind [SKILL.md](SKILL.md). The parsers are the source of
 truth: the header is `Header` in `tests/qa/scenario.rs`, process steps are
-`parse_command` in `src/qa/protocol/command/parse.rs` (also compiled into the runner, so a
+`parse_command` in `crates/strata-qa/src/command/parse.rs` (also used by the runner, so a
 malformed step fails at load), and runner steps are the `RUNNER_COMMANDS` in
 `tests/qa.rs`. When this file and the code disagree, the code wins; fix this
 file.

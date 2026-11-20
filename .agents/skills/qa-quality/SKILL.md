@@ -129,7 +129,7 @@ equivalent and the assertions on that behaviour are equal or one is a superset.
 | Score | Anchor | Strata examples |
 | --- | --- | --- |
 | 5 | Concurrent or external code path (async workers, filesystem operations, races, portals, D-Bus, sandbox helpers) with repeated past fixes and high churn; only the running application shows the failure. | Provider disconnect and replay over D-Bus (`provider-disconnect-never-replays`); idle sandbox workers exiting and restarting (`idle-workers-exit-and-restart`). |
-| 4 | Complex GUI glue across modules (dialog → operation → listing refresh → focus), or a path with past fix commits or high churn; a unit test cannot reproduce the integration. | Paste-conflict dialogs (`src/ui/browser/transfer*`, `src/adapters/local_operations`: ~100 commits, ~55 fixes); modal input routing added by a fix (`modal-dialog-blocks-window-shortcuts`). |
+| 4 | Complex GUI glue across modules (dialog → operation → listing refresh → focus), or a path with past fix commits or high churn; a unit test cannot reproduce the integration. | Paste-conflict dialogs (`src/ui/browser/transfer*`, `crates/strata-fs/src/adapters/local_operations`: ~100 commits, ~55 fixes); modal input routing added by a fix (`modal-dialog-blocks-window-shortcuts`). |
 | 3 | Non-trivial wiring with moderate churn or one prior regression; a refactor could plausibly break it. Visual baselines of widely restyled surfaces. | Appearance menu switching views (`src/ui/browser_modes`, high churn); filter text selection colour (added with fix #778); baselines refreshed by theming and font-rendering fixes. |
 | 2 | Stable, simple code, or logic a unit test could pin as well; regressions unlikely or better caught elsewhere. | Static header geometry (`column-header-titles-bounded`). |
 | 1 | Declarative or effectively frozen: a constant, a label with no history, behaviour fully determined by unit-tested logic. | A fixed string never touched since it was added. |
@@ -263,7 +263,7 @@ keep/drop verdict.
    ```bash
    grep -rn '"Keep Both"' src --include=*.rs | grep -v tests.rs
    grep -rn 'fn .*keep_both\|fn .*conflict' src --include=tests.rs
-   ls src/ui/browser/transfer/tests.rs src/adapters/local_operations/tests/
+   ls src/ui/browser/transfer/tests.rs crates/strata-fs/src/adapters/local_operations/tests/
    ```
 
    Decide which part of the behaviour those tests pin (logic, dialog

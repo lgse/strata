@@ -35,6 +35,14 @@ under a trust root. The user's `PATH` and home directory are never consulted,
 and a required helper that cannot be found in a trusted directory still fails
 closed.
 
+bubblewrap is the one helper that does not take a privileged wrapper: the lookup
+skips a setuid or setgid `bwrap`, such as a NixOS `security.wrappers` entry in
+`/run/wrappers/bin`, and continues with the next directory. bubblewrap rejects
+the sandbox's size-limited `/tmp` in setuid mode, and builds without setuid
+support refuse to run that way at all, so such a binary could never start a
+preview sandbox. A host whose only `bwrap` is setuid reports the sandbox as
+unavailable.
+
 ### Sandbox runtime paths
 
 These variables select the runtime tree and helper paths inside the sandbox.
@@ -104,7 +112,8 @@ isolation, resource limits, or the other narrow optional runtime mounts.
 ## Providers
 
 - GDK Pixbuf/camera RAW, Poppler PDF, ImageMagick, and dcraw fallbacks normalize
-  images to dimension- and size-bounded PNG images.
+  images to dimension- and size-bounded PNG images. WebP is decoded first by the
+  built-in decoder, so it needs no system pixbuf loader or ImageMagick.
 - `ffmpegthumbnailer` (or the software FFmpeg fallback) produces bounded media thumbnails. Browser thumbnails and
   media details share the bounded, reusable sandbox supervisors described below.
   Duplicate requests share work, obsolete targets detach, and thumbnail failures
@@ -239,7 +248,7 @@ front-left view. The helper reports whether its PNG came from a mesh or an
 embedded thumbnail, and mesh results must identify the requested camera view.
 
 Input, package and geometry limits are centralized in
-`src/services/model_preview.rs`. These are compile-time constants, not Settings
+`crates/strata-preview/src/services/model_preview.rs`. These are compile-time constants, not Settings
 options or environment variables:
 
 | Constant | Limit | Applies to |
@@ -274,7 +283,7 @@ projects triangles in two passes rather than retaining a second mesh. Existing
 sandbox CPU/wall-time and 2-GiB address-space limits remain a last-resort boundary;
 address space is not a resident-memory guarantee or the total application budget.
 
-Embedded-image limits live in `src/sandbox_helper/model/embedded.rs`: at most 16
+Embedded-image limits live in `crates/strata-preview/src/sandbox_helper/model/embedded.rs`: at most 16
 candidates, 4 MiB per candidate, 16 MiB total candidate bytes read and 16 megapixels
 (16×1024×1024 pixels) total admitted to decoding. Oversized/invalid images are not
 usable; exhausting a total inspection budget fails the operation rather than
@@ -973,8 +982,11 @@ directly back to software when its hardware attempts fail before output begins.
 A failure after playback starts fails closed rather than silently splicing a new
 backend into the stream. VA-API receives only safe `/dev/dri/renderD<digits>`
 nodes; Vulkan/Automatic may also receive `/dev/nvidia<digits>` and `/dev/nvidiactl`.
-Accelerated helpers receive read-only `/sys` for discovery. Software/image/PDF/
-thumbnail helpers receive no GPU devices or `/sys` mount.
+Accelerated helpers receive read-only `/sys` for discovery and, when present,
+read-only `/run/opengl-driver`, where NixOS publishes its Mesa, VA-API, and Vulkan
+drivers. The driver files it links to must sit under `STRATA_SANDBOX_ROOT`, as they
+do for a Nix package built with `/nix/store`. Software/image/PDF/thumbnail helpers
+receive no GPU devices, `/sys`, or driver mount.
 
 The conservative AMD Polaris default remains unchanged: an unset acceleration
 preference resolves to software for PCI IDs `0x67c0–0x67df`, `0x67e0–0x67ff`, or
