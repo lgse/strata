@@ -928,6 +928,11 @@ Rulings of the owner on the parity work, oldest first.
   RUSTSEC-2026-0543 (unmaintained), which comes only through `fitparser`. When to remove the
   `zip` entries is #2618's own `deny.toml` comment ("once docx-rs releases on zip 9"), not part
   of the ruling. Source: the owner, 2026-11-19, through the coordinator.
+- **2026-11-20: H5 does not wait for `main`.** `h5-integration` is merged into `strata-next`
+  directly, by merge, so `main` getting the same commits later merges as usual. A test image
+  built locally from the recipe stands in for the published one until one is published,
+  including for validating pull requests into `h5-integration`. Source: the owner, 2026-11-20,
+  through the coordinator.
 
 ## Housekeeping
 
