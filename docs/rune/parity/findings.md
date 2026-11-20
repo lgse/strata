@@ -2386,6 +2386,12 @@ sequence only together with the alphabet's version, so the version is part of th
 - **Resembles:** [#2322](#2322-scrolled-away-crumbs-and-columns-stay-reachablecolumns-left-focus-nowhere-once-in-a-full-rune-run)
   (a Rune Columns keyboard step left undone after 15 s in a full run) and
   [#2162](#2162-new-folder-with-selection-groupscolumns-is-flaky) on GTK. Not traced.
+- **Also seen** in [F4](packages/F4.md)'s round 2 gate (`./scripts/qa-parity.sh all` at
+  `46dae16cf`, Rune offscreen 709 of 710, the host shared with F5's gates):
+  `enter-after-escape-opens-folder/columns` at line 8, Return after Escape on `documents` with
+  the browser still in the root after 15 s. Alone it passed 6 of 6 on both targets right after.
+  The round changes the collection's key route only for a restore armed during a key, and a
+  Columns root has none.
 - **State:** open, unowned. The ledger is unchanged: the run stays `required`.
 
 ### #2563: `drag-file-onto-folder/columns-copy` did not show the `archive` row's count once in a full Rune run
