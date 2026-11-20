@@ -89,6 +89,26 @@ impl Browser {
         watched: &Location,
         change: DirectoryChange,
     ) {
+        self.receive_directory_change(depth, watched, change, false);
+    }
+
+    /// A monitor's changes can arrive in bursts, which are batched.
+    pub(super) fn handle_monitored_change(
+        self: &Rc<Self>,
+        depth: usize,
+        watched: &Location,
+        change: DirectoryChange,
+    ) {
+        self.receive_directory_change(depth, watched, change, true);
+    }
+
+    fn receive_directory_change(
+        self: &Rc<Self>,
+        depth: usize,
+        watched: &Location,
+        change: DirectoryChange,
+        monitored: bool,
+    ) {
         if self.location_at(depth).as_ref() != Some(watched) {
             return;
         }
@@ -108,11 +128,14 @@ impl Browser {
             .then(|| removed_location(&change).cloned())
             .flatten();
         if self.file_operation_defers_changes() {
-            self.deferred_file_operation_changes
-                .borrow_mut()
-                .entry(depth)
-                .or_default()
-                .push((watched.clone(), change));
+            self.defer_directory_change(depth, watched.clone(), change);
+            return;
+        }
+        if self.coalesces_live_change(depth, monitored) {
+            self.defer_directory_change(depth, watched.clone(), change);
+            if let Some(removed) = removed {
+                self.retire_recent_target(&removed);
+            }
             return;
         }
         if matches!(&change, DirectoryChange::Rescan) {
@@ -127,7 +150,7 @@ impl Browser {
         }
     }
 
-    fn file_operation_defers_changes(&self) -> bool {
+    pub(super) fn file_operation_defers_changes(&self) -> bool {
         self.deletion_operation.get()
             || self.restoration_operation.get()
             || self.transfer_operation.get().is_some()
@@ -416,7 +439,7 @@ impl Browser {
         }
     }
 
-    fn queue_loading_change(
+    pub(super) fn queue_loading_change(
         &self,
         depth: usize,
         watched: &Location,
