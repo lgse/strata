@@ -37,8 +37,9 @@ chooser v5 3993ae37c4fafa89
 # selected-folder route from `$root`, guarded `paste-key` and `undo` with a cursor on non-empty
 # columns, and kept `Right`/`l` off `readme.md`, meeting lgse/strata#2356 when `seed-file-conflict`
 # wrote into a focused cursorless `archive` column. Version 4 seeds `archive` collisions while
-# focus is outside `archive`.
-clipboard v4 a90e680dd30c410f
+# focus is outside `archive`. Version 5 Ctrl+clicks only entries not selected (lgse/strata#2353,
+# F4's round 2).
+clipboard v5 f88ecc54e6a54937
 # columns: versions 1 and 2 were the Columns pilot's drafts, never merged: version 2 left out
 # Ctrl+A and Shift selection in the rename editor, version 3 its Up, Down and page keys. Their
 # seeds name the shrunk sequences of the pilot's findings, parked in tests/qa/fuzz/corpus/columns.
@@ -55,13 +56,17 @@ filter v2 7fa8d82cb078b442
 # icons: version 1 was A1's, merged before the differential tier; F4's round 1 met in all its
 # seeds across the targets the classes list v3 met and the Icons grid's edges. Version 2
 # guards them, and met lgse/strata#2640 (fixed) and lgse/strata#2641 at Return: a draft of F4's
-# round 2, never merged. Version 3 keeps Return off a multi-selection.
-icons v3 e587c505bcbf1071
+# round 2, never merged. Version 3, also a draft, kept Return off a multi-selection and met
+# lgse/strata#2642 (fixed) and lgse/strata#2644, a menu its Escape left open. Version 4
+# dismisses any menu.
+icons v4 a4618cbf53dfdd44
 # list: version 3 was A2's, merged before the differential tier; F4's round 1 met renames
 # (lgse/strata#2510), Up off a first row, Ctrl+A and Shift+click after a load in nearly every
 # seed across the targets. Version 4 guards them, and met lgse/strata#2640 (fixed) at Return: a
-# draft of F4's round 2, never merged. Version 5 keeps Return off a multi-selection.
-list v5 e54f0180a258e54a
+# draft of F4's round 2, never merged. Version 5, also a draft, kept Return off a
+# multi-selection and met lgse/strata#2643 and lgse/strata#2644, a menu its Escape left open.
+# Version 6 dismisses any menu.
+list v6 0686c3718c808767
 # location: version 1 was A5's draft, never merged: version 2 keeps clicks off a shown dialog and
 # Shift+Tab off the files. Its seeds name the shrunk sequences of its findings, parked in
 # tests/qa/fuzz/corpus/location.
@@ -91,7 +96,9 @@ open-with v3 f764b759e0adf95c
 # a marquee; version 2 met name-space drags from a selected row (A19's) and a deselecting
 # Ctrl+click (as in lgse/strata#2353). Version 3 sends no keyboard cursor moves and guards both;
 # its seeds name the shrunk sequences of lgse/strata#2552, parked in tests/qa/fuzz/corpus/pointer.
-pointer v3 e4a464d3bf25d6d6
+# Version 3's menu Escape, guarded on a Rename row, left a menu over several entries open (F5's
+# review of lgse/strata#2637); version 4 dismisses any menu (F4's round 2).
+pointer v4 76146a2b8bce47da
 # preview: version 1 was A15's draft, never merged: its smoke tier caught Map::Tenxer `i` firing
 # with tenxer_mode off, default-mode Space inside the drawer closing the preview instead of
 # activating header buttons, `Open in default application` hiding instead of disabling on a

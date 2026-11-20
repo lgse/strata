@@ -15,3 +15,8 @@ v3-000000000000000d oracle lgse/strata#2552
 v3-0000000000000016 oracle lgse/strata#2552
 v3-0000000000000018 divergence lgse/strata#2551
 v3-0000000000000026 oracle lgse/strata#2552
+# v4, 0x0c and 0x0d: the seeds v3 parked, met again by version 4 (F4's round 2), which
+# dismisses any menu: lgse/strata#2552's return to the folder and its file removed after a
+# marquee. Shrunk from 50 and 47 steps to 5, confirmed 3 of 3.
+v4-000000000000000c oracle lgse/strata#2552
+v4-000000000000000d oracle lgse/strata#2552

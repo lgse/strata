@@ -23,13 +23,15 @@
 #
 # Version 1 met List's classes and these in every seed across the targets (F4's round 1);
 # version 2, F4's round 2 draft, guarded them and met lgse/strata#2640 (fixed) and
-# lgse/strata#2641 at Return; version 3 keeps Return off a multi-selection.
+# lgse/strata#2641 at Return; version 3 kept Return off a multi-selection, and met
+# lgse/strata#2642 (fixed) and lgse/strata#2644 where its menu's Escape, guarded on a Rename
+# row, left a menu over several entries open; version 4 dismisses any menu.
 #
 # Left out, besides List's: the thumbnail size (Ctrl+Alt+plus, minus and 0, and
 # Ctrl+Shift+wheel, which both targets take since lgse/strata#2275), for a later version to
 # add; and grouping, which a header would hold for the whole alphabet.
 area = "icons"
-version = 3
+version = 4
 about = "Icons on the canonical fixture, type to search off: keyboard navigation and selection with the sideways arrows, h and l, Home and End, off the grid's edges, clicks, Ctrl and Shift clicks and background clicks by name, opening folders in place, Back and the parent, the context menu by pointer, hidden files, and files made and removed behind the application's back"
 header = '{"modes":["icons"],"prefs":{"type_to_search":false}}'
 
@@ -128,13 +130,15 @@ weight = 2
 steps = ['{"click":{"pane":"<pane>"},"at":["50%",-60],"when":{"all":[{"directory":"<pane>"}]}}']
 choose.pane = ["$root", "documents", "pictures"]
 
-# The context menu by the pointer, then a dismissal.
+# The context menu by the pointer, then a dismissal. The Escape is for any menu open: a menu
+# over several selected entries has no Rename row, and left open it takes the next click
+# (lgse/strata#2644), as F5 found of `pointer v3`.
 [[action]]
 name = "menu-dismiss"
 weight = 2
 steps = [
   '{"click":{"entry":"<entry>"},"button":3,"when":{"all":[{"present":{"entry":"<entry>"}}]}}',
-  '{"key":"Escape","when":{"present":{"menu_item":"Rename"}}}',
+  '{"key":"Escape","when":{"menu_items":{}}}',
 ]
 choose.entry = ["documents", "readme.md", "todo.txt", "notes.txt", "report.md", "diagram.txt"]
 

@@ -40,9 +40,13 @@
 # (`app.dialog`), lgse/strata#2414 on Down off a last row, lgse/strata#2551 (fixed) on a
 # Shift+click after a folder's load, and lgse/strata#2552 on arrows after a marquee; version 2
 # met name-space drags from a selected row moving it (A19's) and a deselecting Ctrl+click
-# (as in lgse/strata#2353). Version 3 sends no keyboard cursor moves, and guards both.
+# (as in lgse/strata#2353). Version 3 sends no keyboard cursor moves, and guards both. Its
+# menu's Escape, guarded on a Rename row, left a menu over several selected entries open, and
+# every later action needs no menu, so the rest of a sequence was skipped (F5's review of
+# lgse/strata#2637: seed 0x06 had a menu open for 24 of its 48 observations). Version 4
+# dismisses any menu, as `chooser` and `session-pointer` v3 do.
 area = "pointer"
-version = 3
+version = 4
 about = "List on the canonical fixture with single-click folder activation, type to search and single-click previews off: folder clicks that open in place, single, Ctrl, Shift and slow second clicks, background clicks, marquee drags from blank pane and name-column space, the context menu by the pointer, Escape, Back and the parent, and a file made and removed behind the application's back"
 header = '{"modes":["list"],"prefs":{"type_to_search":false,"single_click_previews":false,"explorer_folder_clicks":1,"explorer_file_clicks":2}}'
 
@@ -123,7 +127,7 @@ name = "menu-dismiss"
 weight = 2
 steps = [
   '{"click":{"entry":"<entry>"},"button":3,"when":{"all":[{"present":{"entry":"<entry>"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}',
-  '{"key":"Escape","when":{"present":{"menu_item":"Rename"}}}',
+  '{"key":"Escape","when":{"menu_items":{}}}',
 ]
 choose.entry = ["documents", "readme.md", "todo.txt", "notes.txt", "diagram.txt"]
 
