@@ -636,6 +636,15 @@ Found by the package's agent, 2026-11-12, against A1's five items above.
    change in `roots.rs` by hand (`docs/rune/shared-state.md`, "Merging from `main`"). Should
    the rule move to a shared crate later, with GTK calling it? Source: A10, 2026-11-14.
 
+### F4: Fuzz rotation
+
+1. **Should a marquee leave a Shift anchor?** GTK's selection sync gives the shared browser, as
+   its cursor, the last entry each change newly selected, and so the first entry a band reaches
+   becomes the anchor a later Shift+click ranges from; Rune's marquee leaves no anchor, so its
+   Shift+click after a band selects the clicked entry alone (`pointer v4` seed `0x3a`, finding
+   [#2552](https://github.com/lgse/strata/issues/2552)). Meanwhile: Rune's, and the sequence is
+   parked against #2552 as `oracle`. Source: [F4](packages/F4.md)'s round 2, 2026-11-20.
+
 ### Packages added later
 
 - **A branch name for a package with no archived issue.** Branch names keep the package's

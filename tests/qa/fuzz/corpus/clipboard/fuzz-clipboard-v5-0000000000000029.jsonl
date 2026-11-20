@@ -1,0 +1,72 @@
+{"scenario":"fuzz-clipboard-v5-0000000000000029","modes":["columns"],"prefs":{"type_to_search":false}}
+{"click":{"entry":"notes.txt"},"when":{"all":[{"present":{"entry":"notes.txt"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}
+{"click":{"named":"Apply to All","within":{"dialog":true}},"when":{"all":[{"dialog":"File already exists"},{"present":{"named":"Apply to All","within":{"dialog":true}}}]}}
+{"click":{"dialog_button":"Skip"},"when":{"all":[{"dialog":"File already exists"},{"present":{"dialog_button":"Skip"}}]}}
+{"key":"Right","when":{"all":[{"focused_pane":true},{"not":{"matches":[]}},{"not":{"focused":{"one_of":["archive","readme.md"]}}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}
+{"key":"shift+Tab","when":{"all":[{"dialog":"File already exists"},{"state":{"target":{"dialog_button":"Replace"},"focused":true}}]}}
+{"key":"Return","when":{"all":[{"dialog":"File already exists"},{"any":[{"state":{"target":{"dialog_button":"Keep Both"},"focused":true}},{"state":{"target":{"dialog_button":"Merge"},"focused":true}}]}]}}
+{"click":{"background":true,"dir":"archive"},"button":3,"when":{"all":[{"directory":"archive"},{"present":{"pane":"archive"}},{"any":[{"matches":[]},{"focused_in_matches":true}]},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}
+{"click":{"menu_item":"Paste"},"when":{"all":[{"present":{"menu_item":"Paste"}},{"state":{"target":{"menu_item":"Paste"},"sensitive":true}}]}}
+{"key":"Escape","when":{"menu_items":{}}}
+{"key":"ctrl+d","when":{"all":[{"focused_in_matches":true},{"not":{"focused":"archive"}},{"not":{"all_selected":{"contains":["archive"]}}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}
+{"click":{"entry":"report.md"},"mods":["ctrl"],"when":{"all":[{"present":{"entry":"report.md"}},{"not":{"all_selected":{"contains":["report.md"]}}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}
+{"click":{"entry":"readme.md"},"button":3,"when":{"all":[{"present":{"entry":"readme.md"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}
+{"click":{"menu_item":"Cut"},"when":{"present":{"menu_item":"Cut"}}}
+{"click":{"background":true,"dir":"$root"},"button":3,"when":{"all":[{"directory":"$root"},{"present":{"pane":"$root"}},{"any":[{"matches":[]},{"focused_in_matches":true}]},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}
+{"click":{"menu_item":"Paste"},"when":{"all":[{"present":{"menu_item":"Paste"}},{"state":{"target":{"menu_item":"Paste"},"sensitive":true}}]}}
+{"key":"Escape","when":{"menu_items":{}}}
+{"key":"alt+Up","when":{"all":[{"focused_pane":true},{"not":{"directory":"$root"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}
+{"click":{"background":true,"dir":"documents"},"button":3,"when":{"all":[{"directory":"documents"},{"present":{"pane":"documents"}},{"any":[{"matches":[]},{"focused_in_matches":true}]},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}
+{"click":{"menu_item":"Paste"},"when":{"all":[{"present":{"menu_item":"Paste"}},{"state":{"target":{"menu_item":"Paste"},"sensitive":true}}]}}
+{"key":"Escape","when":{"menu_items":{}}}
+{"key":"ctrl+v","when":{"all":[{"focused_pane":true},{"any":[{"matches":[]},{"focused_in_matches":true}]},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}
+{"key":"Up","when":{"all":[{"focused_pane":true},{"focused_in_matches":true},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null},{"any":[{"all":[{"entries":{"first":"archive"}},{"not":{"focused":"archive"}}]},{"all":[{"entries":{"first":"notes.txt"}},{"not":{"focused":"notes.txt"}}]},{"all":[{"entries":{"first":"diagram.txt"}},{"not":{"focused":"diagram.txt"}}]}]}]}}
+{"click":{"entry":"archive","dir":"$root"},"when":{"all":[{"present":{"entry":"archive","dir":"$root"}},{"absent":{"pane":"archive"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}
+{"move":{"pane":"archive"},"when":{"present":{"pane":"archive"}}}
+{"click":{"dialog_button":"Keep Both"},"when":{"all":[{"dialog":"File already exists"},{"present":{"dialog_button":"Keep Both"}}]}}
+{"key":"ctrl+v","when":{"all":[{"focused_pane":true},{"any":[{"matches":[]},{"focused_in_matches":true}]},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}
+{"key":"y","when":{"all":[{"focused_pane":true},{"focused_in_matches":true},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}
+{"key":"End","when":{"all":[{"focused_pane":true},{"not":{"matches":[]}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}
+{"click":{"entry":"todo.txt","dir":"$root"},"when":{"all":[{"present":{"entry":"todo.txt","dir":"$root"}},{"present":{"entry":"archive","dir":"$root"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}
+{"key":"ctrl+c","when":{"all":[{"focused":"todo.txt"},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}
+{"key":"Home","when":{"all":[{"directory":"$root"},{"entries":{"first":"archive"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}
+{"key":"ctrl+v","when":{"all":[{"focused":"archive"},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}
+{"click":{"dialog_button":"Replace"},"when":{"all":[{"dialog":"File already exists"},{"present":{"dialog_button":"Replace"}}]}}
+{"click":{"entry":"todo.txt"},"button":3,"when":{"all":[{"present":{"entry":"todo.txt"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}
+{"click":{"menu_item":"Copy names"},"when":{"present":{"menu_item":"Copy names"}}}
+{"key":"Escape","when":{"menu_items":{}}}
+{"click":{"entry":"archive","dir":"$root"},"when":{"all":[{"present":{"entry":"archive","dir":"$root"}},{"absent":{"pane":"archive"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}
+{"move":{"pane":"archive"},"when":{"present":{"pane":"archive"}}}
+{"key":"shift+Tab","when":{"all":[{"dialog":"File already exists"},{"state":{"target":{"dialog_button":"Replace"},"focused":true}}]}}
+{"key":"Return","when":{"all":[{"dialog":"File already exists"},{"any":[{"state":{"target":{"dialog_button":"Keep Both"},"focused":true}},{"state":{"target":{"dialog_button":"Merge"},"focused":true}}]}]}}
+{"key":"ctrl+v","when":{"all":[{"focused_pane":true},{"any":[{"matches":[]},{"focused_in_matches":true}]},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}
+{"click":{"entry":"documents","dir":"$root"},"button":3,"when":{"all":[{"present":{"entry":"documents","dir":"$root"}},{"present":{"entry":"archive","dir":"$root"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}
+{"click":{"menu_item":"Copy"},"when":{"present":{"menu_item":"Copy"}}}
+{"key":"Home","when":{"all":[{"directory":"$root"},{"entries":{"first":"archive"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}
+{"key":"ctrl+v","when":{"all":[{"focused":"archive"},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}
+{"key":"Up","when":{"all":[{"focused_pane":true},{"focused_in_matches":true},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null},{"any":[{"all":[{"entries":{"first":"archive"}},{"not":{"focused":"archive"}}]},{"all":[{"entries":{"first":"notes.txt"}},{"not":{"focused":"notes.txt"}}]},{"all":[{"entries":{"first":"diagram.txt"}},{"not":{"focused":"diagram.txt"}}]}]}]}}
+{"click":{"entry":"todo.txt","dir":"$root"},"when":{"all":[{"present":{"entry":"todo.txt","dir":"$root"}},{"present":{"entry":"archive","dir":"$root"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}
+{"key":"ctrl+c","when":{"all":[{"focused":"todo.txt"},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}
+{"key":"Home","when":{"all":[{"directory":"$root"},{"entries":{"first":"archive"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}
+{"key":"ctrl+v","when":{"all":[{"focused":"archive"},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}
+{"key":"Home","when":{"all":[{"focused_pane":true},{"not":{"matches":[]}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}
+{"key":"shift+Tab","when":{"all":[{"dialog":"File already exists"},{"state":{"target":{"dialog_button":"Replace"},"focused":true}}]}}
+{"key":"Return","when":{"all":[{"dialog":"File already exists"},{"any":[{"state":{"target":{"dialog_button":"Keep Both"},"focused":true}},{"state":{"target":{"dialog_button":"Merge"},"focused":true}}]}]}}
+{"click":{"entry":"readme.md"},"when":{"all":[{"present":{"entry":"readme.md"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}
+{"key":"Down","when":{"all":[{"focused_pane":true},{"not":{"matches":[]}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}
+{"click":{"entry":"todo.txt"},"when":{"all":[{"present":{"entry":"todo.txt"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}
+{"key":"Down","when":{"all":[{"focused_pane":true},{"not":{"matches":[]}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}
+{"click":{"entry":"readme.md"},"button":3,"when":{"all":[{"present":{"entry":"readme.md"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}
+{"click":{"menu_item":"Copy paths"},"when":{"present":{"menu_item":"Copy paths"}}}
+{"key":"Escape","when":{"menu_items":{}}}
+{"click":{"dialog_button":"Close dialog"},"when":{"all":[{"dialog":"File already exists"},{"present":{"dialog_button":"Close dialog"}}]}}
+{"click":{"dialog_button":"Keep Both"},"when":{"all":[{"dialog":"File already exists"},{"present":{"dialog_button":"Keep Both"}}]}}
+{"key":"Escape","when":{"all":[{"focused_pane":true},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}
+{"click":{"entry":"readme.md","dir":"$root"},"when":{"all":[{"present":{"entry":"readme.md","dir":"$root"}},{"present":{"entry":"archive","dir":"$root"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}
+{"key":"ctrl+c","when":{"all":[{"focused":"readme.md"},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}
+{"key":"Home","when":{"all":[{"directory":"$root"},{"entries":{"first":"archive"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}
+{"key":"ctrl+v","when":{"all":[{"focused":"archive"},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}
+{"click":{"named":"Apply to All","within":{"dialog":true}},"when":{"all":[{"dialog":"File already exists"},{"present":{"named":"Apply to All","within":{"dialog":true}}}]}}
+{"click":{"dialog_button":"Skip"},"when":{"all":[{"dialog":"File already exists"},{"present":{"dialog_button":"Skip"}}]}}
+{"click":{"entry":"notes.txt"},"button":3,"when":{"all":[{"present":{"entry":"notes.txt"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}
+{"click":{"menu_item":"Cut"},"when":{"present":{"menu_item":"Cut"}}}

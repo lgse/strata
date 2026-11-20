@@ -1,0 +1,65 @@
+{"scenario":"fuzz-tabs-v3-0000000000000039","modes":["columns"],"prefs":{"type_to_search":false}}
+{"click":{"role":"button","name":"New tab"},"when":{"all":[{"present":{"role":"button","name":"New tab"}},{"menu_items":null},{"not":{"dialog":true}},{"editable_fields":0}]}}
+{"key":"Up","when":{"all":[{"focused_pane":true},{"focused_in_matches":true},{"not":{"matches":[]}},{"not":{"view_mode":"Icons"}},{"editable_fields":0},{"menu_items":null},{"not":{"dialog":true}},{"not":{"focused":{"one_of":["archive", "notes.txt", "renamed-note.txt", "diagram.txt", "zz-tab-b.txt"]}}}]}}
+{"move":{"entry":"pictures"},"when":{"all":[{"present":{"entry":"pictures"}},{"menu_items":null},{"not":{"dialog":true}},{"editable_fields":0}]}}
+{"button_down":2,"when":{"all":[{"present":{"entry":"pictures"}},{"menu_items":null},{"not":{"dialog":true}},{"editable_fields":0}]}}
+{"button_up":2,"when":{"all":[{"present":{"entry":"pictures"}},{"menu_items":null},{"not":{"dialog":true}},{"editable_fields":0}]}}
+{"key":"ctrl+shift+4","when":{"all":[{"menu_items":null},{"not":{"dialog":true}}]}}
+{"key":"F2","when":{"all":[{"view_mode":"Columns"},{"focused":"renamed-note.txt"},{"absent":{"entry":"notes.txt"}},{"editable_fields":0},{"menu_items":null},{"not":{"dialog":true}}]}}
+{"type":"notes","when":{"field":{"name":"Rename","focused":true}}}
+{"key":"Return","when":{"field":{"name":"Rename","focused":true}}}
+{"key":"alt+Left","when":{"all":[{"focused_pane":true},{"editable_fields":0},{"not":{"directory":"$root"}},{"menu_items":null},{"not":{"dialog":true}}]}}
+{"key":"Down","when":{"all":[{"focused_pane":true},{"not":{"matches":[]}},{"not":{"view_mode":"Icons"}},{"editable_fields":0},{"menu_items":null},{"not":{"dialog":true}}]}}
+{"key":"ctrl+w","when":{"all":[{"present":{"role":"page tab"}},{"menu_items":null},{"not":{"dialog":true}}]}}
+{"key":"alt+Left","when":{"all":[{"focused_pane":true},{"editable_fields":0},{"not":{"directory":"$root"}},{"menu_items":null},{"not":{"dialog":true}}]}}
+{"key":"ctrl+w","when":{"all":[{"present":{"role":"page tab"}},{"menu_items":null},{"not":{"dialog":true}}]}}
+{"key":"F2","when":{"all":[{"view_mode":"Columns"},{"focused":"renamed-note.txt"},{"absent":{"entry":"notes.txt"}},{"editable_fields":0},{"menu_items":null},{"not":{"dialog":true}}]}}
+{"type":"notes","when":{"field":{"name":"Rename","focused":true}}}
+{"key":"Return","when":{"field":{"name":"Rename","focused":true}}}
+{"click":{"role":"page tab","nth":2},"when":{"all":[{"present":{"role":"page tab","nth":2}},{"menu_items":null},{"not":{"dialog":true}},{"editable_fields":0}]}}
+{"key":"alt+Left","when":{"all":[{"focused_pane":true},{"editable_fields":0},{"not":{"directory":"$root"}},{"menu_items":null},{"not":{"dialog":true}}]}}
+{"click":{"entry":"todo.txt"},"when":{"all":[{"present":{"entry":"todo.txt"}},{"editable_fields":0},{"menu_items":null},{"not":{"dialog":true}}]}}
+{"key":"F2","when":{"all":[{"view_mode":"Columns"},{"focused":"renamed-note.txt"},{"absent":{"entry":"notes.txt"}},{"editable_fields":0},{"menu_items":null},{"not":{"dialog":true}}]}}
+{"type":"notes","when":{"field":{"name":"Rename","focused":true}}}
+{"key":"Return","when":{"field":{"name":"Rename","focused":true}}}
+{"key":"ctrl+Page_Up","when":{"all":[{"present":{"role":"page tab"}},{"menu_items":null},{"not":{"dialog":true}}]}}
+{"key":"ctrl+t","when":{"all":[{"not":{"dialog":true}},{"menu_items":null}]}}
+{"click":{"role":"button","name":"New tab"},"when":{"all":[{"present":{"role":"button","name":"New tab"}},{"menu_items":null},{"not":{"dialog":true}},{"editable_fields":0}]}}
+{"key":"ctrl+f","when":{"all":[{"view_mode":"Columns"},{"present":{"role":"page tab"}},{"editable_fields":0},{"menu_items":null},{"not":{"dialog":true}}]}}
+{"type":"doc","when":{"all":[{"view_mode":"Columns"},{"field":{"focused":true}},{"not":{"field":{"name":"Rename"}}}]}}
+{"key":"ctrl+shift+Tab","when":{"all":[{"view_mode":"Columns"},{"present":{"role":"page tab"}},{"field":{"focused":true}},{"not":{"field":{"name":"Rename"}}}]}}
+{"key":"ctrl+period","when":{"all":[{"editable_fields":0},{"menu_items":null},{"not":{"dialog":true}}]}}
+{"key":"ctrl+l","when":{"all":[{"present":{"role":"page tab"}},{"editable_fields":0},{"menu_items":null},{"not":{"dialog":true}}]}}
+{"type":"$fixture/documents","when":{"field":{"name":"Location (Ctrl+L)","focused":true}}}
+{"key":"ctrl+Tab","when":{"all":[{"present":{"role":"page tab"}},{"field":{"name":"Location (Ctrl+L)","focused":true}}]}}
+{"move":{"entry":"documents"},"when":{"all":[{"present":{"entry":"documents"}},{"menu_items":null},{"not":{"dialog":true}},{"editable_fields":0}]}}
+{"button_down":2,"when":{"all":[{"present":{"entry":"documents"}},{"menu_items":null},{"not":{"dialog":true}},{"editable_fields":0}]}}
+{"button_up":2,"when":{"all":[{"present":{"entry":"documents"}},{"menu_items":null},{"not":{"dialog":true}},{"editable_fields":0}]}}
+{"key":"Right","when":{"all":[{"focused_pane":true},{"not":{"matches":[]}},{"view_mode":"Columns"},{"not":{"focused":"archive"}},{"editable_fields":0},{"menu_items":null},{"not":{"dialog":true}}]}}
+{"key":"F2","when":{"all":[{"view_mode":"Columns"},{"focused":"notes.txt"},{"present":{"role":"page tab"}},{"absent":{"entry":"renamed-note.txt"}},{"editable_fields":0},{"menu_items":null},{"not":{"dialog":true}}]}}
+{"type":"renamed-note","when":{"field":{"name":"Rename","focused":true}}}
+{"key":"ctrl+t","when":{"all":[{"present":{"role":"page tab"}},{"field":{"name":"Rename","focused":true}}]}}
+{"key":"ctrl+shift+Return","when":{"all":[{"any":[{"focused":"archive"},{"focused":"documents"},{"focused":"pictures"}]},{"focused_pane":true},{"editable_fields":0},{"menu_items":null},{"not":{"dialog":true}}]}}
+{"key":"F2","when":{"all":[{"view_mode":"Columns"},{"focused":"renamed-note.txt"},{"absent":{"entry":"notes.txt"}},{"editable_fields":0},{"menu_items":null},{"not":{"dialog":true}}]}}
+{"type":"notes","when":{"field":{"name":"Rename","focused":true}}}
+{"key":"Return","when":{"field":{"name":"Rename","focused":true}}}
+{"key":"ctrl+Page_Down","when":{"all":[{"present":{"role":"page tab"}},{"menu_items":null},{"not":{"dialog":true}}]}}
+{"click":{"entry":"photo.txt"},"when":{"all":[{"present":{"entry":"photo.txt"}},{"editable_fields":0},{"menu_items":null},{"not":{"dialog":true}}]}}
+{"key":"ctrl+2","when":{"all":[{"editable_fields":0},{"menu_items":null},{"not":{"dialog":true}}]}}
+{"fs":{"path":"zz-tab-a.txt","write":"fuzz\n"},"when":{"file":{"path":"$fixture/zz-tab-a.txt","exists":false}}}
+{"move":{"entry":"photo.txt"},"when":{"all":[{"present":{"entry":"photo.txt"}},{"menu_items":null},{"not":{"dialog":true}},{"editable_fields":0}]}}
+{"button_down":2,"when":{"all":[{"present":{"entry":"photo.txt"}},{"menu_items":null},{"not":{"dialog":true}},{"editable_fields":0}]}}
+{"button_up":2,"when":{"all":[{"present":{"entry":"photo.txt"}},{"menu_items":null},{"not":{"dialog":true}},{"editable_fields":0}]}}
+{"key":"ctrl+f","when":{"all":[{"view_mode":"Columns"},{"present":{"role":"page tab"}},{"editable_fields":0},{"menu_items":null},{"not":{"dialog":true}}]}}
+{"type":"no","when":{"all":[{"view_mode":"Columns"},{"field":{"focused":true}},{"not":{"field":{"name":"Rename"}}}]}}
+{"key":"ctrl+shift+Tab","when":{"all":[{"view_mode":"Columns"},{"present":{"role":"page tab"}},{"field":{"focused":true}},{"not":{"field":{"name":"Rename"}}}]}}
+{"key":"ctrl+shift+Return","when":{"all":[{"any":[{"focused":"archive"},{"focused":"documents"},{"focused":"pictures"}]},{"focused_pane":true},{"editable_fields":0},{"menu_items":null},{"not":{"dialog":true}}]}}
+{"key":"ctrl+w","when":{"all":[{"present":{"role":"page tab"}},{"menu_items":null},{"not":{"dialog":true}}]}}
+{"click":{"entry":"documents"},"count":2,"when":{"all":[{"present":{"entry":"documents"}},{"not":{"view_mode":"Columns"}},{"editable_fields":0},{"menu_items":null},{"not":{"dialog":true}}]}}
+{"key":"Up","when":{"all":[{"focused_pane":true},{"focused_in_matches":true},{"not":{"matches":[]}},{"not":{"view_mode":"Icons"}},{"editable_fields":0},{"menu_items":null},{"not":{"dialog":true}},{"not":{"focused":{"one_of":["archive", "notes.txt", "renamed-note.txt", "diagram.txt", "zz-tab-b.txt"]}}}]}}
+{"key":"Right","when":{"all":[{"focused_pane":true},{"not":{"matches":[]}},{"view_mode":"Columns"},{"not":{"focused":"archive"}},{"editable_fields":0},{"menu_items":null},{"not":{"dialog":true}}]}}
+{"key":"F2","when":{"all":[{"view_mode":"Columns"},{"focused":"renamed-note.txt"},{"absent":{"entry":"notes.txt"}},{"editable_fields":0},{"menu_items":null},{"not":{"dialog":true}}]}}
+{"type":"notes","when":{"field":{"name":"Rename","focused":true}}}
+{"key":"Return","when":{"field":{"name":"Rename","focused":true}}}
+{"key":"ctrl+3","when":{"all":[{"editable_fields":0},{"menu_items":null},{"not":{"dialog":true}}]}}
+{"key":"Right","when":{"all":[{"focused_pane":true},{"not":{"matches":[]}},{"view_mode":"Columns"},{"not":{"focused":"archive"}},{"editable_fields":0},{"menu_items":null},{"not":{"dialog":true}}]}}

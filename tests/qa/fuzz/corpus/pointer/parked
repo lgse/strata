@@ -20,3 +20,8 @@ v3-0000000000000026 oracle lgse/strata#2552
 # marquee. Shrunk from 50 and 47 steps to 5, confirmed 3 of 3.
 v4-000000000000000c oracle lgse/strata#2552
 v4-000000000000000d oracle lgse/strata#2552
+# v4, 0x3a: a marquee from empty space up to report.md, then a Shift+click on notes.txt: GTK
+# ranges from the entry the band reached first, which its selection sync gave the browser as
+# cursor and so as anchor (lgse/strata#2552's mechanism); Rune's marquee leaves no anchor.
+# Shrunk from 47 steps to 3, confirmed 3 of 3 (F4's round 2).
+v4-000000000000003a oracle lgse/strata#2552
