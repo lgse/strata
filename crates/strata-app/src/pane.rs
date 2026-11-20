@@ -590,7 +590,10 @@ impl Pane {
             true => handover::hand_back(&shown, browser, &mut self.held),
             false => handover::hand_over(&shown, browser, &mut self.held),
         }
-        if restored && restore::follow_fill(column, &mut self.collection, browser, depth) {
+        let followed = restored
+            && (restore::follow_fill(column, &mut self.collection, browser, depth)
+                | restore::anchor_at_cursor(column, &mut self.collection));
+        if followed {
             self.held = Held::of(&self.collection);
         }
     }

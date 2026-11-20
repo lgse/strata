@@ -280,12 +280,15 @@ fn give(shown: &Shown<'_>, browser: &Browser, held: &mut Held, handed: Handed) {
         browser.commit_selection();
     }
     browser.set_selection(depth, &selected, cursor);
-    // The view's anchor, or none: the browser's `set_selection` takes the cursor's for one it
-    // lacks, which a later adopt would hand back to a view that has none, as after a first
-    // visit, and a Shift+click would range from it (finding lgse/strata#2551).
+    // The view's anchor, or, for the user's own change, none: the browser's `set_selection`
+    // takes the cursor's for one it lacks, which a later adopt would hand back to a view that
+    // has none, as after a first visit, and a Shift+click would range from it (finding
+    // lgse/strata#2551). A position handed back keeps that default, as GTK's
+    // `restore_selection` sets it through the same `set_selection`.
     match selection.anchor().and_then(position) {
         Some(anchor) => browser.set_selection_anchor(depth, anchor),
-        None => browser.clear_selection_anchor(depth),
+        None if handed == Handed::Choice => browser.clear_selection_anchor(depth),
+        None => {}
     }
 }
 

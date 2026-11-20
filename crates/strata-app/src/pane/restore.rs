@@ -279,3 +279,21 @@ pub(super) fn follow_fill(
     collection.note_selection(column);
     true
 }
+
+/// After a remembered position was handed back: one with a cursor and no anchor takes the
+/// cursor as its anchor, as the browser's `set_selection` gives it, which GTK's
+/// `restore_selection` goes through, so a Shift+click after a revisit ranges from the cursor
+/// there too (`pointer v4` seed `0x2f`). Returns whether the selection changed.
+pub(super) fn anchor_at_cursor(column: &Column, collection: &mut CollectionState) -> bool {
+    let selection = &collection.selection;
+    if selection.anchor().is_some() || selection.cursor().is_none() {
+        return false;
+    }
+    let mut position = selection.position(column);
+    position.anchor = position.cursor;
+    if !collection.selection.restore(&position).anchor {
+        return false;
+    }
+    collection.note_selection(column);
+    true
+}

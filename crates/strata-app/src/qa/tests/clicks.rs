@@ -215,3 +215,25 @@ fn a_shift_click_after_a_load_and_a_new_entry_selects_the_entry_alone() {
         },
     );
 }
+
+/// A folder opened again comes back at its remembered position through the browser's
+/// `set_selection`, which on GTK gives the restored cursor the Shift anchor when there is none
+/// (`restore_selection`), so a Shift+click ranges from it: the first visit's no-anchor rule of
+/// finding lgse/strata#2551 does not reach a revisit (`pointer v4` seed `0x2f`, F4's round 2).
+#[test]
+fn a_shift_click_after_a_revisit_ranges_from_the_restored_cursor() {
+    runs(
+        "list",
+        "a_shift_click_after_a_revisit_ranges_from_the_restored_cursor",
+        &[
+            json!({ "click": { "entry": "pictures" }, "count": 2 }),
+            json!({ "wait": { "focused": "diagram.txt" } }),
+            json!({ "key": "alt+Up" }),
+            json!({ "wait": { "focused": "pictures" } }),
+            json!({ "click": { "entry": "pictures" }, "count": 2 }),
+            json!({ "wait": { "focused": "diagram.txt" } }),
+            json!({ "click": { "entry": "photo.txt" }, "mods": ["shift"] }),
+            json!({ "wait": { "selected": ["diagram.txt", "photo.txt"] }, "timeout_ms": 3000 }),
+        ],
+    );
+}
