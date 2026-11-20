@@ -79,6 +79,11 @@ struct Kept {
     /// The cursor a first visit placed, in the browser's column at that depth, which no input
     /// has moved since.
     visit: Option<(usize, EntryId)>,
+    /// The rows the folder showed when that cursor was last placed or kept: how many, and the
+    /// first. A view rebuilt over the same rows (a regroup, a view switch) shows its own first
+    /// row, as GTK's does, but an entry added or gone is no rebuild, and GTK's list keeps its
+    /// focus on the same row.
+    visit_rows: (usize, Option<EntryId>),
 }
 
 impl Memory {
@@ -96,6 +101,17 @@ impl Memory {
     /// The cursor a first visit placed is at `at` now, or there is none.
     pub(crate) fn set_visit_cursor(&self, at: Option<(usize, EntryId)>) {
         self.0.borrow_mut().visit = at;
+    }
+
+    /// The rows the folder showed when the visit's cursor was last placed or kept: how many,
+    /// and the first.
+    pub(crate) fn visit_rows(&self) -> (usize, Option<EntryId>) {
+        self.0.borrow().visit_rows
+    }
+
+    /// The folder shows `rows`, how many and the first, as the visit's cursor is placed or kept.
+    pub(crate) fn set_visit_rows(&self, rows: (usize, Option<EntryId>)) {
+        self.0.borrow_mut().visit_rows = rows;
     }
 
     fn same(&self, other: &Self) -> bool {

@@ -154,3 +154,28 @@ fn a_load_cursor_stays_through_a_regroup_and_a_switch() {
         assert_eq!(seen(&host, ICONS).focused.as_deref(), Some("documents"));
     });
 }
+
+/// An entry added above the first visit's cursor is no rebuild: GTK's list keeps its focus on
+/// the same row, so the cursor stays on `notes.txt` while `a-new.txt` lists first (lgse/strata#2642, `icons v3`
+/// seed `0x5a`, F4's round 2). A regroup after it still moves the cursor to the first row.
+#[test]
+fn an_entry_added_above_keeps_the_first_visit_cursor_on_its_row() {
+    let name = "first_visit::an_entry_added_above_keeps_the_first_visit_cursor_on_its_row";
+    hosted_with(MODULE, "list", String::new(), name, |mut host| {
+        let folder = fixture();
+        first_visit_to_documents(&mut host, folder.path());
+        cursor_alone(&host, "notes.txt", "the first visit");
+
+        let added = folder.path().join("documents").join("a-new.txt");
+        std::fs::write(&added, "new\n").expect("a file behind the window");
+        wait(&mut host, LIST, "the new file listed", |seen| {
+            seen.entries.len() == 4
+        });
+        idle(&mut host);
+        assert_eq!(seen(&host, LIST).focused.as_deref(), Some("notes.txt"));
+        cursor_alone(&host, "notes.txt", "the new file");
+
+        choose(&mut host, "appearance-group");
+        cursor_alone(&host, "spreadsheet.csv", "the regroup");
+    });
+}

@@ -86,8 +86,11 @@ impl FirstVisit {
 /// Keeps the cursor a first visit placed on the first row `pane` shows, while no input has
 /// moved it ([`Memory::visit_cursor`]): GTK's browser holds no cursor then, and each of its
 /// views rebuilt shows its own first row, so a regroup or a view switch puts it there (finding
-/// lgse/strata#2427). The memory follows it there. A pane that shows anything else (another
-/// folder, another cursor, a selection) forgets it. True when the cursor moved.
+/// lgse/strata#2427). The memory follows it there. Only a change of the first row with the same
+/// number of rows is a rebuild: an entry added or gone is none, and GTK's list keeps its focus
+/// on the same row then (finding lgse/strata#2642, `icons v3` seed `0x5a`: a file written that lists
+/// first). A pane that shows anything else (another folder, another cursor, a selection)
+/// forgets it. True when the cursor moved.
 pub(super) fn keep_on_first_row(pane: &mut Pane, memory: &Memory) -> bool {
     let Some((depth, id)) = memory.visit_cursor() else {
         return false;
@@ -103,7 +106,11 @@ pub(super) fn keep_on_first_row(pane: &mut Pane, memory: &Memory) -> bool {
         memory.set_visit_cursor(None);
         return false;
     }
-    if source.is_empty() || source.id_at(0) == id {
+    let rows = (source.len(), (!source.is_empty()).then(|| source.id_at(0)));
+    let (count, first) = memory.visit_rows();
+    memory.set_visit_rows(rows);
+    // Only the same rows in another order are a rebuild.
+    if rows.0 != count || rows.1 == first || rows.1.is_none_or(|first| first == id) {
         return false;
     }
     let _ = collection
