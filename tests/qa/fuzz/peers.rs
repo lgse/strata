@@ -8,6 +8,8 @@
 //! A `foreign` step names its source `as` a kept target, which a `drag` from `kept` in the
 //! same action drags from. A shrunk sequence can keep the drag without the step that started
 //! the source; the drag is then refused on every target alike, which the replays agree on.
+//! A `foreign_label` or `foreign_stop` with no source running is skipped, as a step whose `when`
+//! does not hold is: the action's source was skipped, and there is nothing to wait for or stop.
 
 use serde_json::{Map, Value, json};
 
@@ -47,7 +49,17 @@ pub(crate) fn take(
     step: &Value,
 ) -> Option<Taken> {
     let object = step.as_object()?;
-    kind(object)?;
+    let kind = kind(object)?;
+    if kind != NAMING && !peers.foreign_runs() {
+        return Some(Taken {
+            outcome: Outcome::Skipped,
+            gone: None,
+            record: (
+                step.clone(),
+                json!({ "ok": true, "skipped": "no foreign drag source runs" }),
+            ),
+        });
+    }
     let mut notes = Vec::new();
     let result = peer_step(application, peers, context, object, &mut notes)?;
     let failed = |outcome, error: String| Taken {
