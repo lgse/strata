@@ -10,7 +10,7 @@
 //! replay shows a difference: with nothing selected there is nothing for a command or
 //! `follow_selection_on_return` to take (finding lgse/strata#2427).
 
-use strata_components::collection::selection::AnchorRule;
+use strata_components::{collection::selection::AnchorRule, contract::EntryId};
 
 use crate::{
     listing::Load,
@@ -107,10 +107,9 @@ pub(super) fn keep_on_first_row(pane: &mut Pane, memory: &Memory) -> bool {
         return false;
     }
     let rows = (source.len(), (!source.is_empty()).then(|| source.id_at(0)));
-    let (count, first) = memory.visit_rows();
+    let before = memory.visit_rows();
     memory.set_visit_rows(rows);
-    // Only the same rows in another order are a rebuild.
-    if rows.0 != count || rows.1 == first || rows.1.is_none_or(|first| first == id) {
+    if !rebuilt(before, rows, id) {
         return false;
     }
     let _ = collection
@@ -119,6 +118,14 @@ pub(super) fn keep_on_first_row(pane: &mut Pane, memory: &Memory) -> bool {
     collection.note_selection(source);
     memory.set_visit_cursor(Some((depth, source.id_at(0))));
     true
+}
+
+/// Whether the rows shown, how many and the first, went from `before` to `now` by a rebuild that
+/// shows another first row than the cursor `id`'s: the same number of rows in another order.
+fn rebuilt(before: (usize, Option<EntryId>), now: (usize, Option<EntryId>), id: EntryId) -> bool {
+    let same_rows = now.0 == before.0;
+    let new_first = now.1 != before.1;
+    same_rows && new_first && now.1.is_some_and(|first| first != id)
 }
 
 #[cfg(test)]

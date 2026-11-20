@@ -22,7 +22,7 @@ use super::seam::{
     Ctx, Effect, Flow, Hit, KeyInput, PointerInput, PointerPhase, Region, default_pointer,
 };
 use super::{Config, keys};
-use crate::collection::selection::Changed;
+use crate::collection::selection::{Changed, Position};
 use crate::contract::{CollectionGeometry, EntrySource, Point, Rect};
 
 /// Where an input came from, for what the element does after it.
@@ -622,13 +622,19 @@ pub(super) fn on_key<S: 'static>(
         }
     });
     if flow == Flow::Handled {
-        let st = (cfg.get_mut)(s).1;
-        if waiting.is_some() && st.pending == waiting {
-            st.pending = None;
-        }
+        drop_waiting_restore(cfg, s, waiting);
         KeyTaken::ByController
     } else {
         KeyTaken::No
+    }
+}
+
+/// A key the controllers took cancels the restore `waiting` when it arrived, not one the key's
+/// own effect armed since.
+fn drop_waiting_restore<S: 'static>(cfg: &Rc<Config<S>>, s: &mut S, waiting: Option<Position>) {
+    let st = (cfg.get_mut)(s).1;
+    if waiting.is_some() && st.pending == waiting {
+        st.pending = None;
     }
 }
 

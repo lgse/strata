@@ -247,12 +247,7 @@ pub(super) fn keep_provisional(column: &Column, collection: &mut CollectionState
     if !marks.provisional || selection.is_provisional() {
         return;
     }
-    let mut position = selection.position(column);
-    position.provisional = true;
-    if !collection.selection.restore(&position).selection {
-        return;
-    }
-    collection.note_selection(column);
+    let _ = reposition(column, collection, |position| position.provisional = true);
 }
 
 /// After a remembered position was handed back as no choice: the browser keeps a cursor a load
@@ -271,13 +266,7 @@ pub(super) fn follow_fill(
     if !selection.is_provisional() || browser.filled_entries(depth).is_empty() {
         return false;
     }
-    let mut position = selection.position(column);
-    position.provisional = false;
-    if !collection.selection.restore(&position).selection {
-        return false;
-    }
-    collection.note_selection(column);
-    true
+    reposition(column, collection, |position| position.provisional = false)
 }
 
 /// After a remembered position was handed back: one with a cursor and no anchor takes the
@@ -289,9 +278,22 @@ pub(super) fn anchor_at_cursor(column: &Column, collection: &mut CollectionState
     if selection.anchor().is_some() || selection.cursor().is_none() {
         return false;
     }
-    let mut position = selection.position(column);
-    position.anchor = position.cursor;
-    if !collection.selection.restore(&position).anchor {
+    reposition(column, collection, |position| {
+        position.anchor = position.cursor
+    })
+}
+
+/// Restores the collection's own position with `edit` made to it. Returns whether the selection
+/// or its anchor changed.
+fn reposition(
+    column: &Column,
+    collection: &mut CollectionState,
+    edit: impl FnOnce(&mut Position),
+) -> bool {
+    let mut position = collection.selection.position(column);
+    edit(&mut position);
+    let changed = collection.selection.restore(&position);
+    if !(changed.selection || changed.anchor) {
         return false;
     }
     collection.note_selection(column);
