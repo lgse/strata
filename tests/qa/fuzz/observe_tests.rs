@@ -13,6 +13,37 @@ use super::{
     replay::{Header, Stream, answered, gone},
 };
 
+/// What follows the clock or a run's random name is written the same in every replay: a date
+/// relative to now, and the fixture's name cut short by an edit, while every other text, and a
+/// date written as a date, stays as it is (F4's round 2: `archives` and `location` `0x6e`).
+pub(crate) fn a_relative_date_and_a_cut_fixture_name_are_the_same_in_every_replay() {
+    let places = Places::new("/tmp/strata-qa-fixture-ab12CD", "/tmp/strata-qa-xy34");
+    for (text, written) in [
+        ("Just now", "$recent"),
+        ("1m ago", "$recent"),
+        ("59m ago", "$recent"),
+        ("3h ago", "$recent"),
+        ("m ago", "m ago"),
+        ("1w ago", "1w ago"),
+        ("Nov 14, 2023", "Nov 14, 2023"),
+        ("x 1m ago", "x 1m ago"),
+        ("/tmp/strata-qa-fixture-ab12CD/a", "$fixture/a"),
+        ("/tmp/strata-qa-fixture-ab12C", "/tmp/$root[-1]"),
+        ("/tmp/strata-qa-fixture-", "/tmp/$root[-6]"),
+        ("strata-qa-fixture-ab", "$root[-4]"),
+        ("strata-qa-fixture-abXY", "$root[-4]XY"),
+        ("strata-qa-xy34", "strata-qa-xy34"),
+    ] {
+        assert_eq!(places.normalise(&json!(text)), json!(written), "{text}");
+    }
+    // Another run's fixture, cut the same, is written the same.
+    let other = Places::new("/tmp/strata-qa-fixture-Qz98Wv", "/tmp/strata-qa-kl56");
+    assert_eq!(
+        other.normalise(&json!("/tmp/strata-qa-fixture-Qz98W")),
+        places.normalise(&json!("/tmp/strata-qa-fixture-ab12C"))
+    );
+}
+
 pub(crate) fn the_projection_keeps_the_ten_keys_and_names_the_places_of_a_run() {
     let places = Places::new("/tmp/strata-qa-fixture-ab12CD", "/tmp/strata-qa-xy34");
     let reply = json!({
