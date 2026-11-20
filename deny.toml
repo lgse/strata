@@ -2,12 +2,20 @@
 all-features = true
 
 [advisories]
-# Remove once docx-rs releases on zip 9 (#2035).
 ignore = [
+  # Remove the zip 8 entries once docx-rs releases on zip 9 (#2035, #2616). It reads
+  # in-memory archives through ZipArchive and by_name only, and builds zip 8 with
+  # deflate alone, without aes-crypto or legacy-zip.
   { id = "RUSTSEC-2026-0429", reason = "zip 8 only via docx-rs, which never calls extract" },
   { id = "RUSTSEC-2026-0367", reason = "zip 8 only via docx-rs, which never calls extract" },
   { id = "RUSTSEC-2026-0368", reason = "zip 8 only via docx-rs, which never calls extract" },
   { id = "RUSTSEC-2026-0369", reason = "zip 8 only via docx-rs, which never calls extract" },
+  { id = "RUSTSEC-2026-0545", reason = "zip 8 only via docx-rs, built without aes-crypto" },
+  { id = "RUSTSEC-2026-0546", reason = "zip 8 only via docx-rs, which never calls extract" },
+  { id = "RUSTSEC-2026-0547", reason = "zip 8 only via docx-rs, built without legacy-zip" },
+  { id = "RUSTSEC-2026-0548", reason = "zip 8 only via docx-rs, which never uses ZipStreamReader" },
+  # Unmaintained, with no patched version (#2616); only fitparser uses it, 0.12 included.
+  { id = "RUSTSEC-2026-0543", reason = "chrono only via fitparser, which has no chrono-free release" },
   { id = "RUSTSEC-2026-0370", reason = "zbus 5 is required by ashpd 0.13" },
   { id = "RUSTSEC-2026-0371", reason = "zbus 5 is required by ashpd 0.13" },
   { id = "RUSTSEC-2026-0372", reason = "zbus 5 is required by ashpd 0.13" },

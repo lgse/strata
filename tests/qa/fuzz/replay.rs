@@ -349,6 +349,8 @@ pub(crate) fn replay(request: &Replay) -> Result<Replayed, String> {
         extra: environment(scenario, &variables),
         bus: None,
         portal: false,
+        // A sequence replays with no session bus, so with no fake volume monitor either.
+        volume_monitor: false,
         audit: None,
     };
     let mut session = Session::start(&launch, &ground, request.rest)?;

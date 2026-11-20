@@ -160,7 +160,9 @@ from native builds, and artifacts are owned by the invoking user. Minimal
 generated passwd/group files provide the invoking UID/GID to D-Bus, so one
 published environment works across local user IDs without rebuilding it or
 mounting the host's account database.
-The image includes bubblewrap for sandboxed thumbnail decoding, FFmpeg/ffprobe,
+The image includes gvfs, whose GIO module lets the QA runner fake drives,
+volumes and mounts (see "Fake devices"), bubblewrap for sandboxed thumbnail
+decoding, FFmpeg/ffprobe,
 GTK's GStreamer media backend with the base/good/libav plugins, and strace for the
 opt-in [main-thread I/O audit](#main-thread-io-audit). It also includes libheif, so
 ImageMagick writes real AVIF and HEIC files and glycin's `glycin-heif` loader can
@@ -242,7 +244,9 @@ a wrapper that adds `--network none` to `docker run`, named by
 `./scripts/quality.sh` runs all three quality phases in the same verified build
 base. Use `./scripts/quality.sh fmt`, `clippy`, or `test` for an individual phase.
 No separate quality image is necessary: the published environment already has
-Rust 1.99.1, rustfmt, Clippy, native development libraries, and Xvfb. Quality now
+Rust 1.99.1, rustfmt, Clippy, native development libraries, and Xvfb. Quality
+runs set `GIO_USE_VFS=local`, so the image's gvfs, which only the QA runner's
+fake devices use, does not change which GIO backend a Rust test gets. Quality now
 uses that pinned compiler rather than moving `stable`.
 
 CI resolves the public environment to a manifest digest, checks its input labels
@@ -517,7 +521,38 @@ Each run of a scenario gets:
   the first-run file-chooser portal offer already answered;
 - with `"session_bus":true`, a private D-Bus session with no service
   directories, so nothing is D-Bus-activated behind the run's back; without
-  it, a bus address that cannot connect.
+  it, a bus address that cannot connect;
+- with `"volume_monitor":true` too, a fake GVfs volume monitor on that bus
+  (see "Fake devices" below).
+
+### Fake devices
+
+The container has no udisks2 daemon and no real removable media, and GIO's
+built-in unix volume monitor hides the mounts a rootless container can make.
+A run whose header has `"volume_monitor":true` (with `"session_bus":true`)
+instead starts `tests/qa/volume_monitor.py` on the run's bus before the
+application. It serves `org.gtk.Private.RemoteVolumeMonitor`, the interface
+gvfs's `gvfs-udisks2-volume-monitor` serves, under the name the test monitor
+file `tests/qa/volume_monitors/strata-qa.monitor` gives. The image's `gvfs`
+package supplies GIO's client for it, `libgioremote-volume-monitor.so`, and the
+application's `GVFS_MONITOR_DIR` points that client at the test file only.
+
+That client stays unloaded under `GIO_USE_VFS=local`, which the manifest sets
+for every other run, so this run's application starts without it, on GIO's
+default VFS and with Strata's usual GVfs probe, as on a desktop where gvfs is
+installed and no `gvfsd` runs. The monitor stays a non-native one beside the
+unix monitor that `GIO_USE_VOLUME_MONITOR=unix` keeps. It must own its name
+before the application starts, because GIO asks each remote monitor once
+whether it is there, and it stops after the application, because the client
+warns when its monitor leaves the bus.
+
+Scenarios plug and unplug devices with `dbus_send` to its control interface
+(`org.strata.QaVolumeMonitor.Add` with a JSON device, `Remove` with its id), and
+read the calls the application made from `$environment/volume-monitor.calls`.
+Mounts are folders under `$environment`, so the files in them are real. The
+monitor's own log is kept as `volume-monitor.log`. The device scenarios are in
+`tests/qa/scenarios/devices/`; the reference's header table has the device's
+fields.
 
 Rendering is pinned by the manifest: `GSK_RENDERER=cairo`, software GL,
 `GDK_SCALE=1`, the Adwaita icon theme, Cantarell 11, `C.UTF-8`, `UTC`,
@@ -2467,8 +2502,9 @@ call is classified by its path, after resolving descriptors and `*at` folders:
   audio configuration, GTK settings, MIME associations, recently
   used files, the rest of `XDG_RUNTIME_DIR`, the launch's `XDG_DATA_DIRS`, pipes,
   sockets and event descriptors), and the runner's own places that `meta.json`
-  lists under `harness` (the shared shader cache, the launch's logs and the
-  `PATH` folders). Ignored. QA mode's own disk reads, for `pref` and file
+  lists under `harness` (the shared shader cache, the launch's logs, the
+  `PATH` folders and, in a `volume_monitor` run, the test monitor's folder that
+  GIO reads at start-up). Ignored. QA mode's own disk reads, for `pref` and file
   predicates, run on a helper thread, so they never appear.
 - **unclassified**: anything else, reported so new paths get a deliberate
   category.

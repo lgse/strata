@@ -1,0 +1,10 @@
+diff --git a/src/ui/window/device_actions.rs b/src/ui/window/device_actions.rs
+--- a/src/ui/window/device_actions.rs
++++ b/src/ui/window/device_actions.rs
+@@ -241,5 +241,5 @@ pub(super) fn release_device_volume(
+         unplug: release_unplug(&action, mount.as_ref(), Some(volume)),
+         sync_root: mount.as_ref().and_then(|mount| mount.root().path()),
+-        away_root: mount.as_ref().map(gio::Mount::root),
++        away_root: None,
+     };
+     let volume = volume.clone();

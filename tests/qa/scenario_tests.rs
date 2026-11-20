@@ -150,6 +150,27 @@ pub(crate) fn a_skipped_scenario_names_a_reason_and_no_mutation_or_known_bug() {
     }
 }
 
+pub(crate) fn a_volume_monitor_run_needs_the_session_bus() {
+    let directory = tempfile::tempdir().expect("a scratch directory");
+    let path = directory.path().join("example.jsonl");
+    let load = |extra: &str| {
+        fs::write(
+            &path,
+            format!(
+                "{{\"scenario\":\"example\",\"modes\":[\"columns\"],\"mutation\":null,\
+                 \"known_bug\":null,{extra}}}\n{{\"key\":\"Escape\"}}\n"
+            ),
+        )
+        .expect("the scenario should be written");
+        load_scenario(&path).map(|scenario| scenario.header.volume_monitor)
+    };
+    assert_eq!(
+        load(r#""session_bus":true,"volume_monitor":true"#),
+        Ok(true)
+    );
+    assert!(load(r#""volume_monitor":true"#).is_err());
+}
+
 pub(crate) fn a_cost_gives_each_run_label_a_positive_number() {
     let directory = tempfile::tempdir().expect("a scratch directory");
     let path = directory.path().join("example.jsonl");
