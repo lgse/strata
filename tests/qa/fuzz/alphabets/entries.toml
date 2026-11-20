@@ -19,8 +19,16 @@
 # - The clipboard and drag (A12's, A19's), the preview (A15's), view switches (A8's).
 # - A click on the entry being renamed: where the caret goes is by pixel, and GTK does not
 #   answer a Shift+click there the same way twice (lgse/strata#2173).
+# - Up and Shift+Up on a column's first entry, which take GTK's keyboard to the column's header
+#   actions where Rune's stays (`owner.md`, A1 item 3). Version 3 met it in 44 of its 52
+#   differences across the targets (F4's round 2); version 4, F4's round 3 draft, guarded them
+#   with `entries` `first`, which reads the deepest column and so missed the root's first
+#   entry once its column opened; version 5 guards both by name, as `columns`
+#   does: the fixture's folders' first entries and every name the walk makes, which a folder's
+#   ordering may put first. A fixture entry that a rename or a trash leaves first is a gap the
+#   guard accepts.
 area = "entries"
-version = 3
+version = 5
 about = "Columns on the canonical fixture, type to search off: new folders and files by key and menu, named or left, renames by F2 and the menu with plain names and paths, Move to Trash, permanent deletes confirmed or cancelled, undo and redo, alone and one after the other, with navigation, clicks and selection between, and files made and removed behind the application's back"
 header = '{"modes":["columns"],"prefs":{"type_to_search":false}}'
 
@@ -32,7 +40,7 @@ steps = ['{"key":"Down","when":{"not":{"field":{"name":"Rename"}}}}']
 [[action]]
 name = "up"
 weight = 6
-steps = ['{"key":"Up","when":{"not":{"field":{"name":"Rename"}}}}']
+steps = ['{"key":"Up","when":{"all":[{"not":{"field":{"name":"Rename"}}},{"not":{"focused":{"one_of":["archive","notes.txt","diagram.txt","fuzz-b.txt","fuzz-c.txt","new folder","new file","plans","made","a","b","made.txt","notes","today.txt","docs","kept","one","x","-2","renamed","y","x.txt","x.md","x.csv","-2.txt","-2.md","-2.csv","renamed.txt","renamed.md","renamed.csv","y.txt","y.md","y.csv","one.txt","one.md","one.csv"]}}}]}}']
 
 [[action]]
 name = "right"
@@ -52,10 +60,14 @@ steps = ['{"key":"<key>","when":{"not":{"field":{"name":"Rename"}}}}']
 choose.key = ["Home", "End"]
 
 [[action]]
-name = "extend"
-weight = 3
-steps = ['{"key":"shift+<key>","when":{"not":{"field":{"name":"Rename"}}}}']
-choose.key = ["Down", "Up"]
+name = "extend-down"
+weight = 2
+steps = ['{"key":"shift+Down","when":{"not":{"field":{"name":"Rename"}}}}']
+
+[[action]]
+name = "extend-up"
+weight = 1
+steps = ['{"key":"shift+Up","when":{"all":[{"not":{"field":{"name":"Rename"}}},{"not":{"focused":{"one_of":["archive","notes.txt","diagram.txt","fuzz-b.txt","fuzz-c.txt","new folder","new file","plans","made","a","b","made.txt","notes","today.txt","docs","kept","one","x","-2","renamed","y","x.txt","x.md","x.csv","-2.txt","-2.md","-2.csv","renamed.txt","renamed.md","renamed.csv","y.txt","y.md","y.csv","one.txt","one.md","one.csv"]}}}]}}']
 
 [[action]]
 name = "escape"

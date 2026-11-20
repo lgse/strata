@@ -48,7 +48,10 @@ columns v3 c1c7755a9701e199
 # parked in tests/qa/fuzz/corpus/drag, and Rune's keyboard lost after an undo (fixed).
 # Version 2 drags only rows not selected, and leaves Escape out.
 drag v2 f7207da98508ca44
-entries v3 8fb7d5c38ff6b880
+# entries: version 3 met Up off a column's first entry in 44 of its 52 differences across the
+# targets (F4's round 2); version 4, a draft of F4's round 3, never merged, missed the root's
+# first entry; version 5 guards Up and Shift+Up there by name (`owner.md`, A1 item 3).
+entries v5 c0067f74429fc5a4
 # filter: version 1 was A10's draft, never merged: version 2 leaves out Choose sort field on
 # lgse/strata#2494's account, adds Appearance's Group by file type and Hidden files, and keeps
 # result arrows and clicks to non-empty queries.

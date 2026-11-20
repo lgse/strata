@@ -1,0 +1,6 @@
+{"scenario":"fuzz-entries-v5-0000000000000014","modes":["columns"],"prefs":{"type_to_search":false}}
+{"click":{"entry":"readme.md"},"button":3,"when":{"all":[{"present":{"entry":"readme.md"}},{"not":{"field":{"name":"Rename"}}}]}}
+{"click":{"menu_item":"New File"},"when":{"present":{"menu_item":"New File"}}}
+{"type":"notes/today.txt","when":{"field":{"name":"Rename","focused":true}}}
+{"key":"Return","when":{"field":{"name":"Rename","focused":true}}}
+{"click":{"entry":"readme.md"},"mods":["shift"],"when":{"all":[{"present":{"entry":"readme.md"}},{"not":{"field":{"name":"Rename"}}}]}}
