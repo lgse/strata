@@ -156,8 +156,9 @@ fn a_load_cursor_stays_through_a_regroup_and_a_switch() {
 }
 
 /// An entry added above the first visit's cursor is no rebuild: GTK's list keeps its focus on
-/// the same row, so the cursor stays on `notes.txt` while `a-new.txt` lists first (lgse/strata#2642, `icons v3`
-/// seed `0x5a`, F4's round 2). A regroup after it still moves the cursor to the first row.
+/// the same row, so the cursor stays on `notes.txt` while `a-new.txt` lists first (finding
+/// lgse/strata#2642, `icons v3` seed `0x5a`). A regroup after it still moves the cursor to the
+/// first row.
 #[test]
 fn an_entry_added_above_keeps_the_first_visit_cursor_on_its_row() {
     let name = "first_visit::an_entry_added_above_keeps_the_first_visit_cursor_on_its_row";
