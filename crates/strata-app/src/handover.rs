@@ -159,9 +159,10 @@ pub(crate) fn adopt(column: &Column, collection: &mut CollectionState, marks: &M
     let selected: Vec<EntryId> = marks.selected.iter().copied().filter(listed).collect();
     let provisional = marks.provisional && cursor.is_some_and(|id| selected == [id]);
     let selection = &mut collection.selection;
-    // The browser's anchor, as GTK extends a Shift range from it after a reload; the cursor
-    // when it has none.
-    let anchor = marks.anchor.filter(listed).or(cursor);
+    // The browser's anchor, as GTK extends a Shift range from it after a reload, or none when
+    // it has none: GTK's Shift+click then selects the entry alone (finding lgse/strata#2551),
+    // and the keyboard's Shift+arrow anchors at the cursor first on both.
+    let anchor = marks.anchor.filter(listed);
     let shown = selection.cursor() == cursor
         && selection.anchor() == anchor
         && selection.is_provisional() == provisional
@@ -279,8 +280,12 @@ fn give(shown: &Shown<'_>, browser: &Browser, held: &mut Held, handed: Handed) {
         browser.commit_selection();
     }
     browser.set_selection(depth, &selected, cursor);
-    if let Some(anchor) = selection.anchor().and_then(position) {
-        browser.set_selection_anchor(depth, anchor);
+    // The view's anchor, or none: the browser's `set_selection` takes the cursor's for one it
+    // lacks, which a later adopt would hand back to a view that has none, as after a first
+    // visit, and a Shift+click would range from it (finding lgse/strata#2551).
+    match selection.anchor().and_then(position) {
+        Some(anchor) => browser.set_selection_anchor(depth, anchor),
+        None => browser.clear_selection_anchor(depth),
     }
 }
 

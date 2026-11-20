@@ -180,3 +180,38 @@ fn second_press_drag_and_ctrl_drag_keep_selection_without_activating_folder() {
         },
     );
 }
+
+/// As [`shift_click_after_a_load_selects_the_entry_alone`], with an entry listed between: the
+/// browser's marks come again then, and must bring the view no anchor the browser took for
+/// the first visit's cursor (finding lgse/strata#2551, met again in the binary, where the
+/// folder's metadata relists it; `pointer v3` seed `0x18`).
+#[test]
+fn a_shift_click_after_a_load_and_a_new_entry_selects_the_entry_alone() {
+    staged_after(
+        "clicks::a_shift_click_after_a_load_and_a_new_entry_selects_the_entry_alone",
+        None,
+        || write_mode("list"),
+        |backend| {
+            let folder = fixture();
+            backend.open(folder.path());
+            now(backend.ready()).expect("the first listing");
+            let kept = Remembered::default();
+            for step in [
+                json!({ "click": { "entry": "documents" }, "count": 2 }),
+                json!({ "wait": { "directory": "documents" } }),
+                json!({ "wait": { "focused": "notes.txt" } }),
+            ] {
+                passes(&backend, &kept, &step);
+            }
+            let written = folder.path().join("documents").join("zz.txt");
+            std::fs::write(written, "z\n").expect("a file behind the window");
+            for step in [
+                json!({ "wait": { "present": { "entry": "zz.txt" } } }),
+                json!({ "click": { "entry": "report.md" }, "mods": ["shift"] }),
+                json!({ "wait": { "selected": ["report.md"] }, "timeout_ms": 3000 }),
+            ] {
+                passes(&backend, &kept, &step);
+            }
+        },
+    );
+}
