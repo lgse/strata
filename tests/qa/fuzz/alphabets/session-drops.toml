@@ -1,0 +1,110 @@
+# The session host's drops from another process (F5): content another application drags into
+# the List view on the canonical fixture, with Rune's replays in a real window in a private
+# headless sway (`host = "session"`) and GTK's on Xvfb. The source is the runner's own
+# (`tests/qa/foreign_drag_source.py`), as the `content_drops` scenarios start it, on each
+# target's display: a GTK window on X11 for GTK, a native Wayland one beside the window on sway
+# for Rune, so the drag crosses each display's data device.
+# - text offered as content, dropped onto a folder of the fixture's root, which saves it there
+#   as a new file (`dropped text.txt`, a numbered name when it is taken), or onto the pane's own
+#   background, which saves it in the folder shown;
+# - folders opened in place (single-click activation), the parent and Back, clicks on files,
+#   undo, and a file made and removed behind the application's back.
+#
+# Each drop is one action: the offer written to the run's environment, the source started and
+# named `foreign`, the drag from it, the wait for the source to hear the drag end ("Foreign drag
+# finished", which a refused drop reports too), and the source stopped. A shrunk sequence that
+# keeps a drag without its source has the drag refused on both targets alike.
+#
+# Starting the source takes the X focus from GTK's window on the window-manager-less Xvfb,
+# which nothing gives back, so GTK reports no focus after a sequence's first drop and
+# lgse/strata#2595's `toolkit` rules excuse it: this alphabet compares no focus after its first
+# drop (owner.md, F5 item 1).
+#
+# Left out, with why:
+# - An image offered as content. GTK saves it as GDK encodes the texture it decodes
+#   (`texture.save_to_png_bytes`), Rune a PNG's bytes as offered, so the two files differ in
+#   their bytes with the same pixels (lgse/strata#2645). `foreign-content-saves-new-files`'
+#   `image` runs hold the saved picture on both targets.
+# - Files and folders offered by path (`foreign-folder-drags-validate`, `content_drops`'
+#   `image_file`): a move asks the source to delete, which it reports otherwise, and a name
+#   already there raises the conflict dialog (`entry_management`'s). A later version.
+# - Links and web addresses offered as content: they need the runner's image server (`http`),
+#   which a sequence does not start yet.
+# - Drops onto the sidebar, the tab strip and the location bar: `content_drops` covers them as
+#   scenarios, and the sidebar's places are outside the fixture.
+# - Escape during the drag and modifiers changed during it: wlroots' drag grab gives no client
+#   a key then (A19.md, "Open").
+# Version 1 was F5's draft, never merged: it dropped PNG content too, which met
+# lgse/strata#2645 in 19 of its 20 smoke seeds.
+area = "session-drops"
+version = 2
+about = "List on the canonical fixture through the compositor (Rune on the session host): text content dragged from another process onto the root's folders and the pane's background, folders opened in place, the parent and Back, clicks on files, undo, and a file made and removed behind the application's back"
+header = '{"modes":["list"],"session_bus":true,"prefs":{"type_to_search":false,"single_click_previews":false,"explorer_folder_clicks":1,"explorer_file_clicks":2}}'
+host = "session"
+
+[[action]]
+name = "drop-text-onto-folder"
+weight = 6
+steps = [
+  '{"fs":{"path":"$environment/offer.txt","write":"Selected words\nsecond line"}}',
+  '{"foreign":{"offers":[{"mime":"text/plain;charset=utf-8","path":"$environment/offer.txt"}]},"as":"foreign","when":{"all":[{"directory":"$root"},{"present":{"entry":"<folder>"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}',
+  '{"drag":{"from":{"kept":"foreign"},"to":{"entry":"<folder>"}},"when":{"all":[{"directory":"$root"},{"present":{"entry":"<folder>"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}',
+  '{"foreign_label":"Foreign drag finished"}',
+  '{"foreign_stop":true}',
+]
+choose.folder = ["archive", "documents", "pictures"]
+
+# The pane's empty space below its rows: the folders the walk shows hold at most six rows, and
+# the saved files add a few, so the point stays blank.
+[[action]]
+name = "drop-text-onto-background"
+weight = 4
+steps = [
+  '{"fs":{"path":"$environment/offer.txt","write":"Selected words\nsecond line"}}',
+  '{"foreign":{"offers":[{"mime":"text/plain;charset=utf-8","path":"$environment/offer.txt"}]},"as":"foreign","when":{"all":[{"directory":"<pane>"},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}',
+  '{"drag":{"from":{"kept":"foreign"},"to":{"pane":"<pane>"},"to_at":["50%",-60]},"when":{"all":[{"directory":"<pane>"},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}',
+  '{"foreign_label":"Foreign drag finished"}',
+  '{"foreign_stop":true}',
+]
+choose.pane = ["$root", "documents", "pictures"]
+
+# Opens the folder in place: single-click activation.
+[[action]]
+name = "open-folder"
+weight = 4
+steps = ['{"click":{"entry":"<folder>"},"when":{"all":[{"present":{"entry":"<folder>"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}']
+choose.folder = ["archive", "documents", "pictures"]
+
+[[action]]
+name = "click-file"
+weight = 3
+steps = ['{"click":{"entry":"<file>"},"when":{"all":[{"present":{"entry":"<file>"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}']
+choose.file = ["readme.md", "todo.txt", "notes.txt", "photo.txt", "dropped text.txt"]
+
+[[action]]
+name = "undo"
+weight = 2
+steps = ['{"key":"ctrl+z","when":{"all":[{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}']
+
+[[action]]
+name = "dismiss"
+weight = 1
+steps = ['{"key":"Escape","when":{"any":[{"dialog":true},{"menu_items":{}}]}}']
+
+# The parent of the fixture's own folder is /tmp, which holds other runs' folders: the parent
+# and Back stay inside the fixture.
+[[action]]
+name = "back"
+weight = 4
+steps = ['{"key":"<key>","when":{"all":[{"not":{"directory":"$root"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}']
+choose.key = ["alt+Left", "alt+Up"]
+
+[[action]]
+name = "write"
+weight = 1
+steps = ['{"fs":{"path":"fuzz-a.txt","write":"fuzz\n"},"when":{"file":{"path":"$fixture/fuzz-a.txt","exists":false}}}']
+
+[[action]]
+name = "remove"
+weight = 1
+steps = ['{"fs":{"path":"fuzz-a.txt","remove":true},"when":{"file":{"path":"$fixture/fuzz-a.txt","exists":true}}}']

@@ -636,6 +636,24 @@ Found by the package's agent, 2026-11-12, against A1's five items above.
    change in `roots.rs` by hand (`docs/rune/shared-state.md`, "Merging from `main`"). Should
    the rule move to a shared crate later, with GTK calling it? Source: A10, 2026-11-14.
 
+### F5: Session-host fuzzing
+
+1. **#2595's rules for a window another client activates** (finding
+   [#2595](https://github.com/lgse/strata/issues/2595)). `session-drops` starts a drag source
+   in another process, whose window takes the X focus from GTK's browser on the QA's Xvfb,
+   which runs no window manager to give it back: GTK then reports no focus at all
+   (`context.window_focused` false), and Rune's window on sway keeps the keyboard. The map's
+   `toolkit` rules for #2595, narrowed on 2026-11-19 to "while GTK's window has no keyboard at
+   all", excuse it as written, so its smoke tier agrees in 20 of 20 under them and compares
+   no focus after a sequence's first drop. The ruling names the floating chooser. Does it
+   cover another client's window too? Meanwhile: the rules apply as written, unchanged, and
+   `session-drops` is held to them. Source: F5, 2026-11-19.
+2. **A foreign PNG drop's bytes** (finding [#2645](https://github.com/lgse/strata/issues/2645)).
+   GTK re-encodes a dropped PNG through GDK and Rune saves the bytes offered: the same
+   pixels, other bytes. Should a fuzz alphabet drop images under a `toolkit` rule on the saved
+   files, or leave them to `foreign-content-saves-new-files`, which checks the pixels?
+   Meanwhile: `session-drops` leaves image drops out, with no rule. Source: F5, 2026-11-19.
+
 ### Packages added later
 
 - **A branch name for a package with no archived issue.** Branch names keep the package's

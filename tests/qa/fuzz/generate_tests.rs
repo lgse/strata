@@ -132,8 +132,8 @@ pub(crate) fn an_alphabet_is_refused_for_what_a_replay_could_not_run() {
             "unknown field",
         ),
         (
-            with_header(r#"{"modes":["columns"],"session_bus":true}"#),
-            "does not take the header's session_bus",
+            with_header(r#"{"modes":["columns"],"portal":true}"#),
+            "does not take the header's portal",
         ),
         (
             with_header(r#"{"modes":["columns","list"]}"#),
@@ -209,9 +209,31 @@ pub(crate) fn a_sequence_is_scenario_text_and_takes_only_steps_that_act() {
         (json!({"key": "Down", "modes": ["columns"]}), false),
         (json!({"layout": "ru"}), false),
         (json!({"screenshot": "a.png"}), false),
+        // A drag source in another process, the runner's own (`peers.rs`): the step that starts
+        // it names it, and no other step names anything.
+        (
+            json!({"foreign": {"offers": []}, "as": "foreign", "when": {"directory": "a"}}),
+            true,
+        ),
+        (json!({"foreign_label": "Foreign drag finished"}), true),
+        (json!({"foreign_stop": true}), true),
+        (json!({"foreign_label": "done", "as": "label"}), false),
+        (
+            json!({"drag": {"from": {"kept": "foreign"}, "to": {"entry": "a"}}}),
+            true,
+        ),
+        (json!({"http": "aGk=", "as": "url"}), false),
     ] {
         assert_eq!(check_step(&step).is_ok(), accepted, "{step}");
     }
+    // A sequence may ask for a private session bus, which the replay starts.
+    let with_bus = Sequence {
+        name: "fuzz-sample-v1-0000000000000002".to_owned(),
+        header: r#"{"scenario":"fuzz-sample-v1-0000000000000002","modes":["columns"],"session_bus":true}"#
+            .to_owned(),
+        steps: vec![r#"{"key":"Down"}"#.to_owned()],
+    };
+    assert!(with_bus.load().is_ok(), "a sequence takes session_bus");
 }
 
 pub(crate) fn a_sequence_s_name_says_the_alphabet_version_and_the_seed_it_came_from() {

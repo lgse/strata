@@ -3113,10 +3113,52 @@ sequence only together with the alphabet's version, so the version is part of th
   selected), then Shift+click `report.md`. GTK selects `report.md` alone in 24 of 24 replays;
   Rune ranges from `notes.txt` in 24 of 24 offscreen, and in 4 of 24 on the session host, so
   timing decides on Rune.
-- **Why:** not traced. #2551 fixed the same after a double click (`single/first_visit.rs`
-  keeps the anchor missing). An in-process hosted test of the single click, with the harness's
-  preferences, the rest's wait and the invariants step, selected `report.md` alone, so it
-  could not hold the fault and was not kept; what the binary does differently is open.
+- **Why** (traced by F5's second slice, 2026-11-19, with a backtrace of every anchor the
+  launched binary set): the first visit leaves the cursor on `notes.txt` and no anchor, as
+  #2551 fixed it. The view then hands that cursor to the browser (`handover::hand_over`, as
+  `single/first_visit.rs` says, finding #2427), and the shared browser's
+  `Browser::set_selection` takes the cursor for an anchor it lacks
+  (`crates/strata-fs/src/app/navigation/fill.rs`, `set_selection`), which GTK's browser, given
+  no cursor on a first visit, never meets. The next time the view adopts the browser's marks
+  (`handover::adopt`, from the window's `poll`) it takes that anchor, and would take the cursor
+  for a missing one besides (`marks.anchor.filter(listed).or(cursor)`). The launched binary's
+  idle loop (`qa::block_on`) applies such an adopt between two steps; an in-process test
+  turns the host only inside its steps, so its Shift+click came first, which is why no
+  in-process test met it. One does with a change to the folder between the two clicks (a file
+  written there), which makes the view adopt the marks first; F5 tried it, and it fails as the
+  binary does.
+- **What a fix takes:** not small. Filtering the echo out in `adopt` alone (tried, and
+  reverted) leaves the browser holding the anchor the view no longer has, and the
+  `browser-view` invariant then broke after a drop in 4 of 20 `session-drops` seeds. The fix is
+  one of: the first visit's cursor kept in the view without handing it over, as
+  `handover::Kept` keeps a neighbour after a move out (a `contract` change to the shared
+  handover rule; #2629's neighbour takes an anchor the same way, through C1's sync); or the
+  shared browser leaving a missing anchor missing in `set_selection`, a `strata-fs` change
+  GTK shares, so `main`'s first.
+- **Replay it offscreen.** The parked sequence holds the bug reliably only with
+  `--host offscreen`, where Rune ranges every time. Parked lines carry no host, so
+  `replay --parked` runs it on `session-pointer`'s session host, where Rune ranges only
+  about one time in six and a survey can read it as fixed: replay it with
+  `./scripts/qa-fuzz.sh replay tests/qa/fuzz/corpus/session-pointer/fuzz-session-pointer-v3-0000000000000009.jsonl --parked --target gtk,rune --host offscreen`.
 - **Concerns:** the sequence, parked in `tests/qa/fuzz/corpus/session-pointer/`; A9's
   `pointer` alphabet clicks a folder then Shift+clicks too, and has not met it in its tiers.
-- **State:** open, unowned: [A9](packages/A9.md) is told.
+- **State:** open, unowned: [A9](packages/A9.md) is told. The fix waits for a `contract`
+  pull request to the handover rule or a `main` change to the browser's, which the coordinator
+  places.
+
+### #2645: a foreign PNG drop saves different bytes: GTK re-encodes it through GDK, Rune keeps the bytes offered
+
+- **Code:** `exception` (`toolkit`), asked for, not ruled. [Issue](https://github.com/lgse/strata/issues/2645),
+  filed on 2026-11-19 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** in [F5](packages/F5.md)'s `session-drops v1` smoke tier (a draft, never merged),
+  GTK against Rune, in 19 of 20 seeds: PNG content (3 by 2 pixels) dragged from another process
+  onto a folder saves `image.png` there on both targets, 107 bytes on GTK and 88 on Rune.
+- **Why:** GTK decodes the content to a texture and saves `texture.save_to_png_bytes()`
+  (`src/ui/browser/content_drop.rs`); Rune keeps a PNG's bytes as offered and encodes only
+  another format (`crates/strata-app/src/dnd/content/decode.rs`, `png_of`). The pixels are the
+  same; the bytes are GDK's encoder's, which no Rune encoder reproduces.
+- **Concerns:** `foreign-content-saves-new-files`' `image` runs, which check the saved
+  picture's size and pixels on both targets and pass. No normalisation rule is added:
+  `session-drops v2` leaves image drops out.
+- **State:** open: the toolkit exception is the owner's to rule if a fuzz alphabet is to drop
+  images; nothing waits on it meanwhile.
