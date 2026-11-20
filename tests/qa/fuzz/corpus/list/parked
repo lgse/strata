@@ -12,4 +12,10 @@
 #
 # v4, 0x08 and 0x14 are kept unparked: a revisit by Return lost the remembered position on Rune
 # (lgse/strata#2640), fixed in F4's round 2. Version 4 was that round's draft, never merged.
+#
+# v5, 0x1e: a Shift range across hiding and showing hidden files moves Rune's anchor
+# (lgse/strata#2643); v5, 0x56: a click while a menu its Escape left open shows
+# (lgse/strata#2644). Both F4's round 2, shrunk to 7 and 5 steps, confirmed 3 of 3.
 v3-0000000000000062 divergence lgse/strata#2510
+v5-000000000000001e divergence lgse/strata#2643
+v5-0000000000000056 divergence lgse/strata#2644

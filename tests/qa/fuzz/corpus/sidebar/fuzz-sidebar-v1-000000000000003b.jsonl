@@ -1,0 +1,4 @@
+{"scenario":"fuzz-sidebar-v1-000000000000003b","modes":["columns"],"prefs":{"type_to_search":false}}
+{"key":"shift+Down"}
+{"key":"Menu"}
+{"click":{"sidebar":"Home"},"button":3,"when":{"present":{"sidebar":"Home"}}}

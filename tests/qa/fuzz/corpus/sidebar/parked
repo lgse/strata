@@ -8,5 +8,26 @@
 # keyboard", in the cases finding lgse/strata#2406's fix leaves open: 0x0e after Unpin of the
 # focused row, and 0x10 after a drag of a sidebar row while the row's menu is open, which
 # GTK's menu swallows and Rune's does not. The sequences are the seeds'.
+#
+# F4's round 2 shrank version 1's classes across the targets, each confirmed 3 of 3, and
+# version 3 leaves them out: 0x16 and 0x1c, a row's drag moves Rune's keyboard to the sidebar
+# (lgse/strata#2646); 0x18 and 0x61, the Menu key after the toggle's click (lgse/strata#2647);
+# 0x1a and 0x1e, Ctrl+B with the keyboard on no entry (lgse/strata#2648); 0x23, the header's
+# arrows (lgse/strata#2649); 0x1d and 0x3b, a right-click while a menu is open
+# (lgse/strata#2644); 0x1b, a drag across an open menu (lgse/strata#2406); 0x31, Shift+Tab from
+# the files (lgse/strata#2379). Version 2, that round's draft, met 0x0f, Shift+Up shrinking a
+# range to one folder (lgse/strata#2650).
 v1-000000000000000e divergence lgse/strata#2406
 v1-0000000000000010 divergence lgse/strata#2406
+v1-0000000000000016 divergence lgse/strata#2646
+v1-0000000000000018 divergence lgse/strata#2647
+v1-000000000000001a divergence lgse/strata#2648
+v1-000000000000001b divergence lgse/strata#2406
+v1-000000000000001c divergence lgse/strata#2646
+v1-000000000000001d divergence lgse/strata#2644
+v1-000000000000001e divergence lgse/strata#2648
+v1-0000000000000023 divergence lgse/strata#2649
+v1-0000000000000031 divergence lgse/strata#2379
+v1-000000000000003b divergence lgse/strata#2644
+v1-0000000000000061 divergence lgse/strata#2647
+v2-000000000000000f divergence lgse/strata#2650

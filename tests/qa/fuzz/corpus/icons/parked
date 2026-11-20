@@ -5,4 +5,11 @@
 # v2, 0x08: End, a Shift+click on documents, Return on it: GTK activates the selection and opens
 # Open With, Rune opens the folder (lgse/strata#2641). Shrunk from 41 steps to 3, confirmed 3 of
 # 3 (F4's round 2). Version 2 was F4's draft, never merged.
+#
+# v1, 0x1a: Page_Down, Shift+Home, F5: GTK's browser cursor is the range's last newly selected
+# entry (lgse/strata#2552, oracle). v3, 0x44: a Shift+click while a menu its Escape left open
+# shows (lgse/strata#2644). v3, 0x5a, a file listed above a first visit's cursor
+# (lgse/strata#2642), is kept unparked: fixed in F4's round 2.
+v1-000000000000001a oracle lgse/strata#2552
 v2-0000000000000008 divergence lgse/strata#2641
+v3-0000000000000044 divergence lgse/strata#2644
