@@ -3139,7 +3139,8 @@ sequence only together with the alphabet's version, so the version is part of th
   `--host offscreen`, where Rune ranges every time. Parked lines carry no host, so
   `replay --parked` runs it on `session-pointer`'s session host, where Rune ranges only
   about one time in six and a survey can read it as fixed: replay it with
-  `./scripts/qa-fuzz.sh replay tests/qa/fuzz/corpus/session-pointer/fuzz-session-pointer-v3-0000000000000009.jsonl --parked --target gtk,rune --host offscreen`.
+  `./scripts/qa-fuzz.sh replay tests/qa/fuzz/corpus/session-pointer/fuzz-session-pointer-v3-0000000000000009.jsonl --target gtk,rune --host offscreen`
+  (a file named is replayed whether or not it is parked; `--parked` takes none).
 - **Concerns:** the sequence, parked in `tests/qa/fuzz/corpus/session-pointer/`; A9's
   `pointer` alphabet clicks a folder then Shift+clicks too, and has not met it in its tiers.
 - **State:** open, unowned: [A9](packages/A9.md) is told. The fix waits for a `contract`
