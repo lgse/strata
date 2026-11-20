@@ -262,9 +262,14 @@ fn assert_saved_list_and_drops(manager: &PreferenceManager) {
             ListColumnId::Type,
             ListColumnId::Modified,
             ListColumnId::Mode,
+            ListColumnId::Duration,
+            ListColumnId::Dimensions,
+            ListColumnId::Created,
         ]
     );
     assert_eq!(manager.list_hidden_columns(), vec![ListColumnId::Mode]);
+    assert!(manager.is_list_column_visible(ListColumnId::Duration));
+    assert!(!manager.is_list_column_visible(ListColumnId::Dimensions));
     assert_eq!(
         manager.cross_volume_drop_strategy(),
         CrossVolumeDropStrategy::Move

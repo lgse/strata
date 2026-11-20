@@ -42,7 +42,7 @@ impl PreferenceManager {
     }
 
     pub fn browser_list_columns(&self) -> Option<ListColumns> {
-        self.preferences.borrow().browser_list_columns
+        self.preferences.borrow().browser_list_columns.clone()
     }
 
     pub fn set_browser_list_columns(&self, columns: Option<ListColumns>) {
@@ -51,7 +51,7 @@ impl PreferenceManager {
     }
 
     pub fn chooser_list_columns(&self) -> Option<ListColumns> {
-        self.preferences.borrow().chooser_list_columns
+        self.preferences.borrow().chooser_list_columns.clone()
     }
 
     pub fn set_chooser_list_columns(&self, columns: Option<ListColumns>) {
@@ -81,11 +81,28 @@ impl PreferenceManager {
         if column == ListColumnId::Name {
             return true;
         }
-        !self.list_hidden_columns().contains(&column)
+        let preferences = self.preferences.borrow();
+        if column.definition().optional {
+            preferences.list_shown_columns.contains(&column)
+        } else {
+            !preferences.list_hidden_columns.contains(&column)
+        }
     }
 
     pub fn set_list_column_visible(&self, column: ListColumnId, visible: bool) {
-        if column == ListColumnId::Name {
+        if column == ListColumnId::Name || self.is_list_column_visible(column) == visible {
+            return;
+        }
+        if column.definition().optional {
+            let mut preferences = self.preferences.borrow_mut();
+            preferences
+                .list_shown_columns
+                .retain(|&item| item != column);
+            if visible {
+                preferences.list_shown_columns.push(column);
+            }
+            drop(preferences);
+            self.save_preferences();
             return;
         }
         let mut hidden = self.list_hidden_columns();
@@ -121,15 +138,15 @@ impl PreferenceManager {
             let mut prefs = self.preferences.borrow_mut();
             prefs.list_column_order = default_list_column_order();
             prefs.list_hidden_columns.clear();
+            prefs.list_shown_columns.clear();
         }
         self.save_preferences();
     }
 
     pub fn list_visible_columns(&self) -> Vec<ListColumnId> {
-        let hidden = self.list_hidden_columns();
         self.list_column_order()
             .into_iter()
-            .filter(|col| *col == ListColumnId::Name || !hidden.contains(col))
+            .filter(|&column| self.is_list_column_visible(column))
             .collect()
     }
 

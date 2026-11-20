@@ -99,6 +99,7 @@ fn refill_bound_row(bound: &BoundRow, item: &gtk::ListItem, row: &gtk::Box, entr
             && !text.is_empty()
             && !actively_renaming,
     );
+    crate::ui::modified_date::set_modified_date(&bound.modified, Some(entry), "");
 }
 
 impl ViewState {

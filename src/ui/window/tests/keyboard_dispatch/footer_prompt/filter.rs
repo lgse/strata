@@ -318,6 +318,8 @@ fn mark_follows_tenxer_mode(
     wait_footer(fixture, &format!("{mode:?}: 10xer shows the mark"), || {
         fixture.shortcuts.filter_mark().as_deref() == Some("filter: zzz")
     });
+    // The hidden field drops focus; its blur check must run while still in 10xer.
+    pump(40);
     preferences.set_tenxer_mode(false);
     wait_footer(
         fixture,
@@ -356,7 +358,11 @@ fn default_filter_shows_the_result_total_without_a_footer_mark() {
                 select_named(&fixture, "beta.txt");
                 focus_files(&fixture);
                 wait_footer(&fixture, &format!("{mode:?}: seed selection"), || {
-                    fixture.shortcuts.count_text().0 == "1 file selected (6 B)"
+                    fixture
+                        .shortcuts
+                        .count_text()
+                        .0
+                        .starts_with("beta.txt (6 B)")
                 });
                 let directory_count = fixture.shortcuts.count_text();
                 assert_eq!(fixture.shortcuts.filter_mark(), None, "{mode:?}");

@@ -114,6 +114,7 @@ fn apply_sort(fixture: &Fixture, awaited: bool) {
     fixture.browser.pending_sort.set(Some((17, 0)));
     if awaited {
         fixture.browser.finish_awaited_sort(SortFill {
+            media: None,
             generation: 17,
             depth: 0,
             origin: SortOrigin::Chosen,

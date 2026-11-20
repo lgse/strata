@@ -150,3 +150,42 @@ fn recursive_folder_selection_navigates_without_accepting() {
         },
     );
 }
+
+#[test]
+fn clicking_outside_location_edit_closes_path_entry() {
+    crate::test_support::gtk_test(
+        "ui::chooser::tests::acceptance::open_paths::clicking_outside_location_edit_closes_path_entry",
+        || {
+            crate::ui::prepare_portal_ui();
+            let root = tempfile::tempdir().expect("fixture");
+            let (state, _result) = open_chooser(request(root.path().to_path_buf()));
+            let browser = state.view.browser();
+            wait_listed(&browser, 0);
+
+            state.view.begin_location_edit();
+            wait_until(|| state.view.location_edit_is_active());
+
+            let point = state
+                .accept_button
+                .compute_point(&state.window, &gtk::graphene::Point::new(2.0, 2.0))
+                .expect("accept button position in window");
+
+            let controllers = state.window.observe_controllers();
+            let clicks: Vec<_> = (0..controllers.n_items())
+                .filter_map(|index| controllers.item(index).and_downcast::<gtk::GestureClick>())
+                .filter(|click| click.propagation_phase() == gtk::PropagationPhase::Capture)
+                .collect();
+            assert!(!clicks.is_empty(), "capture click gestures installed");
+
+            for click in clicks {
+                click.emit_by_name::<()>(
+                    "pressed",
+                    &[&1i32, &f64::from(point.x()), &f64::from(point.y())],
+                );
+            }
+
+            wait_until(|| !state.view.location_edit_is_active());
+            state.window.close();
+        },
+    );
+}

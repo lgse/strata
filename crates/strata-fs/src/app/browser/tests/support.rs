@@ -271,6 +271,12 @@ pub(super) fn pump_until(condition: impl Fn() -> bool) {
     }
 }
 
+/// Runs what a test left queued; another test thread would abort dispatching it.
+pub(super) fn drain_main_context() {
+    let context = glib::MainContext::default();
+    while context.iteration(false) {}
+}
+
 pub(super) fn finish_count(events: &RefCell<Vec<BrowserEvent>>) -> usize {
     events
         .borrow()

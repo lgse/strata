@@ -39,6 +39,7 @@ mod visual;
 use cursor::{place_committed_cursor, place_cursor, visible_positions};
 use fill::{adopt_selected_locations, adopt_selected_positions};
 use location_set::LocationSet;
+pub(crate) use metadata::sort_metadata_missing;
 #[cfg(test)]
 use monitored::insert_monitored_entry;
 pub use ordering::{compare_display_names, sort_entries};

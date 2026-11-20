@@ -119,28 +119,40 @@ pub(in crate::ui) fn non_default_preferences() -> Preferences {
                 vec![PathBuf::from("Backup")],
             ),
         ]),
-        browser_list_columns: Some(ListColumns {
-            name: None,
-            mode: 110,
-            size: 80,
-            kind: 95,
-            modified: 140,
-        }),
-        chooser_list_columns: Some(ListColumns {
-            name: Some(280),
-            mode: 100,
-            size: 72,
-            kind: 90,
-            modified: 130,
-        }),
+        browser_list_columns: Some(
+            [
+                (ListColumnId::Mode, 110),
+                (ListColumnId::Size, 80),
+                (ListColumnId::Type, 95),
+                (ListColumnId::Modified, 140),
+                (ListColumnId::Duration, 115),
+            ]
+            .into_iter()
+            .collect(),
+        ),
+        chooser_list_columns: Some(
+            [
+                (ListColumnId::Name, 280),
+                (ListColumnId::Mode, 100),
+                (ListColumnId::Size, 72),
+                (ListColumnId::Type, 90),
+                (ListColumnId::Modified, 130),
+            ]
+            .into_iter()
+            .collect(),
+        ),
         list_column_order: vec![
             ListColumnId::Name,
             ListColumnId::Size,
             ListColumnId::Type,
             ListColumnId::Modified,
             ListColumnId::Mode,
+            ListColumnId::Duration,
+            ListColumnId::Dimensions,
+            ListColumnId::Created,
         ],
         list_hidden_columns: vec![ListColumnId::Mode],
+        list_shown_columns: vec![ListColumnId::Duration],
         keymap: KeymapOverrides {
             default: [("settings", &["<Control>comma", "<Control><Alt>F12"][..])]
                 .into_iter()

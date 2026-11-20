@@ -13,11 +13,9 @@ use gtk::{glib, prelude::*};
 use super::{BrowserMode, ModeViews, column_options, list_factory::ListRow, pane::BoundItems};
 use crate::{
     app::Browser,
-    ui::preferences::{ListColumnId, ListColumns, PreferenceManager},
+    ui::preferences::{ListColumnId, PreferenceManager},
 };
 
-const LIST_COLUMN_WIDTHS: [i32; 5] = [160, 160, 90, 120, 150];
-const LIST_COLUMN_MIN_WIDTHS: [i32; 5] = [160, 80, 70, 80, 110];
 /// How close to a heading's trailing edge a press resizes rather than reorders.
 const RESIZE_EDGE: f64 = 8.0;
 
@@ -40,12 +38,24 @@ impl ListColumnLayout {
         } else {
             preferences.browser_list_columns()
         };
-        let widths = saved.map_or(LIST_COLUMN_WIDTHS, saved_widths);
+        let widths = ListColumnId::ALL.map(|column| {
+            let definition = column.definition();
+            let width = saved.as_ref().and_then(|saved| saved.width(column));
+            Cell::new(width.unwrap_or(definition.width).max(definition.min_width))
+        });
         Self {
-            widths: Rc::new(widths.into_iter().map(Cell::new).collect()),
-            cells: Rc::new((0..5).map(|_| RefCell::new(Vec::new())).collect()),
+            widths: Rc::new(widths.into_iter().collect()),
+            cells: Rc::new(
+                ListColumnId::ALL
+                    .iter()
+                    .map(|_| RefCell::new(Vec::new()))
+                    .collect(),
+            ),
             name_manually_resized: Rc::new(Cell::new(
-                saved.is_some_and(|saved| saved.name.is_some()),
+                saved
+                    .as_ref()
+                    .and_then(|saved| saved.width(ListColumnId::Name))
+                    .is_some(),
             )),
             scale: Rc::new(Cell::new(1.0)),
             drag: Rc::default(),
@@ -79,14 +89,16 @@ impl ListColumnLayout {
 
     pub(super) fn remember(&self) {
         let scale = self.scale.get();
-        let unscaled = |index: usize| (f64::from(self.widths[index].get()) / scale).round() as i32;
-        let saved = Some(ListColumns {
-            name: self.name_manually_resized.get().then(|| unscaled(0)),
-            mode: unscaled(1),
-            size: unscaled(2),
-            kind: unscaled(3),
-            modified: unscaled(4),
-        });
+        let saved = Some(
+            ListColumnId::ALL
+                .into_iter()
+                .filter(|&column| column != ListColumnId::Name || self.name_manually_resized.get())
+                .map(|column| {
+                    let pixels = f64::from(self.widths[column.index()].get());
+                    (column, (pixels / scale).round() as i32)
+                })
+                .collect(),
+        );
         let preferences = PreferenceManager::shared();
         if self.chooser {
             preferences.set_chooser_list_columns(saved);
@@ -121,25 +133,6 @@ impl ListColumnLayout {
             .max()
             .unwrap_or(fallback)
     }
-}
-
-fn saved_widths(saved: ListColumns) -> [i32; 5] {
-    let mut widths = [
-        saved.name.unwrap_or(LIST_COLUMN_WIDTHS[0]),
-        saved.mode,
-        saved.size,
-        saved.kind,
-        saved.modified,
-    ];
-    for (index, width) in widths.iter_mut().enumerate() {
-        *width = list_column_width(index, *width);
-    }
-    widths
-}
-
-/// Name stays shown even when the preferences hide it.
-pub(super) fn column_shown(hidden: &[ListColumnId], column: ListColumnId) -> bool {
-    !hidden.contains(&column) || column == ListColumnId::Name
 }
 
 #[derive(Clone, Copy)]
@@ -391,7 +384,7 @@ pub(super) fn column_resize_handle(
 }
 
 fn list_column_width(index: usize, width: i32) -> i32 {
-    width.max(LIST_COLUMN_MIN_WIDTHS[index])
+    width.max(ListColumnId::ALL[index].definition().min_width)
 }
 
 /// Every label under `cell` whose natural width is capped.
@@ -442,8 +435,8 @@ pub(super) fn apply_columns_layout(
 ) {
     let manager = PreferenceManager::shared();
     let order = manager.list_column_order();
-    let hidden = manager.list_hidden_columns();
-    show_shown_columns(columns, &hidden);
+    let visible = manager.list_visible_columns();
+    show_shown_columns(columns, &visible);
     reorder_headings(headings, &order);
     for bound in bound_items.borrow().iter() {
         let Some(row) = bound.widget.upgrade().and_downcast::<gtk::Box>() else {
@@ -453,9 +446,9 @@ pub(super) fn apply_columns_layout(
     }
 }
 
-fn show_shown_columns(columns: &ListColumnLayout, hidden: &[ListColumnId]) {
+fn show_shown_columns(columns: &ListColumnLayout, visible: &[ListColumnId]) {
     for col in ListColumnId::ALL {
-        let is_visible = column_shown(hidden, col);
+        let is_visible = visible.contains(&col);
         for widget in columns.cells[col.index()]
             .borrow()
             .iter()
@@ -489,19 +482,10 @@ fn reorder_row_cells(row: &gtk::Box, order: &[ListColumnId]) {
     };
     let mut prev_cell: Option<gtk::Widget> = None;
     for col in order {
-        let cell = row_cell(&row_struct, *col);
-        row.reorder_child_after(&cell, prev_cell.as_ref());
-        prev_cell = Some(cell);
-    }
-}
-
-fn row_cell(row: &ListRow, col: ListColumnId) -> gtk::Widget {
-    match col {
-        ListColumnId::Name => row.name_cell.clone(),
-        ListColumnId::Mode => row.mode.clone().upcast(),
-        ListColumnId::Size => row.size.clone().upcast(),
-        ListColumnId::Type => row.kind.clone().upcast(),
-        ListColumnId::Modified => row.modified.clone().upcast(),
+        if let Some(cell) = row_struct.cell(*col) {
+            row.reorder_child_after(&cell, prev_cell.as_ref());
+            prev_cell = Some(cell);
+        }
     }
 }
 
@@ -512,10 +496,13 @@ impl ModeViews {
             return;
         };
         apply_columns_layout(headings, columns, bound_items);
-        if let Some(pane) = &self.list_pane
-            && let Some(button) = &pane.sort_menu
-        {
-            crate::ui::browser::sync_list_sort_menu(&self.browser, pane.depth, button);
+        if let Some(pane) = &self.list_pane {
+            if self.mode == BrowserMode::List {
+                super::list_factory::request_visible_list_details(&self.browser, pane);
+            }
+            if let Some(button) = &pane.sort_menu {
+                crate::ui::browser::sync_list_sort_menu(&self.browser, pane.depth, button);
+            }
         }
     }
 

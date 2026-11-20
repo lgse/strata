@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
-//! Image, camera RAW and embedded thumbnail rendering through pixbuf, ImageMagick and dcraw.
+//! Image, camera RAW and embedded thumbnail rendering through the built-in WebP decoder,
+//! pixbuf, ImageMagick and dcraw.
 
 use std::{
     fs,
@@ -9,6 +10,14 @@ use std::{
 };
 
 use gdk_pixbuf::prelude::*;
+use image::{
+    DynamicImage, ImageDecoder,
+    codecs::{
+        png::{CompressionType, FilterType, PngEncoder},
+        webp::WebPDecoder,
+    },
+    metadata::Orientation,
+};
 
 use super::{
     isobmff,
@@ -113,6 +122,15 @@ pub(super) fn read_gif_dimensions<R: io::Read>(reader: &mut R) -> Option<(i32, i
     positive_dimensions(width, height)
 }
 
+fn decoder_dimensions(decoder: &impl ImageDecoder) -> Option<(i32, i32)> {
+    let (width, height) = decoder.dimensions();
+    positive_dimensions(i32::try_from(width).ok()?, i32::try_from(height).ok()?)
+}
+
+fn read_webp_dimensions<R: io::BufRead + io::Seek>(reader: R) -> Option<(i32, i32)> {
+    decoder_dimensions(&WebPDecoder::new(reader).ok()?)
+}
+
 pub(super) fn image_dimensions(path: &Path) -> Option<(i32, i32)> {
     if let Ok(file) = fs::File::open(path) {
         let mut reader = io::BufReader::new(file);
@@ -125,6 +143,10 @@ pub(super) fn image_dimensions(path: &Path) -> Option<(i32, i32)> {
         }
         let _ = reader.seek(io::SeekFrom::Start(0));
         if let Some(dimensions) = read_gif_dimensions(&mut reader) {
+            return Some(dimensions);
+        }
+        let _ = reader.seek(io::SeekFrom::Start(0));
+        if let Some(dimensions) = read_webp_dimensions(&mut reader) {
             return Some(dimensions);
         }
         if let Some(dimensions) = isobmff::dimensions(&mut reader) {
@@ -152,21 +174,58 @@ pub(super) fn render_pixbuf(
         .map_err(|error| error.to_string())
 }
 
-pub(super) fn render_raw(path: &Path, size: i32) -> Result<Vec<u8>, String> {
-    // Preserve small sources so the preview can bound upscaling by their native dimensions.
-    let info = image_dimensions(path);
-    if let Some((width, height)) =
-        info.and_then(|(width, height)| positive_dimensions(width, height))
+pub(super) fn render_webp(path: &Path, size: i32) -> Result<Vec<u8>, String> {
+    let file = fs::File::open(path).map_err(|error| error.to_string())?;
+    let mut decoder =
+        WebPDecoder::new(io::BufReader::new(file)).map_err(|error| error.to_string())?;
+    if decoder_dimensions(&decoder)
+        .is_none_or(|(width, height)| exceeds_decoded_frame_budget(width, height))
     {
-        if exceeds_decoded_frame_budget(width, height) {
-            return render_oversized(path, size)
-                .ok_or_else(|| "Image dimensions exceed the decoded frame budget".to_owned());
-        }
-        return render_pixbuf(path, size.min(width.max(height)), info)
-            .or_else(|_| render_imagemagick(path, size))
-            .or_else(|_| render_dcraw(path, size));
+        return Err("WebP dimensions exceed the decoded frame budget".to_owned());
     }
-    render_imagemagick(path, size).or_else(|_| render_dcraw(path, size))
+    let orientation = decoder.orientation().unwrap_or(Orientation::NoTransforms);
+    let mut image = DynamicImage::from_decoder(decoder).map_err(|error| error.to_string())?;
+    image.apply_orientation(orientation);
+    let edge = u32::try_from(size).map_err(|error| error.to_string())?;
+    if image.width().max(image.height()) > edge {
+        image = image.thumbnail(edge, edge);
+    }
+    let mut png = Vec::new();
+    image
+        .write_with_encoder(PngEncoder::new_with_quality(
+            &mut png,
+            CompressionType::Fast,
+            FilterType::Adaptive,
+        ))
+        .map_err(|error| error.to_string())?;
+    Ok(png)
+}
+
+pub(super) fn render_raw(path: &Path, size: i32) -> Result<Vec<u8>, String> {
+    render_raster(path, size, image_dimensions(path))
+}
+
+pub(super) fn render_raster(
+    path: &Path,
+    size: i32,
+    dimensions: Option<(i32, i32)>,
+) -> Result<Vec<u8>, String> {
+    let Some((width, height)) =
+        dimensions.and_then(|(width, height)| positive_dimensions(width, height))
+    else {
+        return render_imagemagick(path, size).or_else(|_| render_dcraw(path, size));
+    };
+    if exceeds_decoded_frame_budget(width, height) {
+        return render_oversized(path, size)
+            .ok_or_else(|| "Image dimensions exceed the decoded frame budget".to_owned());
+    }
+    // Preserve small sources so the preview can bound upscaling by their native dimensions.
+    let edge = size.min(width.max(height));
+    // The built-in decoder goes first so WebP never depends on a system pixbuf loader.
+    render_webp(path, edge)
+        .or_else(|_| render_pixbuf(path, edge, dimensions))
+        .or_else(|_| render_imagemagick(path, size))
+        .or_else(|_| render_dcraw(path, size))
 }
 
 pub(super) fn render_camera_raw(path: &Path, size: i32) -> Result<Vec<u8>, String> {

@@ -181,24 +181,24 @@ fn compare_sort_items(left: &SortItem, right: &SortItem, preferences: ViewPrefer
     if preferences.sort_key == SortKey::Unsorted {
         return Ordering::Equal;
     }
-    if preferences.sort_key == SortKey::Created {
-        return compare_created(
-            &left.entry.created_unix_seconds,
-            &right.entry.created_unix_seconds,
-            preferences.sort_direction,
-        )
-        .then_with(|| {
-            compare_configured_names(
-                &left.entry.display_name,
-                &right.entry.display_name,
-                preferences.name_comparison,
-            )
-        })
-        .then_with(|| left.entry.location.compare(&right.entry.location));
+    if let Some(order) = compare_optional_column(&left.entry, &right.entry, preferences) {
+        return order
+            .then_with(|| {
+                compare_configured_names(
+                    &left.entry.display_name,
+                    &right.entry.display_name,
+                    preferences.name_comparison,
+                )
+            })
+            .then_with(|| left.entry.location.compare(&right.entry.location));
     }
 
     let ordering = match preferences.sort_key {
-        SortKey::DeviceOrder | SortKey::Unsorted | SortKey::Created => Ordering::Equal,
+        SortKey::DeviceOrder
+        | SortKey::Unsorted
+        | SortKey::Created
+        | SortKey::Duration
+        | SortKey::Dimensions => Ordering::Equal,
         SortKey::Recency => compare_metadata(
             &left.entry.recent_unix_seconds,
             &right.entry.recent_unix_seconds,
@@ -263,27 +263,27 @@ pub(super) fn compare_entries(
     if preferences.sort_key == SortKey::Unsorted {
         return Ordering::Equal;
     }
-    if preferences.sort_key == SortKey::Created {
-        return compare_created(
-            &left.created_unix_seconds,
-            &right.created_unix_seconds,
-            preferences.sort_direction,
-        )
-        .then_with(|| {
-            compare_configured_names(
-                &left.display_name,
-                &right.display_name,
-                preferences.name_comparison,
-            )
-        })
-        .then_with(|| left.location.compare(&right.location));
+    if let Some(order) = compare_optional_column(left, right, preferences) {
+        return order
+            .then_with(|| {
+                compare_configured_names(
+                    &left.display_name,
+                    &right.display_name,
+                    preferences.name_comparison,
+                )
+            })
+            .then_with(|| left.location.compare(&right.location));
     }
 
     let left_folded = FoldedName::new(&left.display_name);
     let right_folded = FoldedName::new(&right.display_name);
 
     let ordering = match preferences.sort_key {
-        SortKey::DeviceOrder | SortKey::Unsorted | SortKey::Created => Ordering::Equal,
+        SortKey::DeviceOrder
+        | SortKey::Unsorted
+        | SortKey::Created
+        | SortKey::Duration
+        | SortKey::Dimensions => Ordering::Equal,
         SortKey::Recency => compare_metadata(&left.recent_unix_seconds, &right.recent_unix_seconds),
         SortKey::Name => compare_names(
             (&left_folded, &left.display_name),
@@ -442,21 +442,54 @@ fn compare_extensions(
     compare_configured_names(extension(left), extension(right), comparison)
 }
 
-fn compare_created(
-    left: &MetadataValue<i64>,
-    right: &MetadataValue<i64>,
+fn compare_optional_column(
+    left: &FileEntry,
+    right: &FileEntry,
+    preferences: ViewPreferences,
+) -> Option<Ordering> {
+    let direction = preferences.sort_direction;
+    match preferences.sort_key {
+        SortKey::Created => Some(compare_available(
+            known(&left.created_unix_seconds),
+            known(&right.created_unix_seconds),
+            direction,
+        )),
+        SortKey::Duration => Some(compare_available(
+            known(&left.duration_seconds),
+            known(&right.duration_seconds),
+            direction,
+        )),
+        SortKey::Dimensions => Some(compare_available(
+            pixel_count(left),
+            pixel_count(right),
+            direction,
+        )),
+        _ => None,
+    }
+}
+
+fn known<T: Copy>(value: &MetadataValue<T>) -> Option<T> {
+    match value {
+        MetadataValue::Known(value) => Some(*value),
+        _ => None,
+    }
+}
+
+fn pixel_count(entry: &FileEntry) -> Option<u64> {
+    known(&entry.image_dimensions).map(|(width, height)| u64::from(width) * u64::from(height))
+}
+
+fn compare_available<T: Ord>(
+    left: Option<T>,
+    right: Option<T>,
     direction: SortDirection,
 ) -> Ordering {
-    let ordering = compare_metadata(left, right);
-    if direction == SortDirection::Descending
-        && matches!(
-            (left, right),
-            (MetadataValue::Known(_), MetadataValue::Known(_))
-        )
-    {
-        ordering.reverse()
-    } else {
-        ordering
+    match (left, right) {
+        (Some(left), Some(right)) if direction == SortDirection::Descending => right.cmp(&left),
+        (Some(left), Some(right)) => left.cmp(&right),
+        (Some(_), None) => Ordering::Less,
+        (None, Some(_)) => Ordering::Greater,
+        (None, None) => Ordering::Equal,
     }
 }
 

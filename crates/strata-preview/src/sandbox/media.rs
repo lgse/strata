@@ -154,7 +154,7 @@ fn spawn_helper(
     let current = std::env::current_exe().map_err(|error| error.to_string())?;
     let running = PathBuf::from(format!("/proc/{}/exe", std::process::id()));
     let executable = resolve_renderer_executable(&current, &running, output.path())?;
-    let bwrap = crate::trusted_command::resolve("bwrap")
+    let bwrap = crate::trusted_command::resolve_unprivileged("bwrap")
         .map_err(|error| super::sandbox_unavailable(&error))?;
     let backend = if matches!(operation, ParseOperation::PreviewMedia(_)) {
         source.backend

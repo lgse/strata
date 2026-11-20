@@ -594,9 +594,10 @@ fn release_after_close(popover: &gtk::PopoverMenu) {
     });
 }
 
-// GtkModelButton activates on an unpaired release, and some compositors
-// (niri) deliver the release of the click that opened the menu to the
-// popup. A release before any press inside the menu can only be that one.
+// GtkModelButton activates on an unpaired release: some compositors (niri)
+// deliver the release of the click that opened the menu to the popup, and
+// non-primary presses inside the menu are ignored by its primary-only click
+// gesture so their release counts as unpaired and runs the row.
 fn guard_unpaired_release(popover: &gtk::PopoverMenu) -> Rc<Cell<bool>> {
     let pressed_inside = Rc::new(Cell::new(false));
     let seen_press = pressed_inside.clone();
@@ -606,12 +607,24 @@ fn guard_unpaired_release(popover: &gtk::PopoverMenu) -> Rc<Cell<bool>> {
     release_guard.set_propagation_limit(gtk::PropagationLimit::None);
     release_guard.connect_event(move |_, event| match event.event_type() {
         gtk::gdk::EventType::ButtonPress => {
-            seen_press.set(true);
+            if is_primary_button(event) {
+                seen_press.set(true);
+            }
             gtk::glib::Propagation::Proceed
         }
-        gtk::gdk::EventType::ButtonRelease if !seen_press.get() => gtk::glib::Propagation::Stop,
+        gtk::gdk::EventType::ButtonRelease if !seen_press.get() || !is_primary_button(event) => {
+            gtk::glib::Propagation::Stop
+        }
         _ => gtk::glib::Propagation::Proceed,
     });
     popover.add_controller(release_guard);
     pressed_inside
+}
+
+// Touch events do not reach context menus; unlike preview::resize::is_primary_press,
+// this checks only physical mouse buttons.
+fn is_primary_button(event: &gtk::gdk::Event) -> bool {
+    event
+        .downcast_ref::<gtk::gdk::ButtonEvent>()
+        .is_some_and(|button| button.button() == gtk::gdk::BUTTON_PRIMARY)
 }

@@ -91,6 +91,7 @@ fn delayed_sort_cannot_restore_stale_hidden_file_preferences() {
         ..pending
     });
     browser.finish_awaited_sort(SortFill {
+        media: None,
         generation: 1,
         depth: 0,
         origin: SortOrigin::Chosen,
