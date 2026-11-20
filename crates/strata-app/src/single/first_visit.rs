@@ -88,8 +88,8 @@ impl FirstVisit {
 /// views rebuilt shows its own first row, so a regroup or a view switch puts it there (finding
 /// lgse/strata#2427). The memory follows it there. Only a change of the first row with the same
 /// number of rows is a rebuild: an entry added or gone is none, and GTK's list keeps its focus
-/// on the same row then (finding lgse/strata#2642, `icons v3` seed `0x5a`: a file written that lists
-/// first). A pane that shows anything else (another folder, another cursor, a selection)
+/// on the same row then (finding lgse/strata#2642, `icons v3` seed `0x5a`: a file written that
+/// lists first). A pane that shows anything else (another folder, another cursor, a selection)
 /// forgets it. True when the cursor moved.
 pub(super) fn keep_on_first_row(pane: &mut Pane, memory: &Memory) -> bool {
     let Some((depth, id)) = memory.visit_cursor() else {
