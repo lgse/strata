@@ -1,0 +1,3 @@
+{"scenario":"fuzz-columns-v3-0000000000000037","modes":["columns"],"prefs":{"type_to_search":false}}
+{"click":{"entry":"documents"},"when":{"all":[{"present":{"entry":"documents"}},{"not":{"field":{"name":"Rename"}}}]}}
+{"fs":{"path":"documents/fuzz-b.txt","write":"fuzz\n"}}

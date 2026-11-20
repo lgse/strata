@@ -1,0 +1,3 @@
+{"scenario":"fuzz-sidebar-v1-0000000000000016","modes":["columns"],"prefs":{"type_to_search":false}}
+{"drag":{"from":{"sidebar":"Network"},"from_at":["50%","50%"],"to":{"sidebar":"Trash"},"to_at":["50%","1/5"]},"steps":12,"when":{"all":[{"present":{"sidebar":"Network"}},{"present":{"sidebar":"Trash"}}]}}
+{"key":"Tab"}

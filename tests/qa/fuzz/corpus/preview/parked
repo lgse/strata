@@ -9,4 +9,10 @@
 # Escape closes the preview and gives the cursorless column the keyboard; GTK reports its first
 # entry focused with nothing selected and no cursor drawn, Rune the column with no entry. Shrunk
 # from 69 steps to 6 and confirmed three times out of three.
+# v4-0000000000000052: Shift+Delete after F8 from a menu-opened preview: GTK asks to delete
+# permanently, Rune's preview blocks it (F4's round 2).
+# v4-000000000000001b: a RAW failure shown as text: Rune's code view adds its Source name,
+# ruled, and splits the text, the backend's to absorb (F4's round 2).
 v4-000000000000000b oracle lgse/strata#2356
+v4-000000000000001b deviation lgse/strata#2558
+v4-0000000000000052 divergence lgse/strata#2655

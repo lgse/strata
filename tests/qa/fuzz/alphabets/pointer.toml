@@ -40,9 +40,14 @@
 # (`app.dialog`), lgse/strata#2414 on Down off a last row, lgse/strata#2551 (fixed) on a
 # Shift+click after a folder's load, and lgse/strata#2552 on arrows after a marquee; version 2
 # met name-space drags from a selected row moving it (A19's) and a deselecting Ctrl+click
-# (as in lgse/strata#2353). Version 3 sends no keyboard cursor moves, and guards both.
+# (as in lgse/strata#2353). Version 3 sends no keyboard cursor moves, and guards both. Its
+# menu's Escape, guarded on a Rename row, left a menu over several selected entries open, and
+# every later action needs no menu, so the rest of a sequence was skipped (F5's review of
+# lgse/strata#2637: seed 0x06 had a menu open for 24 of its 48 observations). Version 4
+# dismisses any menu, as `chooser` and `session-pointer` v3 do. Version 5 sends no Shift+click
+# after a band, by the owner's ruling of 2026-11-20 (lgse/strata#2667).
 area = "pointer"
-version = 3
+version = 5
 about = "List on the canonical fixture with single-click folder activation, type to search and single-click previews off: folder clicks that open in place, single, Ctrl, Shift and slow second clicks, background clicks, marquee drags from blank pane and name-column space, the context menu by the pointer, Escape, Back and the parent, and a file made and removed behind the application's back"
 header = '{"modes":["list"],"prefs":{"type_to_search":false,"single_click_previews":false,"explorer_folder_clicks":1,"explorer_file_clicks":2}}'
 
@@ -70,10 +75,14 @@ choose.entry = ["documents", "pictures", "readme.md", "todo.txt", "notes.txt", "
 
 # A Shift+click ranges from the anchor, or selects the entry alone where there is none, as
 # after a folder's load; a folder too, without opening it.
+# A Shift+click only where nothing is selected or the focused entry is: after a click or a
+# Ctrl+click, not after a band, which leaves the focus where it was. A marquee leaves no Shift
+# anchor on Rune, where GTK's band makes its first entry one, a ruled deviation
+# (lgse/strata#2667, owner.md, 2026-11-20). A band over the focused row still reaches it.
 [[action]]
 name = "shift-click"
 weight = 4
-steps = ['{"click":{"entry":"<entry>"},"mods":["shift"],"when":{"all":[{"present":{"entry":"<entry>"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}']
+steps = ['{"click":{"entry":"<entry>"},"mods":["shift"],"when":{"all":[{"present":{"entry":"<entry>"}},{"any":[{"selected":[]},{"all":[{"focused":"archive"},{"all_selected":{"contains":["archive"]}}]},{"all":[{"focused":"documents"},{"all_selected":{"contains":["documents"]}}]},{"all":[{"focused":"pictures"},{"all_selected":{"contains":["pictures"]}}]},{"all":[{"focused":"readme.md"},{"all_selected":{"contains":["readme.md"]}}]},{"all":[{"focused":"todo.txt"},{"all_selected":{"contains":["todo.txt"]}}]},{"all":[{"focused":"fuzz-a.txt"},{"all_selected":{"contains":["fuzz-a.txt"]}}]},{"all":[{"focused":"notes.txt"},{"all_selected":{"contains":["notes.txt"]}}]},{"all":[{"focused":"report.md"},{"all_selected":{"contains":["report.md"]}}]},{"all":[{"focused":"spreadsheet.csv"},{"all_selected":{"contains":["spreadsheet.csv"]}}]},{"all":[{"focused":"diagram.txt"},{"all_selected":{"contains":["diagram.txt"]}}]},{"all":[{"focused":"photo.txt"},{"all_selected":{"contains":["photo.txt"]}}]}]},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}']
 choose.entry = ["documents", "pictures", "readme.md", "todo.txt", "notes.txt", "report.md", "diagram.txt", "photo.txt"]
 
 # Two clicks on one file further apart than the double-click interval: two single clicks, so
@@ -123,7 +132,7 @@ name = "menu-dismiss"
 weight = 2
 steps = [
   '{"click":{"entry":"<entry>"},"button":3,"when":{"all":[{"present":{"entry":"<entry>"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}',
-  '{"key":"Escape","when":{"present":{"menu_item":"Rename"}}}',
+  '{"key":"Escape","when":{"menu_items":{}}}',
 ]
 choose.entry = ["documents", "readme.md", "todo.txt", "notes.txt", "diagram.txt"]
 

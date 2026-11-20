@@ -11,9 +11,10 @@
 # again under version 3, where their shrunk steps are the seeds' own. `v3-0e` (#2630) agrees
 # since F4's fix of #2628 and is kept unparked; `v3-0b` is parked on #2627, which #2631
 # duplicates.
+# v3, 0x09 is unparked: lgse/strata#2638 is fixed by F4's round 2 (#2660), and the sequence agrees
+# in 12 of 12 offscreen replays, where it differed in 24 of 24.
 v2-0000000000000009 oracle lgse/strata#2552
 v3-0000000000000003 divergence lgse/strata#2629
 v3-0000000000000005 divergence lgse/strata#2629
 v3-0000000000000008 divergence lgse/strata#2629
-v3-0000000000000009 divergence lgse/strata#2638
 v3-000000000000000b divergence lgse/strata#2627
