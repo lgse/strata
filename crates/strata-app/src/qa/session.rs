@@ -146,13 +146,13 @@ pub(super) fn serve(directory: &OsStr) -> Result<(), String> {
     let protocol = strata_qa::reply_stream()?;
     criticals::capture();
     let settings = startup::initialize_process();
-    let location = launch::location(Some(directory)).ok_or("the argument is not a location")?;
+    let initial = super::initial(directory, &settings)?;
     launch::leave_launch_folder();
     let log = InputLog::from_environment()?;
     let frames = Arc::new(Frames::default());
     let recorder = Arc::clone(&frames);
     let ui = UiThread::claim()?;
-    windowed::run_with(ui, settings, location, move |app| {
+    windowed::run_with(ui, settings, initial, move |app| {
         let link = Link::new(app.handle(), frames);
         start(Target::browser(link), protocol, log, admitted);
         app.on_frame_drawn(move |runtime| recorder.record(runtime))

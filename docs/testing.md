@@ -1320,7 +1320,8 @@ label:
   the original stay `required` or `pending` from the shared file.
 - **A twin starts from what its original starts from.** For each run it
   holds, the header's `tree`, `images`, `fixture_root`, `setup`, `teardown`,
-  `prefs`, `layout`, `portal`, `env`, `session_bus` and `input_method`, with
+  `prefs`, `layout`, `portal`, `env`, `session_bus`, `input_method` and
+  `volume_monitor`, with
   the variant's over them, are its original's. `gtk_settings` is the one key
   of that kind left out: the Rune target reads no GTK settings, so a twin has
   nothing to keep there. A variant's `vars` are read into the steps before

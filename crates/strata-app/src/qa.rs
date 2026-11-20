@@ -53,15 +53,25 @@ use strata_core::logging::criticals;
 use strata_platform::single_instance::{Claim, Launch};
 
 use self::{backend::Rune, input_log::InputLog};
-use crate::{application, host::offscreen::Offscreen, launch, startup};
+use crate::{
+    application::{self, Opening},
+    host::offscreen::Offscreen,
+    launch,
+    settings::Saved,
+    startup,
+};
 
 /// What a wrong `--qa` command line prints. The release workflow fails a release binary that
 /// holds the `usage: strata --qa` prefix, and the QA job requires it in a QA build of the GTK
 /// application; the same prefix here lets both checks cover this binary once they are pointed
 /// at it. It names `strata` because that is what this interface's binary is called at parity.
-const USAGE: &str = "usage: strata --qa <directory|--portal>";
+const USAGE: &str = "usage: strata --qa <directory|--plain|--portal>";
 /// The argument that serves the portal chooser instead of a folder (`src/qa.rs`).
 const PORTAL: &str = "--portal";
+/// The argument of a plain launch, with no folder: the window restores the saved tab session
+/// or opens the default folder, and saves its tabs, as `strata-rune` with no argument does
+/// (`src/qa.rs`, and the runner's `{"restart":{"plain":true}}`).
+const PLAIN: &str = "--plain";
 const OPTION: &str = "--qa";
 /// The GTK window's default size (`src/ui/window`), so `window_width` means the same.
 const SIZE: (f32, f32) = (1200.0, 760.0);
@@ -100,18 +110,30 @@ fn serve(directory: &OsStr) -> Result<(), String> {
     let protocol = strata_qa::reply_stream()?;
     criticals::capture();
     let settings = startup::initialize_process();
-    let location = launch::location(Some(directory)).ok_or("the argument is not a location")?;
+    let initial = initial(directory, &settings)?;
     let primary = claim()?;
     launch::leave_launch_folder();
     let log = InputLog::from_environment()?;
     let ui = startup::UiThread::claim()?;
     application::attach(primary);
-    let host = Offscreen::sized(ui, settings, SIZE).without_animations();
-    host.app().open(location);
+    let mut host = Offscreen::sized(ui, settings, SIZE).without_animations();
+    host.app_mut().start(initial);
     let backend = Rune::new(host, log);
     let commands = strata_qa::command_lines();
     block_on(&backend, strata_qa::serve(&backend, protocol, commands));
+    backend.flush_at_exit();
     Ok(())
+}
+
+/// What the window opens: the folder the argument names, or for `--plain` what a plain launch
+/// opens.
+pub(super) fn initial(directory: &OsStr, settings: &Saved) -> Result<launch::Initial, String> {
+    if directory == PLAIN {
+        return Ok(launch::initial_for(Opening::Plain, settings));
+    }
+    launch::location(Some(directory))
+        .map(launch::Initial::Explicit)
+        .ok_or_else(|| "the argument is not a location".to_owned())
 }
 
 /// This run's process as the primary on the runner's session bus, where a `launch` step's

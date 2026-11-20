@@ -224,6 +224,7 @@ fn start(header: &Header, raw: &Value, run: &Run) -> Start {
         ("env", json!(header.env)),
         ("session_bus", json!(header.session_bus)),
         ("input_method", json!(header.input_method)),
+        ("volume_monitor", json!(header.volume_monitor)),
     ]
 }
 
