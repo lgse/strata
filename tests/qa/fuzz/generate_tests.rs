@@ -144,6 +144,12 @@ pub(crate) fn an_alphabet_is_refused_for_what_a_replay_could_not_run() {
             "is no twin",
         ),
         (with_step(r#"{"key":"Down","as":"moved"}"#), "takes no as"),
+        // The scenario loader, which every sequence goes through, refuses a drag source that
+        // would run without the run's bus.
+        (
+            with_step(r#"{"foreign":{"offers":[]},"as":"foreign"}"#),
+            "foreign need the header's session_bus",
+        ),
         (with_step(r#"{"expect":{"focused":true}}"#), "only asks"),
         (
             with_step(r#"{"fs":{"path":"a","exists":true}}"#),

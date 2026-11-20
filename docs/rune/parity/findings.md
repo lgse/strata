@@ -2846,9 +2846,14 @@ sequence only together with the alphabet's version, so the version is part of th
     false: no mapped widget focused, as in an inactive window) and its browser no focused
     pane: GTK's `null` against Rune's
     on `app.focused`, `app.focused_pane` and `app.panes[].focused`, and any value of
-    `app.directory`. Until A20's review (2026-11-19) they applied whenever GTK's browser had
-    no focused pane, which also excused GTK's keyboard on the sidebar, the header, the
-    location bar or a dialog in every alphabet.
+    `app.directory` in Columns only, where the directory is the focused pane's (narrowed on
+    2026-11-20, F5's [#2656](https://github.com/lgse/strata/pull/2656), by the owner's ruling
+    that day: a single-pane view's directory stays compared). Until A20's review
+    (2026-11-19) they applied whenever GTK's browser had no focused pane, which also excused
+    GTK's keyboard on the sidebar, the header, the location bar or a dialog in every alphabet.
+  - By the owner's ruling of 2026-11-20 they cover a window another client activates on the
+    bare Xvfb too: `session-drops`' foreign drag source, after whose first drop the alphabet
+    still compares the files created, names, contents, selection and directory.
   - The second four apply while Rune's browser has no focused pane and its floating chooser is
     open (`context.toplevels` is `["Copy to"]`, `["Move to"]` or `["Extract to"]`): Rune's
     `null` against any of GTK's on the same fields, and any value of `app.directory`.
@@ -3143,13 +3148,15 @@ sequence only together with the alphabet's version, so the version is part of th
   (a file named is replayed whether or not it is parked; `--parked` takes none).
 - **Concerns:** the sequence, parked in `tests/qa/fuzz/corpus/session-pointer/`; A9's
   `pointer` alphabet clicks a folder then Shift+clicks too, and has not met it in its tiers.
-- **State:** open, unowned: [A9](packages/A9.md) is told. The fix waits for a `contract`
-  pull request to the handover rule or a `main` change to the browser's, which the coordinator
-  places.
+- **State:** open, unowned: [A9](packages/A9.md) is told. Likely fixed by
+  [#2660](https://github.com/lgse/strata/pull/2660)'s `d3b912bfa` (F4's, "hand a view's missing
+  Shift anchor to the browser as none"), which takes both halves: `adopt` takes none for none,
+  and the hand-over clears the browser's anchor when the view has none. Replay offscreen once
+  it lands.
 
 ### #2645: a foreign PNG drop saves different bytes: GTK re-encodes it through GDK, Rune keeps the bytes offered
 
-- **Code:** `exception` (`toolkit`), asked for, not ruled. [Issue](https://github.com/lgse/strata/issues/2645),
+- **Code:** `exception` (`toolkit`), ruled on 2026-11-20 ([`owner.md`](owner.md#ruled)). [Issue](https://github.com/lgse/strata/issues/2645),
   filed on 2026-11-19 as the finding's reference and closed at once: its state is kept here.
 - **Seen:** in [F5](packages/F5.md)'s `session-drops v1` smoke tier (a draft, never merged),
   GTK against Rune, in 19 of 20 seeds: PNG content (3 by 2 pixels) dragged from another process
@@ -3161,8 +3168,9 @@ sequence only together with the alphabet's version, so the version is part of th
 - **Concerns:** `foreign-content-saves-new-files`' `image` runs, which check the saved
   picture's size and pixels on both targets and pass. No normalisation rule is added:
   `session-drops v2` leaves image drops out.
-- **State:** open: the toolkit exception is the owner's to rule if a fuzz alphabet is to drop
-  images; nothing waits on it meanwhile.
+- **State:** ruled by the owner on 2026-11-20: images are left to the scenario. The fuzz
+  alphabet stays text-only, with no map rule, and `foreign-content-saves-new-files` guards image
+  drops by their pixels.
 
 ### #2651: `archive-conflict-keyboard-choices/columns-replace` missed its compression undo once on GTK
 

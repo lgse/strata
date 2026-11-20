@@ -59,7 +59,10 @@ use super::{
         a_run_on_two_targets_names_the_replays_that_differ_and_keeps_its_own_folder,
         each_target_is_held_to_itself_and_rune_to_the_first_gtk_replay_under_the_map,
     },
-    while_tests::a_rule_s_while_holds_it_to_each_side_s_observation,
+    while_tests::{
+        a_rule_s_while_holds_it_to_each_side_s_observation,
+        the_map_keeps_the_directory_compared_outside_columns_while_gtk_has_no_keyboard,
+    },
 };
 
 /// The runner has its own harness, so a test runs only when it is listed here;
@@ -113,4 +116,5 @@ unit_tests! {
     an_undo_then_a_redo_puts_the_tree_back_as_it_was_before_the_undo,
     a_rune_replay_runs_on_the_session_host_where_its_alphabet_or_the_command_says,
     a_session_host_run_names_its_host_and_keeps_its_own_folder,
+    the_map_keeps_the_directory_compared_outside_columns_while_gtk_has_no_keyboard,
 }

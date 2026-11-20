@@ -2185,9 +2185,11 @@ started its source has the drag refused on every target alike.
 Starting the source takes the X focus from GTK's window on the
 window-manager-less Xvfb, which nothing gives back, and GTK then reports no
 focus at all. The `toolkit` rules of lgse/strata#2595 excuse GTK's no focus
-while its window has no keyboard (`context.window_focused` false), so an
-alphabet of drops compares no focus after its first drop. Sway leaves Rune's
-window the keyboard. `session-drops` is the alphabet (F5's).
+while its window has no keyboard (`context.window_focused` false), by the
+owner's ruling of 2026-11-20, so an alphabet of drops compares no focus after
+its first drop. The directory stays compared in a single-pane view: its rule
+applies in Columns only, where the directory is the focused pane's. Sway leaves
+Rune's window the keyboard. `session-drops` is the alphabet (F5's).
 
 #### Tiers and budgets
 

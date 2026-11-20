@@ -636,24 +636,6 @@ Found by the package's agent, 2026-11-12, against A1's five items above.
    change in `roots.rs` by hand (`docs/rune/shared-state.md`, "Merging from `main`"). Should
    the rule move to a shared crate later, with GTK calling it? Source: A10, 2026-11-14.
 
-### F5: Session-host fuzzing
-
-1. **#2595's rules for a window another client activates** (finding
-   [#2595](https://github.com/lgse/strata/issues/2595)). `session-drops` starts a drag source
-   in another process, whose window takes the X focus from GTK's browser on the QA's Xvfb,
-   which runs no window manager to give it back: GTK then reports no focus at all
-   (`context.window_focused` false), and Rune's window on sway keeps the keyboard. The map's
-   `toolkit` rules for #2595, narrowed on 2026-11-19 to "while GTK's window has no keyboard at
-   all", excuse it as written, so its smoke tier agrees in 20 of 20 under them and compares
-   no focus after a sequence's first drop. The ruling names the floating chooser. Does it
-   cover another client's window too? Meanwhile: the rules apply as written, unchanged, and
-   `session-drops` is held to them. Source: F5, 2026-11-19.
-2. **A foreign PNG drop's bytes** (finding [#2645](https://github.com/lgse/strata/issues/2645)).
-   GTK re-encodes a dropped PNG through GDK and Rune saves the bytes offered: the same
-   pixels, other bytes. Should a fuzz alphabet drop images under a `toolkit` rule on the saved
-   files, or leave them to `foreign-content-saves-new-files`, which checks the pixels?
-   Meanwhile: `session-drops` leaves image drops out, with no rule. Source: F5, 2026-11-19.
-
 ### Packages added later
 
 - **A branch name for a package with no archived issue.** Branch names keep the package's
@@ -946,6 +928,21 @@ Rulings of the owner on the parity work, oldest first.
   RUSTSEC-2026-0543 (unmaintained), which comes only through `fitparser`. When to remove the
   `zip` entries is #2618's own `deny.toml` comment ("once docx-rs releases on zip 9"), not part
   of the ruling. Source: the owner, 2026-11-19, through the coordinator.
+
+- **2026-11-20: a window another client activates on the bare Xvfb is #2595's artefact**
+  (finding [#2595](https://github.com/lgse/strata/issues/2595), F5's question). Starting
+  `session-drops`' foreign drag source takes the X focus from GTK's browser on the QA's Xvfb,
+  which runs no window manager to give it back, and GTK then reports no focus. That is
+  excused as #2595's rules say; after the first drop the alphabet still compares the files
+  created, names, contents, selection, directory. `app.directory`'s GTK-side rule for #2595 is
+  narrowed to Columns, where the directory is the focused pane's, so a single-pane view's
+  directory stays compared (`tests/qa/fuzz/normalisation.map`). Source: the owner, 2026-11-20,
+  through the coordinator.
+- **2026-11-20: images dropped from another process are left to the scenario** (finding
+  [#2645](https://github.com/lgse/strata/issues/2645), F5's question). GTK re-encodes a dropped
+  PNG through GDK and Rune saves the bytes offered: the same pixels, other bytes. The fuzz
+  alphabet stays text-only, with no map rule, and `foreign-content-saves-new-files` guards
+  image drops by their pixels. Source: the owner, 2026-11-20, through the coordinator.
 
 ## Housekeeping
 

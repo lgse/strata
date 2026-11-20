@@ -17,8 +17,9 @@
 #
 # Starting the source takes the X focus from GTK's window on the window-manager-less Xvfb,
 # which nothing gives back, so GTK reports no focus after a sequence's first drop and
-# lgse/strata#2595's `toolkit` rules excuse it: this alphabet compares no focus after its first
-# drop (owner.md, F5 item 1).
+# lgse/strata#2595's `toolkit` rules excuse it, by the owner's ruling of 2026-11-20: this
+# alphabet compares no focus after its first drop, and still compares the files created, names,
+# contents, selection and directory.
 #
 # Left out, with why:
 # - An image offered as content. GTK saves it as GDK encodes the texture it decodes
