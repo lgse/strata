@@ -22,7 +22,7 @@ use super::seam::{
     Ctx, Effect, Flow, Hit, KeyInput, PointerInput, PointerPhase, Region, default_pointer,
 };
 use super::{Config, keys};
-use crate::collection::selection::Changed;
+use crate::collection::selection::{Changed, Position};
 use crate::contract::{CollectionGeometry, EntrySource, Point, Rect};
 
 /// Where an input came from, for what the element does after it.
@@ -592,6 +592,11 @@ pub(super) fn on_key<S: 'static>(
     // A copy of the key's transaction, so controllers can match layout-aware chords
     // (`KeyInput::matches`) while the element keeps the real one for its effects.
     let keys = tx.clone();
+    // The restore waiting when the key arrived. A key the controllers take cancels that one,
+    // not one the key's own effect armed: Return that opens a folder shown before arms its
+    // remembered position inside this dispatch, as GTK's restore arms after the press that
+    // opened it (`arm_input_cancel`, `src/ui/browser_modes/navigation.rs`).
+    let waiting = (cfg.get)(s).1.pending.clone();
     let input = KeyInput {
         event,
         physical: tx.physical_key(),
@@ -617,10 +622,19 @@ pub(super) fn on_key<S: 'static>(
         }
     });
     if flow == Flow::Handled {
-        (cfg.get_mut)(s).1.pending = None;
+        drop_waiting_restore(cfg, s, waiting);
         KeyTaken::ByController
     } else {
         KeyTaken::No
+    }
+}
+
+/// A key the controllers took cancels the restore `waiting` when it arrived, not one the key's
+/// own effect armed since.
+fn drop_waiting_restore<S: 'static>(cfg: &Rc<Config<S>>, s: &mut S, waiting: Option<Position>) {
+    let st = (cfg.get_mut)(s).1;
+    if waiting.is_some() && st.pending == waiting {
+        st.pending = None;
     }
 }
 

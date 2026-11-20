@@ -813,6 +813,12 @@ impl Browser {
             .set_selection_anchor(depth, position);
     }
 
+    /// Column `depth` keeps no Shift anchor: a view that holds none hands over its selection,
+    /// and `set_selection` gave the column the cursor's as a default.
+    pub fn clear_selection_anchor(&self, depth: usize) {
+        self.state.borrow_mut().clear_selection_anchor(depth);
+    }
+
     pub fn focus_active(&self) {
         let focus = self.state.borrow().active_focus();
         if let Some((depth, position)) = focus {

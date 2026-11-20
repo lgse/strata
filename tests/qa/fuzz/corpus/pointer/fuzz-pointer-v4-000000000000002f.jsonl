@@ -1,0 +1,5 @@
+{"scenario":"fuzz-pointer-v4-000000000000002f","modes":["list"],"prefs":{"type_to_search":false,"single_click_previews":false,"explorer_folder_clicks":1,"explorer_file_clicks":2}}
+{"click":{"entry":"pictures"},"when":{"all":[{"present":{"entry":"pictures"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}
+{"key":"alt+Up","when":{"all":[{"not":{"directory":"$root"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}
+{"click":{"entry":"pictures"},"when":{"all":[{"present":{"entry":"pictures"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}
+{"click":{"entry":"photo.txt"},"mods":["shift"],"when":{"all":[{"present":{"entry":"photo.txt"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}

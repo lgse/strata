@@ -51,8 +51,11 @@
 # cursor on non-empty columns, and kept `Right`/`l` off `readme.md`, reaching 18 of 20 with `0x05`
 # and `0x0b` meeting lgse/strata#2356 when `seed-file-conflict` wrote into a focused cursorless
 # `archive` column. Version 4 seeds `archive` collisions while focus is outside `archive`.
+# F4's round 1 met a deselecting Ctrl+click (lgse/strata#2353, with the owner; seeds `0x3e` and
+# `0x65`) and a paste routed by the pointer (lgse/strata#2626). Version 5 Ctrl+clicks only
+# entries not selected (F4's round 2).
 area = "clipboard"
-version = 4
+version = 5
 about = "Columns on the canonical fixture, type to search off: Copy, Cut, Paste, Duplicate and Copy path/name by keyboard and entry/background menus, parent and selected-folder paste routing, single, folder, unreplaceable and mixed-paste conflicts resolved by Keep Both, Replace, Merge, Skip, Apply to All and keyboard or dismissed by Escape, Cancel and Close dialog, with Ctrl+Z undo and seeded destination collisions"
 header = '{"modes":["columns"],"prefs":{"type_to_search":false}}'
 
@@ -111,10 +114,12 @@ steps = [
 ]
 choose.folder = ["archive", "documents", "pictures"]
 
+# A Ctrl+click only on an entry not selected: one that takes an entry out of the selection
+# leaves GTK's next key moving from the cursor the click left (lgse/strata#2353).
 [[action]]
 name = "ctrl-click-entry"
 weight = 3
-steps = ['{"click":{"entry":"<entry>"},"mods":["ctrl"],"when":{"all":[{"present":{"entry":"<entry>"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}']
+steps = ['{"click":{"entry":"<entry>"},"mods":["ctrl"],"when":{"all":[{"present":{"entry":"<entry>"}},{"not":{"all_selected":{"contains":["<entry>"]}}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}']
 choose.entry = ["readme.md", "todo.txt", "notes.txt", "report.md", "photo.txt"]
 
 [[action]]

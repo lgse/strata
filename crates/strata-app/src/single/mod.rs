@@ -400,6 +400,8 @@ pub(crate) fn poll<V: SinglePane>(app: &mut App, clock: f64, tx: &mut Tx) -> boo
     let placed = first_visit.settle(pane);
     if placed {
         memory.set_visit_cursor(pane.depth().zip(pane.collection().selection.cursor()));
+        let source = pane.source();
+        memory.set_visit_rows((source.len(), (!source.is_empty()).then(|| source.id_at(0))));
     }
     let kept = first_visit::keep_on_first_row(pane, &memory);
     surface.watch(std::iter::once(pane.listing()), clock, tx) | placed | kept

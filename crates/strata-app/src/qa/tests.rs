@@ -31,6 +31,7 @@ mod modifiers;
 mod ready;
 mod rename;
 mod replaced;
+mod revisit;
 mod right_click;
 mod scroll;
 mod windows;

@@ -1,0 +1,5 @@
+{"scenario":"fuzz-sidebar-v1-000000000000001b","modes":["columns"],"prefs":{"type_to_search":false}}
+{"key":"Right"}
+{"key":"Menu"}
+{"drag":{"from":{"sidebar":"Desktop"},"from_at":["50%","50%"],"to":{"sidebar":"Network"},"to_at":["50%","1/5"]},"steps":12,"when":{"all":[{"present":{"sidebar":"Desktop"}},{"present":{"sidebar":"Network"}}]}}
+{"key":"shift+Tab"}
