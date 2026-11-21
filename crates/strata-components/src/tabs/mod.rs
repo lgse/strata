@@ -49,17 +49,19 @@
 //! // Ctrl+Tab / Ctrl+Page Down   => data.step(1); Ctrl+Shift+Page Down => data.moved(active, 1); Ctrl+Shift+1 => data.nth(0)
 //! ```
 //!
-//! # Built on rune-kit
+//! # Layout and look
 //!
-//! The tabs are `TabStrip`'s, with its pill look (Kit tokens through `fill`, `close_icon`,
-//! `row_height`, `gap` and the overflow policy, from [`strata_kit::slots::tabs`]), and C7 sets
-//! over each built tab, through `TabItem::decorate`: its whole name as its accessible name, the
-//! drop tint, Strata's 3 point accent underline on the active tab (shared between tabs with
-//! `El::matched`, so it slides; it jumps with animations off), its drop zone, and the wheel's
-//! sideways mapping (`wheel.rs`). Tab keys carry the strip's key ([`tab_key`]: `t-<key>-<id>`).
-//! Hidden markers report where the strip, tab 0 and the active tab drew (`probe.rs`), so the
-//! wheel can read the strip's offset and a newly active tab can be revealed clear of the edge
-//! fades, which Rune can't do from the outside (U-C7-2, U-C7-7).
+//! Each tab fills the strip's full height (`tabs.tab.height`) with no rounded pill background,
+//! compact content-sized widths (water-filling down to `tabs.tab.min_width` before horizontal
+//! scrolling with edge fades), and the New tab button right beside the tabs. Active and hovered
+//! tabs accent both their location icon and semibold label (`icon_accent` / `text_accent`), with
+//! Strata's full-width 3 point accent indicator bar flush along the active tab's bottom edge
+//! (shared via `El::matched` when animations are enabled) over the strip's 1 point bottom hairline.
+//! Each tab's close button stays visible at rest in `icon_muted` and turns `icon_accent` on direct
+//! hover; corner radii follow `look.round(...)` (sharp at 0 % roundness). Tab keys carry the
+//! strip's key ([`tab_key`]: `t-<key>-<id>`). Hidden markers report where the strip, tab 0 and the
+//! active tab drew (`probe.rs`), so the wheel (`wheel.rs`) can read the strip's offset and a newly
+//! active tab can be revealed clear of the edge fades (U-C7-2, U-C7-7).
 //!
 //! # Drops and the spring
 //!
@@ -283,10 +285,12 @@
 mod build;
 mod closed;
 mod data;
+mod drag;
 mod drops;
 mod intent;
 mod new_tab;
 mod probe;
+mod sizing;
 mod state;
 mod wheel;
 

@@ -373,3 +373,160 @@ fn a_zero_clock_pick_hover_waits_the_full_delay_from_next_tick() {
     assert!(tick(&mut st, 2.8, &d).is_empty());
     assert_eq!(tick(&mut st, 2.5 + HOVER_DELAY, &d), sprung(2));
 }
+
+#[test]
+fn width_cap_keeps_fitting_tabs_natural_and_shrinks_wide_tabs_first() {
+    let cases: &[(&str, &[f32], Option<f32>, f32)] = &[
+        ("unknown viewport", &[72.0, 155.0], None, 240.0),
+        ("empty strip", &[], Some(400.0), 240.0),
+        ("all tabs fit", &[72.0, 155.0], Some(600.0), 240.0),
+        // Total 412 > 350: short 72 stays natural, remaining 278 splits across two wide tabs -> 139.
+        (
+            "wide tabs shrink while short stays compact",
+            &[72.0, 160.0, 180.0],
+            Some(350.0),
+            139.0,
+        ),
+        // Too many tabs: clamps at min_w so horizontal scrolling takes over.
+        (
+            "overflow clamps at min cap",
+            &[72.0, 160.0, 180.0, 180.0],
+            Some(350.0),
+            128.0,
+        ),
+    ];
+    for &(label, natural, available, expected) in cases {
+        let got = sizing::width_cap(natural, available, 0.0, (128.0, 240.0));
+        assert!(
+            (got - expected).abs() < 0.01,
+            "{label}: expected {expected}, got {got}"
+        );
+    }
+}
+
+#[test]
+fn variable_width_drag_reorders_narrow_and_wide_tabs_and_cancels_on_escape() {
+    let widths = [155.0_f32, 74.0];
+    // Drag narrow tab 1 left to the centre of wide tab 0.
+    assert_eq!(drag::target_index(&widths, 0.0, 1, -114.5), 0);
+    // Drag wide tab 0 right across narrow tab 1.
+    assert_eq!(drag::target_index(&widths, 0.0, 0, 74.0), 1);
+
+    // Incoming landing slot uses each tab's actual midpoint.
+    assert_eq!(drag::landing_slot(&widths, 0.0, [50.0, 20.0], 0.0), 0);
+    assert_eq!(drag::landing_slot(&widths, 0.0, [100.0, 20.0], 0.0), 1);
+    assert_eq!(drag::landing_slot(&widths, 0.0, [210.0, 20.0], 0.0), 2);
+
+    // ReorderState lifecycle: below slop stays Click; past slop emits Reorder; cancelled emits None.
+    let press = |state: &mut drag::ReorderState| {
+        state.press(drag::PressSpec {
+            from: 1,
+            grab: [20.0, 10.0],
+            widths: widths.to_vec(),
+            gap: 0.0,
+            tear: None,
+        });
+    };
+    let mut state = drag::ReorderState::default();
+    press(&mut state);
+    assert!(!state.follow(-2.0, 0.0), "motion inside slop stays pressed");
+    assert!(matches!(state.release(false, true), drag::Release::Click));
+
+    press(&mut state);
+    assert!(state.follow(-114.5, 0.0));
+    assert!(matches!(
+        state.release(false, false),
+        drag::Release::Reorder { from: 1, to: 0 }
+    ));
+
+    press(&mut state);
+    assert!(state.follow(-114.5, 0.0));
+    assert!(matches!(state.release(true, false), drag::Release::None));
+}
+
+#[test]
+fn tab_strip_pointer_actions_emit_select_close_and_new_tab_intents() {
+    struct State {
+        strip: BrowserTabsState,
+        look: strata_kit::look::Look,
+        intents: Vec<TabsIntent>,
+    }
+    fn view(s: &State, cx: &mut rune::Cx<State>) -> rune::El {
+        let items = [
+            Tab::new(TabId(1), "Applications", IconName::Folder),
+            Tab::new(TabId(2), "~", IconName::Home),
+        ];
+        let d = TabsData::new(&items, Some(TabId(1)));
+        BrowserTabs::new(
+            &d,
+            &s.strip,
+            |s: &mut State| &mut s.strip,
+            |s| &mut s.strip.drag,
+        )
+        .on_intent(|s, intent, _| s.intents.push(intent))
+        .build(&s.look, cx)
+    }
+    let state = State {
+        strip: BrowserTabsState::default(),
+        look: strata_kit::look::Look::default(),
+        intents: Vec::new(),
+    };
+    let mut rt = rune::Runtime::new(state, view, (600.0, 48.0), rune::Env::default());
+    rt.frame(0.0);
+    rt.frame(1.0 / 60.0);
+
+    let click_at = |rt: &mut rune::Runtime<State>, x: f32, y: f32| {
+        rt.pointer_move(x, y);
+        rt.pointer_down(x, y);
+        rt.pointer_up(x, y);
+        rt.frame(0.0);
+    };
+
+    // Click inactive tab 2 (on its left label area, clear of its close button).
+    let tab2 = rt
+        .elements()
+        .into_iter()
+        .find(|e| !e.exiting && e.key.as_deref() == Some("t-tabs-2"))
+        .expect("tab 2");
+    click_at(
+        &mut rt,
+        tab2.visible[0] + 24.0,
+        tab2.visible[1] + tab2.visible[3] / 2.0,
+    );
+    assert_eq!(
+        rt.state.intents,
+        [TabsIntent::Select {
+            id: TabId(2),
+            via: Via::Strip,
+        }]
+    );
+
+    // Click tab 2's close button: emits Close without Select.
+    rt.state.intents.clear();
+    let close2 = rt
+        .elements()
+        .into_iter()
+        .filter(|e| !e.exiting && e.key.as_deref() == Some("close"))
+        .nth(1)
+        .expect("tab 2 close button");
+    click_at(
+        &mut rt,
+        close2.visible[0] + close2.visible[2] / 2.0,
+        close2.visible[1] + close2.visible[3] / 2.0,
+    );
+    assert_eq!(rt.state.intents, [TabsIntent::Close { id: TabId(2) }]);
+
+    // Click New tab (+) button.
+    rt.state.intents.clear();
+    let new_btn = rt
+        .elements()
+        .into_iter()
+        .find(|e| !e.exiting && e.key.as_deref() == Some("tabs-new"))
+        .expect("new tab button");
+    click_at(
+        &mut rt,
+        new_btn.visible[0] + new_btn.visible[2] / 2.0,
+        new_btn.visible[1] + new_btn.visible[3] / 2.0,
+    );
+    assert_eq!(rt.state.intents, [TabsIntent::New]);
+}

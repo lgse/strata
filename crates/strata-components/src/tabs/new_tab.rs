@@ -7,7 +7,7 @@
 use std::borrow::Cow;
 use std::rc::Rc;
 
-use rune::{El, Tx};
+use rune::{Color, Cursor, El, Tx, icon, row};
 use strata_kit::icons::IconName;
 use strata_kit::look::Look;
 use strata_kit::slots::tabs as slot;
@@ -16,7 +16,6 @@ use super::drops::{self, Access, Ctx, Emit, OpensFn};
 use super::intent::{DropSite, TabOpen, TabsIntent};
 use super::{BrowserTabsState, new_tab_key};
 use crate::contract::dnd::{Dnd, DropHover, DropOffer};
-use crate::header;
 
 /// The words the strip says, for the host to translate.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -135,7 +134,8 @@ pub(super) struct ButtonSpec<'a, S> {
     pub key: String,
 }
 
-/// The button, lit while a drag that opens tabs is over it or runs in the window.
+/// The button, accented to match GTK's `header-action` chrome icon and lit while a drag that opens
+/// tabs is over it or runs in the window.
 pub(super) fn button<S: 'static>(
     cx: &Ctx<S>,
     state: &BrowserTabsState,
@@ -143,16 +143,38 @@ pub(super) fn button<S: 'static>(
     look: &Look,
 ) -> El {
     let emit = cx.emit.clone();
-    let mut el = header::action(look, IconName::Plus, &spec.labels.new_tab_help)
-        .label(spec.labels.new_tab.clone().into_owned())
-        .on_press_tx(move |s: &mut S, tx: &mut Tx| emit(s, TabsIntent::New, tx))
-        .build(&look.kit)
-        .key(spec.key.clone());
+    let k = &look.kit;
+    let side = look.frame.control;
+    let radius = look.round(5.0);
     let hovered = state.drop_hover() == Some((DropSite::NewTab, DropHover::Accepting));
-    if hovered || state.open_drag() {
-        // Strata's `.tab-drop-hover`: the header action's radius, an accent ground.
-        el = el.fill(slot::new_drop_fill(look)).radius(look.round(5.0));
-    }
+    let fill = if hovered || state.open_drag() {
+        slot::new_drop_fill(look)
+    } else {
+        Color::TRANSPARENT
+    };
+    let help = spec.labels.new_tab_help.clone().into_owned();
+    let el = row()
+        .key(spec.key.clone())
+        .size(side, side)
+        .center()
+        .radius(radius)
+        .fill(fill)
+        .hover(k.c.hover)
+        .press(k.c.pressed)
+        .cursor(Cursor::Pointer)
+        .focusable(true)
+        .focus_ring(2.0, -2.0, k.c.border_focus)
+        .label(spec.labels.new_tab.clone().into_owned())
+        .description(help.clone())
+        .help(help)
+        .on_press_tx(move |s: &mut S, tx: &mut Tx| emit(s, TabsIntent::New, tx))
+        .role("button")
+        .child(
+            icon(look.icon(IconName::Plus), look.icon_size.md)
+                .key("icon")
+                .color(k.c.icon_accent)
+                .a11y_hidden(),
+        );
     spec.dnd
         .drop_zone_keyed(el, spec.key, drops::opener(cx, DropSite::NewTab))
 }

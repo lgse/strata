@@ -9,6 +9,7 @@ use rune::Tx;
 use rune_kit::shell::TabDragState;
 
 use super::data::{TabId, TabsData, TitleFormat, window_title};
+use super::drag::ReorderState;
 use super::intent::{DropSite, TabsIntent, Via};
 use super::probe::{Probe, Reveal};
 use super::{scroll_key, tab_key};
@@ -63,10 +64,10 @@ pub struct Polled {
 pub struct BrowserTabsState {
     key: String,
     title_format: TitleFormat,
-    /// TabStrip's gestures: reorder, tear-out, and a tab coming in from another window
-    /// ([`TabDragState::set_incoming`], [`TabDragState::incoming_slot`],
-    /// [`TabDragState::hand_off`]).
+    /// Legacy drag-state handle kept for callers passing `|s| &mut s.tabs.drag`.
     pub drag: TabDragState,
+    /// Variable-width strip drag, tear-out, incoming drop gap, and scroll tracking.
+    pub(super) reorder: ReorderState,
     drop: Option<(DropSite, DropHover)>,
     open_drag: bool,
     /// The zone whose moves place the incoming gap for a drag that opens tabs.
@@ -93,6 +94,7 @@ impl BrowserTabsState {
             key: key.into(),
             title_format: TitleFormat::default(),
             drag: TabDragState::new(),
+            reorder: ReorderState::default(),
             drop: None,
             open_drag: false,
             incoming_from: None,
@@ -152,7 +154,7 @@ impl BrowserTabsState {
     /// became active (a click, the keyboard, a reopen, a restore).
     pub fn tick(&mut self, now: f64, data: &TabsData<'_>, tx: &mut Tx) -> Polled {
         let mut out = Polled::default();
-        if self.drag.incoming_slot().is_some() {
+        if self.reorder.incoming_slot().is_some() {
             // A newer gap built: it is the drop's slot now.
             self.left_landing = None;
         }
@@ -198,7 +200,7 @@ impl BrowserTabsState {
                 _ if wheeled => {}
                 // A strip at rest brings the tab a fade's width clear of the edges in one jump,
                 // once it has drawn and its place can be read (U-C7-7).
-                Some(id) if self.drag.phase() == rune_kit::shell::TabDragPhase::Idle => {
+                Some(id) if self.reorder.is_idle() => {
                     self.reveal = Some((id, 0));
                     tx.wake_after(Duration::ZERO);
                 }
@@ -286,11 +288,12 @@ impl BrowserTabsState {
         } else if self.incoming_from == Some(site) {
             // Its gap's slot, or, for a zone whose gap hasn't built yet, the one kept before.
             let slot = self
-                .drag
+                .reorder
                 .incoming_slot()
                 .or(self.left_landing.map(|l| l.slot));
             self.left_landing = slot.map(|slot| LeftLanding { slot, ticks: 0 });
             self.incoming_from = None;
+            self.reorder.set_incoming(None);
             self.drag.set_incoming(None);
             if self.left_landing.is_some() {
                 // The ticks that expire it, in a window at rest too.
@@ -302,6 +305,7 @@ impl BrowserTabsState {
     /// The pointer of a drag that opens tabs moved over `site`, in window points.
     pub(super) fn open_moved(&mut self, site: DropSite, point: [f32; 2]) {
         if self.incoming_from == Some(site) {
+            self.reorder.set_incoming(Some(point));
             self.drag.set_incoming(Some(point));
         }
     }
@@ -309,7 +313,7 @@ impl BrowserTabsState {
     /// Where a drag that opens tabs lands if it drops now: the open gap, or the one its zone
     /// just left (see [`LeftLanding`]).
     pub(super) fn landing(&self) -> Option<usize> {
-        self.drag
+        self.reorder
             .incoming_slot()
             .or(self.left_landing.map(|l| l.slot))
     }
@@ -321,6 +325,7 @@ impl BrowserTabsState {
         self.drop = None;
         self.incoming_from = None;
         self.left_landing = None;
+        self.reorder.set_incoming(None);
         self.drag.set_incoming(None);
     }
 
