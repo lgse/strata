@@ -47,18 +47,20 @@
 # - The Menu key off the files (lgse/strata#2647), and a right-click while a menu is open, which
 #   opens the row's menu on Rune and only closes GTK's (lgse/strata#2644): each menu is
 #   dismissed in the action that opens it.
-# - Unpin: with the row's keyboard in it, Rune leaves no element with the keyboard
-#   (lgse/strata#2406's open case).
+# - Unpin: with the row's keyboard in it, Rune left no element with the keyboard
+#   (lgse/strata#2406's Unpin case, fixed in F4's round 3; version 5 sends Unpin again).
 # Version 2, F4's round 2 draft, never merged, met Shift+Up shrinking a range back to one
 # folder, which opens its column on Rune and not on GTK (lgse/strata#2650); version 3 leaves the
 # Shift moves out, which are the files' alphabets' and not the sidebar's.
 # Version 4, F4's round 3 draft, never merged, drew a drag's two rows from one list and so
-# dropped a row on itself; version 5 widens version 3, which compared little of the sidebar itself (the review of
-# lgse/strata#2660), with what it writes in `settings.toml`: the built-in places reordered by
-# drag (`sidebar_order`) and unpinned from their menu (`sidebar_show_*`). Each ends with a click
-# on a root file, which gives the keyboard back to the files on both targets, so the keyboard a
-# drag or an Unpin leaves in the sidebar (lgse/strata#2646, lgse/strata#2406's open case) is not
-# what the next steps start from; the click still compares what each left.
+# dropped a row on itself; version 5 widens version 3, which compared little of the sidebar
+# itself (the review of lgse/strata#2660), with what it writes in `settings.toml`: the built-in
+# places reordered by drag (`sidebar_order`) and unpinned from their menu (`sidebar_show_*`).
+# Each ends with a click on a root file, which gives the keyboard back to the files on both
+# targets, so the keyboard a drag leaves in the sidebar (lgse/strata#2646) is not what the next
+# steps start from; the click still compares what each left. An Unpin's keyboard no longer
+# needs the click (lgse/strata#2406's Unpin case is fixed), but the snapshot does not say which
+# sidebar row has the keyboard, so the version keeps it.
 area = "sidebar"
 version = 5
 about = "Columns on the canonical fixture, type to search off: the sidebar's width toggle by Ctrl+B from the files, built-in places reordered by drag and unpinned from their menu, the rows' and the files' context menus by right-click and the Menu key, dismissed, and the keyboard along the files' columns between"

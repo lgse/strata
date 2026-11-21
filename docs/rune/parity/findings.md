@@ -1339,16 +1339,20 @@ sequence only together with the alphabet's version, so the version is part of th
   - Seed `0x0e`: Unpin of the focused row. Driven on GTK (`qa-drive.sh`, 2026-11-14): Left
     into the sidebar, the Menu key, Unpin on `Home`. GTK draws the keyboard's ring on the next
     row, `Trash`; Down then moves it to `Network`, and the Menu key opens `Network`'s menu.
-    On Rune no element has the keyboard. So the divergence stands: GTK gives the keyboard to
-    the row after the one that went.
+    On Rune no element has the keyboard. So the divergence stands. (`Trash` was then the
+    sidebar's first row: see State for what GTK does with another row.)
 - **State:** the hidden sidebar fixed by [F3](packages/F3.md)'s
   [#2409](https://github.com/lgse/strata/pull/2409): the toggle gives the shown view the keyboard when it hides the sidebar with the
   keyboard in it (`sidebar/width.rs`), held by
   `sidebar::tests::hiding_the_sidebar_with_the_keyboard_in_it_gives_the_keyboard_to_the_view`.
   The Unpin case fixed in [F4](packages/F4.md)'s round 3: Unpin of a built-in place gives the
-  keyboard to the row after it, or the one before for the last (`sidebar/menu.rs`), held by
-  `sidebar::tests::unpin_gives_the_keyboard_to_the_row_after_the_one_hidden`; `sidebar v5`
-  sends Unpin again. The drag case is open, its seed parked in `tests/qa/fuzz/corpus/sidebar/`
+  keyboard to the sidebar's first row (`sidebar/menu.rs`). Driven on GTK in that round
+  (`qa-drive.sh`, 2026-11-21, after the review of #2709): Unpin of `Desktop`, the last row, and
+  of `Trash` by right-click, and of `Network` by the Menu key, each leave GTK's ring on `Home`,
+  the first row, whichever row went. The round's first fix, which gave the keyboard to the row
+  after, matched GTK only for the first row. Held by
+  `sidebar::tests::unpin_gives_the_keyboard_to_the_sidebars_first_row`, which unpins a middle
+  row, then the last, and fails without the fix; `sidebar v5` sends Unpin again. The drag case is open, its seed parked in `tests/qa/fuzz/corpus/sidebar/`
   by F3's [#2432](https://github.com/lgse/strata/pull/2432).
 
 ### #2407: the location bar's hierarchy menu holds no keyboard on Rune
@@ -1672,14 +1676,19 @@ sequence only together with the alphabet's version, so the version is part of th
   own, which a press sets to what `pointer_selection` returns, the anchor it was given for a
   Shift+press (`src/ui/collection_interaction.rs`); C1e's Shift+press with no anchor started
   one at its entry. In Columns both range.
-- **State:** fixed, by [A10](packages/A10.md)'s `contract` pull request [#2434](https://github.com/lgse/strata/pull/2434), to match GTK
-  by the coordinator's ruling, which the owner may reopen ([`owner.md`](owner.md), A10):
-  C1e's `PointerSettings::missing_anchor_stays` covers a Shift+press as well as a secondary
-  press, and the pane's results turn it on; Columns leaves it off.
 - **Met again:** in [F4](packages/F4.md)'s round 3, by another route: `filter v2` `0x2c`
   (3 steps: `*o*` typed in the filter, Down from the field into the results, a Shift+click on
   `documents/report.md`). Rune ranges from the result Down reached; GTK selects the result
-  alone. So the finding is open again for that route, with `0x2c` parked in
+  alone.
+- **State:** open again, unowned, for that route, since F4's round 3. The route through a
+  press was fixed by [A10](packages/A10.md)'s `contract` pull request
+  [#2434](https://github.com/lgse/strata/pull/2434), to match GTK by the coordinator's ruling,
+  which the owner may reopen ([`owner.md`](owner.md), A10): C1e's
+  `PointerSettings::missing_anchor_stays` covers a Shift+press as well as a secondary press, and
+  the pane's results turn it on; Columns leaves it off. Down from the filter field into the
+  results reaches a result by the keyboard, not by a press, and a Shift+click after it still
+  ranges from that result on Rune; why GTK's results take no anchor from it is not traced.
+  `filter v2` `0x2c` is parked in
   `tests/qa/fuzz/corpus/filter/`.
 
 ### #2429: the header's Appearance button is a button holding a toggle button on GTK
@@ -3402,7 +3411,7 @@ sequence only together with the alphabet's version, so the version is part of th
   reference and closed at once: its state is kept here.
 - **Seen:** in [F4](packages/F4.md)'s round 2, `properties v3` `0x41` (7 steps). Both set the mode on the link itself
   and show "Unable to change permissions" on failure, by reading; Rune's `app.dialog` names the
-  error, GTK's the Properties dialog. Not checked on GTK's screen.
+  error, GTK's the Properties dialog. Checked on GTK's screen in round 3: see State.
 - **State:** GTK's QA snapshot, not a Rune divergence. Driven on GTK in F4's round 3
   (`qa-drive.sh`, 2026-11-20): Owner write on the Properties of a link to a file outside the
   folder shows "Unable to change permissions", with GTK's keyboard on its Close button, as
@@ -3411,17 +3420,29 @@ sequence only together with the alphabet's version, so the version is part of th
 
 ### #2658: after a sidebar row's right-click, a step guarded on no menu is skipped on Rune
 
-- **Code:** `a11y`, recoded in [F4](packages/F4.md)'s round 3; filed as `divergence`.
+- **Code:** `harness`, of the shared QA engine: none of the plan's exception codes. Filed as
+  `divergence`; coded `a11y` in [F4](packages/F4.md)'s round 3 and recoded `harness` after the
+  review of [#2709](https://github.com/lgse/strata/pull/2709).
   [Issue](https://github.com/lgse/strata/issues/2658), filed on 2026-11-19 as the finding's
   reference and closed at once: its state is kept here.
 - **Seen:** in [F4](packages/F4.md)'s round 2, `properties v3` `0x2b` (4 steps), `0x2d` and `0x73`: the observation
   before the step agrees, so what differs is outside the snapshot. Not traced.
-- **State:** GTK's QA, not a Rune divergence. Driven on GTK in F4's round 3 (`qa-drive.sh`,
-  2026-11-20): the `{"sidebar":"sized-folder"}` target finds the location bar's `sized-folder`
-  crumb, not a sidebar row, and the right-click opens the crumb's hierarchy popover, which
-  GTK's QA does not read as a menu, so `{"menu_items":null}` still holds on GTK. On Rune the
-  popover is a menu, and the step is skipped. What differs is how GTK's popover reports
-  itself, so it does not count against exit criterion 4. Parked as `a11y` in
+- **Why:** driven on GTK in F4's round 3 (`qa-drive.sh`, 2026-11-20). The
+  `{"sidebar":"sized-folder"}` target finds the location bar's `sized-folder` crumb, not a
+  sidebar row: the shared engine resolves `Target::Sidebar(name)` as any button of that name in
+  the window (`crates/strata-qa/src/engine/locate.rs:240`), the same on both targets. The
+  right-click opens the crumb's hierarchy popover, which GTK's QA does not read as a menu, so
+  `{"menu_items":null}` still holds on GTK; on Rune the popover is a menu, and the next step is
+  skipped. The popover's report is GTK's QA's, but the step should never have reached a crumb.
+- **What it means for `properties`:** its `sidebar-pinned-properties` action right-clicks the
+  crumb whenever the folder's column is open, pinned or not, since the crumb is the first
+  button of that name in the tree. It opens a pinned row's Properties only while the folder is
+  outside the location bar's path, so the alphabet does not test a pinned row's Properties as
+  its header says.
+- **State:** a harness fault, not a Rune divergence, so it does not count against exit
+  criterion 4. The fix, scoping a `sidebar` target to the sidebar in `strata-qa`'s engine, is
+  shared by both targets and lands on its own ([F4](packages/F4.md)'s round 4 list). Parked as
+  `divergence`, the code a difference no exception covers has (as #2668 is), in
   `tests/qa/fuzz/corpus/properties/`.
 
 ### #2659: after a rename, a Ctrl+T sometimes leaves Rune's view without the anchor the browser keeps

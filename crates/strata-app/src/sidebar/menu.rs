@@ -206,32 +206,23 @@ fn chosen(app: &mut App, intent: MenuIntent, tx: &mut Tx) {
 }
 
 /// GTK's Unpin: a built-in place is hidden, a pin leaves the bookmarks file. The menu gives the
-/// keyboard back to the row it was opened on ([`open`]), which a hidden place takes away: the row beside
-/// it takes the keyboard, the next one or, for the last, the one before, as GTK's list draws its
-/// ring there (finding lgse/strata#2406's Unpin case).
+/// keyboard back to the row it was opened on ([`open`]), which a hidden place takes away: the
+/// sidebar's first row takes it, as GTK's rebuilt list draws its ring there, whichever row went
+/// (driven on GTK in F4's round 3, by a right-click and by the Menu key; finding
+/// lgse/strata#2406's Unpin case).
 fn unpin(app: &mut App, target: &Target, tx: &mut Tx) {
     match &target.item {
         ItemId::Place(id) => {
             let id = id.clone();
-            let beside = beside(app, &target.item);
             shell::saved(app).change(|settings| hide_place(settings, &id));
             relist(app);
-            if let Some(key) = beside {
+            if let Some(key) = app.sidebar.first_key() {
                 tx.focus(&key, tx.by_keys());
             }
         }
         ItemId::Pin(_) => unpin_location(target.location.clone()),
         ItemId::Device(_) => {}
     }
-}
-
-/// The key of the row after `item` in the sidebar, or of the one before when it is the last.
-fn beside(app: &App, item: &ItemId) -> Option<String> {
-    let rows = &app.sidebar.listed.rows;
-    let at = rows.iter().position(|row| &row.item == item)?;
-    rows.get(at + 1)
-        .or_else(|| at.checked_sub(1).and_then(|before| rows.get(before)))
-        .map(|row| row.item.key(super::KEY))
 }
 
 /// The setting that shows the built-in place `id` (`set_sidebar_show_*`).

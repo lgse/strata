@@ -7,7 +7,9 @@
 # on Rune (F4's round 2).
 # Checked on GTK's screen in F4's round 3: 0x41 is GTK's QA snapshot naming the Properties
 # dialog under its error dialog (oracle); 0x2b is a right-click that fell through to the
-# sized-folder crumb and opened its hierarchy popover, which GTK's QA does not read as a menu
-# (a11y).
-v3-000000000000002b a11y lgse/strata#2658
+# sized-folder crumb and opened its hierarchy popover, which GTK's QA does not read as a menu:
+# the shared engine resolves a sidebar target to any button of that name
+# (crates/strata-qa/src/engine/locate.rs), a harness fault, parked as divergence, the code a
+# difference no exception covers has (the review of lgse/strata#2709).
+v3-000000000000002b divergence lgse/strata#2658
 v3-0000000000000041 oracle lgse/strata#2657
