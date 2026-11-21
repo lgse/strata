@@ -1,0 +1,3 @@
+{"scenario":"fuzz-entries-v5-00000000000000a0","modes":["columns"],"prefs":{"type_to_search":false}}
+{"click":{"entry":"archive"},"when":{"all":[{"present":{"entry":"archive"}},{"not":{"field":{"name":"Rename"}}}]}}
+{"fs":{"path":"archive/fuzz-c.txt","write":"fuzz\n"}}
