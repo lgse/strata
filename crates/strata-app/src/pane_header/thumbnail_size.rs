@@ -185,6 +185,7 @@ pub(crate) fn build(app: &App, frame: &mut Frame<'_, App>) {
         stops: stops(app),
         own_arrows: &[SLIDER],
         listing: shell::view_focus(app),
+        viewports: shell::listing_viewports(app),
         close,
         parent: None,
     };

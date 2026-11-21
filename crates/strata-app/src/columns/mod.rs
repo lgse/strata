@@ -231,6 +231,14 @@ impl Columns {
         None
     }
 
+    /// The scroll viewport path of each open column's listing, leading column first.
+    pub(crate) fn listing_viewports(&self) -> Vec<String> {
+        (0..self.state.len())
+            .filter_map(|depth| self.state.column_key(depth))
+            .map(|key| strata_components::collection::element::viewport_path(&key))
+            .collect()
+    }
+
     pub(crate) fn autoscroll(&self) -> &Autoscroll {
         self.state.autoscroll()
     }

@@ -4,7 +4,7 @@
 //! that resizes from its edges where the platform allows, and whose window buttons reach the
 //! window manager.
 //!
-//! Rune lacks, at the pinned rev (`631e8a67`):
+//! Rune lacks, at the pinned rev (`7a707454`):
 //!
 //! - **Interactive resize** of a borderless window. Rune doesn't reach winit's
 //!   `drag_resize_window`, and on Wayland the raw window handle (the `wl_surface`) can't start

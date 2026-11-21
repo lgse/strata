@@ -227,6 +227,7 @@ pub(super) fn build(app: &App, frame: &mut Frame<'_, App>) {
         stops: stops(app),
         own_arrows: &[FRAME.keys[0], CONTENT.keys[0]],
         listing: shell::view_focus(app),
+        viewports: shell::listing_viewports(app),
         close,
         parent: None,
     };

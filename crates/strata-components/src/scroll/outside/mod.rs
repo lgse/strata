@@ -22,14 +22,12 @@ type ListingsFn<S> = Rc<dyn Fn(&S, Point) -> Vec<Target>>;
 /// scrolls the listing under the pointer, and nothing else, by the tick's own step.
 ///
 /// The host mounts [`OutsideWheel::scrim`] in its root layer under the panel, in place of the
-/// panel's own outside-press scrim (rune-kit `Popover::on_close`'s), and wraps the panel's
-/// surface in [`OutsideWheel::surface`]:
+/// panel's own outside-press scrim (rune-kit `Popover::on_close`'s):
 ///
 /// ```ignore
 /// let outside = OutsideWheel::new(|s: &mut App, _| s.sort_open = false)
 ///     .listings(|s: &App, at| s.listing_targets_at(at)); // the List pane: its rows and its sideways scroll
 /// layer.push(outside.scrim("sort-scrim"));
-/// let panel = OutsideWheel::<App>::surface(panel_body);
 /// ```
 ///
 /// - Rune hands a wheel delta to the topmost element's `on_wheel` first, so the scrim hears
@@ -45,6 +43,10 @@ type ListingsFn<S> = Rc<dyn Fn(&S, Point) -> Vec<Target>>;
 ///   swapping that again would scroll it vertically. A tick with both axes (a touchpad's) is
 ///   left as Rune's wheel leaves it over the listing.
 /// - The rest of a touchpad gesture whose first delta closed the panel scrolls as usual.
+/// - A tick over the panel itself that no viewport inside it takes scrolls nothing: Rune starts
+///   a wheel's scroll on the topmost element under the pointer and chains it up that element's
+///   ancestors only (anomalyco/rune#1137, retiring draft U-C24b-2), so the panel needs no
+///   handler of its own for it.
 ///
 /// Used by: hosts (X1's and Strata's panels), the gallery's `c24-panel` scene.
 pub struct OutsideWheel<S> {
@@ -92,16 +94,6 @@ impl<S: 'static> OutsideWheel<S> {
                 wheel.tick(s, e, &pending, tx);
                 true
             })
-    }
-
-    /// The panel's surface `panel`: a tick over it that no scroll viewport inside it takes goes
-    /// no further, so a panel that doesn't scroll never scrolls the listing under it (Rune
-    /// scrolls the innermost viewport at the pointer, under any overlay: draft U-C24b-2).
-    pub fn surface(panel: El) -> El {
-        panel.on_wheel(|_: &mut S, _: WheelEvent, tx: &mut Tx| {
-            tx.live_only();
-            true
-        })
     }
 
     fn tick(&self, s: &mut S, e: WheelEvent, pending: &Pending, tx: &mut Tx) {

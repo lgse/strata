@@ -2,7 +2,7 @@
 
 //! [`OutsideWheel`] on a Rune runtime: what a tick outside a panel closes and scrolls.
 
-use rune::{Cx, El, Env, Mods, Runtime, ScrollPos, WheelEvent, col};
+use rune::{Cx, El, Env, Mods, Runtime, ScrollPos, WheelEvent, col, el};
 
 use super::OutsideWheel;
 use crate::scroll::{ScrollFeed, Target};
@@ -10,6 +10,8 @@ use crate::scroll::{ScrollFeed, Target};
 const W: f32 = 600.0;
 const H: f32 = 400.0;
 const FRAME: f64 = 1.0 / 60.0;
+/// The open panel's box, clear of the window's centre where the other ticks land.
+const PANEL: [f32; 4] = [20.0, 20.0, 120.0, 100.0];
 
 struct App {
     open: bool,
@@ -17,7 +19,7 @@ struct App {
 }
 
 /// A viewport that scrolls both ways under the whole window, and while `open` the outside
-/// layer over it.
+/// layer over it and a panel over that, which scrolls nothing and takes a press.
 fn view(s: &App, _: &mut Cx<App>) -> El {
     let feed = s.feed.clone();
     let viewport = col()
@@ -30,7 +32,13 @@ fn view(s: &App, _: &mut Cx<App>) -> El {
     if s.open {
         let outside = OutsideWheel::new(|s: &mut App, _| s.open = false)
             .listings(|s: &App, _| vec![Target::both("listing", s.feed.clone())]);
-        root = root.child(outside.scrim("scrim"));
+        let [x, y, w, h] = PANEL;
+        let panel = el()
+            .key("panel")
+            .absolute(x, y)
+            .size(w, h)
+            .on_press(|_: &mut App| {});
+        root = root.child(outside.scrim("scrim")).child(panel);
     }
     root
 }
@@ -47,7 +55,11 @@ fn runtime() -> Runtime<App> {
 }
 
 fn tick(rt: &mut Runtime<App>, ev: WheelEvent) {
-    rt.wheel_event(ev.at(W / 2.0, H / 2.0));
+    tick_at(rt, ev, (W / 2.0, H / 2.0));
+}
+
+fn tick_at(rt: &mut Runtime<App>, ev: WheelEvent, (x, y): (f32, f32)) {
+    rt.wheel_event(ev.at(x, y));
     for _ in 0..3 {
         rt.frame(FRAME);
     }
@@ -128,4 +140,20 @@ fn a_shift_tick_the_window_host_turned_stays_sideways() {
     );
     assert!(!rt.state.open);
     assert_eq!(rt.state.feed.get().offset, [120.0, 0.0]);
+}
+
+#[test]
+fn a_tick_over_the_panel_neither_closes_it_nor_scrolls_the_listing_under_it() {
+    // browser/scrolling: A wheel over an open panel that doesn't scroll moves nothing. Rune
+    // starts the wheel on the panel and chains it up the panel's ancestors only (#1137), so the
+    // panel needs no wheel handler of its own (draft U-C24b-2, retired).
+    let mut rt = runtime();
+    let [x, y, w, h] = PANEL;
+    tick_at(
+        &mut rt,
+        WheelEvent::new(0.0, -120.0).precise(false),
+        (x + w / 2.0, y + h / 2.0),
+    );
+    assert!(rt.state.open);
+    assert_eq!(rt.state.feed.get().offset, [0.0, 0.0]);
 }

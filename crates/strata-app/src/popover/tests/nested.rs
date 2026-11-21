@@ -61,6 +61,7 @@ fn nest(app: &App, frame: &mut Frame<'_, App>) -> Option<El> {
             stops: PARENT_STOPS.to_vec(),
             own_arrows: &[],
             listing: None,
+            viewports: Vec::new(),
             close: close_parent,
             parent: None,
         };
@@ -76,6 +77,7 @@ fn nest(app: &App, frame: &mut Frame<'_, App>) -> Option<El> {
             stops: CHILD_STOPS.to_vec(),
             own_arrows: &[],
             listing: None,
+            viewports: Vec::new(),
             close: close_child,
             parent: Some(Parent {
                 close: close_parent,
