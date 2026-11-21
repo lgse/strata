@@ -20,8 +20,6 @@ use gtk::prelude::*;
 use gtk::{glib, graphene};
 use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
-use std::os::unix::ffi::OsStrExt;
-use std::path::Path;
 use std::rc::{Rc, Weak};
 use std::time::Duration;
 
@@ -879,102 +877,18 @@ pub(super) fn copy_names(entries: &[FileEntry]) {
 }
 
 pub(super) fn copy_path_text(location: &Location, is_directory: bool) -> String {
-    match location.native_path() {
-        Some(path) => {
-            let mut path = shell_escape_path(path);
-            if is_directory && !path.ends_with(std::path::MAIN_SEPARATOR) {
-                path.push(std::path::MAIN_SEPARATOR);
-            }
-            path
-        }
-        None => location.display_path(),
-    }
-}
-
-fn shell_escape_path(path: &Path) -> String {
-    let bytes = path.as_os_str().as_bytes();
-    let Ok(path) = std::str::from_utf8(bytes) else {
-        return bytes
-            .split(|&byte| byte == b'/')
-            .map(|segment| match std::str::from_utf8(segment) {
-                Ok(segment) if !segment.contains('\n') => backslash_escape(segment),
-                _ => ansi_c_quote(segment),
-            })
-            .collect::<Vec<_>>()
-            .join("/");
+    let Some(path) = location.native_path() else {
+        return location.display_path();
     };
-    if path.contains('\n') {
-        return format!("'{}'", path.replace('\'', "'\\''"));
+    // Clipboard text is UTF-8; a file URI preserves otherwise unrepresentable bytes.
+    let mut text = path.to_str().map_or_else(
+        || gio_file_for_location(location).uri().to_string(),
+        str::to_owned,
+    );
+    if is_directory && !text.ends_with(std::path::MAIN_SEPARATOR) {
+        text.push(std::path::MAIN_SEPARATOR);
     }
-    backslash_escape(path)
-}
-
-fn backslash_escape(text: &str) -> String {
-    let mut escaped = String::with_capacity(text.len());
-    for c in text.chars() {
-        if needs_shell_escape(c) {
-            escaped.push('\\');
-        }
-        escaped.push(c);
-    }
-    escaped
-}
-
-fn ansi_c_quote(bytes: &[u8]) -> String {
-    let mut quoted = String::from("$'");
-    for chunk in bytes.utf8_chunks() {
-        for c in chunk.valid().chars() {
-            match c {
-                '\'' | '\\' => {
-                    quoted.push('\\');
-                    quoted.push(c);
-                }
-                c if c.is_control() => {
-                    push_hex_escapes(&mut quoted, c.encode_utf8(&mut [0; 4]).as_bytes())
-                }
-                c => quoted.push(c),
-            }
-        }
-        push_hex_escapes(&mut quoted, chunk.invalid());
-    }
-    quoted.push('\'');
-    quoted
-}
-
-fn push_hex_escapes(text: &mut String, bytes: &[u8]) {
-    use std::fmt::Write;
-
-    for byte in bytes {
-        let _ = write!(text, "\\x{byte:02x}");
-    }
-}
-
-fn needs_shell_escape(c: char) -> bool {
-    c.is_whitespace()
-        || c.is_control()
-        || matches!(
-            c,
-            '"' | '\''
-                | '\\'
-                | '$'
-                | '`'
-                | '!'
-                | '#'
-                | '&'
-                | '*'
-                | ';'
-                | '<'
-                | '>'
-                | '?'
-                | '['
-                | ']'
-                | '{'
-                | '}'
-                | '('
-                | ')'
-                | '|'
-                | '~'
-        )
+    text
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
