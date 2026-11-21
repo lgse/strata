@@ -62,14 +62,18 @@ filter v2 7fa8d82cb078b442
 # round 2, never merged. Version 3, also a draft, kept Return off a multi-selection and met
 # lgse/strata#2642 (fixed) and lgse/strata#2644, a menu its Escape left open. Version 4
 # dismisses any menu.
-icons v4 a4618cbf53dfdd44
+# Version 5 sends a Shift+click with nothing selected again (lgse/strata#2551, fixed;
+# F4's round 3).
+icons v5 8e1843f39aa67b75
 # list: version 3 was A2's, merged before the differential tier; F4's round 1 met renames
 # (lgse/strata#2510), Up off a first row, Ctrl+A and Shift+click after a load in nearly every
 # seed across the targets. Version 4 guards them, and met lgse/strata#2640 (fixed) at Return: a
 # draft of F4's round 2, never merged. Version 5, also a draft, kept Return off a
 # multi-selection and met lgse/strata#2643 and lgse/strata#2644, a menu its Escape left open.
 # Version 6 dismisses any menu.
-list v6 0686c3718c808767
+# Version 7 sends a Shift+click with nothing selected again (lgse/strata#2551, fixed;
+# F4's round 3).
+list v7 951266fc5ecb8b89
 # location: version 1 was A5's draft, never merged: version 2 keeps clicks off a shown dialog and
 # Shift+Tab off the files. Its seeds name the shrunk sequences of its findings, parked in
 # tests/qa/fuzz/corpus/location.
