@@ -31,6 +31,8 @@ extend-exclude = [
 
 [default]
 extend-ignore-re = [
+  # A fuzz alphabet's pinned digest (`tests/qa/fuzz/alphabets/pins`): sixteen hex digits.
+  '(?m)^[a-z-]+ v[0-9]+ [0-9a-f]{16}$',
   "`crypted\\.rar`",
   # Deliberately misspelled input in the Settings closest-match regression.
   '"relase chanel"',
