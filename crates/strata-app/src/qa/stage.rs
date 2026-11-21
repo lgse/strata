@@ -366,6 +366,7 @@ pub(super) fn drawn(elements: &[ElementInfo], app: &App) -> Drawn {
         sidebar: super::sidebar::Gaps::drawn(elements),
         jobs: super::jobs::Labels::drawn(elements),
         tenxer: super::tenxer::Labels::drawn(elements),
+        words: super::control_words::Words::drawn(elements),
         outlined: crate::filter::outlined(app),
         edit_range: elements
             .iter()

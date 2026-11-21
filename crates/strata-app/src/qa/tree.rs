@@ -124,6 +124,8 @@ pub(super) struct Drawn {
     pub(super) sidebar: super::sidebar::Gaps,
     pub(super) jobs: super::jobs::Labels,
     pub(super) tenxer: super::tenxer::Labels,
+    /// The texts drawn inside the controls Rune makes one leaf (`qa::control_words`).
+    pub(super) words: super::control_words::Words,
     /// The entry the filter's Enter would open (`qa::filter`).
     pub(super) outlined: Option<EntryId>,
     /// On the focused non-secure text field: its selection's anchor and caret in UTF-8 bytes
@@ -316,6 +318,7 @@ impl Snapshot {
         for icon in &drawn.icons {
             snapshot.add_icon(icon, &drawn.icon_descriptions);
         }
+        drawn.words.present(&mut snapshot);
         for button in &drawn.buttons {
             snapshot.add_hidden_button(button, &panes);
         }
@@ -380,6 +383,16 @@ impl Snapshot {
             .find(|(list, _)| button.column.as_deref() == Some(*list))
             .map_or(0, |(_, index)| *index);
         self.push(parent, &button.key, seen);
+    }
+
+    /// How many nodes the snapshot holds, presented ones included.
+    pub(super) fn len(&self) -> usize {
+        self.nodes.len()
+    }
+
+    /// Presents `seen` under the node at `parent`, at `segment` of its path.
+    pub(super) fn push_under(&mut self, parent: usize, segment: &str, seen: Seen) {
+        self.push(parent, segment, seen);
     }
 
     fn push(&mut self, parent: usize, segment: &str, seen: Seen) -> usize {
