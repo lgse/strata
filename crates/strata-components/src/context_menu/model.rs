@@ -8,7 +8,7 @@ use std::rc::Rc;
 use strata_kit::icons::IconName;
 use strata_kit::look::Look;
 
-use super::view::{height, width};
+use super::view::{height, width, width_with_min};
 
 /// An action's id, chosen by the host: what [`super::MenuIntent::Activate`] hands back.
 pub type ActionId = Rc<str>;
@@ -28,6 +28,11 @@ impl MenuModel {
     /// opened on, as GTK centres a popover on the widget it points at, needs.
     pub fn width(&self, look: &Look) -> f32 {
         width(look, &self.header, &self.sections)
+    }
+
+    /// How wide the menu draws in `look` with a minimum width floor of `min_width` points.
+    pub fn width_with_min(&self, look: &Look, min_width: f32) -> f32 {
+        width_with_min(look, &self.header, &self.sections, min_width)
     }
 
     /// A menu with no header and no sections.
