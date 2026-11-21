@@ -234,9 +234,10 @@
 //! - **U-C6-8 (draft, not filed)** rune-kit's `Menu` takes no accessible name (`.label`), and a
 //!   `MenuItem` can't give an accessible name apart from the text it draws, so an item shortened
 //!   to fit reads shortened. Here: the menu reads unnamed, and its items read as drawn.
-//! - **A right-click on the entry (Rune 631e8a67).** The text field has no `on_secondary_press`
+//! - **A right-click on the entry (Rune 7a707454).** The text field has no `on_secondary_press`
 //!   of its own, so Rune asks for its native field menu (Cut, Copy, Paste, Select All; `--trace`
-//!   logs `popup-menu:open`). `popup_menu` isn't supported on Linux, so it answers None and
+//!   logs `popup-menu:open`). `El::on_pill_secondary` (anomalyco/rune#1293) takes only a press
+//!   on a pill, which the entry has none of. `popup_menu` isn't supported on Linux, so it answers None and
 //!   nothing shows; the entry stays open with its selection (Linux primary selection and
 //!   middle-click paste work natively on the field, #890). Strata's GTK entry shows its menu
 //!   there. An in-app field menu is C21's to give (known; probe in

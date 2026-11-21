@@ -56,7 +56,7 @@
 //!
 //! # Decisions
 //!
-//! - **Focus.** Rune 631e8a67 has no focus-change notification and no focus-within styles
+//! - **Focus.** Rune 7a707454 has no focus-change notification and no focus-within styles
 //!   (Rune draft U-C1e-4; anomalyco/rune#106). The element never moves focus itself: the
 //!   position-restore bullets on focus after Back, Forward and Up, and the first-visit
 //!   refocus, are the host's, which focuses the collection by its key with `Tx::focus` or

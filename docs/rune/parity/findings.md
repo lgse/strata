@@ -3394,3 +3394,18 @@ sequence only together with the alphabet's version, so the version is part of th
   focused entry is selected or nothing is, which a band, leaving the focus where it was, does
   not reach. Its gap: a band over the focused row still does. `pointer v4` `0x3a` is parked as
   `deviation` against this finding in `tests/qa/fuzz/corpus/pointer/`.
+
+### #2674: menu items, options, tabs and checkboxes have no label child on Rune
+
+- **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2674), filed on
+  2026-11-20 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** at the move of the Rune pin to `7a707454` ([#2673](https://github.com/lgse/strata/issues/2673)),
+  in `language-selection-after-relaunch/columns` (A18) and the three `global-search-*` runs of
+  A10, on the Rune target. Rune #1115 (after #1099) leaves a text inside a checkbox, radio
+  button, switch, tab, menu item or option out of the accessibility tree when the control's name
+  already says its words, as Chromium makes such a control's content one leaf. GTK's AT-SPI tree
+  keeps a `label` under each, which those scenarios aim at.
+- **State:** open, unowned. The QA snapshot presents the left-out texts as labels under their
+  controls (`crates/strata-app/src/qa/control_words.rs`), so the runs pass again. What a screen
+  reader is given still differs, one node on Rune where GTK has the control and its label; not
+  checked with a screen reader. Rune exposes no opt-out short of giving each text a handler.
