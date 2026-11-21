@@ -351,6 +351,30 @@ impl Backend for Gtk {
         self.main.set(window.downcast_ref::<gtk::Window>());
     }
 
+    /// On a bare X server `present` already asks for the focus; the injector sets it as well, at
+    /// the current time, so the switch does not rest on the timestamp GDK sends with it.
+    async fn activate_window(
+        &self,
+        window: &gtk::Widget,
+        deadline: Instant,
+    ) -> Result<bool, String> {
+        let window = window
+            .downcast_ref::<gtk::Window>()
+            .ok_or_else(|| "the adopted node is not a window".to_owned())?;
+        window.present();
+        let surface = window
+            .surface()
+            .ok_or_else(|| "the window has no surface".to_owned())?;
+        self.injector()?.activate(&surface)?;
+        while !window.is_active() {
+            if Instant::now() >= deadline {
+                return Ok(false);
+            }
+            glib::timeout_future(POLL_INTERVAL).await;
+        }
+        Ok(true)
+    }
+
     async fn resize(
         &self,
         window: &gtk::Widget,

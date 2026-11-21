@@ -185,6 +185,16 @@ pub trait Backend {
     }
     /// Makes `window` the one later steps act on.
     fn adopt(&self, window: &Self::Node);
+    /// `activate_window`: raises `window` and gives it the keyboard, waiting until it is active
+    /// or `deadline` passes, which answers `Ok(false)`. A target that cannot switch windows
+    /// refuses, and the step fails with its reason.
+    async fn activate_window(
+        &self,
+        _window: &Self::Node,
+        _deadline: std::time::Instant,
+    ) -> Result<bool, String> {
+        Err("activate_window is not supported on this target".to_owned())
+    }
     /// Sets the window's size; without a height, it keeps the one it has.
     async fn resize(
         &self,
