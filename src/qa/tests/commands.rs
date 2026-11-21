@@ -565,21 +565,37 @@ fn batch_six_commands_parse_only_in_their_valid_shapes() {
 }
 
 #[test]
+fn activate_window_adopts_one_window_named_by_title() {
+    assert_eq!(
+        parse_command(r#"{"activate_window":{"title":"docs — Strata"}}"#),
+        Ok(Command::Adopt {
+            title: "docs — Strata".to_owned(),
+            activate: true,
+            timeout: Duration::from_millis(15_000),
+            message: None,
+        })
+    );
+    for invalid in [
+        r#"{"activate_window":"docs — Strata"}"#,
+        r#"{"activate_window":{"title":""}}"#,
+        r#"{"activate_window":{"title":"Strata","nth":1}}"#,
+    ] {
+        assert!(
+            parse_command(invalid).is_err(),
+            "{invalid} should be rejected"
+        );
+    }
+}
+
+#[test]
 fn portal_reveal_and_window_steps_parse_and_reject_what_they_cannot_mean() {
     assert_eq!(
         parse_command(r#"{"adopt":"Picker","timeout_ms":20000,"message":"m"}"#),
         Ok(Command::Adopt {
             title: "Picker".to_owned(),
+            activate: false,
             timeout: Duration::from_millis(20_000),
             message: Some("m".to_owned()),
-        })
-    );
-    assert_eq!(
-        parse_command(r#"{"activate_window":{"title":"docs — Strata"}}"#),
-        Ok(Command::ActivateWindow {
-            title: "docs — Strata".to_owned(),
-            timeout: Duration::from_millis(15_000),
-            message: None,
         })
     );
     assert_eq!(
@@ -605,9 +621,6 @@ fn portal_reveal_and_window_steps_parse_and_reject_what_they_cannot_mean() {
     ));
     for invalid in [
         r#"{"adopt":""}"#,
-        r#"{"activate_window":"docs — Strata"}"#,
-        r#"{"activate_window":{"title":""}}"#,
-        r#"{"activate_window":{"title":"Strata","nth":1}}"#,
         r#"{"keep":[1,2,3],"as":"x"}"#,
         r#"{"reveal":{"role":"button"}}"#,
         r#"{"reveal_control":{"entry":"a"}}"#,

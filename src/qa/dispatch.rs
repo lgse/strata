@@ -7,6 +7,7 @@ use serde_json::{Value, json};
 
 use super::{
     Controller, LOCATE_TIMEOUT, Outcome, POINTER_GAP, POLL_INTERVAL, Sample,
+    adopt::Adoption,
     clipboard::{abridged, own_clipboard, private_display, read_clipboard},
     driver::Input,
     input::Event,
@@ -22,18 +23,8 @@ use super::{
 
 impl Controller {
     pub(super) async fn execute(&self, command: Command) -> Outcome {
-        match &command {
-            Command::Adopt {
-                title,
-                timeout,
-                message,
-            } => return self.adopt(title, false, *timeout, message.as_deref()).await,
-            Command::ActivateWindow {
-                title,
-                timeout,
-                message,
-            } => return self.adopt(title, true, *timeout, message.as_deref()).await,
-            _ => {}
+        if let Some(adoption) = Adoption::of(&command) {
+            return self.adopt(&adoption).await;
         }
         let Some(window) = self.window() else {
             return Outcome::error("the Strata window is gone".to_owned());
@@ -87,9 +78,7 @@ impl Controller {
                 self.open_menu(&input, &target, &until, message, &open_states)
                     .await
             }
-            Command::Adopt { .. } | Command::ActivateWindow { .. } => {
-                Outcome::error("adopt runs before a window".to_owned())
-            }
+            Command::Adopt { .. } => Outcome::error("adopt runs before a window".to_owned()),
             Command::Keep {
                 rect: [x, y, width, height],
                 name,

@@ -45,14 +45,11 @@ pub enum Command {
         message: Option<String>,
         open_states: Vec<StateName>,
     },
+    /// `adopt` drives the first showing window with this title from then on;
+    /// `activate_window` (`activate`) takes the only one, raised and given the keyboard first.
     Adopt {
         title: String,
-        timeout: Duration,
-        message: Option<String>,
-    },
-    /// Raises the only showing window with this title, gives it the keyboard, and adopts it.
-    ActivateWindow {
-        title: String,
+        activate: bool,
         timeout: Duration,
         message: Option<String>,
     },
