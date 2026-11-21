@@ -4,7 +4,7 @@
 //! handle an XDG portal passes (`wayland:<xdg-foreign handle>` or `x11:<xid>`), for a portal
 //! backend's dialog such as a FileChooser.
 //!
-//! Rune lacks, at the pinned rev (`631e8a67`):
+//! Rune lacks, at the pinned rev (`7a707454`):
 //!
 //! - **A transient-for of any kind**, and a hook that runs before every native window maps.
 //!   On X11, `App::on_window` runs after winit has mapped the window unless it was created

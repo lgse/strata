@@ -687,7 +687,7 @@ fn sort_panel(g: &Gallery) -> El {
                 .py(look.space.xxs),
         );
     }
-    let panel = col()
+    col()
         .key(PANEL)
         .role("dialog")
         .label("Sort by")
@@ -698,8 +698,7 @@ fn sort_panel(g: &Gallery) -> El {
         .border(1.0, kit.c.std_border)
         // A press inside is the panel's, not the scrim's.
         .on_press(|_: &mut Gallery| {})
-        .child(rows);
-    OutsideWheel::<Gallery>::surface(panel)
+        .child(rows)
 }
 
 /// The Panel pane: the stand-in sidebar and the list.

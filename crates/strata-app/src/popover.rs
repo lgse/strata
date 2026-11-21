@@ -39,10 +39,15 @@
 //! Rune's `El::modal` would make everything outside inert, so a wheel there could neither
 //! close it nor scroll (finding lgse/strata#2341, Rune packet entry 104). So the surface is not
 //! modal: it lies over a full-window scrim that is hidden from assistive technology, takes a
-//! press, and takes a wheel unless it is over the listing, where it returns false and Rune's
-//! fallback scrolls the viewport under the point (`scroll_at_axis`, which looks past what
-//! covers the point). The listing's rect is read while the popover builds
-//! (`Cx::window_layout` of [`Plain::listing`]), so the window builds again whenever it moves.
+//! press, and takes a wheel unless it is over the listing, where it returns false. Rune starts
+//! a wheel's scroll on the topmost element under the pointer and chains it only up that
+//! element's ancestors (Rune #1137), and the scrim is not inside the listing, so over each of
+//! the listing's scroll viewports ([`Plain::viewports`]: a Columns column's, or the Icons or
+//! List viewport) the scrim holds a bare stand-in that names it with `El::wheel_scrolls`: the
+//! wheel the handlers leave scrolls the viewport under the pointer, as GTK's
+//! `listing_ancestor` picks its `ScrolledWindow`. The listing's rect and the viewports' are
+//! read while the popover builds (`Cx::window_layout`), so the window builds again whenever
+//! they move.
 //!
 //! **A menu** ([`Kind::Menu`]): GTK's `gtk::PopoverMenu`, as Sort by is (driven, 2026-11-14),
 //! differs from its plain popover in four ways, and the rest is as above:
@@ -94,6 +99,9 @@ pub(crate) struct Plain {
     /// The key of the shown view's listing (its element that takes the keyboard): a wheel
     /// over it scrolls it as well as closing the popover.
     pub(crate) listing: Option<&'static str>,
+    /// The key paths of the listing's scroll viewports (`shell::listing_viewports`): a wheel
+    /// over one scrolls that one.
+    pub(crate) viewports: Vec<String>,
     /// Closes the popover: the part's own state.
     pub(crate) close: fn(&mut App),
     /// The popover this one was opened from, if any: an outside press or wheel closes it too.
@@ -129,7 +137,14 @@ impl Plain {
                 .parent
                 .map_or_else(|| self.anchor.clone(), |parent| parent.anchor.to_owned()),
         };
-        frame.layer.push(scrim(self.key, listing, closes));
+        let viewports = self
+            .viewports
+            .iter()
+            .filter_map(|path| Some((path.clone(), frame.cx.window_layout(path)?)))
+            .collect();
+        frame
+            .layer
+            .push(scrim(self.key, listing, viewports, closes));
         let (close, stops, own_arrows, kind) = (self.close, self.stops, self.own_arrows, self.kind);
         let role = match kind {
             Kind::Dialog => "dialog",
@@ -188,7 +203,12 @@ impl Closes {
 /// The full-window layer under the surface: a press, primary or secondary, closes the
 /// popover and goes no further; a wheel closes it, and goes on to the listing when it is over
 /// it.
-fn scrim(key: &str, listing: Option<[f32; 4]>, closes: Closes) -> El {
+fn scrim(
+    key: &str,
+    listing: Option<[f32; 4]>,
+    viewports: Vec<(String, [f32; 4])>,
+    closes: Closes,
+) -> El {
     let (on_secondary, on_wheel) = (closes.clone(), closes.clone());
     el().key(format!("{key}-scrim"))
         .absolute(0.0, 0.0)
@@ -205,6 +225,23 @@ fn scrim(key: &str, listing: Option<[f32; 4]>, closes: Closes) -> El {
             on_wheel.close(app, tx);
             !listing.is_some_and(|rect| inside(rect, wheel.x, wheel.y))
         })
+        .children(
+            viewports
+                .into_iter()
+                .map(|(path, rect)| hand_off(path, rect)),
+        )
+}
+
+/// A bare stand-in over the listing's scroll viewport at `path`, drawn at its `rect` in the
+/// scrim: a wheel over it starts there, and what the handlers leave scrolls that viewport. It
+/// takes the wheel only to be found under the pointer, and leaves it to the scrim's handler;
+/// a press goes on to the scrim.
+fn hand_off(path: String, [x, y, w, h]: [f32; 4]) -> El {
+    el().absolute(x, y)
+        .w(w)
+        .h(h)
+        .wheel_scrolls(path)
+        .on_wheel(|_: &mut App, _: WheelEvent, _: &mut Tx| false)
 }
 
 fn inside([x, y, w, h]: [f32; 4], px: f32, py: f32) -> bool {

@@ -3431,3 +3431,20 @@ sequence only together with the alphabet's version, so the version is part of th
   `foreign` scenario rerun, since their drags would then start elsewhere.
 - **State:** open, F5's: the sequence is parked in `tests/qa/fuzz/corpus/session-drops/`; once
   the fix lands, it agrees, and a later version can draw tab drops again.
+
+### #2674: menu items, options, tabs and checkboxes have no label child on Rune
+
+- **Code:** `deviation`. [Issue](https://github.com/lgse/strata/issues/2674), filed on
+  2026-11-20 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** at the move of the Rune pin to `7a707454` ([#2673](https://github.com/lgse/strata/issues/2673)),
+  in `language-selection-after-relaunch/columns` (A18) and the three `global-search-*` runs of
+  A10, on the Rune target. Rune #1115 (after #1099) leaves a text inside a checkbox, radio
+  button, switch, tab, menu item or option out of the accessibility tree when the control's name
+  already says its words, as Chromium makes such a control's content one leaf. GTK's AT-SPI tree
+  keeps a `label` under each, which those scenarios aim at.
+- **State:** ruled 2026-11-20 a `deviation` by the owner ([`owner.md`](owner.md#ruled)):
+  Rune's tree stands. A control and its text are one accessible leaf on Rune, the name is
+  announced once either way, and the redundant label child isn't needed.
+  `crates/strata-app/src/qa/control_words.rs` is the QA-side bridge the ruling keeps: it
+  presents the left-out texts as labels under their controls, so the shared scenarios aim at
+  them on both targets.

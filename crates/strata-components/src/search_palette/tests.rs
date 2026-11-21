@@ -455,8 +455,9 @@ fn answers_scroll_as_strata_restores_them() {
     assert_eq!(m.arrive(Answer::new(g + 1, Vec::new()), &mode), None);
 }
 
-/// The labels under the option at `index`: their names, in document order.
-fn option_labels(rt: &Runtime<Host>, index: usize) -> Vec<String> {
+/// The option at `index` in the accessibility tree: its name, and the names of the labels
+/// under it.
+fn option_node(rt: &Runtime<Host>, index: usize) -> (String, Vec<String>) {
     let key = option_key("p", index);
     let mut stack = vec![rt.accessibility_json()];
     let mut option = None;
@@ -467,28 +468,40 @@ fn option_labels(rt: &Runtime<Host>, index: usize) -> Vec<String> {
         }
         stack.extend(v["children"].as_array().into_iter().flatten().cloned());
     }
-    let mut stack = vec![option.expect("the option")];
+    let option = option.expect("the option");
+    let name = option["name"].as_str().unwrap_or_default().to_owned();
+    let mut stack = vec![option];
     let mut labels = Vec::new();
     while let Some(v) = stack.pop() {
         if v["role"] == "label" {
             labels.push(v["name"].as_str().unwrap_or_default().to_owned());
         }
-        stack.extend(
-            v["children"]
-                .as_array()
-                .into_iter()
-                .flatten()
-                .rev()
-                .cloned(),
-        );
+        stack.extend(v["children"].as_array().into_iter().flatten().cloned());
     }
-    labels
+    (name, labels)
 }
 
-// browser/search: GTK's result row holds two labels, the name over the full path, which
-// assistive technology and the QA protocol read as the option's children.
+/// The texts drawn inside the option at `index`, in tree order.
+fn option_texts(rt: &Runtime<Host>, index: usize) -> Vec<String> {
+    let key = option_key("p", index);
+    let elements = rt.elements();
+    let option = elements
+        .iter()
+        .find(|e| e.key.as_deref() == Some(key.as_str()))
+        .expect("the option");
+    elements
+        .iter()
+        .filter(|e| e.path.starts_with(&format!("{}/", option.path)))
+        .filter_map(|e| e.text.clone())
+        .collect()
+}
+
+// browser/search: GTK's result row holds two labels, the name over the full path. Since Rune
+// `7a707454` (anomalyco/rune#1115) an option's repeated words are its name alone: the option
+// says the full path once and draws the name over it, and the QA snapshot presents the drawn
+// texts as GTK's labels (finding lgse/strata#2674).
 #[test]
-fn an_option_holds_its_name_and_its_path_as_labels() {
+fn an_option_draws_its_name_over_its_path_and_says_the_path_once() {
     let mut palette = PaletteState::new();
     let g = query(&palette.open(search())).generation;
     let _ = palette.set_query("re");
@@ -505,9 +518,14 @@ fn an_option_holds_its_name_and_its_path_as_labels() {
     });
     rt.frame(1.0 / 60.0);
     assert_eq!(
-        option_labels(&rt, 1),
+        option_node(&rt, 1),
+        ("/home/u/readme.md".to_owned(), Vec::new()),
+        "the option says its full path, once"
+    );
+    assert_eq!(
+        option_texts(&rt, 1),
         ["readme.md", "/home/u/readme.md"],
-        "the option's name and full path are labels"
+        "the option draws its name over its full path"
     );
 }
 
