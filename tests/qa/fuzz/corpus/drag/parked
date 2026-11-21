@@ -8,11 +8,13 @@
 # Rune's `browser-view` invariant and lost its keyboard until `handover::Kept` kept the
 # neighbour through the undo (A19's closing pull request); and `v1-0000000000000006` (a drag
 # from a selected row of a multi-selection), which C1b's press agrees with since #2592's fix.
-v1-0000000000000005 oracle lgse/strata#2590
-v1-000000000000000d oracle lgse/strata#2591
-v1-0000000000000011 oracle lgse/strata#2590
 # v2, 0x6b: Ctrl+Z takes out the entry the unselected cursor is on: GTK's keyboard goes to the
 # neighbour unselected, Rune's selects it (lgse/strata#2627). Shrunk from 40 steps to 3, confirmed
 # 3 of 3 (F4's round 1). v2, 0x64 is kept unparked: its fix (lgse/strata#2628) came with it,
 # and so is v2, 0x07, which the same fix agrees on (lgse/strata#2593, F4's round 1).
+# v2-00000000000000af: Ctrl+Z takes out the cursor's unselected entry: Rune selects the
+# neighbour (F4's round 2).
+v1-0000000000000005 oracle lgse/strata#2590
+v1-000000000000000d oracle lgse/strata#2591
+v1-0000000000000011 oracle lgse/strata#2590
 v2-000000000000006b divergence lgse/strata#2627

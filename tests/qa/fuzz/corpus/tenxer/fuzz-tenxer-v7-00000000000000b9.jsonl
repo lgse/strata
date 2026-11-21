@@ -1,0 +1,10 @@
+{"scenario":"fuzz-tenxer-v7-00000000000000b9","modes":["list"],"prefs":{"tenxer_mode":true,"type_to_search":false,"single_click_previews":false}}
+{"fs":{"path":"pictures/fuzz-c.txt","write":"fuzz\n"}}
+{"key":"slash"}
+{"type":"re"}
+{"key":"Return"}
+{"key":"Escape"}
+{"key":"Escape"}
+{"key":"l","when":{"all":[{"any":[{"focused":"documents"},{"focused":"pictures"}]},{"selected":[]}]}}
+{"key":"space"}
+{"fs":{"path":"pictures/fuzz-c.txt","remove":true}}
