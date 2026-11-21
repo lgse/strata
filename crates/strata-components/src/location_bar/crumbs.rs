@@ -82,7 +82,7 @@ pub(super) fn view<S: 'static>(cx: &Ctx<'_, S>) -> El {
     let (feed, bar) = (cx.state.feed.clone(), cx.state.bar.clone());
     let wheel_feed = cx.state.feed.clone();
     let wheel_key = viewport.clone();
-    let height = cx.height();
+    let menu_bottom = cx.menu_bottom();
     let strip = row()
         .key(viewport.clone())
         // GTK's strip shows a text cursor, as a press on it opens the entry; its buttons a
@@ -113,7 +113,7 @@ pub(super) fn view<S: 'static>(cx: &Ctx<'_, S>) -> El {
         // The hierarchy menu opens under the whole bar at the press's x, so it never covers the
         // crumbs it lists.
         .on_secondary_press_local(move |s: &mut S, p: PointerEvent, _: &mut Tx| {
-            access(s).open_menu(p.window_x, p.window_y - p.y + height);
+            access(s).open_menu(p.window_x, p.window_y - p.y + menu_bottom);
         })
         .child(content);
 
@@ -122,13 +122,14 @@ pub(super) fn view<S: 'static>(cx: &Ctx<'_, S>) -> El {
             .bar
             .build::<S>(&format!("{}-crumbs-bar", cx.key), &viewport, cx.bar_look());
     // The bar lays itself along its viewport's bottom edge; hung from the viewport's origin
-    // moved down by the bar's row, it sits in that row, under the labels. (A zero-size anchor,
-    // not a frame over the crumbs: a frame there is what a system drag's hit test, P1's, would
-    // find over them.)
+    // moved down by the bar's row, it sits in that row, under the labels, without adding to the
+    // bar's layout height (which would push the crumbs above the header's vertical centre). (A
+    // zero-size anchor, not a frame over the crumbs: a frame there is what a system drag's hit
+    // test, P1's, would find over them.)
     let bar_row = crate::scroll::anchor(0.0, cx.band(), bar_el);
     let column = col()
         .w_full()
-        .h(cx.height())
+        .h(cx.row())
         .min_w(0.0)
         .child(strip)
         .child(bar_row);

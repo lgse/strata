@@ -57,6 +57,8 @@ pub(super) struct Render<'a, S> {
     pub sections: &'a [Section],
     /// The open submenus: item indices at each level.
     pub open: &'a [usize],
+    /// The top-level menu's width, in window points.
+    pub top_width: f32,
     pub look: &'a Look,
     /// An item without a submenu was chosen: its path.
     pub on_select: Select<S>,
@@ -129,7 +131,10 @@ impl<S: 'static> Render<'_, S> {
                 break;
             };
             let surface = std::mem::replace(slot, el());
-            *slot = self.adjust(surface, depth, rows.clone()).min_w(width);
+            *slot = self
+                .adjust(surface, depth, rows.clone())
+                .min_w(width)
+                .w(width);
         }
         anchor
     }
@@ -146,11 +151,11 @@ impl<S: 'static> Render<'_, S> {
         item
     }
 
-    /// Each open level's width: its widest row whole, between [`MIN_WIDTH`] and
-    /// [`MAX_WIDTH`]. rune-kit's rows shrink their labels to fit rather than widen the menu,
-    /// and it draws submenus 160 pt wide.
+    /// Each open level's width: the locked top-level width, then each open submenu's widest
+    /// row whole between [`MIN_WIDTH`] and the scaled [`MAX_WIDTH`]. rune-kit's rows shrink
+    /// their labels to fit rather than widen the menu, and it draws submenus 160 pt wide.
     fn widths(&self) -> Vec<f32> {
-        let mut out = vec![width(self.look, self.header, self.sections)];
+        let mut out = vec![self.top_width];
         let mut sections = self.sections;
         for &i in self.open {
             let Some(sub) = super::model::items(sections)
@@ -365,6 +370,16 @@ fn menu_key<S>(
 /// How wide a compact rune-kit menu must be to show `header` and `sections` whole: each
 /// row's parts as `MenuItem::build` lays them out (5d421fd), plus the list's padding.
 pub(super) fn width(look: &Look, header: &[String], sections: &[Section]) -> f32 {
+    width_with_min(look, header, sections, MIN_WIDTH)
+}
+
+/// Like [`width`], with a minimum width floor of at least `min_width` points.
+pub(super) fn width_with_min(
+    look: &Look,
+    header: &[String],
+    sections: &[Section],
+    min_width: f32,
+) -> f32 {
     use rune::TextStyle;
     let k = &look.kit;
     let measure = |t: &str, style: TextStyle| rune::text::measure(t, &[], style, None).0.ceil();
@@ -400,8 +415,11 @@ pub(super) fn width(look: &Look, header: &[String], sections: &[Section]) -> f32
         }
         w = w.max(row);
     }
+    let floor = min_width.max(MIN_WIDTH);
+    let scale = strata_kit::typography::factor(k.ty.ui_compact.size).max(1.0);
+    let ceiling = (MAX_WIDTH * scale).round().max(floor);
     // The list's 2 pt padding either side.
-    (w + 4.0).clamp(MIN_WIDTH, MAX_WIDTH)
+    (w + 4.0).clamp(floor, ceiling)
 }
 
 /// How tall a compact rune-kit menu of `header` and `sections` is, as `Menu` and

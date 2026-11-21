@@ -9,7 +9,7 @@ use rune::{El, Tx, el};
 use strata_kit::look::Look;
 
 use super::state::{ContextMenuState, MenuIntent, MenuTarget};
-use super::view::Render;
+use super::view::{MIN_WIDTH, Render, width_with_min};
 
 type Emit<S> = Rc<dyn Fn(&mut S, MenuIntent, &mut Tx)>;
 type Dismissed<S> = Rc<dyn Fn(&mut S, MenuTarget)>;
@@ -30,6 +30,7 @@ pub struct ContextMenu<S> {
     get: fn(&S) -> &ContextMenuState,
     get_mut: fn(&mut S) -> &mut ContextMenuState,
     name: String,
+    min_width: f32,
     emit: Option<Emit<S>>,
     dismissed: Option<Dismissed<S>>,
 }
@@ -48,6 +49,7 @@ impl<S: 'static> ContextMenu<S> {
             get,
             get_mut,
             name: "Context menu".to_owned(),
+            min_width: MIN_WIDTH,
             emit: None,
             dismissed: None,
         }
@@ -57,6 +59,12 @@ impl<S: 'static> ContextMenu<S> {
     /// interface language, after its target if it likes ("Notes.md").
     pub fn name(mut self, name: impl Into<String>) -> Self {
         self.name = name.into();
+        self
+    }
+
+    /// The least width the top-level menu opens at, in window points (floored at 160 pt).
+    pub fn min_width(mut self, width: f32) -> Self {
+        self.min_width = width;
         self
     }
 
@@ -80,6 +88,9 @@ impl<S: 'static> ContextMenu<S> {
             return el().absolute(0.0, 0.0);
         };
         let (get_mut, emit, dismissed) = (self.get_mut, self.emit, self.dismissed);
+        let top_width = st.resolve_width(look.kit.ty.ui_compact.size, self.min_width, || {
+            width_with_min(look, &model.header, &model.sections, self.min_width)
+        });
         Render {
             key: &self.key,
             at,
@@ -87,6 +98,7 @@ impl<S: 'static> ContextMenu<S> {
             header: &model.header,
             sections: &model.sections,
             open: st.submenu(),
+            top_width,
             look,
             on_select: Rc::new(move |s: &mut S, path: &[usize], tx: &mut Tx| {
                 let st = get_mut(s);
