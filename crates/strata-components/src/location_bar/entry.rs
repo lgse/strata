@@ -84,7 +84,7 @@ fn entry_button<S: 'static>(cx: &Ctx<'_, S>, icon: IconName, suffix: &str, cance
             tx.blur();
             route(&emit, s, polled, tx);
         })
-        .build(&cx.look.kit)
+        .build(&cx.look.accent_icon_kit())
         .key(format!("{}-{suffix}", cx.key))
         // The entry keeps the keyboard, so pressing the button isn't a press outside it.
         // A focusable button would take the keyboard on a press, and nothing tells the bar

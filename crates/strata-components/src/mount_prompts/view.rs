@@ -379,7 +379,7 @@ impl<S: 'static, T: 'static> MountPrompts<S, T> {
                         form.revealed = !form.revealed;
                     }
                 })
-                .build(kit)
+                .build(&look.accent_icon_kit())
                 // The field stays the Tab stop, as GTK's peek icon is no stop of its own.
                 .focusable(false)
                 .key(format!("{dk}-reveal")),

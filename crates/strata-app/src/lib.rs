@@ -14,6 +14,7 @@ rust_i18n::i18n!(
 
 // The text of a row's facts, as the Icons details line and the List size column show it.
 mod details;
+mod entry_icon;
 mod events;
 // The per-folder views the process keeps, `folder-views.toml`, and when they are written.
 mod folder_views;

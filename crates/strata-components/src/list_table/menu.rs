@@ -127,10 +127,11 @@ pub(super) fn button<S: 'static>(shared: &Rc<Shared<S>>, s: &S, layer: &mut Vec<
     let look = parts.look;
     let open = shared.clone();
     let trigger = IconButton::new(look.icon(IconName::ViewColumns))
+        .variant(rune_kit::IconButtonVariant::Ghost)
         .label(shared.labels.button.clone())
         .help(shared.labels.button.clone())
         .on_press(move |s: &mut S| (open.table_mut)(s).menu = Some(MenuAt::Button))
-        .build(&look.kit)
+        .build(&look.accent_icon_kit())
         .key(button_key(&shared.key));
     let is_open = parts.table.menu == Some(MenuAt::Button);
     let menu = Menu::new(button_menu_key(&shared.key))

@@ -258,23 +258,26 @@ struct Row<'a> {
 /// named by its label and, when it shows a key, described by it (`describe_menu_item`).
 fn option(look: &Look, row_of: Row<'_>) -> El {
     let kit = &look.kit;
+    let accent = kit.c.icon_accent;
     let name = row_of.name.to_owned();
     let keys_shown = row_of.shown_keys.clone();
     let checked = row_of.checked;
+    let leading = look.icon(row_of.icon);
     let check = look.icon(IconName::Check);
     let press = row_of.press;
     let built = Button::new(name.clone())
         .variant(ButtonVariant::Ghost)
-        .icon(look.icon(row_of.icon))
         .disabled(!row_of.sensitive)
         .label_with(move |font, ink| {
             let keys_text = keys_shown.map(|shown| text(shown).font(font).color(ink));
             row()
                 .grow(1.0)
                 .gap(8.0)
+                .items_center()
+                .child(icon(leading, 16.0).color(accent))
                 .child(text(name).font(font).color(ink).grow(1.0))
                 .children(keys_text)
-                .children(checked.then(|| icon(check, 16.0).color(ink)))
+                .children(checked.then(|| icon(check, 16.0).color(accent)))
         })
         .on_press_tx(move |app: &mut App, tx: &mut Tx| press(app, tx))
         .build(kit)
@@ -382,6 +385,7 @@ fn preview_row(app: &App) -> El {
 fn stepper(app: &App) -> El {
     let look = &app.look;
     let kit = &look.kit;
+    let accent_kit = look.accent_icon_kit();
     let size = shell::preferences(app).text_size.root_font_px();
     let step = |key: &'static str, icon: IconName, name: String, command: &'static str| {
         let button = IconButton::new(look.icon(icon))
@@ -390,7 +394,7 @@ fn stepper(app: &App) -> El {
             .on_press_tx(move |app: &mut App, tx: &mut Tx| {
                 commands::run(app, command, On::Focus, tx);
             })
-            .build(kit);
+            .build(&accent_kit);
         buttons::on_return(key, button)
     };
     let smaller = with_keys(

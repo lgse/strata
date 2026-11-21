@@ -27,7 +27,7 @@ pub(super) fn built(app: &App, depth: usize) -> El {
         .on_press_tx(move |app: &mut App, tx: &mut Tx| {
             commands::run(app, "refresh", On::Column(depth), tx);
         })
-        .build(&look.kit)
+        .build(&look.accent_icon_kit())
 }
 
 #[cfg(test)]
