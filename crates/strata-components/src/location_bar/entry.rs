@@ -49,7 +49,7 @@ pub(super) fn view<S: 'static>(cx: &Ctx<'_, S>) -> El {
         .label(cx.labels.entry.clone())
         .expanded(open)
         .w_full()
-        .h(cx.height())
+        .h(cx.row())
         .items_center()
         .gap(look.space.xxs)
         .child(
