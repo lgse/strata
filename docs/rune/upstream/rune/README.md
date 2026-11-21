@@ -3,8 +3,10 @@
 Issue and comment drafts for [Rune](https://github.com/anomalyco/rune), ready for the owner to
 review and file. One entry has been filed: 97, as
 [anomalyco/rune#657](https://github.com/anomalyco/rune/issues/657), on 2026-11-11 at the owner's
-request. Nothing else here has been filed or posted. Rune takes issues with headless repros and
-no pull requests; each entry below is one issue or one comment.
+request. One comment has been posted: 112, on
+[anomalyco/rune#917](https://github.com/anomalyco/rune/issues/917), on 2026-11-21. Nothing else
+here has been filed or posted. Rune takes issues with headless repros and no pull requests; each
+entry below is one issue or one comment.
 
 | | |
 | --- | --- |
@@ -290,6 +292,7 @@ gaps"), by number. The owner ranks each at the filing pass.
 | 109 | [A node mounted where one just left takes its id, and loses its scene entry with the old subtree](109-remount-at-a-seen-path.md) | New issue | `strata-app`'s hidden drag stand-in (`dnd::keep_alive`), for A4's `tabs/hovered-tab-takes-drop` | `StandIn` and `Wiring::poll_stand_in`, which mount the stand-in a commit after its source leaves, that commit unmounting the source at once | Drafted, checked by reading, headless repro and hosted repro; not filed |
 | 110 | [A close the window manager asks for cannot be refused](110-refusable-close-request.md) | New issue | `strata-app`'s windowed host, for GTK's close guards (file operations, and background jobs on the last window; finding #2473) | `host/windowed/refused.rs`, which opens the closing window's state again in a new window from `on_close` | Drafted, checked by reading and a window test; not filed |
 | 111 | [A Wayland window that is minimised or suspended never reaches `App::on_visibility`](111-wayland-visibility.md) | New issue | `strata-app`'s window presence (`shell/presence.rs`), which GTK turns `Hidden` from a toplevel's `SUSPENDED` state | Nothing in code: the Wayland half of `A21.md`'s presence item | Drafted, checked by reading; not filed |
+| 112 | [Comment on #917: the `tiny-skia-path` fork breaks `cargo vendor` too](112-comment-917-tiny-skia-path-vendor.md) | Comment on #917 | The RPM package, which can't vendor `strata-next`'s lockfile (lgse/strata#2698), and any offline vendored build of the Rune binary | `rpm.yml`'s skip of pull requests into `strata-next` (lgse/strata#2699) | Posted: [comment on #917](https://github.com/anomalyco/rune/issues/917#issuecomment-7065687540) |
 
 ## Owner decisions (2026-11-10)
 
