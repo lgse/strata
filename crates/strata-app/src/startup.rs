@@ -5,8 +5,14 @@
 
 use std::{marker::PhantomData, sync::OnceLock};
 
-use strata_core::{logging, metrics};
-use strata_desktop::keys::{self, Xkb, conflicts};
+use strata_core::{
+    logging, metrics,
+    util::ui_thread::{self, Exception},
+};
+use strata_desktop::{
+    keys::{self, Xkb, conflicts},
+    services::InstallSource,
+};
 
 use crate::settings::Saved;
 
@@ -29,6 +35,13 @@ pub(crate) fn load_settings() -> Saved {
     Saved::load()
 }
 
+/// Reads process-wide install facts once under [`Exception::Startup`] before the calling thread
+/// becomes the UI thread, mirroring GTK's `ui::read_install_facts` (`src/ui/mod.rs`).
+pub(crate) fn read_install_facts() {
+    let _startup = ui_thread::allow(Exception::Startup);
+    InstallSource::detect();
+}
+
 /// Proof that the calling thread ran the start-up sequence and owns the default GLib context,
 /// which `Browser` schedules on. Building the application state takes one.
 #[derive(Clone, Copy)]
@@ -39,6 +52,7 @@ pub(crate) struct UiThread {
 impl UiThread {
     pub(crate) fn claim() -> Result<Self, String> {
         install_key_library()?;
+        read_install_facts();
         strata_fs::startup::claim_watched_ui_thread();
         let context = glib::MainContext::default();
         let owned = context
