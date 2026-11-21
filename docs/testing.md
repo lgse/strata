@@ -1807,10 +1807,14 @@ The fixture's random name and the paths around it are written `$root`,
 `$fixture` and `$environment` wherever they appear. The fixture's name cut short by an
 edit, as a BackSpace in the location field leaves it, is written `$root[-<n>]`,
 `n` the characters it lacks, so the same edit reads the same in every run. A
-text that is exactly a date Strata writes relative to now for a recent file
-("Just now", "5m ago", "2h ago") is written `$recent`: it follows the clock, and
-a long replay passes a minute in one replay and not the next. A date written as
-a date, and any longer text holding one, is left as it is. A stream line carries the
+text that is exactly a date Strata writes relative to now for a file of the last
+hour ("Just now", "5m ago") is written `$recent`: it follows the clock, and a
+long replay passes a minute in one replay and not the next. The fixture pins its
+files' dates to 2023, so only a file the run made shows such a date, and it is
+minutes old at most: an hour count ("2h ago") is never the clock's and is left as
+it is, as is a date written as a date and any longer text holding one. What
+`$recent` still hides is a wrong count of minutes, "12m ago" against "Just now":
+a projection maps each value alone and cannot say which minutes are adjacent. A stream line carries the
 digest of the tree and of the settings (`fs_digest`, `settings_digest`) beside
 the listings, which are what says which path differs.
 

@@ -22,7 +22,7 @@ pub(crate) fn a_relative_date_and_a_cut_fixture_name_are_the_same_in_every_repla
         ("Just now", "$recent"),
         ("1m ago", "$recent"),
         ("59m ago", "$recent"),
-        ("3h ago", "$recent"),
+        ("3h ago", "3h ago"),
         ("m ago", "m ago"),
         ("1w ago", "1w ago"),
         ("Nov 14, 2023", "Nov 14, 2023"),

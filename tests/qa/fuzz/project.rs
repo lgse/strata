@@ -44,8 +44,11 @@ pub(crate) const WINDOW_FOCUSED: &str = "window_focused";
 /// How an observation writes the fixture directory's name, which is random in every run.
 const ROOT: &str = "$root";
 /// How an observation writes a date Strata shows relative to now for a file the run made:
-/// "Just now", "5m ago" or "2h ago" follow the clock, not the application, and a long replay
-/// passes a minute in one replay and not the next (`archives` seeds 2001 to 2010, F4's round 2).
+/// "Just now" or "5m ago" follow the clock, not the application, and a long replay passes a
+/// minute in one replay and not the next (`archives` seeds 2001 to 2010, F4's round 2). The
+/// fixture pins every file it makes to 2023, so only a file the run made shows one, and that is
+/// minutes old at most: an hour count is never the clock's, and is left as it is. A wrong count
+/// of minutes is hidden, as a projection maps each value alone.
 const RECENT: &str = "$recent";
 
 /// The names that differ from one replay to the next and mean the same place in each: the
@@ -131,8 +134,8 @@ impl Places {
 }
 
 /// Whether `value` is a text that is a date Strata writes relative to now for a file of the
-/// last day: "Just now", or a count of minutes or hours ago (`strata_core::util`'s relative
-/// date, in the QA image's English).
+/// last hour: "Just now", or a count of minutes ago (`strata_core::util`'s relative date, in
+/// the QA image's English).
 fn is_recent(value: &Value) -> bool {
     let Some(text) = value.as_str() else {
         return false;
@@ -140,10 +143,8 @@ fn is_recent(value: &Value) -> bool {
     if text == "Just now" {
         return true;
     }
-    let count = text
-        .strip_suffix("m ago")
-        .or_else(|| text.strip_suffix("h ago"));
-    count.is_some_and(|count| !count.is_empty() && count.bytes().all(|byte| byte.is_ascii_digit()))
+    text.strip_suffix("m ago")
+        .is_some_and(|count| !count.is_empty() && count.bytes().all(|byte| byte.is_ascii_digit()))
 }
 
 /// The projected `app`: its ten keys and nothing a later protocol might add, so adding a
