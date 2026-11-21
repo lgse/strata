@@ -345,6 +345,8 @@ pub(crate) fn replay(request: &Replay) -> Result<Replayed, String> {
         extra: environment(scenario, &variables),
         bus: bus.as_ref().map(|bus| bus.address.as_str()),
         portal: false,
+        // A sequence replays with no session bus, so with no fake volume monitor either.
+        volume_monitor: false,
         audit: None,
     };
     // What the runner's own peer steps read of the run (`peers.rs`).

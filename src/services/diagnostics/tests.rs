@@ -273,6 +273,47 @@ fn remote_backends_follow_gvfs_state() {
 }
 
 #[test]
+fn mtp_warns_when_kde_also_claims_phones() {
+    let installed = VfsState::Running(names(&["mtp"]));
+    let kde = names(&[KDE_MTP_NAME]);
+    let cases = [
+        (
+            &installed,
+            Some(&kde),
+            Status::Warning,
+            Finding::KdeMtpConflict,
+        ),
+        (
+            &installed,
+            Some(&names(&[])),
+            Status::Passed,
+            Finding::BackendInstalled,
+        ),
+        (&installed, None, Status::Passed, Finding::BackendInstalled),
+        (
+            &VfsState::Running(names(&[])),
+            Some(&kde),
+            Status::Warning,
+            Finding::BackendMissing,
+        ),
+        (
+            &VfsState::Missing,
+            Some(&kde),
+            Status::Warning,
+            Finding::RequiresGvfs,
+        ),
+    ];
+    for (state, session, status, finding) in cases {
+        let check = mtp(state, session);
+        assert_eq!(
+            (check.status, check.finding),
+            (status, finding),
+            "{state:?} {session:?}"
+        );
+    }
+}
+
+#[test]
 fn drives_and_session_services_read_bus_names() {
     let system = names(&[UDISKS_NAME]);
     let session = names(&[VOLUME_MONITOR_NAME, PORTAL_NAME]);

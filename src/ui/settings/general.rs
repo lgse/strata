@@ -404,6 +404,8 @@ fn append_folder_view_options(content: &gtk::Box, manager: &Rc<PreferenceManager
             ("Type", SortKey::Type),
             ("Extension", SortKey::Extension),
             ("Created", SortKey::Created),
+            ("Duration", SortKey::Duration),
+            ("Dimensions", SortKey::Dimensions),
             ("Unsorted", SortKey::Unsorted),
         ],
         |manager| manager.default_sort().0,

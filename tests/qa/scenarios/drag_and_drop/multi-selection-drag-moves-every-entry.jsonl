@@ -1,4 +1,4 @@
-{"scenario":"multi-selection-drag-moves-every-entry","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":1.0},"quality":{"impact":4,"coverage":3,"criticality":3,"diagnostic":4,"score":33,"note":"Dragging a Shift-extended two-file selection moves every entry (columns); only multi-entry drag route, single-file drags covered by drag-file-onto-folder and drop-keeps-selection-at-destination; fs checks name each file"}}
+{"scenario":"multi-selection-drag-moves-every-entry","modes":["columns","list"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":1.1,"list":1.0},"quality":{"impact":4,"coverage":3,"criticality":3,"diagnostic":4,"score":33,"note":"An icon drag preserves a Shift-selected file group in Columns/List; single-file cases do not verify group preservation"}}
 {"select":{"entry":"readme.md"}}
 {"key":"shift+Down"}
 {"wait":{"selected":["readme.md","todo.txt"]},"message":"both files to be selected"}

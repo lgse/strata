@@ -6,11 +6,7 @@ use std::path::Path;
 use super::{
     document_media, model,
     pdf::render_pdf_thumbnail,
-    raster::{
-        exceeds_decoded_frame_budget, image_dimensions, render_camera_raw,
-        render_camera_raw_preview, render_dcraw, render_imagemagick, render_oversized,
-        render_pixbuf,
-    },
+    raster::{image_dimensions, render_camera_raw, render_camera_raw_preview, render_raster},
     raw_metadata, read_media_metadata, render_media, svg_source, video_stream_metadata,
 };
 use crate::{
@@ -24,20 +20,10 @@ fn encode_dimensions((width, height): (i32, i32)) -> Vec<u8> {
 
 fn raster_image(input: &Path, response: &mut Response) {
     let size = image_dimensions(input);
-    let oversized = size.is_some_and(|(w, h)| exceeds_decoded_frame_budget(w, h));
     if let Some(size) = size {
         response.metadata = encode_dimensions(size);
-        response.png = if oversized {
-            render_oversized(input, 256).unwrap_or_default()
-        } else {
-            render_pixbuf(input, 256.min(size.0.max(size.1)), Some(size)).unwrap_or_default()
-        };
     }
-    if response.png.is_empty() && !oversized {
-        response.png = render_imagemagick(input, 256)
-            .or_else(|_| render_dcraw(input, 256))
-            .unwrap_or_default();
-    }
+    response.png = render_raster(input, 256, size).unwrap_or_default();
 }
 
 fn image(input: &Path, response: &mut Response) {

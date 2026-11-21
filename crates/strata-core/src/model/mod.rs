@@ -534,10 +534,20 @@ pub enum SortKey {
     Modified,
     Extension,
     Created,
+    Duration,
+    Dimensions,
     Unsorted,
 }
 
 impl SortKey {
+    pub fn uses_media_metadata(self) -> bool {
+        matches!(self, Self::Duration | Self::Dimensions)
+    }
+
+    pub fn uses_file_stat(self) -> bool {
+        matches!(self, Self::Size | Self::Modified | Self::Created)
+    }
+
     pub fn from_stored(value: &str) -> Option<Self> {
         match value {
             "name" => Some(Self::Name),
@@ -546,6 +556,8 @@ impl SortKey {
             "type" => Some(Self::Type),
             "extension" => Some(Self::Extension),
             "created" => Some(Self::Created),
+            "duration" => Some(Self::Duration),
+            "dimensions" => Some(Self::Dimensions),
             "unsorted" => Some(Self::Unsorted),
             _ => None,
         }
@@ -559,6 +571,8 @@ impl SortKey {
             Self::Type => Some("type"),
             Self::Extension => Some("extension"),
             Self::Created => Some("created"),
+            Self::Duration => Some("duration"),
+            Self::Dimensions => Some("dimensions"),
             Self::Unsorted => Some("unsorted"),
             Self::DeviceOrder | Self::Recency => None,
         }

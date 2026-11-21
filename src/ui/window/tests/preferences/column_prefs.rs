@@ -308,7 +308,9 @@ fn list_column_customization_preserves_saved_and_live_folder_sorts() {
                 .expect("large file");
             std::fs::write(directory.path().join("z-small.txt"), b"a").expect("small file");
             let location = Location::local(directory.path());
-            write_settings("browser_mode = 'list'\nlist_hidden_columns = ['size']\n");
+            write_settings(
+                "browser_mode = 'list'\nlist_hidden_columns = ['size']\nlist_shown_columns = ['created']\n",
+            );
             write_folder_views(&format!(
                 "version = 1\n[[folder]]\npath = \"{}\"\nsort = \"size\"\ndirection = \"descending\"\n",
                 directory.path().display()
@@ -344,6 +346,8 @@ fn list_column_customization_preserves_saved_and_live_folder_sorts() {
                 wait_until(|| !column_loading(open, 0));
                 check_sort(open, SortDirection::Descending);
                 assert!(settings_closed(open));
+                assert!(list_heading(&open.content.browser.widget(), "Created").is_mapped());
+                assert!(!list_heading(&open.content.browser.widget(), "Duration").is_mapped());
                 assert!(!list_heading(&open.content.browser.widget(), "Size").is_mapped());
             }
             assert_eq!(
@@ -360,8 +364,10 @@ fn list_column_customization_preserves_saved_and_live_folder_sorts() {
             );
 
             manager.set_list_column_visible(ListColumnId::Size, true);
+            manager.set_list_column_visible(ListColumnId::Duration, true);
             for open in [&first, &second] {
                 assert!(list_heading(&open.content.browser.widget(), "Size").is_mapped());
+                assert!(list_heading(&open.content.browser.widget(), "Duration").is_mapped());
                 check_sort(open, SortDirection::Descending);
             }
             list_heading(&first.content.browser.widget(), "Size").emit_clicked();
@@ -391,12 +397,15 @@ fn list_column_customization_preserves_saved_and_live_folder_sorts() {
             }
             for open in [&first, &second] {
                 assert!(list_heading(&open.content.browser.widget(), "Size").is_mapped());
+                assert!(list_heading(&open.content.browser.widget(), "Duration").is_mapped());
             }
             manager.set_list_column_visible(ListColumnId::Size, false);
             settle();
             manager.reset_list_columns();
             for open in [&first, &second] {
                 assert!(list_heading(&open.content.browser.widget(), "Size").is_mapped());
+                assert!(!list_heading(&open.content.browser.widget(), "Duration").is_mapped());
+                assert!(!list_heading(&open.content.browser.widget(), "Created").is_mapped());
                 check_sort(open, SortDirection::Descending);
             }
             assert_eq!(

@@ -240,3 +240,41 @@ fn installed_target_outside_trust_roots_needs_an_owned_unwritable_chain() {
         None
     );
 }
+
+#[test]
+fn sandbox_resolution_skips_privileged_wrappers_but_keeps_trust_checks() {
+    let root = scratch();
+    let wrappers = root.path().join("wrappers");
+    let store = root.path().join("store");
+    let outside = root.path().join("outside");
+    for dir in [&wrappers, &store, &outside] {
+        write_helper(dir, "bwrap");
+    }
+    for mode in [0o4755, 0o2755] {
+        fs::set_permissions(wrappers.join("bwrap"), fs::Permissions::from_mode(mode))
+            .expect("privileged mode");
+        let search = [wrappers.as_path(), store.as_path()];
+        assert_eq!(
+            resolve_in("bwrap", &search, &search).expect("generic wrapper resolution"),
+            wrappers.join("bwrap")
+        );
+        assert_eq!(
+            super::resolve_matching("bwrap", &search, &search, true)
+                .expect("unprivileged resolution"),
+            store.join("bwrap")
+        );
+        assert!(super::resolve_matching("bwrap", &[wrappers.as_path()], &search, true).is_err());
+    }
+    fs::remove_file(store.join("bwrap")).expect("remove store helper");
+    std::os::unix::fs::symlink(outside.join("bwrap"), store.join("bwrap"))
+        .expect("untrusted symlink");
+    assert!(
+        super::resolve_matching(
+            "bwrap",
+            &[wrappers.as_path(), store.as_path()],
+            &[wrappers.as_path(), store.as_path()],
+            true
+        )
+        .is_err()
+    );
+}

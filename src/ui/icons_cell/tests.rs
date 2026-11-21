@@ -1,9 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use super::{
-    details_label, ensure_rename_field,
-    name_tooltip::{NameTooltip, REST_DELAY},
-    new_card, parts, rename_field,
+    details_label, ensure_rename_field, modified_label, name_tooltip, new_card, parts, rename_field,
 };
 use crate::test_support::gtk_test;
 use gtk::{glib, prelude::*};
@@ -100,9 +98,9 @@ fn label_center(card: &gtk::Box, label: &gtk::Inscription) -> (f64, f64) {
 }
 
 #[test]
-fn name_tooltip_shows_truncated_name_only_after_the_pointer_rests() {
+fn name_tooltip_shows_truncated_names_and_the_modified_date() {
     gtk_test(
-        "ui::icons_cell::tests::name_tooltip_shows_truncated_name_only_after_the_pointer_rests",
+        "ui::icons_cell::tests::name_tooltip_shows_truncated_names_and_the_modified_date",
         || {
             let long_name = "2026-10-07-release-candidate-build-final-v3-with-extra-suffix.tar.gz";
             let card = new_card(64);
@@ -112,33 +110,29 @@ fn name_tooltip_shows_truncated_name_only_after_the_pointer_rests() {
             window.present();
             pump_frames(&card);
             let (x, y) = label_center(&card, &label);
-            let tooltip = NameTooltip::default();
-            let start = std::time::Instant::now();
 
-            assert_eq!(tooltip.text(&card, x, y, start + REST_DELAY), None);
-            tooltip.pointer_moved(x, y, start);
-            assert_eq!(tooltip.text(&card, x, y, start + REST_DELAY / 2), None);
-            assert_eq!(
-                tooltip.text(&card, x, y, start + REST_DELAY).as_deref(),
-                Some(long_name)
-            );
-
-            assert!(!tooltip.pointer_moved(x + 1.0, y, start + REST_DELAY));
-            assert!(tooltip.text(&card, x, y, start + REST_DELAY).is_some());
-            let moved = start + REST_DELAY;
-            assert!(tooltip.pointer_moved(x + 20.0, y, moved));
-            assert_eq!(tooltip.text(&card, x, y, moved + REST_DELAY / 2), None);
+            assert_eq!(name_tooltip::text(&card, x, y).as_deref(), Some(long_name));
 
             let renamed = "2026-10-07-release-candidate-build-final-v4-renamed-pending.tar.gz";
             label.set_text(Some(renamed));
             pump_frames(&card);
+            assert_eq!(name_tooltip::text(&card, x, y).as_deref(), Some(renamed));
+
+            modified_label(&card)
+                .expect("modified label")
+                .set_text("12 Nov 2026");
             assert_eq!(
-                tooltip.text(&card, x, y, moved + REST_DELAY).as_deref(),
-                Some(renamed)
+                name_tooltip::text(&card, x, y).as_deref(),
+                Some(format!("{renamed}\n12 Nov 2026").as_str())
             );
 
-            tooltip.reset();
-            assert_eq!(tooltip.text(&card, x, y, moved + REST_DELAY * 2), None);
+            label.set_text(Some("a.txt"));
+            pump_frames(&card);
+            let (x, y) = label_center(&card, &label);
+            assert_eq!(
+                name_tooltip::text(&card, x, y).as_deref(),
+                Some("a.txt\n12 Nov 2026")
+            );
 
             window.close();
         },
@@ -157,24 +151,20 @@ fn name_tooltip_skips_names_that_fit_and_hidden_captions() {
             window.present();
             pump_frames(&card);
             let (x, y) = label_center(&card, &label);
-            let tooltip = NameTooltip::default();
-            let start = std::time::Instant::now();
-            tooltip.pointer_moved(x, y, start);
-            assert_eq!(tooltip.text(&card, x, y, start + REST_DELAY), None);
+            assert_eq!(name_tooltip::text(&card, x, y), None);
 
             label.set_text(Some(
                 "a-very-long-file-name-that-cannot-fit-in-two-caption-lines.txt",
             ));
             pump_frames(&card);
             let (x, y) = label_center(&card, &label);
-            tooltip.pointer_moved(x, y, start);
-            assert!(tooltip.text(&card, x, y, start + REST_DELAY).is_some());
+            assert!(name_tooltip::text(&card, x, y).is_some());
 
             let field = ensure_rename_field(&card).expect("rename field");
             label.set_visible(false);
             field.set_visible(true);
             pump_frames(&card);
-            assert_eq!(tooltip.text(&card, x, y, start + REST_DELAY), None);
+            assert_eq!(name_tooltip::text(&card, x, y), None);
 
             window.close();
         },

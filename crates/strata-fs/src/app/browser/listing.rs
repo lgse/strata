@@ -8,7 +8,7 @@ use std::{
 };
 
 use crate::{
-    model::{FileEntry, Location, SortKey},
+    model::{FileEntry, Location},
     services::{
         DirectoryRequest, DirectoryStamp, LoadHandle, RequestId, StampAnswer, WatchRequest,
         Watching,
@@ -263,10 +263,7 @@ impl Browser {
             .column_preferences(depth)
             .map(|preferences| preferences.sort_key)
             .unwrap_or_else(|| self.preferences.get().sort_key);
-        let include_metadata = matches!(
-            sort_key,
-            SortKey::Size | SortKey::Modified | SortKey::Created
-        );
+        let include_metadata = sort_key.uses_file_stat();
         let (max_entries, time_budget) = if location.is_camera_photo_root() {
             (usize::MAX, Duration::MAX)
         } else {

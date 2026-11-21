@@ -71,7 +71,6 @@ use std::{
 };
 
 use rune::{AppHandle, AppSpec, Tx, WindowHandle, WindowOptions, WindowSpec};
-use strata_core::model::Location;
 use strata_kit::fonts::{FAMILIES, FONTS};
 use strata_platform::{
     csd::{self, Backend, Csd, Policy},
@@ -277,7 +276,7 @@ pub(crate) fn run(ui: UiThread, settings: Saved, initial: launch::Initial) -> Re
     run_initial(ui, settings, initial, |app| app)
 }
 
-/// Opens the window on `location` with the app handed to `extend` before it runs: the QA mode's
+/// Opens the window on `initial` with the app handed to `extend` before it runs: the QA mode's
 /// session host adds its frame hook and takes a handle there (`qa::session`).
 #[cfg_attr(
     not(feature = "qa"),
@@ -289,10 +288,10 @@ pub(crate) fn run(ui: UiThread, settings: Saved, initial: launch::Initial) -> Re
 pub(crate) fn run_with(
     ui: UiThread,
     settings: Saved,
-    location: Location,
+    initial: launch::Initial,
     extend: impl FnOnce(rune::App<App>) -> rune::App<App>,
 ) -> Result<(), String> {
-    run_initial(ui, settings, launch::Initial::Explicit(location), extend)
+    run_initial(ui, settings, initial, extend)
 }
 
 /// One window's app from `start`: its state, its hooks, and the clipboard, drag and drop and

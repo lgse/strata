@@ -29,3 +29,11 @@ run = "columns"
 package = "A18"
 status = "required"
 host = "offscreen"
+
+[[run]]
+scenario = "window-buttons-follow-desktop-defaults"
+run = "columns"
+package = "A18"
+status = "pending"
+reason = "scope"
+blocker = "A18: a scenario `main`'s #2448 added, merged on 2026-11-20 and not yet run on Rune"

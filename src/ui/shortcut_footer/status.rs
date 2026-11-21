@@ -7,7 +7,7 @@ use std::{
 
 use gtk::{gdk, glib, prelude::*};
 
-use crate::ui::browser::FilterStatus;
+use crate::ui::{browser::FilterStatus, browser_modes::BrowserMode};
 
 /// Selections up to this size get their missing file sizes requested and listed.
 const DETAILED_SELECTION: usize = 64;
@@ -23,6 +23,7 @@ pub(super) fn update_item_count(
     label: &gtk::Label,
     browser: &Rc<crate::app::Browser>,
     filter: Option<&FilterStatus>,
+    mode: BrowserMode,
 ) {
     if let Some(filter) = filter.filter(|filter| filter.displayed) {
         label.set_label(&crate::i18n::count("items", filter.total()));
@@ -48,7 +49,8 @@ pub(super) fn update_item_count(
         request_selected_sizes(browser, depth);
     }
     if selected_len > 0 {
-        show_selection_count(label, browser, &counts, selected_len);
+        let text = selection_label(browser, &counts, selected_len, mode);
+        show_selection_count(label, &text, &counts, selected_len);
     } else {
         label.set_label(&crate::i18n::count("items", counts.total));
         crate::ui::accessibility::set_description(
@@ -59,13 +61,14 @@ pub(super) fn update_item_count(
     label.set_visible(true);
 }
 
-fn lacks_size(entry: &crate::model::FileEntry) -> bool {
-    !entry.is_directory() && entry.size == crate::model::MetadataValue::Unknown
+fn lacks_metadata(entry: &crate::model::FileEntry) -> bool {
+    (!entry.is_directory() && entry.size == crate::model::MetadataValue::Unknown)
+        || entry.modified_unix_seconds == crate::model::MetadataValue::Unknown
 }
 
 fn request_selected_sizes(browser: &Rc<crate::app::Browser>, depth: usize) {
     for position in browser.selected_positions(depth) {
-        if let Some(entry) = browser.entry_at(depth, position).filter(lacks_size) {
+        if let Some(entry) = browser.entry_at(depth, position).filter(lacks_metadata) {
             browser.request_metadata_fill(depth, position, entry.location, false);
         }
     }
@@ -73,11 +76,11 @@ fn request_selected_sizes(browser: &Rc<crate::app::Browser>, depth: usize) {
 
 fn show_selection_count(
     label: &gtk::Label,
-    browser: &crate::app::Browser,
+    text: &str,
     counts: &ListingCounts,
     selected_len: usize,
 ) {
-    label.set_label(&selection_label(browser, counts, selected_len));
+    label.set_label(text);
     // The plural form follows the total; the selected count fills in afterwards.
     let selection = rust_i18n::replace_patterns(
         &crate::i18n::count("selected_of_items", counts.total),
@@ -97,6 +100,7 @@ fn selection_label(
     browser: &crate::app::Browser,
     counts: &ListingCounts,
     selected_len: usize,
+    mode: BrowserMode,
 ) -> String {
     if counts.total > 0 && selected_len == counts.total {
         return whole_listing_label(counts, selected_len);
@@ -108,7 +112,26 @@ fn selection_label(
         )
         .into_owned();
     }
-    selection_details(&browser.selected_entries())
+    let entries = browser.selected_entries();
+    if entries.len() == 1 {
+        single_entry_label(&entries[0], mode)
+    } else {
+        selection_details(&entries)
+    }
+}
+
+fn single_entry_label(entry: &crate::model::FileEntry, mode: BrowserMode) -> String {
+    let mut text = entry.display_name.clone();
+    if !entry.is_directory() {
+        text.push_str(&size_suffix(std::slice::from_ref(entry), 1));
+    }
+    if matches!(mode, BrowserMode::Icons | BrowserMode::Columns) {
+        let date = strata_core::util::modified_date(entry);
+        if !date.is_empty() {
+            text.push_str(&format!(" — {date}"));
+        }
+    }
+    text
 }
 
 fn whole_listing_label(counts: &ListingCounts, selected_len: usize) -> String {

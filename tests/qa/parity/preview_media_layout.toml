@@ -4,6 +4,14 @@
 
 [[run]]
 scenario = "camera-formats-preview-sandbox"
+run = "columns-png"
+package = "A16"
+status = "pending"
+reason = "scope"
+blocker = "A16: the png variant `main`'s #2182 added, merged on 2026-11-20 and not yet run on Rune"
+
+[[run]]
+scenario = "camera-formats-preview-sandbox"
 run = "columns-heic"
 package = "A16"
 status = "parallel"

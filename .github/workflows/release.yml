@@ -162,7 +162,9 @@ jobs:
           if [[ "$MODE" != "stable" ]]; then
             # Fail closed when targeting source older than release-channel
             # support; otherwise the archive tag and binary identity diverge.
-            if ! grep -q 'STRATA_RELEASE_TAG' build.rs; then
+            shopt -s nullglob
+            build_scripts=(build.rs crates/*/build.rs)
+            if ! grep -q 'STRATA_RELEASE_TAG' "${build_scripts[@]}"; then
               echo "The selected source does not support prerelease build metadata." >&2
               exit 1
             fi
@@ -611,3 +613,13 @@ jobs:
             --head "$BRANCH" \
             --title "build(arch): update AUR packages for v$VERSION" \
             --body-file /tmp/aur-package-pr.md
+
+  copr:
+    name: Publish COPR packages
+    needs: [prepare, release]
+    if: inputs.mode != 'nightly' && vars.COPR_PUBLISH_ENABLED == 'true'
+    permissions:
+      contents: read
+    uses: ./.github/workflows/publish-copr.yml
+    with:
+      version: ${{ needs.prepare.outputs.version }}

@@ -10,5 +10,5 @@
 {"portal_response":{"done":false},"message":"Escape cancels the heading drag, not the entire chooser"}
 {"expect":[{"pref":{"key":"list_column_order","value":null}},{"state":{"target":{"row":"readme.md"},"selected":true}}],"message":"heading cancellation preserves the file selection and saved column order in the chooser"}
 {"drag":{"from":{"role":"button","name":"Mode","within":{"pane":null}},"to":{"role":"button","name":"Size","within":{"pane":null}},"to_at":["80%","50%"]}}
-{"wait":{"pref":{"key":"list_column_order","value":["name","size","mode","type","modified"]}},"message":"another heading drag can commit after the previous one was cancelled"}
+{"wait":{"pref":{"key":"list_column_order","value":["name","size","mode","type","modified","duration","dimensions","created"]}},"message":"another heading drag can commit after the previous one was cancelled"}
 {"expect":{"state":{"target":{"row":"readme.md"},"selected":true}},"message":"a subsequent successful heading drag also preserves the file selection"}

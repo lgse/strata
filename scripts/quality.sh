@@ -61,6 +61,8 @@ fi
 for variable in STRATA_QUALITY_TASK STRATA_QUALITY_SHARD; do
   if [[ -n "${!variable:-}" ]]; then options+=(--env "$variable"); fi
 done
+# The image carries gvfs for the QA runner's fake devices. The Rust tests keep GIO's local VFS,
+# as the image had before, so a URI with no backend stays a stand-in file.
 exec "$engine" run "${options[@]}" \
   --mount "type=bind,source=$repository,target=/workspace" \
   --mount "type=bind,source=$accounts/passwd,target=/etc/passwd,readonly" \
@@ -70,6 +72,7 @@ exec "$engine" run "${options[@]}" \
   --env CARGO_HOME=/workspace/target/quality-container/cargo \
   --env CARGO_TARGET_DIR=/workspace/target/quality-container/build \
   --env CARGO_PROFILE_DEV_DEBUG=0 --env CARGO_INCREMENTAL=0 \
+  --env GIO_USE_VFS=local \
   --env "STRATA_QUALITY_COMMIT=$(git -C "$repository" rev-parse HEAD)" \
   "$image" bash -euc '
     mkdir -p "$HOME" "$CARGO_HOME"

@@ -68,6 +68,8 @@ tracing-subscriber = "0.3.20"
 unicode-normalization = "0.1.25"
 unrar = "0.5.8"
 unrar_sys = "0.5.8"
+# The update downloader implements `ureq::unversioned` transport traits, which
+# may change in a minor release.
 ureq = { version = "~3.4", features = ["json"] }
 zip = "9.0.4"
 zstd = "0.14.3"
@@ -159,7 +161,7 @@ strata-desktop.workspace = true
 strata-fs.workspace = true
 strata-preview.workspace = true
 strata-qa = { workspace = true, optional = true }
-ashpd = { version = "=0.13.13", default-features = false, features = ["backend", "file_chooser", "async-io", "tracing"] }
+ashpd = { version = "=0.13.13", default-features = false, features = ["backend", "file_chooser", "settings", "async-io", "tracing"] }
 async-io = "2.6.0"
 cairo-rs.workspace = true
 flate2.workspace = true

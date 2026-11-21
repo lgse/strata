@@ -2,7 +2,7 @@
 
 //! Copies native items through descriptors on worker threads. A copy never
 //! replaces an entry, and shows a partial item under its final name only
-//! where the destination cannot place a stage.
+//! where the destination cannot place a stage, or may place a folder's in steps.
 
 mod barrier;
 mod copy;

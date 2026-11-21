@@ -11,13 +11,15 @@ use crate::{
     ui::preferences::{ListColumnId, PreferenceManager},
 };
 
-const FIELDS: [(&str, SortKey); 9] = [
+const FIELDS: [(&str, SortKey); 11] = [
     ("Name", SortKey::Name),
     ("Size", SortKey::Size),
     ("Modified", SortKey::Modified),
     ("Type", SortKey::Type),
     ("Extension", SortKey::Extension),
     ("Created", SortKey::Created),
+    ("Duration", SortKey::Duration),
+    ("Dimensions", SortKey::Dimensions),
     ("Unsorted", SortKey::Unsorted),
     ("Device order", SortKey::DeviceOrder),
     ("Recency", SortKey::Recency),
@@ -626,9 +628,9 @@ pub(in crate::ui) fn sync_list_sort_menu(
     button: &gtk::MenuButton,
 ) {
     let prefs = browser.column_preferences(depth).unwrap_or_default();
-    let hidden = PreferenceManager::shared().list_hidden_columns();
+    let visible = PreferenceManager::shared().list_visible_columns();
     let special_names = has_special_name_order(prefs);
-    let labelled = needs_sort_label(prefs, &hidden);
+    let labelled = needs_sort_label(prefs, &visible);
     if !labelled {
         button.set_child(Some(&crate::assets::chrome_icon(
             crate::assets::icons::SETTINGS_2,
@@ -672,14 +674,10 @@ fn has_special_name_order(prefs: ViewPreferences) -> bool {
         && (!prefs.name_comparison.natural || prefs.name_comparison.case_sensitive)
 }
 
-fn needs_sort_label(prefs: ViewPreferences, hidden: &[ListColumnId]) -> bool {
-    let matching = match prefs.sort_key {
-        SortKey::Name => Some(ListColumnId::Name),
-        SortKey::Size => Some(ListColumnId::Size),
-        SortKey::Type => Some(ListColumnId::Type),
-        SortKey::Modified => Some(ListColumnId::Modified),
-        _ => None,
-    };
+fn needs_sort_label(prefs: ViewPreferences, visible: &[ListColumnId]) -> bool {
     !matches!(prefs.sort_key, SortKey::Unsorted | SortKey::DeviceOrder)
-        && (matching.is_none_or(|column| hidden.contains(&column)) || has_special_name_order(prefs))
+        && (has_special_name_order(prefs)
+            || !visible
+                .iter()
+                .any(|column| column.definition().sort_key == Some(prefs.sort_key)))
 }

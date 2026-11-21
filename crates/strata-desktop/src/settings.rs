@@ -63,7 +63,7 @@ use defaults::{
     default_file_clicks, default_folder_clicks, default_frame_density, default_full_volume,
     default_icons_thumbnail_size, default_release_channel, default_search_entry_limit,
     default_search_time_limit, default_sort_direction, default_sort_key,
-    default_video_preview_backend,
+    default_video_preview_backend, default_window_buttons,
 };
 pub use density::{DensityPresets, store_density_px, stored_density_px};
 pub use edits::{ADOPTED_DEFAULT_KEYS, ThemeAvailability};
@@ -181,11 +181,11 @@ pub struct Preferences {
     pub filter_include_subfolders: bool,
     #[serde(default = "default_enabled")]
     pub show_keybinding_hints: bool,
-    #[serde(default = "default_enabled")]
+    #[serde(default = "default_window_buttons")]
     pub window_show_close: bool,
-    #[serde(default)]
+    #[serde(default = "default_window_buttons")]
     pub window_show_minimize: bool,
-    #[serde(default)]
+    #[serde(default = "default_window_buttons")]
     pub window_show_maximize: bool,
     #[serde(default)]
     pub reduce_motion: bool,
@@ -330,6 +330,8 @@ pub struct Preferences {
     pub list_column_order: Vec<ListColumnId>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub list_hidden_columns: Vec<ListColumnId>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub list_shown_columns: Vec<ListColumnId>,
     #[serde(default, skip_serializing_if = "KeymapOverrides::is_empty")]
     pub keymap: KeymapOverrides,
 }

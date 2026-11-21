@@ -36,7 +36,8 @@ only "Invalid argument" for it.
   the copy read. Anything else stays where it was and is reported; see
   [Moves across filesystems](#moves-across-filesystems).
 - **Show only complete copies.** A copy appears under its final name once it is complete, except
-  on mounts where nothing can be placed; see [Publishing a copy](#publishing-a-copy).
+  on mounts where nothing can be placed, and for folders on FUSE daemons over remote storage; see
+  [Publishing a copy](#publishing-a-copy).
 - **Never remove what an interrupted operation may have left of the user's data.** A crash or an
   unplugged device can leave Strata's hidden names behind, and an original set aside always keeps
   its own name inside one. Strata shows them where the user looks and offers to restore them; by
@@ -75,9 +76,9 @@ that applies:
 | --- | --- | --- | --- |
 | 1 | everything | `renameat2(RENAME_NOREPLACE)` | the kernel refuses an existing target |
 | 2 | files, symlinks, special files | `linkat`, then remove the old name once the new one reports the item's identity | creating a link fails if the name exists, on the server for NFS and SMB |
-| 3 | folders | create an empty placeholder folder with `mkdirat`, then rename over it | a rename can only replace an empty folder; a filled or swapped placeholder fails with `ENOTEMPTY` or `ENOTDIR` |
+| 3 | folders, except on a [FUSE daemon over remote storage](#fuse-daemons-over-remote-storage) | create an empty placeholder folder with `mkdirat`, then rename over it | a rename can only replace an empty folder; a filled or swapped placeholder fails with `ENOTEMPTY` or `ENOTDIR` |
 | 4 | symlinks | create a symlink with the same target, then remove the old one | creating a symlink fails if the name exists |
-| 5 | files, symlinks and special files that steps 2 and 4 cannot place, and folders that step 3 cannot place on mounts without usable hard links, once a probe has settled that `RENAME_NOREPLACE` is missing; folders whose name ntfs-3g would cut | the [reserved-name step](#the-reserved-name-step-and-its-risk) | a file is renamed only over Strata's own empty placeholder, checked just before, and a folder only to a name just found free; see the step's narrow window |
+| 5 | files, symlinks and special files that steps 2 and 4 cannot place, and folders that step 3 cannot place on mounts without usable hard links, once a probe has settled that `RENAME_NOREPLACE` is missing; folders whose name ntfs-3g would cut; folders on a FUSE daemon over remote storage | the [reserved-name step](#the-reserved-name-step-and-its-risk) | a file is renamed only over Strata's own empty placeholder, checked just before, and a folder only to a name just found free; see the step's narrow window |
 | 6 | — | copy, then delete | only for a cross-device move (`EXDEV`), a move or restore from Trash that no step above can place, or a staged copy whose stage no step can place, which is copied again from the stage |
 
 `EEXIST` and `ENOTEMPTY` always mean the destination is taken. `EINVAL` from step 1 has three
@@ -156,6 +157,21 @@ Renaming a folder in the lower layer of an overlayfs mount without `redirect_dir
 across bind mounts or btrfs subvolumes, returns `EXDEV`. Those moves copy, and the copy uses a
 reflink where both sides share a btrfs or XFS filesystem.
 
+### FUSE daemons over remote storage
+
+A FUSE daemon over remote storage may move a folder entry by entry instead of renaming it. rclone
+does once the new name is taken, as it is by step 3's placeholder: it makes the subfolders at the
+new name, moves the files its storage already holds, and fails with `EIO` while files it has yet
+to upload are left in the folder, which is then split between both names. It also merges a folder
+into one that is not empty, replacing files of the same name, where step 3 counts on `ENOTEMPTY`.
+
+So on every FUSE mount except `fuseblk` devices, sshfs (whose server renames the folder) and the
+daemons that layer or encrypt local storage (mergerfs, gocryptfs, encfs, bindfs and the like), a
+folder skips step 3 and takes step 5's folder check once `RENAME_NOREPLACE` is known to be
+missing. The daemon then gets a single rename to a free name, which rclone passes on as one
+request where its storage can move a folder. A new folder is not staged there at all; see
+[Publishing a copy](#publishing-a-copy).
+
 ### The reserved-name step and its risk
 
 Some mounts offer neither `RENAME_NOREPLACE` nor hard links that keep the item's identity: sshfs
@@ -172,8 +188,8 @@ links work. Then:
   refused for that one file, for example by `fs.protected_hardlinks`, and so does a symlink that
   step 4 cannot recreate either;
 - a folder takes it only when the mount has no usable hard links and refuses to rename over the
-  placeholder folder of step 3, or where ntfs-3g would cut its name when renaming it over that
-  placeholder.
+  placeholder folder of step 3, where ntfs-3g would cut its name when renaming it over that
+  placeholder, or on a [FUSE daemon over remote storage](#fuse-daemons-over-remote-storage).
 
 Mounts with `RENAME_NOREPLACE`, such as most local disks, removable media with kernel drivers and
 SMB, never take it. Mounts without it whose hard links work, such as NFS, OpenZFS 2.1 and earlier,
@@ -221,7 +237,8 @@ What it risks, and why that is low:
   it is not learned for the mount; if it was specific to the item, an empty folder that arrives in
   that instant could be replaced. ntfs-3g renames a folder over an empty one, so there an empty
   folder that arrives in that instant is replaced, and ntfs-3g leaves an entry named after the
-  cut beside it.
+  cut beside it. rclone merges a folder into any folder that holds the name, so there one that
+  arrives in that instant is merged into, and its files of the same name are replaced.
 
 Copying into a name created exclusively would protect an arrival completely, but it costs more than
 it protects. It rewrites every byte, and a file written during the copy stays behind at the source.
@@ -516,6 +533,11 @@ item moved to one is deleted by Strata, as described under
   inode, or where the mount numbers entries afresh by its birth time with the size and modification
   time the copy left a file with, and the item's folder only once it is empty. A stage built before
   this was known is copied again from the stage, on the same device.
+- **A folder on a [FUSE daemon over remote storage](#fuse-daemons-over-remote-storage)** is made
+  under its final name and filled there in the same way, whatever the mount can place. Such a
+  daemon starts uploading a stage's files under the stage's name while the copy still runs, and
+  renaming the filled stage can leave it split between both names. Files copied on their own are
+  still staged.
 - **Keep Both and Duplicate** choose their number when the copy is published, so a name taken in
   the meantime moves the copy on to the next number, cut where needed to fit the mount's [length
   limit](#length). Moves within one filesystem try each numbered name with the placement routine.
@@ -715,7 +737,9 @@ with the placement routine:
 - A name another program took in the meantime gives the incoming item the next number, reported as
   taken. This includes a file that meets a folder.
 - Where nothing can be placed, a file is copied out of the stage at its name, and new folders are
-  copied in place in the live folder from the start.
+  copied in place in the live folder from the start. On a
+  [FUSE daemon over remote storage](#fuse-daemons-over-remote-storage) new folders are copied in
+  place too.
 - After an unconfirmed placement, the stage is kept, since it may hold the item, and the merge
   fails.
 
@@ -1310,7 +1334,8 @@ Local renames go through the same routine instead of GIO's check-then-rename.
   aside and back and reports the name as taken.
 - On mounts with neither `RENAME_NOREPLACE` nor usable hard links, renaming a file takes the
   [reserved-name step](#the-reserved-name-step-and-its-risk) like any other placement, and so does
-  renaming a folder where renaming over an empty folder is refused.
+  renaming a folder where renaming over an empty folder is refused, or on a
+  [FUSE daemon over remote storage](#fuse-daemons-over-remote-storage).
 - A rename and its undo never copy. Where no step can place the item, the rename is refused.
 - A typed name that the location would store as another is refused before anything changes; see
   [Names the user types](#names-the-user-types).
@@ -2031,7 +2056,7 @@ filesystem stores are under [Names](#names).
 | SMB/CIFS | client-side only | no | server-dependent | usually case-insensitive; a file unlinked while open stays as `.__smbfile_silly…` until its last handle closes, and a folder with a file open below it cannot be renamed (see [Files that are still open](#files-that-are-still-open)) |
 | sshfs | rejects flags | rejects flags | not used | each link reports its own inode number; reports "exists" as `EPERM`; files take the [reserved-name step](#the-reserved-name-step-and-its-risk); without the server's `posix-rename@openssh.com` extension its rename over the placeholder fails with `EPERM`, so moved, restored and staged files are copied, and file renames, archive publication and setting a file aside fail |
 | 9p (WSL2, QEMU), ceph, eCryptfs | rejects flags | rejects flags | yes | |
-| vboxsf, rclone, s3fs | rejects flags | rejects flags | no | files take the [reserved-name step](#the-reserved-name-step-and-its-risk); vboxsf refuses to rename over an empty folder, so its folders take that step too |
+| vboxsf, rclone, s3fs | rejects flags | rejects flags | no | files take the [reserved-name step](#the-reserved-name-step-and-its-risk); vboxsf refuses to rename over an empty folder, and rclone and s3fs are [FUSE daemons over remote storage](#fuse-daemons-over-remote-storage), so their folders take that step too, and a folder copied to rclone or s3fs is made under its final name |
 | mergerfs | rejects flags | rejects flags | within a branch | |
 | overlayfs | yes | yes | yes | lower-layer folders cannot be renamed without `redirect_dir` |
 
@@ -2061,8 +2086,9 @@ let _quirks = FsQuirks::install(root.path(), Quirks::without_rename_flags());
 ```
 
 Quirks emulate rejected rename flags (NFS, ntfs-3g), missing hard links (vfat, vboxsf), sshfs
-collisions reported as `EPERM`, gvfsd-fuse refusing to rename over an empty folder, case-insensitive
-lookups, invalid names, unsupported or lying Trash, reused inode numbers, hard links with their own
+collisions reported as `EPERM`, gvfsd-fuse refusing to rename over an empty folder, rclone moving
+a folder renamed over an empty one entry by entry and stopping at the files it has yet to upload,
+case-insensitive lookups, invalid names, unsupported or lying Trash, reused inode numbers, hard links with their own
 inode numbers, missing birth times (where the base reports none, the vfat and exFAT presets record
 one per file that renumbering keeps, as FAT does), lost replies (on sshfs, a lost rename reply
 leaves the target name reporting its old inode number) and racing processes, before or after a call.

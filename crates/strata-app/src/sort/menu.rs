@@ -198,6 +198,8 @@ fn field_row(app: &App, key: SortKey, row_key: &'static str) -> Row {
         SortKey::Type => |app, _| field(app, SortKey::Type),
         SortKey::Extension => |app, _| field(app, SortKey::Extension),
         SortKey::Created => |app, _| field(app, SortKey::Created),
+        SortKey::Duration => |app, _| field(app, SortKey::Duration),
+        SortKey::Dimensions => |app, _| field(app, SortKey::Dimensions),
         SortKey::DeviceOrder => |app, _| field(app, SortKey::DeviceOrder),
         SortKey::Recency => |app, _| field(app, SortKey::Recency),
         SortKey::Unsorted => |_, _| {},
