@@ -76,6 +76,13 @@ impl VolumeMonitor {
     }
 }
 
+impl VolumeMonitor {
+    /// Its log, as a failed or kept run's artifact.
+    pub(crate) fn artifact(&self) -> (&'static str, String) {
+        (LOG, std::fs::read_to_string(&self.log).unwrap_or_default())
+    }
+}
+
 impl Drop for VolumeMonitor {
     fn drop(&mut self) {
         terminate(&mut self.child);

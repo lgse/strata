@@ -661,6 +661,17 @@ struct Application {
     traced: std::cell::OnceCell<u32>,
 }
 
+/// The one argument after `--qa`: a restart's folder, `--plain` for a plain launch, `--portal`
+/// for the portal backend, or else the fixture.
+fn launch_argument<'a>(launch: &'a Launch, relaunch: &'a Relaunch) -> &'a std::ffi::OsStr {
+    match (&relaunch.directory, launch.portal) {
+        (Some(directory), _) => directory.as_ref(),
+        (None, _) if relaunch.plain => "--plain".as_ref(),
+        (None, true) => "--portal".as_ref(),
+        (None, false) => launch.fixture.as_os_str(),
+    }
+}
+
 impl Application {
     fn start(launch: &Launch, relaunch: &Relaunch) -> Result<Self, String> {
         let log = launch.log.clone();
@@ -669,13 +680,7 @@ impl Application {
         let (mut command, capture) = launch.command(&binary)?;
         // Its own process group, so a restart can signal the application and whatever it started.
         std::os::unix::process::CommandExt::process_group(&mut command, 0);
-        command.arg("--qa");
-        match (&relaunch.directory, launch.portal) {
-            (Some(directory), _) => command.arg(directory),
-            (None, _) if relaunch.plain => command.arg("--plain"),
-            (None, true) => command.arg("--portal"),
-            (None, false) => command.arg(launch.fixture),
-        };
+        command.arg("--qa").arg(launch_argument(launch, relaunch));
         command
             .current_dir(launch.fixture)
             .env_clear()
@@ -819,6 +824,47 @@ impl Drop for Application {
     }
 }
 
+/// Where a run's own processes on its session bus start.
+struct BusPlaces<'a> {
+    manifest: &'a Manifest,
+    home: &'a Path,
+    runtime: &'a Path,
+    display: &'a Display,
+}
+
+/// The header's processes on the run's private bus, which must be up before the application:
+/// its input method and its fake volume monitor.
+fn start_bus_peers(
+    scenario: &Scenario,
+    bus: Option<&Bus>,
+    places: &BusPlaces<'_>,
+) -> Result<(Option<InputMethod>, Option<VolumeMonitor>), String> {
+    let Some(bus) = bus else {
+        return Ok((None, None));
+    };
+    let input_method = scenario
+        .header
+        .input_method
+        .as_ref()
+        .map(|name| {
+            InputMethod::start(
+                name,
+                places.manifest,
+                places.home,
+                places.runtime,
+                places.display,
+                &bus.address,
+            )
+        })
+        .transpose()?;
+    let volume_monitor = scenario
+        .header
+        .volume_monitor
+        .then(|| VolumeMonitor::start(&bus.address, places.home, places.runtime))
+        .transpose()?;
+    Ok((input_method, volume_monitor))
+}
+
 fn execute(scenario: &Scenario, run: &Run, manifest: &Manifest) -> Outcome {
     let scratch = tempfile::Builder::new()
         .prefix("strata-qa-")
@@ -927,21 +973,16 @@ fn execute(scenario: &Scenario, run: &Run, manifest: &Manifest) -> Outcome {
     } else {
         None
     };
-    let input_method = match (&scenario.header.input_method, &bus) {
-        (Some(name), Some(bus)) => {
-            match InputMethod::start(name, manifest, &home, &runtime, &display, &bus.address) {
-                Ok(input_method) => Some(input_method),
-                Err(error) => return failed_setup(format!("setup: {error}"), &mut fs_state),
-            }
-        }
-        _ => None,
+    let bus_places = BusPlaces {
+        manifest,
+        home: &home,
+        runtime: &runtime,
+        display: &display,
     };
-    let volume_monitor = match (scenario.header.volume_monitor, &bus) {
-        (true, Some(bus)) => match VolumeMonitor::start(&bus.address, &home, &runtime) {
-            Ok(monitor) => Some(monitor),
-            Err(error) => return failed_setup(format!("setup: {error}"), &mut fs_state),
-        },
-        _ => None,
+    let (input_method, volume_monitor) = match start_bus_peers(scenario, bus.as_ref(), &bus_places)
+    {
+        Ok(peers) => peers,
+        Err(error) => return failed_setup(format!("setup: {error}"), &mut fs_state),
     };
     let target = match Target::from_environment() {
         Ok(target) => target,
@@ -1081,12 +1122,7 @@ fn execute(scenario: &Scenario, run: &Run, manifest: &Manifest) -> Outcome {
                 fs::read_to_string(&input_method.log).unwrap_or_default(),
             ));
         }
-        if let Some(monitor) = &volume_monitor {
-            files.push((
-                volume_monitor::LOG,
-                fs::read_to_string(&monitor.log).unwrap_or_default(),
-            ));
-        }
+        files.extend(volume_monitor.as_ref().map(VolumeMonitor::artifact));
         for (file, contents) in files {
             let _ = fs::write(artifacts.join(file), contents);
         }
