@@ -44,7 +44,7 @@ struct Metrics {
     height: f32,
     /// The knob's diameter: `icon_size.md` (16 at 13 px, scaled with the text).
     knob: f32,
-    /// The track's thickness: a quarter of the knob (4).
+    /// The track's thickness: matches GTK's 5 px trough with its 1 px border (6 at 13 px).
     track: f32,
     /// A tick's length: the room under the knob, `(height - knob) / 2` (4).
     tick: f32,
@@ -56,9 +56,9 @@ struct Metrics {
     /// The knob's scale while a drag holds it: as tall as the hit area allows, at most a
     /// quarter larger (16 to 20).
     engaged_scale: f32,
-    /// The accent ring's width while a drag holds the knob, before the scale: an eighth of
-    /// the knob (2), Strata's 2 px accent border.
-    engaged_ring: f32,
+    /// The knob's accent border width: an eighth of the knob (2 at 13 px), Strata's 2 px
+    /// accent border.
+    knob_border: f32,
 }
 
 impl Metrics {
@@ -68,12 +68,12 @@ impl Metrics {
         Metrics {
             height,
             knob,
-            track: (knob / 4.0).round().max(2.0),
+            track: (knob * 0.375).round().max(4.0),
             tick: ((height - knob) / 2.0).max(1.0),
             snap_within: look.space.lg,
             label_gap: look.space.md,
             engaged_scale: (height / knob).clamp(1.0, 1.25),
-            engaged_ring: (knob / 8.0).max(1.0),
+            knob_border: (knob / 8.0).max(1.5),
         }
     }
 }
@@ -194,21 +194,27 @@ impl<S: 'static> Slider<S> {
         });
 
         // The track, the fill up to the knob's centre, the ticks and the knob.
+        // Pill radii (`999px` in Strata's CSS) square off at 0 % roundness (`shape.rs`).
         let track_y = mid - m.track / 2.0;
+        let track_radius = look.round(999.0).min(m.track / 2.0);
+        let knob_radius = look.round(999.0).min(m.knob / 2.0);
+        let track_fill = k.alpha(look.fill.muted, look.fill.muted.a * 0.72);
+        let track_border = k.alpha(c.std_border, c.std_border.a * 0.68);
         slider = slider
             .child(
                 el().key(format!("{key}-track"))
                     .pin(Some(0.0), Some(track_y), None, None)
                     .size(w, m.track)
-                    .radius(m.track / 2.0)
-                    .fill(c.border_base)
+                    .radius(track_radius)
+                    .fill(track_fill)
+                    .border(1.0, track_border)
                     .a11y_hidden(),
             )
             .child(
                 el().key(format!("{key}-fill"))
                     .pin(Some(0.0), Some(track_y), None, None)
                     .size(x, m.track)
-                    .radius(m.track / 2.0)
+                    .radius(track_radius)
                     .fill(c.bg_accent)
                     .a11y_hidden(),
             );
@@ -218,29 +224,33 @@ impl<S: 'static> Slider<S> {
                 el().key(format!("{key}-tick-{i}"))
                     .pin(Some(tx - 0.5), Some(m.height - m.tick), None, None)
                     .size(1.0, m.tick)
-                    .fill(c.border_strong)
+                    .fill(c.text_muted)
                     .a11y_hidden(),
             );
         }
-        let knob = el()
+        let knob_fill = if st.dragging() && !self.disabled {
+            look.fill.highlight
+        } else {
+            c.surface_raised
+        };
+        let mut knob = el()
             .key(format!("{key}-knob"))
             .pin(Some(x - m.knob / 2.0), Some(mid - m.knob / 2.0), None, None)
             .size(m.knob, m.knob)
-            .radius(m.knob / 2.0)
-            .fill(c.knob)
-            .gradient(k.on(c.depth_top, c.knob), k.on(c.depth_bottom, c.knob))
-            .focus_ring(2.0, 1.0, c.border_focus)
+            .radius(knob_radius)
+            .fill(knob_fill)
+            .border(m.knob_border, c.border_active)
+            .shadow(2.0, 7.0, k.alpha(c.bg_base, 0.7))
+            .focus_ring(2.0, 2.0, c.border_focus)
             .a11y_hidden();
-        // While a drag holds it the knob grows and takes an accent ring, so the press reads
-        // as engaged (Strata's `:active` slider); the scale draws over the room around the
-        // knob and leaves the layout alone.
-        let knob = if st.dragging() && !self.disabled {
-            knob.scale(m.engaged_scale)
-                .border(m.engaged_ring, c.bg_accent)
-        } else {
-            knob.border(0.5, k.on(c.depth_top, c.knob))
-        };
-        slider = slider.child(k.elevate(knob, &k.elevation.knob));
+        // While a drag holds it the knob grows over the room around it without shifting layout.
+        if !self.disabled {
+            knob = knob.hover(look.fill.highlight);
+            if st.dragging() {
+                knob = knob.scale(m.engaged_scale);
+            }
+        }
+        slider = slider.child(knob);
 
         let widths = self.label_widths(look);
         let labels = self.labels(st, look, m, &widths);
@@ -379,7 +389,7 @@ impl<S: 'static> Slider<S> {
                 .checked(current)
                 .pin(Some(x), Some(0.0), None, None)
                 .size(lw, height)
-                .radius(k.radius.sm)
+                .radius(look.round(4.0))
                 .center()
                 .child(
                     text((*label).to_owned())
@@ -400,6 +410,7 @@ impl<S: 'static> Slider<S> {
                     .cursor(Cursor::Pointer)
                     .hover(k.c.hover)
                     .press(k.c.pressed)
+                    .focus_ring(2.0, 0.0, k.c.border_focus)
                     .on_press_tx(move |s: &mut S, tx: &mut Tx| {
                         if get_mut(s).set(value)
                             && let Some(f) = &report

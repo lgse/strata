@@ -5,11 +5,14 @@
 //! answers the search through [`HostedPreview`](super::HostedPreview).
 
 use rune::{El, Key, KeyEvent, LiveRegion, Tx, row, text};
-use rune_kit::{ControlSize, IconButton, IconButtonVariant, TextInput};
+use rune_kit::TextInput;
 use strata_kit::icons::IconName;
 use strata_kit::look::Look;
 
-use super::{Caps, DrawerState, FIND_MAX_CHARS, Shared};
+use super::{
+    Caps, DrawerState, FIND_MAX_CHARS, Shared,
+    header::{Action, action_button},
+};
 
 /// The query field's key.
 const FIELD_KEY: &str = "preview-find-field";
@@ -65,33 +68,37 @@ pub(super) fn bar<S: 'static>(
         .grow(1.0)
         .min_w(0.0);
 
-    let accent_kit = look.accent_icon_kit();
     let step = |name: IconName, label: &str, key: &'static str, forward: bool| {
         let sh = shared.clone();
-        IconButton::new(look.icon(name))
-            .variant(IconButtonVariant::GhostMuted)
-            .control_size(ControlSize::Small)
-            .label(label.to_owned())
-            .disabled(status.total == 0)
-            .on_press_tx(move |s: &mut S, tx: &mut Tx| {
+        action_button(
+            Action {
+                key,
+                icon: name,
+                label,
+                active: false,
+                disabled: status.total == 0,
+            },
+            look,
+            move |s: &mut S, tx: &mut Tx| {
                 sh.with_view(s, |v| v.find_step(forward));
                 tx.wake_after(std::time::Duration::ZERO);
-            })
-            .build(&accent_kit)
-            .key(key)
-            .keeps_text_selection()
-            .on_key(super::return_as_space::<S>)
+            },
+        )
+        .keeps_text_selection()
     };
     let close_sh = shared.clone();
-    let close = IconButton::new(look.icon(IconName::Close))
-        .variant(IconButtonVariant::GhostMuted)
-        .control_size(ControlSize::Small)
-        .label(labels.find_close.clone())
-        .on_press_tx(move |s: &mut S, tx: &mut Tx| close(&close_sh, s, tx))
-        .build(&accent_kit)
-        .key("preview-find-close")
-        .keeps_text_selection()
-        .on_key(super::return_as_space::<S>);
+    let close = action_button(
+        Action {
+            key: "preview-find-close",
+            icon: IconName::Close,
+            label: &labels.find_close,
+            active: false,
+            disabled: false,
+        },
+        look,
+        move |s: &mut S, tx: &mut Tx| close(&close_sh, s, tx),
+    )
+    .keeps_text_selection();
 
     let mut bar = row()
         .key("preview-find-bar")
@@ -100,7 +107,7 @@ pub(super) fn bar<S: 'static>(
         .py(look.space.xs)
         .gap(look.space.xs)
         .items_center()
-        .border_sides([0.0, 0.0, 1.0, 0.0], k.c.border_muted)
+        .border_sides([0.0, 0.0, 1.0, 0.0], k.c.border_base)
         .child(field);
     if show_status {
         let words = match status.current {

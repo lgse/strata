@@ -53,11 +53,12 @@
 //! [`DrawerState::focus_content_when_shown`] queues `Tx::focus_when_shown(BODY_KEY, true)` so
 //! focus lands as soon as the viewer mounts (cancelling automatically if the user acts first).
 //!
-//! # Deliberate changes
+//! # Focus indicator
 //!
-//! - Strata's header shows an accent top border while focus is inside the preview. Rune draws
-//!   a focus-within ring only around the whole element, so the drawer draws a focus-within ring
-//!   around the pane instead (a Rune issue is drafted for a styled focus-within).
+//! While focus is anywhere inside the drawer, a 3-point accent bar draws across the top edge of
+//! the header without shifting it, matching focused Miller column headers (`.preview-pane
+//! .preview-header`). It uses a clipped `focus_within_ring` wrapper inside `preview-drawer` so
+//! only the top edge is visible and updates with zero frame lag.
 //!
 //! # What stays in Strata
 //!
@@ -602,9 +603,9 @@ fn pane<S: 'static>(
         .w(solved.pane)
         .h_full()
         .pin(Some(shared.rules.line), Some(0.0), None, Some(0.0))
+        .clip_soft(0.0)
         .fill(k.c.bg_base)
         .preserve_focus_on_press(true)
-        .focus_within_ring(2.0, -2.0, k.c.border_focus)
         .transition(exit)
         .on_key(move |s: &mut S, ev: &KeyEvent, tx: &mut Tx| {
             drawer_key(&keys, s, ev, tx, find_keys, searchable)
@@ -614,7 +615,7 @@ fn pane<S: 'static>(
             bg(s, d, false, tx);
         });
     }
-    drawer_pane
+    let content = col()
         .child(header::header(shared, st, &parts, look))
         .children(
             (st.find.open && parts.caps.searchable)
@@ -627,7 +628,19 @@ fn pane<S: 'static>(
                 .grow(1.0)
                 .min_h(0.0)
                 .child(body),
-        )
+        );
+    drawer_pane.child(focus_accent_bar(look, content))
+}
+
+/// Wraps the drawer's header and body in a `focus_within_ring` positioned so only its top bar
+/// sits inside `preview-drawer`'s clip rect; the left, right, and bottom sides extend past the
+/// clip by 1 pt so fractional DPI scaling never leaks a sliver.
+fn focus_accent_bar(look: &Look, content: El) -> El {
+    let indicator = strata_kit::slots::columns::header_indicator(look);
+    let bleed = 1.0;
+    el().pin(Some(-bleed), Some(indicator), Some(-bleed), Some(-bleed))
+        .focus_within_ring(indicator, 0.0, look.kit.c.bg_accent)
+        .child(content.pin(Some(bleed), Some(-indicator), Some(bleed), Some(bleed)))
 }
 
 pub(crate) fn return_as_space<S: 'static>(_: &mut S, ev: &KeyEvent, tx: &mut Tx) -> bool {

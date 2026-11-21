@@ -386,3 +386,78 @@ fn focus_content_when_shown_lands_when_the_viewer_mounts() {
     rt.frame(1.0 / 60.0);
     assert_eq!(focused(&mut rt).as_deref(), Some("preview-viewer"));
 }
+
+#[test]
+fn overlay_above_divider_takes_pointer_hits_while_divider_stays_draggable() {
+    struct OverlayHost {
+        drawer: DrawerState,
+        look: Look,
+        overlay_open: bool,
+        overlay_hits: u32,
+    }
+
+    fn overlay_view(host: &OverlayHost, cx: &mut rune::Cx<OverlayHost>) -> El {
+        let base = PreviewDrawer::new(&host.drawer, |h: &mut OverlayHost| &mut h.drawer)
+            .placeholder("Ready")
+            .build(
+                el().key("files").focusable(true).w_full().h_full(),
+                &host.look,
+                cx,
+            );
+        let overlay = host.overlay_open.then(|| {
+            el().key("menu-overlay")
+                .role("button")
+                .absolute(0.0, 0.0)
+                .w(900.0)
+                .h(500.0)
+                .fill(host.look.kit.c.surface_raised)
+                .on_press(|h: &mut OverlayHost| h.overlay_hits += 1)
+        });
+        rune_kit::root(base, overlay)
+    }
+
+    let mut drawer = DrawerState::new();
+    drawer.open_at_once();
+    let mut rt = Runtime::new(
+        OverlayHost {
+            drawer,
+            look: Look::fallback(false),
+            overlay_open: true,
+            overlay_hits: 0,
+        },
+        overlay_view,
+        (900.0, 500.0),
+        Env::default(),
+    );
+    rt.frame(0.0);
+    rt.settle_all();
+
+    let grip = rt
+        .elements()
+        .into_iter()
+        .find(|e| e.key.as_deref() == Some("preview-grip"))
+        .expect("preview divider grip")
+        .rect;
+    let (x, y) = (grip[0] + grip[2] / 2.0, grip[1] + grip[3] / 2.0);
+
+    // An overlay in rune_kit::root's layer must paint and hit-test above the divider.
+    rt.pointer_move(x, y);
+    rt.pointer_down(x, y);
+    rt.pointer_up(x, y);
+    rt.frame(1.0 / 60.0);
+    assert_eq!(rt.state.overlay_hits, 1);
+    assert_eq!(rt.state.drawer.manual_width(), None);
+
+    // Once the overlay closes, dragging the divider at the same coordinates resizes the drawer.
+    rt.update(|h, _| h.overlay_open = false);
+    rt.frame(1.0 / 60.0);
+    rt.pointer_move(x, y);
+    rt.pointer_down(x, y);
+    rt.pointer_move(x - 40.0, y);
+    rt.pointer_up(x - 40.0, y);
+    rt.frame(1.0 / 60.0);
+    assert!(
+        rt.state.drawer.manual_width().is_some(),
+        "divider must still resize the drawer when no overlay covers it"
+    );
+}

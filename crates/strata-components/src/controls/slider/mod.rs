@@ -45,12 +45,14 @@
 //!   drag is cancelled. Nothing is reported when the value didn't move.
 //! - **Disabled:** dimmed to half, out of the focus order, deaf to input.
 //! - **Sizes**, from Look tokens so they follow the text size as Strata's em-based CSS did:
-//!   the hit height is `frame.control`, the knob `icon_size.md`, the track a quarter of the
-//!   knob, a tick the room under the knob, labels in `kit.ty.small`.
-//! - **Colours** (Kit only): the track `border_base`, the fill `bg_accent`, ticks
-//!   `border_strong`, the knob `knob` with rune-kit Switch's depth gradient and
-//!   `elevation.knob`, the focus ring `border_focus`, labels `text_muted` and the current one
-//!   `text_accent`.
+//!   the hit height is `frame.control`, the knob `icon_size.md`, the track three eighths of
+//!   the knob (at least 4 pt), a tick the room under the knob, labels in `kit.ty.small`.
+//! - **Colours and shape** (Look and Kit only): the trough `fill.muted` at 72 % with a 1 pt
+//!   `std_border` border at 68 %, the active fill `bg_accent`, ticks `text_muted`, the knob
+//!   `surface_raised` (`fill.highlight` on hover or drag) with a `border_active` border and
+//!   `bg_base` drop shadow, pill radii scaled through `look.round(999.0)` so 0 % roundness
+//!   draws sharp rectangles, the focus ring `border_focus`, labels `text_muted` and the
+//!   current one `text_accent`.
 //!
 //! Assistive technology hears a slider named by [`Slider::label`], with its value, minimum,
 //! maximum and step, and the host's [`Slider::value_text`] as its value text ("Compact · 4
