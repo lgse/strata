@@ -128,6 +128,10 @@ struct Target {
 /// menu opens so closing the menu — or cancelling a modal dialog opened from one of its rows —
 /// returns focus to that sidebar row, as GTK's `popover.set_parent(row)` does.
 pub(super) fn open(app: &mut App, item: &ItemId, point: PointerPress, tx: &mut Tx) {
+    // A device's own menu (GTK's `attach_device_menu`) is not here yet: A3's notes list it.
+    if matches!(item, ItemId::Device(_)) {
+        return;
+    }
     let Some(row) = app.sidebar.location_of(item) else {
         return;
     };
