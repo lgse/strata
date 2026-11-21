@@ -71,6 +71,16 @@ impl DragImage {
     pub fn size(&self) -> (u32, u32) {
         (self.width, self.height)
     }
+
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn rgba(&self) -> &[u8] {
+        &self.rgba
+    }
+
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn hotspot_point(&self) -> (f32, f32) {
+        self.hotspot
+    }
 }
 
 impl fmt::Debug for DragImage {
@@ -104,7 +114,8 @@ impl DragIcon {
 
     /// `view` over `state`, laid out at `size` points and drawn at `scale`, with the pointer
     /// at its centre: an element snapshot, built from a copy of the element's state (no
-    /// hover or press, unless the copy has them).
+    /// hover or press, unless the copy has them). The target clears to transparent, so a root
+    /// without a fill floats cleanly over other windows.
     pub fn snapshot<T: Send + 'static>(
         state: T,
         view: fn(&T, &mut Cx<T>) -> El,
@@ -116,6 +127,20 @@ impl DragIcon {
         DragIcon(IconKind::Snapshot(Arc::new(Mutex::new(Some(render)))))
     }
 
+    /// The point of the picture under the pointer, in points from its top-left.
+    pub fn hotspot(self, x: f32, y: f32) -> DragIcon {
+        match self.0 {
+            IconKind::Image(img) => DragIcon(IconKind::Image(img.hotspot(x, y))),
+            IconKind::Snapshot(r) => {
+                let wrapped: Render = Box::new(move || {
+                    let f = r.lock().unwrap_or_else(PoisonError::into_inner).take()?;
+                    f().map(|img| img.hotspot(x, y))
+                });
+                DragIcon(IconKind::Snapshot(Arc::new(Mutex::new(Some(wrapped)))))
+            }
+        }
+    }
+
     /// Produces the picture, rendering a snapshot here. Blocks: call it off the UI thread.
     pub(crate) fn produce(&self) -> Option<DragImage> {
         match &self.0 {
@@ -125,6 +150,12 @@ impl DragIcon {
                 catch_unwind(AssertUnwindSafe(f)).ok().flatten()
             }
         }
+    }
+
+    /// Renders and returns the drag image synchronously, for unit tests.
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn render_for_test(&self) -> Option<DragImage> {
+        self.produce()
     }
 }
 
@@ -216,11 +247,32 @@ fn render<T: 'static>(
         (w, h),
     );
     let mut enc = gpu.device.create_command_encoder(&Default::default());
-    renderer.draw(&mut enc, &target.view, rt.clear_color());
+    // Clear to transparent rather than `rt.clear_color()` (which forces alpha = 1.0 on an
+    // opaque Runtime and would paint a solid black square behind unfilled drag icons).
+    renderer.draw(&mut enc, &target.view, [0.0; 4]);
     target.copy(&mut enc);
     renderer.submit(&gpu.queue, enc);
-    let px = target.read(&gpu.device);
+    let mut px = target.read(&gpu.device);
+    // Non-sRGB targets with `srgb_blend` hold premultiplied sRGB pixels; convert back to
+    // straight RGBA so `DragImage`'s contract holds and `bgra_premultiplied` does not
+    // premultiply a second time.
+    unpremultiply_srgb(&mut px);
     DragImage::new(px, w, h).map(|i| i.scale(scale))
+}
+
+/// Straight sRGB RGBA from premultiplied sRGB RGBA (the pixels a non-sRGB target with
+/// `srgb_blend` holds).
+pub(crate) fn unpremultiply_srgb(rgba: &mut [u8]) {
+    for p in rgba.as_chunks_mut::<4>().0 {
+        let a = u32::from(p[3]);
+        if a == 0 {
+            p[..3].fill(0);
+        } else if a < 255 {
+            for c in &mut p[..3] {
+                *c = ((u32::from(*c) * 255 + a / 2) / a).min(255) as u8;
+            }
+        }
+    }
 }
 
 /// Premultiplied BGRA (`wl_shm` ARGB8888 and a 32-bit X visual, little-endian) from straight
