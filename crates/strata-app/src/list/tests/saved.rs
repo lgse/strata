@@ -145,7 +145,10 @@ fn a_rune_save_keeps_the_columns_gtk_alone_shows() {
         assert_eq!(place(ListColumnId::Duration), Some(1), "{order:?}");
         assert_eq!(place(ListColumnId::Created), Some(5), "{order:?}");
         assert_eq!(place(ListColumnId::Dimensions), Some(7), "{order:?}");
-        assert!(place(ListColumnId::Size) < place(ListColumnId::Name), "{order:?}");
+        assert!(
+            place(ListColumnId::Size) < place(ListColumnId::Name),
+            "{order:?}"
+        );
         assert!(read.list_hidden_columns.contains(&ListColumnId::Dimensions));
         assert!(read.list_hidden_columns.contains(&ListColumnId::Mode));
         assert_eq!(
