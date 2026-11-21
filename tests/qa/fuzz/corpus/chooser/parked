@@ -1,6 +1,5 @@
 # The chooser alphabet's sequences parked against their findings (docs/rune/parity/findings.md):
-#
-#   v<version>-<seed> <code> <issue>
+# v<version>-<seed> <code> <issue>
 # v5-00000000000007d6: after choosers opened and dismissed, Copy here within Copy to is skipped
-# on Rune (F4's round 2).
+# on Rune (F4's round 3).
 v5-00000000000007d6 divergence lgse/strata#2679

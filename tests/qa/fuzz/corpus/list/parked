@@ -18,9 +18,9 @@
 # (lgse/strata#2644). Both F4's round 2, shrunk to 7 and 5 steps, confirmed 3 of 3.
 # v6, 0x1e: the seed v5's 0x1e names, met again by version 6 (lgse/strata#2643); kept unshrunk.
 # v7-00000000000000aa: F5 after a Shift range: GTK's keyboard moves into the range (F4's round
-# 2).
+# 3).
 # v7-000000000000009a: Ctrl+period hides the entry the browser keeps its Shift anchor on (F4's
-# round 2).
+# round 3).
 v3-0000000000000062 divergence lgse/strata#2510
 v5-000000000000001e divergence lgse/strata#2643
 v5-0000000000000056 divergence lgse/strata#2644

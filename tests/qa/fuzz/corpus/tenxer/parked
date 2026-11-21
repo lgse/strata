@@ -12,9 +12,7 @@
 # F3's browser-view invariant breaks on Rune (lgse/strata#2387's mechanism, an entry hidden
 # rather than removed; F4's round 1). Shrunk on Rune from 65 steps to 7, confirmed 3 of 3.
 # v7-00000000000000b9: an outside removal of the cursor's unselected entry, another selected:
-# Rune selects the neighbour (F4's round 2).
-# v7-0000000000000093: period hides the entry the browser keeps its Shift anchor on (F4's round
-# 2).
+# Rune selects the neighbour (F4's round 3).
 v2-0000000000000003 oracle lgse/strata#2586
 v2-0000000000000008 oracle lgse/strata#2586
 v3-0000000000000003 oracle lgse/strata#2587

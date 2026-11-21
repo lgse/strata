@@ -11,9 +11,9 @@
 # shows (lgse/strata#2644). v3, 0x5a, a file listed above a first visit's cursor
 # (lgse/strata#2642), is kept unparked: fixed in F4's round 2.
 # v5-0000000000000008: Ctrl+period hides the entry the browser keeps its Shift anchor on, as in
-# tenxer v7 0x62 (F4's round 2).
+# tenxer v7 0x62 (F4's round 3).
 # v5-000000000000009b: a Shift+Left after a right-click and Escape in a folder just opened: Rune
-# ranges from the right-clicked entry (F4's round 2).
+# ranges from the right-clicked entry (F4's round 3).
 v1-000000000000001a oracle lgse/strata#2552
 v2-0000000000000008 divergence lgse/strata#2641
 v3-0000000000000044 divergence lgse/strata#2644

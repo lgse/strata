@@ -5,8 +5,9 @@
 # Properties dialog, Rune's names the error (F4's round 2).
 # v3-000000000000002b: after a sidebar row's right-click, a click guarded on no menu is skipped
 # on Rune (F4's round 2).
-# Checked on GTK's screen in F4's round 3: 0x41 is GTK's QA snapshot naming the Properties dialog
-# under its error dialog (oracle); 0x2b is a right-click that fell through to the sized-folder
-# crumb and opened its hierarchy popover, which GTK's QA does not read as a menu (a11y).
+# Checked on GTK's screen in F4's round 3: 0x41 is GTK's QA snapshot naming the Properties
+# dialog under its error dialog (oracle); 0x2b is a right-click that fell through to the
+# sized-folder crumb and opened its hierarchy popover, which GTK's QA does not read as a menu
+# (a11y).
 v3-000000000000002b a11y lgse/strata#2658
 v3-0000000000000041 oracle lgse/strata#2657
