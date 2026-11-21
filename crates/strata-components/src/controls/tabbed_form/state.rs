@@ -59,20 +59,24 @@ pub struct TabbedFormState {
 
 /// A keyboard carried across a page switch:
 ///
-/// - [`Carry::Page`]: Ctrl+Page Up or Down ran with focus off the tabs. Making the old page inert
-///   drops focus to `None`, while unmounting it (`Mounting::Rebuilt`) triggers Rune's unmount
-///   `focus_fallback`, which lands focus on the tab strip ahead of the panels. Only the focused
-///   key was known when the switch was asked for, so the next poll checks whether focus is now
-///   `None` or on one of the form's tabs: if so, focus was inside the hidden page and moves to
-///   `panel` first, then `tab` a poll later if `panel` holds nothing focusable. Focus outside the
-///   form (such as a dialog footer button) stays where it was.
+/// - [`Carry::Page`]: Ctrl+Page Up or Down ran with focus off the tabs, on `from`. Making the old
+///   page inert or unmounting it (`Mounting::Rebuilt`) takes focus off `from`: to `None`, or,
+///   since Rune `7a707454`, to the next Tab stop around it (its focus rescue,
+///   anomalyco/rune#1298 and #1302), which can be outside the form. Only the focused key was
+///   known when the switch was asked for, so the next poll checks whether focus is now `None`,
+///   on one of the form's tabs or anywhere but `from`: if so, focus was inside the hidden page
+///   and moves to `tab`, then a poll later into `panel`, where it stays on `tab` if `panel`
+///   holds nothing focusable, as it went through the tab strip before the rescue.
+///   Focus outside the form (such as a dialog footer button) stays where it was.
 /// - [`Carry::Tab`]: a switch with focus on a tab. Under `Mounting::Rebuilt`, remounting a page
 ///   whose `TextEdit` kept `focused = true` across an earlier unmount steals focus in the switch's
 ///   commit; the next poll restores `key` when that happened.
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum Carry {
     Page {
-        panel: Option<String>,
+        /// Where focus was when the switch was asked for; `None` once the carry is on the tab.
+        from: Option<String>,
+        panel: String,
         tab: String,
         tabs_prefix: String,
         ring: bool,
@@ -91,6 +95,8 @@ fn is_form_tab(focused: &str, prefix: &str) -> bool {
 
 /// Targets for [`TabbedFormState::carry_page`] when a keyboard page switch hides the old page.
 pub(super) struct PageCarry {
+    /// The key focused when the switch was asked for.
+    pub from: String,
     pub panel: String,
     pub tab: String,
     pub tabs_prefix: String,
@@ -121,7 +127,8 @@ impl TabbedFormState {
     /// focusable element, else to `tab`. Replaces a carry not yet done.
     pub(super) fn carry_page(&mut self, page: PageCarry, tx: &mut Tx) {
         self.carry = Some(Carry::Page {
-            panel: Some(page.panel),
+            from: Some(page.from),
+            panel: page.panel,
             tab: page.tab,
             tabs_prefix: page.tabs_prefix,
             ring: page.ring,
@@ -157,27 +164,30 @@ impl TabbedFormState {
         match self.carry.as_mut() {
             None => false,
             Some(Carry::Page {
+                from,
                 panel,
                 tab,
                 tabs_prefix,
                 ring,
             }) => {
-                let dropped = tx
-                    .focused()
-                    .is_none_or(|focused| is_form_tab(focused, tabs_prefix));
+                let ring = *ring;
+                if from.is_none() {
+                    // On the new page's tab now: into the page, if it holds anything focusable.
+                    let panel = panel.clone();
+                    self.carry = None;
+                    tx.focus(panel, ring);
+                    return true;
+                }
+                let focused = tx.focused();
+                let dropped = focused != from.as_deref()
+                    || focused.is_none_or(|key| is_form_tab(key, tabs_prefix));
                 if !dropped {
                     self.carry = None;
                     return false;
                 }
-                let ring = *ring;
-                if let Some(panel) = panel.take() {
-                    tx.focus(panel, ring);
-                    tx.wake_after(Duration::ZERO);
-                } else {
-                    let tab = tab.clone();
-                    self.carry = None;
-                    tx.focus(tab, ring);
-                }
+                *from = None;
+                tx.focus(tab.clone(), ring);
+                tx.wake_after(Duration::ZERO);
                 true
             }
             Some(Carry::Tab { key, ring }) => {

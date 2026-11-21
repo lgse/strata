@@ -55,15 +55,16 @@
 //!   on an app window, or a target's `target` or `action` answer), the drag hasn't dropped
 //!   or ended, the pressed element is still live where it was, and P1 saw the press. A drag
 //!   no proof reaches keeps its capture until the window's next press or focus change.
-//!   Rune `631e8a67` still has no public way to end it. "Rune's capture on Wayland" below lists
+//!   Rune `7a707454` still has no public way to end it. "Rune's capture on Wayland" below lists
 //!   what remains. Tests guard it at the pinned Rune rev.
 //!
 //!   Rune #408 (`dece2aff`, in the pin) rewrote how Rune holds a press (`capture::Held`
 //!   replaces the runtime's capture fields). The Escape relies on Rune's `cancel_drag` finding
 //!   the held element by its path and answering with a cancelled `Up`, which it still does:
 //!   P1's session suites (`mise run test-platform p1::`, among them
-//!   `wayland_runes_capture_ends_when_the_drag_starts`) pass at `2a44156` and `cancel_drag` is
-//!   unchanged at `631e8a67`. Re-run them at every Rune bump.
+//!   `wayland_runes_capture_ends_when_the_drag_starts`) pass at `2a44156` and `7a707454`, and
+//!   `cancel_drag` is unchanged at `7a707454` but for the runtime's state moving into its
+//!   subsystem structs (anomalyco/rune#1271 to #1273). Re-run them at every Rune bump.
 //! - **U3** (draft, not filed): file-drop acceptance sees no app state and no drag identity.
 //! - **U-P1-1** (draft, not filed): an element has one handler of each kind, and a shim
 //!   can't read an element's key. So [`Dnd::drag_source`] takes the element's `on_drag` and

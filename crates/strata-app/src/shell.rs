@@ -854,6 +854,16 @@ pub(crate) fn view_focus(app: &App) -> Option<&'static str> {
     shown_view(app).map(|view| view.focus)
 }
 
+/// The scroll viewports of the shown view's listing, as key paths: each column's in Columns,
+/// the one viewport of Icons and List, whether it shows the folder or the filter's results.
+pub(crate) fn listing_viewports(app: &App) -> Vec<String> {
+    match view_focus(app) {
+        Some(crate::columns::VIEW) => app.columns.listing_viewports(),
+        Some(key) => vec![strata_components::collection::element::viewport_path(key)],
+        None => Vec::new(),
+    }
+}
+
 fn on_window_action(app: &mut App, action: WindowAction, tx: &mut Tx) {
     let csd = &mut app.window.csd;
     let outcome = match action {
