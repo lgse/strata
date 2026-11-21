@@ -93,7 +93,7 @@ pub(crate) fn button(app: &App) -> El {
     let state = &app.pane_header.thumbnails;
     let built = header::action(look, IconName::Pictures, &state.labels.title)
         .on_press_tx(toggle)
-        .build(&look.kit)
+        .build(&look.accent_icon_kit())
         .expanded(state.open);
     buttons::on_return(BUTTON, built)
 }

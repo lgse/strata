@@ -148,7 +148,7 @@ impl<'a, S: 'static> ArchivePrompt<'a, S> {
             .center()
             .child(
                 icon(look.icon(IconName::Lock), 34.0)
-                    .color(k.c.icon_muted)
+                    .color(k.c.icon_accent)
                     .a11y_hidden(),
             )
             .child(

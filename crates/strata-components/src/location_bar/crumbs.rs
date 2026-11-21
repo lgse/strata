@@ -187,7 +187,7 @@ fn ancestor<S: 'static>(cx: &Ctx<'_, S>, i: usize, crumb: &Crumb) -> El {
     if let Some(badge) = crumb.badge {
         button = button.child(
             icon(look.icon(badge), look.icon_size.sm)
-                .color(k.c.icon_muted)
+                .color(k.c.icon_accent)
                 .a11y_hidden(),
         );
     }

@@ -515,8 +515,13 @@ fn row_content<S>(
         (ResultKind::Folders, IconName::File) => IconName::Folder,
         (_, name) => name,
     };
-    let icon_el = icon(look.icon(glyph), look.icon_size.lg)
-        .color(k.c.icon_muted)
+    let art = item
+        .icon_key
+        .as_deref()
+        .and_then(|key| look.icon_named(key))
+        .unwrap_or_else(|| look.icon(glyph));
+    let icon_el = icon(art, look.icon_size.lg)
+        .color(k.c.icon_accent)
         .a11y_hidden();
     let pic = match thumb {
         Some(t) => picture(t, icon_el, PALETTE_THUMB, PALETTE_THUMB),
@@ -650,7 +655,7 @@ fn footer<S: 'static>(cx: &Ctx<S>, look: &Look, state: &PaletteState, mode: &Pal
         if let Some(name) = hint.icon {
             h = h.child(
                 icon(look.icon(name), HINT_ICON)
-                    .color(k.c.icon_muted)
+                    .color(k.c.icon_accent)
                     .a11y_hidden(),
             );
         }
@@ -699,5 +704,6 @@ fn look_key(look: &Look) -> u64 {
     look.row.hash(&mut h);
     look.icons.name.hash(&mut h);
     (look.icons.icon as usize).hash(&mut h);
+    (look.icons.named as usize).hash(&mut h);
     h.finish()
 }

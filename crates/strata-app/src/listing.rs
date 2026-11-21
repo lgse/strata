@@ -157,6 +157,7 @@ pub(crate) struct Row {
     id: EntryId,
     name: String,
     kind: EntryKind,
+    icon: &'static str,
     described: Described,
     hidden: bool,
     /// The key of the entry's thumbnail, for a file that gets one ([`crate::thumbnails`]): a
@@ -212,6 +213,7 @@ impl Row {
             id: ids.of(&entry.location),
             name: entry.display_name.clone(),
             kind,
+            icon: crate::entry_icon::entry_icon(entry),
             described,
             hidden: entry.is_hidden,
             thumbnail: crate::thumbnails::key_of(entry),
@@ -580,8 +582,7 @@ impl EntrySource for Column {
         let row = &self.rows[self.shown[index]];
         let (color, glyph) = self.worn.get(row.id).unwrap_or((None, None));
         let has_glyph = glyph.is_some();
-        // No icon name: the view falls back to its folder and file icons.
-        let entry = Entry::new(row.id, &row.name, row.kind, "")
+        let entry = Entry::new(row.id, &row.name, row.kind, row.icon)
             .maybe_color(color)
             .maybe_glyph(glyph);
         // A custom icon or emoji stands in place of a file's thumbnail (`shows_icon_instead`),

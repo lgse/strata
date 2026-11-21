@@ -139,7 +139,8 @@ fn member_trailing(size: Option<String>, look: &Look) -> El {
             .color(k.c.text_muted)
             .a11y_hidden(),
         None => icon(look.icon(IconName::ChevronRight), look.icon_size.sm)
-            .color(k.c.icon_muted)
+            .color(k.c.icon_accent)
+            .opacity(0.55)
             .a11y_hidden(),
     }
 }
@@ -507,7 +508,7 @@ impl<S: 'static> ArchiveView<S> {
                         a.up(tx);
                         tx.focus(a.scope(), ring);
                     })
-                    .build(k)
+                    .build(&look.accent_icon_kit())
                     // The tooltip repeats the name: no description, so it isn't read twice.
                     .description("")
                     .key(format!("{scope}-up")),
