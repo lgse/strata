@@ -100,7 +100,10 @@ pub(crate) fn a_seed_writes_the_same_sequence_on_every_machine() {
     let opened = sample().replace(HEADER, &format!("{HEADER}\n{OPENING}"));
     let opened = alphabet::parse(&opened).expect("an alphabet with an opening should load");
     let started = generate(&opened, 7, 8);
-    assert_eq!(started.steps[..2], [r#"{"key":"Home"}"#, r#"{"key":"End"}"#]);
+    assert_eq!(
+        started.steps[..2],
+        [r#"{"key":"Home"}"#, r#"{"key":"End"}"#]
+    );
     assert_eq!(started.steps[2..], SEED_SEVEN);
     assert_eq!(opened.opening_of(&started.steps), 2);
     assert_eq!(opened.opening_of(&sequence.steps), 0);
@@ -143,7 +146,10 @@ pub(crate) fn an_alphabet_is_refused_for_what_a_replay_could_not_run() {
             "unknown field",
         ),
         (
-            sample.replace(HEADER, &format!("{HEADER}\nopening = ['{{\"key\":\"<key>\"}}']")),
+            sample.replace(
+                HEADER,
+                &format!("{HEADER}\nopening = ['{{\"key\":\"<key>\"}}']"),
+            ),
             "an opening step is one line of JSON with nothing to choose",
         ),
         // A portal's request steps need its bus, and a sequence's answer waits, checking

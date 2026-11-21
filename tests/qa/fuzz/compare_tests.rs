@@ -196,12 +196,11 @@ pub(crate) fn the_shrinker_keeps_the_fewest_steps_that_still_diverge_and_confirm
         (3, "app.focused")
     );
     // An alphabet's opening stays whole, whether or not the divergence needs it.
-    let budget = Budget {
-        asks: 200,
-        kept: 2,
-    };
-    let opened = shrink(&long, &found, budget, &mut |candidate| Ok(double(candidate)))
-        .expect("the oracle never fails");
+    let budget = Budget { asks: 200, kept: 2 };
+    let opened = shrink(&long, &found, budget, &mut |candidate| {
+        Ok(double(candidate))
+    })
+    .expect("the oracle never fails");
     assert_eq!(opened.steps, steps("x y a b c"));
     assert!(shrunk.is_confirmed());
     assert_eq!(
@@ -222,8 +221,10 @@ pub(crate) fn the_shrinker_keeps_the_fewest_steps_that_still_diverge_and_confirm
     };
     let found = shifted(&other).expect("diverges");
     assert_eq!(found.field(), "app.focused");
-    let kept = shrink(&other, &found, Budget::asks(200), &mut |candidate| Ok(shifted(candidate)))
-        .expect("the oracle never fails");
+    let kept = shrink(&other, &found, Budget::asks(200), &mut |candidate| {
+        Ok(shifted(candidate))
+    })
+    .expect("the oracle never fails");
     assert_eq!(kept.divergence.signature(), "app.focused");
     assert!(kept.steps.contains(&"b".to_owned()) && kept.is_confirmed());
     // Nor is a removal that slides to another difference on the same field: taking `b`
@@ -241,8 +242,10 @@ pub(crate) fn the_shrinker_keeps_the_fewest_steps_that_still_diverge_and_confirm
     };
     let other = steps("a b c d");
     let found = slide(&other).expect("diverges");
-    let kept = shrink(&other, &found, Budget::asks(200), &mut |candidate| Ok(slide(candidate)))
-        .expect("the oracle never fails");
+    let kept = shrink(&other, &found, Budget::asks(200), &mut |candidate| {
+        Ok(slide(candidate))
+    })
+    .expect("the oracle never fails");
     assert_eq!(kept.steps, steps("a b c"));
     // The oracle's own failure ends the shrink: it is the harness's, not a verdict.
     let long_found = double(&long).expect("diverges");

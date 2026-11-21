@@ -524,4 +524,3 @@ fn open_request() -> crate::portal::ChooserRequest {
         choices: Vec::new(),
     }
 }
-

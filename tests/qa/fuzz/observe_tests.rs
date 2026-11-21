@@ -88,7 +88,8 @@ pub(crate) fn a_field_is_named_by_its_path_and_an_entry_covers_what_is_below_it(
     assert_eq!(differences(&fewer, &more)[0].field, "app.panes");
     assert_eq!(pattern_of("app.panes[12].selected"), "app.panes[].selected");
     // What a portal answered is compared after the settings, by its own fields.
-    let answered = |status: u32| json!({"portal": {"answered": true, "status": status, "paths": []}});
+    let answered =
+        |status: u32| json!({"portal": {"answered": true, "status": status, "paths": []}});
     assert_eq!(
         differences(&answered(0), &answered(1))
             .into_iter()

@@ -145,7 +145,9 @@ pub(crate) fn portal_state(peers: &mut Peers) -> Value {
 /// A `portal_response` in a sequence waits and checks nothing: `done`, and a `timeout_ms` or
 /// `message`, but no status, names, paths, kept path, image or discard.
 pub(crate) fn check_answered(step: &Map<String, Value>) -> Result<(), String> {
-    let check = step[ANSWERED].as_object().ok_or("portal_response is an object")?;
+    let check = step[ANSWERED]
+        .as_object()
+        .ok_or("portal_response is an object")?;
     match check.keys().find(|key| key.as_str() != "done") {
         Some(key) => Err(format!(
             "a fuzz portal_response only waits, so it takes no {key}; the observation's portal \
