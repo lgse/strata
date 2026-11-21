@@ -84,6 +84,10 @@ pub(crate) fn leave_launch_folder() {
 /// What a window opens (`docs/rune/shared-state.md`, "Tab sessions").
 pub(crate) enum Initial {
     /// A test's or QA run's folder: opens that folder in one tab and leaves `tabs.toml` alone.
+    #[cfg_attr(
+        not(any(test, feature = "qa")),
+        expect(dead_code, reason = "only tests and QA runs open a folder this way")
+    )]
     Explicit(Location),
     /// A plain launch (`strata-rune` with no argument): restores the saved session when
     /// `Some`, or opens the default folder, and persists this window's tabs.
