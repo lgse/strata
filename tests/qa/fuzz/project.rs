@@ -114,7 +114,7 @@ impl Places {
     /// scenario variable that stands for it.
     pub(crate) fn normalise(&self, value: &Value) -> Value {
         match value {
-            Value::String(text) if is_recent(text) => Value::String(RECENT.to_owned()),
+            Value::String(_) if is_recent(value) => Value::String(RECENT.to_owned()),
             Value::String(text) => Value::String(self.text(text)),
             Value::Array(items) => {
                 Value::Array(items.iter().map(|item| self.normalise(item)).collect())
@@ -130,10 +130,13 @@ impl Places {
     }
 }
 
-/// Whether `text` is a date Strata writes relative to now for a file of the last day: "Just
-/// now", or a count of minutes or hours ago (`strata_core::util`'s relative date, in the QA
-/// image's English).
-fn is_recent(text: &str) -> bool {
+/// Whether `value` is a text that is a date Strata writes relative to now for a file of the
+/// last day: "Just now", or a count of minutes or hours ago (`strata_core::util`'s relative
+/// date, in the QA image's English).
+fn is_recent(value: &Value) -> bool {
+    let Some(text) = value.as_str() else {
+        return false;
+    };
     if text == "Just now" {
         return true;
     }
