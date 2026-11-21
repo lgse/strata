@@ -169,11 +169,8 @@ pub(crate) fn check_step(step: &Value) -> Result<(), String> {
             "a fuzz step stands alone, so it takes no {key}; {STEP_WHEN} is its one condition"
         ));
     }
-    if peer == Some(peers::ANSWERED) {
-        return peers::check_answered(object);
-    }
-    if peer.is_some() {
-        return Ok(());
+    if let Some(peer) = peer {
+        return peers::check(peer, object);
     }
     if object.contains_key("fs") {
         let parsed: FsStep = serde_json::from_value(strip(step, STEP_WHEN))

@@ -112,6 +112,47 @@ pub(crate) fn a_seed_writes_the_same_sequence_on_every_machine() {
 /// Two opening steps for the sample.
 const OPENING: &str = r#"opening = ['{"key":"Home"}', '{"key":"End"}']"#;
 
+/// An opening step chooses nothing; a portal's request needs its bus, and a sequence's answer
+/// waits, checking nothing: the observation holds what the portal answered.
+pub(crate) fn an_opening_and_a_portal_request_are_refused_for_what_a_replay_could_not_run() {
+    let sample = sample();
+    let portal = sample.replace(
+        HEADER,
+        r#"header = '{"modes":["columns"],"portal":true,"session_bus":true}'"#,
+    );
+    for (text, expected) in [
+        (
+            sample.replace(
+                HEADER,
+                &format!("{HEADER}\nopening = ['{{\"key\":\"<key>\"}}']"),
+            ),
+            "an opening step is one line of JSON with nothing to choose",
+        ),
+        (
+            sample.replace(HEADER, r#"header = '{"modes":["columns"],"portal":true}'"#),
+            "session_bus",
+        ),
+        (
+            portal.replace(
+                r#"'{"key":"Down"}'"#,
+                r#"'{"portal_response":{"done":true,"status":0}}'"#,
+            ),
+            "only waits, so it takes no status",
+        ),
+    ] {
+        let error = alphabet::parse(&text).expect_err(expected);
+        assert!(
+            error.contains(expected),
+            "{error:?} should say {expected:?}"
+        );
+    }
+    alphabet::parse(&portal.replace(
+        r#"'{"key":"Down"}'"#,
+        r#"'{"portal_open":"Pick"}', '{"portal_response":{"done":true}}'"#,
+    ))
+    .expect("a portal alphabet that sends a request and waits for its answer should load");
+}
+
 pub(crate) fn an_alphabet_is_refused_for_what_a_replay_could_not_run() {
     let sample = sample();
     let with_step = |step: &str| sample.replace(r#"'{"key":"Down"}'"#, &format!("'{step}'"));
@@ -144,26 +185,6 @@ pub(crate) fn an_alphabet_is_refused_for_what_a_replay_could_not_run() {
         (
             sample.replace("about = ", "note = \"\"\nabout = "),
             "unknown field",
-        ),
-        (
-            sample.replace(
-                HEADER,
-                &format!("{HEADER}\nopening = ['{{\"key\":\"<key>\"}}']"),
-            ),
-            "an opening step is one line of JSON with nothing to choose",
-        ),
-        // A portal's request steps need its bus, and a sequence's answer waits, checking
-        // nothing: the observation holds what the portal answered.
-        (
-            with_header(r#"{"modes":["columns"],"portal":true}"#),
-            "session_bus",
-        ),
-        (
-            with_header(r#"{"modes":["columns"],"portal":true,"session_bus":true}"#).replace(
-                r#"'{"key":"Down"}'"#,
-                r#"'{"portal_response":{"done":true,"status":0}}'"#,
-            ),
-            "only waits, so it takes no status",
         ),
         (
             with_header(r#"{"modes":["columns","list"]}"#),

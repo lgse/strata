@@ -142,9 +142,19 @@ pub(crate) fn portal_state(peers: &mut Peers) -> Value {
     }
 }
 
+/// Whether a sequence may hold `step`, one of [`STEPS`] of `kind`: a `portal_response` waits and
+/// checks nothing (`check_answered`); the others are the scenario runner's to check.
+pub(crate) fn check(kind: &str, step: &Map<String, Value>) -> Result<(), String> {
+    if kind == ANSWERED {
+        check_answered(step)
+    } else {
+        Ok(())
+    }
+}
+
 /// A `portal_response` in a sequence waits and checks nothing: `done`, and a `timeout_ms` or
 /// `message`, but no status, names, paths, kept path, image or discard.
-pub(crate) fn check_answered(step: &Map<String, Value>) -> Result<(), String> {
+fn check_answered(step: &Map<String, Value>) -> Result<(), String> {
     let check = step[ANSWERED]
         .as_object()
         .ok_or("portal_response is an object")?;

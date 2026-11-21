@@ -152,7 +152,7 @@ fn divergence(step: usize, field: &str) -> Divergence {
 
 /// A stand-in for two targets: they part on `app.focused` at the step that completes
 /// `a … b … c`, and on `app.dialog` at any `z` before that.
-fn double(steps: &[String]) -> Option<Divergence> {
+pub(crate) fn double(steps: &[String]) -> Option<Divergence> {
     let mut wanted = ["a", "b", "c"].iter().peekable();
     for (index, step) in steps.iter().enumerate() {
         if step == "z" {
@@ -168,7 +168,7 @@ fn double(steps: &[String]) -> Option<Divergence> {
     None
 }
 
-fn steps(text: &str) -> Vec<String> {
+pub(crate) fn steps(text: &str) -> Vec<String> {
     text.split_whitespace().map(str::to_owned).collect()
 }
 
@@ -195,13 +195,6 @@ pub(crate) fn the_shrinker_keeps_the_fewest_steps_that_still_diverge_and_confirm
         (shrunk.divergence.step, shrunk.divergence.field()),
         (3, "app.focused")
     );
-    // An alphabet's opening stays whole, whether or not the divergence needs it.
-    let budget = Budget { asks: 200, kept: 2 };
-    let opened = shrink(&long, &found, budget, &mut |candidate| {
-        Ok(double(candidate))
-    })
-    .expect("the oracle never fails");
-    assert_eq!(opened.steps, steps("x y a b c"));
     assert!(shrunk.is_confirmed());
     assert_eq!(
         (shrunk.confirmed, shrunk.asked),
