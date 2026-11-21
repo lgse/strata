@@ -128,8 +128,17 @@ enum Gesture {
     TearOut {
         from: usize,
         offset: [f32; 2],
+        handed_off: bool,
         grab: Grab,
     },
+}
+
+struct ActiveDrag {
+    from: usize,
+    grab: Grab,
+    was_torn: bool,
+    was_reordering: bool,
+    handed_off: bool,
 }
 
 impl Default for Gesture {
@@ -178,6 +187,28 @@ impl ReorderState {
 
     pub(super) fn torn_out(&self) -> bool {
         matches!(self.gesture, Gesture::TearOut { .. })
+    }
+
+    pub(super) fn hand_off(&mut self) {
+        if let Gesture::TearOut { handed_off, .. } = &mut self.gesture {
+            *handed_off = true;
+        }
+    }
+
+    pub(super) fn handed_off(&self) -> bool {
+        matches!(
+            self.gesture,
+            Gesture::TearOut {
+                handed_off: true,
+                ..
+            }
+        )
+    }
+
+    pub(super) fn cancel(&mut self) {
+        if !matches!(self.gesture, Gesture::Idle { .. }) {
+            self.gesture = Gesture::default();
+        }
     }
 
     pub(super) fn has_active_gesture(&self) -> bool {
@@ -258,86 +289,94 @@ impl ReorderState {
         }
     }
 
+    fn active_drag(&self) -> Option<ActiveDrag> {
+        match &self.gesture {
+            Gesture::Pressed { from, grab } => Some(ActiveDrag {
+                from: *from,
+                grab: grab.clone(),
+                was_torn: false,
+                was_reordering: false,
+                handed_off: false,
+            }),
+            Gesture::Reorder { from, grab, .. } => Some(ActiveDrag {
+                from: *from,
+                grab: grab.clone(),
+                was_torn: false,
+                was_reordering: true,
+                handed_off: false,
+            }),
+            Gesture::TearOut {
+                from,
+                grab,
+                handed_off,
+                ..
+            } => Some(ActiveDrag {
+                from: *from,
+                grab: grab.clone(),
+                was_torn: true,
+                was_reordering: false,
+                handed_off: *handed_off,
+            }),
+            Gesture::Idle { .. } => None,
+        }
+    }
+
     /// Updates the active gesture from pointer motion `[dx, dy]`. Returns true when visual state
     /// changed.
     pub(super) fn follow(&mut self, dx: f32, dy: f32) -> bool {
-        let (from, grab, was_torn, was_reordering) = match &self.gesture {
-            Gesture::Pressed { from, grab } => (*from, grab.clone(), false, false),
-            Gesture::Reorder { from, grab, .. } => (*from, grab.clone(), false, true),
-            Gesture::TearOut { from, grab, .. } => (*from, grab.clone(), true, false),
-            Gesture::Idle { .. } => return false,
+        let Some(active) = self.active_drag() else {
+            return false;
         };
-        if from >= grab.widths.len() {
+        if active.from >= active.grab.widths.len() {
             self.gesture = Gesture::default();
             return true;
         }
-        let scrolled = self.scroll.offset_x() - grab.scrolled;
-        let along = dx + scrolled;
-        let across = dy;
-        let (min_delta, max_delta) = drag_bounds(&grab.widths, grab.gap, from);
-        let pitch = (grab.widths[from] + grab.gap).max(1.0);
-        let over_strip = ((min_delta - pitch)..=(max_delta + pitch)).contains(&along);
-        let detach = grab.tear.is_some_and(|spec| {
-            if was_torn {
-                across.abs() > spec.reattach_distance || !over_strip
-            } else {
-                across.abs() >= spec.detach_distance
-            }
-        });
-        if detach {
+        let along = dx + (self.scroll.offset_x() - active.grab.scrolled);
+        let bounds = drag_bounds(&active.grab.widths, active.grab.gap, active.from);
+        let pitch = (active.grab.widths[active.from] + active.grab.gap).max(1.0);
+        if should_detach(&active, [along, dy], bounds, pitch) {
             self.gesture = Gesture::TearOut {
-                from,
+                from: active.from,
                 offset: [dx, dy],
-                grab,
+                handed_off: active.handed_off,
+                grab: active.grab,
             };
             return true;
         }
-        if !was_reordering && !was_torn && along.hypot(across) < DRAG_SLOP {
+        if !active.was_reordering && !active.was_torn && along.hypot(dy) < DRAG_SLOP {
             return false;
         }
-        let delta = along.clamp(min_delta, max_delta);
-        let to = target_index(&grab.widths, grab.gap, from, delta);
+        let delta = along.clamp(bounds.0, bounds.1);
+        let to = target_index(&active.grab.widths, active.grab.gap, active.from, delta);
         self.gesture = Gesture::Reorder {
-            from,
+            from: active.from,
             to,
             delta,
-            grab,
+            grab: active.grab,
         };
         true
     }
 
     pub(super) fn release(&mut self, cancelled: bool, on_tab: bool) -> Release {
+        let swallow_click = !cancelled && on_tab;
         let prev = std::mem::take(&mut self.gesture);
-        match prev {
-            Gesture::Pressed { .. } => {
-                self.gesture = Gesture::Idle {
-                    swallow_click: on_tab,
-                };
-                Release::Click
-            }
-            Gesture::Reorder { from, to, .. } if !cancelled && from != to => {
-                self.gesture = Gesture::Idle {
-                    swallow_click: on_tab,
-                };
-                Release::Reorder { from, to }
-            }
-            Gesture::TearOut { from, offset, .. } if !cancelled => {
-                self.gesture = Gesture::Idle {
-                    swallow_click: on_tab,
-                };
-                Release::TearOut { from, offset }
-            }
+        let (next, out) = match prev {
+            Gesture::Pressed { .. } => (Gesture::Idle { swallow_click }, Release::Click),
+            Gesture::Reorder { from, to, .. } if !cancelled && from != to => (
+                Gesture::Idle { swallow_click },
+                Release::Reorder { from, to },
+            ),
+            Gesture::TearOut { from, offset, .. } if !cancelled => (
+                Gesture::Idle { swallow_click },
+                Release::TearOut { from, offset },
+            ),
             Gesture::Reorder { .. } | Gesture::TearOut { .. } => {
-                self.gesture = Gesture::Idle {
-                    swallow_click: on_tab,
-                };
-                Release::None
+                (Gesture::Idle { swallow_click }, Release::None)
             }
-            other => {
-                self.gesture = other;
-                Release::None
-            }
-        }
+            other => (other, Release::None),
+        };
+        self.gesture = next;
+        out
     }
 
     /// Visual `[dx, dy]` offset for tab `index` during an active reorder or tear-out gesture.
@@ -349,30 +388,54 @@ impl ReorderState {
                 delta,
                 grab,
             } => {
-                let step = grab.widths.get(*from).copied().unwrap_or(0.0) + grab.gap;
-                let dx = if index == *from {
-                    *delta
-                } else if *from < index && index <= *to {
-                    -step
-                } else if *to <= index && index < *from {
-                    step
-                } else {
-                    0.0
-                };
-                [dx, 0.0]
+                let step = dragged_step(grab, *from);
+                [reorder_dx(index, (*from, *to), *delta, step), 0.0]
             }
-            Gesture::TearOut { from, offset, grab } => {
-                let step = grab.widths.get(*from).copied().unwrap_or(0.0) + grab.gap;
-                if index == *from {
-                    *offset
-                } else if index > *from {
-                    [-step, 0.0]
-                } else {
-                    [0.0, 0.0]
-                }
-            }
+            Gesture::TearOut {
+                from, offset, grab, ..
+            } => tear_out_offset(index, *from, *offset, dragged_step(grab, *from)),
             _ => [0.0, 0.0],
         }
+    }
+}
+
+fn should_detach(active: &ActiveDrag, travel: [f32; 2], bounds: (f32, f32), pitch: f32) -> bool {
+    let Some(spec) = active.grab.tear else {
+        return false;
+    };
+    let [along, across] = travel;
+    if active.was_torn {
+        let over_strip = ((bounds.0 - pitch)..=(bounds.1 + pitch)).contains(&along);
+        across.abs() > spec.reattach_distance || !over_strip
+    } else {
+        across.abs() >= spec.detach_distance
+    }
+}
+
+fn dragged_step(grab: &Grab, from: usize) -> f32 {
+    grab.widths.get(from).copied().unwrap_or(0.0) + grab.gap
+}
+
+fn reorder_dx(index: usize, span: (usize, usize), delta: f32, step: f32) -> f32 {
+    let (from, to) = span;
+    if index == from {
+        delta
+    } else if from < index && index <= to {
+        -step
+    } else if to <= index && index < from {
+        step
+    } else {
+        0.0
+    }
+}
+
+fn tear_out_offset(index: usize, from: usize, offset: [f32; 2], step: f32) -> [f32; 2] {
+    if index == from {
+        offset
+    } else if index > from {
+        [-step, 0.0]
+    } else {
+        [0.0, 0.0]
     }
 }
 

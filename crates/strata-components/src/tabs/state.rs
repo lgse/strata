@@ -148,6 +148,37 @@ impl BrowserTabsState {
         self.spring.as_ref().map(|s| s.id)
     }
 
+    /// A tab dragged from another strip is hovering at `point` (in this window's points), or has
+    /// left (`None`). The strip opens an insertion mark at the resolved slot; read
+    /// [`Self::incoming_slot`] at drop time.
+    pub fn set_incoming(&mut self, point: Option<[f32; 2]>) {
+        self.reorder.set_incoming(point);
+        self.drag.set_incoming(point);
+    }
+
+    /// Where an incoming tab drag lands if released now, resolved against the laid-out tab widths.
+    pub fn incoming_slot(&self) -> Option<usize> {
+        self.reorder.incoming_slot()
+    }
+
+    /// Marks the currently torn-out tab as handed off to its own window so the source strip hides
+    /// its floating ghost while keeping the pointer gesture alive.
+    pub fn hand_off(&mut self) {
+        self.reorder.hand_off();
+        self.drag.hand_off();
+    }
+
+    /// Whether the torn-out tab has been handed off to its own window.
+    pub fn handed_off(&self) -> bool {
+        self.reorder.handed_off() || self.drag.handed_off()
+    }
+
+    /// Cancels any reorder or tear-out gesture currently in flight.
+    pub fn cancel_drag(&mut self) {
+        self.reorder.cancel();
+        self.drag.cancel();
+    }
+
     /// One frame at `now` seconds on the window's clock (the poll's), with the tabs as they are
     /// now. It selects the tab a drag has rested on for the spring delay, emits the
     /// window title when it changed, and scrolls a newly active tab into view, however it

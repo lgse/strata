@@ -442,6 +442,177 @@ fn variable_width_drag_reorders_narrow_and_wide_tabs_and_cancels_on_escape() {
     press(&mut state);
     assert!(state.follow(-114.5, 0.0));
     assert!(matches!(state.release(true, false), drag::Release::None));
+    assert!(!state.take_swallowed_click());
+
+    // Cancelling a drag with Escape while the pointer is still over the tab must NOT leave a
+    // stale `swallow_click` behind to eat the next keyboard activation.
+    press(&mut state);
+    assert!(state.follow(-114.5, 0.0));
+    assert!(matches!(state.release(true, true), drag::Release::None));
+    assert!(
+        !state.take_swallowed_click(),
+        "cancelled drag over a tab must not swallow subsequent activation"
+    );
+}
+
+#[test]
+fn escape_cancelled_drag_over_tab_does_not_swallow_keyboard_activation() {
+    struct State {
+        strip: BrowserTabsState,
+        look: strata_kit::look::Look,
+        intents: Vec<TabsIntent>,
+    }
+    fn view(s: &State, cx: &mut rune::Cx<State>) -> rune::El {
+        let items = [
+            Tab::new(TabId(1), "Applications", IconName::Folder),
+            Tab::new(TabId(2), "~", IconName::Home),
+        ];
+        let d = TabsData::new(&items, Some(TabId(1)));
+        BrowserTabs::new(
+            &d,
+            &s.strip,
+            |s: &mut State| &mut s.strip,
+            |s| &mut s.strip.drag,
+        )
+        .on_intent(|s, intent, _| s.intents.push(intent))
+        .build(&s.look, cx)
+    }
+    let state = State {
+        strip: BrowserTabsState::default(),
+        look: strata_kit::look::Look::default(),
+        intents: Vec::new(),
+    };
+    let mut rt = rune::Runtime::new(state, view, (600.0, 48.0), rune::Env::default());
+    rt.frame(0.0);
+    rt.frame(1.0 / 60.0);
+
+    let tab1 = rt
+        .elements()
+        .into_iter()
+        .find(|e| !e.exiting && e.key.as_deref() == Some("t-tabs-1"))
+        .expect("tab 1");
+    let (x, y) = (
+        tab1.visible[0] + 24.0,
+        tab1.visible[1] + tab1.visible[3] / 2.0,
+    );
+    // Start a reorder drag on tab 1, move slightly past slop while remaining inside tab 1, and
+    // cancel with Escape.
+    rt.pointer_move(x, y);
+    rt.pointer_down(x, y);
+    rt.pointer_move(x + 10.0, y);
+    rt.key(rune::KeyEvent {
+        key: rune::Key::Escape,
+        mods: rune::Mods::default(),
+    });
+    rt.pointer_up(x + 10.0, y);
+    rt.frame(0.0);
+    rt.state.intents.clear();
+
+    // Focus tab 2 and activate it from the keyboard with Space; it must not be swallowed.
+    rt.update(|_, tx| tx.focus("t-tabs-2", true));
+    rt.frame(0.0);
+    rt.key(rune::KeyEvent {
+        key: rune::Key::Text(" ".to_owned()),
+        mods: rune::Mods::default(),
+    });
+    rt.frame(0.0);
+    assert_eq!(
+        rt.state.intents,
+        [TabsIntent::Select {
+            id: TabId(2),
+            via: Via::Strip,
+        }]
+    );
+}
+
+#[test]
+fn layered_tear_out_anchors_ghost_and_hides_source_face_until_hand_off() {
+    struct State {
+        strip: BrowserTabsState,
+        look: strata_kit::look::Look,
+        intents: Vec<TabsIntent>,
+    }
+    fn view(s: &State, cx: &mut rune::Cx<State>) -> rune::El {
+        let items = [
+            Tab::new(TabId(1), "Applications", IconName::Folder),
+            Tab::new(TabId(2), "~", IconName::Home),
+        ];
+        let d = TabsData::new(&items, Some(TabId(1)));
+        let mut layer = Vec::new();
+        let band = BrowserTabs::new(
+            &d,
+            &s.strip,
+            |s: &mut State| &mut s.strip,
+            |s| &mut s.strip.drag,
+        )
+        .tear_out(true)
+        .on_intent(|s, intent, _| s.intents.push(intent))
+        .build_layered(&s.look, cx, &mut layer);
+        rune_kit::root(band, layer)
+    }
+    let state = State {
+        strip: BrowserTabsState::default(),
+        look: strata_kit::look::Look::default(),
+        intents: Vec::new(),
+    };
+    let mut rt = rune::Runtime::new(state, view, (600.0, 200.0), rune::Env::default());
+    rt.frame(0.0);
+    rt.frame(1.0 / 60.0);
+
+    let tab2 = rt
+        .elements()
+        .into_iter()
+        .find(|e| !e.exiting && e.key.as_deref() == Some("t-tabs-2"))
+        .expect("tab 2");
+    let (x, y) = (
+        tab2.visible[0] + 24.0,
+        tab2.visible[1] + tab2.visible[3] / 2.0,
+    );
+    rt.pointer_move(x, y);
+    rt.pointer_down(x, y);
+    // Drag 50 pt vertically off the strip (> 36 pt detach threshold).
+    rt.pointer_move(x, y + 50.0);
+    rt.frame(0.0);
+    rt.frame(1.0 / 60.0);
+
+    let els = rt.elements();
+    assert!(
+        els.iter()
+            .any(|e| !e.exiting && e.key.as_deref() == Some("tabs-ghost")),
+        "floating ghost mounts in overlay layer"
+    );
+    assert!(
+        els.iter()
+            .any(|e| !e.exiting && e.key.as_deref() == Some("tabs-anchor")),
+        "anchor mounts in source tab"
+    );
+    let source = els
+        .iter()
+        .find(|e| !e.exiting && e.key.as_deref() == Some("t-tabs-2"))
+        .expect("source tab stays mounted for pointer capture");
+    assert!(
+        source.opacity < 0.01,
+        "source tab hides while floating ghost flies"
+    );
+
+    // Handing off to a new window removes the floating ghost while keeping source hidden.
+    rt.update(|s, _| s.strip.hand_off());
+    rt.frame(0.0);
+    rt.frame(1.0 / 60.0);
+    let els = rt.elements();
+    assert!(
+        els.iter()
+            .all(|e| e.exiting || e.key.as_deref() != Some("tabs-ghost")),
+        "hand_off removes floating ghost"
+    );
+    let source = els
+        .iter()
+        .find(|e| !e.exiting && e.key.as_deref() == Some("t-tabs-2"))
+        .expect("source tab stays mounted until release");
+    assert!(
+        source.opacity < 0.01,
+        "source tab stays hidden after hand_off"
+    );
 }
 
 #[test]

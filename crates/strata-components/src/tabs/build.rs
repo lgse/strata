@@ -8,7 +8,8 @@ use std::hash::{Hash, Hasher};
 use std::rc::Rc;
 
 use rune::{
-    Anim, Color, Cursor, Cx, Drag, El, Mods, Phase, ScrollFade, Spring, Tx, el, icon, row, text,
+    Align, Anim, Color, Cursor, Cx, Drag, El, Mods, MotionIntent, Phase, ScrollFade, Side, Spring,
+    Tx, el, icon, row, text,
 };
 use rune_kit::shell::{TabDragState, TabTearMove, TabTearOut, TabWords, TearOutSpec};
 use strata_kit::icons::IconName;
@@ -219,6 +220,7 @@ impl<'a, S: 'static> BrowserTabs<'a, S> {
             shrunk: layout.shrunk,
             measured: &layout.measured,
             tear: tear_spec,
+            layered: layer.is_some(),
             has_incoming: incoming.is_some(),
             zones: &zones,
             look,
@@ -241,45 +243,61 @@ impl<'a, S: 'static> BrowserTabs<'a, S> {
             tab_els.insert(at, incoming_marker(&list_k, band_h, look));
         }
 
+        self.build_band(
+            BandParts {
+                list_k,
+                tab_els,
+                new_btn,
+                trailing_gap,
+                fade,
+            },
+            &strip_ctx,
+        )
+    }
+
+    fn build_band(&self, parts: BandParts, sc: &StripCtx<'_, S>) -> El {
+        let look = sc.look;
         let list = row()
-            .key(list_k)
+            .key(parts.list_k)
             .role("tablist")
             .label(self.labels.list.clone().into_owned())
             .focus_group()
-            .h(band_h)
-            .gap(tab_gap)
+            .h(sc.band_h)
+            .gap(sc.tab_gap)
             .items_center()
-            .children(tab_els);
+            .children(parts.tab_els);
         let scroll = row()
-            .key(scroll_k)
-            .h(band_h)
+            .key(sc.scroll_key.to_owned())
+            .h(sc.band_h)
             .shrink()
             .min_w(0.0)
             .scroll_x()
-            .scroll_fade(ScrollFade::strength(fade).linear().full_at(0.1))
+            .scroll_fade(ScrollFade::strength(parts.fade).linear().full_at(0.1))
             .child(list);
         let scroll = self.state.reorder.scroll.watch(scroll);
 
         let access = self.access;
         let root = row()
-            .key(key.clone())
+            .key(sc.key.to_owned())
             .grow(1.0)
             .shrink()
             .min_w(0.0)
-            .h(band_h)
-            .gap(trailing_gap)
+            .h(sc.band_h)
+            .gap(parts.trailing_gap)
             .items_center()
             .child(scroll)
-            .children(new_btn)
+            .children(parts.new_btn)
             .children(self.state.probe.root_markers())
             .on_hover_change(move |s: &mut S, inside, tx: &mut Tx| {
                 if inside || !access(s).reorder.leave_strip() {
                     tx.live_only();
                 }
             });
-        let root =
-            self.dnd
-                .drop_zone_keyed(root, key.clone(), drops::opener(&zones, DropSite::Strip));
+        let root = self.dnd.drop_zone_keyed(
+            root,
+            sc.key.to_owned(),
+            drops::opener(sc.zones, DropSite::Strip),
+        );
 
         let hairline = el()
             .key("hairline")
@@ -289,9 +307,9 @@ impl<'a, S: 'static> BrowserTabs<'a, S> {
             .a11y_hidden();
 
         row()
-            .key(format!("{key}-band"))
+            .key(format!("{}-band", sc.key))
             .w_full()
-            .h(band_h)
+            .h(sc.band_h)
             .pl(0.0)
             .pr(look.space.sm)
             .gap(look.space.sm)
@@ -397,62 +415,40 @@ impl<'a, S: 'static> BrowserTabs<'a, S> {
         label: &str,
         sc: &StripCtx<'_, S>,
     ) -> (El, Option<El>) {
-        let look = sc.look;
         let active = self.data.active == Some(tab.id);
         let drop_accepting =
             self.state.drop_hover() == Some((DropSite::Tab(tab.id), DropHover::Accepting));
-        let highlighted = active || drop_accepting;
         let lifted = self.state.reorder.dragging() == Some(index);
         let torn = lifted && self.state.reorder.torn_out();
+        let handed_off = torn && self.state.handed_off();
         let shift = self.state.reorder.shift(index);
         let t_key = tab_key(sc.key, tab.id);
 
-        let lead = if self.badges && index < BADGED {
-            badge(index, look)
-        } else {
-            tab_icon(tab.icon, highlighted, look)
-        };
-        let close_el = close_button(
-            CloseSpec {
-                id: tab.id,
-                label: self.words.close,
-                lock_cap: sc.shrunk.then_some(sc.cap),
-                access: self.access,
-                emit: &self.emit,
-            },
-            look,
-        );
-
-        let mut face = row()
-            .key(t_key.clone())
-            .h(sc.band_h)
-            .max_w(sc.cap)
-            .pl(look.space.lg)
-            .pr(look.space.xs)
-            .gap(look.space.sm)
-            .items_center()
-            .cursor(Cursor::Pointer)
-            .hover_group()
-            .hover_motion(Anim::INSTANT, Anim::INSTANT)
-            .focus_ring(2.0, -2.0, look.kit.c.border_focus)
-            .focusable(true)
-            .focus_selected(active)
-            .position_in_set(index + 1, self.data.tabs.len())
-            .offset(shift[0], shift[1])
-            .child(lead)
-            .child(tab_label(label, highlighted, look))
-            .child(close_el);
-
-        face = apply_tab_surface(face, drop_accepting, lifted, look);
-        face = apply_tab_motion(
-            face,
+        let ghost = (torn && sc.layered && !handed_off).then(|| {
+            torn_ghost(
+                GhostSpec {
+                    index,
+                    icon_name: tab.icon,
+                    label,
+                    shift,
+                },
+                sc,
+            )
+        });
+        let meta = TabMeta {
+            index,
+            tab,
+            label,
+            t_key: &t_key,
+            active,
+            drop_accepting,
             lifted,
-            self.state.reorder.has_active_gesture() || sc.has_incoming,
-            look,
-        );
-        face = self.attach_tab_markers(face, index, tab, active, sc);
-        let ghost = torn.then(|| torn_ghost(index, tab.icon, label, shift, sc));
-
+            torn,
+            handed_off,
+            has_ghost: ghost.is_some(),
+            shift,
+        };
+        let mut face = self.build_tab_face(&meta, sc);
         face = bind_tab_handlers(
             face,
             TabBind {
@@ -488,27 +484,99 @@ impl<'a, S: 'static> BrowserTabs<'a, S> {
         (face.label(tab.name.clone().into_owned()).role("tab"), ghost)
     }
 
-    fn attach_tab_markers(
-        &self,
-        mut face: El,
-        index: usize,
-        tab: &Tab<'_>,
-        active: bool,
-        sc: &StripCtx<'_, S>,
-    ) -> El {
-        if index == 0 {
+    fn build_tab_face(&self, m: &TabMeta<'_>, sc: &StripCtx<'_, S>) -> El {
+        let look = sc.look;
+        let highlighted = m.active || m.drop_accepting;
+        let lead = if self.badges && m.index < BADGED {
+            badge(m.index, look)
+        } else {
+            tab_icon(m.tab.icon, highlighted, look)
+        };
+        let close_el = close_button(
+            CloseSpec {
+                id: m.tab.id,
+                label: self.words.close,
+                lock_cap: sc.shrunk.then_some(sc.cap),
+                access: self.access,
+                emit: &self.emit,
+            },
+            look,
+        );
+        let mut face = row()
+            .key(m.t_key.to_owned())
+            .h(sc.band_h)
+            .max_w(sc.cap)
+            .pl(look.space.lg)
+            .pr(look.space.xs)
+            .gap(look.space.sm)
+            .items_center()
+            .cursor(Cursor::Pointer)
+            .hover_group()
+            .hover_motion(Anim::INSTANT, Anim::INSTANT)
+            .focus_ring(2.0, -2.0, look.kit.c.border_focus)
+            .focusable(true)
+            .focus_selected(m.active)
+            .position_in_set(m.index + 1, self.data.tabs.len())
+            .offset(m.shift[0], m.shift[1])
+            .child(lead)
+            .child(tab_label(m.label, highlighted, look))
+            .child(close_el);
+
+        face = apply_tab_surface(face, m.drop_accepting, m.lifted, look);
+        face = apply_tab_motion(
+            face,
+            m.lifted,
+            self.state.reorder.has_active_gesture() || sc.has_incoming,
+            look,
+        );
+        face = self.attach_tab_markers(face, m, sc);
+        apply_tear_visibility(face, m, look)
+    }
+
+    fn attach_tab_markers(&self, mut face: El, m: &TabMeta<'_>, sc: &StripCtx<'_, S>) -> El {
+        if m.index == 0 {
             face = face.child(self.state.probe.first_marker());
         }
-        if active {
+        if m.active {
             let marker = self
                 .state
                 .probe
-                .active_marker(tab.id, name_hash(&tab.name))
+                .active_marker(m.tab.id, name_hash(&m.tab.name))
                 .on_layout_tx(|_: &mut S, _, tx: &mut Tx| tx.live_only());
             face = face.child(active_underline(sc.key, sc.look)).child(marker);
         }
+        if m.torn && sc.layered {
+            let anchor = el()
+                .key(format!("{}-anchor", sc.key))
+                .pin(Some(0.0), Some(0.0), Some(0.0), None)
+                .h(sc.band_h)
+                .a11y_hidden();
+            face = face.child(anchor);
+        }
         face
     }
+}
+
+struct BandParts {
+    list_k: String,
+    tab_els: Vec<El>,
+    new_btn: Option<El>,
+    trailing_gap: f32,
+    fade: f32,
+}
+
+struct TabMeta<'a> {
+    index: usize,
+    tab: &'a Tab<'a>,
+    label: &'a str,
+    t_key: &'a str,
+    active: bool,
+    drop_accepting: bool,
+    lifted: bool,
+    torn: bool,
+    handed_off: bool,
+    has_ghost: bool,
+    shift: [f32; 2],
 }
 
 struct TabLayout {
@@ -526,29 +594,62 @@ struct CloseSpec<'a, S: 'static> {
     emit: &'a Emit<S>,
 }
 
-fn torn_ghost<S: 'static>(
+struct GhostSpec<'a> {
     index: usize,
     icon_name: IconName,
-    label: &str,
+    label: &'a str,
     shift: [f32; 2],
-    sc: &StripCtx<'_, S>,
-) -> El {
+}
+
+fn torn_ghost<S: 'static>(spec: GhostSpec<'_>, sc: &StripCtx<'_, S>) -> El {
     let look = sc.look;
-    let w = sc.measured.get(index).copied().unwrap_or(sc.cap);
-    row()
+    let k = &look.kit;
+    let radius = look.round(OVERLAY_RADIUS);
+    let w = sc.measured.get(spec.index).copied().unwrap_or(sc.cap);
+    let float = row()
         .key(format!("{}-ghost", sc.key))
         .size(w, sc.band_h)
         .pl(look.space.lg)
         .pr(look.space.xs)
         .gap(look.space.sm)
         .items_center()
-        .radius(look.round(OVERLAY_RADIUS))
+        .radius(radius)
         .fill(slot::strip_fill(look))
-        .offset(shift[0], shift[1])
+        .anchored(
+            format!("{}-anchor", sc.key),
+            Side::Bottom,
+            Align::Start,
+            -sc.band_h,
+        )
+        .offset(spec.shift[0], spec.shift[1])
         .offset_motion(Anim::INSTANT)
+        .scale(1.03)
         .a11y_hidden()
-        .child(tab_icon(icon_name, true, look))
-        .child(tab_label(label, true, look))
+        .child(tab_icon(spec.icon_name, true, look))
+        .child(tab_label(spec.label, true, look));
+    k.elevate(float, &k.elevation.floating)
+}
+
+fn apply_tear_visibility(face: El, m: &TabMeta<'_>, look: &Look) -> El {
+    if m.handed_off {
+        face.opacity(0.0)
+            .opacity_motion(Spring::NONE)
+            .motion_intent(MotionIntent::CUT)
+    } else if m.has_ghost {
+        // The anchored floating copy flies in the overlay layer; keep this slot unseen in place.
+        face.opacity(0.0)
+            .opacity_motion(Spring::NONE)
+            .offset(0.0, 0.0)
+            .motion_intent(MotionIntent::CUT)
+    } else if m.torn {
+        let k = &look.kit;
+        k.elevate(
+            face.radius(look.round(OVERLAY_RADIUS)).scale(1.03),
+            &k.elevation.floating,
+        )
+    } else {
+        face
+    }
 }
 
 struct StripCtx<'a, S: 'static> {
@@ -560,6 +661,7 @@ struct StripCtx<'a, S: 'static> {
     shrunk: bool,
     measured: &'a Rc<[f32]>,
     tear: Option<TearOutSpec>,
+    layered: bool,
     has_incoming: bool,
     zones: &'a Ctx<S>,
     look: &'a Look,
