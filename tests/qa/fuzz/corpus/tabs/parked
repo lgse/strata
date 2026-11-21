@@ -17,8 +17,11 @@
 # round 3).
 # v3-0000000000000059: Ctrl+F opens the filter in another column: the targeted column follows
 # the pointer on GTK (F4's round 3).
+# v3-00000000000000a7: Ctrl+Shift+Tab back from a new tab's location field: GTK's keyboard on
+# diagram.txt, Rune's on none (F4's round 3).
 v3-000000000000000c oracle lgse/strata#2415
 v3-0000000000000015 oracle lgse/strata#2415
 v3-0000000000000039 divergence lgse/strata#2659
 v3-0000000000000059 divergence lgse/strata#2626
 v3-000000000000005b divergence lgse/strata#2659
+v3-00000000000000a7 divergence lgse/strata#2706
