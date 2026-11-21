@@ -5,7 +5,8 @@
 //! Modified, with GTK's default widths and minimums, the order and visibility saved as
 //! `list_column_order` and `list_hidden_columns`, and the widths as `browser_list_columns`.
 //! GTK's optional Duration, Dimensions and Created columns (`main`'s #2603) are not built
-//! here yet, so they are neither shown nor sized: [`SHOWN`] holds the five.
+//! here yet, so they are neither shown nor sized: [`SHOWN`] holds the five. What GTK saved for
+//! them, their widths, places and hidden state, is kept as it was when this table saves.
 //! Cells read the row's facts ([`crate::details`]), as GTK's `list_metadata_label` shows
 //! them: left-aligned, in the text colour. The Type cell is read only for the rows drawn, as
 //! GTK binds it.
@@ -49,6 +50,10 @@ const SHOWN: [ListColumnId; 5] = [
     ListColumnId::Type,
     ListColumnId::Modified,
 ];
+
+fn is_shown(column: ListColumnId) -> bool {
+    SHOWN.contains(&column)
+}
 
 fn saved(id: &ColumnId) -> Option<ListColumnId> {
     ListColumnId::ALL
@@ -201,7 +206,7 @@ fn widths_of(saved: &ListColumns) -> ColumnWidths {
 
 /// The widths as GTK's `remember` saves them: all four others, in whole points, and Name only
 /// once resized by hand.
-fn saved_widths(widths: &ColumnWidths) -> ListColumns {
+fn saved_widths(widths: &ColumnWidths) -> Vec<(ListColumnId, i32)> {
     #[expect(clippy::cast_possible_truncation, reason = "a width in points")]
     let width = |column: ListColumnId, at: usize| {
         widths.get(&id(column)).unwrap_or(WIDTHS[at]).round() as i32
@@ -216,14 +221,47 @@ fn saved_widths(widths: &ColumnWidths) -> ListColumns {
         .collect()
 }
 
+/// This table's widths, with the widths `saved` has for the columns it does not build.
+fn merged_widths(saved: Option<&ListColumns>, widths: &ColumnWidths) -> ListColumns {
+    let kept = ListColumnId::ALL
+        .into_iter()
+        .filter(|column| !is_shown(*column))
+        .filter_map(|column| Some((column, saved?.width(column)?)));
+    saved_widths(widths).into_iter().chain(kept).collect()
+}
+
+/// `order`'s columns in the places this table's columns had in `saved`, and the columns it does
+/// not build left where they were.
+fn merged_order(saved: &[ListColumnId], order: &[ListColumnId]) -> Vec<ListColumnId> {
+    let mut ours = order.iter().copied().filter(|column| is_shown(*column));
+    let merged: Vec<ListColumnId> = sanitize_list_column_order(saved)
+        .into_iter()
+        .map(|column| {
+            if is_shown(column) {
+                ours.next().unwrap_or(column)
+            } else {
+                column
+            }
+        })
+        .collect();
+    sanitize_list_column_order(&merged)
+}
+
+/// `hidden`, with the columns this table does not build hidden as `saved` has them.
+fn merged_hidden(saved: &[ListColumnId], hidden: &[ListColumnId]) -> Vec<ListColumnId> {
+    let kept = saved.iter().copied().filter(|column| !is_shown(*column));
+    sanitize_list_hidden_columns(&hidden.iter().copied().chain(kept).collect::<Vec<_>>())
+}
+
 /// The person reordered, showed, hid or reset the columns: the settings save it through the
 /// rules GTK's setters apply (`set_list_column_order`, `set_list_hidden_columns`), which
 /// `strata_desktop::settings` holds, and the window keeps what a restart would read back.
 pub(super) fn keep_layout(app: &mut App, change: LayoutChange) {
     let order: Vec<ListColumnId> = change.layout.order().iter().filter_map(saved).collect();
     let hidden: Vec<ListColumnId> = change.layout.hidden().filter_map(saved).collect();
-    let order = sanitize_list_column_order(&order);
-    let hidden = sanitize_list_hidden_columns(&hidden);
+    let settings = shell::preferences(app);
+    let order = merged_order(&settings.list_column_order, &order);
+    let hidden = merged_hidden(&settings.list_hidden_columns, &hidden);
     app.list.layout = layout_of(&order, &hidden);
     shell::saved(app).change(|settings| {
         settings.list_column_order = order;
@@ -235,9 +273,15 @@ pub(super) fn keep_layout(app: &mut App, change: LayoutChange) {
 /// `browser_list_columns`, keeping only valid ones (`set_browser_list_columns`), and the
 /// window keeps what a restart would read back.
 pub(super) fn keep_widths(app: &mut App, widths: ColumnWidths) {
-    let saved = Some(saved_widths(&widths)).filter(ListColumns::is_valid);
-    app.list.widths = saved.as_ref().map_or_else(ColumnWidths::new, widths_of);
     let chooser = app.browser.is_chooser_mode();
+    let settings = shell::preferences(app);
+    let before = if chooser {
+        settings.chooser_list_columns.as_ref()
+    } else {
+        settings.browser_list_columns.as_ref()
+    };
+    let saved = Some(merged_widths(before, &widths)).filter(ListColumns::is_valid);
+    app.list.widths = saved.as_ref().map_or_else(ColumnWidths::new, widths_of);
     shell::saved(app).change(|settings| {
         if chooser {
             settings.chooser_list_columns = saved;
