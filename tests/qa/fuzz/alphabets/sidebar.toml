@@ -52,14 +52,15 @@
 # Version 2, F4's round 2 draft, never merged, met Shift+Up shrinking a range back to one
 # folder, which opens its column on Rune and not on GTK (lgse/strata#2650); version 3 leaves the
 # Shift moves out, which are the files' alphabets' and not the sidebar's.
-# Version 4 widens version 3, which compared little of the sidebar itself (the review of
+# Version 4, F4's round 3 draft, never merged, drew a drag's two rows from one list and so
+# dropped a row on itself; version 5 widens version 3, which compared little of the sidebar itself (the review of
 # lgse/strata#2660), with what it writes in `settings.toml`: the built-in places reordered by
 # drag (`sidebar_order`) and unpinned from their menu (`sidebar_show_*`). Each ends with a click
 # on a root file, which gives the keyboard back to the files on both targets, so the keyboard a
 # drag or an Unpin leaves in the sidebar (lgse/strata#2646, lgse/strata#2406's open case) is not
 # what the next steps start from; the click still compares what each left.
 area = "sidebar"
-version = 4
+version = 5
 about = "Columns on the canonical fixture, type to search off: the sidebar's width toggle by Ctrl+B from the files, built-in places reordered by drag and unpinned from their menu, the rows' and the files' context menus by right-click and the Menu key, dismissed, and the keyboard along the files' columns between"
 header = '{"modes":["columns"],"prefs":{"type_to_search":false}}'
 
@@ -118,15 +119,27 @@ choose.place = ["Home", "Trash", "Network", "Desktop"]
 # which opens a place outside the fixture.
 [[action]]
 name = "reorder"
-weight = 3
+weight = 2
 steps = [
   '{"drag":{"from":{"sidebar":"<from>"},"from_at":["50%","50%"],"to":{"sidebar":"<to>"},"to_at":["50%","<half>"]},"steps":12,"when":{"all":[{"present":{"sidebar":"<from>"}},{"present":{"sidebar":"<to>"}},{"menu_items":null}]}}',
   '{"click":{"entry":"<file>","dir":"$root"},"when":{"present":{"entry":"<file>","dir":"$root"}}}',
 ]
 choose.file = ["readme.md", "todo.txt"]
-choose.from = ["Home", "Network", "Trash", "Desktop"]
+choose.from = ["Home", "Network"]
 choose.half = ["1/5", "4/5"]
-choose.to = ["Desktop", "Trash", "Network", "Home"]
+choose.to = ["Trash", "Desktop"]
+
+[[action]]
+name = "reorder-back"
+weight = 2
+steps = [
+  '{"drag":{"from":{"sidebar":"<from>"},"from_at":["50%","50%"],"to":{"sidebar":"<to>"},"to_at":["50%","<half>"]},"steps":12,"when":{"all":[{"present":{"sidebar":"<from>"}},{"present":{"sidebar":"<to>"}},{"menu_items":null}]}}',
+  '{"click":{"entry":"<file>","dir":"$root"},"when":{"present":{"entry":"<file>","dir":"$root"}}}',
+]
+choose.file = ["readme.md", "todo.txt"]
+choose.from = ["Trash", "Desktop"]
+choose.half = ["1/5", "4/5"]
+choose.to = ["Home", "Network"]
 
 # A row's Unpin from its menu, then a click on a root file. Rare: the sidebar would empty early.
 [[action]]
