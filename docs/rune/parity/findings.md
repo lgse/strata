@@ -2222,7 +2222,7 @@ sequence only together with the alphabet's version, so the version is part of th
   `tests/qa/fuzz/corpus/pointer/`; the arrow cases, seeds `0x0a`, `0x0e` and `0x14` of
   `pointer v1`, never merged. Not driven by hand on GTK.
 - **Also seen** by [F5](packages/F5.md)'s `session-pointer v2` on the session host: a return to a
-  folder after a marquee there, `fuzz-session-pointer-v2-0000000000000009`, shrunk to 7 steps,
+  folder after a marquee there, `fuzz-session-pointer-v3-0000000000000009` (`v2-09` until 2026-11-20), shrunk to 7 steps,
   confirmed 3 of 3 and 24 of 24 on GTK, parked in `tests/qa/fuzz/corpus/session-pointer/`.
 - **Met again by [F4](packages/F4.md)'s round 1**: `pointer v3` seeds `0x16` (a return to the
   folder) and `0x26` (a file written after a marquee from the name column's space), shrunk to
