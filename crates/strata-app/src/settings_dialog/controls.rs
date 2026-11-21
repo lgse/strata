@@ -71,9 +71,26 @@ pub(super) fn number_field(
         .on_change(on_commit)
 }
 
+/// Blends `base` toward `other` by `t` in sRGB, matching GTK CSS `mix(base, other, t)`.
+/// Rune's `Color::mix` interpolates in linear light, which lifts dark-to-light mixes much
+/// brighter than GTK's sRGB mix.
+pub(super) fn mix_srgb(base: Color, other: Color, t: f32) -> Color {
+    let ch = |a: f32, b: f32| {
+        let sa = rune::color::srgb_encode(a);
+        let sb = rune::color::srgb_encode(b);
+        rune::color::srgb_decode(sa + (sb - sa) * t)
+    };
+    Color {
+        r: ch(base.r, other.r),
+        g: ch(base.g, other.g),
+        b: ch(base.b, other.b),
+        a: base.a + (other.a - base.a) * t,
+    }
+}
+
 /// Card background matching GTK's `.settings-group { background: mix(@strata_bg, @strata_muted, 0.25); }`.
 pub(super) fn card_surface(look: &Look) -> Color {
-    look.kit.c.bg_base.mix(look.fill.muted, 0.25)
+    mix_srgb(look.kit.c.bg_base, look.fill.muted, 0.25)
 }
 
 /// Panel/card/divider border matching GTK's `alpha(@strata_border, 0.55)`.
@@ -128,6 +145,7 @@ pub(super) fn group_card(look: &Look, rows: Vec<Option<El>>) -> Option<El> {
     let border = panel_border(look);
     let mut card = col()
         .w_full()
+        .min_w(0.0)
         .radius(look.round(10.0))
         .fill(card_surface(look))
         .border(1.0, border);
@@ -135,6 +153,7 @@ pub(super) fn group_card(look: &Look, rows: Vec<Option<El>>) -> Option<El> {
         let wrapped = if idx > 0 {
             col()
                 .w_full()
+                .min_w(0.0)
                 .border_sides([1.0, 0.0, 0.0, 0.0], border)
                 .child(item)
         } else {
