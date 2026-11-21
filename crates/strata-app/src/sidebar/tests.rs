@@ -1206,3 +1206,31 @@ fn dismissing_a_right_clicked_sidebar_menu_or_its_dialog_returns_focus_to_the_ro
         },
     );
 }
+
+/// Unpin from a row's right-click menu hides the place, and the keyboard the menu gave back to
+/// that row goes to the row after it, as GTK's list draws its ring there (finding
+/// lgse/strata#2406's Unpin case; `sidebar v4`, F4's round 3).
+#[test]
+fn unpin_gives_the_keyboard_to_the_row_after_the_one_hidden() {
+    hosted(
+        MODULE,
+        "unpin_gives_the_keyboard_to_the_row_after_the_one_hidden",
+        |mut host| {
+            let folder = fixture();
+            opened(folder.path(), &mut host);
+            shown(&mut host, "sidebar-place-trash");
+            right_click(&mut host, "sidebar-place-trash");
+            let unpin = menu_lists(
+                &mut host,
+                &["Open in New Tab", "Unpin", "Properties"],
+                "Unpin",
+            );
+            click(&mut host, &unpin);
+            idle(&mut host);
+            assert_eq!(
+                focused(&host.tree()).as_deref(),
+                Some("sidebar-place-network")
+            );
+        },
+    );
+}
