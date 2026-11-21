@@ -493,6 +493,7 @@ fn element(app: &App, look: &Look, data: SidebarData<'_>) -> El {
     .content_types(crate::dnd::CONTENT_TYPES)
     .drop_action(drops::drop_action)
     .reorder(true)
+    .confined_grip(app.browser.is_chooser_mode())
     // A middle click opens a row in a new tab once a part registers the command.
     .open_in_new_tab(!app.browser.is_chooser_mode() && commands::has(app, OPEN_IN_TAB.id))
     .tenxer(shell::preferences(app).tenxer_mode)
