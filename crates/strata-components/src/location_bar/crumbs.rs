@@ -6,7 +6,8 @@
 //! inside a scroll pane, which assistive technology meets as such.
 
 use rune::{
-    Cursor, El, Key, KeyEvent, Mods, PointerEvent, Tx, WheelEvent, col, el, icon, row, text,
+    Anim, Cursor, Curve, Easing, El, Key, KeyEvent, Mods, PointerEvent, Tx, WheelEvent, col, el,
+    icon, row, text,
 };
 use strata_kit::icons::IconName;
 
@@ -16,11 +17,16 @@ use super::drops;
 use super::intent::{LocationIntent, Via};
 use super::state::COPIED_FOR;
 use crate::contract::dnd::DropHover;
-use crate::header;
 
 /// A crumb's drop ring and keyboard focus ring, in points: Strata's 1 px inset accent ring (a
 /// hairline the Look has no token for, as C8's drop outline).
 const RING: f32 = 1.0;
+
+/// The Copy path button's reveal and hide fade: Strata's `transition: opacity 160ms ease-out`.
+const COPY_FADE: Anim = Anim::new(Curve::tween(0.16, Easing::EASE_OUT));
+
+/// The Copy path button's hover fill alpha: Strata's `background: alpha(@strata_accent, 0.15)`.
+const COPY_HOVER_ALPHA: f32 = 0.15;
 
 /// The strip's viewport key under the bar keyed `key`.
 pub(crate) fn viewport_key(key: &str) -> String {
@@ -276,8 +282,10 @@ fn return_as_space<S: 'static>(_: &mut S, ev: &KeyEvent, tx: &mut Tx) -> bool {
     true
 }
 
-/// The current folder: a label in the accent, and the Copy path button.
-fn current<S: 'static>(cx: &Ctx<'_, S>, crumb: &Crumb, n: usize) -> El {
+/// The current crumb's Copy path button: hidden at rest, revealed when the pointer hovers the
+/// current crumb or the button, when keyboard focus reaches it, or while the 2 s "Path copied"
+/// confirmation shows (Strata's `.copy-path`, `src/style.css`).
+fn copy_path_button<S: 'static>(cx: &Ctx<'_, S>, fade: Anim) -> El {
     let look = cx.look;
     let k = &look.kit;
     let copied = cx.state.copied();
@@ -292,18 +300,48 @@ fn current<S: 'static>(cx: &Ctx<'_, S>, crumb: &Crumb, n: usize) -> El {
     } else {
         IconName::Copy
     };
-    // The header's action look; its tooltip names it.
-    let copy = header::action(look, icon_name, &label)
+    let rest = if copied { 1.0 } else { 0.0 };
+    row()
+        .key(format!("{}-copy", cx.key))
+        .role("button")
+        .label(label.clone())
+        .help(label)
+        .focusable(true)
+        .size(cx.row(), cx.row())
+        .center()
+        .radius(k.radius.sm)
+        .cursor(Cursor::Pointer)
+        .hover(k.alpha(k.c.bg_accent, COPY_HOVER_ALPHA))
+        .hover_motion(fade, fade)
+        .press(k.c.pressed)
+        .focus_ring(RING, 0.0, k.c.border_focus)
+        .group_opacity(rest, 1.0)
+        .opacity_motion(fade)
         .on_press_tx(move |s: &mut S, tx: &mut Tx| {
             access(s).show_copied(tx.clock());
             // A window at rest polls only at the wakes it asked for.
             tx.wake_at(tx.clock() + COPIED_FOR);
             emit(s, LocationIntent::CopyPath, tx);
         })
-        .build(k)
-        .key(format!("{}-copy", cx.key))
-        .cursor(Cursor::Pointer)
-        .on_key(return_as_space::<S>);
+        .on_key(return_as_space::<S>)
+        .child(
+            icon(look.icon(icon_name), look.icon_size.md)
+                .key("icon")
+                .color(k.c.icon_accent)
+                .a11y_hidden(),
+        )
+}
+
+/// The current folder: a label in the accent, and the Copy path button.
+fn current<S: 'static>(cx: &Ctx<'_, S>, crumb: &Crumb, n: usize) -> El {
+    let look = cx.look;
+    let k = &look.kit;
+    let fade = if look.animations {
+        COPY_FADE
+    } else {
+        Anim::INSTANT
+    };
+    let copy = copy_path_button(cx, fade);
     let mut name = row()
         .key(format!("{}-current", cx.key))
         .role("none")
@@ -330,6 +368,8 @@ fn current<S: 'static>(cx: &Ctx<'_, S>, crumb: &Crumb, n: usize) -> El {
         .role("none")
         .h(cx.row())
         .items_center()
+        .hover_group()
+        .hover_motion(fade, fade)
         .on_press_tx(opens_the_entry(cx))
         .child(name)
         .child(copy)

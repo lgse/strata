@@ -188,8 +188,9 @@
 //! - **Navigate and Cancel are pointer-only**: pressing a focusable button would take the
 //!   keyboard from the entry, and nothing tells the bar where it went (U-C6-3), so the edit
 //!   would cancel. Enter and Escape do the same from the keyboard. Strata's are Tab stops.
-//! - **The Copy path button always shows**; Strata reveals it while the pointer is over the
-//!   current crumb.
+//! - **The Copy path button hides at rest** and reveals on hover over the current crumb or the
+//!   button, on keyboard focus, or while the 2 s "Path copied" confirmation shows, matching
+//!   Strata's `.copy-path` rules.
 //! - **A press outside cancels one frame later**, through `tick`, which sees the entry lost the
 //!   keyboard (U-C6-3). It isn't visible.
 //! - **The host forwards the window's activation** (U-C6-6).
