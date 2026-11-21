@@ -13,6 +13,7 @@ mod geometry;
 mod hit_test;
 mod origin;
 mod state;
+mod surface_click;
 
 use geometry::translate;
 pub(super) use hit_test::{item_bounds_predicate, item_content_predicate};
@@ -169,6 +170,7 @@ pub(super) fn install(setup: MarqueeSetup) -> Marquee {
     });
     connect_drag_progress(&gesture, &state);
     surface.add_controller(gesture.clone());
+    surface_click::install(&surface, &gesture, &state);
 
     Marquee {
         state,
@@ -194,34 +196,43 @@ fn follow_scroll(scroll: &gtk::ScrolledWindow, state: &Rc<MarqueeState>) {
     });
 }
 
-fn begin_surface_drag(state: &Rc<MarqueeState>, gesture: &gtk::GestureDrag, x: f64, y: f64) {
-    // Capture phase sees presses before the scrollbars inside the surface, and an
-    // overlay scrollbar sits over row space that item hit testing treats as blank.
-    if gesture
-        .widget()
-        .is_some_and(|widget| super::pointer::hits_scrollbar(&widget, x, y))
-    {
-        state.end();
-        return;
+struct SurfaceOrigin {
+    anchor: (f64, f64),
+    clearable: bool,
+    item: Option<hit_test::ItemHit>,
+}
+
+fn surface_origin(
+    state: &MarqueeState,
+    gesture: &gtk::Gesture,
+    (x, y): (f64, f64),
+) -> Option<SurfaceOrigin> {
+    let origin = gesture.widget()?;
+    // Overlay scrollbars occupy otherwise blank row space.
+    if super::pointer::hits_scrollbar(&origin, x, y) {
+        return None;
     }
-    let starts_on_item = gesture
-        .widget()
-        .is_some_and(|widget| (state.is_item)(&widget, x, y));
+    let starts_on_item = (state.is_item)(&origin, x, y);
     let force = gesture
         .current_event_state()
         .contains(gtk::gdk::ModifierType::ALT_MASK);
-    if !force && starts_on_item {
+    if starts_on_item && !force {
+        return None;
+    }
+    let anchor = translate(&origin, &state.scroll()?, (x, y))?;
+    Some(SurfaceOrigin {
+        anchor,
+        clearable: !starts_on_item && super::pointer::is_background(&origin, x, y),
+        item: hit_test::item_at(&state.targets, &origin, (x, y)),
+    })
+}
+
+fn begin_surface_drag(state: &Rc<MarqueeState>, gesture: &gtk::GestureDrag, x: f64, y: f64) {
+    let Some(origin) = surface_origin(state, gesture.upcast_ref(), (x, y)) else {
         state.end();
         return;
-    }
-    let (Some(origin), Some(scroll)) = (gesture.widget(), state.scroll()) else {
-        return;
     };
-    let Some(anchor) = translate(&origin, &scroll, (x, y)) else {
-        return;
-    };
-    let clearable = !starts_on_item && super::pointer::is_background(&origin, x, y);
-    state.begin(anchor, gesture, clearable);
+    state.begin(origin.anchor, gesture, origin.clearable);
     state.clear_at_press();
 }
 

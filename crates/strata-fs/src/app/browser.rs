@@ -468,6 +468,13 @@ struct SortFill {
     fill_request: RequestId,
     directory_request: RequestId,
     preferences: ViewPreferences,
+    media: Option<MediaSortFill>,
+}
+
+#[derive(Clone, Copy)]
+struct MediaSortFill {
+    revision: Option<RequestId>,
+    remaining_before: usize,
 }
 
 /// A native initial load in flight: batches accumulate with no merge walk and

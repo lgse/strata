@@ -537,6 +537,34 @@ fn record(
     }
 }
 
+/// Checks an `fs` step that held again until its `hold_ms` runs out.
+fn hold_fs(
+    step: &FsStep,
+    fixture: &Path,
+    fixture_time: SystemTime,
+    state: &mut FsState,
+) -> Result<(), String> {
+    let Some(hold) = step.hold_ms.map(Duration::from_millis) else {
+        return Ok(());
+    };
+    let held_from = Instant::now();
+    while held_from.elapsed() < hold {
+        std::thread::sleep(POLL_INTERVAL);
+        if let Err(actual) = step.fs.observe(fixture, fixture_time, state) {
+            return Err(format!(
+                "stopped holding after {} ms{}; {} {actual}",
+                held_from.elapsed().as_millis(),
+                step.message
+                    .as_deref()
+                    .map(|message| format!(" for {message}"))
+                    .unwrap_or_default(),
+                step.fs.path
+            ));
+        }
+    }
+    Ok(())
+}
+
 pub(crate) fn wait_for_fs(
     step: &Value,
     fixture: &Path,
@@ -554,7 +582,7 @@ pub(crate) fn wait_for_fs(
     let deadline = Instant::now() + step.timeout_ms.map_or(DEFAULT_WAIT, Duration::from_millis);
     loop {
         match step.fs.observe(fixture, fixture_time, state) {
-            Ok(()) => return Ok(()),
+            Ok(()) => return hold_fs(&step, fixture, fixture_time, state),
             Err(_) if state.fatal.is_some() => {
                 return Err(format!(
                     "{} {}",

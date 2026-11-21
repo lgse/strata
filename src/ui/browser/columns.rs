@@ -29,6 +29,7 @@ pub(super) struct BoundRow {
     pub(super) edit: crate::ui::collection_edit::EditWidgets,
     pub(super) spacer: gtk::Box,
     pub(super) size: gtk::Label,
+    pub(super) modified: gtk::Label,
 }
 
 #[derive(Clone, Copy)]

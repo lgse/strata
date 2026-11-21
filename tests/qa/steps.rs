@@ -629,9 +629,10 @@ pub(crate) fn check_step(step: &Value) -> Result<(), String> {
     if step.get("fs").is_some() {
         let step: FsStep = serde_json::from_value(step.clone())
             .map_err(|error| format!("invalid fs step: {error}"))?;
-        if step.fs.acts() && step.timeout_ms.is_some() {
+        if step.fs.acts() && (step.timeout_ms.is_some() || step.hold_ms.is_some()) {
             return Err(
-                "an fs write or remember happens at once; it takes no timeout_ms".to_owned(),
+                "an fs write or remember happens at once; it takes no timeout_ms or hold_ms"
+                    .to_owned(),
             );
         }
         return step.fs.kind().map(|_| ());

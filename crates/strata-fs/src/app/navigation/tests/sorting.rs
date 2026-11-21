@@ -507,11 +507,11 @@ fn created_sort_keeps_missing_times_last_in_both_directions() {
     for (sort_direction, expected) in [
         (
             SortDirection::Ascending,
-            ["old", "new", "unknown", "unavailable"],
+            ["old", "new", "unavailable", "unknown"],
         ),
         (
             SortDirection::Descending,
-            ["new", "old", "unknown", "unavailable"],
+            ["new", "old", "unavailable", "unknown"],
         ),
     ] {
         let prefs = ViewPreferences {
@@ -523,6 +523,88 @@ fn created_sort_keeps_missing_times_last_in_both_directions() {
             names(&super::super::sort_entries(entries.clone(), prefs)),
             expected
         );
+    }
+}
+
+#[test]
+fn media_sorts_order_known_values_and_keep_missing_rows_in_name_order() {
+    let entries = [
+        typed_entry("b-folder", EntryKind::Directory),
+        typed_entry("a-notes.txt", EntryKind::File),
+        FileEntry {
+            duration_seconds: MetadataValue::Known(120),
+            ..typed_entry("audio.mp3", EntryKind::File)
+        },
+        FileEntry {
+            image_dimensions: MetadataValue::Known((2000, 1000)),
+            ..typed_entry("photo.jpg", EntryKind::File)
+        },
+        FileEntry {
+            duration_seconds: MetadataValue::Known(30),
+            image_dimensions: MetadataValue::Known((1080, 1920)),
+            ..typed_entry("video.mp4", EntryKind::File)
+        },
+    ];
+    for (sort_key, ascending, descending) in [
+        (
+            SortKey::Duration,
+            [
+                "video.mp4",
+                "audio.mp3",
+                "a-notes.txt",
+                "b-folder",
+                "photo.jpg",
+            ],
+            [
+                "audio.mp3",
+                "video.mp4",
+                "a-notes.txt",
+                "b-folder",
+                "photo.jpg",
+            ],
+        ),
+        (
+            SortKey::Dimensions,
+            [
+                "photo.jpg",
+                "video.mp4",
+                "a-notes.txt",
+                "audio.mp3",
+                "b-folder",
+            ],
+            [
+                "video.mp4",
+                "photo.jpg",
+                "a-notes.txt",
+                "audio.mp3",
+                "b-folder",
+            ],
+        ),
+    ] {
+        for (sort_direction, expected) in [
+            (SortDirection::Ascending, ascending),
+            (SortDirection::Descending, descending),
+        ] {
+            let prefs = ViewPreferences {
+                sort_key,
+                sort_direction,
+                folders_first: false,
+                ..ViewPreferences::default()
+            };
+            assert_eq!(
+                names(&super::super::sort_entries(entries.to_vec(), prefs)),
+                expected
+            );
+            assert_eq!(names(&inserted_one_by_one(&entries, prefs)), expected);
+            let folders_first = ViewPreferences {
+                folders_first: true,
+                ..prefs
+            };
+            assert_eq!(
+                names(&super::super::sort_entries(entries.to_vec(), folders_first))[0],
+                "b-folder"
+            );
+        }
     }
 }
 

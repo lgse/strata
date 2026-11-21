@@ -32,6 +32,7 @@ fn install_fill(fixture: &Fixture, full_sort: bool) -> RequestId {
     );
     if full_sort {
         fixture.browser.sort_awaiting_fill.replace(Some(SortFill {
+            media: None,
             generation: 1,
             depth: 0,
             origin: SortOrigin::Chosen,

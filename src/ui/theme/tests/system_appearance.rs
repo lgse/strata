@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-use std::collections::HashSet;
+use std::{collections::HashSet, rc::Rc};
 
 use super::wait_for_live_theme;
 use crate::test_support::gtk_test_with_env;
@@ -9,9 +9,11 @@ use crate::ui::theme::{
     ThemeManager, ThemeTokens, builtins, color_to_hex, new_source_buffer, parse_rgb_channels,
     register_document_buffer,
     system_appearance::{
-        GNOME_COLOR_SCHEME_KEY, SYSTEM_THEME_PAIRS, gnome_interface_settings, system_theme_id,
+        GNOME_COLOR_SCHEME_KEY, PortalAvailability, SYSTEM_THEME_PAIRS, SystemAppearance,
+        gnome_interface_settings, system_theme_id,
     },
 };
+use ashpd::desktop::settings::ColorScheme;
 use gtk::prelude::*;
 use sourceview5::prelude::BufferExt as _;
 
@@ -74,6 +76,92 @@ fn system_appearance_applies_at_startup_and_follows_gnome_live() {
             assert_eq!(preferences.theme_mode(), "system");
             assert_eq!(preferences.selected_theme_id(), "onedark-dark");
             targets.window.close();
+        },
+    );
+}
+
+#[test]
+fn portal_scheme_overrides_gnome_and_no_preference_keeps_gnome_live() {
+    gtk_test_with_env(
+        "ui::theme::tests::system_appearance::portal_scheme_overrides_gnome_and_no_preference_keeps_gnome_live",
+        [("GSETTINGS_BACKEND", "memory")],
+        || {
+            let settings = gnome_interface_settings().expect("GNOME color scheme schema");
+            settings
+                .set_string(GNOME_COLOR_SCHEME_KEY, "prefer-dark")
+                .expect("set GNOME night appearance");
+            let preferences = PreferenceManager::shared();
+            preferences.set_theme_selection("system", Some("onedark-dark"));
+            let manager = ThemeManager::shared();
+            let targets = ThemedTargets::new();
+
+            manager.set_portal_scheme(ColorScheme::PreferLight);
+            assert_eq!(manager.effective_theme_id(), "one-light");
+            let day = manager.appearance_tokens();
+            targets.assert_applied(&manager, &day);
+
+            manager.set_portal_scheme(ColorScheme::PreferDark);
+            assert_eq!(manager.effective_theme_id(), "onedark-dark");
+            let night = manager.appearance_tokens();
+            assert_ne!(day, night);
+            targets.assert_applied(&manager, &night);
+
+            manager.set_portal_scheme(ColorScheme::NoPreference);
+            assert_eq!(manager.effective_theme_id(), "onedark-dark");
+            settings
+                .set_string(GNOME_COLOR_SCHEME_KEY, "prefer-light")
+                .expect("set GNOME day appearance");
+            wait_for_live_theme(|| manager.effective_theme_id() == "one-light");
+            targets.assert_applied(&manager, &day);
+            targets.window.close();
+        },
+    );
+}
+
+#[test]
+fn unavailable_portal_uses_gnome_without_changing_system_mode() {
+    gtk_test_with_env(
+        "ui::theme::tests::system_appearance::unavailable_portal_uses_gnome_without_changing_system_mode",
+        [("GSETTINGS_BACKEND", "memory")],
+        || {
+            let settings = gnome_interface_settings().expect("GNOME color scheme schema");
+            settings
+                .set_string(GNOME_COLOR_SCHEME_KEY, "prefer-light")
+                .expect("set GNOME day appearance");
+            let preferences = PreferenceManager::shared();
+            preferences.set_theme_selection("system", Some("onedark-dark"));
+            let manager = ThemeManager::shared();
+            let targets = ThemedTargets::new();
+
+            manager.set_portal_scheme(ColorScheme::PreferDark);
+            assert_eq!(manager.effective_theme_id(), "onedark-dark");
+            manager.set_portal_unavailable();
+            assert_eq!(manager.effective_theme_id(), "one-light");
+            assert_eq!(preferences.theme_mode(), "system");
+            targets.assert_applied(&manager, &manager.appearance_tokens());
+            targets.window.close();
+        },
+    );
+}
+
+#[test]
+fn unavailable_sources_repair_system_mode() {
+    gtk_test_with_env(
+        "ui::theme::tests::system_appearance::unavailable_sources_repair_system_mode",
+        [("GSETTINGS_BACKEND", "memory")],
+        || {
+            let preferences = PreferenceManager::shared();
+            preferences.set_theme_selection("system", Some("onedark-dark"));
+            let manager = Rc::new(ThemeManager::new(
+                preferences.clone(),
+                builtins(),
+                SystemAppearance::for_test(None, PortalAvailability::Probing, None),
+                None,
+            ));
+
+            manager.set_portal_unavailable();
+            assert_eq!(preferences.theme_mode(), "theme");
+            assert!(!manager.is_system_appearance_available());
         },
     );
 }

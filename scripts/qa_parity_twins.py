@@ -93,6 +93,7 @@ SHAPES = {
     "session_bus": (is_flag, "true or false", True, False),
     "portal": (is_flag, "true or false", True, False),
     "input_method": (is_text, "text", True, True),
+    "volume_monitor": (is_flag, "true or false", True, False),
     "fixture_root": (is_text, "text", True, True),
     "skip": (is_text, "text", True, True),
     "cost": (numbers, "an object of numbers", True, True),
@@ -267,6 +268,7 @@ def start(header: dict, variant: dict) -> tuple[tuple[str, object], ...]:
         ("env", of(header, "env", {})),
         ("session_bus", of(header, "session_bus", False)),
         ("input_method", of(header, "input_method", None)),
+        ("volume_monitor", of(header, "volume_monitor", False)),
     )
 
 

@@ -161,6 +161,14 @@ impl Browser {
     }
 
     fn apply_sort_metadata(&self, fill: SortFill, updates: Vec<MetadataUpdate>) {
+        if let Some(media) = fill.media
+            && self
+                .sort_resync
+                .media_revision(fill.depth, fill.directory_request)
+                != media.revision
+        {
+            return;
+        }
         // Full sort fills apply by location, independently of viewport positions.
         let mut state = self.state.borrow_mut();
         if let Some((depth, positions)) = state.apply_metadata(fill.directory_request, updates) {

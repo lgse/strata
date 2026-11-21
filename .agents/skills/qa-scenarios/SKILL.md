@@ -306,7 +306,7 @@ run stays `pending` with a blocker.
 2. **Write the twin** beside the original. It holds only the modes or
    variants that differ, and starts from the same `tree`, `images`,
    `fixture_root`, `setup`, `teardown`, `prefs`, `layout`, `portal`, `env`,
-   `session_bus` and `input_method`. Only the steps the exception names
+   `session_bus`, `input_method` and `volume_monitor`. Only the steps the exception names
    differ, and at least one does: a twin whose steps are its original's is
    refused, since then the shared file passes and the run is `required` (a
    `message` or a `timeout_ms` is no difference). It keeps the original's

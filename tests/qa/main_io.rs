@@ -110,6 +110,13 @@ impl Audit {
             launch.input_log.display().to_string(),
         ];
         harness.extend(folders(std::env::var("PATH").ok().as_deref()));
+        if launch.volume_monitor {
+            harness.push(
+                crate::volume_monitor::monitor_directory()
+                    .display()
+                    .to_string(),
+            );
+        }
         let mut meta = Map::new();
         meta.insert("scenario".into(), json!(self.scenario));
         meta.insert("fixture".into(), json!(launch.fixture));
@@ -124,7 +131,7 @@ impl Audit {
         meta.insert("data_dirs".into(), json!(data_dirs));
         meta.insert("binary".into(), json!(BINARY));
         // The runner's own places: the shared shader cache, the logs it reads,
-        // and the PATH folders GIO looks programs up in.
+        // the PATH folders GIO looks programs up in, and the test volume monitor's file.
         meta.insert("harness".into(), json!(harness));
         meta.insert("started".into(), json!(now()));
         meta.insert("ready".into(), Value::Null);

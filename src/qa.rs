@@ -34,7 +34,7 @@ use self::{
 
 /// The release workflow and QA job grep for its `usage: strata --qa` prefix;
 /// `scripts/test_qa_mutation.py` checks the patterns against this text.
-const USAGE: &str = "usage: strata --qa <directory|--portal>";
+const USAGE: &str = "usage: strata --qa <directory|--plain|--portal>";
 /// Mirrors the private `ui::browser::peek::PEEK_LABEL`; a peek test fails if they drift.
 pub(crate) const PEEK_LABEL: &str = "Folder peek";
 const READY_TIMEOUT: Duration = Duration::from_secs(60);
@@ -57,6 +57,7 @@ pub(crate) struct Session {
 }
 
 const PORTAL_ARGUMENT: &str = "--portal";
+const PLAIN_ARGUMENT: &str = "--plain";
 
 impl Session {
     /// Takes over stdout for replies before anything can log there; app output goes to stderr.
@@ -69,9 +70,15 @@ impl Session {
         let portal = directory == PORTAL_ARGUMENT;
         let protocol = protocol::reply_stream()?;
         criticals::capture();
+        // A plain launch gives the application no folder, as a user starting `strata` does.
+        let application_arguments = if directory == PLAIN_ARGUMENT {
+            vec![program.clone()]
+        } else {
+            vec![program.clone(), directory.clone()]
+        };
         Ok(Self {
             protocol,
-            application_arguments: vec![program.clone(), directory.clone()],
+            application_arguments,
             portal,
         })
     }

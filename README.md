@@ -26,6 +26,7 @@ Strata combines spatial Miller-column navigation with familiar Icons and List vi
 
 - [Features](#features)
 - [Installation](#installation)
+  - [Fedora](#fedora)
   - [Nix and NixOS](#nix-and-nixos)
   - [Interactive installation](#interactive-installation)
   - [AI-assisted installation](#ai-assisted-installation)
@@ -69,6 +70,19 @@ Strata combines spatial Miller-column navigation with familiar Icons and List vi
 ## Installation
 
 Arch Linux and Omarchy are the primary supported environments. Current binaries require **glibc 2.39 or newer** and the runtime libraries listed below.
+
+### Fedora
+
+Fedora on `x86_64` or `aarch64` can install Strata from COPR, which builds it from source. Updates arrive with ordinary system updates:
+
+```bash
+sudo dnf copr enable @lgse/strata
+sudo dnf install strata
+```
+
+For alpha, beta, and release-candidate builds as well as stable releases, enable `@lgse/strata-preview` instead. Enable only one of the two.
+
+The COPR package cannot open RAR archives, because COPR accepts only software under licenses Fedora allows, and it has no in-app updater. Codec-dependent previews use whichever FFmpeg is installed: Fedora's `ffmpeg-free`, or `ffmpeg` from RPM Fusion for more formats.
 
 ### Nix and NixOS
 
@@ -302,6 +316,16 @@ sudo pacman -S --needed bubblewrap ffmpeg ffmpegthumbnailer fontconfig \
 sudo pacman -S --needed gvfs-smb imagemagick libraw dcraw squashfs-tools
 ```
 
+On Fedora (prefer the [COPR package](#fedora), which installs these itself):
+
+```bash
+sudo dnf install bubblewrap ffmpeg-free ffmpegthumbnailer fontconfig \
+  gstreamer1 gstreamer1-plugin-libav gstreamer1-plugins-base gstreamer1-plugins-good \
+  gtk4 gtksourceview5 gvfs poppler-glib
+# Optional SMB, AppImage icon, and broader camera RAW support:
+sudo dnf install gvfs-smb ImageMagick LibRaw dcraw squashfs-tools
+```
+
 GTK **4.12 or newer** and glibc **2.39 or newer** are required. Other glibc-based distributions may work when they provide equivalent runtime libraries, but their package names and binary compatibility vary. Systems with an older glibc must [build Strata from source](#development-and-documentation).
 
 Device discovery requires the GVfs UDisks2 volume monitor (`gvfs` on Arch and
@@ -421,7 +445,7 @@ For a source installation, enable Strata as the per-user activatable provider ex
 mise run install-file-manager
 ```
 
-For an AUR package, copy its inactive service template into your per-user service directory:
+For an AUR or COPR package, copy its inactive service template into your per-user service directory:
 
 ```bash
 install -Dm644 /usr/share/strata/io.github.lgse.Strata.FileManager1.service \
@@ -530,6 +554,15 @@ package names vary.
   **File transfer / Android Auto** or **MTP** in its USB preferences rather than
   charging-only mode. Accept any file-access prompt. Only storage exposed by the
   phone is available, not protected system files or private app data.
+
+  On KDE Plasma, KDE's own MTP service (from `kio-extras`, used by Dolphin and the
+  device notifier) competes with `gvfs-mtp` for the phone. Whichever claims it
+  first wins: the other sees the phone with no storage, so Strata shows an empty
+  volume, or Dolphin asks you to unlock the phone and tap **Allow**. To give the
+  phone to Strata, unplug it, run `pkill -x kiod6` (`kiod5` on Plasma 5), and
+  plug it back in unlocked. KDE restarts the service whenever a KDE app needs
+  it, so repeat this if you used Dolphin before connecting the phone.
+  **Settings → Diagnostics** warns when both are installed.
 
 After installing a backend, fully quit Strata (all windows) and reopen it.
 Reconnect the unlocked phone if necessary, then click its entry under **Devices**.
@@ -772,7 +805,7 @@ Use **Search settings** to filter options across pages and navigate to the close
 
 Turn on **Follow system light/dark mode** under **Settings → Appearance** to have Strata switch between the light and dark versions of your chosen Strata theme when your desktop switches between light and dark mode. Only the light/dark preference is followed; Strata keeps its own theme palettes and does not adopt the desktop's GTK theme, icons, or accent color. Choose either version of a paired theme in the library to change the theme family without turning the switch off. Themes without a light/dark partner keep the same palette in both modes.
 
-Strata reads the light/dark preference from the `color-scheme` key of `org.gnome.desktop.interface`, and hides the switch when that setting is unavailable. **Follow system light/dark mode** and **Follow Omarchy** are exclusive; enabling either one turns the other off.
+Strata reads the desktop light/dark preference from `org.freedesktop.portal.Settings` (`org.freedesktop.appearance`, `color-scheme`). The portal uses `1` for dark, `2` for light, and `0` for no preference. This supports KDE and Flatpak. When the portal reports no preference or is unavailable, Strata follows GNOME's `org.gnome.desktop.interface` `color-scheme` key; `prefer-dark` selects dark and `default`, `prefer-light`, and unexpected values select light. When the switch is on, Strata waits up to 500 ms for the first portal result before applying its initial palette. It uses the GSettings result (or light) only after a portal failure, no preference, or timeout; after a timeout it updates when the portal reply arrives. The switch is hidden and a saved system selection is repaired only after neither source is available. **Follow system light/dark mode** and **Follow Omarchy** are exclusive; enabling either one turns the other off.
 
 ### Follow Omarchy Quattro
 

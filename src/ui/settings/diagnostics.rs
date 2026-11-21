@@ -435,34 +435,13 @@ fn status_label(status: Status) -> &'static str {
 }
 
 fn message(check: &Check) -> String {
-    let tr = crate::i18n::tr;
     let items = |names: &[String]| crate::i18n::list(names.iter().cloned());
     match &check.finding {
-        Finding::SandboxWorks => tr("A sample image rendered in the sandbox."),
-        Finding::BubblewrapMissing => {
-            tr("Bubblewrap (bwrap) isn't installed, so no thumbnails or previews can be shown.")
-        }
         Finding::PrlimitMissing { path } => rust_i18n::t!(
             "prlimit wasn't found at %{path}, so no thumbnails or previews can be shown.",
             path = path
         )
         .into_owned(),
-        Finding::SandboxFailed => tr(
-            "The sandbox couldn't start. Unprivileged user namespaces may be disabled or restricted, for example by AppArmor.",
-        ),
-        Finding::WorkersWork => tr("Thumbnails reuse sandboxed worker processes."),
-        Finding::LandlockUnavailable => tr(
-            "The kernel doesn't support Landlock ABI 3, so each thumbnail starts its own sandbox and loads more slowly.",
-        ),
-        Finding::NamespacesRestricted => tr(
-            "The system blocks nested user namespaces, for example through AppArmor, so each thumbnail starts its own sandbox and loads more slowly.",
-        ),
-        Finding::WorkersFailed => tr("A sandboxed worker couldn't render a sample image."),
-        Finding::SampleProcessed => tr("A sample file was processed correctly."),
-        Finding::SampleFailed => tr("A sample file couldn't be processed."),
-        Finding::SlowVideoThumbnails => tr(
-            "ffmpegthumbnailer isn't installed, so video thumbnails use FFmpeg and load more slowly.",
-        ),
         Finding::Found(names) => {
             rust_i18n::t!("Found: %{items}", items = items(names)).into_owned()
         }
@@ -472,62 +451,12 @@ fn message(check: &Check) -> String {
         Finding::AudioOutput { sink } => {
             rust_i18n::t!("Audio plays through %{sink}.", sink = sink).into_owned()
         }
-        Finding::NoAudioSink => tr("No GStreamer audio output plugin was found."),
-        Finding::GstreamerFailed => tr("GStreamer couldn't start."),
-        Finding::NoRawConverter => {
-            tr("No RAW converter was found, so RAW photos show only their embedded preview.")
-        }
-        Finding::LanguagesInstalled => tr("Language definitions are installed."),
-        Finding::LanguagesMissing => {
-            tr("No language definitions were found, so code previews show plain text.")
-        }
-        Finding::MimeDatabaseWorks => tr("File types are recognized."),
-        Finding::MimeDatabaseMissing => {
-            tr("The shared MIME database is missing, so files can't be recognized by type.")
-        }
-        Finding::RarIncluded => tr("This build includes RAR support."),
-        Finding::RarExcluded => tr("This build doesn't include RAR support."),
-        Finding::GvfsRunning => tr("GVfs is running."),
-        Finding::GvfsBypassed => tr(
-            "This session uses local files only because GVfs didn't respond when Strata started. Trash, network locations and devices are unavailable until Strata restarts with GVfs working.",
-        ),
-        Finding::GvfsMissing => {
-            tr("GVfs isn't running, so trash, network locations and devices are unavailable.")
-        }
-        Finding::BackendInstalled => tr("The GVfs backend is installed."),
-        Finding::BackendMissing => tr("The GVfs backend isn't installed."),
-        Finding::RequiresGvfs => tr("Unavailable while GVfs isn't running."),
-        Finding::DrivesReady => tr("UDisks2 and the GVfs volume monitor are available."),
-        Finding::UdisksMissing => {
-            tr("UDisks2 isn't available, so drives can't be mounted, formatted or unlocked.")
-        }
-        Finding::VolumeMonitorMissing => tr(
-            "The GVfs UDisks2 volume monitor isn't installed, so drives may not appear in the sidebar.",
-        ),
-        Finding::SessionBusUnavailable => tr("The D-Bus session bus isn't available."),
-        Finding::MonitoringWorks => tr("Folder changes are detected automatically."),
         Finding::WatchLimitLow { limit } => rust_i18n::t!(
             "The inotify watch limit is %{limit}, so some folders may not refresh automatically.",
             limit = crate::i18n::integer(*limit)
         )
         .into_owned(),
-        Finding::MonitoringFailed => {
-            tr("Folder changes can't be detected, so folders won't refresh automatically.")
-        }
-        Finding::Connected => tr("Connected to GitHub."),
-        Finding::ConnectionFailed(_) => {
-            tr("Couldn't connect to GitHub, so update checks and release notes are unavailable.")
-        }
         Finding::TerminalMissing => crate::ui::terminal::no_terminal_message(),
-        Finding::ServiceAvailable => tr("The service is available."),
-        Finding::PortalMissing => tr(
-            "xdg-desktop-portal isn't available, so Strata can't provide file dialogs to other apps.",
-        ),
-        Finding::SecretServiceMissing => tr(
-            "No Secret Service provider, such as GNOME Keyring or KWallet, is available, so passwords for encrypted drives can't be remembered.",
-        ),
-        Finding::NoActions => tr("No custom actions are installed."),
-        Finding::ActionsReady => tr("Every custom action can run."),
         Finding::ActionsBroken {
             unavailable,
             failed,
@@ -547,7 +476,96 @@ fn message(check: &Check) -> String {
             }
             lines.join("\n")
         }
-        Finding::NotRun => tr("This check couldn't run."),
+        finding => crate::i18n::tr(sentence(finding)),
+    }
+}
+
+/// The catalog key of a finding whose message has no values.
+fn sentence(finding: &Finding) -> &'static str {
+    match finding {
+        Finding::SandboxWorks => "A sample image rendered in the sandbox.",
+        Finding::BubblewrapMissing => {
+            "Bubblewrap (bwrap) isn't installed, so no thumbnails or previews can be shown."
+        }
+        Finding::SandboxFailed => {
+            "The sandbox couldn't start. Unprivileged user namespaces may be disabled or restricted, for example by AppArmor."
+        }
+        Finding::WorkersWork => "Thumbnails reuse sandboxed worker processes.",
+        Finding::LandlockUnavailable => {
+            "The kernel doesn't support Landlock ABI 3, so each thumbnail starts its own sandbox and loads more slowly."
+        }
+        Finding::NamespacesRestricted => {
+            "The system blocks nested user namespaces, for example through AppArmor, so each thumbnail starts its own sandbox and loads more slowly."
+        }
+        Finding::WorkersFailed => "A sandboxed worker couldn't render a sample image.",
+        Finding::SampleProcessed => "A sample file was processed correctly.",
+        Finding::SampleFailed => "A sample file couldn't be processed.",
+        Finding::SlowVideoThumbnails => {
+            "ffmpegthumbnailer isn't installed, so video thumbnails use FFmpeg and load more slowly."
+        }
+        Finding::NoAudioSink => "No GStreamer audio output plugin was found.",
+        Finding::GstreamerFailed => "GStreamer couldn't start.",
+        Finding::NoRawConverter => {
+            "No RAW converter was found, so RAW photos show only their embedded preview."
+        }
+        Finding::LanguagesInstalled => "Language definitions are installed.",
+        Finding::LanguagesMissing => {
+            "No language definitions were found, so code previews show plain text."
+        }
+        Finding::MimeDatabaseWorks => "File types are recognized.",
+        Finding::MimeDatabaseMissing => {
+            "The shared MIME database is missing, so files can't be recognized by type."
+        }
+        Finding::RarIncluded => "This build includes RAR support.",
+        Finding::RarExcluded => "This build doesn't include RAR support.",
+        Finding::GvfsRunning => "GVfs is running.",
+        Finding::GvfsBypassed => {
+            "This session uses local files only because GVfs didn't respond when Strata started. Trash, network locations and devices are unavailable until Strata restarts with GVfs working."
+        }
+        Finding::GvfsMissing => {
+            "GVfs isn't running, so trash, network locations and devices are unavailable."
+        }
+        Finding::BackendInstalled => "The GVfs backend is installed.",
+        Finding::BackendMissing => "The GVfs backend isn't installed.",
+        Finding::KdeMtpConflict => {
+            "KDE's MTP service is also installed, and whichever claims a phone first leaves the other with no storage. If a phone appears empty, unplug it, run pkill -x kiod6, then reconnect it unlocked."
+        }
+        Finding::RequiresGvfs => "Unavailable while GVfs isn't running.",
+        Finding::DrivesReady => "UDisks2 and the GVfs volume monitor are available.",
+        Finding::UdisksMissing => {
+            "UDisks2 isn't available, so drives can't be mounted, formatted or unlocked."
+        }
+        Finding::VolumeMonitorMissing => {
+            "The GVfs UDisks2 volume monitor isn't installed, so drives may not appear in the sidebar."
+        }
+        Finding::SessionBusUnavailable => "The D-Bus session bus isn't available.",
+        Finding::MonitoringWorks => "Folder changes are detected automatically.",
+        Finding::MonitoringFailed => {
+            "Folder changes can't be detected, so folders won't refresh automatically."
+        }
+        Finding::Connected => "Connected to GitHub.",
+        Finding::ConnectionFailed(_) => {
+            "Couldn't connect to GitHub, so update checks and release notes are unavailable."
+        }
+        Finding::ServiceAvailable => "The service is available.",
+        Finding::PortalMissing => {
+            "xdg-desktop-portal isn't available, so Strata can't provide file dialogs to other apps."
+        }
+        Finding::SecretServiceMissing => {
+            "No Secret Service provider, such as GNOME Keyring or KWallet, is available, so passwords for encrypted drives can't be remembered."
+        }
+        Finding::NoActions => "No custom actions are installed.",
+        Finding::ActionsReady => "Every custom action can run.",
+        Finding::NotRun => "This check couldn't run.",
+        Finding::PrlimitMissing { .. }
+        | Finding::Found(_)
+        | Finding::Missing(_)
+        | Finding::AudioOutput { .. }
+        | Finding::WatchLimitLow { .. }
+        | Finding::TerminalMissing
+        | Finding::ActionsBroken { .. } => {
+            unreachable!("{finding:?} has a formatted message")
+        }
     }
 }
 

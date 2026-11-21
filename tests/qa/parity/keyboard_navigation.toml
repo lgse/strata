@@ -132,6 +132,23 @@ status = "required"
 host = "offscreen"
 
 [[run]]
+scenario = "menu-key-skips-scrolled-away-cursor"
+run = "columns"
+package = "E1"
+gate = "G2"
+status = "pending"
+reason = "scope"
+blocker = "E1: a scenario H5 added (#2609), merged on 2026-11-20; in the sync's run on Rune, line 14 fails: with the cursor's entry back in view, the Menu key opens no menu. A reproduced failure for H5 to confirm three times and file as a finding (H5.md), not a missing part"
+
+[[run]]
+scenario = "menu-key-skips-scrolled-away-cursor"
+run = "icons"
+package = "A1"
+status = "pending"
+reason = "scope"
+blocker = "A1: a scenario H5 added (#2609), merged on 2026-11-20; in the sync's run on Rune, line 14 fails as in Columns: with the cursor's entry back in view, the Menu key opens no menu"
+
+[[run]]
 scenario = "return-restores-nested-scroll"
 run = "icons"
 package = "A1"

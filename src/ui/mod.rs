@@ -16,6 +16,7 @@ mod document_media;
 mod document_view;
 mod enter_target;
 mod entry_list_model;
+pub(crate) mod entry_tooltip;
 mod file_providers;
 mod focus_navigation;
 mod folder_picker;
@@ -84,7 +85,7 @@ pub use window::{UnlockTarget, present, present_open, present_reveal, present_un
 pub(crate) use {inline_search::SEARCH_RESULTS_LABEL, preview::PREVIEW_LABEL};
 
 pub(crate) fn prepare_portal_ui() {
-    let _theme = theme::ThemeManager::shared();
+    let _theme = theme::ThemeManager::shared_without_portal_wait();
 }
 
 pub(crate) fn read_install_facts() {

@@ -108,6 +108,30 @@ status = "required"
 host = "offscreen"
 
 [[run]]
+scenario = "chooser-selection-space-double-click-accepts"
+run = "columns-name"
+package = "A20"
+status = "pending"
+reason = "scope"
+blocker = "A20: a scenario `main`'s #2108 added, merged on 2026-11-20 and not yet run on Rune"
+
+[[run]]
+scenario = "chooser-selection-space-double-click-accepts"
+run = "list-name"
+package = "A20"
+status = "pending"
+reason = "scope"
+blocker = "A20: a scenario `main`'s #2108 added, merged on 2026-11-20 and not yet run on Rune"
+
+[[run]]
+scenario = "chooser-selection-space-double-click-accepts"
+run = "list-metadata"
+package = "A20"
+status = "pending"
+reason = "scope"
+blocker = "A20: a scenario `main`'s #2108 added, merged on 2026-11-20 and not yet run on Rune"
+
+[[run]]
 scenario = "chooser-sidebar-drops-survive-resize"
 run = "list"
 package = "A20"
@@ -134,6 +158,54 @@ run = "icons"
 package = "A20"
 status = "required"
 host = "offscreen"
+
+[[run]]
+scenario = "chooser-tap-drag-selects-in-both-directions"
+run = "columns-down"
+package = "A20"
+status = "pending"
+reason = "scope"
+blocker = "A20: a scenario `main`'s #2108 added, merged on 2026-11-20 and not yet run on Rune"
+
+[[run]]
+scenario = "chooser-tap-drag-selects-in-both-directions"
+run = "list-down"
+package = "A20"
+status = "pending"
+reason = "scope"
+blocker = "A20: a scenario `main`'s #2108 added, merged on 2026-11-20 and not yet run on Rune"
+
+[[run]]
+scenario = "chooser-tap-drag-selects-in-both-directions"
+run = "columns-up"
+package = "A20"
+status = "pending"
+reason = "scope"
+blocker = "A20: a scenario `main`'s #2108 added, merged on 2026-11-20 and not yet run on Rune"
+
+[[run]]
+scenario = "chooser-tap-drag-selects-in-both-directions"
+run = "list-up"
+package = "A20"
+status = "pending"
+reason = "scope"
+blocker = "A20: a scenario `main`'s #2108 added, merged on 2026-11-20 and not yet run on Rune"
+
+[[run]]
+scenario = "chooser-tap-drag-selects-in-both-directions"
+run = "list-metadata-down"
+package = "A20"
+status = "pending"
+reason = "scope"
+blocker = "A20: a scenario `main`'s #2108 added, merged on 2026-11-20 and not yet run on Rune"
+
+[[run]]
+scenario = "chooser-tap-drag-selects-in-both-directions"
+run = "list-metadata-up"
+package = "A20"
+status = "pending"
+reason = "scope"
+blocker = "A20: a scenario `main`'s #2108 added, merged on 2026-11-20 and not yet run on Rune"
 
 [[run]]
 scenario = "enter-returns-multiple-selection"

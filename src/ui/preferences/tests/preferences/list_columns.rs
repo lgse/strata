@@ -70,18 +70,12 @@ fn list_columns_order_and_visibility_persist_and_update() {
         || {
             let manager = PreferenceManager::shared();
 
-            assert_eq!(
-                manager.list_column_order(),
-                vec![
-                    ListColumnId::Name,
-                    ListColumnId::Mode,
-                    ListColumnId::Size,
-                    ListColumnId::Type,
-                    ListColumnId::Modified,
-                ]
-            );
+            assert_eq!(manager.list_column_order(), ListColumnId::ALL);
             assert!(manager.list_hidden_columns().is_empty());
             assert!(manager.is_list_column_visible(ListColumnId::Mode));
+            assert!(!manager.is_list_column_visible(ListColumnId::Duration));
+            manager.set_list_column_visible(ListColumnId::Duration, true);
+            assert!(manager.is_list_column_visible(ListColumnId::Duration));
 
             manager.set_list_column_visible(ListColumnId::Mode, false);
             manager.set_list_column_visible(ListColumnId::Type, false);
@@ -95,6 +89,7 @@ fn list_columns_order_and_visibility_persist_and_update() {
                     ListColumnId::Name,
                     ListColumnId::Size,
                     ListColumnId::Modified,
+                    ListColumnId::Duration,
                 ]
             );
 
@@ -110,6 +105,9 @@ fn list_columns_order_and_visibility_persist_and_update() {
                     ListColumnId::Size,
                     ListColumnId::Modified,
                     ListColumnId::Type,
+                    ListColumnId::Duration,
+                    ListColumnId::Dimensions,
+                    ListColumnId::Created,
                 ]
             );
             use ListColumnId::{Mode, Modified, Name, Size, Type};
@@ -122,30 +120,24 @@ fn list_columns_order_and_visibility_persist_and_update() {
                 (Modified, Modified, true, [Name, Mode, Size, Modified, Type]),
             ] {
                 manager.move_list_column(column, target, after);
-                assert_eq!(manager.list_column_order(), expected);
+                assert_eq!(&manager.list_column_order()[..expected.len()], &expected);
             }
             crate::storage::writer::settle();
 
             let saved = read_preferences().expect("saved preferences");
             assert_eq!(saved.list_column_order, manager.list_column_order());
             assert_eq!(saved.list_hidden_columns, manager.list_hidden_columns());
+            assert_eq!(saved.list_shown_columns, [ListColumnId::Duration]);
 
             manager.reset_list_columns();
-            assert_eq!(
-                manager.list_column_order(),
-                vec![
-                    ListColumnId::Name,
-                    ListColumnId::Mode,
-                    ListColumnId::Size,
-                    ListColumnId::Type,
-                    ListColumnId::Modified,
-                ]
-            );
+            assert_eq!(manager.list_column_order(), ListColumnId::ALL);
             assert!(manager.list_hidden_columns().is_empty());
             crate::storage::writer::settle();
             let saved_reset = read_preferences().expect("saved preferences");
             assert_eq!(saved_reset.list_column_order, manager.list_column_order());
             assert!(saved_reset.list_hidden_columns.is_empty());
+            assert!(saved_reset.list_shown_columns.is_empty());
+            assert!(!manager.is_list_column_visible(ListColumnId::Duration));
         },
     );
 }

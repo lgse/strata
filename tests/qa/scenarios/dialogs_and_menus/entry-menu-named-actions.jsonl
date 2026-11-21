@@ -1,4 +1,4 @@
-{"scenario":"entry-menu-named-actions","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":1.6},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":3,"score":25,"note":"Entry menu roles, item names, accelerator-in-description and file action order; Copy click duplicates context-menu-copy-and-paste"}}
+{"scenario":"entry-menu-named-actions","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":1.6},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":3,"score":25,"note":"Entry menu roles, item names, accelerator-in-description, file action order, and right-click row rejection; Copy click duplicates context-menu-copy-and-paste"}}
 {"click":{"entry":"todo.txt"},"button":3}
 {"wait":{"menu_items":{}},"message":"the context menu for 'todo.txt'"}
 {"expect":{"menu_items":{}},"message":"the context menu should have the menu role"}
@@ -6,6 +6,9 @@
 {"expect":{"menu_items":{"excludes":[""]}},"message":"every menu item needs a name"}
 {"expect":{"description":{"target":{"menu_item":"Copy"},"text":"Ctrl+C"}},"message":"the accelerator belongs in the description, not the name"}
 {"expect":{"menu_items":{"in_order":["Open","Open With…","Quick preview","Cut","Copy","Duplicate","Rename","Move to…","Copy to…","Compress…","Customize…","Copy path","Copy name","Properties","Move to Trash","Permanently delete"]}},"message":"unexpected action order"}
+{"click":{"menu_item":"Properties"},"button":3}
+{"expect":{"dialog":null},"message":"secondary click on a menu item must not run it"}
+{"expect":{"menu_items":{}},"message":"the menu must stay open after secondary click"}
 {"key":"Escape"}
 {"wait":{"menu_items":null},"message":"the menu to close"}
 {"click":{"entry":"documents"},"button":3}

@@ -1,0 +1,35 @@
+# The parity ledger of tests/qa/scenarios/devices: every run of the folder, once, with the
+# package that owns it, in the runner's order. A package edits only the rows that name it.
+# The fields, the checks and who owns a new run are in docs/testing.md, "The ledger".
+
+[[run]]
+scenario = "device-eject-unplugs-and-leaves"
+run = "columns"
+package = "A3"
+status = "pending"
+reason = "scope"
+blocker = "A3: Rune's sidebar has no DEVICES section yet (crates/strata-app/src/sidebar.rs); the run needs its device rows and their Eject button"
+
+[[run]]
+scenario = "device-mount-and-unmount"
+run = "columns"
+package = "A3"
+status = "pending"
+reason = "scope"
+blocker = "A3: Rune's sidebar has no DEVICES section yet (crates/strata-app/src/sidebar.rs); the run needs its device rows, mounting on a click and their Unmount button"
+
+[[run]]
+scenario = "device-mount-failure-reports-error"
+run = "columns"
+package = "A3"
+status = "pending"
+reason = "scope"
+blocker = "A3: Rune's sidebar has no DEVICES section yet (crates/strata-app/src/sidebar.rs); the run needs its device rows and the Unable to mount volume dialog"
+
+[[run]]
+scenario = "device-rows-follow-plug-and-unplug"
+run = "columns"
+package = "A3"
+status = "pending"
+reason = "scope"
+blocker = "A3: Rune's sidebar has no DEVICES section yet (crates/strata-app/src/sidebar.rs); the run needs its device rows and the heading's item count"

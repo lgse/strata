@@ -103,7 +103,7 @@ pub(super) fn copy_new(
         }
         FileType::Directory => {
             let workers = workers.unwrap_or_else(|| worker_count(source, parent));
-            if in_place || placement::can_place(copy.fs, parent.as_fd(), true) == Some(false) {
+            if in_place || !placement::stages_folders(copy.fs, parent.as_fd()) {
                 return first_free(copy, parent.as_fd(), (name, taken, true), |name| {
                     direct_folder(copy, source, stat.identity, parent, name, workers)
                 });

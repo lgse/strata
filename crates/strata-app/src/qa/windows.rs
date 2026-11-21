@@ -125,7 +125,6 @@ impl Windows {
     }
 
     /// Runs `act` on the browser window's state as a handler would, then settles.
-    #[cfg(test)]
     pub(super) fn update(&self, act: impl FnOnce(&mut App, &mut rune::Tx)) {
         self.main.update(act);
     }
