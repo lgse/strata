@@ -12,3 +12,11 @@
 #   the rejected Archive name field;
 # - `v2-0000000000000013`: opening a sidebar row's menu focuses that row, and opening a column's
 #   menu focuses the view so dismissing the menu or its modal restores focus to the column.
+# v4-000000000000001c: Escape from F1's reference after a click opened pictures: GTK reports its
+# first row focused (F4's round 2).
+# v4-0000000000000044: Move to Trash leaves report.md first, then k (F4's round 2).
+# v4-0000000000000052: Refresh from documents' background menu: GTK reports its first row
+# focused (F4's round 2).
+v4-000000000000001c oracle lgse/strata#2356
+v4-0000000000000044 divergence lgse/strata#2671
+v4-0000000000000052 oracle lgse/strata#2356

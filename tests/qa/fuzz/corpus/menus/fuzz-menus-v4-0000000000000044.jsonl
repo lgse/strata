@@ -1,0 +1,10 @@
+{"scenario":"fuzz-menus-v4-0000000000000044","modes":["columns"],"prefs":{"type_to_search":false,"keymap":{"default":{"activate":["Return","o"],"escape":["Escape","<Control>bracketleft"],"rename":["<Control>e"],"actions.compress":["<Control><Shift>g"]}}}}
+{"click":{"entry":"documents"},"button":3,"when":{"all":[{"present":{"entry":"documents"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}
+{"click":{"menu_item":"Customize…"},"when":{"present":{"menu_item":"Customize…"}}}
+{"click":{"dialog_button":"Done"},"when":{"dialog":true}}
+{"key":"j","when":{"all":[{"focused_pane":true},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}
+{"key":"ctrl+bracketleft","when":{"all":[{"focused_pane":true},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}
+{"key":"Up","when":{"all":[{"focused_pane":true},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null},{"not":{"focused":{"one_of":["archive","notes.txt","diagram.txt"]}}}]}}
+{"click":{"entry":"notes.txt"},"button":3,"when":{"all":[{"present":{"entry":"notes.txt"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}
+{"click":{"menu_item":"Move to Trash"},"when":{"present":{"menu_item":"Move to Trash"}}}
+{"key":"k","when":{"all":[{"focused_pane":true},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null},{"not":{"focused":{"one_of":["archive","notes.txt","diagram.txt"]}}}]}}

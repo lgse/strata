@@ -9,6 +9,13 @@
 # v3-000000000000003c: a second click on an open folder (F4's round 2).
 # v3-000000000000001e: a Shift+click then j: GTK moves from the old cursor (F4's round 2).
 # v3-0000000000000022: a Shift+click while the Menu key's menu is open (F4's round 2).
+# v3-0000000000000030: a Shift range shrunk back to one folder opens its column on GTK here, the
+# other way round (F4's round 2).
+# v3-0000000000000036: a file removed after Shift and Ctrl clicks refocuses GTK on the range's
+# last entry (F4's round 2).
+# v3-0000000000000055: a right-click while the Menu key's menu is open (F4's round 2).
+# v3-0000000000000067: after a Ctrl+click GTK's next Down moves from the cursor the click left
+# (F4's round 2).
 v1-0000000000000002 oracle lgse/strata#2351
 v1-0000000000000008 oracle lgse/strata#2350
 v1-000000000000000d oracle lgse/strata#2353
@@ -20,5 +27,9 @@ v3-0000000000000011 toolkit lgse/strata#2445
 v3-0000000000000014 toolkit lgse/strata#2445
 v3-000000000000001e oracle lgse/strata#2353
 v3-0000000000000022 divergence lgse/strata#2644
+v3-0000000000000030 divergence lgse/strata#2650
+v3-0000000000000036 oracle lgse/strata#2552
 v3-0000000000000037 oracle lgse/strata#2356
 v3-000000000000003c oracle lgse/strata#2356
+v3-0000000000000055 divergence lgse/strata#2644
+v3-0000000000000067 oracle lgse/strata#2353

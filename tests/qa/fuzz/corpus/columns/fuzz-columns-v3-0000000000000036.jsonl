@@ -1,0 +1,6 @@
+{"scenario":"fuzz-columns-v3-0000000000000036","modes":["columns"],"prefs":{"type_to_search":false}}
+{"fs":{"path":"fuzz-a.txt","write":"fuzz\n"}}
+{"click":{"entry":"todo.txt"},"mods":["shift"],"when":{"all":[{"present":{"entry":"todo.txt"}},{"not":{"field":{"name":"Rename"}}}]}}
+{"click":{"entry":"documents"},"mods":["ctrl"],"when":{"all":[{"present":{"entry":"documents"}},{"not":{"field":{"name":"Rename"}}}]}}
+{"click":{"entry":"photo.txt"},"when":{"all":[{"present":{"entry":"photo.txt"}},{"not":{"field":{"name":"Rename"}}}]}}
+{"fs":{"path":"fuzz-a.txt","remove":true}}

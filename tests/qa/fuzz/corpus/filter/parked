@@ -13,6 +13,15 @@
 # v2-0000000000000026: Ctrl+period after the Appearance popover's Escape over a filter: GTK does
 # not toggle hidden files (F4's round 2).
 # v2-000000000000002f: BackSpace in an empty filter field: GTK closes it (F4's round 2).
+# v2-000000000000005d: a heading click: GTK's keyboard goes to the heading button, Rune's
+# headings take none (F4's round 2).
+# v2-000000000000002c: Down from the field into the results, then a Shift+click: Rune ranges,
+# GTK selects the result alone (F4's round 2).
+# v2-000000000000002e: a Ctrl+click on a result in Icons: Rune's app.panes reports it (F4's
+# round 2).
 v2-0000000000000006 divergence lgse/strata#2499
 v2-0000000000000026 divergence lgse/strata#2653
+v2-000000000000002c divergence lgse/strata#2431
+v2-000000000000002e divergence lgse/strata#2499
 v2-000000000000002f divergence lgse/strata#2654
+v2-000000000000005d divergence lgse/strata#2331
