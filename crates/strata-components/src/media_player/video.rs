@@ -194,6 +194,7 @@ fn frame<S: 'static>(
         .radius(radius)
         .clip_rounded(radius)
         .focusable(true)
+        .no_focus_ring()
         // The stand-in has faded through its own live opacity (or goes at once with
         // animations off), and the cover and the bubble go at once, as Strata's do.
         .child_exit(rune::Transition::none())

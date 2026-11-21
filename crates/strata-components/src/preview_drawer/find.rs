@@ -107,7 +107,7 @@ pub(super) fn bar<S: 'static>(
         .py(look.space.xs)
         .gap(look.space.xs)
         .items_center()
-        .border_sides([0.0, 0.0, 1.0, 0.0], k.c.border_muted)
+        .border_sides([0.0, 0.0, 1.0, 0.0], k.c.border_base)
         .child(field);
     if show_status {
         let words = match status.current {

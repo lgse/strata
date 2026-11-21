@@ -672,7 +672,7 @@ fn media_source(st: &DocumentState, unit: usize) -> String {
 /// A table drawn static (D1): content-sized columns from an estimate of each column's widest
 /// text, wrapping within [`CELL_MAX`]; a table wider than `room` shrinks its columns in
 /// proportion, down to [`CELL_MIN`] (rune-kit's `Markdown` sizing), and past that scrolls
-/// sideways. The header row sits on the muted fill. Each cell is a selectable text keyed
+/// sideways. The header row sits on the highlight fill. Each cell is a selectable text keyed
 /// `r{row}c{column}`.
 fn table<S: 'static>(ctx: &Rc<Ctx<S>>, i: usize, rows: &[Vec<Cell>], room: Option<f32>) -> El {
     let p = &ctx.paint;

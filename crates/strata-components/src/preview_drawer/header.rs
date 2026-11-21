@@ -64,10 +64,10 @@ pub(super) fn action_button<S: 'static>(
     }
     if spec.active {
         button = button.fill(k.c.pressed);
+    } else {
+        button = button.hover(k.c.hover).press(k.c.pressed);
     }
     button
-        .hover(k.c.hover)
-        .press(k.c.pressed)
         .focusable(true)
         .focus_ring(2.0, 1.0, k.alpha(k.c.border_focus, FOCUS_RING_OPACITY))
         .on_press_tx(on_press)
@@ -106,101 +106,118 @@ fn header_controls<S: 'static>(
     parts: &Parts<'_, S>,
     look: &Look,
 ) -> Vec<El> {
-    let k = &look.kit;
     let caps = parts.caps;
-    let labels = &shared.labels;
     let mut controls: Vec<El> = Vec::new();
     if let Some(view) = caps.view {
-        let (icon_name, label) = match view {
-            DocumentView::Rendered => (IconName::Source, &labels.view_source),
-            DocumentView::Source => (IconName::Rendered, &labels.view_rendered),
-        };
-        let sh = shared.clone();
-        controls.push(action_button(
-            Action {
-                key: "preview-view-switch",
-                icon: icon_name,
-                label,
-                active: false,
-                disabled: false,
-            },
-            look,
-            move |s: &mut S, tx: &mut Tx| sh.emit(s, DrawerIntent::ShowView(view.other()), tx),
-        ));
+        controls.push(view_switch_button(shared, view, look));
     }
     if caps.searchable {
-        let sh = shared.clone();
-        controls.push(
-            action_button(
-                Action {
-                    key: "preview-find",
-                    icon: IconName::Search,
-                    label: &labels.find,
-                    active: st.find.open,
-                    disabled: false,
-                },
-                look,
-                move |s: &mut S, tx: &mut Tx| {
-                    if (sh.access)(s).find.open {
-                        find::close(&sh, s, tx);
-                    } else {
-                        find::open(&sh, s, tx);
-                    }
-                },
-            )
-            .expanded(st.find.open),
-        );
+        controls.push(find_button(shared, st.find.open, look));
     }
     if let Some(busy) = &caps.busy {
-        controls.push(
-            el().key("preview-busy")
-                .role("progressbar")
-                .label(busy.clone())
-                .child(
-                    Spinner::new()
-                        .size(look.icon_size.md)
-                        .build(k)
-                        .a11y_hidden(),
-                ),
-        );
+        controls.push(busy_indicator(busy, look));
     }
     if parts.open_allowed {
-        let sh = shared.clone();
-        controls.push(action_button(
-            Action {
-                key: "preview-open",
-                icon: IconName::Open,
-                label: &labels.open,
-                active: false,
-                disabled: parts.open_disabled,
-            },
-            look,
-            move |s: &mut S, tx: &mut Tx| sh.emit(s, DrawerIntent::Open, tx),
-        ));
+        controls.push(open_button(shared, parts.open_disabled, look));
     }
     if let Some(on) = caps.wrap {
-        let sh = shared.clone();
-        controls.push(
-            action_button(
-                Action {
-                    key: "preview-wrap",
-                    icon: IconName::Wrap,
-                    label: &labels.wrap,
-                    active: on,
-                    disabled: false,
-                },
-                look,
-                move |s: &mut S, tx: &mut Tx| sh.emit(s, DrawerIntent::SetWrap(!on), tx),
-            )
-            .checked(on),
-        );
+        controls.push(wrap_button(shared, on, look));
     }
+    controls.push(close_button(shared, look));
+    controls
+}
+
+fn view_switch_button<S: 'static>(shared: &Shared<S>, view: DocumentView, look: &Look) -> El {
+    let (icon_name, label) = match view {
+        DocumentView::Rendered => (IconName::Source, &shared.labels.view_source),
+        DocumentView::Source => (IconName::Rendered, &shared.labels.view_rendered),
+    };
     let sh = shared.clone();
-    controls.push(action_button(
+    action_button(
+        Action {
+            key: "preview-view-switch",
+            icon: icon_name,
+            label,
+            active: false,
+            disabled: false,
+        },
+        look,
+        move |s: &mut S, tx: &mut Tx| sh.emit(s, DrawerIntent::ShowView(view.other()), tx),
+    )
+}
+
+fn find_button<S: 'static>(shared: &Shared<S>, open: bool, look: &Look) -> El {
+    let sh = shared.clone();
+    action_button(
+        Action {
+            key: "preview-find",
+            icon: IconName::Search,
+            label: &shared.labels.find,
+            active: open,
+            disabled: false,
+        },
+        look,
+        move |s: &mut S, tx: &mut Tx| {
+            if (sh.access)(s).find.open {
+                find::close(&sh, s, tx);
+            } else {
+                find::open(&sh, s, tx);
+            }
+        },
+    )
+    .expanded(open)
+}
+
+fn busy_indicator(busy: &str, look: &Look) -> El {
+    el().key("preview-busy")
+        .role("progressbar")
+        .label(busy.to_owned())
+        .child(
+            Spinner::new()
+                .size(look.icon_size.md)
+                .build(&look.kit)
+                .a11y_hidden(),
+        )
+}
+
+fn open_button<S: 'static>(shared: &Shared<S>, disabled: bool, look: &Look) -> El {
+    let sh = shared.clone();
+    action_button(
+        Action {
+            key: "preview-open",
+            icon: IconName::Open,
+            label: &shared.labels.open,
+            active: false,
+            disabled,
+        },
+        look,
+        move |s: &mut S, tx: &mut Tx| sh.emit(s, DrawerIntent::Open, tx),
+    )
+}
+
+fn wrap_button<S: 'static>(shared: &Shared<S>, on: bool, look: &Look) -> El {
+    let sh = shared.clone();
+    action_button(
+        Action {
+            key: "preview-wrap",
+            icon: IconName::Wrap,
+            label: &shared.labels.wrap,
+            active: on,
+            disabled: false,
+        },
+        look,
+        move |s: &mut S, tx: &mut Tx| sh.emit(s, DrawerIntent::SetWrap(!on), tx),
+    )
+    .checked(on)
+}
+
+fn close_button<S: 'static>(shared: &Shared<S>, look: &Look) -> El {
+    let sh = shared.clone();
+    action_button(
         Action {
             key: "preview-close",
             icon: IconName::ClosePanel,
-            label: &labels.close,
+            label: &shared.labels.close,
             active: false,
             disabled: false,
         },
@@ -209,8 +226,7 @@ fn header_controls<S: 'static>(
             (sh.access)(s).close_with(sh.animations, tx);
             sh.emit(s, DrawerIntent::Closed, tx);
         },
-    ));
-    controls
+    )
 }
 
 fn header_handle<S: 'static>(parts: &Parts<'_, S>, descriptions: &[String; 3], look: &Look) -> El {

@@ -82,7 +82,5 @@ pub(super) fn build_view(
     get: fn(&App) -> &SheetGridState,
     get_mut: fn(&mut App) -> &mut SheetGridState,
 ) -> El {
-    SheetGrid::new(get, get_mut)
-        .build(app, &app.look, cx)
-        .no_focus_ring()
+    SheetGrid::new(get, get_mut).build(app, &app.look, cx)
 }
