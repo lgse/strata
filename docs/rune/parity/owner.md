@@ -951,6 +951,14 @@ Rulings of the owner on the parity work, oldest first.
   PNG through GDK and Rune saves the bytes offered: the same pixels, other bytes. The fuzz
   alphabet stays text-only, with no map rule, and `foreign-content-saves-new-files` guards
   image drops by their pixels. Source: the owner, 2026-11-20, through the coordinator.
+- **2026-11-20: a control and its text are one accessible leaf on Rune** (finding
+  [#2674](https://github.com/lgse/strata/issues/2674), met at the Rune pin's move to
+  `7a707454`, [#2673](https://github.com/lgse/strata/issues/2673)): a deviation, and Rune's tree
+  stands. Since Rune #1115 a checkbox, radio button, switch, tab, menu item or option keeps no
+  `label` child for words its name already says, where GTK's AT-SPI tree has one. The name is
+  announced once either way, and the redundant label child isn't needed. The QA snapshot's
+  re-presentation of those texts as labels (`crates/strata-app/src/qa/control_words.rs`) stays,
+  so the scenarios stay shared. Source: the owner, 2026-11-20, through the coordinator.
 - **2026-11-20: H5 does not wait for `main`.** `h5-integration` is merged into `strata-next`
   directly, by merge, so `main` getting the same commits later merges as usual. A test image
   built locally from the recipe stands in for the published one until one is published,

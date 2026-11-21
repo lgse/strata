@@ -3,7 +3,7 @@
 //! Single instance and activation over D-Bus: one primary process per app id, and every later
 //! launch handed to it.
 //!
-//! Rune lacks, at the pinned rev (`631e8a67`): D-Bus single instance and desktop activation.
+//! Rune lacks, at the pinned rev (`7a707454`): D-Bus single instance and desktop activation.
 //! `rune::single_instance` on Linux binds a private Unix socket in `$XDG_RUNTIME_DIR` and sends
 //! UTF-8 arguments down it (`scheme://` links go to `App::on_open_url`, and a launch without
 //! links reopens the front window), with no session-bus registration (`org.freedesktop.Application`

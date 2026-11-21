@@ -3,7 +3,7 @@
 //! Freedesktop icon theme lookup, delivered as `rune::Pixels`: application and MIME icons by
 //! name, at a size and scale, the way GTK 4's `GtkIconTheme` finds them.
 //!
-//! Rune lacks, at the pinned rev (`631e8a67`):
+//! Rune lacks, at the pinned rev (`7a707454`):
 //!
 //! - **The user's icon theme.** `ImageCache::app_icon` on Linux resolves a `.desktop` entry's
 //!   `Icon=` from hicolor only: no current theme and no `Inherits`. It reads sizes from
@@ -12,7 +12,7 @@
 //! - **Lookups by icon name**, so MIME icons and a GIO icon's names, with fallback names.
 //! - **"Not found" apart from a broken file.** `app_icon` fails both with `Image::error`.
 //!
-//! **Rune `631e8a67`: partly.** `ImageCache` covers the rest: decoding PNG and rasterizing SVG
+//! **Rune `7a707454`: partly.** `ImageCache` covers the rest: decoding PNG and rasterizing SVG
 //! with resvg on its worker threads, mips, a decoder panic failing one image, sharing handles and
 //! waking the app. This module looks the file up and hands it to `ImageCache::file`. Rune's GIF,
 //! WebP, BMP, ICO and AVIF decoding (`d7946ee3`) adds nothing for icon themes, which use PNG,

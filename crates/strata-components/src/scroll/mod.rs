@@ -94,7 +94,9 @@
 //!   layer, which Rune offers it first as the topmost element: it closes the panel and moves
 //!   the host's listing targets under the pointer by the tick's own delta (Shift turns a
 //!   vertical tick sideways, as Strata swaps), and none over the sidebar or chrome. The panel's
-//!   surface takes the ticks over it that nothing inside scrolls (U-C24b-2).
+//!   surface needs nothing for the ticks over it that nothing inside scrolls: Rune starts a
+//!   wheel on the topmost element there and chains it up that element's ancestors only
+//!   (anomalyco/rune#1137, retiring U-C24b-2).
 //! - **Several targets stop one by one** (C24b): a target that reaches its end or the dead zone
 //!   is stopped once, while another goes on, and a stop halts only the ones moving.
 //! - **A stop without the shield** (a host that mounts none) asks the next `drive` to stop
@@ -233,15 +235,6 @@
 //!   `b` runs. C4 keeps its sideways scroll's one handler and calls the host's followers from
 //!   it (`ListTable::follow_sideways`). Ask: make chaining public (or `on_scroll_offset`
 //!   additive), as rune-kit relies on it.
-//! - **U-C24b-2: a wheel over an overlay that doesn't scroll scrolls the viewport under it.**
-//!   `scroll_at` picks the innermost scroll viewport containing the point that isn't under a
-//!   modal (`runtime/input/pointer.rs`), whatever non-scrolling element is drawn over it, so a
-//!   wheel over a popover's plain surface scrolls the list beneath (`#1021` skips still viewports
-//!   along the scroll stack, not non-scrolling overlays above one). Repro (run: the c24 page's
-//!   Sort by stand-in without [`OutsideWheel::surface`]): a 1,000-row virtual viewport with a
-//!   220-wide panel in the root layer over it, no handlers but a no-op `on_press`; one
-//!   `wheel_event` of `dy -120` over the panel: the list scrolls. Ask: a wheel over an element
-//!   drawn above a viewport, and not inside it, doesn't scroll it.
 //! - **U-C24b-4: a modal that leaves the keyboard where it was.** `El::modal` moves focus into
 //!   itself, so a field that commits on a blur commits when one opens, even one with nothing to
 //!   type into. Repro (C24 review 2's probe R2-P3, on the c24 page): focus a `text_input`, then

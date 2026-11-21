@@ -183,6 +183,7 @@ pub(super) fn build(app: &App, frame: &mut Frame<'_, App>) {
         stops: shown.stops(),
         own_arrows: &[],
         listing: shell::view_focus(app),
+        viewports: shell::listing_viewports(app),
         close,
         parent: None,
     };
