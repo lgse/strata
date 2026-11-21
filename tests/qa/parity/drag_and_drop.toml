@@ -263,7 +263,7 @@ run = "list-top"
 package = "A19"
 status = "pending"
 reason = "scope"
-blocker = "A19: `main`'s #2108 made a press on a List row's metadata padding select a range instead of dragging the selected files, merged on 2026-11-20 (line 11); Rune's List still drags them"
+blocker = "A19: `main`'s #2108 made a press on a List row's metadata padding select a range instead of dragging the selected files, merged on 2026-11-20; on Rune the range is not selected there (line 11)"
 
 [[run]]
 scenario = "row-padding-drag-view-policy"
@@ -278,7 +278,7 @@ run = "list-bottom"
 package = "A19"
 status = "pending"
 reason = "scope"
-blocker = "A19: `main`'s #2108 made a press on a List row's metadata padding select a range instead of dragging the selected files, merged on 2026-11-20 (line 11); Rune's List still drags them"
+blocker = "A19: `main`'s #2108 made a press on a List row's metadata padding select a range instead of dragging the selected files, merged on 2026-11-20; on Rune the range is not selected there (line 11)"
 
 [[run]]
 scenario = "row-padding-drag-view-policy"
@@ -286,7 +286,7 @@ run = "list-airy"
 package = "A19"
 status = "pending"
 reason = "scope"
-blocker = "A19: `main`'s #2108 made a press on a List row's metadata padding select a range instead of dragging the selected files, merged on 2026-11-20 (line 11); Rune's List still drags them"
+blocker = "A19: `main`'s #2108 made a press on a List row's metadata padding select a range instead of dragging the selected files, merged on 2026-11-20; on Rune the range is not selected there (line 11)"
 
 [[run]]
 scenario = "selected-blank-space-follows-view-policy"
