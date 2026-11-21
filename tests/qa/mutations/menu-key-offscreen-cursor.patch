@@ -1,0 +1,15 @@
+diff --git a/src/ui/browser/columns.rs b/src/ui/browser/columns.rs
+index 4f15ff393..e38879c2d 100644
+--- a/src/ui/browser/columns.rs
++++ b/src/ui/browser/columns.rs
+@@ -201,7 +201,9 @@ impl ColumnView {
+             position.and_then(|position| self.map.view_position(position))
+         };
+         if let Some(position) = position {
+-            let (row, _) = self.shown_row_at(position)?;
++            let Some((row, _)) = self.shown_row_at(position) else {
++                return Some((self.item_context_trigger.clone(), 40.0, 20.0));
++            };
+             let bounds = row.compute_bounds(&self.list)?;
+             return Some((
+                 self.item_context_trigger.clone(),

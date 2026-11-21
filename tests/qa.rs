@@ -66,6 +66,9 @@ mod unit_tests;
 #[path = "qa/variables.rs"]
 mod variables;
 
+#[path = "qa/volume_monitor.rs"]
+mod volume_monitor;
+
 #[path = "qa/wayland.rs"]
 mod wayland;
 
@@ -100,6 +103,7 @@ use run::{Outcome, pretty, run_result, settled_state};
 use scenario::{Scenario, planned_tests};
 use steps::run_steps;
 use variables::{Places, Run, substitute, substitute_text, unescape, variables};
+use volume_monitor::VolumeMonitor;
 
 // scripts/test_qa_drive.py checks qa-drive.sh against the launch values in this file.
 const REPOSITORY: &str = env!("CARGO_MANIFEST_DIR");
@@ -501,6 +505,8 @@ struct Launch<'a> {
     extra: Vec<(String, String)>,
     bus: Option<&'a str>,
     portal: bool,
+    /// The run started `volume_monitor`, so GIO must load its remote volume monitors.
+    volume_monitor: bool,
     audit: Option<&'a main_io::Audit>,
 }
 
@@ -581,6 +587,7 @@ impl Application {
         command.arg("--qa");
         match (&relaunch.directory, launch.portal) {
             (Some(directory), _) => command.arg(directory),
+            (None, _) if relaunch.plain => command.arg("--plain"),
             (None, true) => command.arg("--portal"),
             (None, false) => command.arg(launch.fixture),
         };
@@ -615,6 +622,9 @@ impl Application {
         command.envs(launch.extra.iter().map(|(key, value)| (key, value)));
         command.envs(stall_limit());
         command.envs(&relaunch.env);
+        if launch.volume_monitor {
+            volume_monitor::prepare(&mut command);
+        }
         if let Some(streams) = relaunch.streams() {
             command.env("STRATA_QA_STREAMS", streams);
         }
@@ -841,6 +851,13 @@ fn execute(scenario: &Scenario, run: &Run, manifest: &Manifest) -> Outcome {
         }
         _ => None,
     };
+    let volume_monitor = match (scenario.header.volume_monitor, &bus) {
+        (true, Some(bus)) => match VolumeMonitor::start(&bus.address, &home, &runtime) {
+            Ok(monitor) => Some(monitor),
+            Err(error) => return failed_setup(format!("setup: {error}"), &mut fs_state),
+        },
+        _ => None,
+    };
     let launch = Launch {
         manifest,
         home: &home,
@@ -868,6 +885,7 @@ fn execute(scenario: &Scenario, run: &Run, manifest: &Manifest) -> Outcome {
             .collect(),
         bus: bus.as_ref().map(|bus| bus.address.as_str()),
         portal: scenario.header.portal,
+        volume_monitor: volume_monitor.is_some(),
         audit: audit.as_ref(),
     };
     let mut application = match launch.start() {
@@ -968,6 +986,12 @@ fn execute(scenario: &Scenario, run: &Run, manifest: &Manifest) -> Outcome {
             files.push((
                 input_method::LOG,
                 fs::read_to_string(&input_method.log).unwrap_or_default(),
+            ));
+        }
+        if let Some(monitor) = &volume_monitor {
+            files.push((
+                volume_monitor::LOG,
+                fs::read_to_string(&monitor.log).unwrap_or_default(),
             ));
         }
         for (file, contents) in files {

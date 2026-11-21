@@ -1,0 +1,10 @@
+diff --git a/src/ui/browser/location/mount_errors.rs b/src/ui/browser/location/mount_errors.rs
+--- a/src/ui/browser/location/mount_errors.rs
++++ b/src/ui/browser/location/mount_errors.rs
+@@ -223,3 +223,5 @@ impl TransportFailure {
+ pub(super) fn mount_error_is_cancelled(error: &glib::Error) -> bool {
+-    error.matches(gio::IOErrorEnum::Cancelled) || error.matches(gio::IOErrorEnum::FailedHandled)
++    error.matches(gio::IOErrorEnum::Cancelled)
++        || error.matches(gio::IOErrorEnum::FailedHandled)
++        || error.matches(gio::IOErrorEnum::Failed)
+ }

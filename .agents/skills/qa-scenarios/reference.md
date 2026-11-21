@@ -41,6 +41,7 @@ Line 1 of the file, one JSON object. Unknown keys are rejected.
 | `env` | no | Variables added to the app's environment, `$variables` replaced. Never one the runner owns (`RUNNER_OWNED_ENVIRONMENT`, `XDG_DIRECTORIES`, and `QA_ENVIRONMENT` in `tests/qa.rs`): the display, buses, runtime, HOME and XDG directories, input log, shader cache, and accessibility switches. |
 | `session_bus` | no | `true` starts a private session bus with no service directories, shared by the app and the `dbus_send`, `launch`, and `foreign` steps (all three require it). Without it the app gets a bus address that cannot connect. |
 | `portal` | no | `true` (requires `session_bus`) starts `strata --qa --portal`, the FileChooser portal backend, instead of the browser. There is no window until `portal_open`; `adopt` then drives the chooser. Until a chooser opens, the snapshot is empty. |
+| `volume_monitor` | no | `true` (requires `session_bus`) starts a fake GVfs volume monitor on the run's bus before the app, and gives the app GIO's remote volume monitor client; see "Fake devices" in `docs/testing.md`. Steps then plug devices with `{"dbus_send":["--print-reply","--dest=org.strata.QaVolumeMonitor","/org/strata/QaVolumeMonitor","org.strata.QaVolumeMonitor.Add","string:{\"id\":\"stick\",\"name\":\"QA Stick\",\"root\":\"$environment/media/stick\"}"]}` and unplug them with `...Remove` and `string:stick`. A device's JSON takes `id`, `name`, `root` (the folder its mount shows), and optionally `mounted` (false), `drive` (true), `can_eject` (true; false makes Strata offer Unmount) and `mount_error` (a message every mount fails with, as `G_IO_ERROR_FAILED`). Each call the app makes is a `<method> <id>` line of `$environment/volume-monitor.calls`: `VolumeMount`, `MountUnmount` or `DriveEject`. Eject unplugs the device; Unmount keeps its volume. |
 | `input_method` | no | An fcitx5 input method name such as `chewing` or `pinyin` (requires `session_bus`): starts a private fcitx5 on the run's display and bus whose group holds the US keyboard and that method; Ctrl+Space switches to it. Pick the toolkit path with `env` (`GTK_IM_MODULE`). Host runs only, since the pinned image has no fcitx5; give such a scenario a `skip` reason. See "Wayland and input methods" in `docs/testing.md`. |
 | `fixture_root` | no | `/tmp/<name>`: builds the tree at that fixed path instead of a fresh one, for a screenshot where the path renders. The path must not exist (never reused); runs with a `fixture_root` never overlap one another. |
 | `mutation` | no | The name of a patch in `tests/qa/mutations/` (without `.patch`) that must make the scenario fail; each patch belongs to one scenario. `./scripts/qa-mutation.sh` checks it. Not combinable with `skip`. |
@@ -128,6 +129,7 @@ the main context drains. Input is real XTEST.
 | `{"reveal":{"role":"button","name":"Modified date format"}}` | Turns the wheel three clicks at a time at the window's centre, at most twelve times, until the control is on screen. |
 | `{"reveal_control":{"role":"spin button","name":"Text size in pixels"}}` | Scrolls a settings page's own pane until the control is wholly shown, then settles it. |
 | `{"adopt":"PNG conversion test","timeout_ms":20000,"message":"..."}` | Portal runs: waits for a showing window with this title and drives it from then on (snapshot, targets, input log). |
+| `{"activate_window":{"title":"pictures — Strata"},"timeout_ms":15000,"message":"..."}` | Waits for exactly one showing window with this title (matched as `other_window` matches), raises it, gives it the X input focus, waits until it is active, and adopts it, so keys and targets go to it from then on. X11 only. |
 | `{"clipboard_set":"text"}`, `{"clipboard":"999","message":"..."}` | Owns the clipboard with the text from a second display connection; reads the clipboard and fails unless it matches, exactly or as `{"starts_with":...,"contains":...,"longer_than":5}`. |
 | `{"clipboard_set":{"offers":[{"mime":"x-special/gnome-copied-files","text":"cut\nfile://$fixture_quoted/a.txt"}]}}`, `{"clipboard":"1","mime":"application/x-kde-cutselection"}` | Owns the clipboard with raw offers under their MIME types, the way a file manager fills it; reads one MIME type's bytes as text instead of the clipboard text. |
 | `{"sleep":600}` | Waits; the main loop keeps running. Never use it to wait for state. |
@@ -174,6 +176,7 @@ These run in the runner (`drive` in `tests/qa/drive.rs`), between process comman
 | --- | --- |
 | `{"restart":true}` | SIGTERM to the app's process group, 5 s, then SIGKILL; starts it again with the same environment, fixture, display, and input log, with a fresh app log. It needs the US layout active (it reads the keymap again) and fails otherwise: after a `layout` step, add `{"layout":"us"}` before it. |
 | `{"restart":{"directory":"$fixture/target","env":{"RUST_LOG":"trace"},"stdout":"closed","stderr":"null"}}` | Restarts on another directory with extra variables, and standard output or error as a closed pipe or `/dev/null`. |
+| `{"restart":{"plain":true}}` | Restarts with no folder argument, as a user launching `strata` does, so the window restores the saved tab session or opens the default folder. Every other launch names a folder, which skips restore. Takes no `directory`. |
 | `{"layout":"ru"}` | Switches the run's keyboard layout. |
 | `{"flag":PREDICATE,"as":"enabled"}` | Keeps whether the predicate holds now; never fails. With `timeout_ms`, polls until it holds or time runs out. |
 | `{"each":"names","as":"name","derive":{"caption":{"number_plus":320,"suffix":"×180"}},"step":STEP}` | Runs a process step once per item of a noted list, `$name` the item; each `derive` variable is the last number in the item's stem plus `number_plus`, between optional `prefix` and `suffix`. |
@@ -196,17 +199,18 @@ These run in the runner (`drive` in `tests/qa/drive.rs`), between process comman
 | `{"portal_response":{"done":false},"message":"..."}` | Asserts the request has not answered yet. |
 | `{"portal_response":{"done":true,"status":0,"names":[...],"paths":[...],"keep":"output","png":{...},"discard":true},"timeout_ms":20000,"message":"..."}` | Waits for the answer and checks its status, chosen names (a set) or paths (in order); `keep` notes the first path, `png` checks it as the `fs` `png` check does, `discard` removes its download directory. |
 | `{"http":"<base64>","as":"url"}`, `{"http_requests":1,"message":"..."}` | Serves the bytes as `image/png` to every GET on 127.0.0.1 until the final state is read, its URL noted; asserts how many requests came. |
-| `{"foreign":{"paths":["$fixture/a"],"move_only":true},"as":"foreign","message":"..."}` | Starts a separate GTK drag source offering the paths (needs `session_bus`) and keeps its button's box as a `kept` target. |
+| `{"foreign":{"paths":["$fixture/a"],"move_only":true},"as":"foreign","message":"..."}` | Starts a separate GTK drag source offering the paths (needs `session_bus`) and keeps its button's box as a `kept` target. Its window sits in the screen's bottom-right corner, off Strata's default window, so a drop anywhere on that window, its first tab included, reaches Strata. |
 | `{"foreign":{"offers":[{"mime":"text/plain;charset=utf-8","path":"$environment/text"}]},"as":"foreign"}` | The drag source also, or instead, offers each file's bytes as they are under its MIME type, as a browser offers images, text, and addresses. |
 | `{"foreign_label":"Foreign drag finished","message":"..."}`, `{"foreign_stop":true}` | Waits for the drag source to show a label; stops it. |
 | `{"zipcrypto":{"path":"password.zip","password":"zipsecret","member":"some.txt","contents":"...","deflated":true},"as":"collision"}` | Writes a ZipCrypto archive with a random header and notes the first numeric password below 4096 that also passes the header check. `contents` may be `{"repeat":"text","count":64}`. |
 
 ## fs steps
 
-`{"fs":{"path":..., <one kind>...}, "timeout_ms":..., "message":...}`. A
+`{"fs":{"path":..., <one kind>...}, "timeout_ms":..., "hold_ms":..., "message":...}`. A
 relative path is under the fixture; an absolute one (`$data/Trash/files`)
-stands alone. Checks poll until they hold (`timeout_ms` 0 asserts once);
-actions act at once. Actions that remove, rename, or generate refuse a path
+stands alone. Checks poll until they hold (`timeout_ms` 0 asserts once); with
+`hold_ms` a check that held must keep holding that long, so a negative check
+also catches a write that lands late. Actions act at once and take neither. Actions that remove, rename, or generate refuse a path
 whose resolved parent lies outside the fixture, `$environment`, and the
 run's scratch directory.
 

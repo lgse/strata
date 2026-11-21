@@ -1,0 +1,26 @@
+{"scenario":"restore-tabs-on-plain-launch-only","modes":["columns"],"layout":"us","mutation":"restore-tabs-folder-argument","setup":[{"fs":{"path":"$config/strata/tabs.toml","write":"version = 1\nactive = 1\n\n[[tabs]]\nkind = \"path\"\nvalue = \"$fixture\"\n\n[[tabs]]\nkind = \"path\"\nvalue = \"$fixture/pictures\"\n"}}],"quality":{"impact":3,"coverage":4,"criticality":4,"diagnostic":3,"score":45,"note":"Real plain launch restores tab order and active tab; folder-argument launches skip and never overwrite tabs.toml; sole launch-routing guard"}}
+{"wait":{"panes":["$root"]},"message":"the launch on the fixture folder to show it"}
+{"expect":{"compare":{"left":{"count":{"role":"page tab"}},"op":"==","right":0}},"timeout_ms":1000,"hold_ms":300,"message":"a launch with a folder argument to restore no saved tab"}
+{"fs":{"path":"$config/strata/tabs.toml","toml":{"active":1,"tabs":[{"kind":"path","value":"$fixture"},{"kind":"path","value":"$fixture/pictures"}]}},"timeout_ms":0,"hold_ms":500,"message":"a launch with a folder argument to leave the saved session alone"}
+{"restart":{"plain":true}}
+{"wait":{"state":{"target":{"role":"page tab","name":"pictures"},"selected":true}},"message":"a plain launch to restore the saved tabs with 'pictures' active"}
+{"wait":{"directory":"pictures"},"message":"the restored active tab to show 'pictures'"}
+{"expect":[{"compare":{"left":{"count":{"role":"page tab"}},"op":"==","right":2}},{"name":{"target":{"role":"page tab","nth":0},"text":"$root"}},{"name":{"target":{"role":"page tab","nth":1},"text":"pictures"}}],"message":"the saved tabs to come back in their saved order"}
+{"key":"ctrl+shift+1"}
+{"wait":{"state":{"target":{"role":"page tab","name":"$root"},"selected":true}},"message":"Ctrl+Shift+1 to select the first restored tab"}
+{"key":"ctrl+t"}
+{"select":{"entry":"documents","dir":"$root"}}
+{"wait":{"state":{"target":{"role":"page tab","name":"documents"},"selected":true}},"message":"a new third tab to open 'documents'"}
+{"fs":{"path":"$config/strata/tabs.toml","toml":{"active":2,"tabs":[{"kind":"path","value":"$fixture"},{"kind":"path","value":"$fixture/pictures"},{"kind":"path","value":"$fixture/documents"}]}},"message":"the plain-launch window to save its three tabs with 'documents' active"}
+{"fs":{"path":"$config/strata/tabs.toml","keep_bytes":"saved"}}
+{"restart":true}
+{"wait":{"panes":["$root"]},"message":"the relaunch on the fixture folder to show it"}
+{"expect":{"compare":{"left":{"count":{"role":"page tab"}},"op":"==","right":0}},"timeout_ms":1000,"hold_ms":300,"message":"a relaunch with a folder argument to skip the saved session"}
+{"key":"ctrl+t"}
+{"select":{"entry":"archive","dir":"$root"}}
+{"wait":{"state":{"target":{"role":"page tab","name":"archive"},"selected":true}},"message":"a new tab in the folder-argument window to open 'archive'"}
+{"fs":{"path":"$config/strata/tabs.toml","toml_like":"saved"},"timeout_ms":0,"hold_ms":500,"message":"a window opened for a folder argument to leave the saved session alone"}
+{"restart":{"plain":true}}
+{"wait":{"state":{"target":{"role":"page tab","name":"documents"},"selected":true}},"message":"the next plain launch to restore the earlier session with 'documents' active"}
+{"wait":{"directory":"documents"},"message":"the restored active tab to show 'documents'"}
+{"expect":[{"compare":{"left":{"count":{"role":"page tab"}},"op":"==","right":3}},{"name":{"target":{"role":"page tab","nth":0},"text":"$root"}},{"name":{"target":{"role":"page tab","nth":1},"text":"pictures"}},{"name":{"target":{"role":"page tab","nth":2},"text":"documents"}}],"message":"the three saved tabs to come back in order, with no 'archive' tab from the folder-argument window"}
