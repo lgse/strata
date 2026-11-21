@@ -136,6 +136,7 @@ fn check_header(scenario: &Scenario) -> Result<(), String> {
     let header = &scenario.header;
     let unsupported = [
         ("input_method", header.input_method.is_some()),
+        ("volume_monitor", header.volume_monitor),
         ("fixture_root", header.fixture_root.is_some()),
         ("variants", !header.variants.is_empty()),
         ("layout", header.layout != DEFAULT_LAYOUT),
