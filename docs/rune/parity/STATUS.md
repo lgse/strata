@@ -40,7 +40,7 @@ tracking moved here. The issues stay as an archive: each package file links its 
 | [H3](packages/H3.md) | Backend reach | done | H1 | [#2301](https://github.com/lgse/strata/pull/2301), [#2306](https://github.com/lgse/strata/pull/2306), [#2308](https://github.com/lgse/strata/pull/2308), [#2309](https://github.com/lgse/strata/pull/2309), [#2312](https://github.com/lgse/strata/pull/2312), [#2316](https://github.com/lgse/strata/pull/2316), [#2317](https://github.com/lgse/strata/pull/2317), [#2319](https://github.com/lgse/strata/pull/2319), [#2323](https://github.com/lgse/strata/pull/2323), [#2329](https://github.com/lgse/strata/pull/2329), [#2332](https://github.com/lgse/strata/pull/2332) |
 | [H4](packages/H4.md) | Session host | done | H1 | [#2447](https://github.com/lgse/strata/pull/2447), [#2455](https://github.com/lgse/strata/pull/2455) |
 | [H5](packages/H5.md) | Coverage-gap scenarios | in progress | H0 | [#2609](https://github.com/lgse/strata/pull/2609), [#2618](https://github.com/lgse/strata/pull/2618), [#2619](https://github.com/lgse/strata/pull/2619), [#2680](https://github.com/lgse/strata/pull/2680), [#2707](https://github.com/lgse/strata/pull/2707) |
-| [F2](packages/F2.md) | Differential mode and Columns pilot | done | F1, H2 | [#2348](https://github.com/lgse/strata/pull/2348), [#2359](https://github.com/lgse/strata/pull/2359), [#2363](https://github.com/lgse/strata/pull/2363), [#2368](https://github.com/lgse/strata/pull/2368), [#2369](https://github.com/lgse/strata/pull/2369), [#2371](https://github.com/lgse/strata/pull/2371), [#2378](https://github.com/lgse/strata/pull/2378) |
+| [F2](packages/F2.md) | Differential mode and Columns pilot | done | F1, H2 | [#2348](https://github.com/lgse/strata/pull/2348), [#2359](https://github.com/lgse/strata/pull/2359), [#2363](https://github.com/lgse/strata/pull/2363), [#2368](https://github.com/lgse/strata/pull/2368) (closed unmerged), [#2369](https://github.com/lgse/strata/pull/2369), [#2371](https://github.com/lgse/strata/pull/2371), [#2378](https://github.com/lgse/strata/pull/2378) |
 | [F3](packages/F3.md) | Rune-side invariants | done | F1 | [#2391](https://github.com/lgse/strata/pull/2391), [#2398](https://github.com/lgse/strata/pull/2398), [#2409](https://github.com/lgse/strata/pull/2409), [#2432](https://github.com/lgse/strata/pull/2432), [#2444](https://github.com/lgse/strata/pull/2444) |
 
 ### Wave 2: second fan-out
@@ -67,7 +67,7 @@ tracking moved here. The issues stay as an archive: each package file links its 
 | [A19](packages/A19.md) | Drag and drop | done | H4, A1 to A5 | [#2549](https://github.com/lgse/strata/pull/2549), [#2571](https://github.com/lgse/strata/pull/2571), [#2577](https://github.com/lgse/strata/pull/2577), [#2583](https://github.com/lgse/strata/pull/2583), [#2597](https://github.com/lgse/strata/pull/2597), [#2601](https://github.com/lgse/strata/pull/2601) |
 | [A20](packages/A20.md) | Portal chooser | done | H4, A1, A2, A5 | [#2566](https://github.com/lgse/strata/pull/2566), [#2579](https://github.com/lgse/strata/pull/2579), [#2598](https://github.com/lgse/strata/pull/2598) |
 | [A21](packages/A21.md) | Window and launch | done | H4 | [#2594](https://github.com/lgse/strata/pull/2594), [#2604](https://github.com/lgse/strata/pull/2604), [#2605](https://github.com/lgse/strata/pull/2605), [#2620](https://github.com/lgse/strata/pull/2620) |
-| [F5](packages/F5.md) | Session-host fuzzing | in progress | H4, F2 | [#2637](https://github.com/lgse/strata/pull/2637), [#2656](https://github.com/lgse/strata/pull/2656), [#2677](https://github.com/lgse/strata/pull/2677), [#2708](https://github.com/lgse/strata/pull/2708), [#2683](https://github.com/lgse/strata/pull/2683) |
+| [F5](packages/F5.md) | Session-host fuzzing | in progress | H4, F2 | [#2637](https://github.com/lgse/strata/pull/2637), [#2656](https://github.com/lgse/strata/pull/2656), [#2677](https://github.com/lgse/strata/pull/2677), [#2683](https://github.com/lgse/strata/pull/2683), [#2708](https://github.com/lgse/strata/pull/2708) |
 
 ### Wave 4: exit
 
@@ -87,7 +87,7 @@ explained in [B3's file](packages/B3.md).
 
 The plan's checkpoints are where the owner looks at the numbers
 ([Checkpoints](README.md#checkpoints)). Each report gives five counts. The table below holds
-running counts, retaken by the coordinator at the commit it names, `strata-next` `9bfe7a03b`
+the counts as the coordinator last took them, at the commit it names, `strata-next` `9bfe7a03b`
 (2026-11-16), with the command that produces each. The end-of-wave-0 and end-of-wave-1 reports,
 below it, were written at `85cb36b77` and `9bfe7a03b` and stay as written.
 
