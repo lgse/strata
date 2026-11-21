@@ -51,7 +51,7 @@ fn chooser_new_folder(app: &App, depth: usize) -> Option<El> {
         .on_press_tx(move |app: &mut App, tx: &mut Tx| {
             commands::run(app, "new-folder", On::Column(depth), tx);
         })
-        .build(&look.kit);
+        .build(&look.accent_icon_kit());
     Some(button)
 }
 

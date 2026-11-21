@@ -177,7 +177,7 @@ impl<S: 'static> DockView<S> {
                             look.icon(shown.icon.unwrap_or(IconName::Info)),
                             look.icon_size.sm,
                         )
-                        .color(c.icon_base),
+                        .color(c.icon_accent),
                     ),
             )
             .child(
@@ -194,6 +194,7 @@ impl<S: 'static> DockView<S> {
                     // The card carries the title as its name.
                     .a11y_hidden(),
             );
+        let accent_kit = look.accent_icon_kit();
         if let Some(end) = ended {
             let pin = IconButton::new(look.icon(IconName::Pin))
                 .variant(IconButtonVariant::Ghost)
@@ -201,14 +202,14 @@ impl<S: 'static> DockView<S> {
                 .label(words.keep.clone())
                 .help(words.keep.clone())
                 .on_press_tx(move |s: &mut S, tx: &mut Tx| get_mut(s).toggle_pin(id, tx))
-                .build(k)
+                .build(&accent_kit)
                 .key(format!("{key}-pin"))
                 .checked(end.pinned);
             header = header.child(pin);
         }
         header = header.child(
             self.card_close_button(op, dock, look)
-                .build(k)
+                .build(&accent_kit)
                 .key(format!("{key}-cancel")),
         );
 
@@ -590,7 +591,7 @@ fn notice(look: &Look, key: &str, n: &DockNotice) -> El {
     if notice.check {
         r = r.w(CARD_MAX_WIDTH).child(
             icon(look.icon(IconName::Check), look.icon_size.md)
-                .color(c.icon_base)
+                .color(c.icon_accent)
                 .a11y_hidden(),
         );
     }

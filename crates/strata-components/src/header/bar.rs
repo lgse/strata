@@ -84,6 +84,7 @@ impl<'a> Header<'a> {
         let on_action = Rc::new(on_action);
         self.window.clear();
         let look = self.look;
+        let accent_kit = look.accent_icon_kit();
         let mut button = |shown: bool, suffix: &str, icon: IconName, label: &str, act| {
             if !shown {
                 return;
@@ -92,7 +93,7 @@ impl<'a> Header<'a> {
             self.window.push(
                 action(look, icon, label)
                     .on_press_tx(move |s: &mut S, tx: &mut Tx| on_action(s, act, tx))
-                    .build(&look.kit)
+                    .build(&accent_kit)
                     .key(format!("{}-{suffix}", self.key)),
             );
         };

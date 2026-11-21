@@ -186,7 +186,7 @@ impl<S: 'static> FilterBar<S> {
         let inner = field::frame_row(look, format!("{}-box", self.key))
             .child(
                 icon(look.icon(IconName::Filter), look.icon_size.sm)
-                    .color(look.kit.c.icon_muted)
+                    .color(look.kit.c.icon_accent)
                     .a11y_hidden(),
             )
             .child(input);

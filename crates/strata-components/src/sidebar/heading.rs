@@ -81,7 +81,8 @@ fn heading_body<S>(
     };
     let chevron = icon(look.icon(chevron_name), look.icon_size.md)
         .key("chevron")
-        .color(c.icon_faint)
+        .color(c.icon_accent)
+        .opacity(0.65)
         .a11y_hidden();
     if ctx.rail {
         return h

@@ -196,6 +196,7 @@ impl<'a, S: 'static> ModelView<'a, S> {
         }
         let badges = layout::badge_row(&key, badges, look);
 
+        let accent_kit = look.accent_icon_kit();
         let button = |name: &str, icon: IconName, step: i32| {
             let on_camera = on_camera.clone();
             IconButton::new(look.icon(icon))
@@ -210,7 +211,7 @@ impl<'a, S: 'static> ModelView<'a, S> {
                         f(s, view, tx);
                     }
                 })
-                .build(k)
+                .build(&accent_kit)
                 // The tooltip says what the name says: no description, so it isn't read twice.
                 .description("")
         };

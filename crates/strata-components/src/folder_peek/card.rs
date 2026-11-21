@@ -209,21 +209,13 @@ fn entry_row<S>(
     let k = &look.kit;
     let folder = entry.kind.is_folder_like();
     let size = look.icon_size.md;
-    let glyph = look.icon_named(entry.icon).unwrap_or_else(|| {
-        look.icon(if folder {
-            IconName::Folder
-        } else {
-            IconName::File
-        })
-    });
+    let mark = crate::thumbnails::entry_glyph(look, entry, size, k.c.icon_accent);
     // Files a little fainter than folders, as Strata's 0.82 icon opacity.
-    let mark = icon(glyph, size)
-        .color(if folder {
-            k.c.icon_base
-        } else {
-            k.c.icon_muted
-        })
-        .a11y_hidden();
+    let mark = if folder {
+        mark
+    } else {
+        mark.opacity(rows_tokens::file_icon_opacity(look))
+    };
     let mark = match (&sh.thumbs, entry.thumbnail) {
         (Some(store), Some(key)) if store(s).enabled() => {
             picture(&store(s).thumb(key), mark, size, size)
@@ -254,7 +246,8 @@ fn entry_row<S>(
     if folder {
         r = r.child(
             icon(look.icon(IconName::ChevronRight), look.icon_size.sm)
-                .color(k.c.icon_muted)
+                .color(k.c.icon_accent)
+                .opacity(0.55)
                 .a11y_hidden(),
         );
     }

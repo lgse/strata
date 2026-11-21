@@ -256,7 +256,7 @@ fn secret_field(look: &Look, edit: &TextEdit, spec: SecretSpec) -> El {
         .control_size(ControlSize::Small)
         .label(peek_label)
         .on_press(spec.on_toggle)
-        .build(kit)
+        .build(&look.accent_icon_kit())
         .focusable(false)
         .key(format!("{}-reveal", spec.key));
     let inner = field_row(look, format!("{}-frame", spec.key))

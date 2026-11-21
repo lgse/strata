@@ -18,6 +18,7 @@ pub(super) fn header<S: 'static>(
     look: &Look,
 ) -> El {
     let k = &look.kit;
+    let accent_kit = look.accent_icon_kit();
     let caps = parts.caps;
     let labels = &shared.labels;
     let size = control_size(look.frame.control);
@@ -40,7 +41,7 @@ pub(super) fn header<S: 'static>(
                 .on_press_tx(move |s: &mut S, tx: &mut Tx| {
                     sh.emit(s, DrawerIntent::ShowView(view.other()), tx)
                 })
-                .build(k)
+                .build(&accent_kit)
                 .key("preview-view-switch")
                 .on_key(super::return_as_space::<S>),
         );
@@ -57,7 +58,7 @@ pub(super) fn header<S: 'static>(
                         find::open(&sh, s, tx);
                     }
                 })
-                .build(k)
+                .build(&accent_kit)
                 .key("preview-find")
                 .on_key(super::return_as_space::<S>),
         );
@@ -81,7 +82,7 @@ pub(super) fn header<S: 'static>(
             button(IconName::Open, &labels.open)
                 .disabled(parts.open_disabled)
                 .on_press_tx(move |s: &mut S, tx: &mut Tx| sh.emit(s, DrawerIntent::Open, tx))
-                .build(k)
+                .build(&accent_kit)
                 .key("preview-open")
                 .on_key(super::return_as_space::<S>),
         );
@@ -93,7 +94,7 @@ pub(super) fn header<S: 'static>(
             .state(if on { State::Pressed } else { State::Rest })
             .on_press_tx(move |s: &mut S, tx: &mut Tx| sh.emit(s, DrawerIntent::SetWrap(!on), tx));
         controls.push(
-            wrap.build(k)
+            wrap.build(&accent_kit)
                 .key("preview-wrap")
                 .checked(on)
                 .on_key(super::return_as_space::<S>),
@@ -106,7 +107,7 @@ pub(super) fn header<S: 'static>(
                 (sh.access)(s).close_with(sh.animations, tx);
                 sh.emit(s, DrawerIntent::Closed, tx);
             })
-            .build(k)
+            .build(&accent_kit)
             .key("preview-close")
             .on_key(super::return_as_space::<S>),
     );
@@ -152,7 +153,7 @@ fn header_handle<S: 'static>(parts: &Parts<'_, S>, descriptions: &[String; 3], l
         .items_center()
         .children(info.icon.map(|i| {
             icon(i, look.icon_size.md)
-                .color(k.c.icon_muted)
+                .color(k.c.icon_accent)
                 .a11y_hidden()
         }))
         .child(heading);

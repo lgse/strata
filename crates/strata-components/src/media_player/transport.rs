@@ -59,7 +59,7 @@ pub(crate) fn play<S: 'static>(
             access(s).toggle();
             commit_after(s, access, &emit, tx);
         })
-        .build(&look.kit)
+        .build(&look.accent_icon_kit())
         .key(format!("{key}-play"))
 }
 
@@ -104,7 +104,7 @@ pub(crate) fn step<S: 'static>(
         access(s).command(command);
         commit_after(s, access, &emit, tx);
     })
-    .build(&look.kit)
+    .build(&look.accent_icon_kit())
     .key(format!("{key}-{}", if next { "next" } else { "previous" }))
 }
 
@@ -222,7 +222,7 @@ pub(crate) fn volume<S: 'static>(
             commit_after(s, access, &emit, tx);
         }
     })
-    .build(k)
+    .build(&look.accent_icon_kit())
     .key(format!("{key}-mute"));
 
     let value = if st.muted() { 0.0 } else { st.volume() };

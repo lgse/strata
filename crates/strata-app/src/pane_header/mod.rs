@@ -177,7 +177,7 @@ fn navigation(app: &App, view: &str, button: &Button) -> El {
     let built = header::action(look, button.icon, &name)
         .disabled(!(button.able)(app))
         .on_press_tx(move |app: &mut App, tx: &mut Tx| pressed(app, command, tx))
-        .build(&look.kit);
+        .build(&look.accent_icon_kit());
     let key = format!("{view}-{}", button.suffix);
     if button.suffix != "back" {
         return buttons::on_return(key, built);
