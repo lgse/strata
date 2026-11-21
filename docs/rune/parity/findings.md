@@ -901,6 +901,11 @@ sequence only together with the alphabet's version, so the version is part of th
   column with no entry. Parked in `tests/qa/fuzz/corpus/preview/` as `v4-000000000000000b`.
 - **Met again in [F4](packages/F4.md)'s round 2**: `columns v3` `0x3c` (a second click on an open folder) and
   `0x37` (a file written into a column a click opened), parked in `tests/qa/fuzz/corpus/columns/`.
+- **Met again** in [F4](packages/F4.md)'s round 3, by the same report of a column with the keyboard
+  and no cursor: `location v3` (seven: Return on the path as it stands, Escape from the location
+  field, a folder made in an open one), `entries v5` `0xa0` (a file written into `archive` just
+  opened) and `0xcd`, `menus v4` (Refresh, a click on an open folder: four). `entries v5` `0x02` and
+  `0xa0`, `entries v3` `0x40` and `location v3` `0x0a` are parked here.
 - **State:** open, set aside: no Rune change. A fix that gave Rune's column a cursor
   ([#2368](https://github.com/lgse/strata/pull/2368)) was closed unmerged: it made Rune's next
   Down move on where GTK's lands on the first entry, as a list with no cursor does ([#2367](https://github.com/lgse/strata/issues/2367)).
@@ -1179,6 +1184,9 @@ sequence only together with the alphabet's version, so the version is part of th
   `tests/qa/fuzz/corpus/tenxer/`.
 - **Met again in [F4](packages/F4.md)'s round 2**: `entries v3` `0x47`, a Delete and its Undo (shrunk on Rune to 8
   steps), parked in `tests/qa/fuzz/corpus/entries/`.
+- **Met again** in [F4](packages/F4.md)'s round 3: `entries v5` `0xd9` (12 steps, a Delete of `b`
+  and its Undo), and hidden by Ctrl+period in `list v7` `0x9a` and `tenxer v7` (two); `entries v5`
+  `0xd9` and `list v7` `0x9a` are parked here.
 - **State:** open, set aside, its sequences parked. The fault is `strata-fs`'s, in the
   browser both interfaces share, so GTK has it too: its fix belongs on `main`, from a bug
   issue there, and reaches `strata-next` by merge. The coordinator places it.
@@ -1307,6 +1315,8 @@ sequence only together with the alphabet's version, so the version is part of th
 - **Concerns:** the Icons view's keys in an empty folder ([A1](packages/A1.md)'s area). The
   sequence is parked in `tests/qa/fuzz/corpus/views` (`v2-000000000000000c`), and the `views`
   alphabet from v3 keeps Right off `archive`.
+- **Met again** in [F4](packages/F4.md)'s round 3 in List: `views v4` `0x89` (13 steps, Down in the
+  empty `archive` reached by Alt+Left), parked in `tests/qa/fuzz/corpus/views/`.
 - **State:** open, with the owner ([`owner.md`](owner.md#a1-icons-view-and-thumbnails), A1
   item 11), placed by the coordinator on 2026-11-13: GTK's move looks like its directional
   focus falling through, so Rune does not copy it meanwhile, and the sequence stays parked.
@@ -1580,6 +1590,8 @@ sequence only together with the alphabet's version, so the version is part of th
     `columns/`, possibly with a hook in C2's keyboard. The rule alone would only move the
     difference to the next key. Left by the coordinator's ruling of 2026-11-14, for its narrow
     path.
+- **Met again** in [F4](packages/F4.md)'s round 3: `views v4` `0x96` (10 steps, Ctrl+1 after a
+  grouped List's first visit), parked in `tests/qa/fuzz/corpus/views/`.
 - **State:** fixed in List and Icons; the Columns residual is open.
 
 ### #2422: the folder menu's Select All over filter results selects the hidden listing on GTK
@@ -2241,6 +2253,13 @@ sequence only together with the alphabet's version, so the version is part of th
   its selection sync gave the browser as cursor and so as anchor, where Rune's marquee leaves no
   anchor. Ruled a `deviation` on 2026-11-20: Rune's stands (finding
   [#2667](https://github.com/lgse/strata/issues/2667)).
+- **Met again** in [F4](packages/F4.md)'s round 3, after a Shift+click rather than a band: GTK's
+  selection sync gives the browser, as cursor, the last entry the Shift+click newly selected, which
+  the next F5, Escape, Right or click inside the selection starts from (`columns v3` `0x8d`, `0xac`,
+  `0xb7`, `properties v3` `0xa0`, and `list v7` `0xaa`, shrunk to 3 steps: End, a Shift+click on
+  `documents`, F5, where GTK refocuses `readme.md`). `list v7` `0xaa` is parked here;
+  lgse/strata#2688, filed for it, is closed as this finding's duplicate. Also after bands in
+  `pointer v5` (eight).
 - **State:** open, set aside: no Rune change. `pointer v3` sends no keyboard cursor moves, and
   any fix belongs on `main`.
 
@@ -2309,6 +2328,10 @@ sequence only together with the alphabet's version, so the version is part of th
 - **Met by [F4](packages/F4.md)'s round 2** in a RAW file's failure shown as text: `preview v4` `0x1b`, where the
   code view adds `"Source"` and splits the text, parked as `deviation` in
   `tests/qa/fuzz/corpus/preview/`.
+- **Met again** in [F4](packages/F4.md)'s round 3 through a gap in `preview v4`, which leaves text
+  bodies out: a broken RAW file (`broken.NEF`) falls back to a text body, which Rune names `Source`
+  and reads twice (six sequences of the long run). The alphabet's next version keeps the RAW
+  fallback out too.
 - **State:** the names are ruled: Rune keeps `"Source"` and `"Document"` (the owner,
   2026-11-16). Open for the line split, which the QA backend may absorb by reading a code
   view's lines as one string.
@@ -3117,6 +3140,10 @@ sequence only together with the alphabet's version, so the version is part of th
   while the browser marks no cursor and no selection), so a `contract` change to the shared
   handover rule. Not checked on GTK's screen. `v2-000000000000006b` is parked in
   `tests/qa/fuzz/corpus/drag/`.
+- **Met again** in [F4](packages/F4.md)'s round 3 by an outside removal: `tenxer v7` `0xb9` (9
+  steps), the cursor's unselected `fuzz-c.txt` removed with `diagram.txt` selected, where Rune adds
+  `photo.txt` to the selection; parked in `tests/qa/fuzz/corpus/tenxer/`. And `drag v2`'s five
+  differences of the round's long run.
 - **State:** open, unowned.
 
 ### #2628: a folder shown again without its remembered cursor's entry takes the entry at its index on Rune
@@ -3148,6 +3175,8 @@ sequence only together with the alphabet's version, so the version is part of th
 - **Concerns:** [A16](packages/A16.md)'s media player, done. Not checked on either screen, nor
   whether Rune's player starts again from the start where GTK's stays at the end.
   `v7-000000000000005b` is parked in `tests/qa/fuzz/corpus/media/`.
+- **Met again** in [F4](packages/F4.md)'s round 3: `media v7` `0x90` (8 steps, a seek, then keys in
+  the drawer: `0:01` on GTK, `0:00` on Rune), parked in `tests/qa/fuzz/corpus/media/`.
 - **State:** open, unowned.
 
 ### #2638: after a single click opens a folder, a Shift+click ranges from the load's cursor on Rune, selects the entry alone on GTK
@@ -3253,6 +3282,9 @@ sequence only together with the alphabet's version, so the version is part of th
   sidebar row (`sidebar v1` `0x1d`, `0x3b`: GTK's only closes the menu, Rune's opens the row's).
   The alphabets' Escapes, guarded on a Rename row, left menus over several entries open (F5's
   note on `pointer`); `list v6`, `icons v4`, `pointer v4` and `sidebar v3` dismiss any menu.
+- **Met again** in [F4](packages/F4.md)'s round 3: `columns v3` `0x7f`, `0x87` and `0x8f`, and
+  `sidebar v1` `0x0e`, whose first difference this is now that its Unpin is fixed (#2406), recoded
+  here.
 - **State:** open, unowned. Not traced. Parked in the four areas' corpora.
 
 ### #2645: a foreign PNG drop saves different bytes: GTK re-encodes it through GDK, Rune keeps the bytes offered
@@ -3310,6 +3342,9 @@ sequence only together with the alphabet's version, so the version is part of th
   2026-11-19 as the finding's reference and closed at once: its state is kept here.
 - **Seen:** in [F4](packages/F4.md)'s round 2, `sidebar v2` `0x0f` (2 steps: Shift+Down from `archive`, Shift+Up);
   F2's lead of 2026-11-13 (`columns v3` `0x41e`), and `views` meets it too.
+- **Met again** in [F4](packages/F4.md)'s round 3 by Shift+Home: `columns v3` `0x79` (3 steps: a
+  right-click on `documents`, Escape, Shift+Home leaving `archive` alone selected; Rune opens its
+  column), parked in `tests/qa/fuzz/corpus/columns/`; and `views v4` (two).
 - **State:** open, unowned. Parked in `tests/qa/fuzz/corpus/sidebar/`.
 
 ### #2651: `archive-conflict-keyboard-choices/columns-replace` missed its compression undo once on GTK
@@ -3356,6 +3391,8 @@ sequence only together with the alphabet's version, so the version is part of th
   2026-11-19 as the finding's reference and closed at once: its state is kept here.
 - **Seen:** in [F4](packages/F4.md)'s round 2, `preview v4` `0x52` (7 steps); Rune's keyboard is in the preview, whose
   file keys are blocked.
+- **Met again** in [F4](packages/F4.md)'s round 3: Shift+Delete with the keyboard in the preview
+  keeps GTK's preview and closes Rune's (`preview v4`, four of the long run, not shrunk).
 - **State:** open, unowned. Parked in `tests/qa/fuzz/corpus/preview/`.
 
 ### #2657: a permission toggle on a symlink's Properties: GTK's snapshot keeps the Properties dialog
@@ -3460,6 +3497,9 @@ sequence only together with the alphabet's version, so the version is part of th
   name, and their gaps meet it where a Delete, a Move to Trash or a rename leaves another
   entry first: `entries v5` `0x05` (2 steps: Delete on `archive`, then Up from `documents`)
   and `menus v4` `0x44` (Move to Trash, then `k`).
+- **Met again** in [F4](packages/F4.md)'s round 3, at the name guards' gaps: `entries v5` (ten:
+  `documents` first once `archive` is gone, `photo.txt` once `diagram.txt` is), `columns v3` (three)
+  and `views v4` (one, in List).
 - **State:** waiting for the owner (A1 item 3); meanwhile Rune's. Parked in
   `tests/qa/fuzz/corpus/entries/` and `tests/qa/fuzz/corpus/menus/`.
 
@@ -3500,7 +3540,7 @@ sequence only together with the alphabet's version, so the version is part of th
   `archive`, Ctrl+Z, Ctrl+Y), both left unshrunk in round 2. Not traced.
 - **State:** open, unowned. Parked in `tests/qa/fuzz/corpus/entries/`.
 
-### #2676: a right-click under "Unable to rename item" opens GTK's entry menu
+### #2676: a press outside "Unable to rename item": GTK's dialog stays and lets a right-click through
 
 - **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2676), filed on
   2026-11-20 as the finding's reference and closed at once: its state is kept here.
@@ -3509,6 +3549,12 @@ sequence only together with the alphabet's version, so the version is part of th
   `readme.md`. GTK opens the entry's menu and selects `readme.md` under the dialog; Rune's
   dialog takes the press. Both dialogs are modal by design, so this looks like GTK's fault.
   Not checked on GTK's screen.
+- **Met again** in [F4](packages/F4.md)'s round 3, the other way round: `entries v5` `0xcf` (48
+  steps, not fully shrunk), a Shift+click on `todo.txt` under the dialog. GTK's dialog stays and
+  the click selects nothing; Rune's dialog closes and its keyboard goes to the entry behind it.
+  So on GTK the dialog lets some presses through and keeps itself; on Rune it takes a
+  right-click and closes on a click outside, as its error dialogs do (#2381). Parked here; the
+  issue's title says both.
 - **State:** open, unowned. Parked in `tests/qa/fuzz/corpus/entries/`.
 
 ### #2678: Ctrl+X with the Preview panel over the cursor's entry closes GTK's preview
@@ -3530,6 +3576,8 @@ sequence only together with the alphabet's version, so the version is part of th
   Escape, with Ctrl+L paths between and a Move here answered Skip. The last step, a click on
   "Copy here" within the "Copy to" chooser, is taken on GTK and skipped on Rune, whose `when`
   finds no such chooser; the observation before it agrees. Not traced.
+- **Met again** in [F4](packages/F4.md)'s round 3: `chooser v5` `0xd5`, a Move here step skipped on
+  Rune at step 98 (not shrunk).
 - **State:** open, unowned. Parked in `tests/qa/fuzz/corpus/chooser/`.
 
 ### #2690: Rune's reply to Ctrl+Z came before the undo reached the disk, once in 10 replays
@@ -3550,3 +3598,117 @@ sequence only together with the alphabet's version, so the version is part of th
   is open.
 - **Concerns:** `session-drops` seed `0x0b`; nothing is parked, as the seed agrees.
 - **State:** open, unowned.
+
+### #2682: Escape closing a column whose folder the column before no longer selects leaves Rune's keyboard on no entry
+
+- **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2682), filed on
+  2026-11-21 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** in [F4](packages/F4.md)'s round 3, `entries v5` `0x91` (5 steps: Right into `archive`,
+  Ctrl+Shift+N, Escape, Ctrl+Z, which takes `new folder` out and clears the root's selection on
+  both, then Escape). Both close `archive`'s column (#2426's fix); GTK's keyboard goes to `archive`,
+  its list's own focus row, Rune's to the root column with no entry, since the browser's
+  `close_deepest` gives no position when the column before selects nothing
+  (`crates/strata-fs/src/app/navigation/cursor.rs`). By reading.
+- **State:** open, unowned. Parked in `tests/qa/fuzz/corpus/entries/`. A fix either has the shared
+  browser give the closed folder's position, which changes GTK too and belongs on `main`, or has
+  Rune fall back to it.
+
+### #2689: a Shift+Left after a right-click and Escape in an Icons folder just opened ranges from the right-clicked entry on Rune
+
+- **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2689), filed on
+  2026-11-21 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** in [F4](packages/F4.md)'s round 3, `icons v5` `0x9b` (4 steps: a double click opens
+  `documents`, a right-click on `report.md`, Escape, Shift+Left). GTK selects `notes.txt` alone;
+  Rune `notes.txt` and `report.md`. By reading, not driven: GTK's grid keeps its own cursor on the
+  load's first item, which the right-click (`focus_context_entry`) does not move, so its Shift+Left
+  starts there.
+- **State:** open, unowned. Parked in `tests/qa/fuzz/corpus/icons/`.
+
+### #2691: Left in a PDF preview zoomed by Ctrl+wheel returns GTK's keyboard to the listing and keeps Rune's in the preview
+
+- **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2691), filed on
+  2026-11-21 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** in [F4](packages/F4.md)'s round 3, `media v7` `0x85` (5 steps: Space, a click on
+  `page.pdf`, Right into the preview, Ctrl+wheel up twice on the page, Left). Without the zoom both
+  go back, so a zoomed page likely takes Left on Rune, as a pan. Not traced.
+- **State:** open, unowned; which is right is the area's question. Parked in
+  `tests/qa/fuzz/corpus/media/`.
+
+### #2693: Shift+Home in a column with no cursor ranges from its last entry on Rune
+
+- **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2693), filed on
+  2026-11-21 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** in [F4](packages/F4.md)'s round 3, `columns v3` `0xb4` (3 steps: a file written into
+  `pictures`, a click on `pictures`, Shift+Home), and two more of the long run. GTK selects
+  `diagram.txt` alone; Rune selected the column. Strata's `extend_page_selection` anchors at the
+  cursor, so with none, a Shift page or jump selects where it lands alone; C1d's keyboard machine
+  started the range at the far end.
+- **State:** fixed in F4's round 3 (`collection/keyboard/machine.rs`): with no cursor, a Shift page
+  or jump selects where it lands alone. Held by
+  `collection::keyboard::tests::with_no_cursor_a_shift_page_or_jump_selects_where_it_lands_alone`,
+  which fails without it. `columns v3` `0xb4` agrees and is kept unparked in
+  `tests/qa/fuzz/corpus/columns/`.
+
+### #2695: a folder left with nothing selected and opened again comes back on its old cursor on Rune, on its first row on GTK
+
+- **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2695), filed on
+  2026-11-21 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** in [F4](packages/F4.md)'s round 3, `views v4` `0xa7` (22 steps): `pictures`' cursor
+  moved to `photo.txt` in Columns and its selection cleared by Escape; in List an Escape with
+  nothing selected closes `pictures` (#2426's fix), and a double click opens it again. GTK's
+  keyboard rings `diagram.txt`; Rune's comes back on `photo.txt`. By reading: GTK remembers no
+  position for a folder left with nothing selected, while Rune's pane memory keeps the cursor. Not
+  traced.
+- **State:** open, unowned. Parked in `tests/qa/fuzz/corpus/views/`.
+
+### #2697: Ctrl+period with the filter open leaves the hidden match out of Rune's results
+
+- **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2697), filed on
+  2026-11-21 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** in [F4](packages/F4.md)'s round 3, `filter v2` `0x8e` (3 steps: Ctrl+F, `e`,
+  Ctrl+period) and `0x9d`. Both turn hidden files on; GTK's results take `.hidden.txt` in, Rune's
+  did not. GTK's `on_hidden_toggled` hands the setting to each column's search session
+  (`set_show_hidden`), which searches again.
+- **State:** fixed in F4's round 3: Rune's filter searches again on the browser's `HiddenToggled`
+  (`filter/mod.rs`). Held by
+  `columns::tests::filter::showing_hidden_files_brings_a_hidden_match_into_the_filters_results`,
+  which fails without it. `filter v2` `0x8e`, cut to its three steps, agrees and is kept unparked in
+  `tests/qa/fuzz/corpus/filter/`.
+
+### #2700: a view switch after the filter's slash entered a folder takes the query up again in GTK's List
+
+- **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2700), filed on
+  2026-11-21 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** in [F4](packages/F4.md)'s round 3, `filter v2` `0x9a` (14 steps: `documents/` typed in
+  Icons, the Appearance popover's Hidden files, Escape, Ctrl+3: GTK's List opens its filter field
+  with `documents`, Rune's none) and `0xc8` (21 steps: with results shown after the field closed,
+  Ctrl+3: GTK's List searches again and takes in `zz-fuzz-note.txt`, written before, while Rune's
+  keep the results they had). Not traced.
+- **State:** open, unowned. Parked in `tests/qa/fuzz/corpus/filter/`.
+
+### #2704: j after the selection was cleared with the Preview panel on selects on GTK and not on Rune
+
+- **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2704), filed on
+  2026-11-21 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** in [F4](packages/F4.md)'s round 3, `preview v4` `0x87` (12 steps): in List with the
+  Preview panel on, a click on `comic.cbz`, Escape, `j`. GTK selects `corrupt.cbz`; Rune nothing.
+  Also `0xba`. Not traced; #2552's arrow case may be its mechanism.
+- **State:** open, unowned. Parked in `tests/qa/fuzz/corpus/preview/`.
+
+### #2705: a quick preview moved by l to a file a filter listed shows no size or date on Rune
+
+- **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2705), filed on
+  2026-11-21 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** in [F4](packages/F4.md)'s round 3, `preview v4` `0x7b` (12 steps: a filter for `album`,
+  Ctrl+3, the Quick preview of `album.cbz`, then `l`, which moves the preview to `broken.cbz`).
+  GTK's header shows `20 B` and `Nov 14, 2023`; Rune's `—` for both. Not traced.
+- **State:** open, unowned. Parked in `tests/qa/fuzz/corpus/preview/`.
+
+### #2706: Ctrl+Shift+Tab back from a new tab's location field leaves Rune's keyboard on no entry
+
+- **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2706), filed on
+  2026-11-21 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** in [F4](packages/F4.md)'s round 3, `tabs v3` `0xa7` (4 steps: a click on `pictures`,
+  Ctrl+T, Ctrl+L, Ctrl+Shift+Tab). GTK's keyboard is then on `diagram.txt`; Rune's on no entry. Not
+  traced: whether it is GTK's report of a column's first row (#2356's kind).
+- **State:** open, unowned. Parked in `tests/qa/fuzz/corpus/tabs/`.

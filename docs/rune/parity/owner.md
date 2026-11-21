@@ -407,7 +407,9 @@ issue [#2128](https://github.com/lgse/strata/issues/2128).
    go to; then the Icons part matches GTK.
 3. **Up from the first row.** GTK focuses the pane header (`focus_header_from_top`,
    `src/ui/window/keyboard/items.rs:166-180`). Rune ignores `Edge(Up)`. No package owns the
-   pane header. Meanwhile: nothing happens.
+   pane header. Meanwhile: nothing happens. The fuzz alphabets guard it by name, and the
+   sequences their guards miss are parked against its reference issue,
+   [#2671](https://github.com/lgse/strata/issues/2671) ([F4](packages/F4.md)'s round 3).
 4. **Focus after Back, Forward and Up.** GTK focuses the new listing on an explicit
    navigation, and leaves focus on a header button or the sidebar for history unless it was
    in the pane (`on_navigation_starting`, `src/ui/browser_modes/events.rs:59-73`). The Rune
