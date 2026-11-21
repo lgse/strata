@@ -20,9 +20,6 @@ use super::state::SidebarState;
 use super::{ActionFn, Emit, trash_target_key};
 use crate::contract::dnd::{Dnd, DropHover};
 
-/// The accessible description of a device whose release is still running.
-pub const PENDING_RELEASE: &str = "Writing data to the drive. Do not unplug it.";
-
 /// A rail row: the icon alone, where the full row has it, so a step moves no icon. rune-kit's
 /// `SidebarRow` keeps a label slot and its gap even with an empty label, which don't fit the
 /// rail (U18), so the rail builds its own row: one that takes focus, selects and
@@ -427,7 +424,7 @@ pub(crate) fn device_row<S: 'static>(ctx: &Ctx<'_, S>, d: &Device, selected: boo
     };
     if d.pending {
         return dress(ctx, el, &spec)
-            .description(PENDING_RELEASE)
+            .description(ctx.labels.device.releasing)
             .disabled(true);
     }
     let el = activate(ctx, el, item, spec.new_tab);
@@ -455,14 +452,19 @@ fn device_actions<S: 'static>(ctx: &Ctx<'_, S>, d: &Device) -> El {
             .preserve_focus_on_press(true)
     };
     let base = d.item().key(ctx.key);
+    let words = ctx.labels.device;
     if let Some(lock) = d.lock {
         let (glyph, label, intent) = match lock {
             LockState::Locked => (
                 IconName::Lock,
-                "Unlock",
+                words.unlock,
                 SidebarIntent::Unlock(d.id.clone()),
             ),
-            LockState::Unlocked => (IconName::Unlock, "Lock", SidebarIntent::Lock(d.id.clone())),
+            LockState::Unlocked => (
+                IconName::Unlock,
+                words.lock,
+                SidebarIntent::Lock(d.id.clone()),
+            ),
         };
         actions = actions.child(button(format!("{base}-lock"), glyph, label, intent));
     }
@@ -470,7 +472,7 @@ fn device_actions<S: 'static>(ctx: &Ctx<'_, S>, d: &Device) -> El {
         actions = actions.child(button(
             format!("{base}-eject"),
             IconName::Eject,
-            release.label(),
+            words.release(release),
             SidebarIntent::Eject(d.id.clone()),
         ));
     }
