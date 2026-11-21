@@ -6,14 +6,14 @@ use serde_json::Value;
 
 use super::super::{Chord, DEFAULT_WAIT, Modifier, Predicate, StateName, Target};
 use super::{
-    Accessor, ActivateFields, ActivateWindowFields, AdoptFields, ButtonDownFields, ButtonUpFields, COMMANDS,
-    CaptureFields, ClickFields, ClickResultRowsFields, ClipboardFields, ClipboardSetFields,
-    Command, DragFields, DropSamplesFields, DuringCheck, DuringFields, ExpectFields, HoldsFields,
-    KeepFields, KeyDownFields, KeyFields, KeyUpFields, KeysUntilFields, MeasureTextFields,
-    MoveByFields, MoveFields, NoteFields, OpenMenuFields, PressCheck, PressStepFields, QueryFields,
-    RememberFields, Repeat, ResizeFields, RevealControlFields, RevealFields, RowStates,
-    SelectFields, SelectWithKeyboardFields, SetScrollbarFields, SettleFields, SleepFields,
-    TypeFields, WaitFields, WheelDirection, WheelFields,
+    Accessor, ActivateFields, ActivateWindowFields, AdoptFields, ButtonDownFields, ButtonUpFields,
+    COMMANDS, CaptureFields, ClickFields, ClickResultRowsFields, ClipboardFields,
+    ClipboardSetFields, Command, DragFields, DropSamplesFields, DuringCheck, DuringFields,
+    ExpectFields, HoldsFields, KeepFields, KeyDownFields, KeyFields, KeyUpFields, KeysUntilFields,
+    MeasureTextFields, MoveByFields, MoveFields, NoteFields, OpenMenuFields, PressCheck,
+    PressStepFields, QueryFields, RememberFields, Repeat, ResizeFields, RevealControlFields,
+    RevealFields, RowStates, SelectFields, SelectWithKeyboardFields, SetScrollbarFields,
+    SettleFields, SleepFields, TypeFields, WaitFields, WheelDirection, WheelFields,
 };
 
 fn modifiers(names: &[String]) -> Result<Vec<Modifier>, String> {
