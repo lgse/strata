@@ -28,7 +28,7 @@ pub(crate) mod text_size;
 pub(crate) mod views;
 pub(crate) mod wheel;
 
-pub(crate) use popover::face;
+pub(crate) use popover::{button_icon, face};
 
 pub(crate) struct Appearance {
     popover: popover::State,

@@ -1,12 +1,11 @@
 diff --git a/crates/strata-app/src/appearance/popover.rs b/crates/strata-app/src/appearance/popover.rs
-index 6dab23777..cddf4e8f3 100644
 --- a/crates/strata-app/src/appearance/popover.rs
 +++ b/crates/strata-app/src/appearance/popover.rs
-@@ -120,7 +120,7 @@ fn toggle(app: &mut App, _: &Call<'_>, tx: &mut Tx) -> Outcome {
+@@ -131,7 +131,7 @@ fn toggle(app: &mut App, _: &Call<'_>, tx: &mut Tx) -> Outcome {
      if state.open {
          FRAME.follow_saved(app);
          CONTENT.follow_saved(app);
--        tx.focus(SHOW_COLUMNS, true);
+-        tx.focus(SHOW_COLUMNS, tx.by_keys());
 +        let _ = &tx;
      }
      Outcome::Ran
