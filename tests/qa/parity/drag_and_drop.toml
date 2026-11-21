@@ -92,7 +92,7 @@ run = "columns-single-click"
 package = "A19"
 status = "pending"
 reason = "scope"
-blocker = "A19: `main`'s #2108 split this scenario's runs into click-mode variants, merged on 2026-11-20; its former columns, icons and list runs were required, and the variants are not yet run on Rune"
+blocker = "A19: from `main`'s #2108, merged on 2026-11-20; it passed on Rune in the sync's run of #2680 and in Reviewer 1's survey of it, and A19 flips it once it has passed three times running"
 
 [[run]]
 scenario = "drop-folder-into-itself"
@@ -100,7 +100,7 @@ run = "icons-single-click"
 package = "A19"
 status = "pending"
 reason = "scope"
-blocker = "A19: `main`'s #2108 split this scenario's runs into click-mode variants, merged on 2026-11-20; its former columns, icons and list runs were required, and the variants are not yet run on Rune"
+blocker = "A19: from `main`'s #2108, merged on 2026-11-20; it passed on Rune in the sync's run of #2680 and in Reviewer 1's survey of it, and A19 flips it once it has passed three times running"
 
 [[run]]
 scenario = "drop-folder-into-itself"
@@ -108,7 +108,7 @@ run = "list-single-click"
 package = "A19"
 status = "pending"
 reason = "scope"
-blocker = "A19: `main`'s #2108 split this scenario's runs into click-mode variants, merged on 2026-11-20; its former columns, icons and list runs were required, and the variants are not yet run on Rune"
+blocker = "A19: from `main`'s #2108, merged on 2026-11-20; it passed on Rune in the sync's run of #2680 and in Reviewer 1's survey of it, and A19 flips it once it has passed three times running"
 
 [[run]]
 scenario = "drop-folder-into-itself"
@@ -116,7 +116,7 @@ run = "columns-double-click"
 package = "A19"
 status = "pending"
 reason = "scope"
-blocker = "A19: `main`'s #2108 split this scenario's runs into click-mode variants, merged on 2026-11-20; its former columns, icons and list runs were required, and the variants are not yet run on Rune"
+blocker = "A19: from `main`'s #2108, merged on 2026-11-20; it passed on Rune in the sync's run of #2680 and in Reviewer 1's survey of it, and A19 flips it once it has passed three times running"
 
 [[run]]
 scenario = "drop-folder-into-itself"
@@ -124,7 +124,7 @@ run = "icons-double-click"
 package = "A19"
 status = "pending"
 reason = "scope"
-blocker = "A19: `main`'s #2108 split this scenario's runs into click-mode variants, merged on 2026-11-20; its former columns, icons and list runs were required, and the variants are not yet run on Rune"
+blocker = "A19: from `main`'s #2108, merged on 2026-11-20; it passed on Rune in the sync's run of #2680 and in Reviewer 1's survey of it, and A19 flips it once it has passed three times running"
 
 [[run]]
 scenario = "drop-folder-into-itself"
@@ -132,7 +132,7 @@ run = "list-double-click"
 package = "A19"
 status = "pending"
 reason = "scope"
-blocker = "A19: `main`'s #2108 split this scenario's runs into click-mode variants, merged on 2026-11-20; its former columns, icons and list runs were required, and the variants are not yet run on Rune"
+blocker = "A19: from `main`'s #2108, merged on 2026-11-20; it passed on Rune in the sync's run of #2680 and in Reviewer 1's survey of it, and A19 flips it once it has passed three times running"
 
 [[run]]
 scenario = "empty-name-space-drag-starts-marquee"
@@ -140,7 +140,7 @@ run = "columns-name"
 package = "A19"
 status = "pending"
 reason = "scope"
-blocker = "A19: `main`'s #2108 split this scenario's runs into name and metadata variants, merged on 2026-11-20; its former columns and list runs were required, and the variants are not yet run on Rune"
+blocker = "A19: from `main`'s #2108, merged on 2026-11-20; it passed on Rune in the sync's run of #2680 and in Reviewer 1's survey of it, and A19 flips it once it has passed three times running"
 
 [[run]]
 scenario = "empty-name-space-drag-starts-marquee"
@@ -148,7 +148,7 @@ run = "list-name"
 package = "A19"
 status = "pending"
 reason = "scope"
-blocker = "A19: `main`'s #2108 split this scenario's runs into name and metadata variants, merged on 2026-11-20; its former columns and list runs were required, and the variants are not yet run on Rune"
+blocker = "A19: from `main`'s #2108, merged on 2026-11-20; it passed on Rune in the sync's run of #2680 and in Reviewer 1's survey of it, and A19 flips it once it has passed three times running"
 
 [[run]]
 scenario = "empty-name-space-drag-starts-marquee"
@@ -156,7 +156,7 @@ run = "list-metadata"
 package = "A19"
 status = "pending"
 reason = "scope"
-blocker = "A19: `main`'s #2108 split this scenario's runs into name and metadata variants, merged on 2026-11-20; its former columns and list runs were required, and the variants are not yet run on Rune"
+blocker = "A19: `main`'s #2108 made a press on a List row's metadata space select a range, merged on 2026-11-20; on Rune the range is not selected there (line 3), in the sync's run and Reviewer 1's survey of #2680"
 
 [[run]]
 scenario = "escape-cancels-file-drag"
@@ -241,7 +241,7 @@ run = "list"
 package = "A19"
 status = "pending"
 reason = "scope"
-blocker = "A19: a List run `main`'s #2108 added, merged on 2026-11-20 and not yet run on Rune"
+blocker = "A19: from `main`'s #2108, merged on 2026-11-20; it passed on Rune in the sync's run of #2680 and in Reviewer 1's survey of it, and A19 flips it once it has passed three times running"
 
 [[run]]
 scenario = "release-outside-cancels-drag"
@@ -294,7 +294,7 @@ run = "columns"
 package = "A19"
 status = "pending"
 reason = "scope"
-blocker = "A19: `main`'s #2108 renamed selected-blank-space-starts-file-drag to this and changed what it checks, merged on 2026-11-20; the old name's three runs were required, and these are not yet run on Rune"
+blocker = "A19: from `main`'s #2108, merged on 2026-11-20; it passed on Rune in the sync's run of #2680 and in Reviewer 1's survey of it, and A19 flips it once it has passed three times running"
 
 [[run]]
 scenario = "selected-blank-space-follows-view-policy"
@@ -302,7 +302,7 @@ run = "icons"
 package = "A19"
 status = "pending"
 reason = "scope"
-blocker = "A19: `main`'s #2108 renamed selected-blank-space-starts-file-drag to this and changed what it checks, merged on 2026-11-20; the old name's three runs were required, and these are not yet run on Rune"
+blocker = "A19: from `main`'s #2108, merged on 2026-11-20; it passed on Rune in the sync's run of #2680 and in Reviewer 1's survey of it, and A19 flips it once it has passed three times running"
 
 [[run]]
 scenario = "selected-blank-space-follows-view-policy"
@@ -310,7 +310,7 @@ run = "list"
 package = "A19"
 status = "pending"
 reason = "scope"
-blocker = "A19: `main`'s #2108 renamed selected-blank-space-starts-file-drag to this and changed what it checks, merged on 2026-11-20; the old name's three runs were required, and these are not yet run on Rune"
+blocker = "A19: `main`'s #2108 made a press on a selected List row's whitespace select a range instead of dragging the files, merged on 2026-11-20; on Rune the range is not selected there (line 8), in the sync's run and Reviewer 1's survey of #2680"
 
 [[run]]
 scenario = "strip-edge-scrolls-columns-in"
