@@ -129,13 +129,12 @@ impl Sequence {
     }
 }
 
-/// What the replay does not start: a portal, an input method, a fixed
-/// fixture path, another keyboard layout; and what belongs to a scenario and not to a
-/// sequence. A header that asks for one is refused, not replayed without it.
+/// What the replay does not start: an input method, a fixed fixture path, another keyboard
+/// layout; and what belongs to a scenario and not to a sequence. A header that asks for one
+/// is refused, not replayed without it.
 fn check_header(scenario: &Scenario) -> Result<(), String> {
     let header = &scenario.header;
     let unsupported = [
-        ("portal", header.portal),
         ("input_method", header.input_method.is_some()),
         ("fixture_root", header.fixture_root.is_some()),
         ("variants", !header.variants.is_empty()),
@@ -168,6 +167,9 @@ pub(crate) fn check_step(step: &Value) -> Result<(), String> {
         return Err(format!(
             "a fuzz step stands alone, so it takes no {key}; {STEP_WHEN} is its one condition"
         ));
+    }
+    if peer == Some(peers::ANSWERED) {
+        return peers::check_answered(object);
     }
     if peer.is_some() {
         return Ok(());

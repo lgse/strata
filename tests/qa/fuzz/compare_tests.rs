@@ -15,7 +15,7 @@ use super::{
     project::Difference,
     replay::Stream,
     rules::{self, CAUSES, Entry, Ignored, exceptions},
-    shrink::{CONFIRMATIONS, shrink},
+    shrink::{Budget, CONFIRMATIONS, shrink},
 };
 
 pub(crate) fn observed(app: Value) -> Value {
@@ -185,7 +185,7 @@ pub(crate) fn the_shrinker_keeps_the_fewest_steps_that_still_diverge_and_confirm
     let found = double(&long).expect("the long sequence diverges");
     assert_eq!((found.step, found.field()), (13, "app.focused"));
     let asked = Cell::new(0);
-    let shrunk = shrink(&long, &found, 200, &mut |candidate| {
+    let shrunk = shrink(&long, &found, Budget::asks(200), &mut |candidate| {
         asked.set(asked.get() + 1);
         Ok(double(candidate))
     })
@@ -214,7 +214,7 @@ pub(crate) fn the_shrinker_keeps_the_fewest_steps_that_still_diverge_and_confirm
     };
     let found = shifted(&other).expect("diverges");
     assert_eq!(found.field(), "app.focused");
-    let kept = shrink(&other, &found, 200, &mut |candidate| Ok(shifted(candidate)))
+    let kept = shrink(&other, &found, Budget::asks(200), &mut |candidate| Ok(shifted(candidate)))
         .expect("the oracle never fails");
     assert_eq!(kept.divergence.signature(), "app.focused");
     assert!(kept.steps.contains(&"b".to_owned()) && kept.is_confirmed());
@@ -233,19 +233,19 @@ pub(crate) fn the_shrinker_keeps_the_fewest_steps_that_still_diverge_and_confirm
     };
     let other = steps("a b c d");
     let found = slide(&other).expect("diverges");
-    let kept = shrink(&other, &found, 200, &mut |candidate| Ok(slide(candidate)))
+    let kept = shrink(&other, &found, Budget::asks(200), &mut |candidate| Ok(slide(candidate)))
         .expect("the oracle never fails");
     assert_eq!(kept.steps, steps("a b c"));
     // The oracle's own failure ends the shrink: it is the harness's, not a verdict.
     let long_found = double(&long).expect("diverges");
     assert!(
-        shrink(&long, &long_found, 200, &mut |_| Err(
+        shrink(&long, &long_found, Budget::asks(200), &mut |_| Err(
             "no display".to_owned()
         ))
         .is_err()
     );
     // Out of replays, it stops shrinking and still confirms what it has.
-    let limited = shrink(&long, &long_found, 1, &mut |candidate| {
+    let limited = shrink(&long, &long_found, Budget::asks(1), &mut |candidate| {
         Ok(double(candidate))
     })
     .expect("the oracle never fails");
@@ -257,7 +257,7 @@ pub(crate) fn a_divergence_that_does_not_repeat_is_not_confirmed() {
     let found = double(&long).expect("diverges");
     // Noise: the two replays differ every other time, whatever the steps.
     let asked = Cell::new(0);
-    let shrunk = shrink(&long, &found, 200, &mut |candidate| {
+    let shrunk = shrink(&long, &found, Budget::asks(200), &mut |candidate| {
         asked.set(asked.get() + 1);
         Ok((asked.get() % 2 == 0 && !candidate.is_empty())
             .then(|| divergence(candidate.len(), "app.focused")))

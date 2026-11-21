@@ -18,7 +18,7 @@ use super::{
     report::{self, Evidence, Examined, Run},
     rules::{self, CAUSES, Ignored, exceptions},
     sequence::{Loaded, Sequence},
-    shrink::{CONFIRMATIONS, shrink},
+    shrink::{Budget, CONFIRMATIONS, shrink},
     targets::{Left, Targets, between, comparisons},
 };
 use crate::{
@@ -522,7 +522,12 @@ fn shrink_one(options: &Options) -> Result<(), String> {
         report::differ_line(&sequence.name, &between, &found, perturbed)
     );
     let mut last = replays;
-    let shrunk = shrink(&sequence.steps, &found, options.limit, &mut |steps| {
+    // A sequence that starts with its alphabet's opening keeps it whole.
+    let budget = Budget {
+        asks: options.limit,
+        kept: alphabet::load(&area).map_or(0, |alphabet| alphabet.opening_of(&sequence.steps)),
+    };
+    let shrunk = shrink(&sequence.steps, &found, budget, &mut |steps| {
         let (divergence, replays) = diverges(&sequence.with_steps(steps.to_vec()), &bench, host)?;
         if divergence.is_some() {
             last = replays;

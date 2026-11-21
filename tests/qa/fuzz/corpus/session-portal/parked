@@ -1,0 +1,10 @@
+# The session-portal alphabet's sequences parked against their findings
+# (docs/rune/parity/findings.md):
+#
+#   v<version>-<seed> <code> <issue>
+#
+# Each line is a finding's sequence, named for the smoke seed that met it. Version 1 was F5's
+# draft, never merged. `v1-09` is shrunk GTK against Rune; `v1-12` is its seed's first three
+# steps, which break a Rune invariant on the session host in about half the replays.
+v1-0000000000000009 divergence lgse/strata#2701
+v1-0000000000000012 divergence lgse/strata#2702

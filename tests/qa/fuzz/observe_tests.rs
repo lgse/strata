@@ -401,6 +401,7 @@ pub(super) fn observation(
                 }),
                 fs: json!({ "todo.txt": "file 644 5 aa" }),
                 settings: json!({}),
+                portal: Value::Null,
                 context: Value::Null,
             },
             settled: true,

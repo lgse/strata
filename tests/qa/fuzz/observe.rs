@@ -20,7 +20,7 @@ use std::{
 use serde_json::{Map, Value, json};
 use sha2::{Digest, Sha256};
 
-use super::project::{APP, CONTEXT, CRITICALS, FS, INVARIANTS, RESULT, SETTINGS};
+use super::project::{APP, CONTEXT, CRITICALS, FS, INVARIANTS, PORTAL, RESULT, SETTINGS};
 
 /// How rest is told. Calibration set these (`docs/testing.md`, "Calibration"): GTK goes on
 /// changing for up to about 220 ms after a reply with nothing to see in between, and the
@@ -101,6 +101,8 @@ pub(crate) struct Sample {
     pub(crate) app: Value,
     pub(crate) fs: Value,
     pub(crate) settings: Value,
+    /// What a portal run's request answered (`peers::portal_state`); null in any other run.
+    pub(crate) portal: Value,
     /// Never compared; a rule's `while` reads it (`project::CONTEXT`).
     pub(crate) context: Value,
 }
@@ -181,7 +183,8 @@ pub(crate) struct Observation {
     pub(crate) step: usize,
     /// The step as it was sent, or null for the launch.
     pub(crate) action: Value,
-    /// `result`, `criticals`, `invariants`, `app`, `fs` and `settings`.
+    /// `result`, `criticals`, `invariants`, `app`, `fs`, `settings` and, in a portal run,
+    /// `portal`.
     pub(crate) value: Value,
     pub(crate) settled: bool,
     pub(crate) polls: u32,
@@ -197,18 +200,23 @@ impl Observation {
         faults: Faults,
         rested: Rested,
     ) -> Self {
+        let mut value = json!({
+            RESULT: outcome.name(),
+            CRITICALS: faults.criticals,
+            INVARIANTS: faults.invariants,
+            APP: rested.sample.app,
+            FS: rested.sample.fs,
+            SETTINGS: rested.sample.settings,
+            CONTEXT: rested.sample.context,
+        });
+        // Only a portal run's observations hold `portal`, so no other stream changes.
+        if !rested.sample.portal.is_null() {
+            value[PORTAL] = rested.sample.portal;
+        }
         Self {
             step,
             action,
-            value: json!({
-                RESULT: outcome.name(),
-                CRITICALS: faults.criticals,
-                INVARIANTS: faults.invariants,
-                APP: rested.sample.app,
-                FS: rested.sample.fs,
-                SETTINGS: rested.sample.settings,
-                CONTEXT: rested.sample.context,
-            }),
+            value,
             settled: rested.settled,
             polls: rested.polls,
             waited_ms: milliseconds(rested.waited),
