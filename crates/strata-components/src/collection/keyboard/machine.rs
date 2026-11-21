@@ -377,7 +377,8 @@ impl KeyMachine {
     /// `extend_page_selection` do. Where there is no anchor (or no cursor), the anchor moves to
     /// the cursor, or to the end the move starts from. With nothing selected, it moves there
     /// too, and a one-entry step then selects that entry alone without moving, while a page or
-    /// a jump extends from it at once.
+    /// a jump extends from it at once. With no cursor, a page or a jump selects where it lands
+    /// alone: `extend_page_selection` finds no cursor to anchor at.
     ///
     /// A sideways step with no neighbour isn't taken (false), so the view decides: Columns'
     /// Shift+Right enters the folder and Shift+Left opens the parent (C2), and List does
@@ -388,7 +389,17 @@ impl KeyMachine {
             return !matches!(target, Target::Step(Direction::Left | Direction::Right));
         }
         let cursor = s.selection().cursor_index(s.source());
-        let origin = cursor.unwrap_or(if forward(target) { 0 } else { len - 1 });
+        let stepping = matches!(target, Target::Step(_));
+        let lands_alone = match (cursor, stepping) {
+            (None, false) => match self.land(target, s) {
+                Landing::At(i) => Some(i),
+                Landing::Edge(_) | Landing::Nowhere => None,
+            },
+            _ => None,
+        };
+        let origin = cursor
+            .or(lands_alone)
+            .unwrap_or(if forward(target) { 0 } else { len - 1 });
         if let Target::Step(d @ (Direction::Left | Direction::Right)) = target
             && !matches!(self.step(origin, d, s), Landing::At(_))
         {
@@ -400,6 +411,7 @@ impl KeyMachine {
             op(s, |sel, src| sel.move_cursor(src, origin, AnchorRule::Move));
         }
         let to = match (target, empty) {
+            _ if lands_alone.is_some() => origin,
             (Target::Step(_), true) => origin,
             _ => match self.land(target, s) {
                 Landing::At(i) => i,
