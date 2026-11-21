@@ -1335,7 +1335,10 @@ sequence only together with the alphabet's version, so the version is part of th
   [#2409](https://github.com/lgse/strata/pull/2409): the toggle gives the shown view the keyboard when it hides the sidebar with the
   keyboard in it (`sidebar/width.rs`), held by
   `sidebar::tests::hiding_the_sidebar_with_the_keyboard_in_it_gives_the_keyboard_to_the_view`.
-  The drag and Unpin cases are open, their seeds parked in `tests/qa/fuzz/corpus/sidebar/`
+  The Unpin case fixed in [F4](packages/F4.md)'s round 3: Unpin of a built-in place gives the
+  keyboard to the row after it, or the one before for the last (`sidebar/menu.rs`), held by
+  `sidebar::tests::unpin_gives_the_keyboard_to_the_row_after_the_one_hidden`; `sidebar v5`
+  sends Unpin again. The drag case is open, its seed parked in `tests/qa/fuzz/corpus/sidebar/`
   by F3's [#2432](https://github.com/lgse/strata/pull/2432).
 
 ### #2407: the location bar's hierarchy menu holds no keyboard on Rune
@@ -1661,6 +1664,11 @@ sequence only together with the alphabet's version, so the version is part of th
   by the coordinator's ruling, which the owner may reopen ([`owner.md`](owner.md), A10):
   C1e's `PointerSettings::missing_anchor_stays` covers a Shift+press as well as a secondary
   press, and the pane's results turn it on; Columns leaves it off.
+- **Met again:** in [F4](packages/F4.md)'s round 3, by another route: `filter v2` `0x2c`
+  (3 steps: `*o*` typed in the filter, Down from the field into the results, a Shift+click on
+  `documents/report.md`). Rune ranges from the result Down reached; GTK selects the result
+  alone. So the finding is open again for that route, with `0x2c` parked in
+  `tests/qa/fuzz/corpus/filter/`.
 
 ### #2429: the header's Appearance button is a button holding a toggle button on GTK
 
@@ -3352,23 +3360,32 @@ sequence only together with the alphabet's version, so the version is part of th
 
 ### #2657: a permission toggle on a symlink's Properties: GTK's snapshot keeps the Properties dialog
 
-- **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2657), filed on
-  2026-11-19 as the finding's reference and closed at once: its state is kept here.
+- **Code:** `oracle`, recoded in [F4](packages/F4.md)'s round 3; filed as `divergence`.
+  [Issue](https://github.com/lgse/strata/issues/2657), filed on 2026-11-19 as the finding's
+  reference and closed at once: its state is kept here.
 - **Seen:** in [F4](packages/F4.md)'s round 2, `properties v3` `0x41` (7 steps). Both set the mode on the link itself
   and show "Unable to change permissions" on failure, by reading; Rune's `app.dialog` names the
   error, GTK's the Properties dialog. Not checked on GTK's screen.
-- **State:** open, unowned. Parked in `tests/qa/fuzz/corpus/properties/`. It looks like GTK's QA
-  snapshot naming its outer dialog: before it counts against exit criterion 4, check GTK's
-  screen ([F4](packages/F4.md)'s round 3, as the review of #2660 asked).
+- **State:** GTK's QA snapshot, not a Rune divergence. Driven on GTK in F4's round 3
+  (`qa-drive.sh`, 2026-11-20): Owner write on the Properties of a link to a file outside the
+  folder shows "Unable to change permissions", with GTK's keyboard on its Close button, as
+  Rune's is; GTK's `app.dialog` still names the Properties dialog under it. So it does not
+  count against exit criterion 4. Parked as `oracle` in `tests/qa/fuzz/corpus/properties/`.
 
 ### #2658: after a sidebar row's right-click, a step guarded on no menu is skipped on Rune
 
-- **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2658), filed on
-  2026-11-19 as the finding's reference and closed at once: its state is kept here.
+- **Code:** `a11y`, recoded in [F4](packages/F4.md)'s round 3; filed as `divergence`.
+  [Issue](https://github.com/lgse/strata/issues/2658), filed on 2026-11-19 as the finding's
+  reference and closed at once: its state is kept here.
 - **Seen:** in [F4](packages/F4.md)'s round 2, `properties v3` `0x2b` (4 steps), `0x2d` and `0x73`: the observation
   before the step agrees, so what differs is outside the snapshot. Not traced.
-- **State:** open, unowned. Parked in `tests/qa/fuzz/corpus/properties/`. Not traced: before it
-  counts against exit criterion 4, check GTK's screen ([F4](packages/F4.md)'s round 3).
+- **State:** GTK's QA, not a Rune divergence. Driven on GTK in F4's round 3 (`qa-drive.sh`,
+  2026-11-20): the `{"sidebar":"sized-folder"}` target finds the location bar's `sized-folder`
+  crumb, not a sidebar row, and the right-click opens the crumb's hierarchy popover, which
+  GTK's QA does not read as a menu, so `{"menu_items":null}` still holds on GTK. On Rune the
+  popover is a menu, and the step is skipped. What differs is how GTK's popover reports
+  itself, so it does not count against exit criterion 4. Parked as `a11y` in
+  `tests/qa/fuzz/corpus/properties/`.
 
 ### #2659: after a rename, a Ctrl+T sometimes leaves Rune's view without the anchor the browser keeps
 
@@ -3394,3 +3411,69 @@ sequence only together with the alphabet's version, so the version is part of th
   focused entry is selected or nothing is, which a band, leaving the focus where it was, does
   not reach. Its gap: a band over the focused row still does. `pointer v4` `0x3a` is parked as
   `deviation` against this finding in `tests/qa/fuzz/corpus/pointer/`.
+
+### #2671: Up on a column's first entry takes GTK's keyboard to the header actions
+
+- **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2671), filed on
+  2026-11-20 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** the fuzz reference of [`owner.md`](owner.md#a1-icons-view-and-thumbnails)'s A1
+  item 3, filed in [F4](packages/F4.md)'s round 3 so the sequences that meet it can be parked.
+  Up, `k` or Shift+Up on a column's or a pane's first entry takes GTK's keyboard to the column's
+  header actions (`focus_header_from_top`); Rune ignores the edge. The alphabets guard it by
+  name, and their gaps meet it where a Delete, a Move to Trash or a rename leaves another
+  entry first: `entries v5` `0x05` (2 steps: Delete on `archive`, then Up from `documents`)
+  and `menus v4` `0x44` (Move to Trash, then `k`).
+- **State:** waiting for the owner (A1 item 3); meanwhile Rune's. Parked in
+  `tests/qa/fuzz/corpus/entries/` and `tests/qa/fuzz/corpus/menus/`.
+
+### #2672: a Ctrl+Z that takes an entry out of the root leaves Rune's keyboard on none
+
+- **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2672), filed on
+  2026-11-20 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** in [F4](packages/F4.md)'s round 3, `entries v5` `0x11` (24 steps): folders made by
+  the typed path `a/b/`, a Delete and its Undo, a click on `archive`, then Ctrl+Z, which takes
+  an entry out of the root. GTK's keyboard goes to `new folder`, beside it; Rune's to no
+  entry. Like [#2546](https://github.com/lgse/strata/issues/2546)'s removal with nothing
+  selected, by an undo. Not traced.
+- **State:** open, unowned. Parked in `tests/qa/fuzz/corpus/entries/`.
+
+### #2675: after Redo makes a folder again, GTK's keyboard is on it and Rune's on none
+
+- **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2675), filed on
+  2026-11-20 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** in [F4](packages/F4.md)'s round 3, `entries v3` `0x16` (5 steps: Right,
+  Ctrl+Shift+N, Escape, Ctrl+Z, Ctrl+Shift+Z) and `0x26` (6 steps: a folder `made` in
+  `archive`, Ctrl+Z, Ctrl+Y), both left unshrunk in round 2. Not traced.
+- **State:** open, unowned. Parked in `tests/qa/fuzz/corpus/entries/`.
+
+### #2676: a right-click under "Unable to rename item" opens GTK's entry menu
+
+- **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2676), filed on
+  2026-11-20 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** in [F4](packages/F4.md)'s round 3, `entries v3` `0x72` (9 steps): a folder `plans`,
+  then a new file named `plans` too, so "Unable to rename item" opens; a right-click on
+  `readme.md`. GTK opens the entry's menu and selects `readme.md` under the dialog; Rune's
+  dialog takes the press. Both dialogs are modal by design, so this looks like GTK's fault.
+  Not checked on GTK's screen.
+- **State:** open, unowned. Parked in `tests/qa/fuzz/corpus/entries/`.
+
+### #2678: Ctrl+X with the Preview panel over the cursor's entry closes GTK's preview
+
+- **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2678), filed on
+  2026-11-20 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** in [F4](packages/F4.md)'s round 3, `preview v4` `0x62` (6 steps: a Ctrl+click on
+  `corrupt.cbz`, Escape, Ctrl+3, the Preview panel on from the Appearance popover, Ctrl+X).
+  GTK's `app.preview` is then null; Rune's still shows `corrupt.cbz`'s "Preview unavailable"
+  card. Not traced: whether GTK's panel follows the cut, or only the selection Escape cleared.
+- **State:** open, unowned. Parked in `tests/qa/fuzz/corpus/preview/`.
+
+### #2679: after choosers opened and dismissed, a Copy here step is skipped on Rune
+
+- **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2679), filed on
+  2026-11-20 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** in [F4](packages/F4.md)'s round 3, `chooser v5` `0x7d6` (120 actions), shrunk from
+  251 steps to 34: Copy to… and Move to… choosers opened from entries' menus and dismissed by
+  Escape, with Ctrl+L paths between and a Move here answered Skip. The last step, a click on
+  "Copy here" within the "Copy to" chooser, is taken on GTK and skipped on Rune, whose `when`
+  finds no such chooser; the observation before it agrees. Not traced.
+- **State:** open, unowned. Parked in `tests/qa/fuzz/corpus/chooser/`.
