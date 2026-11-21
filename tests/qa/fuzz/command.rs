@@ -18,7 +18,7 @@ use super::{
     report::{self, Evidence, Examined, Run},
     rules::{self, CAUSES, Ignored, exceptions},
     sequence::{Loaded, Sequence},
-    shrink::{CONFIRMATIONS, shrink},
+    shrink::{Budget, CONFIRMATIONS, shrink},
     targets::{Left, Targets, between, comparisons},
 };
 use crate::{
@@ -496,6 +496,16 @@ fn diverges(
     Ok((divergence, [left, right]))
 }
 
+/// How far a shrink of `sequence` may go: a sequence that starts with its alphabet's opening
+/// keeps it whole.
+fn budget(options: &Options, sequence: &Sequence) -> Budget {
+    let alphabet = origin_of(sequence).and_then(|origin| alphabet::load(&origin.area));
+    Budget {
+        asks: options.limit,
+        kept: alphabet.map_or(0, |alphabet| alphabet.opening_of(&sequence.steps)),
+    }
+}
+
 fn shrink_one(options: &Options) -> Result<(), String> {
     let bench = Bench::new(options)?;
     let sequence = match options.files.first() {
@@ -504,7 +514,6 @@ fn shrink_one(options: &Options) -> Result<(), String> {
     };
     let area = origin_of(&sequence)?.area;
     let host = host_of(options, &area)?;
-    let perturbed = options.perturbation.is_some();
     let mut run = Run::new(options, bench.reported());
     run.what = format!("shrinking {}", sequence.name);
     run.hosts([(area.as_str(), host)]);
@@ -519,10 +528,16 @@ fn shrink_one(options: &Options) -> Result<(), String> {
     let between = bench.targets().between();
     println!(
         "{}",
-        report::differ_line(&sequence.name, &between, &found, perturbed)
+        report::differ_line(
+            &sequence.name,
+            &between,
+            &found,
+            options.perturbation.is_some()
+        )
     );
     let mut last = replays;
-    let shrunk = shrink(&sequence.steps, &found, options.limit, &mut |steps| {
+    let budget = budget(options, &sequence);
+    let shrunk = shrink(&sequence.steps, &found, budget, &mut |steps| {
         let (divergence, replays) = diverges(&sequence.with_steps(steps.to_vec()), &bench, host)?;
         if divergence.is_some() {
             last = replays;
@@ -542,26 +557,41 @@ fn shrink_one(options: &Options) -> Result<(), String> {
         &evidence,
     );
     if !shrunk.is_confirmed() {
-        let what = if bench.targets().is_differential() {
-            "noise or a race of one target, not a divergence to file: replay it on each \
-             target alone, with --repeats 24, to tell which"
-        } else {
-            "noise for calibration, not a divergence to file"
-        };
-        return Err(format!(
-            "{}: the shortest sequence diverged {} times out of {CONFIRMATIONS}: this is {what}",
-            sequence.name, shrunk.confirmed
+        return Err(unconfirmed(
+            &sequence.name,
+            shrunk.confirmed,
+            bench.targets(),
         ));
     }
     if options.corpus {
-        let path = corpus::directory(&area).join(format!("{}.jsonl", shortest.name));
-        std::fs::create_dir_all(corpus::directory(&area))
-            .and_then(|()| std::fs::write(&path, shortest.text()))
-            .map_err(|error| format!("{}: {error}", path.display()))?;
-        println!(
-            "FUZZ corpus: wrote {}",
-            path.strip_prefix(REPOSITORY).unwrap_or(&path).display()
-        );
+        keep_in_corpus(&area, &shortest)?;
     }
+    Ok(())
+}
+
+/// Why a shrink whose shortest sequence diverged only `confirmed` times is not a divergence.
+fn unconfirmed(name: &str, confirmed: usize, targets: &Targets) -> String {
+    let what = if targets.is_differential() {
+        "noise or a race of one target, not a divergence to file: replay it on each \
+         target alone, with --repeats 24, to tell which"
+    } else {
+        "noise for calibration, not a divergence to file"
+    };
+    format!(
+        "{name}: the shortest sequence diverged {confirmed} times out of {CONFIRMATIONS}: this \
+         is {what}"
+    )
+}
+
+/// Writes a confirmed shortest sequence into its area's corpus.
+fn keep_in_corpus(area: &str, shortest: &Sequence) -> Result<(), String> {
+    let path = corpus::directory(area).join(format!("{}.jsonl", shortest.name));
+    std::fs::create_dir_all(corpus::directory(area))
+        .and_then(|()| std::fs::write(&path, shortest.text()))
+        .map_err(|error| format!("{}: {error}", path.display()))?;
+    println!(
+        "FUZZ corpus: wrote {}",
+        path.strip_prefix(REPOSITORY).unwrap_or(&path).display()
+    );
     Ok(())
 }

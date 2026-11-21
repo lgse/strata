@@ -31,6 +31,20 @@ impl Shrunk {
     }
 }
 
+/// How far a shrink may go: how often it may ask the oracle before the confirmations, and how
+/// many leading steps it keeps whatever happens (an alphabet's opening).
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct Budget {
+    pub(crate) asks: usize,
+    pub(crate) kept: usize,
+}
+
+impl Budget {
+    pub(crate) fn asks(asks: usize) -> Self {
+        Self { asks, kept: 0 }
+    }
+}
+
 struct Search<'a, 'b> {
     oracle: &'a mut Oracle<'b>,
     found: &'a Divergence,
@@ -50,31 +64,33 @@ impl Search<'_, '_> {
     }
 }
 
-/// Shrinks `steps`, which diverged as `found`, asking the oracle at most `limit` times
+/// Shrinks `steps`, which diverged as `found`, asking the oracle at most `budget.asks` times
 /// before the confirmations.
 ///
 /// Steps after the divergence are dropped first, since nothing after it can matter. Then
-/// runs of steps are taken out, halves first and single steps last, keeping every removal
-/// after which the same divergence still shows first (`Divergence::is`).
+/// runs of steps after the first `budget.kept` are taken out, halves first and single steps
+/// last, keeping every removal after which the same divergence still shows first
+/// (`Divergence::is`).
 pub(crate) fn shrink(
     steps: &[String],
     found: &Divergence,
-    limit: usize,
+    budget: Budget,
     oracle: &mut Oracle,
 ) -> Result<Shrunk, String> {
     let mut search = Search {
         oracle,
         found,
         asked: 0,
-        limit,
+        limit: budget.asks,
     };
     let mut divergence = found.clone();
     let mut current = steps[..found.step.min(steps.len())].to_vec();
+    let kept = budget.kept.min(current.len());
     let mut chunks = 2;
-    while current.len() >= 2 && !search.spent() {
-        let size = current.len().div_ceil(chunks);
+    while current.len() - kept >= 2 && !search.spent() {
+        let size = (current.len() - kept).div_ceil(chunks);
         let mut shorter = None;
-        for start in (0..current.len()).step_by(size) {
+        for start in (kept..current.len()).step_by(size) {
             let end = (start + size).min(current.len());
             let mut candidate = current[..start].to_vec();
             candidate.extend_from_slice(&current[end..]);
@@ -94,7 +110,7 @@ pub(crate) fn shrink(
                 chunks = (chunks - 1).max(2);
             }
             None if size == 1 => break,
-            None => chunks = (chunks * 2).min(current.len()),
+            None => chunks = (chunks * 2).min(current.len() - kept),
         }
     }
     let mut confirmed = 0;

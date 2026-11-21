@@ -35,6 +35,10 @@ pub(crate) struct Alphabet {
     /// actions need a compositor (`host.rs`).
     #[serde(default)]
     pub(crate) host: Host,
+    /// Steps every sequence starts with, before the drawn actions, and the shrinker keeps: what
+    /// the application needs before any action can mean something, as a portal request.
+    #[serde(default)]
+    pub(crate) opening: Vec<String>,
     #[serde(rename = "action")]
     pub(crate) actions: Vec<Action>,
 }
@@ -140,6 +144,9 @@ impl Alphabet {
         if self.host != Host::Offscreen {
             pinned["host"] = Value::from(self.host.name());
         }
+        if !self.opening.is_empty() {
+            pinned["opening"] = Value::from(self.opening.clone());
+        }
         digest(&pinned)
     }
 
@@ -207,13 +214,20 @@ impl Alphabet {
                 .check()
                 .map_err(|error| format!("action {:?}: {error}", action.name))?;
         }
+        if let Some(step) = self.opening.iter().find(|step| !is_plain_step(step)) {
+            return Err(format!(
+                "an opening step is one line of JSON with nothing to choose: {step:?}"
+            ));
+        }
         // Every step of every action, with every value it may take, as one sequence: what
         // the loader and the replay would refuse of a generated sequence is refused here.
         let specimen = format!("fuzz-{}-specimen", self.area);
         Sequence {
             header: self.header_line(&specimen),
             name: specimen,
-            steps: self.actions.iter().flat_map(Action::every_step).collect(),
+            steps: (self.opening.iter().cloned())
+                .chain(self.actions.iter().flat_map(Action::every_step))
+                .collect(),
         }
         .load()
         .map(|_| ())
@@ -304,6 +318,22 @@ impl Action {
             }
         }
         steps
+    }
+}
+
+fn is_plain_step(step: &str) -> bool {
+    !step.contains('\n') && unfilled(step).is_none() && serde_json::from_str::<Value>(step).is_ok()
+}
+
+impl Alphabet {
+    /// How many of `steps` are this alphabet's opening: all of it when they start with it,
+    /// else none, as a sequence written by another version may not.
+    pub(crate) fn opening_of(&self, steps: &[String]) -> usize {
+        if steps.starts_with(&self.opening) {
+            self.opening.len()
+        } else {
+            0
+        }
     }
 }
 

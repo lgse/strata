@@ -468,3 +468,59 @@ fn a_filter_in_columns_keeps_the_load_cursor_and_a_hidden_view_clean() {
         },
     );
 }
+
+/// A chooser's footer error is an alert, which the snapshot reads as its dialog, but it takes no
+/// keyboard: the keyboard invariant asks no hold for it, and still asks one for a dialog of
+/// another name (seen by F5's `session-portal` alphabet, Open clicked over a folder).
+#[test]
+fn a_chooser_s_footer_error_needs_no_keyboard_hold() {
+    shown_in(
+        "list",
+        "a_chooser_s_footer_error_needs_no_keyboard_hold",
+        |backend, _| {
+            let mut dialogs_broken = Vec::new();
+            backend.update(|app, _| {
+                crate::chooser::mount_request(
+                    app,
+                    open_request(),
+                    crate::chooser::source::ChooserFileSource::new(None),
+                    (None, Box::new(|_| {})),
+                );
+                app.chooser.show_error("Choose a file");
+                for dialog in ["Choose a file", "Delete"] {
+                    let observation = strata_qa::Observation {
+                        dialog: Some(dialog.to_owned()),
+                        ..strata_qa::Observation::default()
+                    };
+                    let broken = crate::qa::invariants::check(app, &observation, true);
+                    dialogs_broken.push(
+                        broken
+                            .iter()
+                            .filter(|failure| failure.contains("a dialog"))
+                            .count(),
+                    );
+                }
+            });
+            assert_eq!(dialogs_broken, [0, 1], "the footer error, then a dialog");
+        },
+    );
+}
+
+fn open_request() -> crate::portal::ChooserRequest {
+    crate::portal::ChooserRequest {
+        token: "fuzz".to_owned(),
+        title: "Choose files".to_owned(),
+        accept_label: "Open".to_owned(),
+        modal: false,
+        parent: None,
+        parent_size_hint: None,
+        initial_directory: std::env::temp_dir(),
+        kind: crate::portal::ChooserKind::Open {
+            directory: false,
+            multiple: true,
+        },
+        filters: Vec::new(),
+        current_filter: None,
+        choices: Vec::new(),
+    }
+}

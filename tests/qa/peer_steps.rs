@@ -195,6 +195,11 @@ impl Peers {
     pub(crate) fn foreign_runs(&self) -> bool {
         self.foreign.is_some()
     }
+
+    /// The last portal request sent, if any.
+    pub(crate) fn portal_request(&mut self) -> Option<&mut peers::PortalRequest> {
+        self.portal.as_mut()
+    }
 }
 
 pub(crate) enum PeerError {
