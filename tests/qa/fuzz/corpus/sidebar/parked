@@ -17,7 +17,11 @@
 # (lgse/strata#2644); 0x1b, a drag across an open menu (lgse/strata#2406); 0x31, Shift+Tab from
 # the files (lgse/strata#2379). Version 2, that round's draft, met 0x0f, Shift+Up shrinking a
 # range to one folder (lgse/strata#2650).
-v1-000000000000000e divergence lgse/strata#2406
+#
+# F4's round 3 fixed the Unpin case (lgse/strata#2406): 0x0e's Unpin, at step 37, leaves the
+# keyboard on the row after it on Rune, and its first difference is now a right-click on a row
+# while the Menu key's menu is open, at step 20 (lgse/strata#2644).
+v1-000000000000000e divergence lgse/strata#2644
 v1-0000000000000010 divergence lgse/strata#2406
 v1-0000000000000016 divergence lgse/strata#2646
 v1-0000000000000018 divergence lgse/strata#2647
