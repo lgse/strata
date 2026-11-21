@@ -133,3 +133,46 @@ fn a_wrong_command_line_prints_the_usage_the_release_check_looks_for() {
     assert!(said.starts_with("usage: strata --qa "), "{said}");
     assert!(output.stdout.is_empty(), "stdout is the replies' alone");
 }
+
+#[test]
+fn opening_settings_updates_does_not_trip_the_ui_thread_guard() {
+    let home = tempfile::tempdir().expect("a home");
+    let folder = tempfile::tempdir().expect("a folder");
+    let mut child = binary(home.path())
+        .arg("--qa")
+        .arg(folder.path())
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("the binary starts");
+    let mut replies = BufReader::new(child.stdout.take().expect("stdout"));
+
+    let ready = reply(&mut replies);
+    assert_eq!(ready["ok"], true, "{ready}");
+
+    send(&mut child, &json!({ "key": "ctrl+comma" }));
+    let opened = reply(&mut replies);
+    assert_eq!(opened["ok"], true, "{opened}");
+    assert_eq!(opened["app"]["dialog"], "Settings", "{opened}");
+
+    send(
+        &mut child,
+        &json!({ "wait": { "present": { "role": "button", "name": "Updates" } } }),
+    );
+    let shown = reply(&mut replies);
+    assert_eq!(shown["ok"], true, "{shown}");
+
+    send(
+        &mut child,
+        &json!({ "click": { "role": "button", "name": "Updates" } }),
+    );
+    let updates = reply(&mut replies);
+    assert_eq!(updates["ok"], true, "{updates}");
+    assert_eq!(updates["app"]["dialog"], "Settings", "{updates}");
+    assert_eq!(updates["criticals"], json!([]), "{updates}");
+
+    drop(child.stdin.take());
+    let status = child.wait().expect("the binary ends");
+    assert!(status.success(), "{status}");
+}
