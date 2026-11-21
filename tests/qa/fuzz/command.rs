@@ -557,26 +557,41 @@ fn shrink_one(options: &Options) -> Result<(), String> {
         &evidence,
     );
     if !shrunk.is_confirmed() {
-        let what = if bench.targets().is_differential() {
-            "noise or a race of one target, not a divergence to file: replay it on each \
-             target alone, with --repeats 24, to tell which"
-        } else {
-            "noise for calibration, not a divergence to file"
-        };
-        return Err(format!(
-            "{}: the shortest sequence diverged {} times out of {CONFIRMATIONS}: this is {what}",
-            sequence.name, shrunk.confirmed
+        return Err(unconfirmed(
+            &sequence.name,
+            shrunk.confirmed,
+            bench.targets(),
         ));
     }
     if options.corpus {
-        let path = corpus::directory(&area).join(format!("{}.jsonl", shortest.name));
-        std::fs::create_dir_all(corpus::directory(&area))
-            .and_then(|()| std::fs::write(&path, shortest.text()))
-            .map_err(|error| format!("{}: {error}", path.display()))?;
-        println!(
-            "FUZZ corpus: wrote {}",
-            path.strip_prefix(REPOSITORY).unwrap_or(&path).display()
-        );
+        keep_in_corpus(&area, &shortest)?;
     }
+    Ok(())
+}
+
+/// Why a shrink whose shortest sequence diverged only `confirmed` times is not a divergence.
+fn unconfirmed(name: &str, confirmed: usize, targets: &Targets) -> String {
+    let what = if targets.is_differential() {
+        "noise or a race of one target, not a divergence to file: replay it on each \
+         target alone, with --repeats 24, to tell which"
+    } else {
+        "noise for calibration, not a divergence to file"
+    };
+    format!(
+        "{name}: the shortest sequence diverged {confirmed} times out of {CONFIRMATIONS}: this \
+         is {what}"
+    )
+}
+
+/// Writes a confirmed shortest sequence into its area's corpus.
+fn keep_in_corpus(area: &str, shortest: &Sequence) -> Result<(), String> {
+    let path = corpus::directory(area).join(format!("{}.jsonl", shortest.name));
+    std::fs::create_dir_all(corpus::directory(area))
+        .and_then(|()| std::fs::write(&path, shortest.text()))
+        .map_err(|error| format!("{}: {error}", path.display()))?;
+    println!(
+        "FUZZ corpus: wrote {}",
+        path.strip_prefix(REPOSITORY).unwrap_or(&path).display()
+    );
     Ok(())
 }

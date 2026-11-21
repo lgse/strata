@@ -3520,6 +3520,10 @@ sequence only together with the alphabet's version, so the version is part of th
 - **Why:** not traced. The session host shows it and the offscreen host does not, so it is in
   the windowed path: the session host, Rune's input through winit, or the session QA backend
   (F5's triage).
+- **Surveying it:** the parked three steps break the invariant in about half the session-host
+  replays (6 of 12 here, 3 of 6 in #2708's review, 0 of 6 offscreen), so a survey takes about 6
+  repeats on the session host (`--repeats 6`) to tell it fixed. What breaks is Rune's own
+  state, the view against its browser, after a double click as a real window delivers it.
 - **Concerns:** the seed's first three steps, parked in
   `tests/qa/fuzz/corpus/session-portal/`; `session-portal` v2 opens folders by a click and
   Return.
