@@ -84,6 +84,35 @@ fn f2_on_a_filter_result_renames_the_result() {
     );
 }
 
+/// Ctrl+period with the filter open searches again with hidden files shown, so a hidden
+/// entry that matches joins the results, as GTK's `on_hidden_toggled` asks each column's
+/// search session (lgse/strata#2697).
+#[test]
+fn showing_hidden_files_brings_a_hidden_match_into_the_filters_results() {
+    hosted(
+        MODULE,
+        "filter::showing_hidden_files_brings_a_hidden_match_into_the_filters_results",
+        |mut host| {
+            let folder = fixture();
+            open(&mut host, folder.path());
+            press(&mut host, "ctrl+f");
+            type_text(&mut host, "e");
+            wait(&mut host, "the results across the folders", |seen| {
+                seen.panes[0].names().contains(&"report.md")
+            });
+            assert!(
+                !seen(&host).panes[0].names().contains(&".hidden.txt"),
+                "a hidden entry matched with hidden files not shown"
+            );
+
+            press(&mut host, "ctrl+period");
+            wait(&mut host, "the hidden entry among the results", |seen| {
+                seen.panes[0].names().contains(&".hidden.txt")
+            });
+        },
+    );
+}
+
 /// A view switch keeps the filter, its query and its results, and the keyboard in its field
 /// (GTK's `ActivePaneFilter` and `restore_view_switch_focus`), into Icons and back.
 #[test]

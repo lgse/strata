@@ -55,7 +55,9 @@
 //!   moves to the cursor; a step then selects the cursor's entry alone without moving, so
 //!   Shift+Down with nothing selected selects one entry and the next selects two
 //!   (`extend_selection`), while a page or a jump extends from the cursor at once
-//!   (`extend_page_selection`). After Escape the range so starts at the cursor. With entries
+//!   (`extend_page_selection`). With no cursor, a page or a jump selects where it lands alone,
+//!   as a column just opened takes Shift+Home on GTK. After Escape the range so starts at the
+//!   cursor. With entries
 //!   selected but no anchor or cursor (a marquee's), the anchor goes to the cursor, or to the
 //!   end the move starts from, and the step moves. A sideways step with no neighbour isn't
 //!   taken: Columns' Shift+Right and Shift+Left are C2's, and List does nothing.

@@ -1,0 +1,4 @@
+{"scenario":"fuzz-filter-v2-000000000000002e","modes":["columns"]}
+{"type":"no","when":{"all":[{"focused":true},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}
+{"key":"ctrl+2","when":{"all":[{"not":{"field":{"name":"Rename"}}},{"not":{"dialog":true}},{"menu_items":null}]}}
+{"click":{"result":"documents/notes.txt"},"mods":["ctrl"],"when":{"all":[{"editable_fields":1},{"not":{"editable_text":""}},{"present":{"result":"documents/notes.txt"}},{"not":{"field":{"name":"Rename"}}},{"not":{"dialog":true}},{"menu_items":null}]}}

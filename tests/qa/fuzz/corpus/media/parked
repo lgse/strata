@@ -4,4 +4,10 @@
 #
 # v7, 0x5b: a seek forward past the end of tone.wav, then play or pause: GTK's time reads the
 # end, Rune's 0:00 (lgse/strata#2632). Shrunk from 43 steps to 6, confirmed 3 of 3 (F4's round 1).
+# v7-0000000000000085: Left in a PDF preview zoomed by Ctrl+wheel: GTK's keyboard goes back to
+# the listing, Rune's stays (F4's round 3).
+# v7-0000000000000090: a seek, then a key in the drawer: GTK's time stays, Rune's reads 0:00
+# (F4's round 3).
 v7-000000000000005b divergence lgse/strata#2632
+v7-0000000000000085 divergence lgse/strata#2691
+v7-0000000000000090 divergence lgse/strata#2632

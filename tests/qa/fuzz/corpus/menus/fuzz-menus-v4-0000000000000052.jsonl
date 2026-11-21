@@ -1,0 +1,4 @@
+{"scenario":"fuzz-menus-v4-0000000000000052","modes":["columns"],"prefs":{"type_to_search":false,"keymap":{"default":{"activate":["Return","o"],"escape":["Escape","<Control>bracketleft"],"rename":["<Control>e"],"actions.compress":["<Control><Shift>g"]}}}}
+{"key":"j","when":{"all":[{"focused_pane":true},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}
+{"click":{"background":true,"dir":"documents"},"button":3,"when":{"all":[{"present":{"pane":"documents"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}
+{"click":{"menu_item":"Refresh"},"when":{"present":{"menu_item":"Refresh"}}}

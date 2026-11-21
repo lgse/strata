@@ -1,0 +1,15 @@
+{"scenario":"fuzz-filter-v2-000000000000009a","modes":["columns"]}
+{"type":"e","when":{"all":[{"field":{"focused":true}},{"not":{"field":{"name":"Rename"}}}]}}
+{"key":"ctrl+2","when":{"all":[{"not":{"field":{"name":"Rename"}}},{"not":{"dialog":true}},{"menu_items":null}]}}
+{"key":"ctrl+f","when":{"all":[{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}
+{"key":"ctrl+a","when":{"all":[{"field":{"focused":true}},{"not":{"field":{"name":"Rename"}}}]}}
+{"type":"pictures","when":{"all":[{"field":{"focused":true}},{"not":{"field":{"name":"Rename"}}}]}}
+{"key":"Return","when":{"all":[{"field":{"focused":true}},{"not":{"field":{"name":"Rename"}}},{"matches":{"contains":["pictures"]}}]}}
+{"key":"ctrl+f","when":{"all":[{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}
+{"key":"ctrl+a","when":{"all":[{"field":{"focused":true}},{"not":{"field":{"name":"Rename"}}}]}}
+{"type":"documents","when":{"all":[{"field":{"focused":true}},{"not":{"field":{"name":"Rename"}}}]}}
+{"type":"/","when":{"all":[{"field":{"focused":true}},{"not":{"field":{"name":"Rename"}}},{"matches":{"contains":["documents"]}}]}}
+{"click":{"role":"toggle button","name":"Appearance"},"when":{"all":[{"not":{"field":{"name":"Rename"}}},{"not":{"dialog":true}},{"menu_items":null}]}}
+{"click":{"role":"check menu item","name":"Hidden files"},"when":{"present":{"role":"check menu item","name":"Hidden files"}}}
+{"key":"Escape","when":{"present":{"role":"radio menu item","name":"Columns"}}}
+{"key":"ctrl+3","when":{"all":[{"not":{"field":{"name":"Rename"}}},{"not":{"dialog":true}},{"menu_items":null}]}}

@@ -1,0 +1,4 @@
+{"scenario":"fuzz-columns-v3-00000000000000b4","modes":["columns"],"prefs":{"type_to_search":false}}
+{"fs":{"path":"pictures/fuzz-c.txt","write":"fuzz\n"}}
+{"click":{"entry":"pictures"},"when":{"all":[{"present":{"entry":"pictures"}},{"not":{"field":{"name":"Rename"}}}]}}
+{"key":"shift+Home","when":{"not":{"field":{"name":"Rename"}}}}

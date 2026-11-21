@@ -1,0 +1,4 @@
+{"scenario":"fuzz-menus-v4-000000000000001c","modes":["columns"],"prefs":{"type_to_search":false,"keymap":{"default":{"activate":["Return","o"],"escape":["Escape","<Control>bracketleft"],"rename":["<Control>e"],"actions.compress":["<Control><Shift>g"]}}}}
+{"click":{"entry":"pictures"},"when":{"all":[{"present":{"entry":"pictures"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}
+{"key":"F1","when":{"all":[{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}
+{"key":"Escape","when":{"dialog":"Keyboard shortcuts"}}

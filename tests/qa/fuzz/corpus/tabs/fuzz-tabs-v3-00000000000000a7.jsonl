@@ -1,0 +1,5 @@
+{"scenario":"fuzz-tabs-v3-00000000000000a7","modes":["columns"],"prefs":{"type_to_search":false}}
+{"click":{"entry":"pictures"},"when":{"all":[{"present":{"entry":"pictures"}},{"editable_fields":0},{"menu_items":null},{"not":{"dialog":true}}]}}
+{"key":"ctrl+t","when":{"all":[{"not":{"dialog":true}},{"menu_items":null}]}}
+{"key":"ctrl+l","when":{"all":[{"present":{"role":"page tab"}},{"editable_fields":0},{"menu_items":null},{"not":{"dialog":true}}]}}
+{"key":"ctrl+shift+Tab","when":{"all":[{"present":{"role":"page tab"}},{"field":{"name":"Location (Ctrl+L)","focused":true}}]}}

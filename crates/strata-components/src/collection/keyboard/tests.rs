@@ -462,6 +462,25 @@ fn with_no_cursor_down_return_and_shift_down_start_at_the_first_up_at_the_last()
 }
 
 #[test]
+fn with_no_cursor_a_shift_page_or_jump_selects_where_it_lands_alone() {
+    // browser/selection: Strata's `extend_page_selection` anchors at the cursor, so with none, as in a column just opened, Shift+Home, Shift+End and the Shift+page keys select the entry they land on alone (lgse/strata#2693).
+    for (key, landed) in [
+        (Key::Home, 0),
+        (Key::End, 4),
+        (Key::PageDown, 0),
+        (Key::PageUp, 4),
+    ] {
+        let mut r = Rig::list(5);
+        r.shift(key.clone());
+        assert_eq!(
+            (r.selected(), r.cursor(), r.anchor()),
+            (vec![landed as u64], Some(landed), Some(landed)),
+            "{key:?}"
+        );
+    }
+}
+
+#[test]
 fn after_escape_the_next_shift_range_starts_at_the_cursor() {
     // browser/selection: After Escape clears a selection, the next Shift+arrow range starts at the keyboard cursor.
     let mut r = Rig::list(8);

@@ -1,0 +1,6 @@
+{"scenario":"fuzz-entries-v3-0000000000000040","modes":["columns"],"prefs":{"type_to_search":false}}
+{"key":"ctrl+shift+n","when":{"not":{"field":{"name":"Rename"}}}}
+{"key":"Escape","when":{"field":{"name":"Rename","focused":true}}}
+{"fs":{"path":"documents/fuzz-b.txt","write":"fuzz\n"}}
+{"key":"Up","when":{"not":{"field":{"name":"Rename"}}}}
+{"click":{"entry":"documents"},"when":{"all":[{"present":{"entry":"documents"}},{"not":{"field":{"name":"Rename"}}}]}}

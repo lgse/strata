@@ -1,0 +1,23 @@
+{"scenario":"fuzz-views-v4-00000000000000a7","modes":["columns"],"prefs":{"type_to_search":false}}
+{"key":"ctrl+2"}
+{"key":"ctrl+3"}
+{"key":"Down","when":{"not":{"view_mode":"Icons"}}}
+{"key":"ctrl+1"}
+{"key":"alt+Left","when":{"all":[{"focused_pane":true},{"not":{"directory":"$root"}}]}}
+{"click":{"entry":"documents"},"count":2,"when":{"all":[{"present":{"entry":"documents"}},{"not":{"view_mode":"Columns"}}]}}
+{"key":"Down","when":{"not":{"view_mode":"Icons"}}}
+{"key":"alt+Up","when":{"all":[{"focused_pane":true},{"not":{"directory":"$root"}}]}}
+{"key":"Right","when":{"all":[{"view_mode":"Columns"},{"not":{"focused":"archive"}}]}}
+{"key":"Down","when":{"not":{"view_mode":"Icons"}}}
+{"key":"ctrl+1"}
+{"key":"Down","when":{"not":{"view_mode":"Icons"}}}
+{"key":"Escape","when":{"focused_pane":true}}
+{"click":{"role":"toggle button","name":"Appearance"}}
+{"click":{"role":"radio menu item","name":"Columns"},"when":{"present":{"role":"radio menu item","name":"Columns"}}}
+{"key":"ctrl+3"}
+{"key":"Escape","when":{"focused_pane":true}}
+{"key":"ctrl+3"}
+{"key":"Up","when":{"all":[{"not":{"view_mode":"Icons"}},{"not":{"focused":{"one_of":["archive", "notes.txt", "diagram.txt"]}}}]}}
+{"key":"Down","when":{"not":{"view_mode":"Icons"}}}
+{"key":"Right","when":{"all":[{"view_mode":"Columns"},{"not":{"focused":"archive"}}]}}
+{"click":{"entry":"pictures"},"count":2,"when":{"all":[{"present":{"entry":"pictures"}},{"not":{"view_mode":"Columns"}}]}}

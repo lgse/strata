@@ -16,6 +16,30 @@
 # the view's is not (F4's round 2).
 # v3-0000000000000038: a Shift+click after a folder made by a typed path: GTK selects the entry
 # alone, Rune ranges from the folder (F4's round 2).
+# v5-0000000000000005: a Delete leaves documents first, then Up: GTK's keyboard goes to the
+# header actions (owner.md A1 item 3), the name guard's accepted gap (F4's round 3).
+# v5-0000000000000011: a Ctrl+Z that takes an entry out of the root: GTK's keyboard goes to the
+# neighbour, Rune's to none (F4's round 3).
+# v5-0000000000000002: a click on documents after a Delete: GTK reports notes.txt focused, by
+# its values (F4's round 3).
+# v5-0000000000000014: a Shift+click after a folder a typed path made (F4's round 3).
+# v5-000000000000000e: Redo after undoing a rename into a new path, the seed v3 parked (F4's
+# round 3).
+# v3-0000000000000016: Redo makes a folder again: GTK's keyboard goes to it, Rune's to none
+# (F4's round 3).
+# v3-0000000000000026: Redo makes a folder again, by Ctrl+Y (F4's round 3).
+# v3-0000000000000072: a right-click under Unable to rename item opens GTK's entry menu (F4's
+# round 3).
+# v3-0000000000000040: a click opening documents after a file written into it: GTK reports its
+# first row focused (F4's round 3).
+# v5-00000000000000d9: Ctrl+Z brings back the b a Delete took: the browser's anchor comes back
+# with it (F4's round 3).
+# v5-00000000000000cf: a Shift+click under Unable to rename item: Rune's dialog closes, GTK's
+# stays (F4's round 3).
+# v5-0000000000000091: Escape closes archive's column after a Ctrl+Z cleared the root's
+# selection: GTK's keyboard goes to archive (F4's round 3).
+# v5-00000000000000a0: a file written into archive just opened: GTK reports its first row
+# focused (F4's round 3).
 v1-0000000000000004 oracle lgse/strata#2387
 v1-0000000000000005 oracle lgse/strata#2387
 v3-0000000000000001 oracle lgse/strata#2387
@@ -26,5 +50,18 @@ v3-000000000000000d oracle lgse/strata#2387
 v3-000000000000000e oracle lgse/strata#2435
 v3-000000000000000f oracle lgse/strata#2387
 v3-0000000000000010 oracle lgse/strata#2387
+v3-0000000000000016 divergence lgse/strata#2675
+v3-0000000000000026 divergence lgse/strata#2675
 v3-0000000000000038 divergence lgse/strata#2652
+v3-0000000000000040 oracle lgse/strata#2356
 v3-0000000000000047 oracle lgse/strata#2387
+v3-0000000000000072 divergence lgse/strata#2676
+v5-0000000000000002 oracle lgse/strata#2356
+v5-0000000000000005 divergence lgse/strata#2671
+v5-000000000000000e oracle lgse/strata#2435
+v5-0000000000000011 divergence lgse/strata#2672
+v5-0000000000000014 divergence lgse/strata#2652
+v5-0000000000000091 divergence lgse/strata#2682
+v5-00000000000000a0 oracle lgse/strata#2356
+v5-00000000000000cf divergence lgse/strata#2676
+v5-00000000000000d9 oracle lgse/strata#2387

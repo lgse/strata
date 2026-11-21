@@ -1,0 +1,35 @@
+{"scenario":"fuzz-chooser-v5-00000000000007d6","modes":["columns"],"prefs":{"type_to_search":false}}
+{"click":{"entry":"pictures","dir":"$root"},"button":3,"when":{"all":[{"present":{"entry":"pictures","dir":"$root"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null},{"absent":{"toplevel":"Copy to"}},{"absent":{"toplevel":"Move to"}}]}}
+{"click":{"menu_item":"Move to…"},"when":{"present":{"menu_item":"Move to…"}}}
+{"key":"Escape","when":{"menu_items":{}}}
+{"key":"ctrl+l","when":{"present":{"toplevel":"Move to"}}}
+{"key":"ctrl+a","when":{"present":{"field":true,"within":{"toplevel":"Move to"}}}}
+{"type":"$fixture/archive","when":{"present":{"field":true,"within":{"toplevel":"Move to"}}}}
+{"key":"Return","when":{"present":{"field":true,"within":{"toplevel":"Move to"}}}}
+{"key":"ctrl+a","when":{"present":{"field":true,"within":{"toplevel":"Copy to"}}}}
+{"type":"$fixture/archive","when":{"present":{"field":true,"within":{"toplevel":"Copy to"}}}}
+{"key":"Return","when":{"present":{"field":true,"within":{"toplevel":"Copy to"}}}}
+{"key":"Right","when":{"all":[{"present":{"toplevel":"Move to"}},{"absent":{"field":true,"within":{"toplevel":"Move to"}}}]}}
+{"click":{"role":"button","name":"Move here","within":{"toplevel":"Move to"}},"when":{"present":{"role":"button","name":"Move here","within":{"toplevel":"Move to"}}}}
+{"click":{"dialog_button":"Skip"},"when":{"all":[{"dialog":"File already exists"},{"present":{"dialog_button":"Skip"}}]}}
+{"click":{"entry":"pictures","dir":"$root"},"button":3,"when":{"all":[{"present":{"entry":"pictures","dir":"$root"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null},{"absent":{"toplevel":"Copy to"}},{"absent":{"toplevel":"Move to"}}]}}
+{"click":{"menu_item":"Copy to…"},"when":{"present":{"menu_item":"Copy to…"}}}
+{"key":"Escape","when":{"menu_items":{}}}
+{"click":{"entry":"documents","dir":"$root"},"button":3,"when":{"all":[{"present":{"entry":"documents","dir":"$root"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null},{"absent":{"toplevel":"Copy to"}},{"absent":{"toplevel":"Move to"}}]}}
+{"click":{"menu_item":"Copy to…"},"when":{"present":{"menu_item":"Copy to…"}}}
+{"key":"Escape","when":{"menu_items":{}}}
+{"key":"ctrl+l","when":{"present":{"toplevel":"Move to"}}}
+{"key":"ctrl+a","when":{"present":{"field":true,"within":{"toplevel":"Move to"}}}}
+{"type":"$fixture/documents","when":{"present":{"field":true,"within":{"toplevel":"Move to"}}}}
+{"key":"Return","when":{"present":{"field":true,"within":{"toplevel":"Move to"}}}}
+{"click":{"entry":"todo.txt","dir":"$root"},"button":3,"when":{"all":[{"present":{"entry":"todo.txt","dir":"$root"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null},{"absent":{"toplevel":"Copy to"}},{"absent":{"toplevel":"Move to"}}]}}
+{"click":{"menu_item":"Move to…"},"when":{"present":{"menu_item":"Move to…"}}}
+{"key":"Escape","when":{"menu_items":{}}}
+{"key":"ctrl+l","when":{"present":{"toplevel":"Copy to"}}}
+{"key":"ctrl+a","when":{"present":{"field":true,"within":{"toplevel":"Copy to"}}}}
+{"type":"$fixture/pictures","when":{"present":{"field":true,"within":{"toplevel":"Copy to"}}}}
+{"key":"Return","when":{"present":{"field":true,"within":{"toplevel":"Copy to"}}}}
+{"click":{"entry":"todo.txt","dir":"$root"},"button":3,"when":{"all":[{"present":{"entry":"todo.txt","dir":"$root"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null},{"absent":{"toplevel":"Copy to"}},{"absent":{"toplevel":"Move to"}}]}}
+{"click":{"menu_item":"Move to…"},"when":{"present":{"menu_item":"Move to…"}}}
+{"key":"Escape","when":{"menu_items":{}}}
+{"click":{"role":"button","name":"Copy here","within":{"toplevel":"Copy to"}},"when":{"present":{"role":"button","name":"Copy here","within":{"toplevel":"Copy to"}}}}

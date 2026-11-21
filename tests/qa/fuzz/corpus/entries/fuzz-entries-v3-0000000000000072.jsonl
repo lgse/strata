@@ -1,0 +1,10 @@
+{"scenario":"fuzz-entries-v3-0000000000000072","modes":["columns"],"prefs":{"type_to_search":false}}
+{"key":"ctrl+shift+n","when":{"not":{"field":{"name":"Rename"}}}}
+{"type":"plans","when":{"field":{"name":"Rename","focused":true}}}
+{"key":"Return","when":{"field":{"name":"Rename","focused":true}}}
+{"click":{"entry":"todo.txt"},"button":3,"when":{"all":[{"present":{"entry":"todo.txt"}},{"not":{"field":{"name":"Rename"}}}]}}
+{"click":{"menu_item":"New File"},"when":{"present":{"menu_item":"New File"}}}
+{"wait":{"field":{"name":"Rename","focused":true}},"message":"the new folder’s name editor"}
+{"type":"plans","when":{"field":{"name":"Rename","focused":true}}}
+{"key":"Return","when":{"field":{"name":"Rename","focused":true}}}
+{"click":{"entry":"readme.md"},"button":3,"when":{"all":[{"present":{"entry":"readme.md"}},{"not":{"field":{"name":"Rename"}}}]}}

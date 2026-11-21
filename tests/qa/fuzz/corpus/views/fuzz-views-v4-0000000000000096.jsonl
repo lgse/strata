@@ -1,0 +1,11 @@
+{"scenario":"fuzz-views-v4-0000000000000096","modes":["columns"],"prefs":{"type_to_search":false}}
+{"key":"ctrl+2"}
+{"click":{"entry":"documents"},"count":2,"when":{"all":[{"present":{"entry":"documents"}},{"not":{"view_mode":"Columns"}}]}}
+{"click":{"role":"toggle button","name":"Appearance"}}
+{"click":{"role":"radio menu item","name":"List"},"when":{"present":{"role":"radio menu item","name":"List"}}}
+{"click":{"role":"toggle button","name":"Appearance"}}
+{"click":{"role":"check menu item","name":"Group by file type"},"when":{"all":[{"view_mode":"List"},{"present":{"role":"check menu item","name":"Group by file type"}}]}}
+{"key":"ctrl+period"}
+{"click":{"role":"toggle button","name":"Appearance"}}
+{"key":"Escape","when":{"present":{"role":"radio menu item","name":"Columns"}}}
+{"key":"ctrl+1"}
