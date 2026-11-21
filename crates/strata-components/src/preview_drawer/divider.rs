@@ -95,7 +95,7 @@ pub(super) fn divider<S: 'static>(
         .w(rules.line + rules.grip)
         .h_full()
         .pin(Some(0.0), Some(0.0), None, Some(0.0))
-        .raise()
+        .paint_order(1)
         .hover_group()
         .cursor(Cursor::ResizeColumn)
         .transition(Transition::none())
@@ -193,7 +193,7 @@ pub(super) fn overlays<S: 'static>(
             caption("preview-divider-caption")
                 .role("tooltip")
                 .absolute(x, look.space.sm)
-                .raise(),
+                .paint_order(1),
         );
     }
     if st.dragging {
@@ -209,7 +209,7 @@ pub(super) fn overlays<S: 'static>(
                 .border(1.0, k.c.border_strong)
                 .border_dash(4.0, 4.0)
                 .padding(look.space.sm)
-                .raise()
+                .paint_order(1)
                 // It fades on release, unless animations are off.
                 .transition(if shared.animations {
                     Transition::opacity()

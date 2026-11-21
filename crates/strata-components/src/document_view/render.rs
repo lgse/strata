@@ -61,6 +61,7 @@ pub(crate) struct Paint {
     pub link_line: Color,
     pub code_fill: Color,
     pub code_border: Color,
+    pub quote_fill: Color,
     pub quote_rule: Color,
     pub rule: Color,
     pub selection: Color,
@@ -89,12 +90,13 @@ impl Paint {
             muted: c.text_muted,
             accent: c.text_accent,
             link_line: k.alpha(c.text_accent, 0.4),
-            code_fill: c.layer_01,
-            code_border: c.border_muted,
-            quote_rule: c.layer_03,
+            code_fill: k.alpha(look.fill.muted, look.fill.muted.a * 0.54),
+            code_border: c.border_base,
+            quote_fill: k.alpha(look.fill.highlight, look.fill.highlight.a * 0.36),
+            quote_rule: k.alpha(c.border_active, 0.48),
             rule: c.border_base,
             selection: k.selection(),
-            head_fill: look.fill.muted,
+            head_fill: k.alpha(look.fill.highlight, look.fill.highlight.a * 0.64),
             table_rule: c.border_muted,
             placeholder: c.layer_02,
             hover: c.hover,
@@ -113,6 +115,13 @@ impl Paint {
             ..self.body
         }
         .lh((size * 1.35).round())
+    }
+
+    fn quote(&self) -> TextStyle {
+        TextStyle {
+            italic: true,
+            ..self.body
+        }
     }
 }
 
@@ -213,7 +222,7 @@ pub(crate) fn build_row<S: 'static>(ctx: &Rc<Ctx<S>>, s: &S, i: usize) -> El {
         ),
         kind => {
             let (indent, style, color, role, level) = match kind {
-                UnitKind::Heading(l) => (0.0, p.heading(*l), p.text, "heading", Some(*l)),
+                UnitKind::Heading(l) => (0.0, p.heading(*l), p.accent, "heading", Some(*l)),
                 UnitKind::ListItem { depth } => (
                     list_indent(Some(*depth)),
                     p.body,
@@ -223,21 +232,29 @@ pub(crate) fn build_row<S: 'static>(ctx: &Rc<Ctx<S>>, s: &S, i: usize) -> El {
                 ),
                 UnitKind::ListChild { depth, kind } => {
                     let (style, color) = match kind {
-                        ListChildKind::Heading(l) => (p.heading(*l), p.text),
-                        ListChildKind::Quote => (p.body, p.muted),
+                        ListChildKind::Heading(l) => (p.heading(*l), p.accent),
+                        ListChildKind::Quote => (p.quote(), p.muted),
                         ListChildKind::Code(_) => (p.mono, p.text),
                         ListChildKind::Paragraph => (p.body, p.text),
                     };
                     (list_indent(Some(*depth)), style, color, "paragraph", None)
                 }
-                UnitKind::Quote => (0.0, p.body, p.muted, "blockquote", None),
+                UnitKind::Quote => (0.0, p.quote(), p.muted, "blockquote", None),
                 _ => (0.0, p.body, p.text, "paragraph", None),
             };
             let t = unit_text(ctx, st, i, style, color, st.wraps());
             let t = match kind {
-                UnitKind::Quote => row()
+                UnitKind::Quote
+                | UnitKind::ListChild {
+                    kind: ListChildKind::Quote,
+                    ..
+                } => row()
                     .w_full()
                     .gap(CODE_PAD)
+                    .pr(CODE_PAD)
+                    .py(4.0)
+                    .fill(p.quote_fill)
+                    .radius(p.radius)
                     .child(el().w(QUOTE_BAR).h_full().fill(p.quote_rule).radius(1.0))
                     .child(t),
                 _ => t,
@@ -701,20 +718,24 @@ fn table<S: 'static>(ctx: &Rc<Ctx<S>>, i: usize, rows: &[Vec<Cell>], room: Optio
             let cell = cells.get(c);
             let content = cell.map_or_else(String::new, |c| c.text.clone());
             let st = styled(cell.map_or(&[][..], |c| &c.spans[..]), p);
-            let style = if cell.is_some_and(|c| c.header) {
-                TextStyle {
-                    weight: 700.0,
-                    ..p.body
-                }
+            let is_header = cell.is_some_and(|c| c.header);
+            let (style, color) = if is_header {
+                (
+                    TextStyle {
+                        weight: 700.0,
+                        ..p.body
+                    },
+                    p.accent,
+                )
             } else {
-                p.body
+                (p.body, p.text)
             };
             let key = format!("r{r}c{c}");
             let t = styled_text(
                 ctx,
                 content,
                 st,
-                (style, p.text),
+                (style, color),
                 &key,
                 format!("{i}/{key}"),
                 true,

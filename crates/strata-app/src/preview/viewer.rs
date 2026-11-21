@@ -724,6 +724,7 @@ fn code_view(
             }
         })
         .build(app, &app.look, cx)
+        .no_focus_ring()
 }
 
 fn loading_view(look: &Look) -> El {
@@ -755,7 +756,7 @@ fn message_view(app: &App, title: &str, detail: Option<&str>, can_open: bool) ->
                 .color(look.kit.c.text_base),
         );
     if !can_open && app.preview.content_focus != super::ContentFocus::None {
-        card = card.focusable(true);
+        card = card.focusable(true).no_focus_ring();
     }
     if let Some(detail) = detail.filter(|detail| !detail.is_empty()) {
         card = card.child(

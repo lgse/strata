@@ -5,11 +5,74 @@
 //! Wrap and Close. There is never a Print button.
 
 use rune::{El, Tx, col, el, icon, row, text};
-use rune_kit::{ControlSize, IconButton, IconButtonVariant, Spinner, State};
+use rune_kit::Spinner;
 use strata_kit::icons::IconName;
 use strata_kit::look::Look;
 
 use super::{DocumentView, DrawerIntent, DrawerState, Parts, Shared, find};
+
+/// Strata's `.preview-header-action` corner radius at 100 % roundness (`src/style.css`).
+const ACTION_RADIUS: f32 = 5.0;
+/// Strata's `.preview-header-action:disabled` opacity (`src/style.css`).
+const DISABLED_OPACITY: f32 = 0.46;
+/// Strata's `.preview-header-action:focus-visible` ring opacity (`src/style.css`).
+const FOCUS_RING_OPACITY: f32 = 0.52;
+
+/// Configuration for a preview header or find bar icon button (`.preview-header-action`).
+pub(super) struct Action<'a> {
+    pub key: &'a str,
+    pub icon: IconName,
+    pub label: &'a str,
+    pub active: bool,
+    pub disabled: bool,
+}
+
+/// An accented ghost icon button matching GTK's `.preview-header-action`: `icon_accent` at rest
+/// and hover, `pressed` fill when active/checked, `look.round(5.0)` corners, and muted dimmed
+/// ink when disabled.
+pub(super) fn action_button<S: 'static>(
+    spec: Action<'_>,
+    look: &Look,
+    on_press: impl Fn(&mut S, &mut Tx) + 'static,
+) -> El {
+    let k = &look.kit;
+    let side = look.frame.control;
+    let ink = if spec.disabled {
+        k.c.icon_muted
+    } else {
+        k.c.icon_accent
+    };
+    let mut button = row()
+        .key(spec.key)
+        .role("button")
+        .label(spec.label.to_owned())
+        .help(spec.label.to_owned())
+        .size(side, side)
+        .center()
+        .radius(look.round(ACTION_RADIUS))
+        .child(
+            icon(look.icon(spec.icon), look.icon_size.md)
+                .key("icon")
+                .color(ink)
+                .a11y_hidden(),
+        );
+    if spec.disabled {
+        return button
+            .disabled(true)
+            .focusable(false)
+            .opacity(DISABLED_OPACITY);
+    }
+    if spec.active {
+        button = button.fill(k.c.pressed);
+    }
+    button
+        .hover(k.c.hover)
+        .press(k.c.pressed)
+        .focusable(true)
+        .focus_ring(2.0, 1.0, k.alpha(k.c.border_focus, FOCUS_RING_OPACITY))
+        .on_press_tx(on_press)
+        .on_key(super::return_as_space::<S>)
+}
 
 pub(super) fn header<S: 'static>(
     shared: &Shared<S>,
@@ -18,48 +81,74 @@ pub(super) fn header<S: 'static>(
     look: &Look,
 ) -> El {
     let k = &look.kit;
+    let labels = &shared.labels;
+    let controls = header_controls(shared, st, parts, look);
+    let handle = header_handle(parts, &labels.detail_descriptions, look);
+
+    // Sized like the window's header bar, as Strata's `.preview-header` is: the bar's height
+    // and its Frame-density inset, no vertical padding, 8 points before and 6 after.
+    row()
+        .key("preview-header")
+        .w_full()
+        .h(look.frame.bar + 2.0 * look.frame.inset)
+        .pl(look.space.md)
+        .pr(look.space.sm)
+        .gap(look.space.xs)
+        .items_center()
+        .border_sides([0.0, 0.0, 1.0, 0.0], k.c.border_base)
+        .child(handle)
+        .children(controls)
+}
+
+fn header_controls<S: 'static>(
+    shared: &Shared<S>,
+    st: &DrawerState,
+    parts: &Parts<'_, S>,
+    look: &Look,
+) -> Vec<El> {
+    let k = &look.kit;
     let caps = parts.caps;
     let labels = &shared.labels;
-    let size = control_size(look.frame.control);
-    let button = |name: IconName, label: &str| {
-        IconButton::new(look.icon(name))
-            .variant(IconButtonVariant::GhostMuted)
-            .control_size(size)
-            .label(label.to_owned())
-    };
-
     let mut controls: Vec<El> = Vec::new();
     if let Some(view) = caps.view {
-        let (name, label) = match view {
+        let (icon_name, label) = match view {
             DocumentView::Rendered => (IconName::Source, &labels.view_source),
             DocumentView::Source => (IconName::Rendered, &labels.view_rendered),
         };
         let sh = shared.clone();
-        controls.push(
-            button(name, label)
-                .on_press_tx(move |s: &mut S, tx: &mut Tx| {
-                    sh.emit(s, DrawerIntent::ShowView(view.other()), tx)
-                })
-                .build(k)
-                .key("preview-view-switch")
-                .on_key(super::return_as_space::<S>),
-        );
+        controls.push(action_button(
+            Action {
+                key: "preview-view-switch",
+                icon: icon_name,
+                label,
+                active: false,
+                disabled: false,
+            },
+            look,
+            move |s: &mut S, tx: &mut Tx| sh.emit(s, DrawerIntent::ShowView(view.other()), tx),
+        ));
     }
     if caps.searchable {
         let sh = shared.clone();
         controls.push(
-            button(IconName::Search, &labels.find)
-                .expanded(st.find.open)
-                .on_press_tx(move |s: &mut S, tx: &mut Tx| {
+            action_button(
+                Action {
+                    key: "preview-find",
+                    icon: IconName::Search,
+                    label: &labels.find,
+                    active: st.find.open,
+                    disabled: false,
+                },
+                look,
+                move |s: &mut S, tx: &mut Tx| {
                     if (sh.access)(s).find.open {
                         find::close(&sh, s, tx);
                     } else {
                         find::open(&sh, s, tx);
                     }
-                })
-                .build(k)
-                .key("preview-find")
-                .on_key(super::return_as_space::<S>),
+                },
+            )
+            .expanded(st.find.open),
         );
     }
     if let Some(busy) = &caps.busy {
@@ -77,55 +166,51 @@ pub(super) fn header<S: 'static>(
     }
     if parts.open_allowed {
         let sh = shared.clone();
-        controls.push(
-            button(IconName::Open, &labels.open)
-                .disabled(parts.open_disabled)
-                .on_press_tx(move |s: &mut S, tx: &mut Tx| sh.emit(s, DrawerIntent::Open, tx))
-                .build(k)
-                .key("preview-open")
-                .on_key(super::return_as_space::<S>),
-        );
+        controls.push(action_button(
+            Action {
+                key: "preview-open",
+                icon: IconName::Open,
+                label: &labels.open,
+                active: false,
+                disabled: parts.open_disabled,
+            },
+            look,
+            move |s: &mut S, tx: &mut Tx| sh.emit(s, DrawerIntent::Open, tx),
+        ));
     }
     if let Some(on) = caps.wrap {
         let sh = shared.clone();
-        let wrap = button(IconName::Wrap, &labels.wrap)
-            // On, it keeps the pressed fill, as the open Find button does.
-            .state(if on { State::Pressed } else { State::Rest })
-            .on_press_tx(move |s: &mut S, tx: &mut Tx| sh.emit(s, DrawerIntent::SetWrap(!on), tx));
         controls.push(
-            wrap.build(k)
-                .key("preview-wrap")
-                .checked(on)
-                .on_key(super::return_as_space::<S>),
+            action_button(
+                Action {
+                    key: "preview-wrap",
+                    icon: IconName::Wrap,
+                    label: &labels.wrap,
+                    active: on,
+                    disabled: false,
+                },
+                look,
+                move |s: &mut S, tx: &mut Tx| sh.emit(s, DrawerIntent::SetWrap(!on), tx),
+            )
+            .checked(on),
         );
     }
     let sh = shared.clone();
-    controls.push(
-        button(IconName::ClosePanel, &labels.close)
-            .on_press_tx(move |s: &mut S, tx: &mut Tx| {
-                (sh.access)(s).close_with(sh.animations, tx);
-                sh.emit(s, DrawerIntent::Closed, tx);
-            })
-            .build(k)
-            .key("preview-close")
-            .on_key(super::return_as_space::<S>),
-    );
-
-    let handle = header_handle(parts, &labels.detail_descriptions, look);
-
-    // Sized like the window's header bar, as Strata's `.preview-header` is: the bar's height
-    // and its Frame-density inset, no vertical padding, 8 points before and 6 after.
-    row()
-        .key("preview-header")
-        .w_full()
-        .h(look.frame.bar + 2.0 * look.frame.inset)
-        .pl(look.space.md)
-        .pr(look.space.sm)
-        .gap(look.space.xs)
-        .items_center()
-        .border_sides([0.0, 0.0, 1.0, 0.0], k.c.border_muted)
-        .child(handle)
-        .children(controls)
+    controls.push(action_button(
+        Action {
+            key: "preview-close",
+            icon: IconName::ClosePanel,
+            label: &labels.close,
+            active: false,
+            disabled: false,
+        },
+        look,
+        move |s: &mut S, tx: &mut Tx| {
+            (sh.access)(s).close_with(sh.animations, tx);
+            sh.emit(s, DrawerIntent::Closed, tx);
+        },
+    ));
+    controls
 }
 
 fn header_handle<S: 'static>(parts: &Parts<'_, S>, descriptions: &[String; 3], look: &Look) -> El {
@@ -152,7 +237,7 @@ fn header_handle<S: 'static>(parts: &Parts<'_, S>, descriptions: &[String; 3], l
         .items_center()
         .children(info.icon.map(|i| {
             icon(i, look.icon_size.md)
-                .color(k.c.icon_muted)
+                .color(k.c.icon_accent)
                 .a11y_hidden()
         }))
         .child(heading);
@@ -160,22 +245,6 @@ fn header_handle<S: 'static>(parts: &Parts<'_, S>, descriptions: &[String; 3], l
         handle = dnd.drag_source_keyed(handle, "preview-handle", source.clone());
     }
     handle
-}
-
-/// The kit's button size nearest the look's bar control size (`frame.control`). rune-kit's
-/// icon buttons come in 16, 20, 24, 28 and 36 point squares, each with its own glyph size, so
-/// a control size between them rounds to the nearest.
-fn control_size(points: f32) -> ControlSize {
-    [
-        (16.0, ControlSize::Mini),
-        (20.0, ControlSize::Small),
-        (24.0, ControlSize::Regular),
-        (28.0, ControlSize::Large),
-        (36.0, ControlSize::ExtraLarge),
-    ]
-    .into_iter()
-    .min_by(|a, b| (a.0 - points).abs().total_cmp(&(b.0 - points).abs()))
-    .map_or(ControlSize::Regular, |(_, size)| size)
 }
 
 fn details_row(details: &[String], descriptions: &[String; 3], look: &Look) -> El {
