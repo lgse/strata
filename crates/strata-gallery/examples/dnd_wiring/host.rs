@@ -1570,6 +1570,7 @@ pub fn view(w: &Win, cx: &mut Cx<Win>) -> El {
             pinned: "PINNED",
             devices: "DEVICES",
             rows: |rows| format!("{rows} items"),
+            ..SidebarLabels::default()
         },
     };
     let sidebar = PlacesSidebar::new(&w.sidebar, |w: &mut Win| &mut w.sidebar, data)

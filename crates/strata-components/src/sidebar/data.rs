@@ -225,16 +225,6 @@ pub enum Release {
     Unmount,
 }
 
-impl Release {
-    /// The button's tooltip and accessible name.
-    pub fn label(self) -> &'static str {
-        match self {
-            Release::Eject => "Eject",
-            Release::Unmount => "Unmount",
-        }
-    }
-}
-
 /// An encrypted device's state, which names its lock button after its action.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum LockState {
@@ -387,6 +377,8 @@ pub struct SidebarLabels<'a> {
     pub pinned: &'a str,
     pub devices: &'a str,
     pub rows: fn(usize) -> String,
+    /// The device rows' buttons and their pending release.
+    pub device: DeviceLabels<'a>,
 }
 
 /// No words: a host that leaves them out gets unnamed headings, never English.
@@ -396,6 +388,32 @@ impl Default for SidebarLabels<'_> {
             pinned: "",
             devices: "",
             rows: |_| String::new(),
+            device: DeviceLabels::default(),
+        }
+    }
+}
+
+/// What a device row says, in the host's language: each button's tooltip and accessible name,
+/// and the accessible description of a row whose release is still running.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct DeviceLabels<'a> {
+    /// The release button of a device that can eject.
+    pub eject: &'a str,
+    /// The release button of a device that can only unmount.
+    pub unmount: &'a str,
+    /// The lock button of a locked device.
+    pub unlock: &'a str,
+    /// The lock button of an unlocked device.
+    pub lock: &'a str,
+    /// A row whose release is running.
+    pub releasing: &'a str,
+}
+
+impl DeviceLabels<'_> {
+    pub(crate) fn release(&self, release: Release) -> &str {
+        match release {
+            Release::Eject => self.eject,
+            Release::Unmount => self.unmount,
         }
     }
 }

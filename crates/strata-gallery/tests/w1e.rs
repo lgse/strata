@@ -337,6 +337,7 @@ mod w1e {
                 pinned: "PINNED",
                 devices: "DEVICES",
                 rows: |rows| format!("{rows} items"),
+                ..SidebarLabels::default()
             },
         };
         let sidebar = PlacesSidebar::new(&d.sidebar, |g: &mut Gallery| &mut g.c8.sidebar, data)

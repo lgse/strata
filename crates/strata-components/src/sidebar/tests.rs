@@ -313,6 +313,7 @@ fn mounted_view(h: &MountedHost, _: &mut rune::Cx<MountedHost>) -> rune::El {
             pinned: "PINNED",
             devices: "DEVICES",
             rows: |n| format!("{n} items"),
+            ..SidebarLabels::default()
         },
         ..SidebarData::default()
     };
@@ -438,6 +439,7 @@ fn row_drag_outside_sidebar_reports_start_move_and_outside_release() {
                     pinned: "PINNED",
                     devices: "DEVICES",
                     rows: |n| format!("{n} items"),
+                    ..SidebarLabels::default()
                 },
                 ..SidebarData::default()
             };
