@@ -32,12 +32,9 @@
 //!
 //! On open the keyboard is on the first row, as GTK's popover opens (driven, `A8.md`). The
 //! keys, Escape, a press or a wheel outside, and the keyboard leaving it are the plain
-//! popover's.
-//!
-//! Left out until its pull request: the header button's icon following the view.
+//! popover's. The header button's icon follows the view shown (`browser_mode_icon`).
 
-use rune::{El, Tx, col, icon, row, text};
-use rune_kit::{Button, ButtonVariant, IconButton, IconButtonVariant};
+use rune::{Cursor, El, TextStyle, Tx, col, el, icon, row, text};
 use strata_core::i18n::tr;
 use strata_desktop::keys::{
     self, Keys,
@@ -134,13 +131,28 @@ fn toggle(app: &mut App, _: &Call<'_>, tx: &mut Tx) -> Outcome {
     if state.open {
         FRAME.follow_saved(app);
         CONTENT.follow_saved(app);
-        tx.focus(SHOW_COLUMNS, true);
+        tx.focus(SHOW_COLUMNS, tx.by_keys());
     }
     Outcome::Ran
 }
 
 fn close(app: &mut App) {
     app.appearance.popover.open = false;
+}
+
+/// The header button's icon for the view shown (`browser_mode_icon` in
+/// `src/ui/window/appearance_menu.rs`).
+pub(crate) fn button_icon(app: &App) -> IconName {
+    let Some(view) = shell::shown_view(app) else {
+        return IconName::ViewColumns;
+    };
+    if (view.shows)(ICONS) {
+        IconName::ViewIcons
+    } else if (view.shows)(LIST) {
+        IconName::ViewList
+    } else {
+        IconName::ViewColumns
+    }
 }
 
 /// The header button as GTK names it: "Appearance", a toggle pressed while the popover is
@@ -206,15 +218,19 @@ pub(super) fn build(app: &App, frame: &mut Frame<'_, App>) {
     let look = &app.look;
     let body = col()
         .w(260.0)
-        .padding(look.space.sm)
+        .px(look.space.md)
+        .py(look.space.md)
         .gap(look.space.xxs)
         .child(heading(look, &state.labels.view))
         .children(view_rows(app))
         .child(preview_row(app))
+        .child(separator(look))
         .child(heading(look, &state.labels.density))
         .child(density::sliders(app))
+        .child(separator(look))
         .child(heading(look, &state.labels.text_size))
         .child(stepper(app))
+        .child(separator(look))
         .child(group_row(app))
         .children(lists(app).then(|| customize_row(app)))
         .children(in_columns(app).then(|| sizes_row(app)))
@@ -235,11 +251,23 @@ pub(super) fn build(app: &App, frame: &mut Frame<'_, App>) {
 }
 
 fn heading(look: &Look, words: &str) -> El {
+    let font = TextStyle {
+        weight: 700.0,
+        ..look.ty.heading
+    };
     text(words.to_owned())
-        .font(look.ty.heading)
+        .font(font)
         .color(look.kit.c.text_muted)
-        .px(look.space.sm)
+        .px(look.space.md)
         .py(look.space.xs)
+}
+
+fn separator(look: &Look) -> El {
+    el().w_full()
+        .h(1.0)
+        .my(look.space.sm)
+        .fill(look.kit.c.border_muted)
+        .a11y_hidden()
 }
 
 /// What a row shows: its icon, its name, its key if it has one, and a check while it is on.
@@ -250,42 +278,82 @@ struct Row<'a> {
     name: &'a str,
     shown_keys: Option<String>,
     checked: bool,
+    tinted_checked: bool,
     sensitive: bool,
     press: fn(&mut App, &mut Tx),
 }
 
 /// A row as GTK's `appearance_option` makes one: a frameless button with the row's role,
-/// named by its label and, when it shows a key, described by it (`describe_menu_item`).
+/// accent leading icon and check mark, muted shortcut hint, and GTK's checked/hover fills.
 fn option(look: &Look, row_of: Row<'_>) -> El {
     let kit = &look.kit;
     let name = row_of.name.to_owned();
-    let keys_shown = row_of.shown_keys.clone();
-    let checked = row_of.checked;
-    let check = look.icon(IconName::Check);
     let press = row_of.press;
-    let built = Button::new(name.clone())
-        .variant(ButtonVariant::Ghost)
-        .icon(look.icon(row_of.icon))
-        .disabled(!row_of.sensitive)
-        .label_with(move |font, ink| {
-            let keys_text = keys_shown.map(|shown| text(shown).font(font).color(ink));
-            row()
-                .grow(1.0)
-                .gap(8.0)
-                .child(text(name).font(font).color(ink).grow(1.0))
-                .children(keys_text)
-                .children(checked.then(|| icon(check, 16.0).color(ink)))
-        })
-        .on_press_tx(move |app: &mut App, tx: &mut Tx| press(app, tx))
-        .build(kit)
+    let keys_el = row_of.shown_keys.as_ref().map(|shown| {
+        text(shown.clone())
+            .font(kit.ty.small)
+            .color(kit.c.text_muted)
+            .a11y_hidden()
+    });
+    let check_el = row_of.checked.then(|| {
+        icon(look.icon(IconName::Check), look.icon_size.md)
+            .color(kit.c.icon_accent)
+            .a11y_hidden()
+    });
+    let mut built = row()
         .w_full()
+        .min_h(look.row.columns)
+        .px(look.space.md)
+        .py(look.space.xs)
+        .gap(look.space.md)
+        .items_center()
+        .radius(kit.radius.sm)
         .role(row_of.role)
-        .checked(checked);
-    let built = match &row_of.shown_keys {
-        Some(shown) => built.description(shown.clone()),
-        None => built,
-    };
+        .label(name.clone())
+        .checked(row_of.checked)
+        .child(
+            icon(look.icon(row_of.icon), look.icon_size.md)
+                .color(kit.c.icon_accent)
+                .a11y_hidden(),
+        )
+        .child(
+            text(name)
+                .font(kit.ty.ui)
+                .color(kit.c.text_base)
+                .grow(1.0)
+                .a11y_hidden(),
+        )
+        .children(keys_el)
+        .children(check_el);
+    if let Some(shown) = &row_of.shown_keys {
+        built = built.description(shown.clone());
+    }
+    built = style_option(kit, built, &row_of, press);
     buttons::on_return(row_of.key, built)
+}
+
+fn style_option(
+    kit: &rune_kit::Kit,
+    built: El,
+    row_of: &Row<'_>,
+    press: fn(&mut App, &mut Tx),
+) -> El {
+    if !row_of.sensitive {
+        return built.disabled(true).layer_opacity(0.42);
+    }
+    let interactive = built
+        .focusable(true)
+        .cursor(Cursor::Pointer)
+        .focus_ring(2.0, -2.0, kit.alpha(kit.c.border_focus, 0.6))
+        .press(kit.c.pressed)
+        .on_press_tx(move |app: &mut App, tx: &mut Tx| press(app, tx));
+    if row_of.tinted_checked && row_of.checked {
+        interactive
+            .fill(kit.alpha(kit.c.bg_accent, 0.10))
+            .hover(kit.alpha(kit.c.bg_accent, 0.18))
+    } else {
+        interactive.hover(kit.c.hover)
+    }
 }
 
 fn view_rows(app: &App) -> Vec<El> {
@@ -301,6 +369,7 @@ fn view_rows(app: &App) -> Vec<El> {
             name,
             shown_keys: None,
             checked,
+            tinted_checked: false,
             sensitive: true,
             press,
         };
@@ -368,6 +437,7 @@ fn preview_row(app: &App) -> El {
             name: &labels.preview,
             shown_keys: (!shown.is_empty()).then_some(shown),
             checked: crate::preview::panel_pressed(app),
+            tinted_checked: true,
             sensitive: true,
             press: |app, tx| {
                 commands::run(app, "preview-panel", On::Focus, tx);
@@ -378,20 +448,17 @@ fn preview_row(app: &App) -> El {
     row.description(described)
 }
 
-/// "Aa" and GTK's stepper: Decrease, the size (a reset), Increase (`text_size_stepper`).
+/// "Aa" and GTK's bordered segmented stepper: Decrease, the size (a reset), Increase
+/// (`text_size_stepper` in `src/ui/window/appearance_menu.rs`).
 fn stepper(app: &App) -> El {
     let look = &app.look;
     let kit = &look.kit;
     let size = shell::preferences(app).text_size.root_font_px();
-    let step = |key: &'static str, icon: IconName, name: String, command: &'static str| {
-        let button = IconButton::new(look.icon(icon))
-            .variant(IconButtonVariant::Ghost)
-            .label(name)
-            .on_press_tx(move |app: &mut App, tx: &mut Tx| {
-                commands::run(app, command, On::Focus, tx);
-            })
-            .build(kit);
-        buttons::on_return(key, button)
+    let step_h = look.row.columns.max(26.0);
+    let inner_r = kit.radius.sm;
+    let sample_font = TextStyle {
+        weight: 700.0,
+        ..kit.ty.ui
     };
     let smaller = with_keys(
         "Decrease text size (%{keys})",
@@ -403,27 +470,119 @@ fn stepper(app: &App) -> El {
         Some("Increase text size"),
         Keys::One(TEXT_LARGER.alternate(0).shown()),
     );
+    let reset = reset_button(look, size, step_h);
+    let segment = row()
+        .items_center()
+        .fill(kit.alpha(kit.c.text_base, 0.04))
+        .border(1.0, kit.c.border_base)
+        .border_layout()
+        .radius(kit.radius.md)
+        .child(step_button(
+            look,
+            StepSpec {
+                key: SMALLER,
+                icon: IconName::Minus,
+                name: smaller,
+                command: "text-smaller",
+                height: step_h,
+                corners: [inner_r, 0.0, 0.0, inner_r],
+            },
+        ))
+        .child(reset)
+        .child(step_button(
+            look,
+            StepSpec {
+                key: LARGER,
+                icon: IconName::Plus,
+                name: larger,
+                command: "text-larger",
+                height: step_h,
+                corners: [0.0, inner_r, inner_r, 0.0],
+            },
+        ));
+    row()
+        .w_full()
+        .gap(look.space.md)
+        .px(look.space.md)
+        .py(look.space.xxs)
+        .items_center()
+        .child(
+            text("Aa")
+                .font(sample_font)
+                .color(kit.c.text_accent)
+                .grow(1.0)
+                .a11y_hidden(),
+        )
+        .child(segment)
+}
+
+fn reset_button(look: &Look, size: u32, height: f32) -> El {
+    let kit = &look.kit;
     let reset_described = with_keys(
         "Reset text size (%{keys})",
         Some("Reset text size"),
         Keys::One(TEXT_RESET.shown()),
     );
-    let reset = Button::new(format!("{size} px"))
-        .variant(ButtonVariant::Ghost)
+    let value_label = format!("{size} px");
+    let reset = row()
+        .h(height)
+        .px(7.0)
+        .center()
+        .role("button")
+        .label(value_label.clone())
+        .description(reset_described)
+        .border_sides([0.0, 1.0, 0.0, 1.0], kit.c.border_base)
+        .focusable(true)
+        .cursor(Cursor::Pointer)
+        .hover(kit.c.hover)
+        .press(kit.c.pressed)
+        .focus_ring(2.0, -2.0, kit.c.border_focus)
         .on_press_tx(|app: &mut App, tx: &mut Tx| {
             commands::run(app, "text-reset", On::Focus, tx);
         })
-        .build(kit)
-        .description(reset_described);
-    row()
-        .w_full()
-        .gap(look.space.sm)
-        .px(look.space.sm)
-        .items_center()
-        .child(text("Aa").font(kit.ty.ui).color(kit.c.text_base).grow(1.0))
-        .child(step(SMALLER, IconName::Minus, smaller, "text-smaller"))
-        .child(buttons::on_return(RESET, reset))
-        .child(step(LARGER, IconName::Plus, larger, "text-larger"))
+        .child(
+            text(value_label)
+                .font(kit.ty.ui)
+                .color(kit.c.text_base)
+                .a11y_hidden(),
+        );
+    buttons::on_return(RESET, reset)
+}
+
+struct StepSpec {
+    key: &'static str,
+    icon: IconName,
+    name: String,
+    command: &'static str,
+    height: f32,
+    corners: [f32; 4],
+}
+
+fn step_button(look: &Look, spec: StepSpec) -> El {
+    let kit = &look.kit;
+    let command = spec.command;
+    let button = row()
+        .min_w(spec.height)
+        .h(spec.height)
+        .center()
+        .corners(spec.corners)
+        .role("button")
+        .label(spec.name.clone())
+        .help(spec.name)
+        .focusable(true)
+        .cursor(Cursor::Pointer)
+        .hover(kit.c.hover)
+        .press(kit.c.pressed)
+        .focus_ring(2.0, -2.0, kit.c.border_focus)
+        .on_press_tx(move |app: &mut App, tx: &mut Tx| {
+            commands::run(app, command, On::Focus, tx);
+        })
+        .child(
+            icon(look.icon(spec.icon), look.icon_size.md)
+                .color(kit.c.icon_accent)
+                .a11y_hidden(),
+        );
+    buttons::on_return(spec.key, button)
 }
 
 fn group_row(app: &App) -> El {
@@ -437,6 +596,7 @@ fn group_row(app: &App) -> El {
             name: &labels.group,
             shown_keys: None,
             checked: shell::preferences(app).group_by_type,
+            tinted_checked: false,
             sensitive: groups(app),
             press: |app, tx| {
                 let on = !shell::preferences(app).group_by_type;
@@ -462,6 +622,7 @@ fn customize_row(app: &App) -> El {
             name: &labels.customize,
             shown_keys: None,
             checked: false,
+            tinted_checked: false,
             sensitive: true,
             press: |app, tx| {
                 close(app);
@@ -482,6 +643,7 @@ fn sizes_row(app: &App) -> El {
             name: &labels.sizes,
             shown_keys: None,
             checked: shell::preferences(app).columns_show_sizes,
+            tinted_checked: false,
             sensitive: true,
             press: |app, _| {
                 let on = !shell::preferences(app).columns_show_sizes;
@@ -511,6 +673,7 @@ fn hidden_row(app: &App) -> El {
             name: &labels.hidden,
             shown_keys: (!shown.is_empty()).then_some(shown),
             checked: shown_hidden,
+            tinted_checked: false,
             sensitive: true,
             press: |app, tx| {
                 shell::publish(app);
