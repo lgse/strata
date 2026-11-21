@@ -162,7 +162,7 @@ fn cells<S: 'static>(
     out
 }
 
-pub(super) fn justify(e: El, a: Align) -> El {
+fn justify(e: El, a: Align) -> El {
     match a {
         Align::Start => e,
         Align::Center => e.justify_center(),

@@ -127,10 +127,14 @@ pub(crate) fn bar(app: &App, view: &str, title: &str, own: Option<El>) -> El {
         .on_drag(|_: &mut App, _: &mut Drag, tx: &mut Tx| tx.live_only())
         .focusable(false)
         .preserve_focus_on_press(true);
-    // Middle-ellipsized, as GTK's heading label is.
+    // Middle-ellipsized bold accent heading, matching GTK's `.mode-pane-header`.
+    let heading_font = rune::TextStyle {
+        weight: 700.0,
+        ..look.kit.ty.ui_medium
+    };
     let heading = text(title.to_owned())
-        .font(look.kit.ty.ui_medium)
-        .color(look.kit.c.text_base)
+        .font(heading_font)
+        .color(look.kit.c.text_accent)
         .truncate_middle()
         .shrink()
         .min_w(0.0)
@@ -158,10 +162,12 @@ pub(crate) fn bar(app: &App, view: &str, title: &str, own: Option<El>) -> El {
     row()
         .key(format!("{view}-header"))
         .w_full()
-        .h(look.frame.control + 2.0 * look.space.xs)
+        .h(look.frame.bar + 2.0 * look.frame.inset)
         .px(look.space.sm)
         .gap(look.space.sm)
         .items_center()
+        .fill(look.kit.c.bg_deep)
+        .border_sides([0.0, 0.0, 1.0, 0.0], look.kit.c.border_base)
         .on_drag(crate::pointer::leading_origin_drag)
         .focusable(false)
         .preserve_focus_on_press(true)

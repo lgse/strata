@@ -49,7 +49,6 @@ pub(super) fn strip<S: 'static>(shared: &Rc<Shared<S>>, resolved: &Rc<Resolved>,
     let parts = (shared.parts)(s);
     let look = parts.look;
     let kit = &look.kit;
-    let rule = rune_kit::TableStyle::from_kit(kit).rule;
     let layout_shared = shared.clone();
     let menu_shared = shared.clone();
     let mut strip = row()
@@ -57,8 +56,8 @@ pub(super) fn strip<S: 'static>(shared: &Rc<Shared<S>>, resolved: &Rc<Resolved>,
         .w_full()
         .h(tokens::heading_height(look))
         .pl(resolved.lead)
-        .fill(kit.c.surface_base)
-        .border_sides([0.0, 0.0, 1.0, 0.0], rule)
+        .fill(kit.c.bg_deep)
+        .border_sides([0.0, 0.0, 1.0, 0.0], kit.c.border_base)
         .on_layout_tx(move |s: &mut S, r, tx: &mut Tx| {
             (layout_shared.table_mut)(s).strip = Rect::from(r);
             tx.live_only();
@@ -70,6 +69,57 @@ pub(super) fn strip<S: 'static>(shared: &Rc<Shared<S>>, resolved: &Rc<Resolved>,
         strip = strip.child(heading(shared, resolved, s, p));
     }
     strip
+}
+
+/// Heading text style: `small_medium` at Strata's bold heading weight (`.list-headings` is
+/// `font-weight: 700`).
+fn heading_font(kit: &rune_kit::Kit) -> rune::TextStyle {
+    rune::TextStyle {
+        weight: 700.0,
+        ..kit.ty.small_medium
+    }
+}
+
+/// The label and optional trailing sort arrow inside a heading button: the label expands so the
+/// sort arrow sits right-aligned at the heading's trailing edge, matching GTK's `list_headings`.
+fn heading_content<S>(
+    column: &Column<S>,
+    look: &strata_kit::look::Look,
+    sorted: Option<SortDir>,
+) -> El {
+    let kit = &look.kit;
+    let mut label = text(column.title.clone())
+        .a11y_hidden()
+        .font(heading_font(kit))
+        .color(kit.c.text_muted)
+        .align(column.align)
+        .truncate()
+        .grow(1.0)
+        .shrink()
+        .min_w(0.0);
+    if column.sortable {
+        label = label.group_color(kit.c.text_base);
+    }
+    let mut title_row = row()
+        .gap(look.space.xs)
+        .w_full()
+        .grow(1.0)
+        .center_y()
+        .min_w(0.0)
+        .child(label);
+    if let Some(dir) = sorted {
+        let glyph = match dir {
+            SortDir::Ascending => look.icon(IconName::SortAscending),
+            SortDir::Descending => look.icon(IconName::SortDescending),
+        };
+        title_row = title_row.child(
+            icon(glyph, look.icon_size.sm)
+                .key("sort")
+                .color(kit.c.icon_accent)
+                .a11y_hidden(),
+        );
+    }
+    title_row
 }
 
 fn heading<S: 'static>(shared: &Rc<Shared<S>>, resolved: &Rc<Resolved>, s: &S, p: &Placed) -> El {
@@ -84,52 +134,19 @@ fn heading<S: 'static>(shared: &Rc<Shared<S>>, resolved: &Rc<Resolved>, s: &S, p
         .filter(|sort| sort.column == id)
         .map(|sort| sort.dir);
     let drag = parts.table.drag.as_ref().filter(|d| d.active);
-    let mut title_row = row()
-        .gap(look.space.xxs)
+    let mut h = row()
+        .key(heading_key(id.as_str()))
+        // GTK's headings are buttons in a box over a list (`list_headings.rs`).
+        .role("button")
+        .label(column.title.clone())
+        .sorted(sorted.map(|d| d == SortDir::Ascending))
+        .w_full()
+        .h_full()
+        .px(tokens::heading_pad(look))
         .center_y()
-        .min_w(0.0)
-        .shrink()
-        .child(
-            text(column.title.clone())
-                .a11y_hidden()
-                .font(kit.ty.small_medium)
-                .color(if sorted.is_some() {
-                    kit.c.text_base
-                } else {
-                    kit.c.text_muted
-                })
-                .truncate()
-                .shrink()
-                .min_w(0.0),
-        );
-    if let Some(dir) = sorted {
-        let glyph = match dir {
-            SortDir::Ascending => look.icon(IconName::SortAscending),
-            SortDir::Descending => look.icon(IconName::SortDescending),
-        };
-        title_row = title_row.child(
-            icon(glyph, look.icon_size.sm)
-                .key("sort")
-                .color(kit.c.icon_accent)
-                .a11y_hidden(),
-        );
-    }
-    let mut h = super::rows::justify(
-        row()
-            .key(heading_key(id.as_str()))
-            // GTK's headings are buttons in a box over a list (`list_headings.rs`).
-            .role("button")
-            .label(column.title.clone())
-            .sorted(sorted.map(|d| d == SortDir::Ascending))
-            .w_full()
-            .h_full()
-            .px(tokens::heading_pad(look))
-            .center_y()
-            .border_sides([0.0, 1.0, 0.0, 0.0], kit.c.border_weak),
-        column.align,
-    )
-    .child(title_row)
-    .on_drag(reorder(shared, resolved, id.clone(), column.sortable));
+        .border_sides([0.0, 1.0, 0.0, 0.0], kit.c.border_muted)
+        .child(heading_content(column, look, sorted))
+        .on_drag(reorder(shared, resolved, id.clone(), column.sortable));
     h = h.cursor(match drag {
         Some(_) => Cursor::Grabbing,
         None if column.sortable => Cursor::Pointer,
@@ -139,7 +156,9 @@ fn heading<S: 'static>(shared: &Rc<Shared<S>>, resolved: &Rc<Resolved>, s: &S, p
         let sort_shared = shared.clone();
         let sort_id = id.clone();
         h = h
+            .hover_group()
             .hover(kit.c.hover)
+            .press(kit.c.pressed)
             .on_press_tx(move |s: &mut S, tx: &mut Tx| {
                 let st = (sort_shared.table_mut)(s);
                 if st.suppress_press.replace(false) {
@@ -367,10 +386,10 @@ pub(super) fn fit<S: 'static>(shared: &Shared<S>, resolved: &Resolved, s: &S, de
     let kit = &look.kit;
     let column = &shared.columns[def];
     let measure = |t: &str, font| rune::text::measure(t, &[], font, None).0;
-    let mut widest = measure(&column.title, kit.ty.small_medium)
+    let mut widest = measure(&column.title, heading_font(kit))
         + 2.0 * tokens::heading_pad(look)
         + look.icon_size.sm
-        + look.space.xxs;
+        + look.space.xs;
     let pad = tokens::cell_pad(look);
     let mono = rune_kit::TableStyle::from_kit(kit).mono;
     let drawn = resolved.cols.iter().find(|p| p.def == def).map(|p| p.w);
