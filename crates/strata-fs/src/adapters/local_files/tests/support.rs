@@ -134,10 +134,10 @@ fn ends_fill(event: &DirectoryEvent) -> bool {
 /// threads panic with a GLib thread-affinity error, same as concurrent `spawn_local`/`iteration()`
 /// would.
 fn run_until(
+    _serial: &MainContextGuard<'_>,
     ends: fn(&DirectoryEvent) -> bool,
     start: impl FnOnce(Rc<dyn Fn(DirectoryEvent)>) -> LoadHandle,
 ) -> Vec<DirectoryEvent> {
-    let _serial = serial();
     glib::MainContext::default().block_on(async move {
         let events: Events = Rc::default();
         let waker: Rc<RefCell<Option<Waker>>> = Rc::default();
@@ -168,15 +168,24 @@ fn run_until(
 pub(super) fn run_events(
     start: impl FnOnce(Rc<dyn Fn(DirectoryEvent)>) -> LoadHandle,
 ) -> Vec<DirectoryEvent> {
-    run_until(ends_load, start)
+    run_until(&serial(), ends_load, start)
 }
 
 pub(super) fn run_enumerate(request: DirectoryRequest) -> Vec<DirectoryEvent> {
-    run_events(|emit| LocalFileSource.enumerate(request, emit))
+    run_enumerate_holding(&serial(), request)
+}
+
+pub(super) fn run_enumerate_holding(
+    serial: &MainContextGuard<'_>,
+    request: DirectoryRequest,
+) -> Vec<DirectoryEvent> {
+    run_until(serial, ends_load, |emit| {
+        LocalFileSource.enumerate(request, emit)
+    })
 }
 
 pub(super) fn run_fill(request: MetadataRequest) -> Vec<DirectoryEvent> {
-    run_until(ends_fill, |emit| {
+    run_until(&serial(), ends_fill, |emit| {
         LocalFileSource.fill_metadata(request, emit)
     })
 }
