@@ -142,7 +142,9 @@ impl Plain {
             .iter()
             .filter_map(|path| Some((path.clone(), frame.cx.window_layout(path)?)))
             .collect();
-        frame.layer.push(scrim(self.key, listing, viewports, closes));
+        frame
+            .layer
+            .push(scrim(self.key, listing, viewports, closes));
         let (close, stops, own_arrows, kind) = (self.close, self.stops, self.own_arrows, self.kind);
         let role = match kind {
             Kind::Dialog => "dialog",
@@ -223,7 +225,11 @@ fn scrim(
             on_wheel.close(app, tx);
             !listing.is_some_and(|rect| inside(rect, wheel.x, wheel.y))
         })
-        .children(viewports.into_iter().map(|(path, rect)| hand_off(path, rect)))
+        .children(
+            viewports
+                .into_iter()
+                .map(|(path, rect)| hand_off(path, rect)),
+        )
 }
 
 /// A bare stand-in over the listing's scroll viewport at `path`, drawn at its `rect` in the
