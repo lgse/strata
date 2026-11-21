@@ -47,8 +47,12 @@
 #
 # Version 1 was the draft whose smoke tier met lgse/strata#2379 and lgse/strata#2381, never
 # merged; its shrunk sequences are parked in tests/qa/fuzz/corpus/location.
+# Version 2's long run (F4's round 2) met a second click on an open folder, after which GTK
+# reports its first row focused (lgse/strata#2356); version 3 clicks only folders whose column
+# is not open. It still meets Escape on "Unable to open location" (lgse/strata#2381's kind) and
+# Return on the path as it stands (#2356), which no state tells apart: those are parked.
 area = "location"
-version = 2
+version = 3
 about = "Columns on the canonical fixture, type to search off: the location entry by Ctrl+L with paths typed, edited, completed by Tab and committed or cancelled by keys and its buttons, the crumbs by click and keyboard, Alt+Left, Alt+Right, Alt+Up and BackSpace, folders opened by click, a folder made and removed behind the application, and F5"
 header = '{"modes":["columns"],"prefs":{"type_to_search":false}}'
 
@@ -137,7 +141,7 @@ choose.key = ["alt+Up", "BackSpace"]
 [[action]]
 name = "folder"
 weight = 4
-steps = ['{"click":{"entry":"<entry>"},"when":{"all":[{"present":{"entry":"<entry>"}},{"not":{"field":{"name":"Location (Ctrl+L)","focused":true}}},{"not":{"dialog":true}}]}}']
+steps = ['{"click":{"entry":"<entry>"},"when":{"all":[{"present":{"entry":"<entry>"}},{"absent":{"pane":"<entry>"}},{"not":{"field":{"name":"Location (Ctrl+L)","focused":true}}},{"not":{"dialog":true}}]}}']
 choose.entry = ["archive", "documents", "pictures", "inner"]
 
 # The keyboard into the header and along it, and Return on a fixture's crumb there.

@@ -73,7 +73,8 @@ list v6 0686c3718c808767
 # location: version 1 was A5's draft, never merged: version 2 keeps clicks off a shown dialog and
 # Shift+Tab off the files. Its seeds name the shrunk sequences of its findings, parked in
 # tests/qa/fuzz/corpus/location.
-location v2 c074595ff2aab0b4
+# Version 3 clicks only folders whose column is not open (lgse/strata#2356, F4's round 3).
+location v3 383ba92fc38cf508
 # media: versions 1 to 5 were A16's drafts, never merged (the alphabet's own comment says what
 # each met). Version 6 holds the model, the route and two videos.
 media v7 ce3c1af204626f1e
