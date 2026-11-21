@@ -44,6 +44,7 @@ use super::{
     },
     observe_tests::{
         a_field_is_named_by_its_path_and_an_entry_covers_what_is_below_it,
+        a_relative_date_and_a_cut_fixture_name_are_the_same_in_every_replay,
         a_replay_ends_where_the_application_leaves_the_fixture,
         a_step_s_outcome_is_what_the_target_answered_or_how_it_went_away,
         a_stream_keeps_its_observations_through_its_file,
@@ -84,6 +85,7 @@ unit_tests! {
     a_sequence_is_scenario_text_and_takes_only_steps_that_act,
     a_kept_file_of_the_alphabet_s_version_is_made_of_steps_its_seed_writes,
     the_projection_keeps_the_ten_keys_and_names_the_places_of_a_run,
+    a_relative_date_and_a_cut_fixture_name_are_the_same_in_every_replay,
     the_projection_names_every_key_the_snapshot_has,
     a_field_is_named_by_its_path_and_an_entry_covers_what_is_below_it,
     an_entry_covers_its_field_and_what_is_below_it_at_a_boundary,

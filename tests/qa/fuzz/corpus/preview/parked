@@ -13,6 +13,27 @@
 # permanently, Rune's preview blocks it (F4's round 2).
 # v4-000000000000001b: a RAW failure shown as text: Rune's code view adds its Source name,
 # ruled, and splits the text, the backend's to absorb (F4's round 2).
+# v4-000000000000002d: Delete with the keyboard in the preview: GTK acts on the file, Rune's
+# preview blocks it (F4's round 3).
+# v4-000000000000001f: Ctrl+F opens the filter in another column: the targeted column follows
+# the pointer on GTK (F4's round 3).
+# v4-0000000000000039: after a view switch GTK holds no cursor and previews nothing (F4's round
+# 3).
+# v4-0000000000000059: Close preview after a click opened samples: GTK reports its first row
+# focused (F4's round 3).
+# v4-0000000000000062: Ctrl+X with the Preview panel over the cursor's entry: GTK's preview
+# closes (F4's round 3).
+# v4-0000000000000087: j after the selection was cleared with the Preview panel on: GTK selects
+# the next entry, Rune nothing (F4's round 3).
+# v4-000000000000007b: l moves a quick preview to broken.cbz: Rune's header shows no size or
+# date (F4's round 3).
 v4-000000000000000b oracle lgse/strata#2356
 v4-000000000000001b deviation lgse/strata#2558
+v4-000000000000001f divergence lgse/strata#2626
+v4-000000000000002d divergence lgse/strata#2655
+v4-0000000000000039 oracle lgse/strata#2415
 v4-0000000000000052 divergence lgse/strata#2655
+v4-0000000000000059 oracle lgse/strata#2356
+v4-0000000000000062 divergence lgse/strata#2678
+v4-000000000000007b divergence lgse/strata#2705
+v4-0000000000000087 divergence lgse/strata#2704

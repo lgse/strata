@@ -203,19 +203,26 @@ fn chosen(app: &mut App, intent: MenuIntent, tx: &mut Tx) {
         return;
     };
     if &*action == UNPIN.id {
-        unpin(app, target);
+        unpin(app, target, tx);
     } else {
         commands::run(app, &action, On::Place(target.location.clone()), tx);
     }
 }
 
-/// GTK's Unpin: a built-in place is hidden, a pin leaves the bookmarks file.
-fn unpin(app: &mut App, target: &Target) {
+/// GTK's Unpin: a built-in place is hidden, a pin leaves the bookmarks file. The menu gives the
+/// keyboard back to the row it was opened on ([`open`]), which a hidden place takes away: the
+/// sidebar's first row takes it, as GTK's rebuilt list draws its ring there, whichever row went
+/// (driven on GTK in F4's round 3, by a right-click and by the Menu key; finding
+/// lgse/strata#2406's Unpin case).
+fn unpin(app: &mut App, target: &Target, tx: &mut Tx) {
     match &target.item {
         ItemId::Place(id) => {
             let id = id.clone();
             shell::saved(app).change(|settings| hide_place(settings, &id));
             relist(app);
+            if let Some(key) = app.sidebar.first_key() {
+                tx.focus(&key, tx.by_keys());
+            }
         }
         ItemId::Pin(_) => unpin_location(target.location.clone()),
         ItemId::Device(_) => {}

@@ -1,0 +1,11 @@
+{"scenario":"fuzz-columns-v3-0000000000000067","modes":["columns"],"prefs":{"type_to_search":false}}
+{"key":"j","when":{"not":{"field":{"name":"Rename"}}}}
+{"key":"shift+Up","when":{"not":{"field":{"name":"Rename"}}}}
+{"click":{"entry":"report.md"},"button":3,"when":{"all":[{"present":{"entry":"report.md"}},{"not":{"field":{"name":"Rename"}}}]}}
+{"key":"Escape","when":{"present":{"menu_item":"Rename"}}}
+{"type":"x","when":{"field":{"name":"Rename","focused":true}}}
+{"key":"Escape","when":{"field":{"name":"Rename","focused":true}}}
+{"click":{"entry":"documents"},"mods":["ctrl"],"when":{"all":[{"present":{"entry":"documents"}},{"not":{"field":{"name":"Rename"}}}]}}
+{"key":"h","when":{"all":[{"not":{"directory":"$root"}},{"not":{"field":{"name":"Rename"}}}]}}
+{"key":"Escape","when":{"dialog":true}}
+{"key":"Down","when":{"not":{"field":{"name":"Rename"}}}}

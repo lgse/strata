@@ -45,17 +45,32 @@ pub(crate) const TOPLEVELS: &str = "toplevels";
 pub(crate) const WINDOW_FOCUSED: &str = "window_focused";
 /// How an observation writes the fixture directory's name, which is random in every run.
 const ROOT: &str = "$root";
+/// How an observation writes a date Strata shows relative to now for a file the run made:
+/// "Just now" or "5m ago" follow the clock, not the application, and a long replay passes a
+/// minute in one replay and not the next (`archives` seeds 2001 to 2010, F4's round 2). The
+/// fixture pins every file it makes to 2023, so only a file the run made shows one, and that is
+/// minutes old at most: an hour count is never the clock's, and is left as it is. A wrong count
+/// of minutes is hidden, as a projection maps each value alone.
+const RECENT: &str = "$recent";
 
 /// The names that differ from one replay to the next and mean the same place in each: the
 /// fixture directory is made afresh, so its name and the paths around it are random.
 pub(crate) struct Places {
     /// Longest first, so a path is replaced before the name it ends with.
     replacements: Vec<(String, &'static str)>,
+    /// The fixture directory's name as its stem, up to its last `-`, and its random suffix: a
+    /// name with characters taken off its end, as a BackSpace in the location field leaves it,
+    /// is the same edit in every run (`location` seed `0x6e`, F4's round 2).
+    cut: Option<(String, String)>,
 }
 
 impl Places {
     pub(crate) fn new(fixture: &str, environment: &str) -> Self {
         let root = fixture.rsplit('/').next().unwrap_or(fixture).to_owned();
+        let cut = root
+            .rsplit_once('-')
+            .filter(|(_, suffix)| !suffix.is_empty())
+            .map(|(stem, suffix)| (format!("{stem}-"), suffix.to_owned()));
         let mut replacements = vec![
             (fixture.to_owned(), "$fixture"),
             (environment.to_owned(), "$environment"),
@@ -63,21 +78,48 @@ impl Places {
         ];
         replacements.retain(|(name, _)| !name.is_empty());
         replacements.sort_by_key(|(name, _)| std::cmp::Reverse(name.len()));
-        Self { replacements }
+        Self { replacements, cut }
     }
 
     fn text(&self, text: &str) -> String {
-        self.replacements
+        let whole = self
+            .replacements
             .iter()
             .fold(text.to_owned(), |text, (name, variable)| {
                 text.replace(name, variable)
-            })
+            });
+        self.cut_short(&whole)
+    }
+
+    /// `text` with the fixture's name cut short, its stem and some of its suffix, written as
+    /// `$root[-<n>]`, `n` the characters it lacks. The whole name was replaced before.
+    fn cut_short(&self, text: &str) -> String {
+        let Some((stem, suffix)) = &self.cut else {
+            return text.to_owned();
+        };
+        let mut out = String::with_capacity(text.len());
+        let mut rest = text;
+        while let Some(at) = rest.find(stem.as_str()) {
+            out.push_str(&rest[..at]);
+            let after = &rest[at + stem.len()..];
+            let kept = suffix
+                .char_indices()
+                .map(|(index, character)| index + character.len_utf8())
+                .take_while(|end| after.starts_with(&suffix[..*end]))
+                .last()
+                .unwrap_or(0);
+            out.push_str(&format!("{ROOT}[-{}]", suffix.len() - kept));
+            rest = &after[kept..];
+        }
+        out.push_str(rest);
+        out
     }
 
     /// The value with every run-specific name, in a string or a key, written as the
     /// scenario variable that stands for it.
     pub(crate) fn normalise(&self, value: &Value) -> Value {
         match value {
+            Value::String(_) if is_recent(value) => Value::String(RECENT.to_owned()),
             Value::String(text) => Value::String(self.text(text)),
             Value::Array(items) => {
                 Value::Array(items.iter().map(|item| self.normalise(item)).collect())
@@ -91,6 +133,20 @@ impl Places {
             other => other.clone(),
         }
     }
+}
+
+/// Whether `value` is a text that is a date Strata writes relative to now for a file of the
+/// last hour: "Just now", or a count of minutes ago (`strata_core::util`'s relative date, in
+/// the QA image's English).
+fn is_recent(value: &Value) -> bool {
+    let Some(text) = value.as_str() else {
+        return false;
+    };
+    if text == "Just now" {
+        return true;
+    }
+    text.strip_suffix("m ago")
+        .is_some_and(|count| !count.is_empty() && count.bytes().all(|byte| byte.is_ascii_digit()))
 }
 
 /// The projected `app`: its ten keys and nothing a later protocol might add, so adding a

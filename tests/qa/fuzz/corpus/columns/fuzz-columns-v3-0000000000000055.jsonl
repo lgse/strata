@@ -1,0 +1,7 @@
+{"scenario":"fuzz-columns-v3-0000000000000055","modes":["columns"],"prefs":{"type_to_search":false}}
+{"key":"j","when":{"not":{"field":{"name":"Rename"}}}}
+{"click":{"entry":"spreadsheet.csv"},"mods":["ctrl"],"when":{"all":[{"present":{"entry":"spreadsheet.csv"}},{"not":{"field":{"name":"Rename"}}}]}}
+{"key":"Home","when":{"not":{"field":{"name":"Rename"}}}}
+{"key":"shift+End","when":{"not":{"field":{"name":"Rename"}}}}
+{"key":"Menu","when":{"all":[{"focused_in_matches":true},{"not":{"field":{"name":"Rename"}}}]}}
+{"click":{"entry":"readme.md"},"button":3,"when":{"all":[{"present":{"entry":"readme.md"}},{"not":{"field":{"name":"Rename"}}}]}}

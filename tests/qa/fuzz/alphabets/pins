@@ -48,7 +48,10 @@ columns v3 c1c7755a9701e199
 # parked in tests/qa/fuzz/corpus/drag, and Rune's keyboard lost after an undo (fixed).
 # Version 2 drags only rows not selected, and leaves Escape out.
 drag v2 f7207da98508ca44
-entries v3 8fb7d5c38ff6b880
+# entries: version 3 met Up off a column's first entry in 44 of its 52 differences across the
+# targets (F4's round 2); version 4, a draft of F4's round 3, never merged, missed the root's
+# first entry; version 5 guards Up and Shift+Up there by name (`owner.md`, A1 item 3).
+entries v5 c0067f74429fc5a4
 # filter: version 1 was A10's draft, never merged: version 2 leaves out Choose sort field on
 # lgse/strata#2494's account, adds Appearance's Group by file type and Hidden files, and keeps
 # result arrows and clicks to non-empty queries.
@@ -59,18 +62,23 @@ filter v2 7fa8d82cb078b442
 # round 2, never merged. Version 3, also a draft, kept Return off a multi-selection and met
 # lgse/strata#2642 (fixed) and lgse/strata#2644, a menu its Escape left open. Version 4
 # dismisses any menu.
-icons v4 a4618cbf53dfdd44
+# Version 5 sends a Shift+click with nothing selected again (lgse/strata#2551, fixed;
+# F4's round 3).
+icons v5 8e1843f39aa67b75
 # list: version 3 was A2's, merged before the differential tier; F4's round 1 met renames
 # (lgse/strata#2510), Up off a first row, Ctrl+A and Shift+click after a load in nearly every
 # seed across the targets. Version 4 guards them, and met lgse/strata#2640 (fixed) at Return: a
 # draft of F4's round 2, never merged. Version 5, also a draft, kept Return off a
 # multi-selection and met lgse/strata#2643 and lgse/strata#2644, a menu its Escape left open.
 # Version 6 dismisses any menu.
-list v6 0686c3718c808767
+# Version 7 sends a Shift+click with nothing selected again (lgse/strata#2551, fixed;
+# F4's round 3).
+list v7 951266fc5ecb8b89
 # location: version 1 was A5's draft, never merged: version 2 keeps clicks off a shown dialog and
 # Shift+Tab off the files. Its seeds name the shrunk sequences of its findings, parked in
 # tests/qa/fuzz/corpus/location.
-location v2 c074595ff2aab0b4
+# Version 3 clicks only folders whose column is not open (lgse/strata#2356, F4's round 3).
+location v3 383ba92fc38cf508
 # media: versions 1 to 5 were A16's drafts, never merged (the alphabet's own comment says what
 # each met). Version 6 holds the model, the route and two videos.
 media v7 ce3c1af204626f1e
@@ -157,7 +165,9 @@ settings v5 56b25c119bf09e0d
 # across the targets in 97 of 100 seeds, and its round 2 shrank the classes. Version 2 leaves
 # them out, each with its finding: a draft, never merged, that met lgse/strata#2650 at Shift+Up.
 # Version 3 leaves the Shift moves out.
-sidebar v3 2ef88251a06c704a
+# Version 5 widens it with the reorder drags and Unpin, each ending on a click in the files
+# (F4's round 3); version 4 was its draft, never merged.
+sidebar v5 d9ec6139f67448ea
 # tabs: versions 1 and 2 were A4's drafts, never merged: version 1 caught the hidden-tab
 # view-switch focus and tab_shown bug (fixed in shell/tabs.rs) and met lgse/strata#2507;
 # version 2 met lgse/strata#2510 on F2 in Icons, lgse/strata#2415, and an unclosed location

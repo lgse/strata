@@ -27,8 +27,9 @@
 #   Rune (lgse/strata#2414, with the owner): each is guarded by name. A folder's first entry is
 #   `archive`, `notes.txt`, `diagram.txt` or, once written, `fuzz-b.txt`; its last `todo.txt`,
 #   `spreadsheet.csv` or `photo.txt`.
-# - A Shift+click with nothing selected, as after a folder's load: on the binary Rune ranges
-#   from the load's cursor where GTK selects the entry alone (lgse/strata#2551, open again).
+# - (Until version 7, a Shift+click with nothing selected, as after a folder's load, where Rune
+#   ranged from the load's cursor: lgse/strata#2551, fixed in F4's round 2. Version 7 sends it
+#   again.)
 # - Shift+Home and Shift+End: GTK's browser takes as its cursor the last entry a change newly
 #   selected, not the row its list focuses, so a reload or a return after a range of more than
 #   one entry refocuses that entry (lgse/strata#2552, `oracle`; `icons v1` seed `0x1a`, F4's
@@ -45,7 +46,7 @@
 # The actions are the single-pane views' own, so the Icons view's alphabet (A1) can take the
 # same list with its own header and Right and Left, which an Icons grid has.
 area = "list"
-version = 6
+version = 7
 about = "List on the canonical fixture, type to search off: keyboard navigation and selection with arrows, j and k off the folders' ends, clicks, Ctrl and Shift clicks and background clicks by name, opening folders in place, Back and the parent, the context menu by pointer, hidden files, and files made and removed behind the application's back"
 header = '{"modes":["list"],"prefs":{"type_to_search":false}}'
 
@@ -132,7 +133,7 @@ choose.entry = ["documents", "readme.md", "todo.txt", "notes.txt", "report.md", 
 [[action]]
 name = "shift-click"
 weight = 2
-steps = ['{"click":{"entry":"<entry>"},"mods":["shift"],"when":{"all":[{"present":{"entry":"<entry>"}},{"not":{"selected":[]}}]}}']
+steps = ['{"click":{"entry":"<entry>"},"mods":["shift"],"when":{"all":[{"present":{"entry":"<entry>"}}]}}']
 choose.entry = ["documents", "readme.md", "todo.txt", "notes.txt", "report.md", "spreadsheet.csv", "diagram.txt", "photo.txt"]
 
 # A click on the pane's empty space below its rows, as `background-click-clears-selection`

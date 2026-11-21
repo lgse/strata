@@ -377,7 +377,8 @@ impl KeyMachine {
     /// `extend_page_selection` do. Where there is no anchor (or no cursor), the anchor moves to
     /// the cursor, or to the end the move starts from. With nothing selected, it moves there
     /// too, and a one-entry step then selects that entry alone without moving, while a page or
-    /// a jump extends from it at once.
+    /// a jump extends from it at once. With no cursor, a page or a jump selects where it lands
+    /// alone: `extend_page_selection` finds no cursor to anchor at.
     ///
     /// A sideways step with no neighbour isn't taken (false), so the view decides: Columns'
     /// Shift+Right enters the folder and Shift+Left opens the parent (C2), and List does
@@ -388,7 +389,7 @@ impl KeyMachine {
             return !matches!(target, Target::Step(Direction::Left | Direction::Right));
         }
         let cursor = s.selection().cursor_index(s.source());
-        let origin = cursor.unwrap_or(if forward(target) { 0 } else { len - 1 });
+        let (origin, alone) = self.extend_origin(target, cursor, s);
         if let Target::Step(d @ (Direction::Left | Direction::Right)) = target
             && !matches!(self.step(origin, d, s), Landing::At(_))
         {
@@ -399,16 +400,43 @@ impl KeyMachine {
         if empty || !anchored || cursor.is_none() {
             op(s, |sel, src| sel.move_cursor(src, origin, AnchorRule::Move));
         }
-        let to = match (target, empty) {
-            (Target::Step(_), true) => origin,
-            _ => match self.land(target, s) {
-                Landing::At(i) => i,
-                Landing::Edge(_) | Landing::Nowhere => origin,
-            },
+        let stays = alone || (empty && matches!(target, Target::Step(_)));
+        let to = if stays {
+            origin
+        } else {
+            self.land_or(target, origin, s)
         };
         op(s, |sel, src| sel.extend_to(src, to, Extend::Replace));
         s.emit(Outcome::Reveal(to));
         true
+    }
+
+    /// Where a Shift move starts: the cursor; with none, where a page or a jump lands, which it
+    /// then selects alone (true); else the end a step starts from.
+    fn extend_origin(
+        &self,
+        target: Target,
+        cursor: Option<usize>,
+        s: &dyn Surface,
+    ) -> (usize, bool) {
+        if let Some(i) = cursor {
+            return (i, false);
+        }
+        if !matches!(target, Target::Step(_))
+            && let Landing::At(i) = self.land(target, s)
+        {
+            return (i, true);
+        }
+        let last = s.source().len().saturating_sub(1);
+        (if forward(target) { 0 } else { last }, false)
+    }
+
+    /// Where `target` lands from the cursor, or `origin` where it lands nowhere.
+    fn land_or(&self, target: Target, origin: usize, s: &dyn Surface) -> usize {
+        match self.land(target, s) {
+            Landing::At(i) => i,
+            Landing::Edge(_) | Landing::Nowhere => origin,
+        }
     }
 
     /// `v` or `V`: starts a range at the cursor, switches its kind, or ends one of this kind.
