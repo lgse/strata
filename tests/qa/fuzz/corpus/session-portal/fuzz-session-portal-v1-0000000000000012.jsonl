@@ -1,0 +1,4 @@
+{"scenario":"fuzz-session-portal-v1-0000000000000012","modes":["list"],"session_bus":true,"portal":true}
+{"portal_open":"Choose files","options":{"current_folder":"$fixture","multiple":true}}
+{"adopt":"Choose files","timeout_ms":20000}
+{"click":{"row":"documents"},"count":2,"when":{"all":[{"present":{"row":"documents"}},{"menu_items":null}]}}

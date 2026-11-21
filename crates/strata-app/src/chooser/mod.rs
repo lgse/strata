@@ -229,6 +229,16 @@ impl Part for Chooser {
     }
 }
 
+/// Whether the chooser's footer shows `message` as its error.
+#[cfg(feature = "qa")]
+pub(crate) fn shows_error(app: &App, message: &str) -> bool {
+    app.chooser
+        .active
+        .as_ref()
+        .and_then(|active| active.error.as_deref())
+        == Some(message)
+}
+
 pub(crate) fn mount_request(
     app: &mut App,
     request: ChooserRequest,

@@ -118,6 +118,16 @@ pub(crate) fn a_field_is_named_by_its_path_and_an_entry_covers_what_is_below_it(
     let more = json!({"app": {"panes": [{"name": "r"}, {"name": "d"}]}});
     assert_eq!(differences(&fewer, &more)[0].field, "app.panes");
     assert_eq!(pattern_of("app.panes[12].selected"), "app.panes[].selected");
+    // What a portal answered is compared after the settings, by its own fields.
+    let answered =
+        |status: u32| json!({"portal": {"answered": true, "status": status, "paths": []}});
+    assert_eq!(
+        differences(&answered(0), &answered(1))
+            .into_iter()
+            .map(|difference| difference.field)
+            .collect::<Vec<_>>(),
+        ["portal.status"]
+    );
     // A file's name keeps its dots and brackets: only a list of `app` has places.
     assert_eq!(pattern_of("fs.report[1].txt"), "fs.report[1].txt");
 }
@@ -432,6 +442,7 @@ pub(super) fn observation(
                 }),
                 fs: json!({ "todo.txt": "file 644 5 aa" }),
                 settings: json!({}),
+                portal: Value::Null,
                 context: Value::Null,
             },
             settled: true,

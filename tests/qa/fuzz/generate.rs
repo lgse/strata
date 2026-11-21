@@ -49,12 +49,13 @@ impl Origin {
     }
 }
 
-/// `actions` picks from the alphabet. A longer sequence of one seed starts with the shorter
-/// one: each action draws its numbers in turn and nothing is drawn ahead.
+/// `actions` picks from the alphabet, after its opening steps. A longer sequence of one seed
+/// starts with the shorter one: each action draws its numbers in turn and nothing is drawn
+/// ahead.
 pub(crate) fn generate(alphabet: &Alphabet, seed: u64, actions: usize) -> Sequence {
     let mut random = Random::new(seed);
     let total = alphabet.weight();
-    let mut steps = Vec::new();
+    let mut steps = alphabet.opening.clone();
     for _ in 0..actions {
         let action = pick(alphabet, random.below(total));
         // One draw for each name, in name order, whether or not a step uses it twice.

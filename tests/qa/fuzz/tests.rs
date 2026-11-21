@@ -36,6 +36,7 @@ use super::{
         a_sequence_s_name_says_the_alphabet_version_and_the_seed_it_came_from,
         an_alphabet_is_refused_for_what_a_replay_could_not_run,
         an_alphabet_s_version_is_pinned_to_what_its_seeds_write,
+        an_opening_and_a_portal_request_are_refused_for_what_a_replay_could_not_run,
     },
     host_tests::{
         a_rune_replay_runs_on_the_session_host_where_its_alphabet_or_the_command_says,
@@ -54,6 +55,7 @@ use super::{
         two_streams_are_compared_only_when_they_answer_one_another,
     },
     rune_adds_tests::a_rune_adds_rule_takes_out_one_copy_for_each_time_it_names_an_element,
+    shrink_tests::the_shrinker_keeps_an_alphabet_s_opening_whole,
     stream_tests::an_undo_then_a_redo_puts_the_tree_back_as_it_was_before_the_undo,
     targets_tests::{
         a_command_takes_one_target_or_gtk_and_rune_and_the_comparing_commands_take_both,
@@ -78,6 +80,7 @@ unit_tests! {
     a_seed_writes_the_same_sequence_on_every_machine,
     a_sequence_s_name_says_the_alphabet_version_and_the_seed_it_came_from,
     an_alphabet_is_refused_for_what_a_replay_could_not_run,
+    an_opening_and_a_portal_request_are_refused_for_what_a_replay_could_not_run,
     an_alphabet_s_version_is_pinned_to_what_its_seeds_write,
     a_sequence_is_scenario_text_and_takes_only_steps_that_act,
     a_kept_file_of_the_alphabet_s_version_is_made_of_steps_its_seed_writes,
@@ -95,6 +98,7 @@ unit_tests! {
     a_step_not_at_rest_is_compared_by_its_outcome_alone,
     a_warning_a_broken_invariant_or_a_lost_target_diverges_even_when_both_replays_show_it,
     the_shrinker_keeps_the_fewest_steps_that_still_diverge_and_confirms_them,
+    the_shrinker_keeps_an_alphabet_s_opening_whole,
     a_divergence_that_does_not_repeat_is_not_confirmed,
     a_perturbation_waits_for_its_step_and_its_state,
     the_map_and_the_mask_take_one_sorted_entry_to_a_line,

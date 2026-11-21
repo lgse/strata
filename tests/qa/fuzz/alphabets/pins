@@ -145,6 +145,9 @@ session-drops v7 e2dd0799a8996392
 # left a menu over several selected entries open, and the rest of a sequence skipped; version
 # 3 dismisses any menu.
 session-pointer v3 af0187b625605531
+# session-portal: F5's, on the portal session host: an OpenFile request's chooser. Version 1
+# was its draft, never merged: it met lgse/strata#2701 and #2702, which version 2 leaves out.
+session-portal v2 cfd9f59719517585
 # settings: version 1 was A18's draft, never merged: its smoke tier caught Settings holding the
 # keyboard for a dialog while its choice menu left only the menu in the tree, and the keybind
 # search and table not kept across closing Settings (both fixed), and met GTK's `activate`

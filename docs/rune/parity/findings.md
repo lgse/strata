@@ -827,6 +827,12 @@ sequence only together with the alphabet's version, so the version is part of th
 - **Met again in [F4](packages/F4.md)'s round 2**: `columns v3` `0x1e` (a Shift+click, then `j`), parked in
   `tests/qa/fuzz/corpus/columns/`; `clipboard v5` and `list v6` Ctrl+click only entries not
   selected.
+- **Met in the portal chooser** by [F5](packages/F5.md)'s `session-portal` draft (v1), seed
+  `0x03`, shrunk to 5 steps, 24 of 24 on GTK and different offscreen too: Ctrl+click
+  `todo.txt`, Shift+click `documents`, Return. GTK's Return confirms from its model's cursor
+  (`chooser_confirm` reads `focused_entry`, `src/ui/window/keyboard/chooser.rs`), still on
+  `todo.txt`, so it answers the selected files; Rune's from the clicked folder, which it
+  opens. `session-portal` v2 sends no Shift+click.
 - **State:** open, waiting for the owner ([`owner.md`](owner.md), F2 item 1). Meanwhile Rune
   keeps the clicked row, and the seeds stay parked.
 
@@ -1464,6 +1470,12 @@ sequence only together with the alphabet's version, so the version is part of th
   file; List's is [A2](packages/A2.md)'s, closed). The sequences are parked in
   `tests/qa/fuzz/corpus/views/`, and the `views` alphabet from v4 sends no Up or Down in
   Icons.
+- **Likely met in the portal chooser** by [F5](packages/F5.md)'s `session-portal` draft (v1),
+  seed `0x06`, shrunk to 5 steps, 24 of 24 on GTK and different offscreen too: a Ctrl+click
+  selects `readme.md` and a second unselects it, leaving the load's cursor on `archive`
+  selected; GTK's next Up selects `readme.md` where it is, Rune's moves to `pictures`. By
+  reading, GTK's chooser takes that selection for none and first selects the cursor's entry
+  (`resume_native_selection`). `session-portal` v2 Ctrl+clicks only rows not selected.
 - **State:** open, with the owner ([`owner.md`](owner.md#a1-icons-view-and-thumbnails), A1
   item 12), placed by the coordinator on 2026-11-13. Meanwhile Rune's grid ignores the press.
 
@@ -3605,25 +3617,6 @@ sequence only together with the alphabet's version, so the version is part of th
   Rune at step 98 (not shrunk).
 - **State:** open, unowned. Parked in `tests/qa/fuzz/corpus/chooser/`.
 
-### #2690: Rune's reply to Ctrl+Z came before the undo reached the disk, once in 10 replays
-
-- **Code:** none of the plan's: noise in Rune's replies, labelled `testing`.
-  [Issue](https://github.com/lgse/strata/issues/2690), filed on 2026-11-21 as the finding's
-  reference and closed at once: its state is kept here.
-- **Seen:** in [F5](packages/F5.md)'s re-gate of [#2677](https://github.com/lgse/strata/pull/2677)
-  with `strata-next` `ca42e08ce` merged in: `session-drops v7` seed `0x0b`, Rune on the session
-  host. Its two Rune replays differed at step 78, a Ctrl+Z undoing an earlier copy of a file
-  dropped by path into `documents`. In one, `documents/offer-file.txt` was still on disk and
-  listed when the reply came, and gone at step 80, a step that only starts a drag source; in
-  the other, and in both GTK replays, it was gone at step 78. Replayed 8 times more on Rune,
-  every replay agreed.
-- **Not traced.** Unlike [#2568](#2568-undo-restores-completed-movecolumns-did-not-put-the-file-back-once-in-a-full-rune-run),
-  the undo was not lost, only late: Rune's reply did not wait for it. The same seed agreed in
-  the gate before the merge, which moved the Rune pin (#2681), so whether the pin plays a part
-  is open.
-- **Concerns:** `session-drops` seed `0x0b`; nothing is parked, as the seed agrees.
-- **State:** open, unowned.
-
 ### #2682: Escape closing a column whose folder the column before no longer selects leaves Rune's keyboard on no entry
 
 - **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2682), filed on
@@ -3648,6 +3641,33 @@ sequence only together with the alphabet's version, so the version is part of th
   load's first item, which the right-click (`focus_context_entry`) does not move, so its Shift+Left
   starts there.
 - **State:** open, unowned. Parked in `tests/qa/fuzz/corpus/icons/`.
+
+### #2690: Rune's reply to Ctrl+Z came before the undo reached the disk, once in 10 replays
+
+- **Code:** none of the plan's: noise in Rune's replies, labelled `testing`.
+  [Issue](https://github.com/lgse/strata/issues/2690), filed on 2026-11-21 as the finding's
+  reference and closed at once: its state is kept here.
+- **Seen:** in [F5](packages/F5.md)'s re-gate of [#2677](https://github.com/lgse/strata/pull/2677)
+  with `strata-next` `ca42e08ce` merged in: `session-drops v7` seed `0x0b`, Rune on the session
+  host. Its two Rune replays differed at step 78, a Ctrl+Z undoing an earlier copy of a file
+  dropped by path into `documents`. In one, `documents/offer-file.txt` was still on disk and
+  listed when the reply came, and gone at step 80, a step that only starts a drag source; in
+  the other, and in both GTK replays, it was gone at step 78. Replayed 8 times more on Rune,
+  every replay agreed.
+- **Not traced.** Unlike [#2568](#2568-undo-restores-completed-movecolumns-did-not-put-the-file-back-once-in-a-full-rune-run),
+  the undo was not lost, only late: Rune's reply did not wait for it. The undo ran only once
+  the next step's input came (step 80 maps a window), the shape `commands::wake_glib` was added
+  for (a handler's GLib source waiting for the next pump); no path that skips the wake is
+  known.
+- **The pin's part, checked in [F5](packages/F5.md)'s slice 4 (2026-11-21):** the seed cut at
+  step 80, 20 Rune replays on the session host at each pin: at `7a707454` (`c7e464319`'s Rune)
+  and at `631e8a67` (#2677's head before the move, `51a1548aa`), the undo reached the disk at
+  step 78 in 20 of 20 on both. Its first eight steps and the drop alone (the copy, then the
+  Ctrl+Z): 20 of 20 at `7a707454`. In all, one late undo in about fifty Rune replays of the
+  seed at the new pin and none in 24 at the old, too rare to tell the pins apart. No Rune issue
+  is drafted: nothing shows Rune at fault.
+- **Concerns:** `session-drops` seed `0x0b`; nothing is parked, as the seed agrees.
+- **State:** open, unowned.
 
 ### #2691: Left in a PDF preview zoomed by Ctrl+wheel returns GTK's keyboard to the listing and keeps Rune's in the preview
 
@@ -3711,6 +3731,47 @@ sequence only together with the alphabet's version, so the version is part of th
   keep the results they had). Not traced.
 - **State:** open, unowned. Parked in `tests/qa/fuzz/corpus/filter/`.
 
+### #2701: after Ctrl+A in the portal chooser, GTK's cursor is on the last row and Rune's stays
+
+- **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2701), filed on
+  2026-11-21 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** by [F5](packages/F5.md)'s `session-portal` draft (v1), GTK against Rune, in 5 of 20
+  seeds. `fuzz-session-portal-v1-0000000000000009`, shrunk to 4 steps, confirmed 3 of 3: an
+  OpenFile request from the root (multiple), `documents` clicked, Ctrl+A. GTK reports
+  `todo.txt` focused, Rune `documents`. A Down after it selects `todo.txt` on GTK and
+  `pictures` on Rune, so the cursor differs, not only the report. GTK agrees with itself in 24
+  of 24; Rune differs on the offscreen host too.
+- **Why:** GTK's portal chooser lists its rows in a table, which takes its cursor to the last
+  row on Ctrl+A. Rune's chooser shows the browser's List, whose `Selection::select_all` keeps
+  the cursor as GTK's browser List does (`collection/selection/mod.rs`, "Decisions");
+  `select_all_to_last` is Columns'. Unlike [#2351](#2351-after-ctrla-in-columns-gtk-reports-the-old-row-while-its-cursor-is-on-the-last),
+  GTK's report is right here.
+- **Concerns:** the sequence, parked in `tests/qa/fuzz/corpus/session-portal/`;
+  `session-portal` v2 sends no Ctrl+A.
+- **State:** open, unowned: [A20](packages/A20.md)'s chooser.
+
+### #2702: after a double click opens a folder in the portal chooser on the session host, Rune's view sometimes holds no cursor
+
+- **Code:** `divergence`, of the windowed path. [Issue](https://github.com/lgse/strata/issues/2702),
+  filed on 2026-11-21 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** by [F5](packages/F5.md)'s `session-portal` draft (v1), Rune on the portal session
+  host, in 2 of 20 seeds. After an OpenFile request from the root, a double click on
+  `documents` opens it, and in 6 of 12 replays the `browser-view` invariant breaks: `column
+  0's cursor is None in the view and Some("notes.txt") in the browser`, and the same of the
+  anchor; the view's `focused` is null and stays so for the steps after. On the offscreen
+  host, 0 of 12. GTK's and the other Rune replays' `focused` is `notes.txt`, the first visit's.
+- **Why:** not traced. The session host shows it and the offscreen host does not, so it is in
+  the windowed path: the session host, Rune's input through winit, or the session QA backend
+  (F5's triage).
+- **Surveying it:** the parked three steps break the invariant in about half the session-host
+  replays (6 of 12 here, 3 of 6 in #2708's review, 0 of 6 offscreen), so a survey takes about 6
+  repeats on the session host (`--repeats 6`) to tell it fixed. What breaks is Rune's own
+  state, the view against its browser, after a double click as a real window delivers it.
+- **Concerns:** the seed's first three steps, parked in
+  `tests/qa/fuzz/corpus/session-portal/`; `session-portal` v2 opens folders by a click and
+  Return.
+- **State:** open, unowned: [A20](packages/A20.md)'s chooser, or the session host.
+
 ### #2704: j after the selection was cleared with the Preview panel on selects on GTK and not on Rune
 
 - **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2704), filed on
@@ -3737,3 +3798,5 @@ sequence only together with the alphabet's version, so the version is part of th
   Ctrl+T, Ctrl+L, Ctrl+Shift+Tab). GTK's keyboard is then on `diagram.txt`; Rune's on no entry. Not
   traced: whether it is GTK's report of a column's first row (#2356's kind).
 - **State:** open, unowned. Parked in `tests/qa/fuzz/corpus/tabs/`.
+
+- **State:** open, unowned; replay the seed when the session host's wake path changes.

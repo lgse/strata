@@ -344,8 +344,8 @@ pub(crate) fn replay(request: &Replay) -> Result<Replayed, String> {
         input_log: &input_log,
         extra: environment(scenario, &variables),
         bus: bus.as_ref().map(|bus| bus.address.as_str()),
-        portal: false,
-        // A sequence replays with no session bus, so with no fake volume monitor either.
+        portal: scenario.header.portal,
+        // A sequence starts no fake volume monitor, even on its session bus.
         volume_monitor: false,
         audit: None,
     };
@@ -442,6 +442,8 @@ struct Session<'a> {
     /// The processes the runner's own steps started for the replay (`peers.rs`), stopped
     /// with it.
     peers: Peers,
+    /// A portal run: the target shows a window only while a request awaits its answer.
+    portal: bool,
 }
 
 impl<'a> Session<'a> {
@@ -459,6 +461,7 @@ impl<'a> Session<'a> {
             criticals: Vec::new(),
             invariants: launch.target.invariants_step(),
             peers: Peers::default(),
+            portal: launch.portal,
         };
         let hello = session.application.receive(LAUNCH_TIMEOUT)?;
         session.record(&json!({ "launch": true }), &hello);
@@ -541,6 +544,11 @@ impl<'a> Session<'a> {
     /// Sends one step, or acts on the fixture for an `fs` step. The second value says why
     /// the target is gone, when the step lost it.
     fn take(&mut self, step: &Value, acting: &mut Acting) -> (Outcome, Option<String>) {
+        if self.windowless(step) {
+            let skipped = json!({ "ok": true, "skipped": "no portal request awaits its answer" });
+            self.record(step, &skipped);
+            return (Outcome::Skipped, None);
+        }
         if let Some(condition) = step.get(STEP_WHEN)
             && let Some(ended) = self.guard(condition)
         {
@@ -571,6 +579,21 @@ impl<'a> Session<'a> {
             Ok(reply) => answered(&reply),
             Err(error) => self.lost(error),
         }
+    }
+
+    /// Whether `step` needs the target's window in a portal run while no request awaits its
+    /// answer: a process step, or any step whose `when` the target answers. The portal shows
+    /// no window then, so the step is skipped, as a step whose `when` does not hold is. The
+    /// runner's own steps without a `when` go on.
+    fn windowless(&mut self, step: &Value) -> bool {
+        let runners = step.get("fs").is_some() || step.as_object().and_then(peers::kind).is_some();
+        let asks = !runners || step.get(STEP_WHEN).is_some();
+        self.portal && asks && !peers::awaiting(&mut self.peers)
+    }
+
+    /// Whether an error is a portal's answer while it shows no window.
+    fn windowless_reply(&self, error: &str) -> bool {
+        self.portal && error == NO_WINDOW
     }
 
     /// Asks whether a step's `when` holds. `None` when it does and the step is to be sent;
@@ -640,6 +663,10 @@ impl<'a> Session<'a> {
         };
         let reply = self.send(&step, COMMAND_TIMEOUT)?;
         if let Some(error) = reply["error"].as_str() {
+            // A portal with no chooser open has no window to hold to anything.
+            if self.windowless_reply(error) {
+                return Ok(Vec::new());
+            }
             return Ok(vec![format!(
                 "the target could not check its invariants: {error}"
             )]);
@@ -665,6 +692,7 @@ impl<'a> Session<'a> {
                 app: Value::Null,
                 fs: self.names.normalise(&tree(self.fixture)),
                 settings: self.names.normalise(&settings(&self.settings)),
+                portal: self.names.normalise(&peers::portal_state(&mut self.peers)),
                 context: Value::Null,
             },
             settled: outcome == Outcome::Closed,
@@ -681,7 +709,11 @@ impl<'a> Session<'a> {
 
     fn sample(&mut self) -> Result<Sample, String> {
         let reply = self.send(&json!({ "query": "state" }), COMMAND_TIMEOUT)?;
-        if let Some(error) = reply["error"].as_str() {
+        // A portal shows no window but while a chooser is open, and answers with its empty
+        // snapshot then.
+        if let Some(error) = reply["error"].as_str()
+            && !self.windowless_reply(error)
+        {
             return Err(error.to_owned());
         }
         let app = project::app(&reply["app"], &self.names);
@@ -697,10 +729,14 @@ impl<'a> Session<'a> {
             },
             fs,
             settings: self.names.normalise(&settings(&self.settings)),
+            portal: self.names.normalise(&peers::portal_state(&mut self.peers)),
             context,
         })
     }
 }
+
+/// What a target answers a step for its window when it has none (`strata-qa`'s engine).
+const NO_WINDOW: &str = "the Strata window is gone";
 
 pub(crate) fn answered(reply: &Value) -> (Outcome, Option<String>) {
     let error = reply["error"].as_str();

@@ -33,7 +33,9 @@ pub(crate) const INVARIANTS: &str = "invariants";
 pub(crate) const APP: &str = "app";
 pub(crate) const FS: &str = "fs";
 pub(crate) const SETTINGS: &str = "settings";
-pub(crate) const ROOTS: [&str; 6] = [RESULT, CRITICALS, INVARIANTS, APP, FS, SETTINGS];
+/// What a portal run's request answered: `answered`, then `status` and `paths`, or `error`.
+pub(crate) const PORTAL: &str = "portal";
+pub(crate) const ROOTS: [&str; 7] = [RESULT, CRITICALS, INVARIANTS, APP, FS, SETTINGS, PORTAL];
 /// What an observation keeps beside its roots and never compares: the windows open beside the
 /// one the steps act on (the snapshot's `toplevels`), which a rule's `while` may read.
 pub(crate) const CONTEXT: &str = "context";

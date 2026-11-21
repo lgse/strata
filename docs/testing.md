@@ -1704,6 +1704,7 @@ choose.entry = ["archive", "documents", "readme.md"]
 | `about` | One line. |
 | `header` | The scenario header of every sequence, as JSON, without `scenario`: the mode, and the tree and preferences when they are not the defaults. |
 | `host` | Optional: `session` for an alphabet whose actions need a compositor, so that its Rune replays run on the session host ("On the session host" below); `offscreen`, the default, otherwise. |
+| `opening` | Optional: steps every sequence starts with, before the drawn actions, which the shrinker keeps whole; one line of JSON each, with nothing to choose. For what the application needs before any action means something, such as a portal request ("A portal request" below). |
 | `action.name`, `action.weight` | A unique name, and how often the action is picked against the sum of the weights. |
 | `action.steps` | One or more scenario steps, each a line of JSON exactly as a scenario file has it, in TOML's single quotes. |
 | `action.choose.<name>` | The values `<name>` in the steps may take. One is drawn for each name, in name order, every time the action is picked. |
@@ -1712,8 +1713,8 @@ choose.entry = ["archive", "documents", "readme.md"]
 and seed 7 of version 3 are two sequences. So `version` is held to what seeds
 write: `tests/qa/fuzz/alphabets/pins` has one line for each alphabet,
 `<area> v<version> <digest>`, where the digest is of the generator's version,
-the header and every action's name, weight, steps and choices, and the host
-when it is `session`, so that an alphabet that moves to another host takes a
+the header and every action's name, weight, steps and choices, the opening
+when there is one, and the host when it is `session`, so that an alphabet that moves to another host takes a
 new version and its parked sequences stay with the host they met. The runner
 refuses an alphabet whose line does not match, and says what the line should
 be. Changing what seeds write means raising `version` and writing the new
@@ -1726,17 +1727,18 @@ The rules an alphabet keeps, the first three checked when it loads:
   `remove`, …), or a `wait` or `settle` where the area knows what the
   application shows when it is done. Steps that only ask (`expect`, `holds`,
   `query`, `note`, `during`) have no place: every step is observed anyway.
-  Of the runner's own steps, `fs` and a drag source in another process
+  Of the runner's own steps, `fs`, a drag source in another process
   (`foreign`, `foreign_label`, `foreign_stop`; "Drops from another process"
-  below) are replayed, and no other yet.
+  below) and a portal request (`portal_open`, and `portal_response` waiting on
+  `done` alone; "A portal request" below) are replayed, and no other yet.
 - **A step stands alone.** It takes no `if`, `unless`, `as`, `modes` or
   `variants`, since a shrunk sequence keeps a step without its neighbours.
   `when` is its one condition. The one `as` allowed names the source a
   `foreign` step starts, for a `drag` from `kept` in the same action.
 - **One run.** The header gives one mode and no variants, and none of
-  `portal`, `input_method`, `fixture_root`, `layout`,
+  `input_method`, `volume_monitor`, `fixture_root`, `layout`,
   `teardown`, `images`, `mutation`, `known_bug`, `skip`, `parity` or
-  `targets`.
+  `targets`. It may take `session_bus`, and `portal` with it.
 - **Targets by role and name.** Never a screen point or an offset tied to one
   toolkit's row heights, so that each target resolves the step in its own
   geometry.
@@ -1820,6 +1822,7 @@ is a fixed projection, and nothing else of a reply is kept:
 | `context.toplevels`, `context.window_focused` | The snapshot's `toplevels`, the titles of the windows open beside the one the steps act on, and `window_focused`, whether anything in that window has the keyboard. Never compared; a map rule's `while` reads them. |
 | `fs.<path>` | The fixture tree: `dir <mode>`, `file <mode> <size> <digest of its bytes>` or `link <target>` for each path. |
 | `settings.<key>` | `settings.toml`, parsed, so two files that say the same in another order are equal. |
+| `portal.*` | A portal run's only: what its last request answered. `portal.answered` false while it waits; then `portal.status` (0 for chosen, 1 for cancelled) and `portal.paths`, or `portal.error`. Absent before the first request, and from every other run's observations. |
 
 The fixture's random name and the paths around it are written `$root`,
 `$fixture` and `$environment` wherever they appear. The fixture's name cut short by an
@@ -2256,6 +2259,27 @@ owner's ruling of 2026-11-20, so an alphabet of drops compares no focus after
 its first drop. The directory stays compared in a single-pane view: its rule
 applies in Columns only, where the directory is the focused pane's. Sway leaves
 Rune's window the keyboard. `session-drops` is the alphabet (F5's).
+
+#### A portal request
+
+A sequence whose header takes `"portal":true` with `"session_bus":true` starts
+`--qa --portal`, as a `chooser_selection` scenario does: the FileChooser portal
+backend, which shows a chooser only while a request waits for its answer.
+`{"portal_open":"Title","options":{…}}` sends `OpenFile` on the run's bus and
+`{"adopt":"Title"}` drives the chooser it opens; an alphabet writes the two as
+its `opening`, so that every sequence, shrunk ones included, starts with a
+chooser. One request is open at a time: a `portal_open` while one waits is
+skipped, so an action that asks again (`portal_open` and `adopt`) does nothing
+while a chooser is open. A `portal_response` only waits (`{"done":true}` or
+`false`); what the portal answered is observed after every step, as `portal`,
+and compared like any field.
+
+While no request waits, the portal shows no window: a step for one (a process
+step, or any step whose `when` the target answers) is skipped, as a step whose
+`when` does not hold is, and the runner's own steps without a `when` go on. The
+snapshot is then empty, and Rune checks no invariant. On Rune the replay runs on
+the portal session host (`qa/session/portal.rs`) when the alphabet's host is
+`session`. `session-portal` is the alphabet (F5's).
 
 #### Tiers and budgets
 
