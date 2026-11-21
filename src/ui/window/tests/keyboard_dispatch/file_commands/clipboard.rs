@@ -137,6 +137,12 @@ fn tenxer_c_chord_copies_paths_and_names() {
 
             fill_b_and_c(&fixture);
             plain(&fixture, Key::c);
+            plain(&fixture, Key::c);
+            assert_eq!(
+                clipboard_text(),
+                Some(format!("{0}/b.txt\n{0}/c.txt", directory.display()))
+            );
+            plain(&fixture, Key::c);
             plain(&fixture, Key::n);
             assert_eq!(clipboard_text().as_deref(), Some("b.txt\nc.txt"));
             plain(&fixture, Key::c);

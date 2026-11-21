@@ -3,7 +3,6 @@
 use super::*;
 use crate::model::Location;
 use gtk::gio;
-use std::path::Path;
 
 #[test]
 fn incoming_file_lists_preserve_local_and_remote_locations() {
@@ -721,32 +720,21 @@ fn completed_moves_are_removed_from_the_cut_list() {
 }
 
 #[test]
-fn shell_escape_path_escapes_spaces_and_metacharacters_but_not_filename_unicode() {
-    assert_eq!(
-        shell_escape_path(Path::new("/mnt/Mass 1/Movies\u{2044}TV")),
-        "/mnt/Mass\\ 1/Movies\u{2044}TV"
-    );
-    assert_eq!(
-        shell_escape_path(Path::new("/tmp/archive (final) v1.2.tar.gz")),
-        "/tmp/archive\\ \\(final\\)\\ v1.2.tar.gz"
-    );
-    assert_eq!(
-        shell_escape_path(Path::new("/home/user/plain")),
-        "/home/user/plain"
-    );
+fn copy_path_text_keeps_native_filenames_literal() {
+    for path in [
+        "/mnt/Mass 1/Movies⁄TV/12-10-2026 (1).txt",
+        r#"/tmp/$draft `v2` \final "notes""#,
+        "/tmp/line\nbob's notes",
+    ] {
+        assert_eq!(copy_path_text(&Location::local(path), false), path);
+    }
 }
 
 #[test]
 fn copy_path_text_adds_trailing_slash_to_directories_only() {
-    let directory = Location::local("/mnt/Mass 1/Movies\u{2044}TV");
-    assert_eq!(
-        copy_path_text(&directory, true),
-        "/mnt/Mass\\ 1/Movies\u{2044}TV/"
-    );
-    assert_eq!(
-        copy_path_text(&directory, false),
-        "/mnt/Mass\\ 1/Movies\u{2044}TV"
-    );
+    for (path, expected) in [("/My Documents", "/My Documents/"), ("/", "/")] {
+        assert_eq!(copy_path_text(&Location::local(path), true), expected);
+    }
 }
 
 #[test]
@@ -756,63 +744,15 @@ fn copy_path_text_keeps_uris_unescaped() {
 }
 
 #[test]
-fn shell_escape_path_preserves_newlines_and_single_quotes() {
-    assert_eq!(
-        shell_escape_path(Path::new("/tmp/line\nbob's notes")),
-        "'/tmp/line\nbob'\\''s notes'"
-    );
-}
-
-#[test]
-fn shell_escape_path_quotes_only_non_utf8_components() {
+fn copy_path_text_preserves_non_utf8_paths_as_file_uris() {
     use std::ffi::OsStr;
     use std::os::unix::ffi::OsStrExt;
 
-    for (path, expected) in [
-        (
-            &b"/mnt/Mass 1/bad\xff.txt"[..],
-            "/mnt/Mass\\ 1/$'bad\\xff.txt'",
-        ),
-        (b"/path/to/caf\xc3\xa9\xff.txt", "/path/to/$'café\\xff.txt'"),
-        (b"bad\xff it's\\.txt", "$'bad\\xff it\\'s\\\\.txt'"),
-        (
-            b"/tmp/line\nbreak/bad\xff\xc2\x85",
-            "/tmp/$'line\\x0abreak'/$'bad\\xff\\xc2\\x85'",
-        ),
-    ] {
-        assert_eq!(
-            shell_escape_path(Path::new(OsStr::from_bytes(path))),
-            expected
-        );
-    }
-    assert_eq!(
-        copy_path_text(
-            &Location::local(Path::new(OsStr::from_bytes(b"/path/to/bad\xff"))),
-            true
-        ),
-        "/path/to/$'bad\\xff'/"
-    );
-}
-
-#[test]
-fn copied_non_utf8_paths_resolve_in_bash() {
-    use std::ffi::OsStr;
-    use std::os::unix::ffi::OsStrExt;
-
-    let dir = tempfile::tempdir().expect("temporary directory");
-    let directory = dir.path().join(OsStr::from_bytes(b"line\nbreak \xfe"));
-    std::fs::create_dir(&directory).expect("create directory");
-    let file = directory.join(OsStr::from_bytes(b"bad\xff it's\x85.txt"));
-    std::fs::write(&file, b"content").expect("write file");
-
-    for (path, is_directory) in [(&directory, true), (&file, false)] {
+    let path = std::path::Path::new(OsStr::from_bytes(b"/tmp/My Documents/bad\xff"));
+    for is_directory in [false, true] {
         let copied = copy_path_text(&Location::local(path), is_directory);
-        let status = std::process::Command::new("bash")
-            .arg("-c")
-            .arg(format!("test -e {copied}"))
-            .status()
-            .expect("run bash");
-        assert!(status.success(), "bash could not resolve {copied:?}");
+        assert_eq!(copied.ends_with('/'), is_directory);
+        assert_eq!(gio::File::for_uri(&copied).path().as_deref(), Some(path));
     }
 }
 

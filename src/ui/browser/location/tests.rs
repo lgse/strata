@@ -87,6 +87,12 @@ fn location_input_credentials_are_one_shot_and_never_saved() {
             Some("smb://alice@host/share"),
         ),
         (
+            " 'smb://alice:secret@host/share' ",
+            "smb://alice@host/share",
+            Some("secret"),
+            Some("smb://alice@host/share"),
+        ),
+        (
             "smb://alice:secret@host/café",
             "smb://alice@host/caf%C3%A9",
             Some("secret"),
