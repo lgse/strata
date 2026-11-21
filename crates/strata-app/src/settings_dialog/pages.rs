@@ -176,12 +176,12 @@ fn about_identity(ctx: PageCtx<'_>) -> Option<El> {
         .build(kit);
     let line = row()
         .w_full()
-        .px(look.space.lg)
-        .py(look.space.md)
-        .gap(look.space.lg)
+        .px(18.0)
+        .py(18.0)
+        .gap(look.space.xl)
         .items_center()
         .child(
-            col().grow(1.0).gap(look.space.xxs).child(heading).child(
+            col().grow(1.0).gap(3.0).child(heading).child(
                 text(tr("Navigate every layer."))
                     .font(kit.ty.small)
                     .color(kit.c.text_muted),
@@ -256,9 +256,9 @@ fn detail_row(app: &App, label: &str, value: &str) -> El {
     let look = &app.look;
     row()
         .w_full()
-        .px(look.space.lg)
-        .py(look.space.md)
-        .gap(look.space.lg)
+        .px(18.0)
+        .py(16.0)
+        .gap(look.space.xl)
         .items_center()
         .child(
             text(label.to_owned())

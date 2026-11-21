@@ -7,7 +7,7 @@
 use std::borrow::Cow;
 use std::rc::Rc;
 
-use rune::{Color, Cursor, El, Tx, icon, row};
+use rune::{El, Tx};
 use strata_kit::icons::IconName;
 use strata_kit::look::Look;
 use strata_kit::slots::tabs as slot;
@@ -16,6 +16,7 @@ use super::drops::{self, Access, Ctx, Emit, OpensFn};
 use super::intent::{DropSite, TabOpen, TabsIntent};
 use super::{BrowserTabsState, new_tab_key};
 use crate::contract::dnd::{Dnd, DropHover, DropOffer};
+use crate::header;
 
 /// The words the strip says, for the host to translate.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -143,38 +144,16 @@ pub(super) fn button<S: 'static>(
     look: &Look,
 ) -> El {
     let emit = cx.emit.clone();
-    let k = &look.kit;
-    let side = look.frame.control;
-    let radius = look.round(5.0);
-    let hovered = state.drop_hover() == Some((DropSite::NewTab, DropHover::Accepting));
-    let fill = if hovered || state.open_drag() {
-        slot::new_drop_fill(look)
-    } else {
-        Color::TRANSPARENT
-    };
-    let help = spec.labels.new_tab_help.clone().into_owned();
-    let el = row()
-        .key(spec.key.clone())
-        .size(side, side)
-        .center()
-        .radius(radius)
-        .fill(fill)
-        .hover(k.c.hover)
-        .press(k.c.pressed)
-        .cursor(Cursor::Pointer)
-        .focusable(true)
-        .focus_ring(2.0, -2.0, k.c.border_focus)
+    let mut el = header::action(look, IconName::Plus, &spec.labels.new_tab_help)
         .label(spec.labels.new_tab.clone().into_owned())
-        .description(help.clone())
-        .help(help)
         .on_press_tx(move |s: &mut S, tx: &mut Tx| emit(s, TabsIntent::New, tx))
-        .role("button")
-        .child(
-            icon(look.icon(IconName::Plus), look.icon_size.md)
-                .key("icon")
-                .color(k.c.icon_accent)
-                .a11y_hidden(),
-        );
+        .build(&look.accent_icon_kit())
+        .key(spec.key.clone());
+    let hovered = state.drop_hover() == Some((DropSite::NewTab, DropHover::Accepting));
+    if hovered || state.open_drag() {
+        // Strata's `.tab-drop-hover`: the header action's radius, an accent ground.
+        el = el.fill(slot::new_drop_fill(look)).radius(look.round(5.0));
+    }
     spec.dnd
         .drop_zone_keyed(el, spec.key, drops::opener(cx, DropSite::NewTab))
 }

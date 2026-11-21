@@ -29,6 +29,9 @@ pub struct PaletteItem {
     pub detail_matched: Vec<Range<usize>>,
     /// The row's icon, drawn under the thumbnail while one loads.
     pub icon: IconName,
+    /// Optional catalog icon key (resolved via [`Look::icon_named`]) taking precedence over
+    /// [`Self::icon`] when present in the active icon catalog.
+    pub icon_key: Option<String>,
     /// The thumbnail key, for images: drawn from the palette's [`ThumbnailStore`] when the
     /// palette has one ([`super::SearchPalette::thumbnails`]).
     ///
@@ -46,6 +49,7 @@ impl PaletteItem {
             detail: detail.into(),
             detail_matched: Vec::new(),
             icon: IconName::File,
+            icon_key: None,
             thumb: None,
         }
     }
@@ -65,6 +69,12 @@ impl PaletteItem {
     /// The same result with `icon`.
     pub fn icon(mut self, icon: IconName) -> Self {
         self.icon = icon;
+        self
+    }
+
+    /// The same result with catalog icon key `key`.
+    pub fn icon_key(mut self, key: impl Into<String>) -> Self {
+        self.icon_key = Some(key.into());
         self
     }
 

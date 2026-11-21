@@ -362,9 +362,9 @@ fn placeholder(rcx: &RowCx<'_>, points: f32, opacity: f32) -> El {
     let glyph = match mark_icon(rcx.state.marks) {
         Some(mark) => icon(look.icon(mark), points)
             .key(GLYPH)
-            .color(look.kit.c.icon_base)
+            .color(look.kit.c.icon_accent)
             .a11y_hidden(),
-        None => entry_glyph(look, rcx.entry, points, look.kit.c.icon_base),
+        None => entry_glyph(look, rcx.entry, points, look.kit.c.icon_accent),
     };
     match opacity < 1.0 {
         true => glyph.opacity(opacity),

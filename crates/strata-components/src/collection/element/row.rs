@@ -767,12 +767,15 @@ fn default_icon(rcx: &RowCx<'_>) -> El {
     match crate::thumbnails::mark_icon(rcx.state.marks) {
         Some(mark) => rune::icon(look.icon(mark), look.icon_size.md)
             .key(ICON)
-            .color(look.kit.c.icon_base)
+            .color(look.kit.c.icon_accent)
             .a11y_hidden(),
-        None => {
-            crate::thumbnails::entry_glyph(look, rcx.entry, look.icon_size.md, look.kit.c.icon_base)
-                .key(ICON)
-        }
+        None => crate::thumbnails::entry_glyph(
+            look,
+            rcx.entry,
+            look.icon_size.md,
+            look.kit.c.icon_accent,
+        )
+        .key(ICON),
     }
 }
 

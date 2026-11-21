@@ -5,7 +5,7 @@
 use std::rc::Rc;
 
 use rune::{El, Tx};
-use rune_kit::IconButton;
+use rune_kit::{IconButton, IconButtonVariant};
 use strata_kit::icons::IconName;
 use strata_kit::look::Look;
 
@@ -59,13 +59,14 @@ impl<'a, S: 'static> WidthToggle<'a, S> {
         let emit = self.emit;
         let shortcut = &self.shortcut;
         IconButton::new(look.icon(IconName::Sidebar))
+            .variant(IconButtonVariant::Ghost)
             .label(format!("Toggle sidebar ({shortcut})"))
             .help(format!("{} ({shortcut})", self.state.width.next_label()))
             .on_press_tx(move |s: &mut S, tx: &mut Tx| {
                 let step = access(s).width.advance();
                 emit(s, SidebarIntent::Stepped(step), tx);
             })
-            .build(&look.kit)
+            .build(&look.accent_icon_kit())
             .key(format!("{}-toggle", self.key))
     }
 }

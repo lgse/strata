@@ -95,7 +95,7 @@ fn menu_button(app: &App, depth: usize, anchor: &str, list: bool, in_columns: bo
             .expanded(pressed),
         None => header::action(look, IconName::Settings, &app.sort.labels.choose)
             .on_press_tx(press)
-            .build(&look.kit)
+            .build(&look.accent_icon_kit())
             .expanded(pressed),
     }
 }
@@ -124,7 +124,7 @@ fn direction_button(app: &App, depth: usize) -> El {
     header::action(look, icon, &name)
         .disabled(fixed)
         .on_press_tx(move |app: &mut App, _: &mut Tx| reverse(app, depth))
-        .build(&look.kit)
+        .build(&look.accent_icon_kit())
 }
 
 fn reverse(app: &mut App, depth: usize) {

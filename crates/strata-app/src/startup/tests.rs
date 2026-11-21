@@ -1,8 +1,12 @@
 // SPDX-License-Identifier: MIT
 
-use strata_desktop::keys::{
-    self, Backend, Context, Key, KeyPress, KeyPressParts, Keys, Map, Modifiers, Typed,
-    bindings::COPY, conflicts, label_in_map, rewrite,
+use strata_desktop::{
+    keys::{
+        self, Backend, Context, Key, KeyPress, KeyPressParts, Keys, Map, Modifiers, Typed,
+        bindings::COPY, conflicts, label_in_map, rewrite,
+    },
+    services::{Channel, InstallSource},
+    settings::Preferences,
 };
 
 use super::UiThread;
@@ -91,5 +95,30 @@ fn the_ui_thread_is_not_claimed_over_another_key_library() {
         assert!(keys::install(&Foreign, conflicts::never_fires));
         let refused = UiThread::claim().err().expect("the claim is refused");
         assert!(refused.contains("key library"), "{refused}");
+    });
+}
+
+#[test]
+fn claiming_the_ui_thread_warms_install_source() {
+    let test = "startup::tests::claiming_the_ui_thread_warms_install_source";
+    crate::test_support::in_own_process(test, &[], || {
+        let _ui = UiThread::claim().expect("the UI thread");
+        let already_detected =
+            std::panic::catch_unwind(|| InstallSource::seed_for_test("manager = \"pacman\"\n"));
+        assert!(
+            already_detected.is_err(),
+            "UiThread::claim must initialize InstallSource::detect before marking the UI thread"
+        );
+        let _ = Preferences::default().release_channel();
+    });
+}
+
+#[test]
+fn claiming_the_ui_thread_keeps_a_preseeded_install_source() {
+    let test = "startup::tests::claiming_the_ui_thread_keeps_a_preseeded_install_source";
+    crate::test_support::in_own_process(test, &[], || {
+        InstallSource::seed_for_test("manager = \"pacman\"\nchannel = \"nightly\"\n");
+        let _ui = UiThread::claim().expect("the UI thread");
+        assert_eq!(Preferences::default().release_channel(), Channel::Nightly);
     });
 }
