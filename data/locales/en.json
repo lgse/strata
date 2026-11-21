@@ -680,6 +680,7 @@
   "Only relative local images are loaded; remote images are blocked for privacy": "Only relative local images are loaded; remote images are blocked for privacy",
   "Only used when running per item": "Only used when running per item",
   "Only ~ and ~/ paths are supported for the current user's home directory.": "Only ~ and ~/ paths are supported for the current user's home directory.",
+  "A file:// URI must name a file on this computer. Use smb:// or sftp:// for another computer.": "A file:// URI must name a file on this computer. Use smb:// or sftp:// for another computer.",
   "Open": "Open",
   "Open AUR Update": "Open AUR Update",
   "Open Files": "Open Files",

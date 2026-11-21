@@ -1,42 +1,97 @@
 // SPDX-License-Identifier: MIT
 
-use std::path::{Path, PathBuf};
+use std::{
+    ffi::{OsStr, OsString},
+    os::unix::ffi::{OsStrExt, OsStringExt},
+    path::{Path, PathBuf},
+};
 
 use crate::{
     model::{GIO_URI_BUILD_FLAGS, GIO_URI_PARSE_FLAGS, Location, lexically_normalized},
     services::{LocationValidationError, validate_uri_credentials},
 };
 
-pub(super) fn location_from_input(input: &str) -> Result<Location, LocationValidationError> {
-    location_from_input_with_home(input, &glib::home_dir())
+mod shell_word;
+
+/// A relative path resolves against the native folder `base`.
+pub(super) fn location_from_input(
+    input: &str,
+    base: Option<&Path>,
+) -> Result<Location, LocationValidationError> {
+    location_from_input_with_home(input, base, &glib::home_dir())
 }
 
+/// Reads pasted text as a terminal or Copy path would have written it: one layer of
+/// quotes, shell escapes, and `file://` URIs name the same location as the plain path.
 pub(super) fn location_from_input_with_home(
     input: &str,
+    base: Option<&Path>,
     home: &Path,
 ) -> Result<Location, LocationValidationError> {
-    if input == "~" {
-        return Ok(Location::local(lexically_normalized(home)));
+    if let Some(uri) = typed_location_uri(input) {
+        return location_from_uri(uri);
     }
-    if let Some(relative) = input.strip_prefix("~/") {
-        return Ok(Location::local(lexically_normalized(
-            &home.join(relative.trim_matches('/')),
-        )));
+    let path = typed_path(input);
+    if path.as_os_str().is_empty() {
+        return Err(LocationValidationError::Empty);
     }
-    if input.starts_with('~') {
+    if let Some(message) = path.to_str().and_then(unsupported_shorthand_message) {
+        return Err(LocationValidationError::UnsupportedShorthand(message));
+    }
+    let resolved = resolved_local_path(path, base, home)?;
+    Ok(Location::local(lexically_normalized(&resolved)))
+}
+
+fn resolved_local_path(
+    path: PathBuf,
+    base: Option<&Path>,
+    home: &Path,
+) -> Result<PathBuf, LocationValidationError> {
+    let bytes = path.as_os_str().as_bytes();
+    if bytes == b"~" {
+        return Ok(home.to_path_buf());
+    }
+    if let Some(relative) = bytes.strip_prefix(b"~/") {
+        let start = relative.iter().take_while(|&&byte| byte == b'/').count();
+        return Ok(home.join(OsStr::from_bytes(&relative[start..])));
+    }
+    if bytes.starts_with(b"~") {
         return Err(LocationValidationError::UnsupportedShorthand(
             "Only ~ and ~/ paths are supported for the current user's home directory.",
         ));
     }
+    Ok(match base.filter(|_| path.is_relative()) {
+        Some(base) => base.join(&path),
+        None => path,
+    })
+}
+
+/// The URI that typed text names, without one layer of surrounding quotes. Shell
+/// escapes inside a URI are left alone.
+pub fn typed_location_uri(input: &str) -> Option<&str> {
+    let input = input.trim();
+    let unquoted = shell_word::outer_quotes_removed(input).map_or(input, str::trim);
+    (is_uri_like(unquoted) || virtual_root(unquoted).is_some()).then_some(unquoted)
+}
+
+fn typed_path(input: &str) -> PathBuf {
+    let input = input.trim();
+    match shell_word::unquoted(input) {
+        Some(word) => PathBuf::from(OsString::from_vec(word.trim_ascii().to_vec())),
+        None => PathBuf::from(input),
+    }
+}
+
+fn location_from_uri(input: &str) -> Result<Location, LocationValidationError> {
     if let Some(root) = virtual_root(input) {
         return Ok(Location::uri(root));
-    }
-    if !is_uri_like(input) {
-        return Ok(Location::local(lexically_normalized(Path::new(input))));
     }
     let scheme_end = input.find("://").unwrap_or_default();
     let scheme = &input[..scheme_end];
     let normalized = scheme.to_ascii_lowercase();
+    if normalized == "file" {
+        return location_from_file_uri(input);
+    }
     if !matches!(
         normalized.as_str(),
         "smb"
@@ -57,6 +112,17 @@ pub(super) fn location_from_input_with_home(
     // Typed text must take GIO's percent-encoded form to match listed children.
     let uri = validate_uri_credentials(&format!("{normalized}{}", &input[scheme_end..]))?;
     Ok(Location::uri(without_query_or_fragment(uri)))
+}
+
+fn location_from_file_uri(uri: &str) -> Result<Location, LocationValidationError> {
+    let (path, host) =
+        glib::filename_from_uri(uri).map_err(|_| LocationValidationError::InvalidUri)?;
+    if host.is_some_and(|host| !host.is_empty() && !host.eq_ignore_ascii_case("localhost")) {
+        return Err(LocationValidationError::UnsupportedShorthand(
+            "A file:// URI must name a file on this computer. Use smb:// or sftp:// for another computer.",
+        ));
+    }
+    Ok(Location::local(lexically_normalized(&path)))
 }
 
 /// GVfs folds a URI's query and fragment into the mount spec, so a backend that ignores them,
@@ -143,16 +209,6 @@ pub(super) fn looks_like_scp_shorthand(input: &str) -> bool {
         return false;
     };
     !host.is_empty() && after_at.contains(':') && !host.contains('/') && !host.contains('\\')
-}
-
-/// Joins natively, so a non-UTF-8 base stays byte-exact, and resolves `.` and
-/// `..` as text.
-pub(super) fn join_relative(base: &Path, relative: &str) -> PathBuf {
-    lexically_normalized(&base.join(relative))
-}
-
-pub(super) fn is_relative_path_input(input: &str) -> bool {
-    !input.starts_with(['/', '~']) && !is_uri_like(input) && virtual_root(input).is_none()
 }
 
 pub(super) fn is_uri_like(input: &str) -> bool {

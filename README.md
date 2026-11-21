@@ -414,6 +414,12 @@ Toggle [10xer mode](docs/10xer-mode.md) with <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<k
 
 In narrow or highly scaled windows, the file view takes priority: the preview shrinks, then hides when there is not enough room for both. Widening the window restores the preview and its session width automatically. Hidden previews pause playback and defer loading new selections; unchanged previews return without reloading the file.
 
+**Copy path** copies a plain path for pasting into a file dialog or another app.
+For example, `My Documents/report (1).pdf` keeps its spaces and parentheses.
+Strata does not quote it for a shell. <kbd>Ctrl</kbd>+<kbd>L</kbd> accepts that
+plain path and also a path copied from a terminal: quoted, backslash-escaped, or
+as a `file://` URI.
+
 ### Desktop entry
 
 Every release archive ships `io.github.lgse.Strata.desktop` and the Strata application icon `io.github.lgse.Strata.svg`. Install both to give Strata a per-user launcher with its own icon in launchers, docks, task switchers, and window overviews, and optionally make Strata the default directory handler:

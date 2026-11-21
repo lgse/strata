@@ -48,10 +48,10 @@ use {
 fn credentials_from_location_input(
     input: &str,
 ) -> Result<(String, Option<MountCredentials>), LocationValidationError> {
-    if !input.contains("://") {
+    let Some(uri) = crate::app::typed_location_uri(input).filter(|uri| uri.contains("://")) else {
         return Ok((input.to_owned(), None));
-    }
-    let (sanitized, credentials) = sanitize_uri_credentials(input)?;
+    };
+    let (sanitized, credentials) = sanitize_uri_credentials(uri)?;
     let credentials = credentials.map(|credentials: UriCredentials| MountCredentials {
         anonymous: false,
         username: credentials.username,
