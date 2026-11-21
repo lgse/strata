@@ -79,16 +79,9 @@ impl<'a> Adoption<'a> {
 /// `activate_window`, has the backend give it the keyboard.
 pub(super) async fn adopt<B: Backend>(backend: &B, adoption: &Adoption<'_>) -> Outcome {
     let deadline = Instant::now() + adoption.timeout;
-    let window = loop {
-        let windows = windows_titled(backend, adoption.title);
-        let showing = windows.len();
-        if let Some(window) = adoption.chosen(windows) {
-            break window;
-        }
-        if Instant::now() >= deadline {
-            return adoption.timed_out(adoption.missing(showing));
-        }
-        backend.sleep(POLL_INTERVAL).await;
+    let window = match adoptable(backend, adoption, deadline).await {
+        Ok(window) => window,
+        Err(actual) => return adoption.timed_out(actual),
     };
     backend.adopt(&window);
     if adoption.activate {
@@ -100,4 +93,23 @@ pub(super) async fn adopt<B: Backend>(backend: &B, adoption: &Adoption<'_>) -> O
     }
     backend.settle(&window).await;
     Outcome::default()
+}
+
+/// The window the step takes once one is showing, or what the timeout found.
+async fn adoptable<B: Backend>(
+    backend: &B,
+    adoption: &Adoption<'_>,
+    deadline: Instant,
+) -> Result<B::Node, Value> {
+    loop {
+        let windows = windows_titled(backend, adoption.title);
+        let showing = windows.len();
+        if let Some(window) = adoption.chosen(windows) {
+            return Ok(window);
+        }
+        if Instant::now() >= deadline {
+            return Err(adoption.missing(showing));
+        }
+        backend.sleep(POLL_INTERVAL).await;
+    }
 }
