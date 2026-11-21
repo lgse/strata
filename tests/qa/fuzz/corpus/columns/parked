@@ -16,6 +16,10 @@
 # v3-0000000000000055: a right-click while the Menu key's menu is open (F4's round 3).
 # v3-0000000000000067: after a Ctrl+click GTK's next Down moves from the cursor the click left
 # (F4's round 3).
+# v3-0000000000000079: Shift+Home leaves archive alone selected: Rune opens its column, GTK does
+# not (F4's round 3).
+# v3, 0xb4 is kept unparked: Shift+Home in a column with no cursor, its fix
+# (lgse/strata#2693) came with it (F4's round 3).
 v1-0000000000000002 oracle lgse/strata#2351
 v1-0000000000000008 oracle lgse/strata#2350
 v1-000000000000000d oracle lgse/strata#2353
@@ -33,3 +37,4 @@ v3-0000000000000037 oracle lgse/strata#2356
 v3-000000000000003c oracle lgse/strata#2356
 v3-0000000000000055 divergence lgse/strata#2644
 v3-0000000000000067 oracle lgse/strata#2353
+v3-0000000000000079 divergence lgse/strata#2650

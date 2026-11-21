@@ -1,0 +1,14 @@
+{"scenario":"fuzz-views-v4-0000000000000089","modes":["columns"],"prefs":{"type_to_search":false}}
+{"key":"Home"}
+{"key":"Down","when":{"not":{"view_mode":"Icons"}}}
+{"key":"Up","when":{"all":[{"not":{"view_mode":"Icons"}},{"not":{"focused":{"one_of":["archive", "notes.txt", "diagram.txt"]}}}]}}
+{"key":"ctrl+1"}
+{"key":"Down","when":{"not":{"view_mode":"Icons"}}}
+{"key":"Right","when":{"all":[{"view_mode":"Columns"},{"not":{"focused":"archive"}}]}}
+{"key":"alt+Left","when":{"all":[{"focused_pane":true},{"not":{"directory":"$root"}}]}}
+{"key":"ctrl+period"}
+{"key":"Escape","when":{"present":{"role":"radio menu item","name":"Columns"}}}
+{"click":{"role":"toggle button","name":"Appearance"}}
+{"click":{"role":"radio menu item","name":"List"},"when":{"present":{"role":"radio menu item","name":"List"}}}
+{"click":{"entry":"pictures"},"count":2,"when":{"all":[{"present":{"entry":"pictures"}},{"not":{"view_mode":"Columns"}}]}}
+{"key":"Down","when":{"not":{"view_mode":"Icons"}}}
