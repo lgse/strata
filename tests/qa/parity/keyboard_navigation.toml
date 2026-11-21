@@ -138,7 +138,7 @@ package = "E1"
 gate = "G2"
 status = "pending"
 reason = "scope"
-blocker = "a scenario H5 added (#2609), merged on 2026-11-20 and not yet run on Rune; it needs no part Rune does not mount"
+blocker = "a scenario H5 added (#2609), merged on 2026-11-20; in the sync's run on Rune, line 14 fails: with the cursor's entry back in view, the Menu key opens no menu (not yet confirmed three times, nor filed)"
 
 [[run]]
 scenario = "menu-key-skips-scrolled-away-cursor"
@@ -146,7 +146,7 @@ run = "icons"
 package = "A1"
 status = "pending"
 reason = "scope"
-blocker = "A1: a scenario H5 added (#2609), merged on 2026-11-20 and not yet run on Rune"
+blocker = "A1: a scenario H5 added (#2609), merged on 2026-11-20; in the sync's run on Rune, line 14 fails as in Columns: with the cursor's entry back in view, the Menu key opens no menu"
 
 [[run]]
 scenario = "return-restores-nested-scroll"

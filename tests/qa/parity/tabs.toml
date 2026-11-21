@@ -127,7 +127,7 @@ run = "columns"
 package = "A4"
 status = "pending"
 reason = "scope"
-blocker = "A4: a scenario H5 added (#2609), merged on 2026-11-20; strata-rune takes the plain restart from this merge on, and the run is not yet run on Rune"
+blocker = "A4: a scenario H5 added (#2609), merged on 2026-11-20; strata-rune takes the plain restart from this merge on; it passed once on Rune in the sync's own run, and A4 flips it once it has passed three times running"
 
 [[run]]
 scenario = "restore-tabs-on-plain-launch-only"
@@ -135,7 +135,7 @@ run = "columns"
 package = "A4"
 status = "pending"
 reason = "scope"
-blocker = "A4: a scenario H5 added (#2609), merged on 2026-11-20; strata-rune takes the plain restart from this merge on, and the run is not yet run on Rune"
+blocker = "A4: a scenario H5 added (#2609), merged on 2026-11-20; strata-rune takes the plain restart from this merge on; it passed once on Rune in the sync's own run, and A4 flips it once it has passed three times running"
 
 [[run]]
 scenario = "restore-tabs-setting-gates-session"
@@ -143,7 +143,7 @@ run = "columns"
 package = "A4"
 status = "pending"
 reason = "scope"
-blocker = "A4: a scenario H5 added (#2609), merged on 2026-11-20; strata-rune takes the plain restart from this merge on, and the run is not yet run on Rune"
+blocker = "A4: a scenario H5 added (#2609), merged on 2026-11-20; strata-rune takes the plain restart from this merge on; it passed once on Rune in the sync's own run, and A4 flips it once it has passed three times running"
 
 [[run]]
 scenario = "sidebar-locations-open-new-tabs"
