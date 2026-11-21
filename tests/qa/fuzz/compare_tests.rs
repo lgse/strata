@@ -195,6 +195,14 @@ pub(crate) fn the_shrinker_keeps_the_fewest_steps_that_still_diverge_and_confirm
         (shrunk.divergence.step, shrunk.divergence.field()),
         (3, "app.focused")
     );
+    // An alphabet's opening stays whole, whether or not the divergence needs it.
+    let budget = Budget {
+        asks: 200,
+        kept: 2,
+    };
+    let opened = shrink(&long, &found, budget, &mut |candidate| Ok(double(candidate)))
+        .expect("the oracle never fails");
+    assert_eq!(opened.steps, steps("x y a b c"));
     assert!(shrunk.is_confirmed());
     assert_eq!(
         (shrunk.confirmed, shrunk.asked),

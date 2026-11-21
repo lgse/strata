@@ -96,7 +96,18 @@ pub(crate) fn a_seed_writes_the_same_sequence_on_every_machine() {
     sequence
         .load()
         .expect("a generated sequence should be a scenario the replay can run");
+    // An opening comes first, draws nothing, and the shrinker is told how long it is.
+    let opened = sample().replace(HEADER, &format!("{HEADER}\n{OPENING}"));
+    let opened = alphabet::parse(&opened).expect("an alphabet with an opening should load");
+    let started = generate(&opened, 7, 8);
+    assert_eq!(started.steps[..2], [r#"{"key":"Home"}"#, r#"{"key":"End"}"#]);
+    assert_eq!(started.steps[2..], SEED_SEVEN);
+    assert_eq!(opened.opening_of(&started.steps), 2);
+    assert_eq!(opened.opening_of(&sequence.steps), 0);
 }
+
+/// Two opening steps for the sample.
+const OPENING: &str = r#"opening = ['{"key":"Home"}', '{"key":"End"}']"#;
 
 pub(crate) fn an_alphabet_is_refused_for_what_a_replay_could_not_run() {
     let sample = sample();
@@ -132,8 +143,21 @@ pub(crate) fn an_alphabet_is_refused_for_what_a_replay_could_not_run() {
             "unknown field",
         ),
         (
-            with_header(r#"{"modes":["columns"],"portal":true,"session_bus":true}"#),
-            "does not take the header's portal",
+            sample.replace(HEADER, &format!("{HEADER}\nopening = ['{{\"key\":\"<key>\"}}']")),
+            "an opening step is one line of JSON with nothing to choose",
+        ),
+        // A portal's request steps need its bus, and a sequence's answer waits, checking
+        // nothing: the observation holds what the portal answered.
+        (
+            with_header(r#"{"modes":["columns"],"portal":true}"#),
+            "session_bus",
+        ),
+        (
+            with_header(r#"{"modes":["columns"],"portal":true,"session_bus":true}"#).replace(
+                r#"'{"key":"Down"}'"#,
+                r#"'{"portal_response":{"done":true,"status":0}}'"#,
+            ),
+            "only waits, so it takes no status",
         ),
         (
             with_header(r#"{"modes":["columns","list"]}"#),
@@ -293,6 +317,10 @@ pub(crate) fn an_alphabet_s_version_is_pinned_to_what_its_seeds_write() {
         (sample.replace("version = 1", "version = 2"), "does not pin"),
         (
             sample.replace(HEADER, &format!("{HEADER}\nhost = \"session\"")),
+            "raise `version`",
+        ),
+        (
+            sample.replace(HEADER, &format!("{HEADER}\n{OPENING}")),
             "raise `version`",
         ),
     ] {

@@ -629,7 +629,9 @@ Unknown keys are rejected.
 | `area` | yes | Equals the file stem. Lowercase words of `a-z0-9` joined by `-`. |
 | `version` | yes | At least 1, and pinned in `pins` to a digest of the generator's version, the header and the actions. Raise it, and write the line the runner then names, with every change that makes a seed write another sequence. |
 | `about` | yes | One non-empty line. Not part of the digest. |
-| `header` | yes | A JSON object in a string: the scenario header without `scenario`. One mode, no variants, and none of `session_bus`, `portal`, `input_method`, `fixture_root`, `layout`, `teardown`, `images`, `mutation`, `known_bug`, `skip`, `parity`, `targets`. |
+| `header` | yes | A JSON object in a string: the scenario header without `scenario`. One mode, no variants, and none of `input_method`, `volume_monitor`, `fixture_root`, `layout`, `teardown`, `images`, `mutation`, `known_bug`, `skip`, `parity`, `targets`. `session_bus` is allowed, and `portal` with it. |
+| `host` | no | `session` runs the Rune replays on the session host (the portal's, for a `portal` header); `offscreen`, the default, otherwise. `session` is part of the digest. |
+| `opening` | no | Steps every sequence starts with, before the drawn actions, kept whole by the shrinker: one line of JSON each, with no `<name>`. Part of the digest when set. |
 | `[[action]]` `name` | yes | Unique; lowercase words joined by `-`. |
 | `[[action]]` `weight` | yes | At least 1: the action's share of the sum of the weights. |
 | `[[action]]` `steps` | yes | One or more steps, each one line of JSON as a scenario file has it. |
@@ -644,7 +646,9 @@ A sequence goes through the scenario loader, then these rules:
   `settle` are allowed: they wait on what the application shows.
 - No `if`, `unless`, `as`, `modes` or `variants`. `when`, `message` and
   `timeout_ms` are allowed.
-- No runner step other than `fs`.
+- No runner step other than `fs`, the drag source's (`foreign`,
+  `foreign_label`, `foreign_stop`) and the portal's (`portal_open`, and a
+  `portal_response` that takes only `done`).
 
 ### Observation fields
 
@@ -658,6 +662,7 @@ fields the same way:
 | `app.<key>` | One of the ten snapshot keys. `app.panes[1].selected` is a field; `app.panes[].selected` names it in every pane. `app.field.caret`, `.text`, `.selection`, `.name`, `.focused`. |
 | `fs.<path>` | A fixture path, whole, whatever dots and brackets its names have: `dir <mode>`, `file <mode> <size> <digest>` or `link <target>`. |
 | `settings.<key>` | A key of `settings.toml`, nested tables by dots: `settings.keymap.default.rename`. |
+| `portal.<key>` | A portal run's only: `answered`, then `status` and `paths` (the chosen paths, `$fixture` written for the fixture), or `error`. |
 
 An entry covers its field and what is below it at a boundary of the path:
 `app.field` covers `app.field.caret`, `fs.documents` covers
