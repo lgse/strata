@@ -50,21 +50,13 @@ macro_rules! density_scale {
 
 density_scale!(
     /// File-row and icon-card vertical spacing in logical px.
-    BrowserDensity {
-        compact: 4,
-        airy: 8,
-        max: 16
-    }
+    BrowserDensity { compact: 4, airy: 8, max: 16 }
 );
 
 density_scale!(
     /// Extra vertical inset shared by the header, tab strip, sidebar rows, and
     /// Miller/preview headers, so their heights stay in lock step.
-    FrameDensity {
-        compact: 0,
-        airy: 4,
-        max: 12
-    }
+    FrameDensity { compact: 0, airy: 4, max: 12 }
 );
 
 /// Spacing for a Custom slider position, extrapolated linearly through the static
