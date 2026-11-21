@@ -892,8 +892,9 @@ pub(crate) fn close_window(app: &mut App, tx: &mut Tx) {
 /// registers it; until one does the button is drawn and inert.
 struct Button {
     key: &'static str,
-    icon: IconName,
+    icon: fn(&App) -> IconName,
     face: fn(&App) -> Face,
+    pressed_when_checked: bool,
     command: &'static str,
 }
 
@@ -920,8 +921,9 @@ impl Face {
 /// Before the location bar.
 const LEADING: Button = Button {
     key: "sidebar-toggle",
-    icon: IconName::Sidebar,
+    icon: |_| IconName::Sidebar,
     face: crate::sidebar::toggle_face,
+    pressed_when_checked: false,
     command: "toggle-sidebar",
 };
 
@@ -932,7 +934,7 @@ const NEW_TAB: &str = "new-tab";
 const TRAILING: [Button; 4] = [
     Button {
         key: NEW_TAB,
-        icon: IconName::Plus,
+        icon: |_| IconName::Plus,
         // GTK names it plainly; only its tooltip names the keys.
         face: |_| Face {
             tooltip: Some(with_keys(
@@ -942,11 +944,12 @@ const TRAILING: [Button; 4] = [
             )),
             ..Face::named(tr("New tab"))
         },
+        pressed_when_checked: false,
         command: "tab-new",
     },
     Button {
         key: "search",
-        icon: IconName::Search,
+        icon: |_| IconName::Search,
         face: |_| {
             Face::named(with_keys(
                 "Search (%{keys})",
@@ -954,18 +957,21 @@ const TRAILING: [Button; 4] = [
                 Keys::One(SEARCH.shown()),
             ))
         },
+        pressed_when_checked: false,
         command: "search",
     },
     Button {
         key: "appearance",
-        icon: IconName::Menu,
+        icon: crate::appearance::button_icon,
         face: crate::appearance::face,
+        pressed_when_checked: true,
         command: "appearance",
     },
     Button {
         key: "settings",
-        icon: IconName::Settings,
+        icon: |_| IconName::Settings,
         face: |_| Face::named(tr("Settings")),
+        pressed_when_checked: false,
         command: "settings",
     },
 ];
@@ -1032,10 +1038,11 @@ pub(crate) fn header_commands() -> impl Iterator<Item = &'static str> {
 fn build_header_action(app: &App, button: &Button) -> El {
     let look = &app.look;
     let command = button.command;
+    let icon = (button.icon)(app);
     let face = (button.face)(app);
     let action = match &face.tooltip {
-        Some(tooltip) => header::action(look, button.icon, tooltip).label(face.name),
-        None => header::action(look, button.icon, &face.name),
+        Some(tooltip) => header::action(look, icon, tooltip).label(face.name),
+        None => header::action(look, icon, &face.name),
     };
     let action = action
         .on_press_tx(move |app: &mut App, tx: &mut Tx| {
@@ -1043,6 +1050,7 @@ fn build_header_action(app: &App, button: &Button) -> El {
         })
         .build(&look.accent_icon_kit());
     let action = match face.checked {
+        Some(true) if button.pressed_when_checked => action.checked(true).fill(look.kit.c.pressed),
         Some(on) => action.checked(on),
         None => action,
     };

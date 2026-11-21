@@ -167,7 +167,14 @@ impl Plain {
             .preserve_focus_on_press(true)
             .on_press(|_: &mut App| {})
             .on_wheel(|_: &mut App, _: WheelEvent, _: &mut Tx| true);
-        let surface = popover::raised(kit, body, kit.radius.md);
+        let mut surface = popover::raised(kit, body, kit.radius.lg).border(1.0, kit.c.border_base);
+        if look.glow.on {
+            surface = surface.shadow(
+                0.0,
+                look.glow.radius,
+                look.glow.color.alpha(look.glow.opacity),
+            );
+        }
         frame.layer.push(popover::anchored(
             kit,
             surface,

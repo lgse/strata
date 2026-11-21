@@ -159,7 +159,6 @@ use rune::{Cursor, Cx, Drag, El, KeyEvent, MagnifyEvent, Pixels, SurfaceFit, Tx,
 use strata_kit::look::Look;
 
 use crate::contract::{Dnd, DragSource};
-use crate::dialog::FOCUS_RING_WIDTH;
 
 pub use checker::checkerboard;
 pub use state::ViewportState;
@@ -499,8 +498,9 @@ impl<'a, S: 'static> Viewport<'a, S> {
         }
         frame = frame
             .focusable(true)
-            // Inside the edge: a drawer's slot clips anything outside the viewport.
-            .focus_ring(FOCUS_RING_WIDTH, -FOCUS_RING_WIDTH, look.kit.c.border_focus)
+            // The preview drawer's top accent bar marks keyboard ownership (`.preview-pane
+            // .preview-header`), so the viewport draws no box ring of its own.
+            .no_focus_ring()
             .on_key(key_handler(
                 access,
                 on_zoom.clone(),

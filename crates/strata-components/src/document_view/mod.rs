@@ -154,7 +154,6 @@ use rune::{Cx, El, GrowthSpec, Key, KeyEvent, ScrollSpec, Tx, col, text};
 use strata_kit::look::Look;
 
 use crate::code_view::highlight::CodeBlocks;
-use crate::dialog::FOCUS_RING_WIDTH;
 use crate::scroll::{BarLook, overlay};
 
 /// The case folding find runs on, shared with C10b's CodeView.
@@ -285,22 +284,32 @@ impl<S: 'static> DocumentView<S> {
             .h_full()
             .min_h(0.0)
             .focusable(true)
-            // Keyboard focus shows inside the edge: the drawer's slot clips anything outside.
-            .focus_ring(FOCUS_RING_WIDTH, -FOCUS_RING_WIDTH, look.kit.c.border_focus)
+            // The preview drawer's top accent bar marks keyboard ownership (`.preview-pane
+            // .preview-header`), so the document root draws no box ring of its own.
+            .no_focus_ring()
             .on_key(move |s: &mut S, ev: &KeyEvent, tx: &mut Tx| {
                 key_in(s, ev, tx, get_mut, &intent)
             });
         for notice in &st.document().notices {
             root = root.child(
-                text(notice.clone())
-                    .wrap()
-                    .w_full()
-                    .font(paint.small)
-                    .color(paint.muted)
-                    .px(16.0)
-                    .pt(8.0)
-                    .selectable(true)
-                    .selection_color(paint.selection),
+                col().w_full().px(look.space.lg).pt(look.space.md).child(
+                    col()
+                        .w_full()
+                        .fill(look.kit.c.info.bg)
+                        .border(1.0, look.kit.c.info.border)
+                        .radius(look.round(5.0))
+                        .px(9.0)
+                        .py(7.0)
+                        .child(
+                            text(notice.clone())
+                                .wrap()
+                                .w_full()
+                                .font(paint.small)
+                                .color(paint.text)
+                                .selectable(true)
+                                .selection_color(paint.selection),
+                        ),
+                ),
             );
         }
         root.child(body)

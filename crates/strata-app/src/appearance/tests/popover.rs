@@ -190,7 +190,7 @@ fn the_button_opens_the_popover_on_its_first_row_named_as_gtks() {
 }
 
 /// A view row shows its view as Ctrl+3 does, saves it, closes the popover and gives the view
-/// the keyboard.
+/// the keyboard, and the Appearance header button's icon follows the active view.
 #[test]
 fn a_view_row_shows_its_view_and_closes_the_popover() {
     in_columns(
@@ -198,13 +198,29 @@ fn a_view_row_shows_its_view_and_closes_the_popover() {
         |mut host| {
             let folder = fixture();
             open_in_columns(&mut host, folder.path());
+            assert_eq!(
+                crate::appearance::button_icon(host.app()),
+                strata_kit::icons::IconName::ViewColumns
+            );
             open_popover(&mut host);
             return_on(&mut host, "appearance-list");
             wait_closed(&mut host, "the List row");
 
             assert_eq!(shown(&host), Some("List"));
+            assert_eq!(
+                crate::appearance::button_icon(host.app()),
+                strata_kit::icons::IconName::ViewList
+            );
             assert_eq!(shell::preferences(host.app()).browser_mode, "list");
             assert_eq!(focused(&mut host).as_deref(), shell::view_focus(host.app()));
+
+            open_popover(&mut host);
+            return_on(&mut host, "appearance-icons");
+            wait_closed(&mut host, "the Icons row");
+            assert_eq!(
+                crate::appearance::button_icon(host.app()),
+                strata_kit::icons::IconName::ViewIcons
+            );
         },
     );
 }
