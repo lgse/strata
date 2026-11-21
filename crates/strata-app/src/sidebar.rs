@@ -31,7 +31,9 @@
 //! row and its menu are the tab's. What another tab changes in the settings is followed when
 //! the tab is shown again (`Part::tab_shown`).
 //!
-//! Drops, devices, the full Trash's icon and the `g` keycaps are not here yet:
+//! - **DEVICES**: the volumes and mounts, mounting, Eject and Unmount ([`devices`]).
+//!
+//! Drops, the device rows' menus, the full Trash's icon and the `g` keycaps are not here yet:
 //! `docs/rune/parity/packages/A3.md` lists them.
 
 use std::io;
@@ -40,7 +42,7 @@ use rune::{El, Tx};
 use strata_components::context_menu::ContextMenuState;
 use strata_components::contract::dnd::DropHover;
 use strata_components::sidebar::{
-    DropSite, ItemId, PinVerdict, PlacesSidebar, Section, SidebarData, SidebarIntent,
+    DeviceLabels, DropSite, ItemId, PinVerdict, PlacesSidebar, Section, SidebarData, SidebarIntent,
     SidebarLabels, SidebarState, Step, Via,
 };
 use strata_core::{
@@ -60,6 +62,7 @@ use crate::{
     slots::{self, Frame, Later, Listener, Part, Place, Setup},
 };
 
+mod devices;
 mod drops;
 mod header;
 mod keys;
@@ -108,6 +111,8 @@ pub(crate) struct Sidebar {
     trash: trash::Probe,
     /// Validated folder names for the latest foreign drag over `PINNED` gaps.
     foreign_pins: drops::ForeignPinCache,
+    /// DEVICES ([`devices`]).
+    devices: devices::Devices,
     started: bool,
 }
 
@@ -152,6 +157,7 @@ impl Part for Sidebar {
             menu: ContextMenuState::default(),
             trash: trash::Probe::default(),
             foreign_pins: None,
+            devices: devices::Devices::default(),
             started: false,
         }
     }
@@ -263,6 +269,7 @@ fn start(app: &mut App) {
     }));
     sidebar.pins = bookmarks::current();
     relist(app);
+    devices::start(app);
     trash::start(app);
 }
 
@@ -296,7 +303,8 @@ fn relist(app: &mut App) {
     // A drag held across the change would carry a row that may no longer be where it was.
     app.sidebar.state.places_reorder.cancel();
     app.sidebar.state.pins_reorder.cancel();
-    app.sidebar.follow(&app.browser);
+    // A device's label is a setting too.
+    devices::redress(app);
 }
 
 impl Sidebar {
@@ -392,8 +400,14 @@ impl Sidebar {
         self.state.end_drag();
     }
 
+    /// The row's location, mounted devices' included.
     fn location_of(&self, item: &ItemId) -> Option<&places::Row> {
-        self.listed.rows.iter().find(|row| &row.item == item)
+        self.rows().find(|row| &row.item == item)
+    }
+
+    /// Every row that opens a location, in the order they are drawn.
+    fn rows(&self) -> impl Iterator<Item = &places::Row> {
+        self.listed.rows.iter().chain(self.devices.rows())
     }
 
     /// Marks the active location's row: the marked row while it is still that location's,
@@ -407,7 +421,7 @@ impl Sidebar {
             .and_then(|item| self.location_of(item))
             .filter(|row| at(row));
         let current = kept
-            .or_else(|| self.listed.rows.iter().find(|row| at(row)))
+            .or_else(|| self.rows().find(|row| at(row)))
             .map(|row| row.item.clone());
         if current == self.current {
             return false;
@@ -436,15 +450,32 @@ fn build(app: &App, frame: &mut Frame<'_, App>) -> Option<El> {
     // GTK's headings and their count (`append_section_header`, `set_item_count` in
     // `src/ui/window/sidebar_sections.rs`).
     let (pinned, devices) = (tr("PINNED"), tr("DEVICES"));
+    // GTK's device buttons and pending row (`media_release_label`, `EncryptedMediaAction::label`
+    // and `pending_device_shell` in `src/ui/window`).
+    let [eject, unmount, unlock, lock, releasing] = [
+        "Eject",
+        "Unmount",
+        "Unlock",
+        "Lock",
+        "Writing data to the drive. Do not unplug it.",
+    ]
+    .map(tr);
     let data = SidebarData {
         places: &sidebar.listed.places,
         pins: &sidebar.listed.pins,
-        devices: &[],
+        devices: sidebar.devices.groups(),
         current: sidebar.current.as_ref(),
         labels: SidebarLabels {
             pinned: &pinned,
             devices: &devices,
             rows: |rows| count("items", rows),
+            device: DeviceLabels {
+                eject: &eject,
+                unmount: &unmount,
+                unlock: &unlock,
+                lock: &lock,
+                releasing: &releasing,
+            },
         },
     };
     let menu = menu::element(app, frame.layer);
@@ -484,6 +515,7 @@ fn heard(app: &mut App, intent: SidebarIntent, tx: &mut Tx) {
             item: Some(item),
             point,
         } => menu::open(app, &item, point, tx),
+        SidebarIntent::Eject(id) => devices::release(app, &id, tx),
         SidebarIntent::LeaveToFiles => {
             if let Some(view) = shell::view_focus(app) {
                 tx.focus(view, true);
@@ -540,6 +572,10 @@ pub(crate) fn sync_pins_from_store(app: &mut App) {
 /// Opens a row's location, with its row marked before the folder opens.
 fn open(app: &mut App, item: &ItemId, via: Via, tx: &mut Tx) {
     let Some(row) = app.sidebar.location_of(item).cloned() else {
+        // An unmounted volume: it opens once mounted.
+        if let ItemId::Device(id) = item {
+            devices::mount(app, id);
+        }
         return;
     };
     let tenxer = shell::preferences(app).tenxer_mode;

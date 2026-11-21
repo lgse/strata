@@ -15,8 +15,9 @@
 use rune::{Cx, El, Key, KeyEvent, Tx, col, el, row, text};
 use strata_components::contract::dnd::DropHover;
 use strata_components::sidebar::{
-    Device, DeviceGroup, DropSite, ItemId, LockState, Pin, Place, PlacesSidebar, Release, Section,
-    SidebarData, SidebarIntent, SidebarLabels, SidebarState, Step, Via, WidthToggle,
+    Device, DeviceGroup, DeviceLabels, DropSite, ItemId, LockState, Pin, Place, PlacesSidebar,
+    Release, Section, SidebarData, SidebarIntent, SidebarLabels, SidebarState, Step, Via,
+    WidthToggle,
 };
 use strata_kit::icons::IconName;
 
@@ -155,6 +156,13 @@ pub(crate) const LABELS: SidebarLabels<'static> = SidebarLabels {
     pinned: "PINNED",
     devices: "DEVICES",
     rows: rows_text,
+    device: DeviceLabels {
+        eject: "Eject",
+        unmount: "Unmount",
+        unlock: "Unlock",
+        lock: "Lock",
+        releasing: "Writing data to the drive. Do not unplug it.",
+    },
 };
 
 fn rows_text(rows: usize) -> String {

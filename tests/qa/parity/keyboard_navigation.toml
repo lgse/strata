@@ -138,7 +138,7 @@ package = "E1"
 gate = "G2"
 status = "pending"
 reason = "scope"
-blocker = "E1: a scenario H5 added (#2609), merged on 2026-11-20; in the sync's run on Rune, line 14 fails: with the cursor's entry back in view, the Menu key opens no menu. A reproduced failure for H5 to confirm three times and file as a finding (H5.md), not a missing part"
+blocker = "E1: a scenario H5 added (#2609); fails on Rune at line 14, 3 of 3, because its wheel stops once the row is present, and Rune keeps rows mounted 1,200 px above the viewport (finding #2711, a harness wait, not a Rune bug). Fixed by #2712 into h5-integration (on_screen at lines 10 and 11); flips once that merge reaches strata-next and passes three times running"
 
 [[run]]
 scenario = "menu-key-skips-scrolled-away-cursor"
@@ -146,7 +146,7 @@ run = "icons"
 package = "A1"
 status = "pending"
 reason = "scope"
-blocker = "A1: a scenario H5 added (#2609), merged on 2026-11-20; in the sync's run on Rune, line 14 fails as in Columns: with the cursor's entry back in view, the Menu key opens no menu"
+blocker = "A1: a scenario H5 added (#2609); fails on Rune at line 14 as in Columns, 3 of 3 (finding #2711, a harness wait, not a Rune bug). Fixed by #2712 into h5-integration; flips once that merge reaches strata-next and passes three times running"
 
 [[run]]
 scenario = "return-restores-nested-scroll"
