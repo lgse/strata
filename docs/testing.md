@@ -2178,7 +2178,9 @@ drag end, which a refused drop reports too, and `{"foreign_stop":true}` stops
 it. The replay hands them to the scenario runner's own step
 (`tests/qa/fuzz/peers.rs`), and stops a source still running with the replay. A
 source that fails to start, or one a step finds already running, is a refused
-step; a label that never comes is a failed one. A drop is one action, all of
+step; a label that never comes is a failed one; a `foreign_label` or
+`foreign_stop` with no source running is skipped, as a step whose `when` does
+not hold is, since the action's source was skipped. A drop is one action, all of
 these steps, so a shrunk sequence that keeps a drag without the step that
 started its source has the drag refused on every target alike.
 
