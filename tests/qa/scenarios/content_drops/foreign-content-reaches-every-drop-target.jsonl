@@ -1,8 +1,8 @@
-{"scenario":"foreign-content-reaches-every-drop-target","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"session_bus":true,"variants":[{"id":"background"},{"id":"sidebar"},{"id":"tab"},{"id":"breadcrumb"}]}
-{"key":"ctrl+t","variants":["tab"]}
-{"select":{"entry":"archive"},"variants":["tab","breadcrumb"]}
-{"wait":{"directory":"archive"},"message":"the browser to be working in 'archive'","variants":["tab","breadcrumb"]}
-{"wait":{"state":{"target":{"role":"page tab","name":"archive"},"selected":true}},"message":"the new tab to show 'archive'","variants":["tab"]}
+{"scenario":"foreign-content-reaches-every-drop-target","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"session_bus":true,"variants":[{"id":"background"},{"id":"sidebar"},{"id":"tab"},{"id":"first_tab"},{"id":"breadcrumb"}],"quality":{"impact":3,"coverage":4,"criticality":4,"diagnostic":4,"score":49,"note":"Foreign text saves where it drops: pane, sidebar, first or second tab while hidden, breadcrumb; only scenario routing a content drop per target"}}
+{"key":"ctrl+t","variants":["tab","first_tab"]}
+{"select":{"entry":"archive"},"variants":["tab","first_tab","breadcrumb"]}
+{"wait":{"directory":"archive"},"message":"the browser to be working in 'archive'","variants":["tab","first_tab","breadcrumb"]}
+{"wait":{"state":{"target":{"role":"page tab","name":"archive"},"selected":true}},"message":"the new tab to show 'archive'","variants":["tab","first_tab"]}
 {"key":"ctrl+shift+1","variants":["tab"]}
 {"wait":{"state":{"target":{"role":"page tab","name":"$root"},"selected":true}},"message":"the first tab to be active again","variants":["tab"]}
 {"fs":{"path":"$environment/offer.txt","write":"Selected words"}}
@@ -11,11 +11,14 @@
 {"drag":{"from":{"kept":"foreign"},"to":{"pane":null},"to_at":["50%",-20]},"variants":["background"]}
 {"drag":{"from":{"kept":"foreign"},"to":{"sidebar":"Desktop"}},"variants":["sidebar"]}
 {"drag":{"from":{"kept":"foreign"},"to":{"role":"page tab","name":"archive"}},"variants":["tab"]}
+{"drag":{"from":{"kept":"foreign"},"to":{"role":"page tab","name":"$root"}},"variants":["first_tab"]}
 {"drag":{"from":{"kept":"foreign"},"to":{"role":"button","name":"$root"},"to_at":["90%","50%"]},"variants":["breadcrumb"]}
 {"foreign_label":"Foreign drag finished","message":"the drop protocol to finish"}
 {"fs":{"path":"dropped text.txt","text":"Selected words"},"message":"the text saved in the pane's folder","variants":["background","breadcrumb"]}
 {"fs":{"path":"$home/Desktop/dropped text.txt","text":"Selected words"},"message":"the text saved in the sidebar folder","variants":["sidebar"]}
 {"fs":{"path":"archive/dropped text.txt","text":"Selected words"},"message":"the text saved in the tab's folder","variants":["tab"]}
+{"fs":{"path":"dropped text.txt","text":"Selected words"},"message":"the text saved in the first tab's folder","variants":["first_tab"]}
 {"wait":{"state":{"target":{"role":"page tab","name":"archive"},"selected":true}},"message":"the tab taking the drop to become active","variants":["tab"]}
-{"fs":{"path":"archive","names":[]},"timeout_ms":0,"message":"only the drop target to receive the text","variants":["background","sidebar","breadcrumb"]}
+{"wait":{"state":{"target":{"role":"page tab","name":"$root"},"selected":true}},"message":"the first tab taking the drop to become active","variants":["first_tab"]}
+{"fs":{"path":"archive","names":[]},"timeout_ms":0,"message":"only the drop target to receive the text","variants":["background","sidebar","first_tab","breadcrumb"]}
 {"foreign_stop":true}
