@@ -3,34 +3,50 @@
 //! The footer's marks: the pill the `10X` tag and the clipboard badge share, the `filter:` and
 //! `search:` marks, the search hit under the cursor, and the `VISUAL` and `UNSET` range marks.
 
-use rune::{El, row, text};
+use rune::{El, TextStyle, row, text};
 use strata_kit::look::Look;
 
 /// The pill's fill and border: the accent at these opacities, as Strata's `.tenxer-tag`,
 /// `.shortcut-footer-paste` and `.shortcut-footer-chord-pill` draw them (`src/style.css`:
 /// `alpha(@strata_accent, 0.14)` and a 1 px `alpha(@strata_accent, 0.4)` border). No Kit or
-/// strata-kit token holds them; C18's chord pill uses the same values.
+/// strata-kit token holds them; C18's chord pill shares [`pill`].
 pub const PILL_FILL_ALPHA: f32 = 0.14;
 pub const PILL_BORDER_ALPHA: f32 = 0.4;
 
+/// Strata's pill base radius (`border-radius: 999px` in `src/style.css`): squares off at 0 %
+/// roundness and stays a full pill (`height / 2`) at every positive roundness (`strata_kit::shape`).
+const PILL_BASE_RADIUS: f32 = 999.0;
+/// Strata's pill font weight (`font-weight: bold`) and letter spacing (`letter-spacing: 0.5px`).
+const PILL_WEIGHT: f32 = 700.0;
+const PILL_TRACKING: f32 = 0.5;
+
 /// Strata's footer pill around `words`: the accent on a faint accent tint with a fainter accent
-/// border, fully rounded (`.tenxer-tag`). The `10X` tag, the clipboard badge and C18's chord
-/// pill share it, so showing any of them leaves the footer's height alone. The words are hidden
-/// from assistive technology: the caller names the pill.
+/// border, scaled by the look's corner roundness (`.tenxer-tag`). The `10X` tag, the clipboard
+/// badge and C18's chord pill share it at `look.frame.control` height, so showing any of them
+/// leaves the footer's height alone. The words are hidden from assistive technology: the caller
+/// names the pill.
 ///
-/// Used by: the footer; hosts drawing a pill beside them.
+/// Used by: the footer; C18's chord pill; hosts drawing a pill beside them.
 pub fn pill(look: &Look, words: &str) -> El {
     let k = &look.kit;
     let accent = k.c.text_accent;
+    let height = look.frame.control;
+    let radius = look.round(PILL_BASE_RADIUS).min(height / 2.0);
+    let font = TextStyle {
+        weight: PILL_WEIGHT,
+        tracking: PILL_TRACKING,
+        ..k.ty.small_medium
+    };
     row()
-        .px(look.space.sm)
+        .h(height)
+        .px(look.space.md)
         .center()
-        .radius(look.frame.control)
+        .radius(radius)
         .fill(k.alpha(accent, PILL_FILL_ALPHA))
         .border(1.0, k.alpha(accent, PILL_BORDER_ALPHA))
         .child(
             text(words.to_owned())
-                .font(k.ty.small_medium)
+                .font(font)
                 .color(accent)
                 .a11y_hidden(),
         )
