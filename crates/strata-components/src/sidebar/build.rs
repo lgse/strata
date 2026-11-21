@@ -45,6 +45,7 @@ pub struct PlacesSidebar<'a, S> {
     reorder: bool,
     new_tabs: bool,
     tenxer: bool,
+    confined_grip: bool,
     footer: Option<Box<dyn FnOnce(Step) -> El + 'a>>,
     trash: Option<Box<dyn FnOnce(El) -> El + 'a>>,
     background_drag: Option<DragFn<S>>,
@@ -69,6 +70,7 @@ impl<'a, S: 'static> PlacesSidebar<'a, S> {
             reorder: false,
             new_tabs: true,
             tenxer: false,
+            confined_grip: false,
             footer: None,
             trash: None,
             background_drag: None,
@@ -124,6 +126,15 @@ impl<'a, S: 'static> PlacesSidebar<'a, S> {
     /// Backspace go back to the files.
     pub fn tenxer(mut self, on: bool) -> Self {
         self.tenxer = on;
+        self
+    }
+
+    /// Confines the resize grip to the 1 pt trailing border (as GTK's `sidebar-split >
+    /// separator.wide` is) so blank-space drags beside the divider start a marquee rather than
+    /// resizing. Default off (a 7 pt grip on the trailing edge: 1 pt line plus 6 pt inside the
+    /// sidebar, leaving the adjacent file view's viewport untouched).
+    pub fn confined_grip(mut self, on: bool) -> Self {
+        self.confined_grip = on;
         self
     }
 
@@ -200,12 +211,25 @@ impl<'a, S: 'static> PlacesSidebar<'a, S> {
             self.state.width.pane.width()
         };
         let scroll = scroll_area(&self.key, list, &self.emit, self.background_drag);
-        let mut root = root.w(width).child(scroll);
+        let mut root = root
+            .w(width)
+            .fill(look.kit.c.bg_deep)
+            .border_sides([0.0, 1.0, 0.0, 0.0], look.kit.c.border_base)
+            .child(scroll);
         if let Some(f) = self.footer {
             root = root.child(f(shown));
         }
         if !rail {
-            root = root.child(grip(&self.key, self.access, width));
+            root = root.child(grip(
+                &self.key,
+                look,
+                self.access,
+                GripSpec {
+                    width,
+                    resizing: self.state.resizing,
+                    confined: self.confined_grip,
+                },
+            ));
         }
         self.dnd
             .drop_zone_keyed(root, self.key.clone(), drops::background(self.access))
@@ -478,30 +502,72 @@ fn separator<S>(ctx: &Ctx<'_, S>) -> El {
         .a11y_hidden()
 }
 
-/// The full sidebar's 1 pt resize grip on its trailing border, as GTK's
-/// `sidebar-split > separator.wide` is (`src/style.css`), so the blank space either side of it
-/// starts a marquee band rather than a resize. A double click resets the width.
-fn grip<S: 'static>(key: &str, access: fn(&mut S) -> &mut SidebarState, width: f32) -> El {
-    el().key(format!("{key}-grip"))
-        .absolute(width - 1.0, 0.0)
+#[derive(Clone, Copy)]
+struct GripSpec {
+    width: f32,
+    resizing: bool,
+    confined: bool,
+}
+
+/// The full sidebar's resize grip on its trailing edge: 1 pt border plus `space.sm` (6 pt)
+/// inside the sidebar by default (leaving the adjacent file pane's viewport completely
+/// untouched, as `preview_drawer::divider` leaves it), or confined to the 1 pt trailing border
+/// when `spec.confined` is set. Hovering or dragging lights the 1 pt divider line in
+/// `border_focus`; a double click resets the width.
+fn grip<S: 'static>(
+    key: &str,
+    look: &Look,
+    access: fn(&mut S) -> &mut SidebarState,
+    spec: GripSpec,
+) -> El {
+    let w = if spec.confined {
+        1.0
+    } else {
+        look.space.sm + 1.0
+    };
+    let x = spec.width - w;
+    let line_x = w - 1.0;
+    let rest = if spec.resizing { 1.0 } else { 0.0 };
+    let line = el()
+        .key(format!("{key}-grip-line"))
+        .pin(Some(line_x), Some(0.0), None, Some(0.0))
         .w(1.0)
+        .fill(look.kit.c.border_focus)
+        .group_opacity(rest, 1.0)
+        .opacity_motion(rune::Anim::INSTANT)
+        .a11y_hidden()
+        .inert();
+    el().key(format!("{key}-grip"))
+        .absolute(x, 0.0)
+        .w(w)
         .h_full()
         .cursor(rune::Cursor::ResizeColumn)
+        .hover_group()
+        .hover_motion(rune::Anim::INSTANT, rune::Anim::INSTANT)
         .a11y_hidden()
+        .child(line)
         .on_drag(move |s: &mut S, d: &mut Drag, tx: &mut Tx| {
-            let pane = &mut access(s).width.pane;
+            let state = access(s);
             match d.phase {
-                Phase::Down => d.data = pane.width(),
+                Phase::Down => {
+                    d.data = state.width.pane.width();
+                    state.resizing = true;
+                }
                 Phase::Move => {
                     tx.instant();
-                    pane.set_width(d.data + d.dx);
+                    state.width.pane.set_width(d.data + d.dx);
                 }
                 Phase::Up => {
+                    state.resizing = false;
                     if d.cancelled() {
-                        pane.set_width(d.data);
+                        state.width.pane.set_width(d.data);
                     }
                 }
             }
         })
-        .on_double_press(move |s: &mut S| access(s).width.pane.reset_width())
+        .on_double_press(move |s: &mut S| {
+            let state = access(s);
+            state.resizing = false;
+            state.width.pane.reset_width();
+        })
 }

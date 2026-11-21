@@ -483,3 +483,216 @@ fn row_drag_outside_sidebar_reports_start_move_and_outside_release() {
         })
     );
 }
+
+struct ResizeHost {
+    sidebar: SidebarState,
+    look: strata_kit::look::Look,
+    places: Vec<Place>,
+    confined: bool,
+    show_overlay: bool,
+    bg_drags: usize,
+    file_drags: usize,
+    overlay_presses: usize,
+}
+
+fn resize_view(h: &ResizeHost, _: &mut rune::Cx<ResizeHost>) -> rune::El {
+    let data = SidebarData {
+        places: &h.places,
+        ..SidebarData::default()
+    };
+    let sidebar = PlacesSidebar::new(&h.sidebar, |h: &mut ResizeHost| &mut h.sidebar, data)
+        .confined_grip(h.confined)
+        .on_background_drag(|h, d, _| {
+            if d.phase == rune::Phase::Down {
+                h.bg_drags += 1;
+            }
+        })
+        .build(&h.look);
+    let files = rune::col().key("files-pane").grow(1.0).h_full().on_drag(
+        |h: &mut ResizeHost, d: &mut rune::Drag, _| {
+            if d.phase == rune::Phase::Down {
+                h.file_drags += 1;
+            }
+        },
+    );
+    let window = rune::row()
+        .key("split")
+        .w_full()
+        .h_full()
+        .child(sidebar)
+        .child(files);
+    let mut layer = Vec::new();
+    if h.show_overlay {
+        let edge = h.sidebar.width.full_width();
+        layer.push(
+            rune::el()
+                .key("overlay-menu")
+                .absolute(edge - 24.0, 200.0)
+                .size(120.0, 120.0)
+                .fill(h.look.kit.c.surface_raised)
+                .on_press(|h: &mut ResizeHost| h.overlay_presses += 1),
+        );
+    }
+    rune_kit::root(window, layer)
+}
+
+fn mount_resize(confined: bool, show_overlay: bool) -> rune::Runtime<ResizeHost> {
+    let look = strata_kit::look::Look::default();
+    let host = ResizeHost {
+        sidebar: SidebarState::new(&look),
+        look,
+        places: vec![Place::folder("home", "Home", IconName::Home)],
+        confined,
+        show_overlay,
+        bg_drags: 0,
+        file_drags: 0,
+        overlay_presses: 0,
+    };
+    let mut rt = rune::Runtime::new(host, resize_view, (800.0, 500.0), rune::Env::default());
+    rt.frame(0.0);
+    rt.frame(1.0 / 60.0);
+    rt
+}
+
+fn drag_horizontal(rt: &mut rune::Runtime<ResizeHost>, from_x: f32, to_x: f32, y: f32) {
+    rt.pointer_move(from_x, y);
+    rt.frame(1.0 / 60.0);
+    rt.pointer_down(from_x, y);
+    rt.frame(1.0 / 60.0);
+    rt.pointer_move(to_x, y);
+    rt.frame(1.0 / 60.0);
+    rt.pointer_up(to_x, y);
+    rt.frame(1.0 / 60.0);
+}
+
+#[test]
+fn wide_grip_resizes_clamps_cancels_resets_and_leaves_file_pane_untouched() {
+    use rune::{Cursor, Key, KeyEvent, Mods};
+
+    let mut rt = mount_resize(false, false);
+    let default = rt.state.sidebar.width.pane.default_width();
+    let y = 250.0;
+
+    // Clicking or dragging inside the adjacent file pane (2 pt past the divider) stays in the
+    // file pane rather than resizing the sidebar.
+    drag_horizontal(&mut rt, default + 2.0, default + 42.0, y);
+    assert_eq!(rt.state.file_drags, 1);
+    assert_eq!(rt.state.sidebar.width.full_width(), default);
+
+    // Grabbing inside the 7 pt trailing grip takes the resize cursor and resizes cleanly.
+    rt.pointer_move(default - 5.0, y);
+    rt.frame(1.0 / 60.0);
+    assert_eq!(rt.cursor(), Cursor::ResizeColumn);
+    drag_horizontal(&mut rt, default - 5.0, default + 35.0, y);
+    assert_eq!(rt.state.sidebar.width.full_width(), default + 40.0);
+    assert_eq!(rt.state.bg_drags, 0);
+
+    // Dragging left past MIN_WIDTH clamps at MIN_WIDTH.
+    let now = rt.state.sidebar.width.full_width();
+    drag_horizontal(&mut rt, now - 3.0, now - 303.0, y);
+    assert_eq!(rt.state.sidebar.width.full_width(), MIN_WIDTH);
+
+    // Dragging right past MAX_WIDTH clamps at MAX_WIDTH.
+    drag_horizontal(&mut rt, MIN_WIDTH - 2.0, MIN_WIDTH + 498.0, y);
+    assert_eq!(rt.state.sidebar.width.full_width(), MAX_WIDTH);
+
+    // Pressing Escape mid-drag restores the starting width and clears resizing state.
+    let start_x = MAX_WIDTH - 2.0;
+    rt.pointer_move(start_x, y);
+    rt.pointer_down(start_x, y);
+    rt.frame(1.0 / 60.0);
+    rt.pointer_move(start_x - 60.0, y);
+    rt.frame(1.0 / 60.0);
+    assert!(rt.state.sidebar.resizing);
+    rt.key(KeyEvent {
+        key: Key::Escape,
+        mods: Mods::default(),
+    });
+    rt.pointer_up(start_x - 60.0, y);
+    for _ in 0..40 {
+        rt.frame(1.0 / 60.0);
+    }
+    assert_eq!(rt.state.sidebar.width.full_width(), MAX_WIDTH);
+    assert!(!rt.state.sidebar.resizing);
+
+    // Double-clicking the grip resets to the default width.
+    let reset_x = MAX_WIDTH - 3.0;
+    rt.pointer_move(reset_x, y);
+    rt.frame(1.0 / 60.0);
+    rt.pointer_down(reset_x, y);
+    rt.pointer_up(reset_x, y);
+    rt.frame(0.1);
+    rt.pointer_down(reset_x, y);
+    rt.pointer_up(reset_x, y);
+    rt.frame(1.0 / 60.0);
+    assert_eq!(rt.state.sidebar.width.full_width(), default);
+}
+
+#[test]
+fn confined_grip_leaves_adjacent_whitespace_to_marquee_and_file_pane() {
+    use rune::Cursor;
+
+    let mut rt = mount_resize(true, false);
+    let edge = rt.state.sidebar.width.full_width();
+    let y = 250.0;
+
+    // 2 pt left of the divider reaches the sidebar's background drag instead of resizing.
+    drag_horizontal(&mut rt, edge - 2.0, edge + 38.0, y);
+    assert_eq!(rt.state.bg_drags, 1);
+    assert_eq!(rt.state.sidebar.width.full_width(), edge);
+
+    // 2 pt right of the divider reaches the sibling file pane instead of resizing.
+    drag_horizontal(&mut rt, edge + 2.0, edge + 42.0, y);
+    assert_eq!(rt.state.file_drags, 1);
+    assert_eq!(rt.state.sidebar.width.full_width(), edge);
+
+    // The 1 pt trailing border still resizes.
+    rt.pointer_move(edge - 0.5, y);
+    rt.frame(1.0 / 60.0);
+    assert_eq!(rt.cursor(), Cursor::ResizeColumn);
+    drag_horizontal(&mut rt, edge - 0.5, edge + 29.5, y);
+    assert_eq!(rt.state.sidebar.width.full_width(), edge + 30.0);
+}
+
+#[test]
+fn rail_and_hidden_modes_expose_no_resize_grip() {
+    use rune::Cursor;
+
+    let mut rt = mount_resize(false, false);
+    let initial = rt.state.sidebar.width.full_width();
+    let rail_edge = strata_kit::slots::sidebar::rail_width(&rt.state.look);
+    let y = 250.0;
+
+    rt.update(|h, _| h.sidebar.width.choose(Step::Rail));
+    for _ in 0..40 {
+        rt.frame(1.0 / 60.0);
+    }
+    rt.pointer_move(rail_edge, y);
+    rt.frame(1.0 / 60.0);
+    assert_ne!(rt.cursor(), Cursor::ResizeColumn);
+    drag_horizontal(&mut rt, rail_edge, rail_edge + 50.0, y);
+    assert_eq!(rt.state.sidebar.width.full_width(), initial);
+
+    rt.update(|h, _| h.sidebar.width.choose(Step::Hidden));
+    for _ in 0..40 {
+        rt.frame(1.0 / 60.0);
+    }
+    assert!(
+        rt.elements()
+            .into_iter()
+            .all(|e| e.key.as_deref() != Some("places-grip"))
+    );
+}
+
+#[test]
+fn overlay_above_sidebar_wins_pointer_hits_over_wide_grip() {
+    let mut rt = mount_resize(false, true);
+    let edge = rt.state.sidebar.width.full_width();
+    let y = 250.0;
+
+    // Clicking and dragging on the grip coordinates covered by an overlay hits the overlay,
+    // not the sidebar's resize grip.
+    drag_horizontal(&mut rt, edge - 3.0, edge + 37.0, y);
+    assert_eq!(rt.state.overlay_presses, 1);
+    assert_eq!(rt.state.sidebar.width.full_width(), edge);
+}

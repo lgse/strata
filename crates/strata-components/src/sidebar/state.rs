@@ -219,6 +219,9 @@ pub struct SidebarState {
     pub(crate) dropped: Option<ItemId>,
     /// Each row's laid-out box, in window points: where a menu the keyboard opens on it goes.
     pub(crate) boxes: HashMap<ItemId, [f32; 4]>,
+    /// Whether the trailing resize grip is actively dragged: keeps the divider accent lit while
+    /// the pointer moves faster than layout catches up.
+    pub(crate) resizing: bool,
 }
 
 impl SidebarState {
