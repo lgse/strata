@@ -3471,3 +3471,27 @@ sequence only together with the alphabet's version, so the version is part of th
   is open.
 - **Concerns:** `session-drops` seed `0x0b`; nothing is parked, as the seed agrees.
 - **State:** open, unowned.
+
+### #2711: a row mounted beyond the viewport is present on Rune, so the Menu key's wheel stopped early
+
+- **Code:** `divergence`, of the harness: a scenario's wait that reads differently on the two
+  targets, labelled `testing`. [Issue](https://github.com/lgse/strata/issues/2711), filed on 2026-11-21 as the
+  finding's reference and closed at once: its state is kept here.
+- **Seen:** in [H5](packages/H5.md)'s Rune round, on `strata-next` `6fcc64185`:
+  `keyboard_navigation/menu-key-skips-scrolled-away-cursor`, Columns and Icons, on the Rune
+  target, failed 3 of 3 at line 14. With the cursor's entry back in view, the Menu key opened no
+  menu. GTK passes.
+- **Why.** Line 10 wheels up until the entry is `present`, and line 11 waits for the same.
+  Rune keeps about 1,300 px of rows mounted beyond a list's viewport, and its QA snapshot
+  reports each mounted row as present; GTK's list keeps few beyond its viewport. So on Rune the
+  wheel stopped at once, with `file-000.txt` at y = −1042 in the window, and the Menu key rightly
+  opened nothing for a cursor's row that is not drawn (`crates/strata-app/src/commands/menu_key.rs`).
+  By hand: without the scroll, Menu opens the menu on Rune; after the round trip, Down still
+  moves the cursor; with `on_screen` in place of `present` at lines 10 and 11, the scenario
+  passes 3 of 3 on Rune and on GTK. Not a Rune bug, and nothing in [B3](packages/B3.md)'s
+  Menu-key code changes.
+- **Concerns:** `menu-key-skips-scrolled-away-cursor/columns` (E1, gate G2) and `/icons` (A1),
+  both `pending`.
+- **State:** fixed in the scenario by [#2712](https://github.com/lgse/strata/pull/2712), into
+  `h5-integration`, where scenario changes land (the owner's ruling of 2026-11-19). The two
+  runs flip once it reaches `strata-next` by merge and passes there three times running.
