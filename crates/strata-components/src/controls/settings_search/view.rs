@@ -5,7 +5,9 @@
 use std::fmt;
 use std::rc::Rc;
 
-use rune::{Beat, El, Key, KeyEvent, LiveRegion, Sequence, TextStyle, Tx, el, icon, row, text};
+use rune::{
+    Beat, El, Key, KeyEvent, LiveRegion, PointerPress, Sequence, TextStyle, Tx, el, icon, row, text,
+};
 use rune_kit::{ControlSize, IconButton, IconButtonVariant};
 use strata_kit::icons::IconName;
 use strata_kit::look::Look;
@@ -382,10 +384,18 @@ impl<S: 'static> SettingsSearch<S> {
             font: k.ty.ui,
         };
         let input = field::input(look, &st.field, &spec, &handlers).role("searchbox");
-        let mut inner = field::frame_row(look, format!("{}-frame", self.key))
+        let height = (look.frame.control + 10.0).max(34.0);
+        let mut inner = row()
+            .key(format!("{}-frame", self.key))
+            .w_full()
+            .h(height)
+            .px(10.0)
+            .gap(look.space.md)
+            .items_center()
+            .min_w(0.0)
             .child(
-                icon(look.icon(IconName::Search), look.icon_size.sm)
-                    .color(k.c.icon_muted)
+                icon(look.icon(IconName::Search), look.icon_size.md)
+                    .color(k.alpha(k.c.icon_accent, 0.65))
                     .a11y_hidden(),
             )
             .child(input);
@@ -416,7 +426,7 @@ impl<S: 'static> SettingsSearch<S> {
             .absolute(0.0, 0.0)
             .w(0.0)
             .h(0.0);
-        field::frame(look, inner, st.field.focused, false, &menu).child(status)
+        search_frame(look, inner, st.field.focused, menu).child(status)
     }
 
     fn clear(&self, s: &mut S, tx: &mut Tx) {
@@ -437,4 +447,26 @@ impl<S: 'static> SettingsSearch<S> {
             _ => false,
         }
     }
+}
+
+fn search_frame<S: 'static>(look: &Look, inner: El, focused: bool, menu: MenuFn<S>) -> El {
+    let k = &look.kit;
+    let border = if focused {
+        k.c.border_focus
+    } else {
+        k.alpha(k.c.std_border, k.c.std_border.a * 0.9)
+    };
+    let mut frame = inner
+        .role("textbox")
+        .on_secondary_press(move |s: &mut S, p: PointerPress, tx: &mut Tx| {
+            menu(s, Point::new(p.x, p.y), tx);
+        })
+        .radius(look.round(8.0))
+        .fill(look.fill.muted)
+        .border(1.0, border)
+        .token_motion(k.motion.control);
+    if focused {
+        frame = frame.outline(2.0, -2.0, k.c.border_focus);
+    }
+    frame
 }

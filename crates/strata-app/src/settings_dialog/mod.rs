@@ -3,8 +3,7 @@
 //! The Settings dialog (`Ctrl+,` and the header's Settings button), theme catalog, and
 //! one-per-streak save notice (`docs/rune/parity/packages/A18.md`).
 
-use rune::{El, ScrollSpec, TextEdit, Tx, col, icon, row, text};
-use rune_kit::{Button, ButtonVariant, IconButton, IconButtonVariant};
+use rune::{Color, Cursor, El, ScrollSpec, TextEdit, Tx, col, el, icon, row, text};
 use strata_components::{
     controls::{
         number_field::{NumberFieldState, Range},
@@ -41,7 +40,7 @@ mod tests;
 
 const DIALOG_WIDTH: f32 = 920.0;
 const DIALOG_HEIGHT: f32 = 620.0;
-const RAIL_WIDTH: f32 = 220.0;
+const RAIL_WIDTH: f32 = 232.0;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(super) enum PageId {
@@ -205,13 +204,11 @@ impl SettingsDialog {
         let video_start = NumberFieldState::new(
             f64::from(prefs.preview_video_start),
             Range::new(0.0, f64::from(MAX_PREVIEW_VIDEO_START), 5.0),
-        )
-        .suffix("%");
+        );
         let text_size = NumberFieldState::new(
             f64::from(prefs.text_size.root_font_px()),
             Range::new(f64::from(TextSize::MIN), f64::from(TextSize::MAX), 1.0),
-        )
-        .suffix(" px");
+        );
         let roundness = NumberFieldState::new(
             f64::from(prefs.corner_roundness.percent()),
             Range::new(
@@ -219,8 +216,7 @@ impl SettingsDialog {
                 f64::from(CornerRoundness::MAX),
                 f64::from(CornerRoundness::STEP),
             ),
-        )
-        .suffix("%");
+        );
         Self {
             open: false,
             page: PageId::General,
@@ -427,6 +423,8 @@ fn build(app: &App, frame: &mut Frame<'_, App>) -> Option<El> {
         .fade_only()
         .reduced_motion(frame.cx.is_reduced_motion())
         .width(DIALOG_WIDTH)
+        .fill(app.look.kit.c.bg_base)
+        .panel_radius(app.look.kit.radius.xl)
         .child(stack);
     if let Some(view) = shell::view_focus(app) {
         shell = shell.return_focus(view);
@@ -451,7 +449,7 @@ fn build_rail(
         .w_full()
         .grow(1.0)
         .min_h(0.0)
-        .gap(look.space.xxs)
+        .gap(look.space.xs)
         .scroll(ScrollSpec {
             stick_bottom: false,
         })
@@ -461,63 +459,130 @@ fn build_rail(
         .w(RAIL_WIDTH)
         .h_full()
         .min_h(0.0)
-        .padding(look.space.md)
-        .gap(look.space.md)
-        .fill(c.layer_02)
-        .border_sides([0.0, 1.0, 0.0, 0.0], c.border_muted)
+        .px(look.space.lg)
+        .py(look.space.xl)
+        .gap(look.space.lg)
+        .border_sides([0.0, 1.0, 0.0, 0.0], controls::panel_border(look))
         .child(
             text(tr("SETTINGS"))
                 .font(look.ty.heading)
                 .color(c.text_muted)
-                .px(look.space.xs),
+                .px(10.0)
+                .pt(2.0),
         )
-        .child(search.field(app, look))
+        .child(col().w_full().pb(2.0).child(search.field(app, look)))
         .child(nav_list)
+}
+
+struct NavColors {
+    fill: Color,
+    hover: Color,
+    icon: Color,
+    title: Color,
+    subtitle: Color,
+}
+
+fn nav_colors(look: &strata_kit::look::Look, active: bool) -> NavColors {
+    let kit = &look.kit;
+    let c = &kit.c;
+    if active {
+        NavColors {
+            fill: kit.alpha(c.bg_accent, 0.14),
+            hover: kit.alpha(c.bg_accent, 0.18),
+            icon: c.icon_accent,
+            title: c.text_base,
+            subtitle: kit.alpha(c.text_base, 0.78),
+        }
+    } else {
+        NavColors {
+            fill: Color::TRANSPARENT,
+            hover: c.hover,
+            icon: kit.alpha(c.icon_accent, 0.65),
+            title: c.text_muted,
+            subtitle: c.text_muted,
+        }
+    }
 }
 
 fn nav_button(app: &App, entry: &NavEntry) -> El {
     let look = &app.look;
     let kit = &look.kit;
-    let active = app.settings_dialog.page == entry.id;
-    let glyph = look.icon(entry.icon);
-    let label = tr(entry.label);
-    let subtitle = tr(entry.subtitle);
-    let a11y_label = tr(entry.accessible);
+    let colors = nav_colors(look, app.settings_dialog.page == entry.id);
     let page = entry.id;
-    let muted = kit.c.text_muted;
-    let small = kit.ty.small;
-    let variant = if active {
-        ButtonVariant::Neutral
-    } else {
-        ButtonVariant::Ghost
-    };
-    let mut btn = Button::new(label.clone())
-        .variant(variant)
-        .label_with(move |font, ink| {
-            row()
+    let mut btn = row()
+        .role("button")
+        .label(tr(entry.accessible))
+        .w_full()
+        .min_h(46.0)
+        .px(11.0)
+        .py(7.0)
+        .gap(10.0)
+        .items_center()
+        .radius(look.round(8.0))
+        .fill(colors.fill)
+        .hover(colors.hover)
+        .press(kit.c.pressed)
+        .focusable(true)
+        .focus_ring(2.0, -2.0, kit.c.border_focus)
+        .cursor(Cursor::Pointer)
+        .child(
+            icon(look.icon(entry.icon), 18.0)
+                .color(colors.icon)
+                .a11y_hidden(),
+        )
+        .child(
+            col()
                 .grow(1.0)
-                .gap(10.0)
-                .items_center()
-                .child(icon(glyph, 16.0).color(ink).a11y_hidden())
+                .min_w(0.0)
+                .gap(2.0)
                 .child(
-                    col()
-                        .grow(1.0)
-                        .gap(1.0)
-                        .child(text(label).font(font).color(ink).a11y_hidden())
-                        .child(text(subtitle).font(small).color(muted).a11y_hidden()),
+                    text(tr(entry.label))
+                        .font(kit.ty.ui_medium)
+                        .color(colors.title)
+                        .truncate()
+                        .a11y_hidden(),
                 )
-        })
+                .child(
+                    text(tr(entry.subtitle))
+                        .font(kit.ty.small)
+                        .color(colors.subtitle)
+                        .truncate()
+                        .a11y_hidden(),
+                ),
+        )
         .on_press_tx(move |app: &mut App, _: &mut Tx| {
             let tenxer_mode = shell::preferences(app).tenxer_mode;
             app.settings_dialog.select_page(page, tenxer_mode);
-        })
-        .build(kit)
-        .w_full()
-        .label(a11y_label);
+        });
     if entry.id == app.settings_dialog.opened_page {
         btn = btn.autofocus();
     }
     buttons::on_return(entry.id.nav_key(), btn)
+}
+
+fn close_button(look: &strata_kit::look::Look) -> El {
+    let kit = &look.kit;
+    let c = &kit.c;
+    buttons::on_return(
+        "settings-close",
+        el().role("button")
+            .label(tr("Close settings"))
+            .size(28.0, 28.0)
+            .center()
+            .radius(kit.radius.sm)
+            .fill(Color::TRANSPARENT)
+            .hover(c.hover)
+            .press(c.pressed)
+            .focusable(true)
+            .focus_ring(2.0, -2.0, c.border_focus)
+            .cursor(Cursor::Pointer)
+            .child(
+                icon(look.icon(IconName::Close), 18.0)
+                    .color(kit.alpha(c.icon_accent, 0.65))
+                    .a11y_hidden(),
+            )
+            .on_press_tx(|app: &mut App, _: &mut Tx| close_settings(app)),
+    )
 }
 
 fn build_main_column(
@@ -533,34 +598,27 @@ fn build_main_column(
     } else {
         tr(page.title())
     };
-    let close = buttons::on_return(
-        "settings-close",
-        IconButton::new(look.icon(IconName::Close))
-            .variant(IconButtonVariant::Ghost)
-            .label(tr("Close settings"))
-            .on_press_tx(|app: &mut App, _: &mut Tx| close_settings(app))
-            .build(&look.kit),
-    );
     let topbar = row()
         .w_full()
-        .px(look.space.xl)
-        .py(look.space.md)
+        .pl(24.0)
+        .pr(12.0)
+        .py(12.0)
         .gap(look.space.md)
         .items_center()
-        .border_sides([0.0, 0.0, 1.0, 0.0], c.border_muted)
+        .border_sides([0.0, 0.0, 1.0, 0.0], controls::panel_border(look))
         .child(
             text(heading)
                 .font(look.ty.title)
                 .color(c.text_base)
                 .grow(1.0),
         )
-        .child(close);
+        .child(close_button(look));
     let body = if app.settings_dialog.search.no_results() {
         col()
             .w_full()
             .grow(1.0)
-            .px(look.space.xl)
-            .py(look.space.xl)
+            .px(36.0)
+            .py(24.0)
             .child(search.empty(look))
     } else {
         let content = build_page_content(app, page, search, menu_layer);
@@ -569,9 +627,8 @@ fn build_main_column(
             .w_full()
             .grow(1.0)
             .min_h(0.0)
-            .px(look.space.xl)
-            .py(look.space.lg)
-            .gap(look.space.sm)
+            .px(36.0)
+            .py(24.0)
             .scroll(ScrollSpec {
                 stick_bottom: false,
             })

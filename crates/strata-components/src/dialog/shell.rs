@@ -4,7 +4,7 @@
 
 use std::rc::Rc;
 
-use rune::{El, Key, KeyEvent, Mods, Spring, SpringPair, Transition, Tx, col, el};
+use rune::{Color, El, Key, KeyEvent, Mods, Spring, SpringPair, Transition, Tx, col, el};
 use strata_kit::look::Look;
 
 use super::keys::{self, Route};
@@ -32,6 +32,8 @@ pub struct DialogShell<S> {
     blocking: bool,
     stacked: bool,
     width: f32,
+    fill: Option<Color>,
+    panel_radius: Option<f32>,
     fade_only: bool,
     reduced_motion: bool,
     return_focus: Option<String>,
@@ -59,6 +61,8 @@ impl<S: 'static> DialogShell<S> {
             blocking: false,
             stacked: false,
             width: WIDTH,
+            fill: None,
+            panel_radius: None,
             fade_only: false,
             reduced_motion: false,
             return_focus: None,
@@ -111,6 +115,20 @@ impl<S: 'static> DialogShell<S> {
     /// width less a margin.
     pub fn width(mut self, width: f32) -> Self {
         self.width = width;
+        self
+    }
+
+    /// Overrides the panel's background surface (`kit.c.layer_01` unless set; Settings uses
+    /// `kit.c.bg_base` as GTK's `.settings-dialog` does).
+    pub fn fill(mut self, color: Color) -> Self {
+        self.fill = Some(color);
+        self
+    }
+
+    /// Overrides the panel's corner radius (`look.round(PANEL_RADIUS)` unless set; Settings
+    /// uses `look.kit.radius.xl`).
+    pub fn panel_radius(mut self, radius: f32) -> Self {
+        self.panel_radius = Some(radius);
         self
     }
 
@@ -174,8 +192,11 @@ impl<S: 'static> DialogShell<S> {
             // Shrinks to the window's height; the body inside scrolls.
             .shrink()
             .min_h(0.0)
-            .radius(look.round(PANEL_RADIUS))
-            .fill(kit.c.layer_01)
+            .radius(
+                self.panel_radius
+                    .unwrap_or_else(|| look.round(PANEL_RADIUS)),
+            )
+            .fill(self.fill.unwrap_or(kit.c.layer_01))
             .border(1.0, kit.c.border_base)
             .children(self.children);
         if let Some(d) = self.description {
