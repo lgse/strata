@@ -3501,11 +3501,15 @@ sequence only together with the alphabet's version, so the version is part of th
   aims at 90% of the root's crumb, right of it, and leaves tab drops out.
   `foreign-content-reaches-every-drop-target/columns-tab` drops onto the second tab, not
   shown, so it covers a drop onto a tab that isn't shown, on both targets.
-- **Fix:** GTK's runner moving the source's window off Strata's on X11, for example below its
-  760 pixels on the 1440×900 screen. That is a runner change, so a `contract`, with every
-  `foreign` scenario rerun, since their drags would then start elsewhere.
-- **State:** open, F5's: the sequence is parked in `tests/qa/fuzz/corpus/session-drops/`; once
-  the fix lands, it agrees, and a later version can draw tab drops again.
+- **Fix:** [#2694](https://github.com/lgse/strata/pull/2694), on `h5-integration` and merged here
+  in its second merge: `tests/qa/foreign_drag_source.py` moves the source's window to the
+  screen's bottom-right corner before its first `bounds` line, on X11 only, since sway tiles the
+  source beside Strata on the session host. Every `foreign` scenario passed with it, and
+  `foreign-content-reaches-every-drop-target/columns-first_tab`, a drop on the first tab, is
+  `required` on the session host, 3 of 3.
+- **State:** fixed, the harness cause. `fuzz-session-drops-v6-0000000000000008` agreed GTK
+  against Rune in 6 replays after the fix and is no longer parked. Drawing tab drops again is
+  for `session-drops`' next alphabet version ([F5](packages/F5.md), "Open").
 
 ### #2671: Up on a column's first entry takes GTK's keyboard to the header actions
 

@@ -285,6 +285,15 @@ status = "required"
 host = "offscreen"
 
 [[run]]
+scenario = "rename-survives-window-switch"
+run = "columns"
+package = "F5"
+gate = "G3"
+status = "pending"
+reason = "harness"
+blocker = "F5: the run's activate_window step (#2683) needs a QA host that drives several browser windows; the Rune hosts drive one and refuse it (crates/strata-app/src/qa/backend.rs), until F5's slice 2"
+
+[[run]]
 scenario = "tab-renames-past-open-folder"
 run = "columns-mirrored"
 package = "V9"

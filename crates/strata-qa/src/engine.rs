@@ -4,6 +4,7 @@
 //! what order, and what each of them is.
 
 mod activate;
+mod adopt;
 mod check;
 mod dispatch;
 mod fields;
