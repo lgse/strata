@@ -22,6 +22,9 @@ on:
       - '.github/workflows/publish-copr.yml'
       - '.github/workflows/rpm.yml'
   pull_request:
+    # strata-next's lockfile cannot be vendored until Rune's tiny-skia-path stops sharing a
+    # crates.io name and version (#2698); docs/rune/workspace-migration.md defers the repair.
+    branches-ignore: [strata-next]
     paths:
       - 'packaging/rpm/**'
       - 'scripts/build_srpm.py'
