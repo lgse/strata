@@ -96,6 +96,61 @@ pub(crate) fn a_seed_writes_the_same_sequence_on_every_machine() {
     sequence
         .load()
         .expect("a generated sequence should be a scenario the replay can run");
+    // An opening comes first, draws nothing, and the shrinker is told how long it is.
+    let opened = sample().replace(HEADER, &format!("{HEADER}\n{OPENING}"));
+    let opened = alphabet::parse(&opened).expect("an alphabet with an opening should load");
+    let started = generate(&opened, 7, 8);
+    assert_eq!(
+        started.steps[..2],
+        [r#"{"key":"Home"}"#, r#"{"key":"End"}"#]
+    );
+    assert_eq!(started.steps[2..], SEED_SEVEN);
+    assert_eq!(opened.opening_of(&started.steps), 2);
+    assert_eq!(opened.opening_of(&sequence.steps), 0);
+}
+
+/// Two opening steps for the sample.
+const OPENING: &str = r#"opening = ['{"key":"Home"}', '{"key":"End"}']"#;
+
+/// An opening step chooses nothing; a portal's request needs its bus, and a sequence's answer
+/// waits, checking nothing: the observation holds what the portal answered.
+pub(crate) fn an_opening_and_a_portal_request_are_refused_for_what_a_replay_could_not_run() {
+    let sample = sample();
+    let portal = sample.replace(
+        HEADER,
+        r#"header = '{"modes":["columns"],"portal":true,"session_bus":true}'"#,
+    );
+    for (text, expected) in [
+        (
+            sample.replace(
+                HEADER,
+                &format!("{HEADER}\nopening = ['{{\"key\":\"<key>\"}}']"),
+            ),
+            "an opening step is one line of JSON with nothing to choose",
+        ),
+        (
+            sample.replace(HEADER, r#"header = '{"modes":["columns"],"portal":true}'"#),
+            "session_bus",
+        ),
+        (
+            portal.replace(
+                r#"'{"key":"Down"}'"#,
+                r#"'{"portal_response":{"done":true,"status":0}}'"#,
+            ),
+            "only waits, so it takes no status",
+        ),
+    ] {
+        let error = alphabet::parse(&text).expect_err(expected);
+        assert!(
+            error.contains(expected),
+            "{error:?} should say {expected:?}"
+        );
+    }
+    alphabet::parse(&portal.replace(
+        r#"'{"key":"Down"}'"#,
+        r#"'{"portal_open":"Pick"}', '{"portal_response":{"done":true}}'"#,
+    ))
+    .expect("a portal alphabet that sends a request and waits for its answer should load");
 }
 
 pub(crate) fn an_alphabet_is_refused_for_what_a_replay_could_not_run() {
@@ -130,10 +185,6 @@ pub(crate) fn an_alphabet_is_refused_for_what_a_replay_could_not_run() {
         (
             sample.replace("about = ", "note = \"\"\nabout = "),
             "unknown field",
-        ),
-        (
-            with_header(r#"{"modes":["columns"],"portal":true,"session_bus":true}"#),
-            "does not take the header's portal",
         ),
         (
             with_header(r#"{"modes":["columns","list"]}"#),
@@ -293,6 +344,10 @@ pub(crate) fn an_alphabet_s_version_is_pinned_to_what_its_seeds_write() {
         (sample.replace("version = 1", "version = 2"), "does not pin"),
         (
             sample.replace(HEADER, &format!("{HEADER}\nhost = \"session\"")),
+            "raise `version`",
+        ),
+        (
+            sample.replace(HEADER, &format!("{HEADER}\n{OPENING}")),
             "raise `version`",
         ),
     ] {

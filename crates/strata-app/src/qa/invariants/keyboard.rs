@@ -8,7 +8,7 @@
 //!
 //! - Something in the tree has the keyboard, unless a floating chooser in front has it.
 //! - A part holds it for a menu only while the tree shows a menu, and for a modal layer only
-//!   while it shows a dialog. A menu or a dialog the tree shows is held for by its own hold or
+//!   while it shows a dialog other than a chooser's footer error, an alert that takes no keys. A menu or a dialog the tree shows is held for by its own hold or
 //!   by a plain popover: the Sort by menu and the Appearance popover show as one. A part holds
 //!   it for an inline edit or the location bar only while a text field has the keyboard.
 //! - A text field with the keyboard is held for by some part.
@@ -43,12 +43,12 @@ pub(super) fn check(app: &App, shown: &Shown<'_>, failures: &mut Failures) {
         .as_ref()
         .is_some_and(|field| field.focused);
     surface(&holds, Surface::Menu, observation.menu.is_some(), failures);
-    surface(
-        &holds,
-        Surface::Dialog,
-        observation.dialog.is_some(),
-        failures,
-    );
+    // A chooser's footer error is an alert the snapshot reads as its dialog; it takes no keys.
+    let dialog = observation
+        .dialog
+        .as_deref()
+        .is_some_and(|name| !crate::chooser::shows_error(app, name));
+    surface(&holds, Surface::Dialog, dialog, failures);
     for (hold, part) in &holds {
         if matches!(hold, Holds::Edit | Holds::Location) && !typing {
             failures.fail(
