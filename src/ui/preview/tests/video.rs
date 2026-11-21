@@ -135,6 +135,22 @@ fn media_families_split_audio_and_video_and_skip_gifs() {
     assert_eq!(entry_family(&raw_video), Some(MediaFamily::Video));
 }
 
+/// Any image the media sandbox plays is an animation: a GIF, or an animated WebP
+/// that the classifier routed by its bytes whatever the file is named.
+#[test]
+fn images_in_the_media_player_are_looping_animations() {
+    for (content_type, expected) in [
+        ("image/gif", true),
+        ("image/webp", true),
+        ("image/png", true),
+        ("video/mp4", false),
+        ("video/x-h264", false),
+        ("audio/mpeg", false),
+    ] {
+        assert_eq!(is_animation(content_type), expected, "{content_type}");
+    }
+}
+
 #[test]
 fn video_steps_reuse_one_view_and_keep_playback() {
     crate::test_support::gtk_test(

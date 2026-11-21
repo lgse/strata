@@ -230,3 +230,59 @@ fn metadata_and_size_parsing_fail_closed_on_bad_sources_and_protocol_values() {
     assert_raw_streams_seek_on_the_output(size);
     assert!(probe(Path::new("/nonexistent-strata-media"), size, 0).is_err());
 }
+
+const WEBP_ANIM: &[u8] = br#"{"streams":[{"index":0,"codec_type":"video","width":64,"height":48}],"format":{"format_name":"webp_anim"}}"#;
+
+const SMALL_ANIMATION: WebpAnimation = WebpAnimation {
+    canvas_width: 64,
+    canvas_height: 48,
+    frames: 10,
+    duration_us: 1_000_000,
+};
+
+#[test]
+fn animated_webps_loop_only_within_the_frame_budget_and_never_seek_the_source() {
+    let oversized = WebpAnimation {
+        canvas_width: 4096,
+        canvas_height: 4096,
+        ..SMALL_ANIMATION
+    };
+    let cases = [
+        (
+            "fits the budget",
+            Some(SMALL_ANIMATION),
+            Some(10),
+            30_000_000,
+        ),
+        ("beyond the budget", Some(oversized), None, 1_000_000),
+        ("unreadable timing", None, None, media::MAX_DURATION_US),
+    ];
+    for (name, animation, loop_frames, duration_us) in cases {
+        let input = metadata_with(
+            WEBP_ANIM,
+            MediaPreviewSize::new(520, 800),
+            15,
+            ProbeMode::Playback,
+            || animation,
+        )
+        .expect("animated WebP metadata");
+        assert_eq!(
+            (input.loop_frames, input.header.duration_us),
+            (loop_frames, duration_us),
+            "{name}"
+        );
+        let args = software_args(&input, Track::Video);
+        assert_omits_seek(&args);
+        assert!(
+            !args.iter().any(|arg| arg == "-stream_loop"),
+            "{name}: {args:?}"
+        );
+        let filter = &args[args.iter().position(|arg| arg == "-vf").expect("filter") + 1];
+        assert!(filter.contains("trim=start=0.500000"), "{name}: {filter}");
+        assert_eq!(
+            filter.starts_with("loop="),
+            loop_frames.is_some(),
+            "{name}: {filter}"
+        );
+    }
+}

@@ -72,7 +72,7 @@ impl PreviewState {
         bar.add_css_class("preview-media-bar");
         self.append_play_toggle(media, &bar, controls.center_play);
 
-        if controls.is_gif {
+        if controls.animation {
             controls.section.append(&bar);
             return;
         }
@@ -177,7 +177,7 @@ pub(super) struct MediaControls<'a> {
     pub(super) preferences: &'a Rc<super::super::preferences::PreferenceManager>,
     pub(super) section: &'a gtk::Box,
     pub(super) center_play: &'a gtk::Button,
-    pub(super) is_gif: bool,
+    pub(super) animation: bool,
 }
 
 fn toggle_playing(media: &gtk::MediaStream) {

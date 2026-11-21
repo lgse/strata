@@ -339,3 +339,40 @@ fn assert_long_gif_plays_once(long: &Path) {
     let (_, sought, _) = decoded(long, "160x90", 960);
     assert_eq!(frames[960].pixels, sought[0].pixels);
 }
+
+/// FFmpeg's animated WebP demuxer cannot seek, so `-stream_loop` and `-ss` stall or
+/// skip ahead; looping and seeking must not ask the source to seek.
+#[test]
+fn short_animated_webps_loop_and_seek_by_phase_without_seeking_the_source() {
+    assert!(
+        crate::sandbox::decodes_animated_webp(),
+        "this test needs an FFmpeg with the webp_anim decoder (9.0 or newer)"
+    );
+    let directory = tempfile::tempdir().expect("WebP fixture");
+    let input = directory.path().join("loop.webp");
+    animated_webp(&input, 1);
+    let (header, frames, end) = decoded(&input, "160x90", 0);
+    assert_eq!(
+        (header.duration_us, frames.len(), end),
+        (30_000_000, 900, 30_000_000)
+    );
+    assert!(frames[0].pixels == frames[30].pixels, "WebP loop phase");
+    assert!(frames[0].pixels != frames[15].pixels, "moving WebP frames");
+    let (_, sought, _) = decoded(&input, "160x90", 765);
+    assert!(
+        frames[15].pixels == sought[0].pixels,
+        "seek keeps the WebP phase"
+    );
+    assert_long_webp_plays_once(&directory.path().join("long.webp"));
+}
+
+fn assert_long_webp_plays_once(long: &Path) {
+    animated_webp(long, 35);
+    let (header, frames, end) = decoded(long, "160x90", 0);
+    assert_eq!(
+        (header.duration_us, frames.len(), end),
+        (35_000_000, 1050, 35_000_000)
+    );
+    let (_, sought, _) = decoded(long, "160x90", 960);
+    assert_eq!(frames[960].pixels, sought[0].pixels);
+}

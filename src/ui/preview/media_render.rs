@@ -16,19 +16,20 @@ impl PreviewState {
         preview: SandboxedPreview,
         mut source: crate::services::SandboxedMedia,
     ) {
-        let is_gif = preview.content_type == "image/gif";
+        let animation = super::is_animation(&preview.content_type);
         let family = media_family(&preview.content_type);
         let handed_off = self.handed_off.borrow().as_ref() == Some(&preview.entry.location);
         source.audio_only = family == Some(MediaFamily::Audio);
         let preferences = super::super::preferences::PreferenceManager::shared();
-        let starts_at_zero = is_gif || crate::services::is_raw_video_stream(&preview.content_type);
+        let starts_at_zero =
+            animation || crate::services::is_raw_video_stream(&preview.content_type);
         let start_percent = if starts_at_zero {
             0
         } else {
             preferences.preview_video_start()
         };
         let media = self.open_media_stream(source.clone(), start_percent);
-        if is_gif {
+        if animation {
             media.set_loop(true);
         } else {
             let muted = preferences.preview_muted();
@@ -55,7 +56,7 @@ impl PreviewState {
                 None
             }
             None | Some(MediaFamily::Route) => {
-                Some(self.render_plain_media(&media, &preferences, is_gif))
+                Some(self.render_plain_media(&media, &preferences, animation))
             }
         };
         let autoplay = preferences.preview_autoplay();
@@ -121,7 +122,7 @@ impl PreviewState {
         self: &Rc<Self>,
         media: &gtk::MediaStream,
         preferences: &Rc<super::super::preferences::PreferenceManager>,
-        is_gif: bool,
+        animation: bool,
     ) -> gtk::Button {
         let (overlay, center_play) = self.build_media_view(media);
         let section = media_layout::section(&overlay, media);
@@ -132,7 +133,7 @@ impl PreviewState {
                 preferences,
                 section: &section,
                 center_play: &center_play,
-                is_gif,
+                animation,
             },
         );
         center_play
