@@ -40,9 +40,10 @@
 #   which a sequence does not start yet.
 # - Drops onto the sidebar, and onto a crumb above the root: their places are outside the
 #   fixture (`content_drops` covers the sidebar as a scenario).
-# - Drops onto a tab: onto one not shown, Rune selects it and saves there and GTK saves nothing
-#   (lgse/strata#2668); `foreign-content-reaches-every-drop-target`' `tab` runs drop onto the
-#   tab shown on both targets.
+# - Drops onto a tab: on GTK's bare Xvfb the drag source's window covers the first tab, so a
+#   drop there lands on the source (lgse/strata#2668, a fault of the harness);
+#   `foreign-content-reaches-every-drop-target`'s `tab` runs drop onto the second tab, not
+#   shown, on both targets.
 # - Escape during the drag and modifiers changed during it: wlroots' drag grab gives no client
 #   a key then (A19.md, "Open").
 # Version 1 was F5's draft, never merged: it dropped PNG content too, which met

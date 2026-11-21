@@ -3395,23 +3395,39 @@ sequence only together with the alphabet's version, so the version is part of th
   not reach. Its gap: a band over the focused row still does. `pointer v4` `0x3a` is parked as
   `deviation` against this finding in `tests/qa/fuzz/corpus/pointer/`.
 
-### #2668: a foreign text drop onto a tab not shown saves nothing on GTK, and selects the tab and saves there on Rune
+### #2668: on GTK's bare Xvfb the foreign drag source covers the first tab, so a drop there lands on the source
 
-- **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2668), filed on
-  2026-11-20 as the finding's reference and closed at once: its state is kept here.
+- **Code:** `harness`, of GTK's runner: none of the plan's exception codes, labelled `testing`.
+  [Issue](https://github.com/lgse/strata/issues/2668), filed on 2026-11-20 as the finding's
+  reference and closed at once: its state is kept here. Filed as a `divergence`; reclassified on
+  2026-11-20 after [#2677](https://github.com/lgse/strata/pull/2677)'s review.
 - **Seen:** in [F5](packages/F5.md)'s `session-drops` drafts, GTK against Rune, List, Rune on
-  the session host. Version 5, in 4 of 20 seeds: `fuzz-session-drops-v5-000000000000000e`,
-  shrunk to 4 steps, confirmed 3 of 3 and agreeing with itself in 24 of 24 GTK replays: Ctrl+T
-  at the root (two tabs of the root), text from another process dropped onto the page tab named
-  for the root, the first of the two. Rune saves `dropped text.txt` in the root; GTK saves
-  nothing. Version 6, which kept the drop off a tab of the folder shown, met it again in seed
-  `0x08`: with `archive` shown, the drop onto the `$root` tab selected that tab and saved
-  `dropped text (2).txt` there on Rune; GTK stayed in `archive` and saved nothing.
-- **Why:** not traced on GTK's side, whose tab takes content drops
-  (`install_file_drop` in `src/ui/window/composition/tabs/strip.rs`). Both sightings drop onto a
-  tab that is not the one shown; `foreign-content-reaches-every-drop-target/columns-tab`, which
-  passes on both targets, drops onto the tab shown. Rune selects a tab a drag rests on
-  (`HOVER_DELAY`, 450 ms) and drops into its folder, as GTK's code would.
-- **Concerns:** the sequence, parked in `tests/qa/fuzz/corpus/session-drops/`;
-  `session-drops` v7 leaves tab drops out.
-- **State:** open, unowned: [A4](packages/A4.md)'s tab strip or [A19](packages/A19.md)'s drops.
+  the session host. Version 5 met it in 4 of 20 seeds and version 6 in 1: text from another
+  process dropped onto the first tab's page tab, while the second tab showed. Rune selects
+  that tab and saves `dropped text.txt` in its folder; GTK saves nothing.
+  `fuzz-session-drops-v6-0000000000000008`, shrunk to 5 steps and confirmed 3 of 3: Ctrl+T at
+  the root, `archive` opened in the new tab, the text dropped onto the tab named for the root,
+  which no other tab shares. (Version 5's `v5-0e`, parked first, dropped onto a name both tabs
+  shared, as Ctrl+T at the root made two.)
+- **Why:** the drag source's window covers the tab. With no window manager, the X server maps
+  every window at the screen's corner: the source's 240×80 window
+  (`tests/qa/fixtures/file_drag_source.py`) over Strata's top-left corner, where the first
+  tab is (about 224×35). The runner presses on the source's button and releases at the tab's
+  centre, (99, 17) in the window, so the drop lands on the source itself and Strata never sees
+  it. A drop onto the second tab, right of x = 240, saves on GTK. A probe of the four shapes
+  on GTK alone: onto the second tab with the first shown, saved in Columns and in List; onto
+  the first with the second shown, nothing in either. So the view mode plays no part, and
+  neither does a lost focus (#2595), which every shape shares. GTK's code does what Rune
+  does (`install_file_drop`, `src/ui/window/composition/tabs/strip.rs`: the tab a drag rests
+  on is selected after 450 ms, and the drop selects it and saves into its folder). Rune's
+  session host places the windows apart.
+- **Concerns:** a drop onto whatever lies under the source's 240×80 corner on GTK: the first
+  tab, the sidebar's toggle and the crumbs left of x = 240. `session-drops` v7's crumb drop
+  aims at 90% of the root's crumb, right of it, and leaves tab drops out.
+  `foreign-content-reaches-every-drop-target/columns-tab` drops onto the second tab, not
+  shown, so it covers a drop onto a tab that isn't shown, on both targets.
+- **Fix:** GTK's runner moving the source's window off Strata's on X11, for example below its
+  760 pixels on the 1440×900 screen. That is a runner change, so a `contract`, with every
+  `foreign` scenario rerun, since their drags would then start elsewhere.
+- **State:** open, F5's: the sequence is parked in `tests/qa/fuzz/corpus/session-drops/`; once
+  the fix lands, it agrees, and a later version can draw tab drops again.
