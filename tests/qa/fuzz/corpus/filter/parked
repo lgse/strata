@@ -23,6 +23,8 @@
 # filter field again (F4's round 3).
 # v2-00000000000000c8: a view switch after the slash: GTK's List searches again and finds a file
 # written before (F4's round 3).
+# v2, 0x8e is kept unparked, cut to the three steps it parted at: Ctrl+period with the filter
+# open, whose fix (lgse/strata#2697) came with it (F4's round 3).
 v2-0000000000000006 divergence lgse/strata#2499
 v2-0000000000000026 divergence lgse/strata#2653
 v2-000000000000002c divergence lgse/strata#2431
