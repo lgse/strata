@@ -293,13 +293,20 @@ fn activate_window_needs_one_window_and_a_backend_that_can_switch() {
         refused.error.as_deref(),
         Some("activate_window is not supported on this target")
     );
-    let adopted = run(&fake, &kept, json!({ "adopt": "docs — Strata", "timeout_ms": 50 }));
+    let adopted = run(
+        &fake,
+        &kept,
+        json!({ "adopt": "docs — Strata", "timeout_ms": 50 }),
+    );
     assert_eq!((adopted.error, adopted.failures.len()), (None, 0));
 
     fake.add_window(drawn("frame", "docs — Strata", [1600.0, 0.0, 600.0, 400.0]));
     let ambiguous = run(&fake, &kept, activate);
     assert_eq!(
-        ambiguous.failures.first().map(|failure| failure.actual.clone()),
+        ambiguous
+            .failures
+            .first()
+            .map(|failure| failure.actual.clone()),
         Some(json!({ "windows": 2 })),
         "{ambiguous:?}"
     );
