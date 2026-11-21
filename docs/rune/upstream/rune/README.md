@@ -146,7 +146,8 @@ there (a scratch crate pinned at `7a707454`, `DISPLAY` and `WAYLAND_DISPLAY` cle
 - **Not re-checked:** the other entries, whose areas the range did not touch by its log.
 - **New:** Rune #1115 (after #1099) leaves a one-leaf control's repeated text out of the
   accessibility tree, as Chromium does; Strata's QA snapshot presents it (finding
-  lgse/strata#2674). No entry: it is Rune's intent, and GTK's tree is the one that differs.
+  lgse/strata#2674, ruled a deviation on 2026-11-20: Rune's tree stands). No entry: it is Rune's
+  intent, and GTK's tree is the one that differs.
 
 ## Filing
 
