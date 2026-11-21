@@ -108,7 +108,7 @@ impl<S: 'static> NumberField<S> {
         let c = &k.c;
         let range = st.range();
         let font = k.ty.ui_compact;
-        let height = look.frame.control + look.space.xs;
+        let height = field_height(look);
         let focused = st.edit.focused && !self.disabled;
         let invalid = st.invalid() && !self.disabled;
         let ink = if invalid && k.invalid_text {
@@ -132,7 +132,7 @@ impl<S: 'static> NumberField<S> {
         let mut field = text_input(&st.edit, font)
             .single_line()
             .key(format!("{}-input", self.key))
-            .w(digits.ceil() + look.space.xs)
+            .w((digits.ceil() + look.space.xs).max(28.0))
             .align(Align::Center)
             .color(ink)
             .caret(ink, k.selection())
@@ -166,7 +166,12 @@ impl<S: 'static> NumberField<S> {
             }
         }
 
-        let mut value = row().gap(look.space.xxs).items_center().child(field);
+        let mut value = row()
+            .min_w(40.0)
+            .px(look.space.sm)
+            .gap(look.space.xxs)
+            .center()
+            .child(field);
         if !st.unit().is_empty() {
             value = value.child(
                 text(st.unit().to_owned())
@@ -177,28 +182,40 @@ impl<S: 'static> NumberField<S> {
         }
         let at_min = st.value() <= range.min();
         let at_max = st.value() >= range.max();
+        let border_color = if self.disabled {
+            c.border_disabled
+        } else if invalid {
+            c.danger.fg
+        } else if focused {
+            c.border_focus
+        } else {
+            c.border_strong
+        };
         // The steppers sit inside the text box frame, so a press on one leaves the keyboard
         // in the field (Rune keeps focus for a press inside a `textbox`, probe P2b).
         let mut frame = row()
             .role("textbox")
             .h(height)
-            .px(look.space.xxs)
-            .gap(look.space.xxs)
             .items_center()
             .child(self.stepper(look, false, at_min, tell.clone()))
             .child(value)
             .child(self.stepper(look, true, at_max, tell.clone()))
-            .radius(k.radius.md)
-            .fill(c.bg_base)
+            .radius(look.round(8.0))
+            .fill(if self.disabled {
+                c.surface_disabled
+            } else {
+                look.fill.muted
+            })
+            .border(1.0, border_color)
             .token_motion(k.motion.control);
         frame = if self.disabled {
-            k.elevate(frame, k.elevation.input()).layer_opacity(0.5)
+            frame.layer_opacity(0.45)
         } else if invalid {
-            frame.outline(1.0, -1.0, c.danger.fg)
+            frame.outline(2.0, -2.0, c.danger.fg)
         } else if focused {
-            frame.outline(1.0, -1.0, c.border_focus)
+            frame.outline(2.0, -2.0, c.border_focus)
         } else {
-            k.elevate(frame, k.elevation.input()).hover(c.hover)
+            frame
         };
         if !self.disabled
             && let Some(menu) = &self.menu
@@ -248,9 +265,20 @@ impl<S: 'static> NumberField<S> {
     /// never focused, as GTK's are. Insensitive at its end.
     fn stepper(&self, look: &Look, up: bool, at_end: bool, tell: Tell<S>) -> El {
         let k = &look.kit;
-        let side = look.frame.control;
+        let height = field_height(look);
+        let width = height.max(32.0);
         let glyph = look.icon(if up { IconName::Plus } else { IconName::Minus });
         let off = self.disabled || at_end;
+        let divider = if self.disabled {
+            k.c.border_disabled
+        } else {
+            k.c.border_strong
+        };
+        let sides = if up {
+            [0.0, 0.0, 0.0, 1.0]
+        } else {
+            [0.0, 1.0, 0.0, 0.0]
+        };
         let mut b = el()
             .key(format!(
                 "{}-{}",
@@ -258,13 +286,14 @@ impl<S: 'static> NumberField<S> {
                 if up { "increase" } else { "decrease" }
             ))
             .role("button")
-            .size(side, side)
-            .radius(k.radius.sm)
+            .w(width)
+            .h(height - 2.0)
+            .border_sides(sides, divider)
             .center()
             .child(icon(glyph, look.icon_size.md).color(if off {
                 k.c.icon_faint
             } else {
-                k.c.icon_muted
+                k.c.icon_accent
             }))
             .a11y_hidden();
         if off {
@@ -283,6 +312,10 @@ impl<S: 'static> NumberField<S> {
             .focusable(false);
         b
     }
+}
+
+fn field_height(look: &Look) -> f32 {
+    (look.frame.control + look.space.md).max(32.0)
 }
 
 /// The keys a focused field steps on, as GTK's spin button: Up and Down a step, Page Up and

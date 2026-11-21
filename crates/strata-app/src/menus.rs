@@ -324,17 +324,29 @@ fn chosen(app: &mut App, intent: MenuIntent, tx: &mut Tx) {
     commands::run(app, &action, on, tx);
 }
 
+/// Matches GTK's root context-menu width floor (`style_menu_scroll` in
+/// `src/ui/browser/context_menu/actions/presentation.rs`): keeps entry and folder menus at a
+/// consistent width across targets and async lookups.
+const MENU_MIN_WIDTH: f32 = 310.0;
+
+fn min_width(look: &strata_kit::look::Look) -> f32 {
+    let scale = strata_kit::typography::factor(look.kit.ty.ui_compact.size);
+    (MENU_MIN_WIDTH * scale).round()
+}
+
 /// The menu's element, with its surfaces in the layer while it is open.
 fn build(app: &App, frame: &mut Frame<'_, App>) -> Option<El> {
-    let menu = ContextMenu::new(
+    let mut menu = ContextMenu::new(
         "menu",
         |app: &App| &app.menu.state,
         |app: &mut App| &mut app.menu.state,
     )
     .name(app.menu.name())
-    .on_intent(chosen)
-    .build(app, &app.look, frame.layer);
-    Some(menu)
+    .on_intent(chosen);
+    if !app.browser.is_chooser_mode() {
+        menu = menu.min_width(min_width(&app.look));
+    }
+    Some(menu.build(app, &app.look, frame.layer))
 }
 
 impl Part for Menu {

@@ -4,7 +4,7 @@
 
 use std::rc::Rc;
 
-use rune::{El, ScrollSpec, Tx, col, el, icon, row, text};
+use rune::{Color, Cursor, El, ScrollSpec, Tx, col, el, icon, row, text};
 use rune_kit::{Button, ButtonVariant};
 use strata_components::controls::{
     number_field::{NumberField, NumberFieldState},
@@ -18,12 +18,14 @@ use strata_desktop::settings::{
 use strata_kit::{
     fonts::FAMILY,
     icons::IconName,
+    look::Look,
     theme::{Colors, Theme},
 };
 
 use super::controls::{
-    ChoiceOption, ChoiceSpec, PageCtx, RowSpec, SearchField, choice_menu, group_card, number_field,
-    option_row, search_field, section_heading, segmented_toggles, switch_row,
+    ChoiceOption, ChoiceSpec, PageCtx, RowSpec, SearchField, card_surface, choice_menu,
+    first_section_heading, group_card, number_field, option_row, panel_border, search_field,
+    section_heading, segmented_toggles, switch_row,
 };
 use crate::{App, buttons, shell};
 
@@ -81,7 +83,7 @@ pub(super) fn build(app: &App, search: &SettingsSearch<App>, menu_layer: &mut Ve
     let ctx = PageCtx { app, search };
     let prefs = shell::preferences(app);
     let blocks: Vec<Option<El>> = vec![
-        section_heading(ctx, "theme-source", "THEME"),
+        first_section_heading(ctx, "theme-source", "THEME"),
         theme_source_section(ctx, menu_layer),
         theme_library_section(ctx),
         section_heading(ctx, "rendering", "RENDERING"),
@@ -259,7 +261,7 @@ fn current_theme_row(
     let preview = row()
         .gap(app.look.space.md)
         .items_center()
-        .child(theme_swatch(&resolved.colors))
+        .child(theme_swatch(&app.look, &resolved.colors))
         .child(
             text(resolved.name)
                 .font(app.look.kit.ty.ui)
@@ -284,43 +286,55 @@ fn theme_library_section(ctx: PageCtx<'_>) -> Option<El> {
     let query = app.settings_dialog.theme_query.text.trim().to_lowercase();
     let filter = app.settings_dialog.theme_filter;
 
+    let look = &app.look;
+    let divider = look
+        .kit
+        .alpha(look.kit.c.std_border, look.kit.c.std_border.a * 0.45);
     let cards: Vec<El> = themes
         .library()
         .themes()
         .iter()
         .filter(|theme| theme_matches(theme, filter, &query))
-        .map(|theme| {
+        .enumerate()
+        .map(|(idx, theme)| {
             let selected = !follows_omarchy && theme.id == effective_id;
-            theme_card(app, theme, (selected, follows_omarchy))
+            let card = theme_card(app, theme, (selected, follows_omarchy));
+            if idx > 0 {
+                col()
+                    .w_full()
+                    .border_sides([1.0, 0.0, 0.0, 0.0], divider)
+                    .child(card)
+            } else {
+                card
+            }
         })
         .collect();
     let scroller = col()
         .key("settings-theme-catalog-scroll")
         .w_full()
         .max_h(336.0)
-        .gap(app.look.space.xs)
-        .padding(app.look.space.sm)
-        .radius(app.look.kit.radius.md)
-        .fill(app.look.kit.c.layer_02)
-        .border(1.0, app.look.kit.c.border_muted)
+        .radius(look.round(10.0))
+        .fill(card_surface(look))
+        .border(1.0, panel_border(look))
         .scroll(ScrollSpec {
             stick_bottom: false,
         })
         .children(cards);
     let footer = text(tr("Custom themes live in ~/.config/strata/themes"))
-        .font(app.look.kit.ty.small)
-        .color(app.look.kit.c.text_muted);
+        .font(look.kit.ty.small)
+        .color(look.kit.c.text_muted)
+        .px(4.0);
     let mut section = col()
         .w_full()
-        .pt(app.look.space.md)
-        .gap(app.look.space.sm)
+        .pt(24.0)
+        .gap(10.0)
         .child(library_toolbar(app))
         .child(scroller)
         .child(footer);
     if follows_omarchy {
-        section = section.inert().layer_opacity(0.55);
+        section = section.inert().layer_opacity(0.45);
     }
-    ctx.search.row(app, &app.look, "themes", section)
+    ctx.search.row(app, look, "themes", section)
 }
 
 fn library_toolbar(app: &App) -> El {
@@ -387,42 +401,55 @@ fn theme_matches(theme: &Theme, filter: ThemeFilter, query: &str) -> bool {
 fn theme_card(app: &App, theme: &Theme, (selected, disabled): (bool, bool)) -> El {
     let look = &app.look;
     let kit = &look.kit;
+    let c = &kit.c;
     let id = theme.id.clone();
     let name = theme.name.clone();
-    let name_for_label = name.clone();
-    let swatch = theme_swatch(&theme.colors);
+    let swatch = theme_swatch(look, &theme.colors);
     let kind_text = tr(if theme.is_light() { "LIGHT" } else { "DARK" });
     let check = look.icon(IconName::Check);
-    let muted = kit.c.text_muted;
-    let small = kit.ty.small;
-    let variant = if selected {
-        ButtonVariant::Neutral
+    let fill = if selected {
+        kit.alpha(c.bg_accent, 0.10)
     } else {
-        ButtonVariant::Ghost
+        Color::TRANSPARENT
     };
-    let card = Button::new(name)
-        .variant(variant)
-        .disabled(disabled)
-        .label_with(move |font, ink| {
-            let mut right = row()
-                .gap(12.0)
-                .items_center()
-                .child(text(kind_text).font(small).color(muted).a11y_hidden());
-            if selected {
-                right = right.child(icon(check, 14.0).color(ink).a11y_hidden());
-            }
-            row()
-                .grow(1.0)
-                .gap(16.0)
-                .items_center()
-                .child(swatch)
-                .child(text(name_for_label).font(font).color(ink).grow(1.0))
-                .child(right)
-        })
-        .on_press_tx(move |app: &mut App, tx: &mut Tx| select_theme_id(app, &id, tx))
-        .build(kit)
+    let mut right = row().gap(12.0).items_center().child(
+        text(kind_text)
+            .font(kit.ty.small)
+            .color(c.text_muted)
+            .a11y_hidden(),
+    );
+    if selected {
+        right = right.child(icon(check, 14.0).color(c.icon_accent).a11y_hidden());
+    }
+    let mut card = row()
+        .role("button")
+        .label(name.clone())
+        .checked(selected)
         .w_full()
-        .checked(selected);
+        .px(18.0)
+        .py(14.0)
+        .gap(16.0)
+        .items_center()
+        .fill(fill)
+        .focus_ring(2.0, -2.0, c.border_focus)
+        .focusable(!disabled)
+        .disabled(disabled)
+        .child(swatch)
+        .child(
+            text(name)
+                .font(kit.ty.ui_medium)
+                .color(c.text_base)
+                .grow(1.0)
+                .a11y_hidden(),
+        )
+        .child(right);
+    if !disabled {
+        card = card
+            .cursor(Cursor::Pointer)
+            .hover(kit.alpha(c.bg_accent, 0.10))
+            .press(c.pressed)
+            .on_press_tx(move |app: &mut App, tx: &mut Tx| select_theme_id(app, &id, tx));
+    }
     buttons::on_return(format!("settings-theme-card-{}", theme.id), card)
 }
 
@@ -438,7 +465,8 @@ fn select_theme_id(app: &mut App, id: &str, tx: &mut Tx) {
     shell::follow_look_tx(app, tx);
 }
 
-fn theme_swatch(colors: &Colors) -> El {
+fn theme_swatch(look: &Look, colors: &Colors) -> El {
+    let pill_r = look.round(999.0).min(5.0);
     let pills = [
         (colors.accent, 14.0),
         (colors.danger, 14.0),
@@ -446,13 +474,13 @@ fn theme_swatch(colors: &Colors) -> El {
         (colors.dim_text, 6.0),
     ]
     .into_iter()
-    .map(|(c, w)| el().size(w, 10.0).radius(5.0).fill(c.color()));
+    .map(|(c, w)| el().size(w, 10.0).radius(pill_r).fill(c.color()));
     row()
         .size(80.0, 28.0)
         .px(8.0)
         .gap(4.0)
         .items_center()
-        .radius(6.0)
+        .radius(look.round(6.0))
         .fill(colors.background.color())
         .border(1.0, colors.border.color())
         .a11y_hidden()

@@ -190,7 +190,7 @@ impl<'a, S: 'static> LocationBar<'a, S> {
             .label(labels.bar.clone())
             .grow(1.0)
             .min_w(0.0)
-            .h(ctx.height())
+            .h(ctx.row())
             .child(body);
         if !self.state.editing() && self.state.menu().is_some() {
             bar = bar.child(menu::view(&ctx, layer));
@@ -236,9 +236,9 @@ impl<S> Ctx<'_, S> {
         bar.thickness + 2.0 * bar.margin
     }
 
-    /// The whole bar: the crumbs and the overflow bar's row, so switching to the entry moves
-    /// nothing around it.
-    pub fn height(&self) -> f32 {
+    /// Where the hierarchy menu opens below the crumbs: past both the crumb row and the overflow
+    /// bar's row underneath it.
+    pub fn menu_bottom(&self) -> f32 {
         self.row() + self.band()
     }
 

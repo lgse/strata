@@ -17,7 +17,7 @@ use rune::{El, PointerPress, TextEdit, Tx, el};
 use strata_kit::look::Look;
 
 use super::model::{Item, Section};
-use super::view::Render;
+use super::view::{Render, width};
 use crate::contract::Point;
 
 /// The field menu's words, in the interface language. English by default.
@@ -368,6 +368,7 @@ impl<S: 'static, F: Copy + PartialEq + 'static> FieldMenu<S, F> {
             header: &[],
             sections: &sections,
             open: &[],
+            top_width: width(look, &[], &sections),
             look,
             on_select: Rc::new(move |s: &mut S, path: &[usize], tx: &mut Tx| {
                 let command = path.first().and_then(|&i| commands.get(i)).map(|c| c.0);
