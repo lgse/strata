@@ -4,6 +4,5 @@
 #   v<version>-<seed> <code> <issue>
 #
 # Each line is a finding's sequence shrunk GTK against Rune, named for the smoke seed that met
-# it. Versions 1 to 6 were F5's drafts, never merged. #2668 is a fault of GTK's harness, not of
-# Strata or Rune; it is parked as a `divergence`, the code a difference no exception covers has.
-v6-0000000000000008 divergence lgse/strata#2668
+# it. Versions 1 to 6 were F5's drafts, never merged. None is parked now: #2668's v6-08, a fault
+# of GTK's harness that #2694 fixed, agrees again.

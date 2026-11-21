@@ -8,13 +8,14 @@ use serde_json::{Value, json};
 
 use super::{
     LOCATE_TIMEOUT, POINTER_GAP, POLL_INTERVAL,
+    adopt::{Adoption, adopt},
     fields::editable_fields,
     locate::screen_rect,
     lookup::result_rows,
     observe::preferences,
     pointer::{Aimed, DragEnds},
     scope::{Remembered, Scope},
-    waits::{Turn, adopt},
+    waits::Turn,
 };
 use crate::{
     Accessor, Aim, Backend, Command, Failure, Outcome, Query, Rect, Shape, Target, number_json,
@@ -22,13 +23,8 @@ use crate::{
 
 /// Runs a step against the window the backend names, and returns what it came to.
 pub async fn execute<B: Backend>(backend: &B, kept: &Remembered<B>, command: Command) -> Outcome {
-    if let Command::Adopt {
-        title,
-        timeout,
-        message,
-    } = &command
-    {
-        return adopt(backend, title, *timeout, message.as_deref()).await;
+    if let Some(adoption) = Adoption::of(&command) {
+        return adopt(backend, &adoption).await;
     }
     let Some(window) = backend.window() else {
         return Outcome::error("the Strata window is gone".to_owned());

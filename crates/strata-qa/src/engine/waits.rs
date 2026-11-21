@@ -7,42 +7,13 @@ use std::time::{Duration, Instant};
 use serde_json::json;
 
 use super::{
-    MENU_RETRY_AFTER, POLL_INTERVAL, SETTLE_SAMPLES, lookup::windows_titled, pointer::Aimed,
-    scope::Scope, wanted::has_state,
+    MENU_RETRY_AFTER, POLL_INTERVAL, SETTLE_SAMPLES, pointer::Aimed, scope::Scope,
+    wanted::has_state,
 };
 use crate::{
     Aim, At, Backend, DEFAULT_WAIT, Failure, LookupError, Modifier, Outcome, Predicate, Repeat,
     StateName, Target,
 };
-
-/// Waits for a drawn window with the title and makes it the one steps act on.
-pub(super) async fn adopt<B: Backend>(
-    backend: &B,
-    title: &str,
-    timeout: Duration,
-    message: Option<&str>,
-) -> Outcome {
-    let deadline = Instant::now() + timeout;
-    loop {
-        if let Some(window) = windows_titled(backend, title).into_iter().next() {
-            backend.adopt(&window);
-            backend.settle(&window).await;
-            return Outcome::default();
-        }
-        if Instant::now() >= deadline {
-            return Outcome {
-                failures: vec![Failure {
-                    predicate: json!({ "adopt": title }),
-                    actual: json!(false),
-                    message: message.map(str::to_owned),
-                }],
-                error: Some(format!("timed out after {} ms", timeout.as_millis())),
-                ..Outcome::default()
-            };
-        }
-        backend.sleep(POLL_INTERVAL).await;
-    }
-}
 
 /// The wheel turns a `wheel` step repeats until its predicate holds.
 pub(super) struct Turn<'a> {

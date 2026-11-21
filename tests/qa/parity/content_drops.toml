@@ -25,6 +25,13 @@ host = "session"
 
 [[run]]
 scenario = "foreign-content-reaches-every-drop-target"
+run = "columns-first_tab"
+package = "A19"
+status = "required"
+host = "session"
+
+[[run]]
+scenario = "foreign-content-reaches-every-drop-target"
 run = "columns-breadcrumb"
 package = "A19"
 status = "required"

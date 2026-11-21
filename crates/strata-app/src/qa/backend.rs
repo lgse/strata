@@ -395,6 +395,20 @@ impl<H: Host> Backend for Rune<H> {
         self.host.adopt(window);
     }
 
+    /// The Rune hosts drive one browser window each, so there is no other window to give the
+    /// keyboard to; the step fails with that reason rather than passing on the wrong window.
+    async fn activate_window(
+        &self,
+        _window: &Node,
+        _deadline: std::time::Instant,
+    ) -> Result<bool, String> {
+        Err(
+            "activate_window needs a host that drives several browser windows; the Rune QA \
+             hosts drive one"
+                .to_owned(),
+        )
+    }
+
     async fn resize(&self, window: &Node, width: u16, height: Option<u16>) -> Result<(), String> {
         let frame = self.frame(window).ok_or("the window is not drawn")?;
         #[expect(
