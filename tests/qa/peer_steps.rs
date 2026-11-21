@@ -183,6 +183,13 @@ pub(crate) struct Peers {
     foreign: Option<peers::ForeignSource>,
 }
 
+impl Peers {
+    /// Whether a `foreign` step's drag source runs.
+    pub(crate) fn foreign_runs(&self) -> bool {
+        self.foreign.is_some()
+    }
+}
+
 pub(crate) enum PeerError {
     Failed(String),
     Harness(String),
