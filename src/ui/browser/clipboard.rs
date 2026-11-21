@@ -696,9 +696,15 @@ fn classify_file_drop(
         return None;
     }
     let (relation, is_noop) = state.classify(target, destination, sources.clone());
-    let source_actions = drop
+    let drop_actions = drop.as_ref().map(|drop| drop.actions());
+    let in_app_actions = drop
         .as_ref()
-        .map_or_else(|| target.actions(), |drop| drop.actions());
+        .and_then(|drop| drop.drag())
+        .map(|drag| drag.actions());
+    let source_actions = file_drop_source_actions(
+        drop_actions.unwrap_or_else(|| target.actions()),
+        in_app_actions,
+    );
     let offered = offered_file_actions(target.actions(), source_actions);
     let strategy = current_cross_volume_drop_strategy();
     if commit {
@@ -712,7 +718,8 @@ fn classify_file_drop(
             ?strategy,
             event_mods = ?target.current_event_state(),
             keyboard_mods = ?drop_modifier_state(target),
-            drop_actions = ?drop.as_ref().map(|drop| drop.actions()),
+            ?drop_actions,
+            ?in_app_actions,
             ?offered,
             "drop action classified"
         );
@@ -730,6 +737,13 @@ fn classify_file_drop(
 
 fn current_cross_volume_drop_strategy() -> CrossVolumeDropStrategy {
     crate::ui::preferences::PreferenceManager::shared().cross_volume_drop_strategy()
+}
+
+fn file_drop_source_actions(
+    negotiated: gtk::gdk::DragAction,
+    in_app: Option<gtk::gdk::DragAction>,
+) -> gtk::gdk::DragAction {
+    in_app.unwrap_or(negotiated)
 }
 
 /// A compositor's source-side MOVE offer must not prevent Strata's cross-volume copy.
