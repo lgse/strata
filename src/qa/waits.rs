@@ -2,12 +2,13 @@
 
 use std::time::{Duration, Instant};
 
-use gtk::glib;
-use serde_json::json;
+use gtk::{glib, prelude::*};
+use serde_json::{Value, json};
 
 use super::{
     Controller, MENU_RETRY_AFTER, Outcome, POLL_INTERVAL, SETTLE_SAMPLES,
     driver::Input,
+    input::Injector,
     pointer::Aimed,
     protocol::{self, At, Failure, Modifier, Predicate, Repeat, StateName, Target},
     settle,
@@ -18,29 +19,32 @@ impl Controller {
     pub(super) async fn adopt(
         &self,
         title: &str,
+        activate: bool,
         timeout: Duration,
         message: Option<&str>,
     ) -> Outcome {
         let deadline = Instant::now() + timeout;
-        loop {
-            if let Some(window) = targets::window_titled(title, None) {
-                self.main.set(Some(&window));
-                settle(Some(&window)).await;
-                return Outcome::default();
-            }
-            if Instant::now() >= deadline {
-                return Outcome {
-                    failures: vec![Failure {
-                        predicate: json!({ "adopt": title }),
-                        actual: json!(false),
-                        message: message.map(str::to_owned),
-                    }],
-                    error: Some(format!("timed out after {} ms", timeout.as_millis())),
-                    ..Outcome::default()
+        let adopted = match adoptable(title, activate, deadline).await {
+            Ok(window) => window,
+            Err(actual) => return adopt_timed_out(title, activate, actual, timeout, message),
+        };
+        self.main.set(Some(&adopted));
+        if activate {
+            let Some(injector) = self.injector.as_ref() else {
+                return Outcome::error("no input connection".to_owned());
+            };
+            if let Err(error) = give_keyboard(injector, &adopted, deadline).await {
+                return match error {
+                    Activation::Broken(error) => Outcome::error(error),
+                    Activation::Inactive => {
+                        let actual = json!({ "active": false });
+                        adopt_timed_out(title, activate, actual, timeout, message)
+                    }
                 };
             }
-            glib::timeout_future(POLL_INTERVAL).await;
         }
+        settle(Some(&adopted)).await;
+        Outcome::default()
     }
 
     /// A late startup focus change can close the menu as it opens, so it is re-clicked each second.
@@ -167,5 +171,74 @@ impl Controller {
                 glib::timeout_future(POLL_INTERVAL).await;
             }
         }
+    }
+}
+
+/// A window to activate must be the only one with its title, so the step means one window on
+/// every toolkit.
+async fn adoptable(title: &str, activate: bool, deadline: Instant) -> Result<gtk::Window, Value> {
+    loop {
+        let mut windows = targets::windows_titled(title);
+        let showing = windows.len();
+        if showing == 1 || (showing > 1 && !activate) {
+            return Ok(windows.swap_remove(0));
+        }
+        if Instant::now() >= deadline {
+            return Err(if activate {
+                json!({ "windows": showing })
+            } else {
+                json!(false)
+            });
+        }
+        glib::timeout_future(POLL_INTERVAL).await;
+    }
+}
+
+enum Activation {
+    Broken(String),
+    Inactive,
+}
+
+/// On a bare X server `present` already asks for the focus; the injector sets it as well, at
+/// the current time, so the switch does not rest on the timestamp GDK sends with it.
+async fn give_keyboard(
+    injector: &Injector,
+    window: &gtk::Window,
+    deadline: Instant,
+) -> Result<(), Activation> {
+    window.present();
+    let surface = window
+        .surface()
+        .ok_or_else(|| Activation::Broken("the window has no surface".to_owned()))?;
+    injector.activate(&surface).map_err(Activation::Broken)?;
+    while !window.is_active() {
+        if Instant::now() >= deadline {
+            return Err(Activation::Inactive);
+        }
+        glib::timeout_future(POLL_INTERVAL).await;
+    }
+    Ok(())
+}
+
+fn adopt_timed_out(
+    title: &str,
+    activate: bool,
+    actual: Value,
+    timeout: Duration,
+    message: Option<&str>,
+) -> Outcome {
+    let predicate = if activate {
+        json!({ "activate_window": { "title": title } })
+    } else {
+        json!({ "adopt": title })
+    };
+    Outcome {
+        failures: vec![Failure {
+            predicate,
+            actual,
+            message: message.map(str::to_owned),
+        }],
+        error: Some(format!("timed out after {} ms", timeout.as_millis())),
+        ..Outcome::default()
     }
 }

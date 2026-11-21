@@ -575,6 +575,14 @@ fn portal_reveal_and_window_steps_parse_and_reject_what_they_cannot_mean() {
         })
     );
     assert_eq!(
+        parse_command(r#"{"activate_window":{"title":"docs — Strata"}}"#),
+        Ok(Command::ActivateWindow {
+            title: "docs — Strata".to_owned(),
+            timeout: Duration::from_millis(15_000),
+            message: None,
+        })
+    );
+    assert_eq!(
         parse_command(r#"{"keep":[1,2,3,4],"as":"foreign"}"#),
         Ok(Command::Keep {
             rect: [1, 2, 3, 4],
@@ -597,6 +605,9 @@ fn portal_reveal_and_window_steps_parse_and_reject_what_they_cannot_mean() {
     ));
     for invalid in [
         r#"{"adopt":""}"#,
+        r#"{"activate_window":"docs — Strata"}"#,
+        r#"{"activate_window":{"title":""}}"#,
+        r#"{"activate_window":{"title":"Strata","nth":1}}"#,
         r#"{"keep":[1,2,3],"as":"x"}"#,
         r#"{"reveal":{"role":"button"}}"#,
         r#"{"reveal_control":{"entry":"a"}}"#,

@@ -21,7 +21,7 @@ pub(crate) use self::{
     },
     locate::{locate, presented_target},
     lookup::{
-        find_presented, open_dialog, presented, result_rows, search_results, window_titled,
+        find_presented, open_dialog, presented, result_rows, search_results,
         windows_titled,
     },
     naming::{accessible_description, accessible_name, role_name},

@@ -243,6 +243,16 @@ impl Injector {
             Backend::Wayland(wayland) => wayland.resize(width, height),
         }
     }
+
+    /// Raises the window and gives it the keyboard, as no window manager does on a bare X server.
+    pub(crate) fn activate(&self, surface: &gdk::Surface) -> Result<(), String> {
+        match &self.backend {
+            Backend::X11(x11) => x11.activate(surface),
+            Backend::Wayland(_) => {
+                Err("activating a window needs the X11 display, not Wayland".to_owned())
+            }
+        }
+    }
 }
 
 impl X11 {
@@ -442,6 +452,20 @@ impl X11 {
                     .width(u32::from(width))
                     .height(u32::from(height)),
             )
+            .map_err(|error| error.to_string())?;
+        self.connection.sync().map_err(|error| error.to_string())
+    }
+
+    fn activate(&self, surface: &gdk::Surface) -> Result<(), String> {
+        let window = xid(surface)?;
+        self.connection
+            .configure_window(
+                window,
+                &xproto::ConfigureWindowAux::new().stack_mode(xproto::StackMode::ABOVE),
+            )
+            .map_err(|error| error.to_string())?;
+        self.connection
+            .set_input_focus(xproto::InputFocus::PARENT, window, x11rb::CURRENT_TIME)
             .map_err(|error| error.to_string())?;
         self.connection.sync().map_err(|error| error.to_string())
     }

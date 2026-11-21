@@ -6,7 +6,7 @@ use serde_json::Value;
 
 use super::super::{Chord, DEFAULT_WAIT, Modifier, Predicate, StateName, Target};
 use super::{
-    Accessor, ActivateFields, AdoptFields, ButtonDownFields, ButtonUpFields, COMMANDS,
+    Accessor, ActivateFields, ActivateWindowFields, AdoptFields, ButtonDownFields, ButtonUpFields, COMMANDS,
     CaptureFields, ClickFields, ClickResultRowsFields, ClipboardFields, ClipboardSetFields,
     Command, DragFields, DropSamplesFields, DuringCheck, DuringFields, ExpectFields, HoldsFields,
     KeepFields, KeyDownFields, KeyFields, KeyUpFields, KeysUntilFields, MeasureTextFields,
@@ -101,6 +101,19 @@ pub fn parse_command(line: &str) -> Result<Command, String> {
             }
             Ok(Command::Adopt {
                 title: fields.adopt,
+                timeout: fields
+                    .timeout_ms
+                    .map_or(DEFAULT_WAIT, Duration::from_millis),
+                message: fields.message,
+            })
+        }
+        "activate_window" => {
+            let fields: ActivateWindowFields = serde_json::from_value(fields).map_err(invalid)?;
+            if fields.activate_window.title.is_empty() {
+                return Err("activate_window needs a window title".to_owned());
+            }
+            Ok(Command::ActivateWindow {
+                title: fields.activate_window.title,
                 timeout: fields
                     .timeout_ms
                     .map_or(DEFAULT_WAIT, Duration::from_millis),

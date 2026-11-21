@@ -408,8 +408,9 @@ and the pinned image has neither sway nor fcitx5.
   Wayland virtual keyboard (with a US keymap it compiles) and virtual pointer
   instead of XTEST. sway floats every window in the output's top-left corner,
   where the window-manager-less X display leaves it, and `screenshot` uses
-  `grim`. `layout` steps other than `us` and pixel sampling (pixel
-  predicates and drop samples) are X11-only and fail with a message. It needs
+  `grim`. `layout` steps other than `us`, pixel sampling (pixel
+  predicates and drop samples) and `activate_window` are X11-only and fail
+  with a message. It needs
   `sway`, `swaymsg`, and `grim`.
 - A header's `"input_method": "<name>"` (with `session_bus`) starts a private
   fcitx5 on the run's display and bus, with a profile holding the US keyboard
@@ -540,6 +541,20 @@ predicates, replies, the state snapshot, the input log, and artifacts is
 [`.agents/skills/qa-scenarios/reference.md`](../.agents/skills/qa-scenarios/reference.md);
 the parsers it names are the source of truth. The `qa-scenarios` skill beside
 it covers writing, running, and debugging a scenario.
+
+### Several windows
+
+A `launch` step with a folder opens a second browser window in the same
+process. With no window manager on Xvfb, the window mapped last takes the
+keyboard, and until a step adopts one, steps act on the application's active
+window. `{"activate_window":{"title":"pictures — Strata"}}` switches windows
+as a user would: it raises the only showing window with that title, gives it
+the X input focus through the process's own X connection, waits until GTK
+reports it active, and adopts it, so keys, targets, the snapshot, and the
+input log follow it from then on. A title that matches no window or more than
+one fails the step when its timeout runs out. `{"other_window":"Strata"}` and
+`{"some_window":...}` reach the window not adopted.
+`inline_renaming/rename-survives-window-switch` shows the pattern.
 
 ### Accessible names are product surface
 

@@ -50,6 +50,12 @@ pub enum Command {
         timeout: Duration,
         message: Option<String>,
     },
+    /// Raises the only showing window with this title, gives it the keyboard, and adopts it.
+    ActivateWindow {
+        title: String,
+        timeout: Duration,
+        message: Option<String>,
+    },
     Keep {
         rect: [i64; 4],
         name: String,
@@ -183,9 +189,10 @@ pub enum Command {
     Query(Query),
 }
 
-pub const COMMANDS: [&str; 37] = [
+pub const COMMANDS: [&str; 38] = [
     "key",
     "adopt",
+    "activate_window",
     "keep",
     "reveal_control",
     "reveal",
@@ -272,6 +279,20 @@ struct AdoptFields {
     adopt: String,
     timeout_ms: Option<u64>,
     message: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ActivateWindowFields {
+    activate_window: WindowMatch,
+    timeout_ms: Option<u64>,
+    message: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct WindowMatch {
+    title: String,
 }
 
 #[derive(Deserialize)]
