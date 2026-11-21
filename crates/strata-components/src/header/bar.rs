@@ -19,7 +19,7 @@ use super::chrome::{HeaderLabels, Shown, WindowAction, WindowButtons, WindowChro
 /// let bar = Header::new("header", look)
 ///     .leading(sidebar_toggle)
 ///     .center(location_bar)
-///     .action(header::action(look, IconName::Plus, "New tab").on_press_tx(new_tab).build(&look.kit).key("new-tab"))
+///     .action(header::action(look, IconName::Plus, "New tab").on_press_tx(new_tab).build(&look.accent_icon_kit()).key("new-tab"))
 ///     .window_buttons(prefs, chrome, &labels, |s: &mut State, action, tx| route(s, action, tx))
 ///     .build();
 /// ```
@@ -161,8 +161,9 @@ impl<'a> Header<'a> {
 }
 
 /// A header action in Strata's `header-action` look: a ghost icon button at the bar's control
-/// size, in the text colour, named and tooltipped by `label`. Add its handler and key:
-/// `action(look, IconName::Search, "Search").on_press_tx(..).build(&look.kit).key("search")`.
+/// size, named and tooltipped by `label`. Build with `&look.accent_icon_kit()` for Strata's
+/// theme-accent chrome icons, then add its handler and key:
+/// `action(look, IconName::Search, "Search").on_press_tx(..).build(&look.accent_icon_kit()).key("search")`.
 pub fn action(look: &Look, icon: IconName, label: &str) -> IconButton {
     IconButton::new(look.icon(icon))
         .variant(IconButtonVariant::Ghost)
