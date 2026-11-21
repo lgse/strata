@@ -769,3 +769,16 @@ fn tenxer_rows_hint_the_tenxer_verbs() {
         },
     );
 }
+
+#[test]
+fn menu_min_width_scales_with_interface_text_size() {
+    use strata_kit::{look::Look, shape::LookParams};
+
+    for (text_size, expected) in [(13, 310.0), (26, 620.0), (8, 191.0)] {
+        let look = Look::fallback(false).with_params(&LookParams {
+            text_size,
+            ..LookParams::default()
+        });
+        assert_eq!(super::min_width(&look), expected, "text_size={text_size}");
+    }
+}

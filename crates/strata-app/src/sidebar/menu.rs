@@ -51,6 +51,14 @@ use crate::{
 /// The menu's key: its surface is `sidebar-menu-menu`, its rows `sidebar-menu-item<n>`.
 const KEY: &str = "sidebar-menu";
 
+/// Matches GTK's sidebar context-menu width floor (`.folder-context-menu` in `src/style.css`).
+const MIN_WIDTH: f32 = 230.0;
+
+fn min_width(look: &strata_kit::look::Look) -> f32 {
+    let scale = strata_kit::typography::factor(look.kit.ty.ui_compact.size);
+    (MIN_WIDTH * scale).round()
+}
+
 /// One row: its id, its label in the catalogs, and whether it destroys something.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) struct MenuRow {
@@ -137,7 +145,10 @@ pub(super) fn open(app: &mut App, item: &ItemId, point: PointerPress, tx: &mut T
     // GTK's popover points at the row from the keyboard, and at the click from the pointer.
     let keyboard = by_keys.then(|| app.sidebar.state.row_box(item)).flatten();
     let pointed = keyboard.unwrap_or([point.x, point.y, 0.0, 0.0]);
-    let at = under(pointed, model.width(&app.look));
+    let at = under(
+        pointed,
+        model.width_with_min(&app.look, min_width(&app.look)),
+    );
     let target = MenuTarget::Other(Rc::new(Target {
         item: item.clone(),
         location: row.location.clone(),
@@ -183,6 +194,7 @@ pub(super) fn element(app: &App, layer: &mut Vec<El>) -> El {
     )
     // GTK's menu box has no name of its own.
     .name(String::new())
+    .min_width(min_width(&app.look))
     .on_intent(chosen)
     .build(app, &app.look, layer)
 }
