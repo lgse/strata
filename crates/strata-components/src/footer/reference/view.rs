@@ -174,9 +174,12 @@ fn header<S: 'static>(
         .child(frame)
 }
 
-/// The compact category pills' height limits (`src/ui/shortcut_footer/reference.rs`).
+/// The compact category pills' height limits (`src/ui/shortcut_footer/reference.rs`) and
+/// base corner radius (`.shortcut-reference-body.compact .shortcut-reference-category`,
+/// `border-radius: 14px` in `src/style.css`).
 const PILLS_MIN: f32 = 60.0;
 const PILLS_MAX: f32 = 160.0;
+const COMPACT_PILL_RADIUS: f32 = 14.0;
 
 /// The search field's narrowest width (`.shortcut-reference-search`'s `min-width: 150px`).
 const SEARCH_MIN_WIDTH: f32 = 150.0;
@@ -218,9 +221,10 @@ fn categories<S: 'static>(
                 tx.scroll_to_instant(results.clone(), 0.0, 0.0);
             });
         if compact {
-            base.h(look.frame.control - look.space.xxs)
+            let height = look.frame.control - look.space.xxs;
+            base.h(height)
                 .px(look.space.md + look.space.xxs / 2.0)
-                .radius(look.frame.control)
+                .radius(look.round(COMPACT_PILL_RADIUS).min(height / 2.0))
                 .fill(if selected {
                     k.alpha(k.c.text_accent, PILL_CHOSEN_ALPHA)
                 } else {

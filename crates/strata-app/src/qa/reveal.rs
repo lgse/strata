@@ -134,6 +134,7 @@ impl<H: Host> Rune<H> {
             Ok(window) => window,
             Err(error) => return Outcome::error(error.message().to_owned()),
         };
+        let pane = self.node_pixels(&scroll).unwrap_or(window);
         let centre = (
             window[0] + window[2].div_euclid(2),
             window[1] + window[3].div_euclid(2),
@@ -148,11 +149,25 @@ impl<H: Host> Rune<H> {
                 }
                 Ok(false) => {}
             }
-            let below = match self.node_pixels(&node) {
-                Ok(rect) => rect[1] > centre.1,
+            let rect = match self.node_pixels(&node) {
+                Ok(rect) => rect,
                 Err(error) => return Outcome::error(error.message().to_owned()),
             };
-            if let Err(error) = scope.wheel_at(centre, WHEEL_CLICKS, below, &[]).await {
+            let below = rect[1] > centre.1;
+            let distance = if below {
+                (rect[1] + rect[3] - (pane[1] + pane[3])).max(0)
+            } else {
+                (pane[1] - rect[1]).max(0)
+            };
+            // Rune's offscreen wheel notch (40 pt) is smaller than GTK's page^(2/3) step,
+            // so scale clicks with the remaining travel to reach controls down tall pages.
+            #[expect(
+                clippy::cast_sign_loss,
+                clippy::cast_possible_truncation,
+                reason = "non-negative distance clamped to WHEEL_CLICKS..=12"
+            )]
+            let clicks = (distance / 80).clamp(i64::from(WHEEL_CLICKS), 12) as u32;
+            if let Err(error) = scope.wheel_at(centre, clicks, below, &[]).await {
                 return Outcome::error(error);
             }
         }

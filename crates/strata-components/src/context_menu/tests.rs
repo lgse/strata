@@ -1474,3 +1474,51 @@ fn a_checked_row_takes_the_menus_first_focus() {
     let rt = opened_with(m);
     assert_eq!(focused(&rt).as_deref(), Some("m-item1"));
 }
+
+#[test]
+fn a_model_update_keeps_the_opening_width_locked_until_reopened_or_rescaled() {
+    let mut st = ContextMenuState::new();
+    st.open(MenuTarget::Background, Point::default(), model());
+    let mut calls = 0u32;
+    let first = st.resolve_width(13.0, 310.0, || {
+        calls += 1;
+        310.0
+    });
+    assert_eq!((first, calls), (310.0, 1));
+
+    // Replacing the open menu's model (e.g. Open With lookup finishing) reuses the locked width
+    // instead of re-measuring and snapping.
+    st.update_model(MenuModel::new().section(Section::new([Item::new("a", "Short")])));
+    let after_update = st.resolve_width(13.0, 310.0, || {
+        calls += 1;
+        180.0
+    });
+    assert_eq!((after_update, calls), (310.0, 1));
+
+    // A live text-size scale change re-measures for the new scale.
+    let rescaled = st.resolve_width(26.0, 620.0, || {
+        calls += 1;
+        620.0
+    });
+    assert_eq!((rescaled, calls), (620.0, 2));
+
+    // Opening a new menu measures fresh for the new menu.
+    st.open(MenuTarget::Background, Point::default(), model());
+    let reopened = st.resolve_width(13.0, 310.0, || {
+        calls += 1;
+        325.0
+    });
+    assert_eq!((reopened, calls), (325.0, 3));
+}
+
+#[test]
+fn width_with_min_enforces_the_floor_and_handles_scaled_floors() {
+    let look = Look::fallback(false);
+    let compact = MenuModel::new().section(Section::new([Item::new("a", "Copy")]));
+    assert_eq!(compact.width_with_min(&look, 310.0), 310.0);
+    assert_eq!(compact.width_with_min(&look, 0.0), compact.width(&look));
+
+    // A floor larger than the unscaled MAX_WIDTH (e.g. at large text sizes) never panics.
+    let scaled_floor = 620.0;
+    assert_eq!(compact.width_with_min(&look, scaled_floor), scaled_floor);
+}

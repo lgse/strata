@@ -5,7 +5,7 @@
 
 use std::rc::Rc;
 
-use rune::{El, Tx, col, row, text};
+use rune::{Cursor, El, Tx, col, icon, row, text};
 use rune_kit::{Button, ButtonVariant};
 use strata_components::controls::{
     number_field::{NumberField, NumberFieldState},
@@ -23,8 +23,9 @@ use strata_kit::icons::IconName;
 
 use super::{
     controls::{
-        ChoiceOption, ChoiceSpec, PageCtx, RowSpec, choice_menu, group_card, number_field,
-        option_row, pref_switch, section_heading, segmented_toggles, switch_row,
+        ChoiceOption, ChoiceSpec, NamedSegment, PageCtx, RowSpec, choice_menu,
+        first_section_heading, group_card, number_field, option_row, panel_border, pref_switch,
+        section_heading, segmented_toggles, segmented_toggles_named, switch_row,
     },
     general_more,
 };
@@ -53,7 +54,7 @@ pub(super) fn video_start_field() -> NumberField<App> {
 pub(super) fn build(app: &App, search: &SettingsSearch<App>, menu_layer: &mut Vec<El>) -> Vec<El> {
     let ctx = PageCtx { app, search };
     let mut blocks: Vec<Option<El>> = vec![
-        section_heading(ctx, "language-units", "LANGUAGE & UNITS"),
+        first_section_heading(ctx, "language-units", "LANGUAGE & UNITS"),
         language_and_units(ctx, menu_layer),
         section_heading(ctx, "browsing", "BROWSING"),
         browsing_section(ctx, menu_layer),
@@ -153,6 +154,7 @@ fn units_control(app: &App, unit_system: UnitSystem) -> El {
             ),
         ],
     )
+    .min_w(220.0)
 }
 
 type BoolSwitchDef = (
@@ -653,12 +655,12 @@ fn sidebar_section(ctx: PageCtx<'_>) -> Option<El> {
     let kit = &app.look.kit;
     let content = col()
         .w_full()
-        .px(app.look.space.lg)
-        .py(app.look.space.md)
+        .px(18.0)
+        .py(16.0)
         .gap(app.look.space.md)
         .child(
             col()
-                .gap(app.look.space.xxs)
+                .gap(3.0)
                 .child(ctx.search.title(
                     app,
                     &app.look,
@@ -679,22 +681,53 @@ fn sidebar_section(ctx: PageCtx<'_>) -> Option<El> {
 fn sidebar_place_chip(app: &App, idx: usize, place: PlaceToggle) -> El {
     let (short, full, desc, glyph_name, read, write) = place;
     let on = read(shell::preferences(app));
-    let variant = if on {
-        ButtonVariant::Submit
+    let look = &app.look;
+    let kit = &look.kit;
+    let c = &kit.c;
+    let (fill, border, ink, icon_color) = if on {
+        (
+            c.bg_base.mix(c.text_base, 0.12),
+            kit.alpha(c.text_base, 0.40),
+            c.text_base,
+            c.icon_accent,
+        )
     } else {
-        ButtonVariant::Neutral
+        (
+            c.bg_base,
+            panel_border(look),
+            c.text_muted,
+            kit.alpha(c.icon_accent, 0.65),
+        )
     };
-    let chip = Button::new(tr(short))
-        .variant(variant)
-        .icon(app.look.icon(glyph_name))
+    let pill_radius = look.round(999.0).min(14.0);
+    let chip = row()
+        .role("button")
+        .label(tr(full))
+        .description(tr(desc))
+        .checked(on)
+        .min_h(28.0)
+        .px(12.0)
+        .py(4.0)
+        .gap(6.0)
+        .items_center()
+        .radius(pill_radius)
+        .fill(fill)
+        .border(1.0, border)
+        .hover(look.fill.highlight)
+        .press(c.bg_base.mix(c.text_base, 0.20))
+        .focusable(true)
+        .focus_ring(2.0, 2.0, c.border_focus)
+        .cursor(Cursor::Pointer)
+        .child(
+            icon(look.icon(glyph_name), 14.0)
+                .color(icon_color)
+                .a11y_hidden(),
+        )
+        .child(text(tr(short)).font(kit.ty.ui).color(ink).a11y_hidden())
         .on_press_tx(move |app: &mut App, _: &mut Tx| {
             shell::saved(app).change(|s| write(s, !on));
             sidebar::relist_if_started(app);
-        })
-        .build(&app.look.kit)
-        .label(tr(full))
-        .description(tr(desc))
-        .checked(on);
+        });
     buttons::on_return(format!("settings-sidebar-chip-{idx}"), chip)
 }
 
@@ -760,9 +793,9 @@ fn opening_mode_row(
     );
     row()
         .w_full()
-        .px(app.look.space.lg)
-        .py(app.look.space.md)
-        .gap(app.look.space.lg)
+        .px(18.0)
+        .py(16.0)
+        .gap(app.look.space.xl)
         .items_center()
         .child(
             text(view_name)
@@ -775,43 +808,27 @@ fn opening_mode_row(
 }
 
 fn click_pair_control(app: &App, key: &str, a11y_prefix: &str, (current, write): ClickSlot) -> El {
-    let kit = &app.look.kit;
-    let c = &kit.c;
-    let items: Vec<El> = [("Single", 1_u8), ("Double", 2_u8)]
+    let choices = [("Single", 1_u8), ("Double", 2_u8)]
         .into_iter()
-        .enumerate()
-        .map(|(idx, (choice, count))| {
+        .map(|(choice, count)| {
             let active = if count == 1 {
                 current == 1
             } else {
                 current != 1
             };
-            let variant = if active {
-                ButtonVariant::Submit
-            } else {
-                ButtonVariant::Ghost
-            };
             let label = tr(choice);
             let a11y_name = format!("{a11y_prefix} {label}");
-            let btn = Button::new(label)
-                .variant(variant)
-                .on_press_tx(move |app: &mut App, _: &mut Tx| {
+            NamedSegment {
+                visible: label,
+                accessible: a11y_name,
+                active,
+                on_pick: Rc::new(move |app: &mut App, _: &mut Tx| {
                     shell::saved(app).change(|s| write(s, count));
-                })
-                .build(kit)
-                .label(a11y_name)
-                .checked(active);
-            buttons::on_return(format!("{key}-{idx}"), btn)
+                }),
+            }
         })
         .collect();
-    row()
-        .key(key.to_owned())
-        .gap(app.look.space.xxs)
-        .padding(app.look.space.xxs)
-        .radius(kit.radius.md)
-        .fill(c.bg_base)
-        .border(1.0, c.border_muted)
-        .children(items)
+    segmented_toggles_named(&app.look, key, None, choices)
 }
 
 pub(super) fn sync_general_fields(

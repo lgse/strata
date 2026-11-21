@@ -172,8 +172,9 @@ fn heading(app: &App, title: &str) -> El {
     text(tr(title))
         .font(look.ty.heading)
         .color(look.kit.c.text_muted)
-        .pt(look.space.md)
-        .pb(look.space.xs)
+        .px(4.0)
+        .pt(24.0)
+        .pb(10.0)
 }
 
 /// The map switcher and Reset all, then the keybind search, and the note when it matches

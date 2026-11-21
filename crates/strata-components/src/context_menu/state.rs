@@ -3,6 +3,7 @@
 //! What is open: the menu's target, where it opened, its model and its open submenus.
 
 use std::any::Any;
+use std::cell::Cell;
 use std::fmt;
 use std::rc::Rc;
 
@@ -72,6 +73,13 @@ pub struct ContextMenuState {
     open: Option<Open>,
 }
 
+#[derive(Clone, Copy, Debug)]
+struct LockedWidth {
+    font_px: f32,
+    min_width: f32,
+    width: f32,
+}
+
 #[derive(Clone, Debug)]
 struct Open {
     target: MenuTarget,
@@ -79,6 +87,9 @@ struct Open {
     model: MenuModel,
     /// The open submenus: the item index (as [`MenuModel::item_at`] counts) at each level.
     submenu: Vec<usize>,
+    /// The top-level width captured on the first render of this open menu so async
+    /// [`ContextMenuState::update_model`] refreshes never snap its width.
+    locked_width: Cell<Option<LockedWidth>>,
 }
 
 impl ContextMenuState {
@@ -95,6 +106,7 @@ impl ContextMenuState {
             at,
             model,
             submenu: Vec::new(),
+            locked_width: Cell::new(None),
         });
     }
 
@@ -173,5 +185,31 @@ impl ContextMenuState {
             }
             _ => false,
         }
+    }
+
+    /// The top-level width locked when this open menu first rendered at `font_px` with floor
+    /// `min_width`, measuring and storing it once so async model updates keep a steady width.
+    pub(super) fn resolve_width(
+        &self,
+        font_px: f32,
+        min_width: f32,
+        measured: impl FnOnce() -> f32,
+    ) -> f32 {
+        let Some(open) = &self.open else {
+            return measured();
+        };
+        if let Some(locked) = open.locked_width.get()
+            && (locked.font_px - font_px).abs() <= f32::EPSILON
+            && (locked.min_width - min_width).abs() <= f32::EPSILON
+        {
+            return locked.width;
+        }
+        let width = measured();
+        open.locked_width.set(Some(LockedWidth {
+            font_px,
+            min_width,
+            width,
+        }));
+        width
     }
 }
