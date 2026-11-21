@@ -4,13 +4,12 @@
 
 use std::rc::Rc;
 
-use rune::{El, Key, KeyEvent, ScrollSpec, TextEdit, Tx, col, el, icon, row, text};
-use rune_kit::{
-    Button, ButtonVariant, IconButton, IconButtonVariant, Placement, Switch, TextInput, popover,
-};
+use rune::{Color, Cursor, El, Key, KeyEvent, ScrollSpec, TextEdit, Tx, col, el, icon, row, text};
+use rune_kit::{IconButton, IconButtonVariant, Placement, TextInput, popover};
 use strata_components::controls::{
     number_field::{NumberField, NumberFieldState},
     settings_search::{Navigate, SearchIndex, SearchLabels, SettingsSearch},
+    switch::Switch,
 };
 use strata_core::i18n::{count, tr};
 use strata_desktop::settings::Preferences;
@@ -72,7 +71,41 @@ pub(super) fn number_field(
         .on_change(on_commit)
 }
 
+/// Card background matching GTK's `.settings-group { background: mix(@strata_bg, @strata_muted, 0.25); }`.
+pub(super) fn card_surface(look: &Look) -> Color {
+    look.kit.c.bg_base.mix(look.fill.muted, 0.25)
+}
+
+/// Panel/card/divider border matching GTK's `alpha(@strata_border, 0.55)`.
+pub(super) fn panel_border(look: &Look) -> Color {
+    let border = look.kit.c.std_border;
+    look.kit.alpha(border, border.a * 0.55)
+}
+
+/// Form control border matching GTK's `.settings-dialog .form-control { border: 1px solid alpha(@strata_border, 0.9); }`.
+pub(super) fn control_border(look: &Look) -> Color {
+    let border = look.kit.c.std_border;
+    look.kit.alpha(border, border.a * 0.90)
+}
+
+pub(super) fn first_section_heading(
+    ctx: PageCtx<'_>,
+    section_key: &str,
+    heading: &str,
+) -> Option<El> {
+    heading_with_top(ctx, section_key, heading, 0.0)
+}
+
 pub(super) fn section_heading(ctx: PageCtx<'_>, section_key: &str, heading: &str) -> Option<El> {
+    heading_with_top(ctx, section_key, heading, 24.0)
+}
+
+fn heading_with_top(
+    ctx: PageCtx<'_>,
+    section_key: &str,
+    heading: &str,
+    top_pad: f32,
+) -> Option<El> {
     if !ctx.search.shows_section(ctx.app, section_key) {
         return None;
     }
@@ -81,8 +114,9 @@ pub(super) fn section_heading(ctx: PageCtx<'_>, section_key: &str, heading: &str
         text(tr(heading))
             .font(look.ty.heading)
             .color(look.kit.c.text_muted)
-            .pt(look.space.md)
-            .pb(look.space.xs),
+            .px(4.0)
+            .pt(top_pad)
+            .pb(10.0),
     )
 }
 
@@ -91,17 +125,17 @@ pub(super) fn group_card(look: &Look, rows: Vec<Option<El>>) -> Option<El> {
     if visible.is_empty() {
         return None;
     }
-    let c = &look.kit.c;
+    let border = panel_border(look);
     let mut card = col()
         .w_full()
-        .radius(look.kit.radius.md)
-        .fill(c.layer_02)
-        .border(1.0, c.border_muted);
+        .radius(look.round(10.0))
+        .fill(card_surface(look))
+        .border(1.0, border);
     for (idx, item) in visible.into_iter().enumerate() {
         let wrapped = if idx > 0 {
             col()
                 .w_full()
-                .border_sides([1.0, 0.0, 0.0, 0.0], c.border_muted)
+                .border_sides([1.0, 0.0, 0.0, 0.0], border)
                 .child(item)
         } else {
             item
@@ -160,7 +194,7 @@ pub(super) fn option_row(ctx: PageCtx<'_>, spec: RowSpec<'_>, control: El) -> Op
     if spec.indented {
         title_line = title_line.child(
             icon(look.icon(IconName::Enter), look.icon_size.sm)
-                .color(c.icon_muted)
+                .color(look.kit.alpha(c.icon_accent, 0.65))
                 .a11y_hidden(),
         );
     }
@@ -169,11 +203,7 @@ pub(super) fn option_row(ctx: PageCtx<'_>, spec: RowSpec<'_>, control: El) -> Op
             ctx.search
                 .title(ctx.app, look, &title_str, look.kit.ty.ui_medium),
         );
-    let mut copy = col()
-        .grow(1.0)
-        .min_w(0.0)
-        .gap(look.space.xxs)
-        .child(title_line);
+    let mut copy = col().grow(1.0).min_w(0.0).gap(3.0).child(title_line);
     if !desc_str.is_empty() {
         copy = copy.child(
             text(desc_str)
@@ -193,14 +223,15 @@ pub(super) fn option_row(ctx: PageCtx<'_>, spec: RowSpec<'_>, control: El) -> Op
     let mut line = row()
         .w_full()
         .min_w(0.0)
-        .px(look.space.lg)
-        .py(look.space.md)
-        .gap(look.space.lg)
+        .pl(if spec.indented { 28.0 } else { 18.0 })
+        .pr(18.0)
+        .py(16.0)
+        .gap(look.space.xl)
         .items_center()
         .child(copy)
         .child(control);
     if spec.disabled {
-        line = line.layer_opacity(0.55);
+        line = line.layer_opacity(0.45);
     }
     ctx.search.row(ctx.app, look, spec.key, line)
 }
@@ -219,17 +250,14 @@ pub(super) fn switch_row(
     let switch_key = format!("settings-switch-{}", spec.key);
     let mut toggle = Switch::new(checked)
         .label(title_str)
-        .hide_label()
         .disabled(spec.disabled)
         .on_toggle_tx(move |app: &mut App, tx: &mut Tx| {
             on_toggle(app, !checked, tx);
-        })
-        .build(&ctx.app.look.kit)
-        .key(switch_key);
+        });
     if !desc_str.is_empty() {
         toggle = toggle.description(desc_str);
     }
-    option_row(ctx, spec, toggle)
+    option_row(ctx, spec, toggle.build(&ctx.app.look).key(switch_key))
 }
 
 pub(super) fn pref_switch(
@@ -285,41 +313,69 @@ struct PopupSpec<'a> {
     options: Vec<ChoiceOption>,
 }
 
+fn choice_colors(look: &Look, disabled: bool, is_open: bool) -> (Color, Color, Color) {
+    let c = &look.kit.c;
+    if disabled {
+        (c.surface_disabled, c.border_disabled, c.text_muted)
+    } else if is_open {
+        (look.fill.highlight, c.border_active, c.text_accent)
+    } else {
+        (look.fill.muted, control_border(look), c.text_base)
+    }
+}
+
 pub(super) fn choice_menu(app: &App, spec: ChoiceSpec<'_>, menu_layer: &mut Vec<El>) -> El {
     let look = &app.look;
     let kit = &look.kit;
+    let c = &kit.c;
     let id = spec.id;
     let is_open = !spec.disabled && app.settings_dialog.open_choice == Some(id);
     let title = tr(spec.title);
     let current = spec.current;
     let toggle_key = format!("settings-choice-{id}-toggle");
     let first_opt_key = format!("settings-choice-{id}-opt-0");
-    let chevron = look.icon(IconName::ChevronDown);
-    let shown_val = current.clone();
-    let toggle = Button::new(current.clone())
-        .variant(ButtonVariant::Neutral)
-        .disabled(spec.disabled)
-        .label_with(move |font, ink| {
-            row()
-                .gap(8.0)
-                .items_center()
-                .child(text(shown_val).font(font).color(ink).a11y_hidden())
-                .child(icon(chevron, 14.0).color(ink).a11y_hidden())
-        })
-        .on_press_tx(move |app: &mut App, tx: &mut Tx| {
-            if app.settings_dialog.open_choice == Some(id) {
-                app.settings_dialog.open_choice = None;
-            } else {
-                app.settings_dialog.open_choice = Some(id);
-                if !first_opt_key.is_empty() {
-                    tx.focus_when_shown(first_opt_key.clone(), tx.focus_visible() || tx.by_keys());
-                }
-            }
-        })
-        .build(kit)
+    let (fill, border, ink) = choice_colors(look, spec.disabled, is_open);
+    let mut toggle = row()
+        .role("button")
         .label(title.clone())
         .description(current.clone())
-        .checked(is_open);
+        .checked(is_open)
+        .min_w(160.0)
+        .min_h(32.0)
+        .px(12.0)
+        .py(6.0)
+        .gap(8.0)
+        .items_center()
+        .radius(look.round(8.0))
+        .fill(fill)
+        .border(1.0, border)
+        .focus_ring(2.0, -2.0, c.border_focus)
+        .focusable(!spec.disabled)
+        .disabled(spec.disabled)
+        .child(
+            el().grow(1.0).center().child(
+                text(current.clone())
+                    .font(kit.ty.ui)
+                    .color(ink)
+                    .a11y_hidden(),
+            ),
+        )
+        .child(
+            icon(look.icon(IconName::ChevronDown), 14.0)
+                .color(ink)
+                .a11y_hidden(),
+        );
+    toggle = if spec.disabled {
+        toggle.layer_opacity(0.45)
+    } else {
+        toggle
+            .cursor(Cursor::Pointer)
+            .hover(c.hover)
+            .press(look.fill.highlight)
+            .on_press_tx(move |app: &mut App, tx: &mut Tx| {
+                toggle_choice_popup(app, id, &first_opt_key, tx);
+            })
+    };
     let inner = buttons::on_return(toggle_key.clone(), toggle);
     if is_open {
         let popup = PopupSpec {
@@ -336,6 +392,17 @@ pub(super) fn choice_menu(app: &App, spec: ChoiceSpec<'_>, menu_layer: &mut Vec<
         .description(current)
         .focusable(false)
         .child(inner)
+}
+
+fn toggle_choice_popup(app: &mut App, id: &'static str, first_opt_key: &str, tx: &mut Tx) {
+    if app.settings_dialog.open_choice == Some(id) {
+        app.settings_dialog.open_choice = None;
+    } else {
+        app.settings_dialog.open_choice = Some(id);
+        if !first_opt_key.is_empty() {
+            tx.focus_when_shown(first_opt_key.to_owned(), tx.focus_visible() || tx.by_keys());
+        }
+    }
 }
 
 fn build_choice_popup(look: &Look, spec: PopupSpec<'_>, menu_layer: &mut Vec<El>) {
@@ -414,8 +481,8 @@ fn build_choice_option(look: &Look, key: &str, opt: ChoiceOption, anchor_key: &s
         .gap(10.0)
         .items_center()
         .radius(kit.radius.sm)
-        .hover(c.layer_02)
-        .focus_ring(1.0, -1.0, c.border_focus)
+        .hover(c.hover)
+        .focus_ring(2.0, -2.0, c.border_focus)
         .focusable(true)
         .role("menuitemradio")
         .label(opt.label)
@@ -426,7 +493,7 @@ fn build_choice_option(look: &Look, key: &str, opt: ChoiceOption, anchor_key: &s
             tx.focus(anchor.clone(), true);
         })
         .child(copy)
-        .children(selected.then(|| icon(check, 16.0).color(c.text_base).a11y_hidden()));
+        .children(selected.then(|| icon(check, 16.0).color(c.icon_accent).a11y_hidden()));
     if let Some(desc) = sub_for_a11y {
         item = item.description(desc);
     }
@@ -506,38 +573,88 @@ pub(super) fn search_field(app: &App, spec: SearchField) -> El {
     field
 }
 
+pub(super) struct NamedSegment {
+    pub(super) visible: String,
+    pub(super) accessible: String,
+    pub(super) active: bool,
+    pub(super) on_pick: PickHandler,
+}
+
 pub(super) fn segmented_toggles(
     look: &Look,
     key_prefix: &str,
     group_label: Option<String>,
     choices: Vec<SegmentChoice>,
 ) -> El {
+    let named = choices
+        .into_iter()
+        .map(|(label, active, on_pick)| NamedSegment {
+            accessible: label.clone(),
+            visible: label,
+            active,
+            on_pick,
+        })
+        .collect();
+    segmented_toggles_named(look, key_prefix, group_label, named)
+}
+
+pub(super) fn segmented_toggles_named(
+    look: &Look,
+    key_prefix: &str,
+    group_label: Option<String>,
+    choices: Vec<NamedSegment>,
+) -> El {
     let kit = &look.kit;
     let c = &kit.c;
+    let count = choices.len().max(1);
     let items: Vec<El> = choices
         .into_iter()
         .enumerate()
-        .map(|(idx, (label, active, on_pick))| {
-            let variant = if active {
-                ButtonVariant::Submit
+        .map(|(idx, seg)| {
+            let (fill, hover_fill, ink) = if seg.active {
+                (
+                    kit.alpha(c.bg_accent, 0.22),
+                    kit.alpha(c.bg_accent, 0.26),
+                    c.text_accent,
+                )
             } else {
-                ButtonVariant::Ghost
+                (Color::TRANSPARENT, c.hover, c.text_muted)
             };
-            let btn = Button::new(label)
-                .variant(variant)
-                .on_press_tx(move |app: &mut App, tx: &mut Tx| on_pick(app, tx))
-                .build(kit)
-                .checked(active);
+            let mut label = text(seg.visible).font(kit.ty.ui).color(ink).a11y_hidden();
+            if !seg.active {
+                label = label.group_color(c.text_base);
+            }
+            let on_pick = seg.on_pick;
+            let btn = row()
+                .grid_cell(idx)
+                .role("button")
+                .label(seg.accessible)
+                .checked(seg.active)
+                .min_h(28.0)
+                .px(14.0)
+                .py(3.0)
+                .center()
+                .radius(look.round(4.0))
+                .fill(fill)
+                .hover_group()
+                .hover(hover_fill)
+                .press(kit.alpha(c.bg_accent, 0.28))
+                .focusable(true)
+                .focus_ring(2.0, -2.0, c.border_focus)
+                .cursor(Cursor::Pointer)
+                .child(label)
+                .on_press_tx(move |app: &mut App, tx: &mut Tx| on_pick(app, tx));
             buttons::on_return(format!("{key_prefix}-{idx}"), btn)
         })
         .collect();
+    let border = kit.alpha(c.std_border, c.std_border.a * 0.45);
     let mut bar = row()
         .key(key_prefix.to_owned())
-        .gap(look.space.xxs)
-        .padding(look.space.xxs)
+        .equal_columns(count)
+        .padding(2.0)
         .radius(kit.radius.md)
-        .fill(c.bg_base)
-        .border(1.0, c.border_muted)
+        .fill(kit.alpha(c.bg_base, 0.25))
+        .border(1.0, border)
         .children(items);
     if let Some(label) = group_label {
         bar = bar.role("group").label(label);
