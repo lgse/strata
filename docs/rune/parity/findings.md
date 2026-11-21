@@ -3448,3 +3448,22 @@ sequence only together with the alphabet's version, so the version is part of th
   `crates/strata-app/src/qa/control_words.rs` is the QA-side bridge the ruling keeps: it
   presents the left-out texts as labels under their controls, so the shared scenarios aim at
   them on both targets.
+
+### #2690: Rune's reply to Ctrl+Z came before the undo reached the disk, once in 10 replays
+
+- **Code:** none of the plan's: noise in Rune's replies, labelled `testing`.
+  [Issue](https://github.com/lgse/strata/issues/2690), filed on 2026-11-21 as the finding's
+  reference and closed at once: its state is kept here.
+- **Seen:** in [F5](packages/F5.md)'s re-gate of [#2677](https://github.com/lgse/strata/pull/2677)
+  with `strata-next` `ca42e08ce` merged in: `session-drops v7` seed `0x0b`, Rune on the session
+  host. Its two Rune replays differed at step 78, a Ctrl+Z undoing an earlier copy of a file
+  dropped by path into `documents`. In one, `documents/offer-file.txt` was still on disk and
+  listed when the reply came, and gone at step 80, a step that only starts a drag source; in
+  the other, and in both GTK replays, it was gone at step 78. Replayed 8 times more on Rune,
+  every replay agreed.
+- **Not traced.** Unlike [#2568](#2568-undo-restores-completed-movecolumns-did-not-put-the-file-back-once-in-a-full-rune-run),
+  the undo was not lost, only late: Rune's reply did not wait for it. The same seed agreed in
+  the gate before the merge, which moved the Rune pin (#2681), so whether the pin plays a part
+  is open.
+- **Concerns:** `session-drops` seed `0x0b`; nothing is parked, as the seed agrees.
+- **State:** open, unowned.
