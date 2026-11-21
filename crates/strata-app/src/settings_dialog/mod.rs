@@ -38,9 +38,18 @@ mod search_index;
 #[cfg(test)]
 mod tests;
 
-const DIALOG_WIDTH: f32 = 920.0;
-const DIALOG_HEIGHT: f32 = 620.0;
-const RAIL_WIDTH: f32 = 232.0;
+// Match GTK's responsive settings panel (`src/ui/settings/responsive.rs`, `src/style.css`):
+// 1250x800 capped to the window minus a 24 px margin (`look.space.xxl`), 240 px navigation
+// rail (216 px min-width + 12 px horizontal padding each side), and 48x24 content padding
+// that narrows to 20x18 on compact viewports.
+const DIALOG_WIDTH: f32 = 1250.0;
+const DIALOG_HEIGHT: f32 = 800.0;
+const RAIL_WIDTH: f32 = 240.0;
+const COMPACT_CONTENT_WINDOW_WIDTH: i32 = 1000;
+const CONTENT_PAD_X: f32 = 48.0;
+const CONTENT_PAD_Y: f32 = 24.0;
+const COMPACT_CONTENT_PAD_X: f32 = 20.0;
+const COMPACT_CONTENT_PAD_Y: f32 = 18.0;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(super) enum PageId {
@@ -405,14 +414,19 @@ fn build(app: &App, frame: &mut Frame<'_, App>) -> Option<El> {
     let mut body = row()
         .key("settings-body")
         .w_full()
-        .h(DIALOG_HEIGHT)
+        .grow(1.0)
         .min_h(0.0)
         .child(rail)
         .child(main);
     if notice_open {
         body = body.inert();
     }
-    let mut stack = col().key("settings-stack").w_full().min_h(0.0).child(body);
+    let mut stack = col()
+        .key("settings-stack")
+        .w_full()
+        .grow(1.0)
+        .min_h(0.0)
+        .child(body);
     if let Some(overlay) = notice::inline_overlay(app).or_else(|| keyboard::reset_all_overlay(app))
     {
         stack = stack.child(overlay);
@@ -423,6 +437,8 @@ fn build(app: &App, frame: &mut Frame<'_, App>) -> Option<El> {
         .fade_only()
         .reduced_motion(frame.cx.is_reduced_motion())
         .width(DIALOG_WIDTH)
+        .height(DIALOG_HEIGHT)
+        .margin(app.look.space.xxl)
         .fill(app.look.kit.c.bg_base)
         .panel_radius(app.look.kit.radius.xl)
         .child(stack);
@@ -613,12 +629,13 @@ fn build_main_column(
                 .grow(1.0),
         )
         .child(close_button(look));
+    let (pad_x, pad_y) = content_padding(app);
     let body = if app.settings_dialog.search.no_results() {
         col()
             .w_full()
             .grow(1.0)
-            .px(36.0)
-            .py(24.0)
+            .px(pad_x)
+            .py(pad_y)
             .child(search.empty(look))
     } else {
         let content = build_page_content(app, page, search, menu_layer);
@@ -627,8 +644,8 @@ fn build_main_column(
             .w_full()
             .grow(1.0)
             .min_h(0.0)
-            .px(36.0)
-            .py(24.0)
+            .px(pad_x)
+            .py(pad_y)
             .scroll(ScrollSpec {
                 stick_bottom: false,
             })
@@ -642,6 +659,17 @@ fn build_main_column(
         .min_h(0.0)
         .child(topbar)
         .child(body)
+}
+
+fn content_padding(app: &App) -> (f32, f32) {
+    if app
+        .window_size()
+        .is_some_and(|(w, _)| w < COMPACT_CONTENT_WINDOW_WIDTH)
+    {
+        (COMPACT_CONTENT_PAD_X, COMPACT_CONTENT_PAD_Y)
+    } else {
+        (CONTENT_PAD_X, CONTENT_PAD_Y)
+    }
 }
 
 fn build_page_content(
