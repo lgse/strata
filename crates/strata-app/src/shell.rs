@@ -1004,7 +1004,7 @@ fn strip_close(app: &App, chrome: &WindowChrome) -> Option<El> {
         .on_press_tx(|app: &mut App, tx: &mut Tx| {
             on_window_action(app, WindowAction::Close, tx);
         })
-        .build(&look.kit);
+        .build(&look.accent_icon_kit());
     Some(buttons::on_return("window-close".to_owned(), close))
 }
 
@@ -1048,7 +1048,7 @@ fn build_header_action(app: &App, button: &Button) -> El {
         .on_press_tx(move |app: &mut App, tx: &mut Tx| {
             commands::run(app, command, On::Focus, tx);
         })
-        .build(&look.kit);
+        .build(&look.accent_icon_kit());
     let action = match face.checked {
         Some(true) if button.pressed_when_checked => action.checked(true).fill(look.kit.c.pressed),
         Some(on) => action.checked(on),
@@ -1081,7 +1081,7 @@ fn chooser_bar(app: &App, location: Option<El>) -> El {
             .on_press_tx(|app: &mut App, tx: &mut Tx| {
                 crate::chooser::cancel(app, tx);
             })
-            .build(&look.kit),
+            .build(&look.accent_icon_kit()),
     );
     header
         .action(build_header_action(app, appearance))

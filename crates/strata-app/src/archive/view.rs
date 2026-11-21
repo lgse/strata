@@ -129,7 +129,7 @@ fn peek_button(look: &Look, key: &str, revealed: bool) -> El {
         .control_size(ControlSize::Small)
         .label(label)
         .on_press(super::toggle_reveal)
-        .build(&look.kit)
+        .build(&look.accent_icon_kit())
         .focusable(false)
         .key(format!("{key}-reveal"))
 }

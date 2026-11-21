@@ -105,7 +105,7 @@ pub(crate) fn over(top: rune::Color, bottom: rune::Color) -> rune::Color {
 
 /// A row's icon: a folder badge for a custom icon or emoji, else the semantic icon in the
 /// folder's saved tint (kept on the active row too, as GTK's `sidebar_rows` keeps it), else
-/// the accent on the active row, else the muted icon colour.
+/// the selected icon token on the active row, else the accent icon colour.
 pub(crate) fn row_icon(look: &Look, i: &RowIcon, tint: Option<rune::Color>, selected: bool) -> El {
     let badge_fill = tint.unwrap_or(look.kit.c.icon_accent);
     match i {
@@ -126,7 +126,7 @@ pub(crate) fn row_icon(look: &Look, i: &RowIcon, tint: Option<rune::Color>, sele
                 if selected {
                     slot::selected_icon(look)
                 } else {
-                    look.kit.c.icon_muted
+                    look.kit.c.icon_accent
                 }
             });
             icon(look.icon(*n), look.icon_size.md).color(colour)
@@ -437,6 +437,7 @@ pub(crate) fn device_row<S: 'static>(ctx: &Ctx<'_, S>, d: &Device, selected: boo
 /// step rows, and the row's menu (C21) has the same actions.
 fn device_actions<S: 'static>(ctx: &Ctx<'_, S>, d: &Device) -> El {
     let look = ctx.look;
+    let accent_kit = look.accent_icon_kit();
     let mut actions = row().gap(look.space.xxs).center_y();
     let button = |key: String, glyph: IconName, label: &str, intent: SidebarIntent| {
         let emit = ctx.emit.clone();
@@ -446,7 +447,7 @@ fn device_actions<S: 'static>(ctx: &Ctx<'_, S>, d: &Device) -> El {
             .label(label)
             .help(label)
             .on_press_tx(move |s: &mut S, tx: &mut Tx| emit(s, intent.clone(), tx))
-            .build(&look.kit)
+            .build(&accent_kit)
             .key(key)
             .focusable(false)
             .preserve_focus_on_press(true)

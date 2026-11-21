@@ -310,7 +310,7 @@ impl<S: 'static, K: Copy + PartialEq + std::fmt::Debug + 'static> FooterPrompt<S
                     })
                     .child(
                         icon(look.icon(c.icon), look.icon_size.md)
-                            .color(k.c.icon_muted)
+                            .color(k.c.icon_accent)
                             .a11y_hidden(),
                     )
                     .child(row().grow(1.0).min_w(0.0).a11y_hidden().child(label))

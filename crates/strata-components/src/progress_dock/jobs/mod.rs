@@ -501,10 +501,11 @@ impl<S: 'static> Jobs<S> {
                     .color(c.text_accent)
                     .a11y_hidden(),
             );
+        let accent_kit = look.accent_icon_kit();
         if let Some(m) = status_mark(r.status) {
             head = head.child(
                 icon(look.icon(m), look.icon_size.sm)
-                    .color(c.icon_base)
+                    .color(c.icon_accent)
                     .a11y_hidden(),
             );
         }
@@ -526,7 +527,7 @@ impl<S: 'static> Jobs<S> {
                             tx,
                         )
                     })
-                    .build(k)
+                    .build(&accent_kit)
                     .key(format!("{key}-cancel")),
             );
         }
@@ -541,7 +542,7 @@ impl<S: 'static> Jobs<S> {
                 small_button(look, glyph, label)
                     .expanded(expanded)
                     .on_press(move |s: &mut S| get_mut(s).toggle_details(id))
-                    .build(k)
+                    .build(&accent_kit)
                     .key(format!("{key}-details")),
             );
         }
@@ -552,7 +553,7 @@ impl<S: 'static> Jobs<S> {
                     .on_press_tx(move |s: &mut S, tx: &mut Tx| {
                         intent(s, JobsIntent::Dismiss(id), tx)
                     })
-                    .build(k)
+                    .build(&accent_kit)
                     .key(format!("{key}-dismiss")),
             );
         }

@@ -24,7 +24,8 @@ use std::borrow::Cow;
 use std::hash::{Hash, Hasher};
 use std::rc::Rc;
 
-use rune::{Anim, Curve, Easing, El, col, el, row, text};
+use rune::{Anim, Curve, Easing, El, col, el, icon, row, text};
+use strata_kit::icons::IconName;
 use strata_kit::look::Look;
 use strata_kit::slots::columns as tokens;
 
@@ -132,50 +133,70 @@ pub(super) fn content<S: 'static>(sh: &Rc<Shared<S>>, serial: u64) -> ContentSlo
             detail_text(&v, s, serial, rcx).hash(&mut h);
             h.finish() ^ version_of(shown_text(&v, s, serial, rcx).as_deref(), rcx.look)
         },
-        move |s: &S, rcx: &RowCx<'_>, icon: El, label: El| {
+        move |s: &S, rcx: &RowCx<'_>, row_icon: El, label: El| {
             let look = rcx.look;
             let label = with_detail(label, detail_text(&b, s, serial, rcx).as_deref(), look);
-            let content = row()
+            let mut middle = row().grow(1.0).h_full().min_w(0.0).center_y().child(label);
+            let shown = shown_text(&b, s, serial, rcx);
+            let live = shown.is_some()
+                && (b.parts)(s)
+                    .state
+                    .depth_of(serial)
+                    .and_then(|d| (b.parts)(s).state.column(d))
+                    .is_none_or(|c| c.collection.row_hover());
+            if let Some(t) = &shown {
+                middle = middle.child(chip(look, t, rcx, live));
+            }
+            let mut content = row()
                 .w_full()
                 .h_full()
                 .gap(look.space.sm)
                 .center_y()
-                .child(icon)
-                .child(label);
-            match shown_text(&b, s, serial, rcx) {
-                Some(t) => {
-                    // The hover lives on the hover group's track, which the row's own
-                    // hover tint doesn't share: the fade is the badge's alone.
-                    let live = (b.parts)(s)
-                        .state
-                        .depth_of(serial)
-                        .and_then(|d| (b.parts)(s).state.column(d))
-                        .is_none_or(|c| c.collection.row_hover());
-                    let enter = if look.animations {
-                        FADE_IN
-                    } else {
-                        Anim::INSTANT
-                    };
-                    // In keyboard mode a cover over the row takes the hover alone, so the
-                    // group rests (the chip hides at once); the pointer move that ends keyboard
-                    // mode removes it, and the group's hover fades in afresh.
-                    let mut content = content
-                        .hover_group()
-                        .hover_motion(enter, Anim::INSTANT)
-                        .child(chip(look, &t, rcx, live));
-                    if !live {
-                        content = content.child(
-                            el().pin(Some(0.0), Some(0.0), Some(0.0), Some(0.0))
-                                .hover_alone()
-                                .a11y_hidden(),
-                        );
-                    }
-                    content
-                }
-                None => content,
+                .child(row_icon)
+                .child(middle);
+            if rcx.entry.kind.is_folder_like() {
+                content = content.child(folder_chevron(look, rcx));
             }
+            if shown.is_some() {
+                // The hover lives on the hover group's track, which the row's own
+                // hover tint doesn't share: the fade is the badge's alone.
+                let enter = if look.animations {
+                    FADE_IN
+                } else {
+                    Anim::INSTANT
+                };
+                // In keyboard mode a cover over the row takes the hover alone, so the
+                // group rests (the chip hides at once); the pointer move that ends keyboard
+                // mode removes it, and the group's hover fades in afresh.
+                content = content.hover_group().hover_motion(enter, Anim::INSTANT);
+                if !live {
+                    content = content.child(
+                        el().pin(Some(0.0), Some(0.0), Some(0.0), Some(0.0))
+                            .hover_alone()
+                            .a11y_hidden(),
+                    );
+                }
+            }
+            content
         },
     )
+}
+
+/// Trailing disclosure chevron on folder rows (Strata's `.file-chevron`).
+fn folder_chevron(look: &Look, rcx: &RowCx<'_>) -> El {
+    let opacity = if rcx.state.selected || rcx.state.marks.active_path {
+        1.0
+    } else {
+        0.55
+    };
+    let chevron = icon(look.icon(IconName::ChevronRight), look.icon_size.sm)
+        .color(look.kit.c.icon_accent)
+        .a11y_hidden();
+    if opacity < 1.0 {
+        chevron.opacity(opacity)
+    } else {
+        chevron
+    }
 }
 
 /// The chip: an opaque surface pill (the highlight on an open-path row) pinned to the row's

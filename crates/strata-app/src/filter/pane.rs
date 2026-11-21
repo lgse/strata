@@ -266,7 +266,7 @@ pub(crate) fn toggle(app: &App, view: &str) -> Option<El> {
         &super::name_in(place),
     )
     .on_press_tx(|app: &mut App, tx: &mut Tx| toggled(app, tx))
-    .build(&look.kit)
+    .build(&look.accent_icon_kit())
     .checked(open_place(app).is_some());
     Some(crate::buttons::on_return(format!("{view}-filter"), built))
 }
