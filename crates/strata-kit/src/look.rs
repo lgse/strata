@@ -231,6 +231,18 @@ impl Look {
             .contrasting_ink()
             .color()
     }
+
+    /// A kit whose `IconButton` icon roles (`text_base`, `icon_base`, `icon_muted`) resolve to
+    /// `kit.c.icon_accent`, matching Strata's theme-accent chrome and action icons. Pass only
+    /// to `IconButton::build`, which paints an icon and no text.
+    pub fn accent_icon_kit(&self) -> Kit {
+        let mut kit = self.kit.clone();
+        let accent = kit.c.icon_accent;
+        kit.c.text_base = accent;
+        kit.c.icon_base = accent;
+        kit.c.icon_muted = accent;
+        kit
+    }
 }
 
 /// A caption's fill and the colour of its text: [`Look::resize_caption`].

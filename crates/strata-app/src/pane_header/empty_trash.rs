@@ -33,7 +33,7 @@ pub(super) fn built(app: &App, depth: usize) -> Option<El> {
         .on_press_tx(|app: &mut App, tx: &mut Tx| {
             commands::run(app, "empty-trash", On::Focus, tx);
         })
-        .build(&look.kit);
+        .build(&look.accent_icon_kit());
     Some(built)
 }
 

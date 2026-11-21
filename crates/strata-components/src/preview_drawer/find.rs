@@ -65,6 +65,7 @@ pub(super) fn bar<S: 'static>(
         .grow(1.0)
         .min_w(0.0);
 
+    let accent_kit = look.accent_icon_kit();
     let step = |name: IconName, label: &str, key: &'static str, forward: bool| {
         let sh = shared.clone();
         IconButton::new(look.icon(name))
@@ -76,7 +77,7 @@ pub(super) fn bar<S: 'static>(
                 sh.with_view(s, |v| v.find_step(forward));
                 tx.wake_after(std::time::Duration::ZERO);
             })
-            .build(k)
+            .build(&accent_kit)
             .key(key)
             .keeps_text_selection()
             .on_key(super::return_as_space::<S>)
@@ -87,7 +88,7 @@ pub(super) fn bar<S: 'static>(
         .control_size(ControlSize::Small)
         .label(labels.find_close.clone())
         .on_press_tx(move |s: &mut S, tx: &mut Tx| close(&close_sh, s, tx))
-        .build(k)
+        .build(&accent_kit)
         .key("preview-find-close")
         .keeps_text_selection()
         .on_key(super::return_as_space::<S>);

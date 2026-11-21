@@ -53,7 +53,7 @@ fn convert_directory(directory: &ArchiveDirectory, root: bool) -> ArchiveDir {
             ArchiveNode::File { name, size } => ArchiveItem::File {
                 name: name.clone(),
                 size: *size,
-                icon: String::new(),
+                icon: crate::entry_icon::icon_for_name(name).to_owned(),
             },
         })
         .collect();

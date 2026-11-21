@@ -252,8 +252,11 @@ pub(super) fn identity_for(
         .filter(|value| !value.is_empty())
         .map(str::to_owned)
         .unwrap_or_else(|| extension_label(entry));
+    let icon = look
+        .icon_named(crate::entry_icon::entry_icon(entry))
+        .unwrap_or_else(|| look.icon(icon_for(entry)));
     HeaderInfo::new(entry.display_name.clone())
-        .icon(look.icon(icon_for(entry)))
+        .icon(icon)
         .details([size, modified, kind])
 }
 

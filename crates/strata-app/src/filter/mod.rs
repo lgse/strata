@@ -902,7 +902,7 @@ pub(crate) fn column_actions(app: &App, depth: usize) -> Vec<El> {
         &column_name(),
     )
     .on_press_tx(move |app: &mut App, tx: &mut Tx| toggled(app, depth, tx))
-    .build(&look.kit)
+    .build(&look.accent_icon_kit())
     .checked(open_here)
     .key(format!("columns-filter-{depth}"))
     // Not a focus stop, as every column header's action (C2's slot).

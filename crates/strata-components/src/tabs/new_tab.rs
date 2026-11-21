@@ -146,7 +146,7 @@ pub(super) fn button<S: 'static>(
     let mut el = header::action(look, IconName::Plus, &spec.labels.new_tab_help)
         .label(spec.labels.new_tab.clone().into_owned())
         .on_press_tx(move |s: &mut S, tx: &mut Tx| emit(s, TabsIntent::New, tx))
-        .build(&look.kit)
+        .build(&look.accent_icon_kit())
         .key(spec.key.clone());
     let hovered = state.drop_hover() == Some((DropSite::NewTab, DropHover::Accepting));
     if hovered || state.open_drag() {
