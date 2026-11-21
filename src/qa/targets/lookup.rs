@@ -34,12 +34,6 @@ pub(crate) fn windows_titled(title: &str) -> Vec<gtk::Window> {
         .collect()
 }
 
-pub(crate) fn window_titled(title: &str, but: Option<&gtk::Window>) -> Option<gtk::Window> {
-    windows_titled(title)
-        .into_iter()
-        .find(|window| Some(window) != but)
-}
-
 pub(super) fn toplevel(title: &str) -> Option<gtk::Widget> {
     gtk::Window::list_toplevels()
         .into_iter()

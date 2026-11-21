@@ -45,8 +45,11 @@ pub enum Command {
         message: Option<String>,
         open_states: Vec<StateName>,
     },
+    /// `adopt` drives the first showing window with this title from then on;
+    /// `activate_window` (`activate`) takes the only one, raised and given the keyboard first.
     Adopt {
         title: String,
+        activate: bool,
         timeout: Duration,
         message: Option<String>,
     },
@@ -183,9 +186,10 @@ pub enum Command {
     Query(Query),
 }
 
-pub const COMMANDS: [&str; 37] = [
+pub const COMMANDS: [&str; 38] = [
     "key",
     "adopt",
+    "activate_window",
     "keep",
     "reveal_control",
     "reveal",
@@ -272,6 +276,20 @@ struct AdoptFields {
     adopt: String,
     timeout_ms: Option<u64>,
     message: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ActivateWindowFields {
+    activate_window: WindowMatch,
+    timeout_ms: Option<u64>,
+    message: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct WindowMatch {
+    title: String,
 }
 
 #[derive(Deserialize)]

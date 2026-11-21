@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 
+mod adopt;
 mod check;
 mod clipboard;
 mod criticals;
