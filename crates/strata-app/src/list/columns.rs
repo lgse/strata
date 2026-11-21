@@ -4,6 +4,9 @@
 //! (`src/ui/browser_modes/list_columns.rs` and `list_headings.rs`): Name, Mode, Size, Type and
 //! Modified, with GTK's default widths and minimums, the order and visibility saved as
 //! `list_column_order` and `list_hidden_columns`, and the widths as `browser_list_columns`.
+//! GTK's optional Duration, Dimensions and Created columns (`main`'s #2603) are not built
+//! here yet, so they are neither shown nor sized: [`SHOWN`] holds the five. What GTK saved for
+//! them, their widths, places and hidden state, is kept as it was when this table saves.
 //! Cells read the row's facts ([`crate::details`]), as GTK's `list_metadata_label` shows
 //! them: left-aligned, in the text colour. The Type cell is read only for the rows drawn, as
 //! GTK binds it.
@@ -33,7 +36,23 @@ fn id(column: ListColumnId) -> ColumnId {
         ListColumnId::Size => "size",
         ListColumnId::Type => "type",
         ListColumnId::Modified => "modified",
+        ListColumnId::Duration => "duration",
+        ListColumnId::Dimensions => "dimensions",
+        ListColumnId::Created => "created",
     })
+}
+
+/// The columns this table builds, in `ListColumnId`'s order.
+const SHOWN: [ListColumnId; 5] = [
+    ListColumnId::Name,
+    ListColumnId::Mode,
+    ListColumnId::Size,
+    ListColumnId::Type,
+    ListColumnId::Modified,
+];
+
+fn is_shown(column: ListColumnId) -> bool {
+    SHOWN.contains(&column)
 }
 
 fn saved(id: &ColumnId) -> Option<ListColumnId> {
@@ -42,7 +61,7 @@ fn saved(id: &ColumnId) -> Option<ListColumnId> {
         .find(|column| self::id(*column) == *id)
 }
 
-/// GTK's default widths and minimums, in the order of `ListColumnId::ALL`
+/// GTK's default widths and minimums, in the order of [`SHOWN`]
 /// (`LIST_COLUMN_WIDTHS` and `LIST_COLUMN_MIN_WIDTHS`).
 const WIDTHS: [f32; 5] = [160.0, 160.0, 90.0, 120.0, 150.0];
 const MINIMUMS: [f32; 5] = [160.0, 80.0, 70.0, 80.0, 110.0];
@@ -63,7 +82,7 @@ pub(super) fn menu_labels() -> ListTableLabels {
 
 impl Headings {
     pub(super) fn translated() -> Self {
-        Self(ListColumnId::ALL.map(|column| tr(column.title())))
+        Self(SHOWN.map(|column| tr(column.title())))
     }
 }
 
@@ -144,7 +163,7 @@ pub(super) fn layout(settings: &Preferences) -> ColumnLayout {
 }
 
 fn layout_of(order: &[ListColumnId], hidden: &[ListColumnId]) -> ColumnLayout {
-    let defaults: Vec<ColumnId> = ListColumnId::ALL.into_iter().map(id).collect();
+    let defaults: Vec<ColumnId> = SHOWN.into_iter().map(id).collect();
     let order: Vec<ColumnId> = order.iter().map(|column| id(*column)).collect();
     let hidden: Vec<ColumnId> = hidden.iter().map(|column| id(*column)).collect();
     ColumnLayout::normalize(
@@ -161,47 +180,77 @@ fn layout_of(order: &[ListColumnId], hidden: &[ListColumnId]) -> ColumnLayout {
 pub(super) fn widths(settings: &Preferences) -> ColumnWidths {
     settings
         .browser_list_columns
-        .filter(ListColumns::is_valid)
-        .map_or_else(ColumnWidths::new, |saved| widths_of(&saved))
+        .as_ref()
+        .filter(|saved| saved.is_valid())
+        .map_or_else(ColumnWidths::new, widths_of)
 }
 
 pub(super) fn chooser_widths(settings: &Preferences) -> ColumnWidths {
     settings
         .chooser_list_columns
-        .filter(ListColumns::is_valid)
-        .map_or_else(ColumnWidths::new, |saved| widths_of(&saved))
+        .as_ref()
+        .filter(|saved| saved.is_valid())
+        .map_or_else(ColumnWidths::new, widths_of)
 }
 
 fn widths_of(saved: &ListColumns) -> ColumnWidths {
     #[expect(clippy::cast_precision_loss, reason = "a width in points")]
     let points = |width: i32| width as f32;
-    let widths = ColumnWidths::new()
-        .with(&id(ListColumnId::Mode), points(saved.mode))
-        .with(&id(ListColumnId::Size), points(saved.size))
-        .with(&id(ListColumnId::Type), points(saved.kind))
-        .with(&id(ListColumnId::Modified), points(saved.modified));
-    match saved.name {
-        Some(name) => widths.with(&id(ListColumnId::Name), points(name)),
-        None => widths,
-    }
+    SHOWN
+        .into_iter()
+        .filter_map(|column| Some((column, saved.width(column)?)))
+        .fold(ColumnWidths::new(), |widths, (column, width)| {
+            widths.with(&id(column), points(width))
+        })
 }
 
 /// The widths as GTK's `remember` saves them: all four others, in whole points, and Name only
 /// once resized by hand.
-fn saved_widths(widths: &ColumnWidths) -> ListColumns {
+fn saved_widths(widths: &ColumnWidths) -> Vec<(ListColumnId, i32)> {
     #[expect(clippy::cast_possible_truncation, reason = "a width in points")]
     let width = |column: ListColumnId, at: usize| {
         widths.get(&id(column)).unwrap_or(WIDTHS[at]).round() as i32
     };
-    ListColumns {
-        name: widths
-            .get(&id(ListColumnId::Name))
-            .map(|_| width(ListColumnId::Name, 0)),
-        mode: width(ListColumnId::Mode, 1),
-        size: width(ListColumnId::Size, 2),
-        kind: width(ListColumnId::Type, 3),
-        modified: width(ListColumnId::Modified, 4),
-    }
+    SHOWN
+        .into_iter()
+        .enumerate()
+        .filter(|(_, column)| {
+            *column != ListColumnId::Name || widths.get(&id(ListColumnId::Name)).is_some()
+        })
+        .map(|(at, column)| (column, width(column, at)))
+        .collect()
+}
+
+/// This table's widths, with the widths `saved` has for the columns it does not build.
+fn merged_widths(saved: Option<&ListColumns>, widths: &ColumnWidths) -> ListColumns {
+    let kept = ListColumnId::ALL
+        .into_iter()
+        .filter(|column| !is_shown(*column))
+        .filter_map(|column| Some((column, saved?.width(column)?)));
+    saved_widths(widths).into_iter().chain(kept).collect()
+}
+
+/// `order`'s columns in the places this table's columns had in `saved`, and the columns it does
+/// not build left where they were.
+fn merged_order(saved: &[ListColumnId], order: &[ListColumnId]) -> Vec<ListColumnId> {
+    let mut ours = order.iter().copied().filter(|column| is_shown(*column));
+    let merged: Vec<ListColumnId> = sanitize_list_column_order(saved)
+        .into_iter()
+        .map(|column| {
+            if is_shown(column) {
+                ours.next().unwrap_or(column)
+            } else {
+                column
+            }
+        })
+        .collect();
+    sanitize_list_column_order(&merged)
+}
+
+/// `hidden`, with the columns this table does not build hidden as `saved` has them.
+fn merged_hidden(saved: &[ListColumnId], hidden: &[ListColumnId]) -> Vec<ListColumnId> {
+    let kept = saved.iter().copied().filter(|column| !is_shown(*column));
+    sanitize_list_hidden_columns(&hidden.iter().copied().chain(kept).collect::<Vec<_>>())
 }
 
 /// The person reordered, showed, hid or reset the columns: the settings save it through the
@@ -210,8 +259,9 @@ fn saved_widths(widths: &ColumnWidths) -> ListColumns {
 pub(super) fn keep_layout(app: &mut App, change: LayoutChange) {
     let order: Vec<ListColumnId> = change.layout.order().iter().filter_map(saved).collect();
     let hidden: Vec<ListColumnId> = change.layout.hidden().filter_map(saved).collect();
-    let order = sanitize_list_column_order(&order);
-    let hidden = sanitize_list_hidden_columns(&hidden);
+    let settings = shell::preferences(app);
+    let order = merged_order(&settings.list_column_order, &order);
+    let hidden = merged_hidden(&settings.list_hidden_columns, &hidden);
     app.list.layout = layout_of(&order, &hidden);
     shell::saved(app).change(|settings| {
         settings.list_column_order = order;
@@ -223,9 +273,15 @@ pub(super) fn keep_layout(app: &mut App, change: LayoutChange) {
 /// `browser_list_columns`, keeping only valid ones (`set_browser_list_columns`), and the
 /// window keeps what a restart would read back.
 pub(super) fn keep_widths(app: &mut App, widths: ColumnWidths) {
-    let saved = Some(saved_widths(&widths)).filter(ListColumns::is_valid);
-    app.list.widths = saved.as_ref().map_or_else(ColumnWidths::new, widths_of);
     let chooser = app.browser.is_chooser_mode();
+    let settings = shell::preferences(app);
+    let before = if chooser {
+        settings.chooser_list_columns.as_ref()
+    } else {
+        settings.browser_list_columns.as_ref()
+    };
+    let saved = Some(merged_widths(before, &widths)).filter(ListColumns::is_valid);
+    app.list.widths = saved.as_ref().map_or_else(ColumnWidths::new, widths_of);
     shell::saved(app).change(|settings| {
         if chooser {
             settings.chooser_list_columns = saved;

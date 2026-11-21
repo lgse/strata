@@ -50,7 +50,7 @@ use listeners::{ThemeListeners, on_change};
 use omarchy_state::{OmarchyRefresh, OmarchyState, is_omarchy_theme_event};
 pub(super) use source_style::{new_source_buffer, source_languages};
 use source_style::{resolved_source_palette, stage_source_style_scheme};
-use system_appearance::SystemAppearance;
+use system_appearance::{PortalStartup, SystemAppearance};
 use watch::{read_user_stylesheet, user_stylesheet_path};
 
 // Read by the test modules through their `super::*` globs.
@@ -207,19 +207,33 @@ pub struct ThemeManager {
 
 impl ThemeManager {
     pub fn shared() -> Rc<Self> {
+        Self::shared_with_portal_startup(PortalStartup::WaitForInitialValue)
+    }
+
+    pub(crate) fn shared_without_portal_wait() -> Rc<Self> {
+        Self::shared_with_portal_startup(PortalStartup::AsyncOnly)
+    }
+
+    fn shared_with_portal_startup(startup: PortalStartup) -> Rc<Self> {
         let existing = SHARED_MANAGER.with(|shared| shared.borrow().clone());
         if let Some(manager) = existing {
             return manager;
         }
-        let manager = Self::load();
+        let manager = Self::load(startup);
         SHARED_MANAGER.with(|shared| shared.replace(Some(manager.clone())));
         manager
     }
 
-    fn load() -> Rc<Self> {
+    fn load(startup: PortalStartup) -> Rc<Self> {
         let preferences = PreferenceManager::shared();
         let themes = merge_builtin_and_custom_themes(builtins(), load_custom_themes());
-        let system_appearance = SystemAppearance::read();
+        // Startup blocks on the portal only when its value picks the first palette.
+        let startup = if preferences.theme_mode() == "system" {
+            startup
+        } else {
+            PortalStartup::AsyncOnly
+        };
+        let system_appearance = SystemAppearance::read(startup);
         let omarchy = OmarchyRefresh::read();
         if let Some(state) = &omarchy.state {
             preferences.set_active_omarchy_theme(&state.name);
@@ -292,6 +306,7 @@ impl ThemeManager {
                 manager.on_preferences_changed();
             }
         }));
+        super::motion::sync_toolkit();
         pin_manual_font_rendering();
         pin_base_theme();
         self.install_provider();

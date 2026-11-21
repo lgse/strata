@@ -210,7 +210,10 @@ fn list_column_reordering_preserves_name_gutter_hit_testing() {
                 }
                 assert!(hit(icon.upcast_ref(), 9.0));
                 assert!(hit(name.upcast_ref(), 4.0));
-                assert!(hit(metadata.upcast_ref(), 4.0));
+                assert!(
+                    !hit(metadata.upcast_ref(), 4.0),
+                    "metadata stays selection space on either side of the Name column"
+                );
                 assert!(
                     !hit(name.upcast_ref(), name.width() as f32 - 4.0),
                     "empty Name space must remain a marquee origin after reordering"

@@ -36,11 +36,12 @@ FROM package-indexes AS runtime
 RUN sh /opt/strata-install-packages.sh install \
         at-spi2-core bubblewrap ca-certificates cantarell-fonts dbus diffutils ffmpeg \
         fontconfig gobject-introspection-runtime gst-libav gst-plugins-base \
-        gst-plugins-good gtk4 gtksourceview5 imagemagick libheif librsvg poppler-glib \
+        gst-plugins-good gtk4 gtksourceview5 gvfs imagemagick libheif librsvg poppler-glib \
         python-gobject strace sway vulkan-swrast xorg-server-xvfb xorg-xauth xorg-xwayland \
     && rm -rf /var/cache/pacman/pkg/* \
     && setcap -r /usr/bin/sway \
     && test "$(pacman -Q gtk4)" = 'gtk4 1:4.22.5-1' \
+    && test -f /usr/lib/gio/modules/libgioremote-volume-monitor.so \
     && command -v cmp >/dev/null
 COPY --from=gtk-build /opt/patched-gtk/libgtk-4.so.1.2200.5 /usr/lib/libgtk-4.so.1.2200.5
 COPY tests/container/gtk/coordinate-probe.py /opt/strata-coordinate-probe.py

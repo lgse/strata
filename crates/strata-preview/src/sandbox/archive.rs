@@ -120,7 +120,7 @@ fn spawn(archive_path: &Path, password: Option<&str>) -> Result<Renderer, String
     let running_executable = PathBuf::from(format!("/proc/{}/exe", std::process::id()));
     let executable =
         resolve_renderer_executable(&current_executable, &running_executable, output.path())?;
-    let bwrap = crate::trusted_command::resolve("bwrap")
+    let bwrap = crate::trusted_command::resolve_unprivileged("bwrap")
         .map_err(|error| super::sandbox_unavailable(&error))?;
     let mut command = rar_extraction_command(&bwrap, &executable, &archive_path, password)?;
     spawn_renderer(&mut command).map_err(|error| super::sandbox_start_failed(&error))

@@ -33,6 +33,10 @@ pub fn set_modified_date(label: &gtk::Label, entry: Option<&FileEntry>, fallback
         MetadataValue::Known(seconds) => Some(seconds),
         MetadataValue::Unknown | MetadataValue::Unavailable => None,
     });
+    set_preferred_date(label, seconds, fallback);
+}
+
+pub(crate) fn set_preferred_date(label: &gtk::Label, seconds: Option<i64>, fallback: &str) {
     bind_modified_date(label, seconds, fallback, DateDisplay::Preferred);
 }
 

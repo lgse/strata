@@ -6282,7 +6282,6 @@ menubutton.icons-thumbnail-menu > button:focus-visible {
 /* Settings uses its own grouped,
 two-column presentation. */
 .settings-dialog {
-  font-size: 1.230769em;
   background: @strata_bg;
   border: 1px solid alpha(@strata_border, 0.65);
   border-radius: 14px;
@@ -6291,22 +6290,22 @@ two-column presentation. */
 
 .settings-navigation {
   background: transparent;
-  min-width: 258px;
-  padding: 20px 15px;
+  min-width: 216px;
+  padding: 16px 12px;
   border-right: 1px solid alpha(@strata_border, 0.55);
   border-radius: 13px 0 0 13px;
 }
 
 .settings-navigation > .menu-heading {
-  margin: 2px 10px 16px;
+  margin: 2px 10px 12px;
   padding: 0;
   font-size: 0.875em;
   letter-spacing: 2px;
 }
 
 .settings-navigation button {
-  min-height: 48px;
-  padding: 5px 14px;
+  min-height: 38px;
+  padding: 4px 12px;
   border-radius: 8px;
   color: @strata_dim_text;
 }
@@ -6326,8 +6325,8 @@ two-column presentation. */
 }
 
 .settings-titlebar {
-  min-height: 32px;
-  padding: 16px 16px 16px 30px;
+  min-height: 28px;
+  padding: 12px 12px 12px 24px;
   border-bottom: 1px solid alpha(@strata_border, 0.55);
 }
 
@@ -6344,7 +6343,7 @@ two-column presentation. */
 }
 
 .settings-preferences {
-  padding: 30px 74px;
+  padding: 24px 48px;
 }
 
 .settings-preferences > .menu-heading,
@@ -6352,7 +6351,7 @@ two-column presentation. */
   font-size: 0.875em;
   letter-spacing: 1.5px;
   padding: 0;
-  margin: 36px 4px 12px;
+  margin: 30px 4px 10px;
 }
 
 .settings-preferences > .menu-heading:first-child {
@@ -6369,7 +6368,7 @@ two-column presentation. */
   font-size: 0.875em;
   letter-spacing: 1.5px;
   padding: 0;
-  margin: 36px 4px 12px;
+  margin: 30px 4px 10px;
 }
 
 .diagnostics-actions {
@@ -6609,14 +6608,14 @@ two-column presentation. */
 }
 
 .settings-choice {
-  min-width: 186px;
+  min-width: 160px;
 }
 
 .settings-dialog menubutton > button,
 .settings-dialog .settings-update-check,
 .settings-dialog .form-control {
-  min-height: 22px;
-  padding: 8px 14px;
+  min-height: 18px;
+  padding: 6px 12px;
   background: @strata_muted;
   color: @strata_text;
   border: 1px solid alpha(@strata_border, 0.9);
@@ -6654,7 +6653,7 @@ two-column presentation. */
 }
 
 .activation-header {
-  min-height: 38px;
+  min-height: 32px;
   padding: 0 20px;
   color: @strata_dim_text;
   font-size: 0.875em;
@@ -6662,7 +6661,7 @@ two-column presentation. */
 }
 
 .click-activation-row {
-  min-height: 56px;
+  min-height: 46px;
   padding: 0 20px 0 18px;
   border-top: 1px solid alpha(@strata_border, 0.55);
 }
@@ -6682,7 +6681,7 @@ two-column presentation. */
 }
 
 .settings-library-toolbar {
-  margin-top: 36px;
+  margin-top: 30px;
   margin-bottom: 10px;
 }
 
@@ -6694,7 +6693,7 @@ two-column presentation. */
 }
 
 .theme-search {
-  min-width: 204px;
+  min-width: 180px;
 }
 
 .theme-catalog-container {
@@ -6751,8 +6750,8 @@ two-column presentation. */
 
 .settings-dialog .add-theme-card {
   min-width: 0;
-  min-height: 22px;
-  padding: 8px 14px;
+  min-height: 18px;
+  padding: 6px 12px;
   border: 1px solid alpha(@strata_border, 0.8);
   border-radius: 8px;
   background: @strata_muted;
@@ -6760,16 +6759,16 @@ two-column presentation. */
 
 .settings-dialog spinbutton.text-size-control {
   padding: 0;
-  min-height: 40px;
+  min-height: 32px;
 }
 
 .settings-dialog spinbutton.text-size-control text {
-  min-width: 46px;
+  min-width: 40px;
   padding: 0;
 }
 
 .settings-dialog spinbutton.text-size-control button {
-  min-width: 38px;
+  min-width: 32px;
   padding: 0;
   border: none;
   border-radius: 0;
@@ -6990,7 +6989,7 @@ two-column presentation. */
 }
 
 .settings-dialog .activation-header label {
-  min-width: 166px;
+  min-width: 140px;
 }
 
 .settings-dialog .settings-navigation image,
@@ -7005,13 +7004,13 @@ two-column presentation. */
 }
 
 .settings-dialog .theme-page > .menu-heading:not(:first-child) {
-  margin-top: 36px;
+  margin-top: 30px;
 }
 
 .settings-updates-page,
 .about-page {
-  padding-left: 80px;
-  padding-right: 80px;
+  padding-left: 54px;
+  padding-right: 54px;
 }
 
 .settings-update-status {
@@ -7019,7 +7018,7 @@ two-column presentation. */
 }
 
 .settings-dialog .settings-navigation {
-  min-width: 259px;
+  min-width: 216px;
 }
 
 .settings-dialog .settings-navigation.compact {
@@ -7115,8 +7114,8 @@ two-column presentation. */
 
 .settings-dialog .settings-global-search entry {
   min-width: 0;
-  padding-top: 8px;
-  padding-bottom: 8px;
+  padding-top: 6px;
+  padding-bottom: 6px;
 }
 
 .settings-dialog .settings-navigation button.theme-search-clear {

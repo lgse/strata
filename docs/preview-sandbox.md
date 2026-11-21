@@ -35,6 +35,14 @@ under a trust root. The user's `PATH` and home directory are never consulted,
 and a required helper that cannot be found in a trusted directory still fails
 closed.
 
+bubblewrap is the one helper that does not take a privileged wrapper: the lookup
+skips a setuid or setgid `bwrap`, such as a NixOS `security.wrappers` entry in
+`/run/wrappers/bin`, and continues with the next directory. bubblewrap rejects
+the sandbox's size-limited `/tmp` in setuid mode, and builds without setuid
+support refuse to run that way at all, so such a binary could never start a
+preview sandbox. A host whose only `bwrap` is setuid reports the sandbox as
+unavailable.
+
 ### Sandbox runtime paths
 
 These variables select the runtime tree and helper paths inside the sandbox.
@@ -104,7 +112,8 @@ isolation, resource limits, or the other narrow optional runtime mounts.
 ## Providers
 
 - GDK Pixbuf/camera RAW, Poppler PDF, ImageMagick, and dcraw fallbacks normalize
-  images to dimension- and size-bounded PNG images.
+  images to dimension- and size-bounded PNG images. WebP is decoded first by the
+  built-in decoder, so it needs no system pixbuf loader or ImageMagick.
 - `ffmpegthumbnailer` (or the software FFmpeg fallback) produces bounded media thumbnails. Browser thumbnails and
   media details share the bounded, reusable sandbox supervisors described below.
   Duplicate requests share work, obsolete targets detach, and thumbnail failures
@@ -973,8 +982,11 @@ directly back to software when its hardware attempts fail before output begins.
 A failure after playback starts fails closed rather than silently splicing a new
 backend into the stream. VA-API receives only safe `/dev/dri/renderD<digits>`
 nodes; Vulkan/Automatic may also receive `/dev/nvidia<digits>` and `/dev/nvidiactl`.
-Accelerated helpers receive read-only `/sys` for discovery. Software/image/PDF/
-thumbnail helpers receive no GPU devices or `/sys` mount.
+Accelerated helpers receive read-only `/sys` for discovery and, when present,
+read-only `/run/opengl-driver`, where NixOS publishes its Mesa, VA-API, and Vulkan
+drivers. The driver files it links to must sit under `STRATA_SANDBOX_ROOT`, as they
+do for a Nix package built with `/nix/store`. Software/image/PDF/thumbnail helpers
+receive no GPU devices, `/sys`, or driver mount.
 
 The conservative AMD Polaris default remains unchanged: an unset acceleration
 preference resolves to software for PCI IDs `0x67c0–0x67df`, `0x67e0–0x67ff`, or

@@ -959,6 +959,11 @@ Rulings of the owner on the parity work, oldest first.
   announced once either way, and the redundant label child isn't needed. The QA snapshot's
   re-presentation of those texts as labels (`crates/strata-app/src/qa/control_words.rs`) stays,
   so the scenarios stay shared. Source: the owner, 2026-11-20, through the coordinator.
+- **2026-11-20: H5 does not wait for `main`.** `h5-integration` is merged into `strata-next`
+  directly, by merge, so `main` getting the same commits later merges as usual. A test image
+  built locally from the recipe stands in for the published one until one is published,
+  including for validating pull requests into `h5-integration`. Source: the owner, 2026-11-20,
+  through the coordinator.
 
 ## Housekeeping
 

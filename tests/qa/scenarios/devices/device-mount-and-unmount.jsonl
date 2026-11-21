@@ -1,0 +1,14 @@
+{"scenario":"device-mount-and-unmount","modes":["columns"],"layout":"us","mutation":"device-unmount-ejects","known_bug":null,"session_bus":true,"volume_monitor":true,"setup":[{"fs":{"path":"$environment/media/stick","mkdir":true,"parents":true}},{"fs":{"path":"$environment/media/stick/photo-list.txt","write":"stick\n"}}],"quality":{"impact":4,"coverage":4,"criticality":4,"diagnostic":4,"score":56,"note":"Click mounts an unmounted volume and opens it; Unmount calls unmount, not eject, and leaves; only GUI route through VolumeMount/MountUnmount"}}
+{"wait":{"panes":["$root"]},"message":"the fixture to be listed"}
+{"dbus_send":["--print-reply","--dest=org.strata.QaVolumeMonitor","/org/strata/QaVolumeMonitor","org.strata.QaVolumeMonitor.Add","string:{\"id\":\"stick\",\"name\":\"QA Stick\",\"root\":\"$environment/media/stick\",\"can_eject\":false}"]}
+{"wait":{"present":{"sidebar":"QA Stick"}},"message":"the unmounted stick to be listed"}
+{"expect":{"absent":{"role":"button","name":"Unmount"}},"message":"an unmounted volume to offer no Unmount"}
+{"click":{"sidebar":"QA Stick"}}
+{"wait":{"entries":["photo-list.txt"],"dir":"stick"},"message":"clicking the unmounted stick to mount it and open its root"}
+{"fs":{"path":"$environment/volume-monitor.calls","lines_equal":["VolumeMount stick"]},"message":"the click to ask the volume monitor to mount the stick once"}
+{"wait":{"present":{"role":"button","name":"Unmount"}},"message":"the mounted stick's row to offer Unmount, since its drive cannot eject"}
+{"click":{"role":"button","name":"Unmount"}}
+{"fs":{"path":"$environment/volume-monitor.calls","lines_equal":["VolumeMount stick","MountUnmount stick"]},"message":"Unmount to unmount the stick's mount, not eject its drive"}
+{"wait":{"directory":"home"},"message":"unmounting the open stick to send the browser Home"}
+{"wait":{"absent":{"role":"button","name":"Unmount"}},"message":"the unmounted stick to offer Unmount no longer"}
+{"expect":{"present":{"sidebar":"QA Stick"}},"message":"an unmounted volume to keep its row"}

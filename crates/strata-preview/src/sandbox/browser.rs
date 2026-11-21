@@ -862,7 +862,7 @@ impl ProcessWorker {
         let (mut socket, child_socket) = UnixStream::pair()?;
         socket.set_read_timeout(Some(super::WALL_TIME_LIMIT))?;
         socket.set_write_timeout(Some(super::WALL_TIME_LIMIT))?;
-        let bwrap = crate::trusted_command::resolve("bwrap")
+        let bwrap = crate::trusted_command::resolve_unprivileged("bwrap")
             .map_err(|error| io::Error::other(super::sandbox_unavailable(&error)))?;
         let mut command = super::runtime_command(&bwrap, true);
         command

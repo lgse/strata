@@ -144,7 +144,7 @@ class MainThreadAuditTests(unittest.TestCase):
         run = self.launch([
             f'201.0 statx(AT_FDCWD<{FIXTURE}>, "{FIXTURE}/x", AT_STATX_SYNC_AS_STAT, STATX_ALL, 0x7ffe) = 0',
             " > /usr/lib/libc.so.6(statx+0xe) [0xf00e]",
-            " > /workspace/target/build/debug/strata(strata::ui::browser::naming::free_name+0x41) [0x1041]",
+            " > /workspace/target/build/debug/strata(strata_fs::services::native_fs::native_kind+0x41) [0x1041]",
             " > /workspace/target/build/debug/strata(+0x0) [0x2010]",
             " > /workspace/target/build/debug/strata(+0x0) [0x3020]",
             " > /usr/lib/libglib-2.0.so.0(g_main_context_dispatch+0x10) [0x2010]",
@@ -153,7 +153,7 @@ class MainThreadAuditTests(unittest.TestCase):
             report, _ = self.violations(run)
         [entry] = report.as_json()
         self.assertEqual(entry["stacks"], [(
-            "strata::ui::browser::naming::free_name+0x41",
+            "strata_fs::services::native_fs::native_kind+0x41",
             "strata::ui::window::open_checked+0x10",
             "<strata::ui::browser::Pane>::reload+0x20",
         )])

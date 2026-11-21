@@ -1,0 +1,12 @@
+{"scenario":"device-eject-unplugs-and-leaves","modes":["columns"],"layout":"us","mutation":"device-eject-stays-inside","known_bug":null,"session_bus":true,"volume_monitor":true,"setup":[{"fs":{"path":"$environment/media/stick","mkdir":true,"parents":true}},{"fs":{"path":"$environment/media/stick/photo-list.txt","write":"stick\n"}}],"quality":{"impact":4,"coverage":3,"criticality":4,"diagnostic":4,"score":38,"note":"Eject ejects the drive with no mount call, its row goes and the browser leaves it; leave-before-release is unit-tested in device_release"}}
+{"wait":{"panes":["$root"]},"message":"the fixture to be listed"}
+{"dbus_send":["--print-reply","--dest=org.strata.QaVolumeMonitor","/org/strata/QaVolumeMonitor","org.strata.QaVolumeMonitor.Add","string:{\"id\":\"stick\",\"name\":\"QA Stick\",\"root\":\"$environment/media/stick\",\"mounted\":true}"]}
+{"wait":{"present":{"sidebar":"QA Stick"}},"message":"the mounted stick to be listed"}
+{"click":{"sidebar":"QA Stick"}}
+{"wait":{"entries":["photo-list.txt"],"dir":"stick"},"message":"clicking the mounted stick to open its root"}
+{"expect":{"absent":{"role":"button","name":"Unmount"}},"message":"an ejectable stick to offer Eject, not Unmount"}
+{"click":{"role":"button","name":"Eject"}}
+{"fs":{"path":"$environment/volume-monitor.calls","lines_equal":["DriveEject stick"]},"message":"Eject to eject the stick's drive, with no mount call first"}
+{"wait":{"absent":{"sidebar":"QA Stick"}},"message":"the ejected stick's row to go"}
+{"wait":{"directory":"home"},"message":"ejecting the open stick to send the browser Home"}
+{"wait":{"absent":{"role":"button","name":"DEVICES"}},"message":"the DEVICES heading to go with the only device"}

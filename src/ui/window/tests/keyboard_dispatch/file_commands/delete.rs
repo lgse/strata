@@ -163,6 +163,10 @@ fn closing_a_cancelled_folder_deletion_focuses_the_folder_row() {
         || {
             let held = Rc::new(HeldOperations::default());
             let fixture = held_fixture(&held, Rc::new(crate::adapters::LocalFileSource));
+            // As in a real window: the reload can drop the row the dialog opened from.
+            fixture
+                .view
+                .set_as_modal_focus_fallback(fixture.window.upcast_ref());
             let folder = seed_folder(&fixture, "folder");
             std::fs::write(folder.join("inner.txt"), b"kept").expect("folder contents");
             let browser = fixture.view.browser();

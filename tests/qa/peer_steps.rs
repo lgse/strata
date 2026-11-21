@@ -38,6 +38,10 @@ pub(crate) struct LaunchStep {
 #[serde(deny_unknown_fields)]
 pub(crate) struct Relaunch {
     pub(crate) directory: Option<String>,
+    /// Launches with no folder argument, as a user starting `strata` does, so the window
+    /// opens the saved tab session or the default folder.
+    #[serde(default)]
+    pub(crate) plain: bool,
     #[serde(default)]
     pub(crate) env: BTreeMap<String, String>,
     stdout: Option<String>,
@@ -46,6 +50,9 @@ pub(crate) struct Relaunch {
 
 impl Relaunch {
     pub(crate) fn check(&self) -> Result<(), String> {
+        if self.plain && self.directory.is_some() {
+            return Err("a plain restart has no directory".to_owned());
+        }
         if self.stdout.is_some() != self.stderr.is_some() {
             return Err("a restart gives both stdout and stderr, or neither".to_owned());
         }

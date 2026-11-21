@@ -2,14 +2,16 @@
 
 use std::{
     cell::{Cell, RefCell},
+    collections::HashMap,
     rc::Rc,
 };
 
 use gio::glib;
 
 use crate::{
-    app::navigation::FolderSortResolver,
+    app::navigation::{EntrySplice, FolderSortResolver, sort_metadata_missing},
     model::{FolderSort, SortKey, ViewPreferences},
+    services::RequestId,
 };
 
 use super::{Browser, BrowserEvent};
@@ -34,9 +36,29 @@ pub(super) struct SortResync {
     /// target, such as one abandoned for missing metadata, is not retried. A
     /// sort superseded before it ran is not recorded and is retried.
     attempted: RefCell<Vec<(usize, ViewPreferences)>>,
+    media_changes: RefCell<HashMap<usize, (RequestId, RequestId)>>,
 }
 
 impl SortResync {
+    pub(super) fn media_revision(&self, depth: usize, directory: RequestId) -> Option<RequestId> {
+        self.media_changes
+            .borrow()
+            .get(&depth)
+            .and_then(|&(request, revision)| (request == directory).then_some(revision))
+    }
+
+    pub(super) fn finish_media_revision(&self, depth: usize, revision: Option<RequestId>) {
+        if let Some(revision) = revision {
+            let mut changes = self.media_changes.borrow_mut();
+            if changes
+                .get(&depth)
+                .is_some_and(|&(_, pending)| pending == revision)
+            {
+                changes.remove(&depth);
+            }
+        }
+    }
+
     pub(super) fn note_attempt(
         &self,
         origin: SortOrigin,
@@ -69,6 +91,38 @@ impl Browser {
 
     pub fn resync_column_sorts(self: &Rc<Self>) {
         self.resync_column_sorts_from(None);
+    }
+
+    pub(super) fn note_media_sort_changes(self: &Rc<Self>, depth: usize, splices: &[EntrySplice]) {
+        let Some(key) = self
+            .requested_column_preferences(depth)
+            .map(|prefs| prefs.sort_key)
+        else {
+            return;
+        };
+        if !key.uses_media_metadata()
+            || !splices
+                .iter()
+                .flat_map(|splice| &splice.entries)
+                .any(|entry| sort_metadata_missing(key, entry))
+        {
+            return;
+        }
+        self.schedule_media_sort(depth);
+    }
+
+    pub(super) fn schedule_media_sort(self: &Rc<Self>, depth: usize) {
+        let request = self.state.borrow().request_id_for_depth(depth);
+        if let Some(request) = request {
+            self.sort_resync
+                .media_changes
+                .borrow_mut()
+                .insert(depth, (request, self.new_request_id()));
+            self.sort_resync.pending.set(true);
+            if !self.sort_in_flight() {
+                self.schedule_sort_resync();
+            }
+        }
     }
 
     /// Re-sorts from an idle callback, never inside the sort or preference
@@ -130,6 +184,7 @@ impl Browser {
             self.sort_resync.pending.set(false);
             self.sort_resync.first.set(None);
             self.sort_resync.attempted.borrow_mut().clear();
+            self.sort_resync.media_changes.borrow_mut().clear();
             return;
         };
         self.apply_column_preferences(depth, SortOrigin::Followed, move |preferences| {
@@ -154,17 +209,22 @@ impl Browser {
             let Some(target) = state.synchronized_preferences(depth) else {
                 continue;
             };
-            if state.column_preferences(depth) == Some(target) {
+            let media_changed = target.sort_key.uses_media_metadata()
+                && state.request_id_for_depth(depth).is_some_and(|request| {
+                    self.sort_resync.media_revision(depth, request).is_some()
+                });
+            if state.column_preferences(depth) == Some(target) && !media_changed {
                 continue;
             }
             if state.set_loading_column_preferences(depth, target) {
                 continue;
             }
-            if self
-                .sort_resync
-                .attempted
-                .borrow()
-                .contains(&(depth, target))
+            if !media_changed
+                && self
+                    .sort_resync
+                    .attempted
+                    .borrow()
+                    .contains(&(depth, target))
             {
                 continue;
             }

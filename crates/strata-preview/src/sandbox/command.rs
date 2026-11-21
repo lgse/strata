@@ -224,6 +224,8 @@ impl SandboxCommand<'_> {
             command.arg("--dev-bind-try").arg(device).arg(device);
         }
         command.args(["--ro-bind", "/sys", "/sys"]);
+        // NixOS exposes Mesa, VA-API and Vulkan drivers only through this link farm.
+        bind_try(command, "/run/opengl-driver");
     }
 
     fn file_size_limit(&self) -> u64 {

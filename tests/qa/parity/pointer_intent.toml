@@ -127,3 +127,11 @@ run = "icons-folder"
 package = "A9"
 status = "required"
 host = "offscreen"
+
+[[run]]
+scenario = "tap-drag-waits-for-release"
+run = "list-file-name"
+package = "A9"
+status = "pending"
+reason = "scope"
+blocker = "A9: a variant `main`'s #2108 added, merged on 2026-11-20 and not yet run on Rune"

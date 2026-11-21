@@ -84,6 +84,9 @@ pub(crate) struct ReplaceLines {
 pub(crate) struct FsStep {
     pub(crate) fs: FsCheck,
     pub(crate) timeout_ms: Option<u64>,
+    /// Once the check holds, it must go on holding this long, for a negative check of a
+    /// write that would land later.
+    pub(crate) hold_ms: Option<u64>,
     pub(crate) message: Option<String>,
 }
 

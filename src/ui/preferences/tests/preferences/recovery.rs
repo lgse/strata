@@ -151,7 +151,15 @@ fn one_malformed_entry_keeps_the_rest_of_its_collection() {
                     vec![PathBuf::from("Backup")]
                 ),
             ]),
-            browser_list_columns: None,
+            browser_list_columns: Some(
+                [
+                    (ListColumnId::Size, 80),
+                    (ListColumnId::Type, 95),
+                    (ListColumnId::Modified, 140),
+                ]
+                .into_iter()
+                .collect(),
+            ),
             ..non_default_preferences()
         }
     );
