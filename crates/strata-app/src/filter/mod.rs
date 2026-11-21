@@ -512,6 +512,14 @@ fn search(app: &mut App, text: &str) {
         });
 }
 
+/// Hidden files were shown or hidden: an open filter searches again with the new setting, as
+/// GTK's `on_hidden_toggled` hands it to each column's search session (`set_show_hidden`), so
+/// its results take the hidden entries in or leave them out (lgse/strata#2697).
+fn hidden_toggled(app: &mut App, _: &mut Tx) -> bool {
+    refresh_source_filter(app);
+    app.filter.state.is_open()
+}
+
 pub(crate) fn refresh_source_filter(app: &mut App) {
     if app.filter.state.is_open() {
         let text = app.filter.state.text().trim().to_owned();
@@ -1132,6 +1140,9 @@ impl Part for Filter {
             };
             if prunes {
                 heard.then(prune_stale_results);
+            }
+            if matches!(event, BrowserEvent::HiddenToggled { .. }) {
+                heard.then(hidden_toggled);
             }
         }))
     }
