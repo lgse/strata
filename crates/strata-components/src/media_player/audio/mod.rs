@@ -134,6 +134,7 @@ pub(crate) fn audio<S: 'static>(
     col()
         .key(key.to_owned())
         .focusable(true)
+        .no_focus_ring()
         .on_key(move |s: &mut S, k: &rune::KeyEvent, tx: &mut Tx| {
             let st = access(s);
             let Some(command) = st.keys().focused_command(k, tx) else {

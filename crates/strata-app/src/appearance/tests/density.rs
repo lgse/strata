@@ -54,6 +54,15 @@ fn slider(host: &Offscreen, key: &str) -> (String, String, [bool; 2]) {
     )
 }
 
+/// The visible text labels currently drawn in the window.
+fn drawn_texts(host: &Offscreen) -> Vec<String> {
+    host.elements()
+        .into_iter()
+        .filter(|element| !element.exiting && element.opacity > 0.0)
+        .filter_map(|element| element.text)
+        .collect()
+}
+
 /// The look's Frame inset and Content pad.
 fn drawn(host: &Offscreen) -> (f32, f32) {
     let look = &host.app().look;
@@ -127,6 +136,13 @@ fn the_saved_densities_are_drawn_from_the_start_and_shown_by_the_sliders() {
                     [false, false]
                 )
             );
+            let shown = drawn_texts(&host);
+            for expected in ["Frame", "Airy · 4 px", "Content", "Custom · 6 px"] {
+                assert!(
+                    shown.iter().any(|text| text == expected),
+                    "visible density header text {expected:?} in {shown:?}"
+                );
+            }
         },
     );
 }
@@ -149,6 +165,12 @@ fn a_sliders_change_is_saved_and_drawn_at_once() {
             press(&mut host, Key::Right);
             wait_saved(&mut host, "browser_density_custom_px", 7.into());
             assert_eq!(drawn(&host), (4.0, 7.0));
+            assert!(
+                drawn_texts(&host)
+                    .iter()
+                    .any(|text| text == "Custom · 7 px"),
+                "live value summary updates after arrow step"
+            );
             press(&mut host, Key::PageUp);
             wait_saved(&mut host, "browser_density_custom_px", 11.into());
             assert_eq!(drawn(&host).1, 11.0);
@@ -165,6 +187,12 @@ fn a_sliders_change_is_saved_and_drawn_at_once() {
                     "Compact · 4 px".to_owned(),
                     [true, false]
                 )
+            );
+            assert!(
+                drawn_texts(&host)
+                    .iter()
+                    .any(|text| text == "Compact · 4 px"),
+                "live value summary updates after snap"
             );
         },
     );

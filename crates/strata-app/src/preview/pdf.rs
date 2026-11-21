@@ -173,6 +173,7 @@ pub(super) fn build_view(app: &App, cx: &mut Cx<App>) -> El {
         .reset_key(|_| false)
         .on_intent(on_intent)
         .build(app, &app.look, cx)
+        .no_focus_ring()
 }
 
 /// `pdf_zoom_reset` while the keyboard is in the pages: the PDF back to its fitted width, ahead

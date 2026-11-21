@@ -253,7 +253,6 @@ use rune_kit::shell::{TabItem, TabOrientation, TabOverflow, TabStrip};
 use strata_kit::look::Look;
 use strata_kit::slots::tabs as slot;
 
-use crate::dialog::FOCUS_RING_WIDTH;
 use crate::scroll::{BarLook, overlay};
 
 pub use model::{CELL_DISPLAY_BYTES, Sheet, TITLE_DISPLAY_CHARS, column_letters};
@@ -317,7 +316,6 @@ fn grid<S: 'static>(
     let st = get(s);
     let key = st.key.clone();
     let labels = &st.labels;
-    let k = &look.kit;
     let name = if v.name.is_empty() {
         labels.table.clone()
     } else {
@@ -332,8 +330,9 @@ fn grid<S: 'static>(
         .grow(1.0)
         .min_h(0.0)
         .focusable(true)
-        // Keyboard focus shows inside the edge: the drawer's slot clips anything outside.
-        .focus_ring(FOCUS_RING_WIDTH, -FOCUS_RING_WIDTH, k.c.border_focus)
+        // The preview drawer's top accent bar marks keyboard ownership (`.preview-pane
+        // .preview-header`), so the grid draws no box ring of its own.
+        .no_focus_ring()
         .on_key(move |s: &mut S, ev: &KeyEvent, tx: &mut Tx| {
             match keys::key_in(get_mut(s), ev, tx) {
                 keys::Outcome::Ignored => false,

@@ -21,7 +21,7 @@
 //!   draws them, so the sliders' box turns a plain Return on one into the Space that presses
 //!   it (`buttons::pressed`).
 
-use rune::{El, KeyEvent, Tx, col};
+use rune::{El, KeyEvent, TextStyle, Tx, col, row, text};
 use strata_components::controls::slider::{Range, Slider, SliderChange, SliderState, Snap};
 use strata_core::i18n::tr;
 use strata_desktop::settings::{DensityPresets, Preferences, store_density_px, stored_density_px};
@@ -157,19 +157,47 @@ impl Density {
     }
 
     fn slider(&'static self, app: &App) -> El {
+        let look = &app.look;
+        let kit = &look.kit;
         let labels = &app.appearance.density.labels;
         let px = self.scale.clamp((self.state)(app).value().round() as u8);
-        Slider::new(self.keys[0], self.state, self.state_mut)
+        let title = (self.label)(labels).clone();
+        let summary = self.value_text(px);
+        let value_font = TextStyle {
+            size: (kit.ty.ui.size * 0.9).round().max(1.0),
+            ..kit.ty.mono
+        };
+        let heading = row()
+            .w_full()
+            .gap(look.space.md)
+            .items_center()
+            .child(
+                text(title.clone())
+                    .font(kit.ty.ui)
+                    .color(kit.c.text_base)
+                    .grow(1.0),
+            )
+            .child(
+                text(summary.clone())
+                    .font(value_font)
+                    .color(kit.c.text_muted),
+            );
+        let slider = Slider::new(self.keys[0], self.state, self.state_mut)
             .snaps(vec![
                 Snap::labelled(f64::from(self.scale.compact), labels.compact.clone()),
                 Snap::labelled(f64::from(self.scale.airy), labels.airy.clone()),
             ])
-            .label((self.label)(labels).clone())
-            .value_text(self.value_text(px))
+            .label(title)
+            .value_text(summary)
             .on_change(move |app: &mut App, value, _: SliderChange, _: &mut Tx| {
                 self.save(app, self.scale.clamp(value.round() as u8));
             })
-            .build(app, &app.look)
+            .build(app, look);
+        col()
+            .w_full()
+            .gap(look.space.xs)
+            .child(heading)
+            .child(slider)
     }
 }
 
@@ -181,8 +209,9 @@ pub(super) fn sliders(app: &App) -> El {
         .collect();
     col()
         .w_full()
-        .gap(app.look.space.sm)
-        .px(app.look.space.sm)
+        .gap(app.look.space.md)
+        .px(app.look.space.md)
+        .py(app.look.space.xxs)
         .child(FRAME.slider(app))
         .child(CONTENT.slider(app))
         .on_key(move |_: &mut App, event: &KeyEvent, tx: &mut Tx| {
