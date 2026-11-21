@@ -3415,4 +3415,3 @@ sequence only together with the alphabet's version, so the version is part of th
 - **Concerns:** the sequence, parked in `tests/qa/fuzz/corpus/session-drops/`;
   `session-drops` v7 leaves tab drops out.
 - **State:** open, unowned: [A4](packages/A4.md)'s tab strip or [A19](packages/A19.md)'s drops.
-
