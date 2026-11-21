@@ -145,6 +145,7 @@ impl<S: 'static> TabbedForm<S> {
             } else {
                 (self.get_mut)(s).carry_page(
                     PageCarry {
+                        from: f,
                         panel: self.panel_key(next),
                         tab: self.tab_key(next),
                         tabs_prefix: format!("{}-tab-", self.key),
