@@ -9,12 +9,6 @@ use strata_kit::look::Look;
 use super::state::ChordState;
 use crate::filter_bar::keycap::keycap;
 
-/// The pill's fill and border: the accent at these opacities, as Strata's
-/// `.shortcut-footer-chord-pill` draws them (`src/style.css`: `alpha(@strata_accent, 0.14)`
-/// and a 1 px `alpha(@strata_accent, 0.4)` border). No Kit or strata-kit token holds them.
-const PILL_FILL_ALPHA: f32 = 0.14;
-const PILL_BORDER_ALPHA: f32 = 0.4;
-
 /// The pill's key under `key`.
 pub fn pill_key(key: &str) -> String {
     format!("{key}-pill")
@@ -31,30 +25,17 @@ pub fn option_key(key: &str, i: usize) -> String {
 }
 
 /// The armed chord's pill (`g-`), for the footer beside the `10X` pill (C19), or `None` with
-/// nothing armed: the accent on a faint accent tint with a fainter accent border, Strata's
-/// `.shortcut-footer-chord-pill`. A polite live region, so assistive technology says the
-/// chord as it arms.
+/// nothing armed: shares [`crate::footer::pill`] so it matches Strata's
+/// `.shortcut-footer-chord-pill`, `.tenxer-tag` and `.shortcut-footer-paste`. A polite live
+/// region, so assistive technology says the chord as it arms.
 pub fn pill<A: Clone>(look: &Look, key: &str, state: &ChordState<A>) -> Option<El> {
     let map = state.armed()?;
-    let k = &look.kit;
-    let accent = k.c.text_accent;
     Some(
-        row()
+        crate::footer::pill(look, &map.mark)
             .key(pill_key(key))
             .role("status")
             .label(map.mark.clone())
-            .live_region(LiveRegion::Polite)
-            .px(look.space.sm)
-            .center()
-            .radius(look.frame.control)
-            .fill(k.alpha(accent, PILL_FILL_ALPHA))
-            .border(1.0, k.alpha(accent, PILL_BORDER_ALPHA))
-            .child(
-                text(map.mark.clone())
-                    .font(k.ty.small_medium)
-                    .color(accent)
-                    .a11y_hidden(),
-            ),
+            .live_region(LiveRegion::Polite),
     )
 }
 
