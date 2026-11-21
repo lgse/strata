@@ -181,7 +181,7 @@ fn ancestor<S: 'static>(cx: &Ctx<'_, S>, i: usize, crumb: &Crumb) -> El {
     if let Some(badge) = crumb.badge {
         button = button.child(
             icon(look.icon(badge), look.icon_size.sm)
-                .color(k.c.icon_muted)
+                .color(k.c.icon_accent)
                 .a11y_hidden(),
         );
     }
@@ -300,7 +300,7 @@ fn current<S: 'static>(cx: &Ctx<'_, S>, crumb: &Crumb, n: usize) -> El {
             tx.wake_at(tx.clock() + COPIED_FOR);
             emit(s, LocationIntent::CopyPath, tx);
         })
-        .build(k)
+        .build(&look.accent_icon_kit())
         .key(format!("{}-copy", cx.key))
         .cursor(Cursor::Pointer)
         .on_key(return_as_space::<S>);

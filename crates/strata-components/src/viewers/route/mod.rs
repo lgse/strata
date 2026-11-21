@@ -252,7 +252,7 @@ impl<'a, S: 'static> RouteView<'a, S> {
         .help(labels.play_tooltip.clone())
         .disabled(!st.playable())
         .on_press_tx(move |s: &mut S, _tx: &mut Tx| access(s).toggle())
-        .build(k)
+        .build(&look.accent_icon_kit())
         .key(format!("{key}-play"))
         .checked(st.playing());
         let controls = row()

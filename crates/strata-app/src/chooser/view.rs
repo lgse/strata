@@ -460,7 +460,7 @@ fn build_download_progress(progress: &DownloadProgress, look: &Look) -> El {
                     active.cancel_download();
                 }
             })
-            .build(kit)
+            .build(&look.accent_icon_kit())
             .key(DOWNLOAD_CANCEL_KEY),
     );
     let mut item = row()
@@ -469,7 +469,7 @@ fn build_download_progress(progress: &DownloadProgress, look: &Look) -> El {
         .gap(look.space.sm)
         .child(
             icon(look.icon(IconName::Downloads), look.icon_size.sm)
-                .color(kit.c.icon_base)
+                .color(kit.c.icon_accent)
                 .a11y_hidden(),
         )
         .child(

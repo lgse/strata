@@ -110,7 +110,7 @@ fn heading<S: 'static>(shared: &Rc<Shared<S>>, resolved: &Rc<Resolved>, s: &S, p
         title_row = title_row.child(
             icon(glyph, look.icon_size.sm)
                 .key("sort")
-                .color(kit.c.icon_base)
+                .color(kit.c.icon_accent)
                 .a11y_hidden(),
         );
     }

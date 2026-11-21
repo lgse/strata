@@ -78,7 +78,12 @@ fn preview(look: &Look, shown: &Shown<'_>) -> El {
         EntryKind::File
     };
     let saved = shown.icon.and_then(SavedGlyph::parse);
-    let entry = Entry::new(EntryId::new(0), &shown.item.name, kind, "")
+    let icon_key = if shown.item.folder {
+        crate::entry_icon::FOLDER
+    } else {
+        crate::entry_icon::icon_for_name(&shown.item.name)
+    };
+    let entry = Entry::new(EntryId::new(0), &shown.item.name, kind, icon_key)
         .maybe_color(shown.color.and_then(color_of))
         .maybe_glyph(saved.as_ref().map(SavedGlyph::as_entry));
     let glyph = entry_glyph(look, entry, PREVIEW, k.c.icon_accent);

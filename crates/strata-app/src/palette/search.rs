@@ -154,6 +154,12 @@ pub(super) fn item(found: &SearchItem) -> PaletteItem {
         true => IconName::Folder,
         false => IconName::File,
     };
+    let icon_key = match found.is_directory {
+        true => crate::entry_icon::FOLDER,
+        false => crate::entry_icon::icon_for_name(&found.name),
+    };
     let path = id(found);
-    PaletteItem::new(path.clone(), found.name.clone(), path).icon(icon)
+    PaletteItem::new(path.clone(), found.name.clone(), path)
+        .icon(icon)
+        .icon_key(icon_key)
 }

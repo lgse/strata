@@ -88,7 +88,7 @@ pub(crate) fn drag_icon(count: usize, folders: bool, scale: f32) -> DragIcon {
         } else {
             IconName::File
         };
-        let glyph = rune::icon(look.icon(name), 32.0).color(look.kit.c.icon_base);
+        let glyph = rune::icon(look.icon(name), 32.0).color(look.kit.c.icon_accent);
         let mut el = col().size(48.0, 48.0).center().child(glyph);
         if badge.count > 1 {
             el = el.child(

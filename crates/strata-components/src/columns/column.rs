@@ -437,7 +437,7 @@ fn header_controls<S: 'static>(sh: &Rc<Shared<S>>, s: &S, cx: HeaderCx, serial: 
                         close.emit(s, ColumnsIntent::CloseFrom(depth), tx);
                     }
                 })
-                .build(&look.kit)
+                .build(&look.accent_icon_kit())
                 // Not a focus stop: a press on it focuses the strip, which keeps the
                 // keyboard when the button goes with its column.
                 .focusable(false)
