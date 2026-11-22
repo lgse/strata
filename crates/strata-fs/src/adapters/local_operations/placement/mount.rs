@@ -102,6 +102,12 @@ impl<'a> Mount<'a> {
         !self.known().renames_folders_in_steps && self.renames_over(name)
     }
 
+    /// Whether an empty file reserving a name may be uploaded after the file renamed over
+    /// it, emptying that file, as a FUSE daemon over remote storage may (rclone, #2639).
+    pub(super) fn uploads_reservations_late(&self) -> bool {
+        self.known().renames_folders_in_steps
+    }
+
     fn known(&self) -> MountCapabilities {
         mount_profile::known(self.fs, self.dir, self.key())
     }

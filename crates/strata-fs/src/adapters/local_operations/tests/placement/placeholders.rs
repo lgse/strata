@@ -72,9 +72,8 @@ fn an_empty_own_placeholder_rejected_means_unsupported() -> Result<(), Box<dyn E
 }
 
 #[test]
-fn a_daemon_that_renames_folders_in_steps_gets_no_placeholder_folder() -> Result<(), Box<dyn Error>>
-{
-    use Placed::{AfterCheck, OverReservedFile, ReservedDirectory};
+fn a_daemon_over_remote_storage_gets_no_placeholder() -> Result<(), Box<dyn Error>> {
+    use Placed::{AfterCheck, ReservedDirectory};
     type Row = (&'static str, Preset, bool, bool, Result<Placed, PlaceError>);
     let rows: [Row; 4] = [
         ("rclone folder", Quirks::rclone, true, false, Ok(AfterCheck)),
@@ -85,13 +84,8 @@ fn a_daemon_that_renames_folders_in_steps_gets_no_placeholder_folder() -> Result
             true,
             Err(PlaceError::Exists),
         ),
-        (
-            "rclone file",
-            Quirks::rclone,
-            false,
-            false,
-            Ok(OverReservedFile),
-        ),
+        // rclone uploads an empty reserving file after the rename, over the file (#2639).
+        ("rclone file", Quirks::rclone, false, false, Ok(AfterCheck)),
         (
             "sshfs folder",
             Quirks::sshfs,
