@@ -249,16 +249,30 @@ fn drawn_emoji(emoji: &str) -> String {
 /// A filled folder coloured `folder_color` with `badge` centred in its body, matching Strata's
 /// `sized_folder_decoration_paintable` and `folder_emoji_texture` (`src/assets.rs`).
 ///
-/// Used by: [`entry_glyph`], C8's sidebar rows.
+/// Used by: [`entry_glyph`], C7's tabs, C8's sidebar rows.
 pub fn folder_badge(
     look: &Look,
     badge: EntryGlyph<'_>,
     points: f32,
     folder_color: rune::Color,
 ) -> El {
-    let base = icon(look.icon(IconName::FolderFilled), points)
+    folder_badge_hover(look, badge, points, (folder_color, None))
+}
+
+/// Like [`folder_badge`], transitioning the folder fill (and a monochrome icon badge's contrasting
+/// ink) to `hover_color` while an ancestor `hover_group` is hovered.
+pub(crate) fn folder_badge_hover(
+    look: &Look,
+    badge: EntryGlyph<'_>,
+    points: f32,
+    (folder_color, hover_color): (rune::Color, Option<rune::Color>),
+) -> El {
+    let mut base = icon(look.icon(IconName::FolderFilled), points)
         .color(folder_color)
         .a11y_hidden();
+    if let Some(hover) = hover_color {
+        base = base.group_color(hover);
+    }
     let mark = match badge {
         EntryGlyph::Icon(name) => {
             let badge_pts = points * 0.54;
@@ -267,10 +281,14 @@ pub fn folder_badge(
             let art = look
                 .icon_named(name)
                 .unwrap_or_else(|| look.icon(IconName::Folder));
-            icon(art, badge_pts)
+            let mut mark = icon(art, badge_pts)
                 .color(look.ink_on(folder_color))
                 .absolute(x, y)
-                .a11y_hidden()
+                .a11y_hidden();
+            if let Some(hover) = hover_color {
+                mark = mark.group_color(look.ink_on(hover));
+            }
+            mark
         }
         EntryGlyph::Emoji(emoji) => {
             let font_pts = points * 0.48;

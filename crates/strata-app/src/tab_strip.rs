@@ -39,18 +39,21 @@
 
 use std::{borrow::Cow, cell::RefCell, path::Path};
 
-use rune::{El, Tx};
+use rune::{Color, El, Tx};
 use strata_components::{
     contract::dnd::Dnd,
     tabs::{
-        BrowserTabs, BrowserTabsState, ClosedTabs, HOVER_DELAY, NewTabButton, Tab, TabId, TabOpen,
-        TabWords, TabsData, TabsIntent, TabsLabels, Via, new_tab_key,
+        BrowserTabs, BrowserTabsState, ClosedTabs, HOVER_DELAY, NewTabButton, Tab, TabIcon, TabId,
+        TabOpen, TabWords, TabsData, TabsIntent, TabsLabels, Via, new_tab_key,
     },
 };
 use strata_core::{i18n::tr, model::Location};
-use strata_desktop::keys::{
-    Keys, Modifiers,
-    bindings::{TAB_NEW, TAB_NUMBERS},
+use strata_desktop::{
+    keys::{
+        Keys, Modifiers,
+        bindings::{TAB_NEW, TAB_NUMBERS},
+    },
+    settings::Preferences,
 };
 use strata_kit::icons::IconName;
 
@@ -62,7 +65,7 @@ use crate::{
         self,
         tabs::{self as tabs_of, located, shown_tab, tabs},
     },
-    slots::{Frame, Part, Place, Scope, Setup, Strip, TabKey},
+    slots::{Frame, Part, Place, Scope, Setup, Strip, TabKey, path_customization},
 };
 
 mod drops;
@@ -256,15 +259,32 @@ fn badges_shown(app: &App) -> bool {
 /// Each tab, in the strip's order, named as GTK names it, with the drops its active folder takes.
 fn named(app: &App) -> Vec<Tab<'static>> {
     let home = Location::local(launch::home_directory());
+    let preferences = shell::preferences(app);
     tabs(app)
         .iter()
         .map(|&key| {
             let location = located(app, key);
             let name = tabs_of::label(location.as_ref());
-            let icon = icon(location.as_ref(), &home);
-            Tab::new(id(key), name, icon).accepts(drops::accepts(app, key))
+            let (icon, tint) = tab_icon(location.as_ref(), &home, preferences);
+            Tab::new(id(key), name, icon)
+                .tint(tint)
+                .accepts(drops::accepts(app, key))
         })
         .collect()
+}
+
+fn tab_icon(
+    location: Option<&Location>,
+    home: &Location,
+    preferences: &Preferences,
+) -> (TabIcon, Option<Color>) {
+    let fallback = icon(location, home);
+    let Some(path) = location.and_then(Location::native_path) else {
+        return (TabIcon::Name(fallback), None);
+    };
+    let (color, glyph) = path_customization(preferences, path);
+    let resolved = glyph.map_or(TabIcon::Name(fallback), |glyph| glyph.to_tab_icon());
+    (resolved, color)
 }
 
 fn icon(location: Option<&Location>, home: &Location) -> IconName {

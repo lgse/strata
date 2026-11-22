@@ -16,13 +16,14 @@ use strata_kit::icons::IconName;
 use strata_kit::look::Look;
 use strata_kit::slots::tabs as slot;
 
-use super::data::{LABEL_CHARS, Tab, TabId, TabsData, elide_end};
+use super::data::{LABEL_CHARS, Tab, TabIcon, TabId, TabsData, elide_end};
 use super::drag::{PressSpec, Release};
 use super::drops::{self, Access, ActionFn, Ctx, Emit, OpensFn, TabSpec};
 use super::intent::{DropSite, TabOpen, TabsIntent, Via};
 use super::new_tab::{self, TabsLabels};
 use super::sizing::{self, CLOSE_BUTTON_SIZE};
 use super::{BrowserTabsState, scroll_key, tab_key, wheel};
+use crate::contract::EntryGlyph;
 use crate::contract::dnd::{Dnd, DropAction, DropHover, DropOffer};
 
 /// The 16 pt icon/badge box inside each tab.
@@ -428,7 +429,8 @@ impl<'a, S: 'static> BrowserTabs<'a, S> {
             torn_ghost(
                 GhostSpec {
                     index,
-                    icon_name: tab.icon,
+                    icon: &tab.icon,
+                    tint: tab.tint,
                     label,
                     shift,
                 },
@@ -490,7 +492,7 @@ impl<'a, S: 'static> BrowserTabs<'a, S> {
         let lead = if self.badges && m.index < BADGED {
             badge(m.index, look)
         } else {
-            tab_icon(m.tab.icon, highlighted, look)
+            tab_icon(&m.tab.icon, m.tab.tint, highlighted, look)
         };
         let close_el = close_button(
             CloseSpec {
@@ -596,7 +598,8 @@ struct CloseSpec<'a, S: 'static> {
 
 struct GhostSpec<'a> {
     index: usize,
-    icon_name: IconName,
+    icon: &'a TabIcon,
+    tint: Option<Color>,
     label: &'a str,
     shift: [f32; 2],
 }
@@ -625,7 +628,7 @@ fn torn_ghost<S: 'static>(spec: GhostSpec<'_>, sc: &StripCtx<'_, S>) -> El {
         .offset_motion(Anim::INSTANT)
         .scale(1.03)
         .a11y_hidden()
-        .child(tab_icon(spec.icon_name, true, look))
+        .child(tab_icon(spec.icon, spec.tint, true, look))
         .child(tab_label(spec.label, true, look));
     k.elevate(float, &k.elevation.floating)
 }
@@ -681,19 +684,40 @@ struct TabBind<'a, S: 'static> {
     emit: &'a Emit<S>,
 }
 
-fn tab_icon(icon_name: IconName, highlighted: bool, look: &Look) -> El {
+fn tab_icon(tab_icon: &TabIcon, tint: Option<Color>, highlighted: bool, look: &Look) -> El {
     let k = &look.kit;
-    let glyph = icon(look.icon(icon_name), look.icon_size.md)
-        .key("icon")
-        .a11y_hidden();
-    let glyph = if highlighted {
-        glyph.color(k.c.icon_accent)
-    } else {
-        glyph.color(k.c.icon_muted).group_color(k.c.icon_accent)
+    let size = look.icon_size.md;
+    let (rest, hover) = match (tint, highlighted) {
+        (Some(color), _) => (color, None),
+        (None, true) => (k.c.icon_accent, None),
+        (None, false) => (k.c.icon_muted, Some(k.c.icon_accent)),
+    };
+    let glyph = match tab_icon {
+        TabIcon::Name(icon_name) => {
+            let glyph = icon(look.icon(*icon_name), size)
+                .key("icon")
+                .color(rest)
+                .a11y_hidden();
+            match hover {
+                Some(color) => glyph.group_color(color),
+                None => glyph,
+            }
+        }
+        TabIcon::Catalog(name) => {
+            crate::thumbnails::folder_badge_hover(look, EntryGlyph::Icon(name), size, (rest, hover))
+                .key("icon")
+        }
+        TabIcon::Emoji(emoji) => crate::thumbnails::folder_badge_hover(
+            look,
+            EntryGlyph::Emoji(emoji),
+            size,
+            (rest, hover),
+        )
+        .key("icon"),
     };
     row()
         .key("avatar")
-        .size(look.icon_size.md, look.icon_size.md)
+        .size(size, size)
         .center()
         .a11y_hidden()
         .child(glyph)
