@@ -48,7 +48,7 @@ use strata_preview::sandbox::{DocumentFormat, MediaPreviewBackend, polaris_gpu_a
 
 use super::{
     archive,
-    document::{DocumentSpec, RenderedDocument},
+    document::{DocumentSpec, RenderedDocument, diagram_palette},
     model, pictures, sheet,
     viewer::{CodeSource, RenderedBody, Viewer, build_code_state},
 };
@@ -612,6 +612,7 @@ fn build_rendered_body(
         document_path: entry.location.native_path().map(Path::to_path_buf),
         blocks,
         later,
+        palette: diagram_palette(&app.look),
     });
     RenderedBody::Document(Box::new(doc))
 }
