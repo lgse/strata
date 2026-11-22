@@ -8,8 +8,14 @@
 //! toggle alone.
 
 use std::{
+    cell::RefCell,
     path::{Path, PathBuf},
-    time::Duration,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+        mpsc,
+    },
+    time::{Duration, Instant},
 };
 
 use rune::Tx;
@@ -21,10 +27,10 @@ use strata_components::{
 use strata_core::model::{Location, MetadataValue};
 use strata_fs::services::{MetadataUpdate, PreviewContent, SandboxedMedia};
 use strata_preview::{
-    media::Header,
+    media::{Header, peaks as preview_peaks, storyboard as preview_storyboard},
     sandbox::{
         MediaPreviewBackend,
-        media::{Session, fixtures},
+        media::{PeaksEvent, Session, StoryboardEvent, fixtures},
     },
 };
 
@@ -37,7 +43,10 @@ use crate::{
     App,
     host::offscreen::Offscreen,
     preview::{
-        media::{MEDIA_KEY, START_DECODER},
+        media::{
+            MEDIA_KEY, MockPeaks, MockStoryboard, START_DECODER, START_PEAKS, START_STORYBOARD,
+            clear_peaks_cache, clear_storyboard_cache, deliver_peaks,
+        },
         session,
     },
     test_support::{PATIENCE, hosted},
@@ -499,6 +508,382 @@ fn video_with_audio_paces_frames_to_pcm_clock_and_reaches_eof() {
             let ended =
                 |s: &MediaState| !s.playing() && s.position() >= Duration::from_millis(1_450);
             shows(&mut host, ended, "video+audio reaches EOF");
+        },
+    );
+}
+
+fn viewer_id(host: &Offscreen) -> Option<u64> {
+    match &host.app().preview.viewer {
+        Viewer::Media(media) => Some(media.viewer_id()),
+        _ => None,
+    }
+}
+
+type PeaksProbe = (mpsc::Sender<PeaksEvent>, Arc<AtomicBool>);
+type StoryboardProbe = (mpsc::Sender<StoryboardEvent>, Arc<AtomicBool>);
+
+thread_local! {
+    static PEAKS_PROBES: RefCell<Vec<PeaksProbe>> = const { RefCell::new(Vec::new()) };
+    static STORYBOARD_PROBES: RefCell<Vec<StoryboardProbe>> = const { RefCell::new(Vec::new()) };
+}
+
+struct BackgroundHooks;
+
+impl BackgroundHooks {
+    fn install(peaks: bool, storyboard: bool) -> Self {
+        clear_peaks_cache();
+        clear_storyboard_cache();
+        PEAKS_PROBES.with_borrow_mut(Vec::clear);
+        STORYBOARD_PROBES.with_borrow_mut(Vec::clear);
+        START_PEAKS
+            .set(peaks.then_some(record_peaks_start as fn(SandboxedMedia) -> Option<MockPeaks>));
+        START_STORYBOARD.set(storyboard.then_some(
+            record_storyboard_start as fn(SandboxedMedia, u32) -> Option<MockStoryboard>,
+        ));
+        Self
+    }
+}
+
+impl Drop for BackgroundHooks {
+    fn drop(&mut self) {
+        START_PEAKS.set(None);
+        START_STORYBOARD.set(None);
+        PEAKS_PROBES.with_borrow_mut(Vec::clear);
+        STORYBOARD_PROBES.with_borrow_mut(Vec::clear);
+        clear_peaks_cache();
+        clear_storyboard_cache();
+    }
+}
+
+fn record_peaks_start(_: SandboxedMedia) -> Option<MockPeaks> {
+    let (sender, receiver) = mpsc::channel();
+    let cancelled = Arc::new(AtomicBool::new(false));
+    PEAKS_PROBES.with_borrow_mut(|probes| probes.push((sender, cancelled.clone())));
+    Some(MockPeaks::new(receiver, cancelled))
+}
+
+fn record_storyboard_start(_: SandboxedMedia, _: u32) -> Option<MockStoryboard> {
+    let (sender, receiver) = mpsc::channel();
+    let cancelled = Arc::new(AtomicBool::new(false));
+    STORYBOARD_PROBES.with_borrow_mut(|probes| probes.push((sender, cancelled.clone())));
+    Some(MockStoryboard::new(receiver, cancelled))
+}
+
+fn peaks_started() -> usize {
+    PEAKS_PROBES.with_borrow(Vec::len)
+}
+
+fn storyboard_started() -> usize {
+    STORYBOARD_PROBES.with_borrow(Vec::len)
+}
+
+fn wait_for_probe(host: &mut Offscreen, ready: impl Fn() -> bool, what: &str) {
+    let arrived = host.run_until(PATIENCE, |_| ready());
+    assert!(arrived, "background media decode: {what}");
+}
+
+fn dwell(host: &mut Offscreen, duration: Duration) {
+    let deadline = Instant::now() + duration;
+    while Instant::now() < deadline {
+        host.turn();
+    }
+}
+
+/// Ten seconds of 16 by 16 video frames with audio, long enough for a storyboard.
+fn ten_seconds_video_with_sound(_: SandboxedMedia, start_tick: u32) -> Result<Session, String> {
+    fixtures::stream(Header {
+        width: 16,
+        height: 16,
+        audio: true,
+        duration_us: 10_000_000,
+        start_tick,
+    })
+}
+
+/// Video whose audio depends on the filename: `alpha.mp4` carries audio, `beta.mp4` is silent.
+fn alpha_with_audio_beta_silent(
+    source: SandboxedMedia,
+    start_tick: u32,
+) -> Result<Session, String> {
+    let audio = source
+        .path
+        .file_name()
+        .is_some_and(|name| name == "alpha.mp4");
+    fixtures::stream(Header {
+        width: 16,
+        height: 16,
+        audio,
+        duration_us: 1_500_000,
+        start_tick,
+    })
+}
+
+#[test]
+fn audio_preview_streams_waveform_peaks_into_timeline_levels() {
+    hosted(
+        MODULE,
+        "media::audio_preview_streams_waveform_peaks_into_timeline_levels",
+        |mut host| {
+            let _hooks = BackgroundHooks::install(true, false);
+            decode_with(ten_seconds_of_sound);
+            let (_provider, _folder) = open(
+                &mut host,
+                &[("tone.wav", MP4)],
+                "tone.wav",
+                "audio/vnd.wave",
+            );
+            shows(
+                &mut host,
+                |s| s.duration() == Some(Duration::from_secs(10)),
+                "audio duration ready",
+            );
+            wait_for_probe(&mut host, || peaks_started() == 1, "audio-peaks starts");
+
+            let sender = PEAKS_PROBES.with_borrow(|probes| probes[0].0.clone());
+            // First half arrives at mid loudness while paused; second half is still empty.
+            sender
+                .send(PeaksEvent::Levels {
+                    start: 0,
+                    levels: vec![128; 512],
+                })
+                .expect("send first peaks run");
+            shows(
+                &mut host,
+                |s| {
+                    let bars = s.levels().bars(4);
+                    bars[0] > 0.9 && bars[1] > 0.9 && bars[2] == 0.0 && bars[3] == 0.0
+                },
+                "first half of waveform bars populated progressively",
+            );
+
+            // Second half arrives at full loudness; first half rescales proportionally.
+            sender
+                .send(PeaksEvent::Levels {
+                    start: 512,
+                    levels: vec![255; 512],
+                })
+                .expect("send second peaks run");
+            sender.send(PeaksEvent::Finished).expect("finish peaks");
+            let expected_ratio = preview_peaks::rms(128) / preview_peaks::rms(255);
+            shows(
+                &mut host,
+                |s| {
+                    let bars = s.levels().bars(4);
+                    (bars[0] - expected_ratio).abs() < 0.02 && (bars[3] - 1.0).abs() < 0.02
+                },
+                "full waveform reflects relative loudness",
+            );
+        },
+    );
+}
+
+#[test]
+fn video_with_audio_streams_storyboard_then_waveform_peaks() {
+    hosted(
+        MODULE,
+        "media::video_with_audio_streams_storyboard_then_waveform_peaks",
+        |mut host| {
+            let _hooks = BackgroundHooks::install(true, true);
+            decode_with(ten_seconds_video_with_sound);
+            let (_provider, _folder) =
+                open(&mut host, &[("clip.mp4", MP4)], "clip.mp4", "video/mp4");
+            shows(&mut host, MediaState::has_frame, "video first frame ready");
+            wait_for_probe(
+                &mut host,
+                || storyboard_started() == 1,
+                "video-storyboard starts after first frame",
+            );
+            assert_eq!(
+                peaks_started(),
+                0,
+                "audio-peaks waits for video-storyboard to release the shared background slot"
+            );
+
+            let sb_sender = STORYBOARD_PROBES.with_borrow(|probes| probes[0].0.clone());
+            let sheet = preview_storyboard::Sheet {
+                width: 4,
+                height: 4,
+                count: 8,
+                duration_us: 10_000_000,
+            };
+            sb_sender
+                .send(StoryboardEvent::Sheet(sheet))
+                .expect("send storyboard sheet");
+            sb_sender
+                .send(StoryboardEvent::Cell {
+                    index: 4,
+                    pixels: vec![0x80; sheet.cell_bytes()],
+                })
+                .expect("send storyboard cell");
+            shows(
+                &mut host,
+                |s| s.storyboard().is_some_and(|board| board.loaded() == 1),
+                "storyboard cell ingested",
+            );
+
+            sb_sender
+                .send(StoryboardEvent::Finished)
+                .expect("finish storyboard");
+            wait_for_probe(
+                &mut host,
+                || peaks_started() == 1,
+                "audio-peaks starts once storyboard finishes",
+            );
+
+            let peaks_sender = PEAKS_PROBES.with_borrow(|probes| probes[0].0.clone());
+            peaks_sender
+                .send(PeaksEvent::Levels {
+                    start: 0,
+                    levels: vec![200; preview_peaks::BUCKETS as usize],
+                })
+                .expect("send video peaks");
+            peaks_sender.send(PeaksEvent::Finished).expect("finish");
+            shows(
+                &mut host,
+                |s| s.levels().bars(4).iter().all(|&level| level > 0.9),
+                "video timeline waveform populated",
+            );
+        },
+    );
+}
+
+#[test]
+fn gif_skips_audio_peaks_and_storyboard() {
+    hosted(
+        MODULE,
+        "media::gif_skips_audio_peaks_and_storyboard",
+        |mut host| {
+            let _hooks = BackgroundHooks::install(true, false);
+            decode_with(half_a_second_of_pictures);
+            let (_provider, _folder) =
+                open(&mut host, &[("spin.gif", MP4)], "spin.gif", "image/gif");
+            shows(&mut host, MediaState::has_frame, "gif frame ready");
+            dwell(&mut host, Duration::from_millis(160));
+            assert_eq!(peaks_started(), 0, "GIF never starts audio-peaks");
+            assert_eq!(storyboard_started(), 0, "GIF never starts video-storyboard");
+        },
+    );
+}
+
+#[test]
+fn silent_video_skips_audio_peaks() {
+    hosted(
+        MODULE,
+        "media::silent_video_skips_audio_peaks",
+        |mut host| {
+            let _hooks = BackgroundHooks::install(true, false);
+            decode_with(ten_seconds);
+            let (_provider, _folder) =
+                open(&mut host, &[("silent.mp4", MP4)], "silent.mp4", "video/mp4");
+            shows(&mut host, MediaState::has_frame, "silent video frame ready");
+            dwell(&mut host, Duration::from_millis(160));
+            assert_eq!(peaks_started(), 0, "silent video skips audio-peaks");
+            assert!(
+                state(&host).is_some_and(|s| s.levels().is_empty()),
+                "silent video keeps empty waveform levels"
+            );
+        },
+    );
+}
+
+#[test]
+fn switching_media_cancels_peaks_and_discards_stale_events() {
+    hosted(
+        MODULE,
+        "media::switching_media_cancels_peaks_and_discards_stale_events",
+        |mut host| {
+            let _hooks = BackgroundHooks::install(true, false);
+            decode_with(alpha_with_audio_beta_silent);
+            let files = [("alpha.mp4", MP4), ("beta.mp4", MP4)];
+            let (provider, _folder) = open(&mut host, &files, "alpha.mp4", "video/mp4");
+            shows(&mut host, MediaState::has_frame, "alpha video ready");
+            wait_for_probe(
+                &mut host,
+                || peaks_started() == 1,
+                "alpha starts audio-peaks",
+            );
+            let old_id = viewer_id(&host).expect("alpha viewer id");
+            let (old_sender, old_cancelled) = PEAKS_PROBES.with_borrow(|probes| probes[0].clone());
+            assert!(!old_cancelled.load(Ordering::Acquire));
+
+            // Step to beta.mp4 (silent) while alpha's audio-peaks handle is still active.
+            let next = Mods {
+                shift: true,
+                ..ctrl_alt()
+            };
+            press(&mut host, Key::Text(">".to_owned()), next);
+            provider.wait_for(&mut host, 1);
+            let beta = provider
+                .request(1)
+                .entry
+                .location
+                .native_path()
+                .map(Path::to_path_buf)
+                .expect("beta path");
+            provider.answer_as(1, "video/mp4", sandboxed(beta));
+            shows(
+                &mut host,
+                |s| s.clip().name == "beta.mp4" && s.has_frame(),
+                "beta video ready",
+            );
+            assert!(
+                old_cancelled.load(Ordering::Acquire),
+                "switching media cancels previous audio-peaks handle immediately"
+            );
+
+            // Late events on the old channel and direct stale-id deliveries are both discarded.
+            let _ = old_sender.send(PeaksEvent::Levels {
+                start: 0,
+                levels: vec![255; 256],
+            });
+            let mut accepted = true;
+            host.runtime().update(|app: &mut App, tx: &mut Tx| {
+                accepted = deliver_peaks(app, old_id, vec![(0, vec![255; 256])], tx);
+            });
+            assert!(!accepted, "stale viewer generation batch is discarded");
+            dwell(&mut host, Duration::from_millis(120));
+            assert!(
+                state(&host).is_some_and(|s| s.levels().is_empty()),
+                "beta's silent timeline stays unaffected by alpha's stale peaks"
+            );
+        },
+    );
+}
+
+#[test]
+fn closing_preview_cancels_active_peaks() {
+    hosted(
+        MODULE,
+        "media::closing_preview_cancels_active_peaks",
+        |mut host| {
+            let _hooks = BackgroundHooks::install(true, false);
+            decode_with(ten_seconds_of_sound);
+            let (_provider, _folder) = open(
+                &mut host,
+                &[("tone.wav", MP4)],
+                "tone.wav",
+                "audio/vnd.wave",
+            );
+            shows(
+                &mut host,
+                |s| s.duration() == Some(Duration::from_secs(10)),
+                "audio ready",
+            );
+            wait_for_probe(
+                &mut host,
+                || peaks_started() == 1,
+                "audio starts audio-peaks",
+            );
+            let cancelled = PEAKS_PROBES.with_borrow(|probes| probes[0].1.clone());
+            assert!(!cancelled.load(Ordering::Acquire));
+
+            space(&mut host);
+            let closed = host.run_until(PATIENCE, |host| state(host).is_none());
+            assert!(closed, "preview drawer closed");
+            assert!(
+                cancelled.load(Ordering::Acquire),
+                "closing preview cancels active audio-peaks handle immediately"
+            );
         },
     );
 }

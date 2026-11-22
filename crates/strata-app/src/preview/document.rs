@@ -25,6 +25,7 @@ use strata_fs::services::{
     DocumentLayout, DocumentListChildKind, DocumentMedia, DocumentSpan, DocumentSpanStyle,
     DocumentTableCellLayout, DocumentUnitKind, has_web_scheme,
 };
+use strata_kit::{look::Look, theme::Rgba8};
 use strata_preview::{
     sandbox::Cancellation,
     services::document_media::{self, DOCUMENT_MEDIA_LIMIT},
@@ -39,6 +40,73 @@ pub(crate) const DOCUMENT_KEY: &str = "preview-document";
 const MEDIA_RENDER_SLOTS: usize = 4;
 
 static NEXT_DOC_ID: AtomicU64 = AtomicU64::new(1);
+
+/// Semantic sRGB endpoints GTK's `MediaPicture::snapshot` maps diagram and equation luminance onto:
+/// black ink (`luma = 0`) becomes `text`, white background/box fills (`luma = 1`) become `surface`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) struct DiagramPalette {
+    pub(super) text: Rgba8,
+    pub(super) surface: Rgba8,
+}
+
+pub(super) fn diagram_palette(look: &Look) -> DiagramPalette {
+    DiagramPalette {
+        text: Rgba8::from_color(look.kit.c.text_base),
+        surface: Rgba8::from_color(look.kit.c.surface_raised),
+    }
+}
+
+/// Maps a straight-alpha sRGB RGBA8 equation or Mermaid raster's luminance onto `palette`
+/// (`src/ui/document_media.rs` `MediaPicture::snapshot`), preserving alpha unchanged.
+pub(super) fn tint_diagram_rgba(raw: &[u8], palette: DiagramPalette) -> Vec<u8> {
+    let text = [
+        f32::from(palette.text.r),
+        f32::from(palette.text.g),
+        f32::from(palette.text.b),
+    ];
+    let delta = [
+        f32::from(palette.surface.r) - text[0],
+        f32::from(palette.surface.g) - text[1],
+        f32::from(palette.surface.b) - text[2],
+    ];
+    let mut out = Vec::with_capacity(raw.len());
+    for &[r, g, b, a] in raw.as_chunks::<4>().0 {
+        let luma = (0.2126 * f32::from(r) + 0.7152 * f32::from(g) + 0.0722 * f32::from(b)) / 255.0;
+        out.push(remap_channel(text[0], delta[0], luma));
+        out.push(remap_channel(text[1], delta[1], luma));
+        out.push(remap_channel(text[2], delta[2], luma));
+        out.push(a);
+    }
+    out
+}
+
+fn remap_channel(base: f32, delta: f32, luma: f32) -> u8 {
+    (base + luma * delta).clamp(0.0, 255.0).round() as u8
+}
+
+fn is_tinted_media(source: &DocumentMedia) -> bool {
+    match source {
+        DocumentMedia::Math { .. } | DocumentMedia::Mermaid(_) => true,
+        DocumentMedia::Image(_) => false,
+    }
+}
+
+struct TintedMedia {
+    width: u32,
+    height: u32,
+    raw: Vec<u8>,
+    pixels: Pixels,
+}
+
+impl TintedMedia {
+    fn apply(&self, palette: DiagramPalette) {
+        self.pixels.set(
+            self.width,
+            self.height,
+            tint_diagram_rgba(&self.raw, palette),
+        );
+    }
+}
 
 pub(super) struct MediaTask {
     pub(super) unit: usize,
@@ -57,6 +125,8 @@ pub(super) struct RenderedDocument {
     pending: VecDeque<MediaTask>,
     running: usize,
     later: Later<App>,
+    palette: DiagramPalette,
+    tinted: Vec<TintedMedia>,
 }
 
 impl Drop for RenderedDocument {
@@ -73,10 +143,34 @@ pub(super) struct DocumentSpec {
     pub(super) document_path: Option<PathBuf>,
     pub(super) blocks: CodeBlocks,
     pub(super) later: Later<App>,
+    pub(super) palette: DiagramPalette,
 }
 
 impl RenderedDocument {
     pub(super) fn new(spec: DocumentSpec) -> Self {
+        let mut rendered = Self::from_spec(spec);
+        rendered.pump_media();
+        rendered
+    }
+
+    #[cfg(test)]
+    pub(super) fn new_without_pump(spec: DocumentSpec) -> (Self, Vec<MediaTask>) {
+        let mut rendered = Self::from_spec(spec);
+        let tasks = rendered.pending.drain(..).collect();
+        (rendered, tasks)
+    }
+
+    #[cfg(test)]
+    pub(super) fn id(&self) -> u64 {
+        self.id
+    }
+
+    #[cfg(test)]
+    pub(super) fn has_active_media_tasks(&self) -> bool {
+        self.running > 0 || !self.pending.is_empty()
+    }
+
+    fn from_spec(spec: DocumentSpec) -> Self {
         let id = NEXT_DOC_ID.fetch_add(1, Ordering::Relaxed);
         let (doc, media) = convert_layout(spec.layout, spec.warnings);
         let mut state = DocumentState::new(doc).key(DOCUMENT_KEY);
@@ -95,7 +189,7 @@ impl RenderedDocument {
                 pending.push_back(task);
             }
         }
-        let mut rendered = Self {
+        Self {
             id,
             state,
             blocks: spec.blocks,
@@ -104,9 +198,9 @@ impl RenderedDocument {
             pending,
             running: 0,
             later: spec.later,
-        };
-        rendered.pump_media();
-        rendered
+            palette: spec.palette,
+            tinted: Vec::new(),
+        }
     }
 
     pub(super) fn stop(&mut self) {
@@ -114,22 +208,32 @@ impl RenderedDocument {
         self.pending.clear();
     }
 
+    pub(super) fn sync_theme(&mut self, look: &Look) -> bool {
+        let next = diagram_palette(look);
+        if self.palette == next {
+            return false;
+        }
+        self.palette = next;
+        for media in &self.tinted {
+            media.apply(next);
+        }
+        !self.tinted.is_empty()
+    }
+
     pub(super) fn on_media_ready(
         &mut self,
         doc_id: u64,
         task: &MediaTask,
         outcome: DecodedMedia,
+        look: &Look,
     ) -> bool {
         if self.id != doc_id {
             return false;
         }
         self.running = self.running.saturating_sub(1);
+        self.sync_theme(look);
         match outcome {
-            Ok((w, h, raw)) => {
-                let pixels = Pixels::new();
-                pixels.set(w, h, raw);
-                self.state.set_media(task.unit, MediaState::Ready(pixels));
-            }
+            Ok((w, h, raw)) => self.install_media(task, w, h, raw),
             Err(reason) => {
                 let formatted = format_media_error(&task.source, &task.alt, &reason);
                 self.state.set_media_failed(task.unit, formatted);
@@ -137,6 +241,23 @@ impl RenderedDocument {
         }
         self.pump_media();
         true
+    }
+
+    fn install_media(&mut self, task: &MediaTask, width: u32, height: u32, raw: Vec<u8>) {
+        let pixels = Pixels::new();
+        if is_tinted_media(&task.source) {
+            let entry = TintedMedia {
+                width,
+                height,
+                raw,
+                pixels: pixels.clone(),
+            };
+            entry.apply(self.palette);
+            self.tinted.push(entry);
+        } else {
+            pixels.set(width, height, raw);
+        }
+        self.state.set_media(task.unit, MediaState::Ready(pixels));
     }
 
     fn pump_media(&mut self) {
@@ -159,7 +280,9 @@ impl RenderedDocument {
                 let outcome = joined
                     .unwrap_or_else(|_| Err("Image renderer stopped unexpectedly".to_owned()));
                 later.then(move |app: &mut App, _: &mut Tx| {
-                    app.preview.viewer.on_media_ready(doc_id, &task, outcome)
+                    app.preview
+                        .viewer
+                        .on_media_ready(doc_id, &task, outcome, &app.look)
                 });
             });
         }

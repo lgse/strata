@@ -173,6 +173,7 @@
 
 mod labels;
 mod request;
+mod segmented;
 mod state;
 mod view;
 

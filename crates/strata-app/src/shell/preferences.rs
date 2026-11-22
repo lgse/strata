@@ -86,6 +86,7 @@ pub(crate) fn follow_look(app: &mut App) {
         window.settings.preferences(),
         window.animations_allowed,
     );
+    crate::preview::sync_theme(app);
 }
 
 /// Updates the look with colour motion and font family switching on `tx`.
@@ -96,6 +97,7 @@ pub(crate) fn follow_look_tx(app: &mut App, tx: &mut Tx) {
         .build_look(window.settings.preferences(), window.animations_allowed);
     window.themes.apply_tx(look, next, tx);
     crate::preview::refresh_header(app);
+    crate::preview::sync_theme(app);
 }
 
 /// Syncs live preferences (`date_format`, `List` relative-date timer, and active `Preview`

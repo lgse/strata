@@ -276,6 +276,24 @@ impl Stream {
         self.header.is_some_and(|header| header.width > 0)
     }
 
+    pub(super) fn has_audio(&self) -> bool {
+        self.header.is_some_and(|header| header.audio)
+    }
+
+    pub(super) fn duration_us(&self) -> Option<u64> {
+        let header = self.header?;
+        let duration = self.end.unwrap_or(header.duration_us);
+        (duration > 0 && duration != media::MAX_DURATION_US).then_some(duration)
+    }
+
+    pub(super) fn can_decode_peaks(&self) -> bool {
+        self.has_audio() && self.duration_us().is_some()
+    }
+
+    pub(super) fn source(&self) -> &SandboxedMedia {
+        &self.source
+    }
+
     pub(super) fn playing(&self) -> bool {
         self.playing
     }
