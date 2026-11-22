@@ -707,4 +707,25 @@ fn text_only_reply_feeds_find_without_storing_image_and_upgrades_on_page_render(
     );
     assert!(st.held(2).is_some());
     assert_eq!(st.selected_text(), "NEEDLE");
+
+    // A stale TextOnly reply arriving after a newer PageReply::Rendered for a scanned page is dropped.
+    st.set_visible(3..4);
+    let scan_full = st.pop().expect("full render for scanned page 3");
+    assert_eq!((scan_full.page, scan_full.kind), (3, RenderKind::Page));
+    assert_eq!(
+        st.complete(scan_full.ticket, reply(500, None)),
+        Landed::Shown
+    );
+    assert_eq!(
+        st.complete(
+            r3.ticket,
+            PageReply::Text(Some(layer_of(&["stale NEEDLE"])))
+        ),
+        Landed::Dropped
+    );
+    assert_eq!(
+        st.find_status().map(|s| s.total),
+        Some(1),
+        "stale TextOnly reply must not populate text on a newer scanned page"
+    );
 }

@@ -360,6 +360,9 @@ impl Queue {
                 Landed::Shown
             }
             PageReply::Text(text) => {
+                if slot.held.is_some_and(|h| h.ticket > ticket) {
+                    return Landed::Dropped;
+                }
                 let shown = if slot.layer.is_none() {
                     self.set_layer(page, text, false)
                 } else {
