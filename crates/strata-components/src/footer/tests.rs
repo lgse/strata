@@ -15,7 +15,29 @@ fn listing() -> Listing {
 }
 
 fn selected(count: usize, d: Option<SelectionDetails>) -> Option<Selected> {
-    Some(Selected { count, details: d })
+    Some(Selected {
+        count,
+        details: d,
+        single: None,
+    })
+}
+
+fn single(entry: SingleSelection) -> Option<Selected> {
+    let d = if entry.is_directory {
+        details(0, 1, 0, 0)
+    } else {
+        details(
+            1,
+            0,
+            usize::from(entry.size.is_some()),
+            entry.size.unwrap_or(0),
+        )
+    };
+    Some(Selected {
+        count: 1,
+        details: Some(d),
+        single: Some(entry),
+    })
 }
 
 fn details(files: usize, folders: usize, known_files: usize, known_bytes: u64) -> SelectionDetails {
@@ -138,6 +160,73 @@ fn the_words_are_the_hosts() {
         ..CountWords::default()
     };
     assert_eq!(summary(&listing(), &words).text, "5 entries");
+}
+
+#[test]
+fn a_single_selected_entry_names_itself_with_size_and_optional_modified_date() {
+    let mut l = listing();
+    l.selected = single(SingleSelection {
+        name: "README.md".to_owned(),
+        is_directory: false,
+        size: Some(803),
+        modified: Some("Aug 24, 15:45".to_owned()),
+    });
+    let c = count(&l);
+    assert_eq!(c.text, "README.md (803 B) — Aug 24, 15:45");
+    assert_eq!(
+        c.description,
+        "1 of 5 items selected. Size includes selected files only; folder contents are not counted."
+    );
+
+    // List view omits the modified date.
+    l.selected = single(SingleSelection {
+        name: "README.md".to_owned(),
+        is_directory: false,
+        size: Some(803),
+        modified: None,
+    });
+    assert_eq!(count(&l).text, "README.md (803 B)");
+
+    // Unavailable file size and empty date string.
+    l.selected = single(SingleSelection {
+        name: "broken".to_owned(),
+        is_directory: false,
+        size: None,
+        modified: Some(String::new()),
+    });
+    assert_eq!(count(&l).text, "broken (size unavailable)");
+
+    // Single folder omits size, keeps modified date when provided.
+    l.selected = single(SingleSelection {
+        name: "Projects".to_owned(),
+        is_directory: true,
+        size: Some(4096),
+        modified: Some("3w ago".to_owned()),
+    });
+    assert_eq!(count(&l).text, "Projects — 3w ago");
+
+    l.selected = single(SingleSelection {
+        name: "Projects".to_owned(),
+        is_directory: true,
+        size: None,
+        modified: None,
+    });
+    assert_eq!(count(&l).text, "Projects");
+
+    // Selecting the sole item in a 1-item folder still uses the whole-listing summary.
+    let sole = Listing {
+        total: 1,
+        files: 1,
+        folders: 0,
+        selected: single(SingleSelection {
+            name: "only.txt".to_owned(),
+            is_directory: false,
+            size: Some(4),
+            modified: Some("Just now".to_owned()),
+        }),
+        filter: None,
+    };
+    assert_eq!(count(&sole).text, "1 file selected");
 }
 
 #[test]
