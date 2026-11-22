@@ -268,6 +268,7 @@ pub struct PreviewDrawer<'a, S> {
     caps: Caps,
     hosted: Option<HostedAccess<S>>,
     body: Body,
+    focused: bool,
     open_allowed: bool,
     labels: Rc<DrawerLabels>,
     files_key: String,
@@ -289,6 +290,7 @@ impl<'a, S: 'static> PreviewDrawer<'a, S> {
             caps: Caps::default(),
             hosted: None,
             body: Body::Empty,
+            focused: false,
             open_allowed: true,
             labels: Rc::new(DrawerLabels::default()),
             files_key: "files".into(),
@@ -343,6 +345,13 @@ impl<'a, S: 'static> PreviewDrawer<'a, S> {
     /// A message instead of a view ("No preview for this selection").
     pub fn placeholder(mut self, message: impl Into<String>) -> Self {
         self.body = Body::Placeholder(message.into());
+        self
+    }
+
+    /// Whether the preview drawer currently owns keyboard focus: highlights the header with the
+    /// active header surface fill (`columns::header_fill`) and top accent bar.
+    pub fn focused(mut self, on: bool) -> Self {
+        self.focused = on;
         self
     }
 
@@ -405,6 +414,7 @@ impl<'a, S: 'static> PreviewDrawer<'a, S> {
             caps,
             hosted,
             body,
+            focused,
             open_allowed,
             labels,
             files_key,
@@ -439,6 +449,7 @@ impl<'a, S: 'static> PreviewDrawer<'a, S> {
             let parts = Parts {
                 header: &header,
                 caps: &caps,
+                focused,
                 open_allowed,
                 // A placeholder has nothing to open, so its Open button stays visible and disabled.
                 open_disabled: matches!(body, Body::Placeholder(_)),
@@ -450,7 +461,15 @@ impl<'a, S: 'static> PreviewDrawer<'a, S> {
                 .child(divider::divider(&shared, st, solved, columns, look))
                 .child(stub("preview-open-stub".into(), &files_key));
         } else {
-            slot = empty_reserved_slot(slot, &shared, st.lit, slot_width, look);
+            slot = empty_reserved_slot(
+                slot,
+                &shared,
+                EmptySlot {
+                    width: slot_width,
+                    lit: st.lit,
+                },
+                look,
+            );
         }
         slot = append_slot_markers(
             slot,
@@ -559,6 +578,7 @@ pub const BODY_KEY: &str = "preview-body";
 pub(crate) struct Parts<'b, S> {
     pub header: &'b HeaderInfo,
     pub caps: &'b Caps,
+    pub focused: bool,
     pub open_allowed: bool,
     pub open_disabled: bool,
     pub drag: Option<&'b (Dnd<S>, DragSource<S>)>,
@@ -744,15 +764,19 @@ fn stub(key: String, to: &str) -> El {
         .focus_return(to)
 }
 
+struct EmptySlot {
+    width: f32,
+    lit: bool,
+}
+
 fn empty_reserved_slot<S: 'static>(
     slot: El,
     shared: &Shared<S>,
-    lit: bool,
-    slot_width: f32,
+    empty_slot: EmptySlot,
     look: &Look,
 ) -> El {
     let slot = slot.a11y_hidden();
-    if slot_width <= 0.0 {
+    if empty_slot.width <= 0.0 {
         return slot;
     }
     // The empty reserved slot keeps the divider's line, so the edge beside the columns looks the
@@ -772,7 +796,7 @@ fn empty_reserved_slot<S: 'static>(
             empty_slot_press(&empty, s, tx);
         })
     };
-    let line_color = if lit {
+    let line_color = if empty_slot.lit {
         look.kit.c.border_focus
     } else {
         look.kit.c.border_base

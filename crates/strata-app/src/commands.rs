@@ -547,20 +547,28 @@ pub(crate) fn in_view_with(
     })
 }
 
-/// The root element's keys: what the focused element and those around it left. Rune asks
-/// here before its own focus navigation, its default button and the window.
-pub(crate) fn from_element(app: &mut App, event: &KeyEvent, tx: &mut Tx) -> bool {
-    let handled = hear(app, event, Heard::Element, tx);
-    if !handled && event.key == rune::Key::Tab && crate::preview::is_open(app) {
+fn dispatch_with_preview_wake(app: &mut App, event: &KeyEvent, heard: Heard, tx: &mut Tx) -> bool {
+    let was_in_preview = crate::preview::owns_focus(app);
+    let handled = hear(app, event, heard, tx);
+    if was_in_preview
+        || crate::preview::owns_focus(app)
+        || (!handled && event.key == rune::Key::Tab && crate::preview::is_open(app))
+    {
         tx.wake_after(std::time::Duration::ZERO);
     }
     handled
 }
 
+/// The root element's keys: what the focused element and those around it left. Rune asks
+/// here before its own focus navigation, its default button and the window.
+pub(crate) fn from_element(app: &mut App, event: &KeyEvent, tx: &mut Tx) -> bool {
+    dispatch_with_preview_wake(app, event, Heard::Element, tx)
+}
+
 /// The window's keys: every key when nothing has the keyboard, and what a text field or a
 /// Rune modal passes on when a part says it holds the keyboard.
 pub(crate) fn on_key(app: &mut App, event: &KeyEvent, tx: &mut Tx) -> bool {
-    hear(app, event, Heard::Window, tx)
+    dispatch_with_preview_wake(app, event, Heard::Window, tx)
 }
 
 #[cfg(test)]

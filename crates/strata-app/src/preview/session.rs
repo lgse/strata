@@ -217,6 +217,7 @@ pub(super) fn clear_target(app: &mut App, tx: &mut Tx) {
     app.preview.header_source = None;
     app.preview.content_focus = super::ContentFocus::None;
     app.preview.owns_focus = false;
+    app.preview.focus_pending = false;
     app.preview.viewer.stop();
     app.preview.viewer = Viewer::Empty;
     app.preview.header = HeaderInfo::default();

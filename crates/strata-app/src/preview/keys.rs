@@ -399,6 +399,7 @@ fn enter_preview(app: &mut App, call: &Call<'_>, tx: &mut Tx) -> Outcome {
 
 fn focus_divider(app: &mut App, _: &Call<'_>, tx: &mut Tx) -> Outcome {
     app.preview.owns_focus = false;
+    app.preview.focus_pending = false;
     app.preview.drawer.focus_divider();
     tx.wake_after(std::time::Duration::ZERO);
     Outcome::Ran

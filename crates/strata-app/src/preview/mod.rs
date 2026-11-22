@@ -82,6 +82,9 @@ pub(crate) struct Preview {
     /// Whether keyboard focus is currently inside `preview-drawer` (excluding its resize grip):
     /// drives the Miller column header's active-destination bar (`UI-30`).
     owns_focus: bool,
+    /// A focus-into-preview handoff was just queued and has not committed yet; keep `owns_focus`
+    /// armed until the poll after that commit reconciles against `tx.focused()`.
+    focus_pending: bool,
     tab_shown: bool,
     click_opening: Option<ClickOpening>,
     focus_timer: Rc<RefCell<Option<glib::SourceId>>>,
@@ -194,6 +197,7 @@ impl Part for Preview {
             header_source: None,
             content_focus: ContentFocus::None,
             owns_focus: false,
+            focus_pending: false,
             tab_shown: false,
             click_opening: None,
             focus_timer: Rc::default(),
@@ -233,9 +237,7 @@ impl Part for Preview {
             false
         };
         let msg_focus = app.preview.sync_message_focus(tx);
-        let owns_focus = preview_owns_focus(app, tx);
-        let focus_changed = app.preview.owns_focus != owns_focus;
-        app.preview.owns_focus = owns_focus;
+        let focus_changed = sync_preview_focus(app, tx);
         let viewer = app.preview.viewer.poll(clock, &app.look, tx);
         let archive = viewer::tick_archive_if_active(app, tx);
         let pdf = pdf::poll(app, clock, tx);
@@ -256,6 +258,7 @@ impl Part for Preview {
     fn switched(app: &mut App, tx: &mut Tx) {
         let tab_shown = std::mem::take(&mut app.preview.tab_shown);
         app.preview.owns_focus = false;
+        app.preview.focus_pending = false;
         session::sync_reservation(app);
         if !app.preview.enabled && !app.preview.reserves_column_space(app) {
             app.preview.drawer.close(&app.look, tx);
@@ -269,6 +272,7 @@ impl Part for Preview {
     fn tab_shown(app: &mut App, _tx: &mut Tx) {
         app.preview.tab_shown = true;
         app.preview.owns_focus = false;
+        app.preview.focus_pending = false;
         ensure_operations_watch(app);
         sync_preferences(app);
         let prefs = shell::preferences(app);
@@ -283,12 +287,35 @@ pub(crate) fn current_entry(app: &App) -> Option<&FileEntry> {
 
 /// Whether the preview drawer currently owns keyboard focus (and shows its own top focus bar).
 pub(crate) fn owns_focus(app: &App) -> bool {
-    app.preview.owns_focus
+    app.preview.drawer.is_open()
+        && (app.preview.owns_focus
+            || app.preview.drawer.is_find_focused()
+            || app.preview.viewer.is_prompt_focused())
 }
 
 /// Whether the preview drawer is currently open.
 pub(crate) fn is_open(app: &App) -> bool {
     app.preview.drawer.is_open()
+}
+
+/// Marks a focus-into-preview handoff that commits on this or the next frame so `Preview::poll`
+/// does not clear `owns_focus` before the target mounts, then schedules a zero-delay poll to
+/// reconcile against `tx.focused()`.
+pub(super) fn arm_focus_handoff(app: &mut App, tx: &mut Tx) {
+    app.preview.owns_focus = true;
+    app.preview.focus_pending = true;
+    tx.wake_after(std::time::Duration::ZERO);
+}
+
+fn sync_preview_focus(app: &mut App, tx: &mut Tx) -> bool {
+    if std::mem::take(&mut app.preview.focus_pending) {
+        tx.wake_after(std::time::Duration::ZERO);
+        return false;
+    }
+    let owns_focus = preview_owns_focus(app, tx);
+    let changed = app.preview.owns_focus != owns_focus;
+    app.preview.owns_focus = owns_focus;
+    changed
 }
 
 fn preview_owns_focus(app: &App, tx: &Tx) -> bool {
@@ -314,6 +341,7 @@ fn wrap(app: &App, files: El, frame: &mut Frame<'_, App>) -> El {
             .rules(DrawerRules::STRATA)
             .labels(labels::drawer())
             .files_key(files_key)
+            .focused(owns_focus(app))
             .find_keys(keys::find_keys_in(tenxer))
             .hosted(&app.preview.viewer, |app: &mut App| &mut app.preview.viewer)
             .on_background_drag(on_background_drag)
@@ -505,6 +533,7 @@ pub(crate) fn to_top(app: &App, tx: &mut Tx) {
 /// The listing takes the keys back; the drawer stays open (`return_from_preview`).
 pub(crate) fn return_to_files(app: &mut App) {
     app.preview.owns_focus = false;
+    app.preview.focus_pending = false;
     app.preview.drawer.focus_files();
 }
 

@@ -150,6 +150,7 @@ pub(super) fn ready(app: &mut App, arrived: Arrived, tx: &mut Tx) -> Viewer {
         stream.play();
     }
     if stepped.is_some_and(|stepped| stepped.keys) {
+        super::arm_focus_handoff(app, tx);
         app.preview.drawer.focus_content_when_shown(tx);
     }
     let mut viewer = MediaViewer {

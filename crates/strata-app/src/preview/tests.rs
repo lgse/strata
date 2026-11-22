@@ -740,8 +740,13 @@ fn columns_divider_and_active_header_yield_to_preview_drawer() {
                 has_element_key(&mut host, &col1_indicator),
                 "active column shows its top bar while columns hold focus"
             );
+            assert!(
+                !has_element_key(&mut host, "preview-header-indicator"),
+                "preview header is unfocused while columns hold focus"
+            );
 
-            // Entering the preview moves the top focus bar off the active Miller column.
+            // Entering the preview moves the top focus bar and active header fill off the active
+            // Miller column and onto the preview header while keeping the preview body on bg_base.
             press(&mut host, Key::Right, Mods::default());
             while host.turn() {}
             assert_eq!(focused_key(&mut host).as_deref(), Some("preview-code"));
@@ -750,13 +755,48 @@ fn columns_divider_and_active_header_yield_to_preview_drawer() {
                 !has_element_key(&mut host, &col1_indicator),
                 "active column loses its top focus bar while preview owns focus"
             );
+            assert!(
+                has_element_key(&mut host, "preview-header-indicator"),
+                "preview header shows its focused top bar while preview owns focus"
+            );
+            let look = host.app().look.clone();
+            let elements = host.runtime().elements();
+            let header_fill = elements
+                .iter()
+                .find(|el| !el.exiting && el.key.as_deref() == Some("preview-header"))
+                .expect("preview-header")
+                .fill;
+            let body_fill = elements
+                .iter()
+                .find(|el| !el.exiting && el.key.as_deref() == Some("preview-drawer"))
+                .expect("preview-drawer")
+                .fill;
+            assert_eq!(
+                header_fill,
+                strata_kit::slots::columns::header_fill(&look),
+                "focused preview header takes the active header surface fill"
+            );
+            assert_eq!(
+                body_fill, look.kit.c.bg_base,
+                "preview body keeps the folder background fill"
+            );
 
-            // Returning focus to files restores the active column's top focus bar.
+            // Returning focus to files restores the active column's top focus bar and clears the
+            // preview header's focused highlight.
             press(&mut host, Key::Left, Mods::default());
             while host.turn() {}
             assert_eq!(focused_key(&mut host).as_deref(), Some("columns"));
             assert!(!super::owns_focus(host.app()));
             assert!(has_element_key(&mut host, &col1_indicator));
+            assert!(!has_element_key(&mut host, "preview-header-indicator"));
+            let unfocused_header_fill = host
+                .runtime()
+                .elements()
+                .into_iter()
+                .find(|el| !el.exiting && el.key.as_deref() == Some("preview-header"))
+                .expect("preview-header")
+                .fill;
+            assert_eq!(unfocused_header_fill, rune::Color::TRANSPARENT);
 
             // Turning the preview panel off restores the rightmost column's own edge line.
             host.runtime().update(|app, tx| {
@@ -822,6 +862,63 @@ fn columns_header_buttons_stay_non_focusable_across_tenxer_toggle() {
             assert_eq!(
                 focused_key(&mut host).as_deref(),
                 Some(crate::columns::VIEW)
+            );
+        },
+    );
+}
+
+#[test]
+fn handled_shortcut_leaving_focused_preview_restores_active_column_indicator() {
+    hosted(
+        MODULE,
+        "handled_shortcut_leaving_focused_preview_restores_active_column_indicator",
+        |mut host| {
+            let folder = listed(&mut host);
+            disable_auto_preview(&mut host);
+            let todo = Location::local(folder.path().join("todo.txt"));
+
+            select(&mut host, &todo);
+            focus_view(&mut host);
+            space(&mut host);
+            wait_for_code_preview(&mut host);
+            while host.turn() {}
+
+            let col0 = host.app().columns.list_keys()[0].clone();
+            let indicator = strata_components::columns::keys::indicator(&col0);
+
+            press(&mut host, Key::Right, Mods::default());
+            while host.turn() {}
+            assert_eq!(focused_key(&mut host).as_deref(), Some("preview-code"));
+            assert!(super::owns_focus(host.app()));
+            assert!(!has_element_key(&mut host, &indicator));
+
+            // A handled shortcut that moves focus out of the preview (Ctrl+L -> location bar)
+            // must schedule an immediate wake so owns_focus clears and the active column indicator
+            // returns on the next tick with no extra user events.
+            let ctrl = Mods {
+                ctrl: true,
+                ..Mods::default()
+            };
+            crate::test_support::send_key(
+                &mut host,
+                KeyEvent {
+                    key: Key::Text("l".to_owned()),
+                    mods: ctrl,
+                },
+            );
+            host.runtime().frame(0.0);
+            assert!(
+                host.runtime().wake_deadline().is_some(),
+                "leaving preview via a handled shortcut schedules a zero-delay poll wake"
+            );
+            host.runtime().frame(0.0);
+            assert!(
+                !super::owns_focus(host.app()),
+                "owns_focus clears once focus moves to the location bar"
+            );
+            assert!(
+                has_element_key(&mut host, &indicator),
+                "active column restores its top focus bar after Ctrl+L leaves preview"
             );
         },
     );
