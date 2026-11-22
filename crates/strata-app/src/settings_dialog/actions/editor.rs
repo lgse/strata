@@ -7,6 +7,7 @@ use rune::{TextEdit, Tx};
 use strata_components::{
     code_view::{editor::EditorState, highlight::Highlighter},
     controls::tabbed_form::TabbedFormState,
+    scroll::Bar,
 };
 use strata_core::{
     i18n::tr,
@@ -23,7 +24,10 @@ use strata_core::{
 use strata_fs::services::{ActionHandle, ActionScript};
 
 use super::readiness::{ReadinessState, RefreshRequest};
-use crate::{App, custom_actions::is_known_action_icon, slots::WeakLater};
+use crate::{
+    App, custom_actions::is_known_action_icon, settings_dialog::controls::settings_bar,
+    slots::WeakLater,
+};
 
 pub(super) const GENERAL_TAB: usize = 0;
 pub(super) const SCRIPT_TAB: usize = 1;
@@ -87,6 +91,8 @@ pub(super) struct EditorSession {
     pub(super) examples_query: TextEdit,
     pub(super) examples_category: &'static str,
     pub(super) pending_example: Option<&'static ActionExample>,
+    pub(super) editor_bars: [Bar; 3],
+    pub(super) examples_bar: Bar,
     pub(super) readiness: ReadinessState,
     pub(super) error: Option<String>,
     pub(super) error_tab: Option<usize>,
@@ -155,6 +161,8 @@ impl EditorSession {
             examples_query: TextEdit::default(),
             examples_category: "All",
             pending_example: None,
+            editor_bars: std::array::from_fn(|_| settings_bar()),
+            examples_bar: settings_bar(),
             readiness: ReadinessState::default(),
             error: None,
             error_tab: None,
@@ -204,6 +212,15 @@ impl EditorSession {
 
     pub(super) fn popover_open(&self) -> bool {
         self.more_icons_open || self.examples_open
+    }
+
+    pub(super) fn release_bars(&self) {
+        for bar in &self.editor_bars {
+            bar.release();
+        }
+        self.examples_bar.release();
+        self.python_editor.release_bars();
+        self.bash_editor.release_bars();
     }
 
     pub(super) fn has_focused_field(&self) -> bool {
@@ -294,6 +311,7 @@ impl EditorSession {
         self.error = None;
         self.error_tab = None;
         self.examples_open = false;
+        self.examples_bar.release();
         self.examples_query.focused = false;
         self.pending_example = None;
         self.tabs.select(SCRIPT_TAB);

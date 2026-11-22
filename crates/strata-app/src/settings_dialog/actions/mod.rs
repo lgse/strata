@@ -103,7 +103,9 @@ impl ActionsState {
     /// Releases the `ActionRegistry` observer and closes any action modal when Settings closes.
     pub(super) fn closed(&mut self) {
         self.observer = None;
-        self.editor = None;
+        if let Some(editor) = self.editor.take() {
+            editor.release_bars();
+        }
         self.delete_confirm = None;
         self.notice = None;
     }
@@ -273,7 +275,9 @@ fn open_editor(app: &mut App, mut draft: EditorDraft<'_>, tx: &mut Tx) {
 }
 
 pub(super) fn close_editor(app: &mut App) {
-    app.settings_dialog.actions.editor = None;
+    if let Some(editor) = app.settings_dialog.actions.editor.take() {
+        editor.release_bars();
+    }
 }
 
 pub(super) fn confirm_editor(app: &mut App, tx: &mut Tx) {
@@ -320,7 +324,7 @@ pub(super) fn confirm_editor(app: &mut App, tx: &mut Tx) {
             editor.saving = false;
             match outcome {
                 Ok(()) => {
-                    app.settings_dialog.actions.editor = None;
+                    close_editor(app);
                     refresh_catalog(app);
                 }
                 Err(error) => {

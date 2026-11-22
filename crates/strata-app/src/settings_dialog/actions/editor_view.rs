@@ -32,7 +32,13 @@ use super::{
     },
     examples, icon_chooser, readiness,
 };
-use crate::{App, buttons, custom_actions::action_icon};
+use crate::{
+    App, buttons,
+    custom_actions::action_icon,
+    settings_dialog::controls::{
+        SCROLLBAR_EDGE_INSET, SCROLLBAR_END_INSET, bounded_scroll_with_bar, settings_bar_look,
+    },
+};
 
 const EDITOR_DIALOG_WIDTH: f32 = 760.0;
 const EDITOR_BODY_HEIGHT: f32 = 480.0;
@@ -130,14 +136,33 @@ fn build_tab(app: &App, index: usize) -> El {
         SCRIPT_TAB => script_tab(app, look, session),
         _ => behavior_tab(look, session),
     };
-    col()
+    let scroll_key = format!("settings-action-editor-tab-{index}-scroll");
+    let bar_key = format!("settings-action-editor-tab-{index}-scrollbar");
+    let bar = &session.editor_bars[index.min(session.editor_bars.len() - 1)];
+    let inner = col()
+        .w_full()
+        .min_w(0.0)
+        .pt(16.0)
+        .pb(16.0)
+        .pr(12.0)
+        .child(content);
+    let viewport = col()
+        .key(scroll_key.clone())
         .w_full()
         .max_h(EDITOR_BODY_HEIGHT - 44.0)
-        .pt(16.0)
+        .shrink()
+        .min_h(0.0)
         .scroll(ScrollSpec {
             stick_bottom: false,
         })
-        .child(content)
+        .on_scroll_offset(bar.watch())
+        .child(inner);
+    bounded_scroll_with_bar(
+        viewport,
+        bar,
+        (&bar_key, &scroll_key),
+        settings_bar_look(look, SCROLLBAR_EDGE_INSET, SCROLLBAR_END_INSET),
+    )
 }
 
 fn general_tab(look: &Look, session: &EditorSession) -> El {

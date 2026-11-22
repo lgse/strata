@@ -364,3 +364,126 @@ fn an_open_choice_menu_holds_the_keyboard_as_a_popover() {
         },
     );
 }
+
+fn is_mounted(host: &Offscreen, key: &str) -> bool {
+    host.elements()
+        .iter()
+        .any(|el| !el.exiting && el.key.as_deref() == Some(key))
+}
+
+#[test]
+fn settings_scrollbars_mount_track_scroll_and_stay_idle_at_rest() {
+    hosted(
+        MODULE,
+        "settings_scrollbars_mount_track_scroll_and_stay_idle_at_rest",
+        |mut host| {
+            click(&mut host, "header-settings");
+            assert!(is_mounted(&host, "settings-page-scrollbar"));
+            assert!(is_mounted(&host, "settings-rail-scrollbar"));
+            assert!(
+                host.app().settings_dialog.page_bar.overflows(),
+                "General settings overflows and activates the page scrollbar"
+            );
+
+            // Wheel scrolling over the page updates the bar's tracked offset.
+            let pane = node_bounds(&host.tree(), "settings-page").expect("page bounds");
+            host.runtime()
+                .wheel(pane[0] + pane[2] / 2.0, pane[1] + pane[3] / 2.0, -320.0);
+            idle(&mut host);
+            assert!(
+                host.app().settings_dialog.page_bar.pos().offset[1] > 0.0,
+                "page scrollbar tracks wheel scroll offset"
+            );
+
+            // Appearance mounts the theme catalog scrollbar and choice popover scrollbar.
+            click(&mut host, "settings-nav-theme");
+            assert!(is_mounted(&host, "settings-theme-catalog-scrollbar"));
+            assert!(
+                host.app().settings_dialog.theme_bar.overflows(),
+                "theme catalog overflows and activates its scrollbar"
+            );
+            click(&mut host, "settings-choice-interface-font-toggle");
+            assert!(is_mounted(
+                &host,
+                "settings-choice-interface-font-scrollbar"
+            ));
+            press(&mut host, Key::Escape, Mods::default());
+            assert!(!is_mounted(
+                &host,
+                "settings-choice-interface-font-scrollbar"
+            ));
+
+            // Actions editor mounts tab scrollbars, CodeEditor scrollbars, and Examples scrollbar.
+            click(&mut host, "settings-nav-actions");
+            click(&mut host, "settings-actions-new");
+            assert!(is_mounted(&host, "settings-action-editor-tab-0-scrollbar"));
+            click(&mut host, "settings-action-editor-tabs-tab-1");
+            assert!(is_mounted(&host, "settings-action-script-python-bar"));
+            assert!(is_mounted(&host, "settings-action-script-python-sideways"));
+            click(&mut host, "settings-action-editor-library");
+            assert!(is_mounted(&host, "settings-action-library-scrollbar"));
+            press(&mut host, Key::Escape, Mods::default());
+            click(&mut host, "settings-action-editor-tabs-tab-2");
+            assert!(is_mounted(&host, "settings-action-editor-tab-2-scrollbar"));
+
+            // Dismissing the editor leaves Settings idle with no spurious poll churn.
+            press(&mut host, Key::Escape, Mods::default());
+            idle(&mut host);
+            let mut tx = rune::Tx::default();
+            assert!(
+                !SettingsDialog::poll(host.app_mut(), 10.0, &mut tx),
+                "idle SettingsDialog::poll reports no spurious changes"
+            );
+        },
+    );
+}
+
+#[test]
+fn page_switch_resets_scroll_without_breaking_settings_search_reveal() {
+    hosted(
+        MODULE,
+        "page_switch_resets_scroll_without_breaking_settings_search_reveal",
+        |mut host| {
+            click(&mut host, "header-settings");
+            let pane = node_bounds(&host.tree(), "settings-page").expect("page bounds");
+            host.runtime()
+                .wheel(pane[0] + pane[2] / 2.0, pane[1] + pane[3] / 2.0, -320.0);
+            idle(&mut host);
+            assert!(
+                host.app().settings_dialog.page_bar.pos().offset[1] > 0.0,
+                "General scrolled down before switching pages"
+            );
+
+            click(&mut host, "settings-nav-theme");
+            assert_eq!(
+                host.app().settings_dialog.page_bar.pos().offset[1],
+                0.0,
+                "switching pages resets settings-page scroll to the top"
+            );
+
+            // Scroll down again on Appearance (in the page margin, outside the nested theme list),
+            // then jump via Settings search to a General row.
+            let pane = node_bounds(&host.tree(), "settings-page").expect("page bounds");
+            host.runtime()
+                .wheel(pane[0] + pane[2] - 8.0, pane[1] + pane[3] / 2.0, -320.0);
+            idle(&mut host);
+            assert!(host.app().settings_dialog.page_bar.pos().offset[1] > 0.0);
+
+            click(&mut host, "settings-search-field");
+            for ch in "Folder peeking".chars() {
+                press(&mut host, Key::Text(ch.to_string()), Mods::default());
+            }
+            host.runtime().frame(0.2);
+            idle(&mut host);
+            press(&mut host, Key::Enter, Mods::default());
+
+            let tree = host.tree();
+            let switch = node_bounds(&tree, "settings-switch-peeking");
+            let pane = node_bounds(&tree, "settings-page");
+            assert!(
+                switch.is_some_and(|rect| in_viewport(rect, pane)),
+                "Settings search Enter reveals the matched row inside settings-page"
+            );
+        },
+    );
+}
