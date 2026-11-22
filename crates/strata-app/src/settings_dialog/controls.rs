@@ -524,12 +524,8 @@ fn build_choice_popup(
             tx.focus(anchor_for_dismiss.clone(), true);
         })
         .child(scrolled);
-    let mut surface = popover::raised(kit, body, kit.radius.md)
-        .fill(look.transparency.overlay_color(kit.c.surface_raised))
+    let surface = strata_kit::transparency::raised_popover(look, body, kit.radius.md)
         .border(1.0, look.transparency.frosted_border(kit.c.border_base));
-    if look.transparency.frosted_glass {
-        surface = surface.backdrop_blur(look.transparency.backdrop_blur);
-    }
     menu_layer.push(popover::anchored(
         kit,
         surface,

@@ -105,6 +105,11 @@ impl TransparencyPreferences {
         self
     }
 
+    /// Whether changing window focus affects the resolved surface alphas.
+    pub fn varies_with_focus(self) -> bool {
+        self.enabled && (self.unfocused_multiplier - 1.0).abs() > f64::EPSILON
+    }
+
     /// Clamps numeric fields into their accepted ranges in place.
     pub fn normalize(&mut self) {
         self.background_transparency =

@@ -336,7 +336,7 @@ impl<S: 'static> Jobs<S> {
             button = button.fill(k.alpha(accent, BUTTON_CHECKED_ALPHA));
             layer.push(popover::anchored(
                 k,
-                popover::raised(k, self.list(s, look), k.radius.md),
+                strata_kit::transparency::raised_popover(look, self.list(s, look), k.radius.md),
                 &self.key,
                 Placement::TopEnd,
                 look.space.lg,

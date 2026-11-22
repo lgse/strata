@@ -11,7 +11,7 @@
 
 use std::hash::{Hash, Hasher};
 
-use rune::Color;
+use rune::{Color, El};
 use rune_kit::Palette;
 
 use crate::look::Look;
@@ -220,6 +220,26 @@ impl Transparency {
             ..lift
         }
     }
+}
+
+/// Wraps `body` in `rune_kit::popover::raised`, applying Strata's floating-overlay legibility
+/// floor, frosted border sheen, and conditional GPU backdrop blur when transparency is enabled.
+pub fn raised_popover(look: &Look, body: El, radius: f32) -> El {
+    let kit = &look.kit;
+    let mut surface = rune_kit::popover::raised(kit, body, radius);
+    if look.transparency.enabled {
+        surface = surface
+            .fill(look.transparency.overlay_color(kit.c.surface_raised))
+            .border(
+                1.0,
+                look.transparency
+                    .frosted_border(kit.alpha(kit.c.std_border, 0.5)),
+            );
+    }
+    if look.transparency.frosted_glass {
+        surface = surface.backdrop_blur(look.transparency.backdrop_blur);
+    }
+    surface
 }
 
 /// Snapshot of the theme's original surface colors captured in [`Look::from_kit`], allowing

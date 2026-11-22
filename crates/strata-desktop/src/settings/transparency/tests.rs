@@ -45,6 +45,22 @@ fn defaults_leave_transparency_disabled_and_sensible_subvalues() {
         defaults.unfocused_multiplier,
         DEFAULT_UNFOCUSED_TRANSPARENCY_MULTIPLIER
     );
+    assert!(!defaults.varies_with_focus());
+    assert!(
+        TransparencyPreferences {
+            enabled: true,
+            ..defaults
+        }
+        .varies_with_focus()
+    );
+    assert!(
+        !TransparencyPreferences {
+            enabled: true,
+            unfocused_multiplier: 1.0,
+            ..defaults
+        }
+        .varies_with_focus()
+    );
 }
 
 #[test]

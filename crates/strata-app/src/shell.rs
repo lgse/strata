@@ -306,7 +306,7 @@ pub(crate) fn reopened(app: &mut App) {
     app.window.on_screen = true;
     app.window.active = false;
     presence::follow(app);
-    if transparency(app).enabled {
+    if transparency(app).varies_with_focus() {
         follow_look(app);
     }
     window_later(app).then(|app, tx| {
@@ -1293,13 +1293,13 @@ pub(crate) fn view(app: &App, cx: &mut Cx<App>) -> El {
             let focus_changed = app.window.active != focused;
             app.window.active = focused;
             presence::follow(app);
+            if focus_changed && transparency(app).varies_with_focus() {
+                follow_look_tx(app, tx);
+            }
             if !focused && app.window.held != rune::Mods::default() {
                 modifiers(app, rune::Mods::default(), tx);
             }
             location::window_focused(app, focused, tx);
-            if focus_changed && transparency(app).enabled {
-                follow_look_tx(app, tx);
-            }
         })
 }
 
