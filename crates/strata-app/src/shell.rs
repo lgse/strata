@@ -1259,7 +1259,8 @@ fn body(app: &App, sidebar: Option<El>, files: Option<El>) -> El {
     // the tree when the sidebar comes or goes: a view whose path changed would be mounted
     // anew, and lose its scroll and focus. Beside the sidebar the files take what it leaves.
     // The sidebar paints its own `bg_deep`, and each file view (`columns-host`, `single::body`,
-    // `preview-drawer`) paints its own `bg_base` once so translucent surfaces never double-blend.
+    // `ListTable`'s backdrop, `preview-slot`) paints its own surface once so translucent surfaces
+    // never double-blend.
     let mut files_col = col()
         .key("body-files")
         .grow(1.0)

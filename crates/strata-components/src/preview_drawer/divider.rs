@@ -98,7 +98,7 @@ pub(super) fn divider<S: 'static>(
         .paint_order(1)
         .hover_group()
         .cursor(Cursor::ResizeColumn)
-        .transition(Transition::none())
+        .transition(super::slide_exit(shared.animations))
         .child(rune::row().w_full().h_full().child(line).child(grip))
         .hover_delays(CAPTION_DELAY, Duration::ZERO)
         .on_hover_change(move |s: &mut S, inside: bool, _tx: &mut Tx| {
