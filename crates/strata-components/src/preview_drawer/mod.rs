@@ -444,7 +444,8 @@ impl<'a, S: 'static> PreviewDrawer<'a, S> {
             .key("preview-slot")
             .w(slot_width)
             .h_full()
-            .clip_soft(0.0);
+            .clip_soft(0.0)
+            .fill(look.kit.c.bg_base);
         if shown {
             let parts = Parts {
                 header: &header,
@@ -493,6 +494,7 @@ impl<'a, S: 'static> PreviewDrawer<'a, S> {
                     .grow(1.0)
                     .min_w(0.0)
                     .h_full()
+                    .clip_soft(0.0)
                     .child(files),
             )
             .child(slot)
@@ -585,6 +587,19 @@ pub(crate) struct Parts<'b, S> {
     pub find_keys: fn(&KeyEvent) -> bool,
 }
 
+/// Exit transition shared by the drawer pane and its leading divider: mounts instantaneously and
+/// stays visible while the clipped slot slides shut.
+pub(super) fn slide_exit(animations: bool) -> Transition {
+    if animations {
+        Transition::identity().springs(rune::SpringPair {
+            enter: rune::Spring::NONE,
+            exit: rune::Spring::new(SLIDE_SECONDS, 0.0),
+        })
+    } else {
+        Transition::none()
+    }
+}
+
 fn pane<S: 'static>(
     shared: &Shared<S>,
     st: &DrawerState,
@@ -604,15 +619,7 @@ fn pane<S: 'static>(
         ),
         Body::Empty => el(),
     };
-    // The content stays, inert and fading, while the slot slides shut.
-    let exit = if shared.animations {
-        Transition::identity().springs(rune::SpringPair {
-            enter: rune::Spring::NONE,
-            exit: rune::Spring::new(SLIDE_SECONDS, 0.0),
-        })
-    } else {
-        Transition::none()
-    };
+    let exit = slide_exit(shared.animations);
     let keys = shared.clone();
     let find_keys = parts.find_keys;
     let searchable = parts.caps.searchable;
@@ -624,7 +631,6 @@ fn pane<S: 'static>(
         .h_full()
         .pin(Some(shared.rules.line), Some(0.0), None, Some(0.0))
         .clip_soft(0.0)
-        .fill(k.c.bg_base)
         .preserve_focus_on_press(true)
         .transition(exit)
         .on_key(move |s: &mut S, ev: &KeyEvent, tx: &mut Tx| {
@@ -801,7 +807,7 @@ fn empty_reserved_slot<S: 'static>(
     } else {
         look.kit.c.border_base
     };
-    slot.fill(look.kit.c.bg_base).child(
+    slot.child(
         el().key("preview-empty-line")
             .w(shared.rules.line)
             .h_full()

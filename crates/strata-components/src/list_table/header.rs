@@ -48,7 +48,6 @@ pub(super) fn strip_key(key: &str) -> String {
 pub(super) fn strip<S: 'static>(shared: &Rc<Shared<S>>, resolved: &Rc<Resolved>, s: &S) -> El {
     let parts = (shared.parts)(s);
     let look = parts.look;
-    let kit = &look.kit;
     let layout_shared = shared.clone();
     let menu_shared = shared.clone();
     let mut strip = row()
@@ -56,8 +55,6 @@ pub(super) fn strip<S: 'static>(shared: &Rc<Shared<S>>, resolved: &Rc<Resolved>,
         .w_full()
         .h(tokens::heading_height(look))
         .pl(resolved.lead)
-        .fill(kit.c.bg_deep)
-        .border_sides([0.0, 0.0, 1.0, 0.0], kit.c.border_base)
         .on_layout_tx(move |s: &mut S, r, tx: &mut Tx| {
             (layout_shared.table_mut)(s).strip = Rect::from(r);
             tx.live_only();

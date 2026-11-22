@@ -461,3 +461,105 @@ fn overlay_above_divider_takes_pointer_hits_while_divider_stays_draggable() {
         "divider must still resize the drawer when no overlay covers it"
     );
 }
+
+#[test]
+fn sliding_open_closing_and_reversing_keep_single_bg_base_fill_across_slot() {
+    use rune::Color;
+    use strata_kit::{shape::LookParams, transparency::TransparencyParams};
+
+    struct SlideHost {
+        drawer: DrawerState,
+        look: Look,
+    }
+
+    fn slide_view(host: &SlideHost, cx: &mut rune::Cx<SlideHost>) -> El {
+        PreviewDrawer::new(&host.drawer, |h: &mut SlideHost| &mut h.drawer)
+            .placeholder("Ready")
+            .build(
+                el().key("files")
+                    .w_full()
+                    .h_full()
+                    .fill(host.look.kit.c.bg_base),
+                &host.look,
+                cx,
+            )
+    }
+
+    let look = Look::fallback(false).with_params(&LookParams {
+        transparency: TransparencyParams {
+            enabled: true,
+            background_percent: 30,
+            raised_percent: 40,
+            ..TransparencyParams::default()
+        },
+        ..LookParams::default()
+    });
+    assert!(look.kit.c.bg_base.a < 0.99);
+
+    let mut rt = Runtime::new(
+        SlideHost {
+            drawer: DrawerState::new(),
+            look: look.clone(),
+        },
+        slide_view,
+        (1000.0, 500.0),
+        Env::default(),
+    );
+    rt.frame(0.0);
+    rt.settle_all();
+
+    let check = |rt: &Runtime<SlideHost>, stage: &str| {
+        let bg = rt.state.look.kit.c.bg_base;
+        let els = rt.elements();
+        let files = els
+            .iter()
+            .find(|e| !e.exiting && e.key.as_deref() == Some("preview-files"))
+            .expect("preview-files");
+        let slot = els
+            .iter()
+            .find(|e| !e.exiting && e.key.as_deref() == Some("preview-slot"))
+            .expect("preview-slot");
+        assert_eq!(slot.fill, bg, "{stage}: preview-slot owns bg_base");
+        for drawer in els
+            .iter()
+            .filter(|e| e.key.as_deref() == Some("preview-drawer"))
+        {
+            assert_eq!(
+                drawer.fill,
+                Color::TRANSPARENT,
+                "{stage}: preview-drawer must not double-paint bg_base"
+            );
+        }
+        let seam = (files.visible[0] + files.visible[2] - slot.visible[0]).abs();
+        assert!(
+            seam <= 0.5,
+            "{stage}: files right ({}) meets slot left ({})",
+            files.visible[0] + files.visible[2],
+            slot.visible[0]
+        );
+    };
+
+    // Open slide.
+    rt.update(|h, tx| h.drawer.open(&h.look, tx));
+    for dt in [0.0, 1.0 / 60.0, 0.05, 0.08, 0.08, 0.1] {
+        rt.frame(dt);
+        check(&rt, "open");
+    }
+
+    // Close slide, then reverse back open mid-slide, then close fully.
+    rt.update(|h, tx| h.drawer.close(&h.look, tx));
+    for dt in [0.0, 1.0 / 60.0, 0.06] {
+        rt.frame(dt);
+        check(&rt, "close mid");
+    }
+    rt.update(|h, tx| h.drawer.open(&h.look, tx));
+    for dt in [0.0, 1.0 / 60.0, 0.08, 0.12, 0.12] {
+        rt.frame(dt);
+        check(&rt, "reopen mid-close");
+    }
+    rt.update(|h, tx| h.drawer.close(&h.look, tx));
+    for dt in [0.0, 1.0 / 60.0, 0.05, 0.08, 0.08, 0.1] {
+        rt.frame(dt);
+        check(&rt, "close full");
+    }
+}
