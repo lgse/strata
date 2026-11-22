@@ -29,6 +29,10 @@ fn frame_density_grows_every_bar_in_lock_step_and_nothing_else() {
                 slots::tabs::tab_height(&grown),
                 slots::tabs::tab_height(&base) + d
             );
+            assert_eq!(
+                slots::columns::header_height(&grown),
+                slots::columns::header_height(&base) + d
+            );
             assert_eq!(grown.row.sidebar, base.row.sidebar + d);
             assert_eq!(grown.frame.bar, base.frame.bar, "the inset is padding");
             assert_eq!(grown.frame.control, base.frame.control);
@@ -52,6 +56,10 @@ fn content_density_leaves_the_frame_alone() {
             assert_eq!(
                 slots::tabs::tab_height(&other),
                 slots::tabs::tab_height(&base)
+            );
+            assert_eq!(
+                slots::columns::header_height(&other),
+                slots::columns::header_height(&base)
             );
             assert_eq!(other.row.palette, base.row.palette);
         }

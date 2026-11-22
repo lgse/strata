@@ -199,10 +199,13 @@ fn reset_zoom(app: &mut App, _: &Call<'_>, tx: &mut Tx) -> Outcome {
     Outcome::Ran
 }
 
-fn on_intent(app: &mut App, intent: PdfIntent, _: &mut Tx) {
+fn on_intent(app: &mut App, intent: PdfIntent, tx: &mut Tx) {
     match intent {
         PdfIntent::Open => super::open_current(app),
-        PdfIntent::Leave => app.preview.drawer.focus_files(),
+        PdfIntent::Leave => {
+            super::return_to_files(app);
+            tx.wake_after(std::time::Duration::ZERO);
+        }
         _ => {}
     }
 }

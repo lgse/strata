@@ -431,6 +431,7 @@ fn render_password_prompt(
     prompt.set_error(error);
     if focus {
         prompt.focus();
+        super::arm_focus_handoff(app, tx);
         tx.focus_when_shown(archive::PROMPT_FIELD_KEY, true);
     }
     app.preview.viewer = Viewer::ArchivePrompt(prompt);
@@ -530,6 +531,7 @@ fn build_archive_viewer(
     let mut state = archive::build_state(tree, &app.preview.loader.ids);
     if focus_archive {
         state.enter();
+        super::arm_focus_handoff(app, tx);
         tx.focus_when_shown(archive::ARCHIVE_KEY, true);
     }
     Viewer::Archive(Box::new(state))

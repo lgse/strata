@@ -20,13 +20,14 @@ use crate::tokens::Token;
 /// lgse/strata `upstream/main` 35ee677ab).
 pub const DEFAULT_PANE_WIDTH: f32 = 201.0;
 
-/// The inset rune-kit's `SidebarRow` puts before its icon (its private `INSET`, at the pinned
-/// Rune rev). The rail's own row uses it too, so a step moves no icon.
-pub const ROW_INSET: f32 = 8.0;
+/// The leading inset inside a sidebar row before its icon box (`space.xs`). Paired with the
+/// list's `space.xs` horizontal padding, this puts the icon `space.md` (8 pt) from the sidebar's
+/// left edge — matching the `space.md` gap between icon and label, lining up with the header's
+/// sidebar toggle, and keeping the icon column fixed across full and rail widths.
+pub const ROW_INSET: f32 = 4.0;
 
-/// The box rune-kit's `SidebarRow` draws its icon in (its 16 point avatar box; C8's U22 asks for
-/// it to be settable). The rail's icon box matches it at any text size, so a step moves no
-/// icon even when K2 scales the icons past it.
+/// The leading icon box inside a sidebar row, shared by full and rail rows so stepping between
+/// widths moves no icon even when K2 scales icons past it.
 pub const ICON_BOX: f32 = 16.0;
 
 /// PlacesSidebar's slot tokens. `None` inherits.

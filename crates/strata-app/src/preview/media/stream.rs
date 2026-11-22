@@ -1,18 +1,19 @@
 // SPDX-License-Identifier: MIT
 
-//! Silent playback of a sandboxed decode: GTK's `DecodedMedia` (`src/ui/media.rs`,
-//! `src/ui/media/playback.rs`) without its audio sink, which Rune has no output for yet
-//! (packet entry 26, decision 15).
+//! Sandboxed media playback and A/V sync: GTK's `DecodedMedia` (`src/ui/media.rs`,
+//! `src/ui/media/playback.rs`) driven by [`strata_platform::media::PcmOutput`] instead of
+//! GStreamer.
 //!
 //! - **Decoding** runs in the shared `strata_preview::sandbox::media::Session`'s worker. A
 //!   [`Pump`] on GLib's main context drains its events every 8 ms and hands them to Rune
-//!   through `Later`, at most [`PRESENTATION_QUEUE`] frames ahead of what the app has shown, so
-//!   the worker waits for the player as GTK's `can_queue_more` makes it.
-//! - **The clock** is the host's: playing, the position runs on the poll's clock from where it
-//!   last stood, and the queued frames whose time has come show in turn. A seek, a resize and
-//!   a start at the saved percentage restart the decoder at the new place.
-//! - **A paused player** lets its worker go after [`PAUSED_IDLE`], and starts it again where it
-//!   stood on the next play.
+//!   through `Later`, bounded both by [`PRESENTATION_QUEUE`] video frames and by the PCM sink's
+//!   lookahead capacity so the worker waits for the player as GTK's `can_queue_more` makes it.
+//! - **The clock** follows `PcmOutput::position` whenever the clip carries audio (accounting for
+//!   output device latency, or paced in real time on the silent fallback when headless), so video
+//!   frames stay A/V-synced to heard audio. Silent clips (video without audio, GIFs) pace on the
+//!   poll's clock.
+//! - **A paused player** pauses and flushes the output device immediately, releases its worker
+//!   and audio stream after [`PAUSED_IDLE`], and restarts where it stood on the next play.
 
 use std::{
     cell::{Cell, RefCell},
@@ -24,6 +25,7 @@ use std::{
 use rune::Tx;
 use strata_components::media_player::{PlaybackClock, PlaybackState};
 use strata_fs::services::{MediaPreviewSize, SandboxedMedia};
+use strata_platform::media::{OutputConfig, OutputError, PcmOutput, PcmSpec, SampleFormat};
 use strata_preview::{
     media::{self, Frame, Header, Packet},
     sandbox::media::{Event, Session},
@@ -34,6 +36,13 @@ use crate::{App, slots::Later};
 
 /// Frames decoded ahead of the one shown (GTK's `PRESENTATION_QUEUE`).
 pub(super) const PRESENTATION_QUEUE: usize = 3;
+/// Interleaved PCM format emitted by the sandboxed decoder (48 kHz stereo S16LE).
+const AUDIO_SPEC: PcmSpec = PcmSpec::new(SampleFormat::S16Le, media::SAMPLE_RATE as u32, 2);
+/// Lookahead buffered in the PCM sink: covers the first record's lead plus presentation slack.
+const AUDIO_LOOKAHEAD: Duration =
+    Duration::from_micros((media::AUDIO_LEAD_TICKS as u64 + 12) * 1_000_000 / media::FPS as u64);
+/// Sample-boundary tolerance when checking end-of-stream against the audio clock.
+const AUDIO_END_TOLERANCE_US: u64 = 1_000_000_u64.div_ceil(media::SAMPLE_RATE) + 1;
 /// A selection replaced within this long never starts a decoder (GTK's `START_DWELL`).
 const START_DWELL: f64 = 0.05;
 /// A start that fails this soon, as one does while the last worker still holds its slot, is
@@ -153,7 +162,7 @@ pub(super) struct Shown {
     pub(super) pixels: Vec<u8>,
 }
 
-/// One player's decode and clock.
+/// One player's decode, audio output, and playback clock.
 pub(super) struct Stream {
     source: SandboxedMedia,
     inlet: Inlet,
@@ -166,12 +175,21 @@ pub(super) struct Stream {
     starting: Option<f64>,
     header: Option<Header>,
     frames: VecDeque<Frame>,
+    audio: Option<PcmOutput>,
+    pending_audio: VecDeque<Vec<u8>>,
+    audio_chunks: u32,
+    audio_base_us: u64,
+    audio_eos_pending: bool,
+    /// Frame slots owed back to the pump once the audio sink has room.
+    held_room: usize,
+    volume: f32,
+    muted: bool,
     first_frame: bool,
     /// A seek runs: no frame from its place yet.
     seeking: bool,
     end: Option<u64>,
     position_us: u64,
-    /// Playing: the clock and the position it played on from.
+    /// Playing without audio: the poll clock and the position it played on from.
     anchor: Option<(f64, u64)>,
     playing: bool,
     ended: bool,
@@ -201,6 +219,14 @@ impl Stream {
             starting: Some(now),
             header: None,
             frames: VecDeque::new(),
+            audio: None,
+            pending_audio: VecDeque::new(),
+            audio_chunks: 0,
+            audio_base_us: 0,
+            audio_eos_pending: false,
+            held_room: 0,
+            volume: 1.0,
+            muted: false,
             first_frame: false,
             seeking: false,
             end: None,
@@ -223,6 +249,23 @@ impl Stream {
     /// Plays from the start again at the end, as a GIF does.
     pub(super) fn set_loop(&mut self, looped: bool) {
         self.looped = looped;
+    }
+
+    /// Applies linear output volume (`0.0..=1.0+`) and mute immediately to live audio.
+    pub(super) fn set_audio(&mut self, volume: f32, muted: bool) {
+        self.volume = volume;
+        self.muted = muted;
+        if let Some(audio) = &self.audio {
+            audio.set_volume(volume);
+            audio.set_muted(muted);
+        }
+    }
+
+    #[cfg(test)]
+    pub(in crate::preview) fn audio_levels(&self) -> Option<(f32, bool)> {
+        self.audio
+            .as_ref()
+            .map(|audio| (audio.volume(), audio.is_muted()))
     }
 
     pub(super) fn error(&self) -> Option<&str> {
@@ -250,7 +293,11 @@ impl Stream {
         self.playing = true;
         self.paused_at = None;
         if self.first_frame {
-            self.anchor = Some((self.now, self.position_us));
+            if let Some(audio) = &self.audio {
+                audio.play();
+            } else {
+                self.anchor = Some((self.now, self.position_us));
+            }
         }
     }
 
@@ -259,6 +306,9 @@ impl Stream {
         self.playing = false;
         self.anchor = None;
         self.paused_at = Some(self.now);
+        if let Some(audio) = &self.audio {
+            audio.pause();
+        }
     }
 
     pub(super) fn seek(&mut self, to: Duration) {
@@ -286,10 +336,19 @@ impl Stream {
         self.pump = None;
         self.session += 1;
         self.frames.clear();
+        self.pending_audio.clear();
+        self.audio_chunks = 0;
+        self.audio_eos_pending = false;
+        self.held_room = 0;
         self.first_frame = false;
         self.end = None;
         self.position_us = media::timestamp(tick);
+        self.audio_base_us = self.position_us;
         self.anchor = None;
+        if let Some(audio) = &self.audio {
+            audio.pause();
+            audio.flush();
+        }
         self.restart = Some((tick, self.now));
         self.starting = Some(self.now);
         if !self.playing {
@@ -307,12 +366,15 @@ impl Stream {
         self.settle_resize();
         self.release_idle();
         self.start_waiting(tx);
+        self.drain_pending_audio();
+        self.flush_room();
         if !self.playing || !self.first_frame {
             return None;
         }
         self.capture();
-        let ended = self.end.is_some_and(|end| self.position_us >= end);
+        let ended = self.reached_end();
         let shown = self.due_frame();
+        self.flush_room();
         if ended {
             self.finish();
         }
@@ -344,8 +406,12 @@ impl Stream {
     fn release_idle(&mut self) {
         if self.idle() {
             self.pump = None;
+            self.audio = None;
             self.restart = None;
             self.frames.clear();
+            self.pending_audio.clear();
+            self.audio_eos_pending = false;
+            self.held_room = 0;
             self.dormant = true;
             tracing::debug!("sandboxed media paused worker released");
         }
@@ -389,7 +455,7 @@ impl Stream {
                         shown = Some(first);
                     }
                 }
-                Event::Packet(Packet::End(duration)) => self.end = Some(duration),
+                Event::Packet(Packet::End(duration)) => self.on_end(duration),
                 Event::Failed(error) => self.fail(error),
             }
             if session != self.session {
@@ -419,23 +485,151 @@ impl Stream {
         if let Some(position) = start {
             tracing::debug!(position_us = position, "starting video preview");
             self.restart_at(position);
+            return;
+        }
+        self.ensure_audio(header);
+    }
+
+    fn ensure_audio(&mut self, header: Header) {
+        self.audio_base_us = media::timestamp(header.start_tick);
+        self.audio_chunks = 0;
+        self.pending_audio.clear();
+        self.audio_eos_pending = false;
+        if !header.audio {
+            self.audio = None;
+            return;
+        }
+        if let Some(audio) = &self.audio {
+            audio.pause();
+            audio.flush();
+            audio.set_volume(self.volume);
+            audio.set_muted(self.muted);
+            return;
+        }
+        let config = OutputConfig::new(AUDIO_SPEC)
+            .app_name("Strata")
+            .stream_name("Media preview")
+            .buffer_duration(AUDIO_LOOKAHEAD)
+            .volume(self.volume)
+            .muted(self.muted)
+            .silent_only(cfg!(test));
+        match PcmOutput::open(config) {
+            Ok(output) => self.audio = Some(output),
+            Err(error) => {
+                tracing::warn!(%error, "unable to open PCM audio output; using silent clock");
+            }
         }
     }
 
+    fn on_end(&mut self, duration: u64) {
+        self.end = Some(duration);
+        self.audio_eos_pending = self.audio.is_some();
+        self.drain_pending_audio();
+    }
+
     /// Queues a decoded frame, or returns the first one to show at once.
-    fn frame(&mut self, frame: Frame) -> Option<Shown> {
+    fn frame(&mut self, mut frame: Frame) -> Option<Shown> {
+        if let Some(header) = self.header.filter(|header| header.audio) {
+            let samples = std::mem::take(&mut frame.samples);
+            self.queue_audio(&header, samples);
+            self.drain_pending_audio();
+        }
         if self.first_frame {
-            self.frames.push_back(frame);
+            if self.has_video() {
+                self.frames.push_back(frame);
+            } else {
+                self.held_room += 1;
+                self.flush_room();
+            }
             return None;
         }
         self.first_frame = true;
         self.seeking = false;
         self.starting = None;
-        self.give_room();
+        self.held_room += 1;
+        self.flush_room();
         if self.playing {
-            self.anchor = Some((self.now, self.position_us));
+            if let Some(audio) = &self.audio {
+                audio.play();
+            } else {
+                self.anchor = Some((self.now, self.position_us));
+            }
         }
         self.show(frame)
+    }
+
+    /// Splits a record's PCM into tick-sized blocks, trims any trailing pad past `duration_us`,
+    /// and pushes them to the PCM sink (holding overflow in `pending_audio` for backpressure).
+    fn queue_audio(&mut self, header: &Header, samples: Vec<u8>) {
+        if self.audio.is_none() || samples.is_empty() {
+            return;
+        }
+        for block in samples.chunks(media::AUDIO_BYTES) {
+            let chunk = self.audio_chunks;
+            let tick = header.start_tick.saturating_add(chunk);
+            let samples_left = header.duration_us.saturating_sub(media::timestamp(tick))
+                * media::SAMPLE_RATE
+                / 1_000_000;
+            let max_frames = samples_left.min(block.len() as u64 / 4) as usize;
+            let trimmed = &block[..max_frames * 4];
+            if !trimmed.is_empty() {
+                self.push_or_pend_audio(trimmed);
+            }
+            self.audio_chunks = chunk + 1;
+        }
+    }
+
+    fn push_or_pend_audio(&mut self, block: &[u8]) {
+        if self.pending_audio.is_empty()
+            && let Some(audio) = &self.audio
+        {
+            match audio.push(block) {
+                Ok(()) => return,
+                Err(OutputError::BufferFull) => {}
+                Err(_) => return,
+            }
+        }
+        self.pending_audio.push_back(block.to_vec());
+    }
+
+    fn drain_pending_audio(&mut self) {
+        while let Some(front) = self.pending_audio.front() {
+            let Some(audio) = &self.audio else {
+                self.pending_audio.clear();
+                break;
+            };
+            match audio.push(front) {
+                Ok(()) => {
+                    self.pending_audio.pop_front();
+                }
+                Err(OutputError::BufferFull) => break,
+                Err(_) => {
+                    self.pending_audio.pop_front();
+                }
+            }
+        }
+        if self.audio_eos_pending && self.pending_audio.is_empty() {
+            self.audio_eos_pending = false;
+            if let Some(audio) = &self.audio {
+                audio.finish();
+            }
+        }
+    }
+
+    fn can_accept_more_audio(&self) -> bool {
+        if !self.pending_audio.is_empty() {
+            return false;
+        }
+        self.audio
+            .as_ref()
+            .is_none_or(|audio| audio.has_capacity(media::AUDIO_BYTES))
+    }
+
+    fn flush_room(&mut self) {
+        while self.held_room > 0 && self.can_accept_more_audio() {
+            self.held_room -= 1;
+            self.give_room();
+        }
     }
 
     fn due_frame(&mut self) -> Option<Shown> {
@@ -446,7 +640,7 @@ impl Stream {
             .is_some_and(|frame| media::timestamp(frame.tick) <= self.position_us)
         {
             due = self.frames.pop_front();
-            self.give_room();
+            self.held_room += 1;
         }
         due.and_then(|frame| self.show(frame))
     }
@@ -469,15 +663,39 @@ impl Stream {
     }
 
     fn capture(&mut self) {
-        let Some((since, from)) = self.anchor else {
-            return;
-        };
-        let played = ((self.now - since).max(0.0) * 1_000_000.0) as u64;
         let limit = self
             .end
             .or(self.header.map(|header| header.duration_us))
             .unwrap_or(u64::MAX);
+        if let Some(audio) = &self.audio {
+            if !self.first_frame {
+                return;
+            }
+            let heard_us = u64::try_from(audio.position().as_micros()).unwrap_or(u64::MAX);
+            self.position_us = self.audio_base_us.saturating_add(heard_us).min(limit);
+            return;
+        }
+        let Some((since, from)) = self.anchor else {
+            return;
+        };
+        let played = ((self.now - since).max(0.0) * 1_000_000.0) as u64;
         self.position_us = from.saturating_add(played).min(limit);
+    }
+
+    fn reached_end(&mut self) -> bool {
+        let Some(end) = self.end else {
+            return false;
+        };
+        if let Some(audio) = &self.audio {
+            let by_time = self.position_us.saturating_add(AUDIO_END_TOLERANCE_US) >= end;
+            let by_drain = self.pending_audio.is_empty() && audio.is_drained();
+            if by_time || by_drain {
+                self.position_us = end;
+                return true;
+            }
+            return false;
+        }
+        self.position_us >= end
     }
 
     fn finish(&mut self) {
@@ -486,6 +704,10 @@ impl Stream {
             return;
         }
         self.pump = None;
+        self.audio = None;
+        self.pending_audio.clear();
+        self.audio_eos_pending = false;
+        self.held_room = 0;
         self.playing = false;
         self.anchor = None;
         self.ended = true;
@@ -495,8 +717,12 @@ impl Stream {
     fn fail(&mut self, error: String) {
         tracing::debug!(error, "sandboxed media preview failed");
         self.pump = None;
+        self.audio = None;
         self.restart = None;
         self.frames.clear();
+        self.pending_audio.clear();
+        self.audio_eos_pending = false;
+        self.held_room = 0;
         self.playing = false;
         self.anchor = None;
         self.error = Some(error);
@@ -506,6 +732,8 @@ impl Stream {
     pub(super) fn close(&mut self) {
         self.capture();
         self.pump = None;
+        self.audio = None;
+        self.pending_audio.clear();
         let path = self.source.path.clone();
         let duration = self.end.or(self.header.map(|header| header.duration_us));
         let partway = self.position_us > positions::RESTORE_MIN_US
