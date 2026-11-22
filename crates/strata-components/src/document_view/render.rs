@@ -12,10 +12,11 @@ use strata_kit::look::Look;
 
 use super::DocumentIntent;
 use super::lang::grammar_token;
-use super::model::{Cell, ListChildKind, Media, Span, SpanStyle, Unit, UnitKind};
+use super::model::{ListChildKind, Media, Span, SpanStyle, Unit, UnitKind};
 use super::state::{BUTTON_ROOM, DocumentState, MediaState, has_copy_button};
 use crate::code_view::highlight::CodeBlocks;
 use crate::preview_drawer::CONTENT_MAX_WIDTH;
+use crate::scroll::BarLook;
 
 /// Heading sizes against the body text, levels 1 to 6: Strata's `document-heading-*` tags
 /// (`src/ui/virtual_preview/tags.rs`), weight 700. Component constants for now; a `document`
@@ -37,9 +38,6 @@ const GAP: f32 = 10.0;
 const CODE_PAD: f32 = 10.0;
 /// A quote's bar, and the gap between it and the text.
 const QUOTE_BAR: f32 = 3.0;
-/// A table cell's widest estimate before it wraps, and its narrowest.
-const CELL_MAX: f32 = 320.0;
-const CELL_MIN: f32 = 48.0;
 /// The height a loading image holds.
 const LOADING_HEIGHT: f32 = 120.0;
 
@@ -58,14 +56,18 @@ pub(crate) struct Paint {
     pub text: Color,
     pub muted: Color,
     pub accent: Color,
+    pub icon_accent: Color,
     pub link_line: Color,
+    pub surface: Color,
     pub code_fill: Color,
     pub code_border: Color,
     pub quote_fill: Color,
     pub quote_rule: Color,
     pub rule: Color,
     pub selection: Color,
-    pub head_fill: Color,
+    pub table_head_fill: Color,
+    pub table_head_hover: Color,
+    pub table_row_hover: Color,
     pub table_rule: Color,
     pub placeholder: Color,
     pub hover: Color,
@@ -73,6 +75,9 @@ pub(crate) struct Paint {
     pub icon: f32,
     pub copy: &'static Icon,
     pub check: &'static Icon,
+    pub sort_asc: &'static Icon,
+    pub sort_desc: &'static Icon,
+    pub bar_look: BarLook,
 }
 
 impl Paint {
@@ -89,14 +94,18 @@ impl Paint {
             text: c.text_base,
             muted: c.text_muted,
             accent: c.text_accent,
+            icon_accent: c.icon_accent,
             link_line: k.alpha(c.text_accent, 0.4),
+            surface: c.surface_raised,
             code_fill: k.alpha(look.fill.muted, look.fill.muted.a * 0.54),
             code_border: c.border_base,
             quote_fill: k.alpha(look.fill.highlight, look.fill.highlight.a * 0.36),
             quote_rule: k.alpha(c.border_active, 0.48),
             rule: c.border_base,
             selection: k.selection(),
-            head_fill: k.alpha(look.fill.highlight, look.fill.highlight.a * 0.64),
+            table_head_fill: look.fill.muted,
+            table_head_hover: look.fill.highlight,
+            table_row_hover: k.alpha(look.fill.highlight, look.fill.highlight.a * 0.45),
             table_rule: c.border_muted,
             placeholder: c.layer_02,
             hover: c.hover,
@@ -104,6 +113,9 @@ impl Paint {
             icon: look.icon_size.sm,
             copy: look.icon(IconName::Copy),
             check: look.icon(IconName::Check),
+            sort_asc: look.icon(IconName::SortAscending),
+            sort_desc: look.icon(IconName::SortDescending),
+            bar_look: BarLook::app(look).horizontal(),
         }
     }
 
@@ -138,6 +150,15 @@ pub struct DocumentLabels {
     pub loading_image: String,
     pub diagram: String,
     pub equation: String,
+    /// Fallback column header when a table has no header row or a ragged header; `{}` is the
+    /// 1-based column number.
+    pub column: String,
+    /// Accessible name of a column resize divider; `{}` is the column name.
+    pub resize: String,
+    /// Secondary sort key rank in a column header's description; `{}` is the 1-based rank.
+    pub sort_key: String,
+    pub ascending: String,
+    pub descending: String,
 }
 
 impl Default for DocumentLabels {
@@ -151,6 +172,11 @@ impl Default for DocumentLabels {
             loading_image: "Loading image".into(),
             diagram: "Mermaid diagram".into(),
             equation: "LaTeX equation".into(),
+            column: "Column {}".into(),
+            resize: "Resize {}".into(),
+            sort_key: "Sort key {}".into(),
+            ascending: "ascending".into(),
+            descending: "descending".into(),
         }
     }
 }
@@ -195,12 +221,12 @@ pub(crate) fn build_row<S: 'static>(ctx: &Rc<Ctx<S>>, s: &S, i: usize) -> El {
     };
     let (indent, body) = match &u.kind {
         UnitKind::Gap => return el().w_full().h(GAP).a11y_hidden(),
-        UnitKind::Table { rows, list_depth } => {
+        UnitKind::Table { list_depth, .. } => {
             let indent = list_indent(*list_depth);
             let room = ctx
                 .width
                 .map(|w| w.min(CONTENT_MAX_WIDTH) - 2.0 * SIDE - indent);
-            (indent, table(ctx, i, rows, room))
+            (indent, super::table::render::build(ctx, st, i, room))
         }
         UnitKind::Media { media, list_depth } => {
             (list_indent(*list_depth), media_el(ctx, st, i, u, media))
@@ -358,7 +384,7 @@ pub(crate) fn styled(spans: &[Span], p: &Paint) -> Styled {
 
 /// A selectable text with `styled` on it, wrapping or scrolling sideways on its own (D7),
 /// keyed `key`, with its links opening through the host.
-fn styled_text<S: 'static>(
+pub(crate) fn styled_text<S: 'static>(
     ctx: &Rc<Ctx<S>>,
     content: String,
     st: Styled,
@@ -667,93 +693,4 @@ fn media_source(st: &DocumentState, unit: usize) -> String {
         } => source.to_string(),
         _ => String::new(),
     }
-}
-
-/// A table drawn static (D1): content-sized columns from an estimate of each column's widest
-/// text, wrapping within [`CELL_MAX`]; a table wider than `room` shrinks its columns in
-/// proportion, down to [`CELL_MIN`] (rune-kit's `Markdown` sizing), and past that scrolls
-/// sideways. The header row sits on the highlight fill. Each cell is a selectable text keyed
-/// `r{row}c{column}`.
-fn table<S: 'static>(ctx: &Rc<Ctx<S>>, i: usize, rows: &[Vec<Cell>], room: Option<f32>) -> El {
-    let p = &ctx.paint;
-    let columns = rows.iter().map(Vec::len).max().unwrap_or(0);
-    // An estimate of the body face's average advance, generous so a short cell doesn't wrap;
-    // two characters of slack besides.
-    let char_w = p.body.size * 0.62;
-    let pad = CODE_PAD;
-    let widths: Vec<f32> = (0..columns)
-        .map(|c| {
-            let chars = rows
-                .iter()
-                .filter_map(|r| r.get(c))
-                .map(|cell| cell.text.chars().count() + 2)
-                .max()
-                .unwrap_or(0);
-            (chars as f32 * char_w + 2.0 * pad).clamp(CELL_MIN, CELL_MAX)
-        })
-        .collect();
-    let total: f32 = widths.iter().sum();
-    let widths: Vec<f32> = match room {
-        Some(room) if total > room && room > 0.0 => widths
-            .iter()
-            .map(|w| (w * room / total).floor().max(CELL_MIN))
-            .collect(),
-        _ => widths,
-    };
-    let mut grid = col()
-        .role("table")
-        .border(1.0, p.table_rule)
-        .radius(p.radius)
-        .clip_soft(0.0);
-    for (r, cells) in rows.iter().enumerate() {
-        let header = cells.iter().all(|c| c.header) && !cells.is_empty();
-        let mut line = row().role("row");
-        if header {
-            line = line.fill(p.head_fill);
-        }
-        if r > 0 {
-            line = line.border_sides([1.0, 0.0, 0.0, 0.0], p.table_rule);
-        }
-        for (c, w) in widths.iter().enumerate() {
-            let cell = cells.get(c);
-            let content = cell.map_or_else(String::new, |c| c.text.clone());
-            let st = styled(cell.map_or(&[][..], |c| &c.spans[..]), p);
-            let is_header = cell.is_some_and(|c| c.header);
-            let (style, color) = if is_header {
-                (
-                    TextStyle {
-                        weight: 700.0,
-                        ..p.body
-                    },
-                    p.accent,
-                )
-            } else {
-                (p.body, p.text)
-            };
-            let key = format!("r{r}c{c}");
-            let t = styled_text(
-                ctx,
-                content,
-                st,
-                (style, color),
-                &key,
-                format!("{i}/{key}"),
-                true,
-            );
-            line = line.child(
-                col()
-                    .w(*w)
-                    .px(pad)
-                    .py(pad / 2.0)
-                    .role(if cell.is_some_and(|c| c.header) {
-                        "columnheader"
-                    } else {
-                        "cell"
-                    })
-                    .child(t),
-            );
-        }
-        grid = grid.child(line);
-    }
-    col().w_full().scroll_x().child(grid)
 }

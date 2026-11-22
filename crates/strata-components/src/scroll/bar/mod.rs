@@ -290,6 +290,18 @@ impl Bar {
         self.0.shows()
     }
 
+    /// Reveals an overlay bar (when its viewport overflows), holding it for [`HOLD`] before it
+    /// fades. Used by containers that manage their own height rather than [`Bar::area`]'s
+    /// full-height wrapper.
+    pub(crate) fn reveal(&self) {
+        self.0.reveal();
+    }
+
+    #[cfg(test)]
+    pub(crate) fn offset(&self) -> [f32; 2] {
+        self.0.pos.get().offset
+    }
+
     /// `listing`, wrapped so the pointer moving over it shows an overlay bar. Size it as the
     /// listing would be; the wrapper fills its parent.
     pub fn area(&self, listing: El) -> El {
