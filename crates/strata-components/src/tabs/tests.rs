@@ -701,3 +701,71 @@ fn tab_strip_pointer_actions_emit_select_close_and_new_tab_intents() {
     );
     assert_eq!(rt.state.intents, [TabsIntent::New]);
 }
+
+#[test]
+fn custom_tab_icons_mount_in_strip_and_yield_to_number_badges() {
+    struct State {
+        strip: BrowserTabsState,
+        look: strata_kit::look::Look,
+        badges: bool,
+    }
+    fn view(s: &State, cx: &mut rune::Cx<State>) -> rune::El {
+        let red = s.look.kit.c.danger.icon;
+        let blue = s.look.kit.c.info.icon;
+        let items = [
+            Tab::new(TabId(1), "Code", TabIcon::Catalog("strata-terminal".into())).tint(Some(red)),
+            Tab::new(TabId(2), "Launch", TabIcon::Emoji("🚀".into())),
+            Tab::new(TabId(3), "Home", IconName::Home).tint(Some(blue)),
+        ];
+        let d = TabsData::new(&items, Some(TabId(1)));
+        BrowserTabs::new(
+            &d,
+            &s.strip,
+            |s: &mut State| &mut s.strip,
+            |s| &mut s.strip.drag,
+        )
+        .badges(s.badges)
+        .build(&s.look, cx)
+    }
+    let state = State {
+        strip: BrowserTabsState::default(),
+        look: strata_kit::look::Look::default(),
+        badges: false,
+    };
+    let mut rt = rune::Runtime::new(state, view, (600.0, 48.0), rune::Env::default());
+    rt.frame(0.0);
+    rt.frame(1.0 / 60.0);
+
+    let els = rt.elements();
+    let tab_icons = els
+        .iter()
+        .filter(|e| {
+            !e.exiting
+                && e.key.as_deref() == Some("icon")
+                && e.parent
+                    .and_then(|p| els.get(p))
+                    .is_some_and(|parent| parent.key.as_deref() == Some("avatar"))
+        })
+        .count();
+    assert_eq!(
+        tab_icons, 3,
+        "every tab mounts its customized or semantic icon inside its avatar"
+    );
+
+    rt.update(|s, _| s.badges = true);
+    rt.frame(0.0);
+    let els = rt.elements();
+    let badge_count = els
+        .iter()
+        .filter(|e| !e.exiting && e.key.as_deref() == Some("badge"))
+        .count();
+    let avatar_count = els
+        .iter()
+        .filter(|e| !e.exiting && e.key.as_deref() == Some("avatar"))
+        .count();
+    assert_eq!(
+        badge_count, 3,
+        "number badges replace custom icons while active"
+    );
+    assert_eq!(avatar_count, 0);
+}

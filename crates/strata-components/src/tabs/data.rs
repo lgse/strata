@@ -6,6 +6,7 @@
 use std::borrow::Cow;
 use std::fmt;
 
+use rune::Color;
 use strata_kit::icons::IconName;
 
 /// Characters a tab's label shows before it ends in an ellipsis (Strata's
@@ -49,8 +50,26 @@ impl Accepts {
     };
 }
 
+/// A tab's icon: a semantic one, or a folder's custom icon or emoji badge.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum TabIcon {
+    /// A semantic icon from [`IconName`].
+    Name(IconName),
+    /// A catalog icon key drawn inside a filled folder, falling back to [`IconName::Folder`]
+    /// when the catalog has none.
+    Catalog(String),
+    /// An emoji sequence drawn inside a filled folder.
+    Emoji(String),
+}
+
+impl From<IconName> for TabIcon {
+    fn from(icon: IconName) -> Self {
+        Self::Name(icon)
+    }
+}
+
 /// One tab: its id, its name (the folder's, as the host names it: `~`, `/`, Trash, a share),
-/// the location's icon, and what it takes from a drop.
+/// the location's icon, an optional saved folder tint, and what it takes from a drop.
 ///
 /// Fields may be added: build one with [`Tab::new`].
 #[derive(Clone, Debug, PartialEq)]
@@ -58,19 +77,34 @@ impl Accepts {
 pub struct Tab<'a> {
     pub id: TabId,
     pub name: Cow<'a, str>,
-    pub icon: IconName,
+    pub icon: TabIcon,
+    /// The folder's saved colour (folder customization), as the user chose it.
+    pub tint: Option<Color>,
     pub accepts: Accepts,
 }
 
 impl<'a> Tab<'a> {
     /// A tab that takes files and content.
-    pub fn new(id: TabId, name: impl Into<Cow<'a, str>>, icon: IconName) -> Self {
+    pub fn new(id: TabId, name: impl Into<Cow<'a, str>>, icon: impl Into<TabIcon>) -> Self {
         Tab {
             id,
             name: name.into(),
-            icon,
+            icon: icon.into(),
+            tint: None,
             accepts: Accepts::ALL,
         }
+    }
+
+    /// The same tab, with `icon` (a semantic icon, a custom catalog icon, or an emoji badge).
+    pub fn icon(mut self, icon: impl Into<TabIcon>) -> Self {
+        self.icon = icon.into();
+        self
+    }
+
+    /// The same tab, tinted with `tint` (the folder's saved colour).
+    pub fn tint(mut self, tint: Option<Color>) -> Self {
+        self.tint = tint;
+        self
     }
 
     /// The same tab, taking `accepts` from drops.
