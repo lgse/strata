@@ -13,6 +13,7 @@ the plans for that work, split out of two planning documents so they live beside
 | [slice/slice-report.md](slice/slice-report.md) | What the slice proved and did not, what it cost, its gaps and measurements, and what is open after it |
 | [parity/README.md](parity/README.md) | The parity plan: the 39 work packages that take the whole application to parity with the GTK app by scenario and by fuzzing, and the archived issue of each |
 | [parity/STATUS.md](parity/STATUS.md) | The parity packages' state, with a file for each under `parity/packages/`, the owner's questions and rulings, and the findings |
+| [performance/](performance/README.md) | Observed performance bottlenecks, profiles and benchmark timings for the Rune interface |
 | [plan.md](plan.md) | The component plan: which Strata area each Rune component covers, and the phases |
 | [work/](work/README.md) | The component work packages and [their status](work/STATUS.md) |
 | [decisions/](decisions/) | The component spikes S1 to S5, with the owner's rulings |

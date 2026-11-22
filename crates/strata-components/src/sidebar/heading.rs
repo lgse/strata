@@ -12,7 +12,7 @@ use strata_kit::icons::IconName;
 use strata_kit::slots::sidebar as slot;
 
 use super::intent::{Section, SidebarIntent};
-use super::rows::{Ctx, tenxer_key};
+use super::rows::{ACTION_SLOT, Ctx, action_icon_size, tenxer_key};
 
 /// Whether a heading draws its count: collapsed, with at least one row.
 pub(crate) fn shows_count(collapsed: bool, rows: usize) -> bool {
@@ -79,7 +79,7 @@ fn heading_body<S>(
     } else {
         IconName::ChevronDown
     };
-    let chevron = icon(look.icon(chevron_name), look.icon_size.md)
+    let chevron = icon(look.icon(chevron_name), action_icon_size(look))
         .key("chevron")
         .color(c.icon_accent)
         .opacity(0.65)
@@ -91,8 +91,18 @@ fn heading_body<S>(
             .help(ctx.labels.heading(section))
             .help_side(Side::Right);
     }
+    // Wrap the chevron in the same trailing action slot as a device row's eject button so the
+    // section disclosure chevrons and device eject icons share one vertical centerline while
+    // staying clear of the 7 pt trailing resize grip.
+    let chevron_slot = row()
+        .key("chevron-slot")
+        .size(ACTION_SLOT, ACTION_SLOT)
+        .center()
+        .child(chevron)
+        .a11y_hidden();
     let mut h = h
-        .px(look.space.md)
+        .pl(slot::ROW_INSET)
+        .pr(look.space.md)
         .gap(look.space.sm)
         .child(
             text(ctx.labels.heading(section))
@@ -117,5 +127,5 @@ fn heading_body<S>(
                 .a11y_hidden(),
         );
     }
-    h.child(chevron)
+    h.child(chevron_slot)
 }

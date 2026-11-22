@@ -1,14 +1,12 @@
 // SPDX-License-Identifier: MIT
 
-//! Rows: built-in places, pins and devices, on rune-kit's `SidebarRow`, in the full sidebar
-//! and the rail. The rows are rune-kit's (their selection, focus and spacing), with the
-//! sidebar's own drag to reorder ([`super::drag`]);
-//! the sidebar sets the look Strata's rows have over the built row: the accent tint and
-//! icon, the neutral hover, the rail's tooltip and the device actions.
+//! Rows: built-in places, pins and devices in the full sidebar and the rail. Both widths share
+//! the same row shell and icon box so stepping between full and rail moves no icon; full rows
+//! render labels in primary `kit.c.text_base` at regular `kit.ty.ui_compact` weight with equal
+//! left-edge-to-icon and icon-to-text spacing, matching GTK's `.sidebar-row`.
 
-use rune::{El, Key, KeyEvent, PointerPress, Side, Tx, icon, row};
-use rune_kit::shell::{RowStatus, SidebarRow};
-use rune_kit::{ControlSize, IconButton, IconButtonVariant, Keybind};
+use rune::{El, Key, KeyEvent, PointerPress, Side, Tx, icon, row, text};
+use rune_kit::{Keybind, Spinner};
 use strata_kit::icons::IconName;
 use strata_kit::look::Look;
 use strata_kit::slots::sidebar as slot;
@@ -20,11 +18,20 @@ use super::state::SidebarState;
 use super::{ActionFn, Emit, trash_target_key};
 use crate::contract::dnd::{Dnd, DropHover};
 
-/// A rail row: the icon alone, where the full row has it, so a step moves no icon. rune-kit's
-/// `SidebarRow` keeps a label slot and its gap even with an empty label, which don't fit the
-/// rail (U18), so the rail builds its own row: one that takes focus, selects and
-/// hovers as `SidebarRow` does, without its reorder drag.
-fn rail_row(look: &Look, icon: El, selected: bool) -> El {
+/// Width of the trailing action slot, shared by device release/lock buttons, pending-release
+/// spinners and section heading chevrons so their icon centerlines stay vertically aligned.
+pub(crate) const ACTION_SLOT: f32 = 20.0;
+
+/// Compact trailing icon size for device eject/lock buttons, pending spinners and section
+/// chevrons: 14 pt at default 13 px text, scaling with `look.icon_size` (matches GTK's 14 px
+/// `.sidebar-device-action` and `.sidebar-heading-chevron` icons).
+pub(crate) fn action_icon_size(look: &Look) -> f32 {
+    ((look.icon_size.sm + look.icon_size.md) / 2.0).round()
+}
+
+/// The shared interactive row shell for both full and rail rows, starting with the leading icon
+/// slot at `slot::ROW_INSET` so a step between full and rail moves no icon.
+fn row_shell(look: &Look, icon: El, selected: bool) -> El {
     let size = slot::ICON_BOX;
     let r = row()
         .w_full()
@@ -32,9 +39,11 @@ fn rail_row(look: &Look, icon: El, selected: bool) -> El {
         .pl(slot::ROW_INSET)
         .center_y()
         .radius(look.kit.radius.md)
+        .motion(look.kit.motion.control)
+        .hover_group()
+        .hover_motion(rune::Anim::INSTANT, rune::Anim::INSTANT)
         .focusable(true)
         .focus_selected(selected)
-        .hover_motion(rune::Anim::INSTANT, rune::Anim::INSTANT)
         .child(
             row()
                 .key("icon")
@@ -44,6 +53,49 @@ fn rail_row(look: &Look, icon: El, selected: bool) -> El {
                 .a11y_hidden(),
         );
     look.kit.interactive(r)
+}
+
+/// A rail row: the icon alone, where the full row has it, so a step moves no icon.
+fn rail_row(look: &Look, icon: El, selected: bool) -> El {
+    row_shell(look, icon, selected)
+}
+
+/// A full-width row: leading icon, primary-ink regular-weight label (`kit.c.text_base` in
+/// `kit.ty.ui_compact`), and an optional trailing slot (`Keybind`, device actions or busy
+/// spinner). The `space.md` icon-to-label gap matches `list.px + ROW_INSET` (`space.xs + 4`),
+/// and `space.md` trailing padding keeps trailing controls clear of the 7 pt resize grip.
+fn full_row(look: &Look, icon: El, label: &str, selected: bool, trailing: Option<El>) -> El {
+    let label = text(label)
+        .key("label")
+        .font(look.kit.ty.ui_compact)
+        .color(look.kit.c.text_base)
+        .truncate()
+        .grow(1.0)
+        .shrink()
+        .a11y_hidden();
+    let mut r = row_shell(look, icon, selected)
+        .pr(look.space.md)
+        .gap(look.space.md)
+        .child(label);
+    if let Some(t) = trailing {
+        r = r.child(t);
+    }
+    r
+}
+
+/// The busy spinner shown in the release column while a device is being ejected/unmounted.
+fn busy_slot(look: &Look) -> El {
+    row()
+        .key("status")
+        .size(ACTION_SLOT, ACTION_SLOT)
+        .center()
+        .child(
+            Spinner::new()
+                .size(action_icon_size(look))
+                .color(look.kit.c.icon_accent)
+                .build(&look.kit),
+        )
+        .a11y_hidden()
 }
 
 /// What every row builder shares.
@@ -346,14 +398,11 @@ pub(crate) fn folder_row<S: 'static>(
     let built = if ctx.rail {
         rail_row(look, icon, spec.selected)
     } else {
-        let mut r = SidebarRow::new(spec.label)
-            .avatar(icon)
-            .selected(spec.selected)
-            .height(slot::row_height(look));
-        if let (Some(cap), true) = (spec.keycap, ctx.state.keycaps) {
-            r = r.trailing(Keybind::new(&[cap]).build(&look.kit).a11y_hidden());
-        }
-        r.build(&look.kit)
+        let trailing = match (spec.keycap, ctx.state.keycaps) {
+            (Some(cap), true) => Some(Keybind::new(&[cap]).build(&look.kit).a11y_hidden()),
+            _ => None,
+        };
+        full_row(look, icon, spec.label, spec.selected, trailing)
     };
     let built = match (spec.reorder, reorder) {
         (Some((index, count)), Some((state, block, intent))) => drag::attach(
@@ -411,16 +460,14 @@ pub(crate) fn device_row<S: 'static>(ctx: &Ctx<'_, S>, d: &Device, selected: boo
     let el = if ctx.rail {
         rail_row(look, icon, selected)
     } else {
-        let mut r = SidebarRow::new(d.label.as_str())
-            .avatar(icon)
-            .selected(selected)
-            .height(slot::row_height(look));
-        if d.pending {
-            r = r.status(RowStatus::Busy);
+        let trailing = if d.pending {
+            Some(busy_slot(look))
         } else if d.lock.is_some() || d.release.is_some() {
-            r = r.trailing(device_actions(ctx, d));
-        }
-        r.build(&look.kit)
+            Some(device_actions(ctx, d))
+        } else {
+            None
+        };
+        full_row(look, icon, d.label.as_str(), selected, trailing)
     };
     if d.pending {
         return dress(ctx, el, &spec)
@@ -437,20 +484,33 @@ pub(crate) fn device_row<S: 'static>(ctx: &Ctx<'_, S>, d: &Device, selected: boo
 /// step rows, and the row's menu (C21) has the same actions.
 fn device_actions<S: 'static>(ctx: &Ctx<'_, S>, d: &Device) -> El {
     let look = ctx.look;
-    let accent_kit = look.accent_icon_kit();
+    let icon_size = action_icon_size(look);
     let mut actions = row().gap(look.space.xxs).center_y();
     let button = |key: String, glyph: IconName, label: &str, intent: SidebarIntent| {
         let emit = ctx.emit.clone();
-        IconButton::new(look.icon(glyph))
-            .variant(IconButtonVariant::GhostMuted)
-            .control_size(ControlSize::Small)
+        // Match GTK's `.sidebar-eject, .sidebar-device-action` (14 px icon at 0.75 rest / 1.0
+        // hover opacity) centred in the shared `ACTION_SLOT` column.
+        let glyph = icon(look.icon(glyph), icon_size)
+            .key("icon")
+            .color(look.kit.c.icon_accent)
+            .group_opacity(0.75, 1.0)
+            .opacity_motion(rune::Anim::INSTANT)
+            .a11y_hidden();
+        let btn = row()
+            .key(key)
+            .role("button")
             .label(label)
             .help(label)
-            .on_press_tx(move |s: &mut S, tx: &mut Tx| emit(s, intent.clone(), tx))
-            .build(&accent_kit)
-            .key(key)
+            .size(ACTION_SLOT, ACTION_SLOT)
+            .center()
+            .radius(look.kit.radius.sm)
+            .hover_group()
+            .hover_motion(rune::Anim::INSTANT, rune::Anim::INSTANT)
             .focusable(false)
             .preserve_focus_on_press(true)
+            .on_press_tx(move |s: &mut S, tx: &mut Tx| emit(s, intent.clone(), tx))
+            .child(glyph);
+        look.kit.interactive(btn)
     };
     let base = d.item().key(ctx.key);
     let words = ctx.labels.device;
