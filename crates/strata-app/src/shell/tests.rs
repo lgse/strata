@@ -342,6 +342,143 @@ fn a_strip_that_shows_takes_new_tab_and_close_from_the_header() {
     );
 }
 
+/// Which window buttons are mounted in the header (`[minimize, maximize, close]`) and whether the
+/// tab strip mounts `window-close`.
+fn mounted_window_buttons(host: &Offscreen) -> ([bool; 3], bool) {
+    let tree = host.tree();
+    let header = keys_in(&tree, "header");
+    let strip = keys_in(&tree, "made-tabs");
+    let has = |keys: &[String], wanted: &str| keys.iter().any(|key| key == wanted);
+    (
+        [
+            has(&header, "header-minimize"),
+            has(&header, "header-maximize"),
+            has(&header, "header-close"),
+        ],
+        has(&strip, "window-close"),
+    )
+}
+
+fn write_settings(contents: &str) {
+    let file = strata_core::storage::config_directory().join("settings.toml");
+    std::fs::create_dir_all(file.parent().expect("settings dir")).expect("create settings dir");
+    std::fs::write(file, contents).expect("write settings");
+}
+
+#[test]
+fn window_buttons_default_hidden_on_tiling_desktop_and_follow_live_overrides() {
+    let env = [(
+        "XDG_CURRENT_DESKTOP",
+        std::ffi::OsStr::new("KDE: hYpRlAnD "),
+    )];
+    crate::test_support::hosted_over_with(
+        (
+            MODULE,
+            "window_buttons_default_hidden_on_tiling_desktop_and_follow_live_overrides",
+            &env,
+        ),
+        || {},
+        a_view_and_a_strip,
+        |mut host| {
+            while host.turn() {}
+            assert_eq!(
+                mounted_window_buttons(&host),
+                ([false, false, false], false)
+            );
+            assert_eq!(shell::header_last(host.app()), "header-settings");
+
+            STRIP_SHOWS.set(true);
+            act(&mut host, |_, _| ());
+            assert_eq!(
+                mounted_window_buttons(&host),
+                ([false, false, false], false)
+            );
+
+            act(&mut host, |app, _| {
+                shell::saved(app).change(|saved| {
+                    saved.window_show_minimize = true;
+                    saved.window_show_maximize = true;
+                    saved.window_show_close = true;
+                });
+            });
+            assert_eq!(mounted_window_buttons(&host), ([true, true, false], true));
+            assert_eq!(shell::header_last(host.app()), "header-maximize");
+
+            STRIP_SHOWS.set(false);
+            act(&mut host, |_, _| ());
+            assert_eq!(mounted_window_buttons(&host), ([true, true, true], false));
+            assert_eq!(shell::header_last(host.app()), "header-close");
+
+            act(&mut host, |app, _| {
+                shell::saved(app).change(|saved| saved.window_show_close = false);
+            });
+            assert_eq!(mounted_window_buttons(&host), ([true, true, false], false));
+            assert_eq!(shell::header_last(host.app()), "header-maximize");
+
+            STRIP_SHOWS.set(true);
+            act(&mut host, |_, _| ());
+            assert_eq!(mounted_window_buttons(&host), ([true, true, false], false));
+        },
+    );
+}
+
+#[test]
+fn window_buttons_default_visible_on_stacking_desktop() {
+    let env = [("XDG_CURRENT_DESKTOP", std::ffi::OsStr::new("GNOME"))];
+    crate::test_support::hosted_over_with(
+        (
+            MODULE,
+            "window_buttons_default_visible_on_stacking_desktop",
+            &env,
+        ),
+        || {},
+        a_view_and_a_strip,
+        |mut host| {
+            while host.turn() {}
+            assert_eq!(mounted_window_buttons(&host), ([true, true, true], false));
+            assert_eq!(shell::header_last(host.app()), "header-close");
+
+            STRIP_SHOWS.set(true);
+            act(&mut host, |_, _| ());
+            assert_eq!(mounted_window_buttons(&host), ([true, true, false], true));
+            assert_eq!(shell::header_last(host.app()), "header-maximize");
+        },
+    );
+}
+
+#[test]
+fn saved_window_button_preferences_override_stacking_desktop_defaults() {
+    let env = [("XDG_CURRENT_DESKTOP", std::ffi::OsStr::new("GNOME"))];
+    crate::test_support::hosted_over_with(
+        (
+            MODULE,
+            "saved_window_button_preferences_override_stacking_desktop_defaults",
+            &env,
+        ),
+        || {
+            write_settings(
+                "window_show_minimize = false\nwindow_show_maximize = false\nwindow_show_close = false\n",
+            );
+        },
+        a_view_and_a_strip,
+        |mut host| {
+            while host.turn() {}
+            assert_eq!(
+                mounted_window_buttons(&host),
+                ([false, false, false], false)
+            );
+            assert_eq!(shell::header_last(host.app()), "header-settings");
+
+            STRIP_SHOWS.set(true);
+            act(&mut host, |_, _| ());
+            assert_eq!(
+                mounted_window_buttons(&host),
+                ([false, false, false], false)
+            );
+        },
+    );
+}
+
 #[test]
 fn the_keyboard_leaves_the_view_for_the_sidebar_and_comes_back_to_the_view() {
     hosted(

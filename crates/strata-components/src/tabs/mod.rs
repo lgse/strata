@@ -284,7 +284,9 @@ mod tests;
 
 pub use build::BrowserTabs;
 pub use closed::{CLOSED_TABS_KEPT, Closed, ClosedTabs};
-pub use data::{Accepts, LABEL_CHARS, Tab, TabId, TabsData, TitleFormat, elide_end, window_title};
+pub use data::{
+    Accepts, LABEL_CHARS, Tab, TabIcon, TabId, TabsData, TitleFormat, elide_end, window_title,
+};
 pub use intent::{DropSite, TabOpen, TabsIntent, Via};
 pub use new_tab::{NewTabButton, TabsLabels};
 pub use rune_kit::shell::TabWords;

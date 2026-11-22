@@ -10,6 +10,7 @@ use strata_components::{
     contract::{EntryGlyph, EntryId},
     controls::color_picker::Srgba,
     sidebar::RowIcon,
+    tabs::TabIcon,
 };
 use strata_core::model::{FolderColorValue, Location};
 use strata_desktop::settings::{Preferences, custom_emoji, is_icon_choice};
@@ -49,6 +50,13 @@ impl SavedGlyph {
         match self {
             Self::Icon(name) => RowIcon::Catalog(name.to_string()),
             Self::Emoji(emoji) => RowIcon::Emoji(emoji.to_string()),
+        }
+    }
+
+    pub(crate) fn to_tab_icon(&self) -> TabIcon {
+        match self {
+            Self::Icon(name) => TabIcon::Catalog(name.to_string()),
+            Self::Emoji(emoji) => TabIcon::Emoji(emoji.to_string()),
         }
     }
 }
