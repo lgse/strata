@@ -93,6 +93,9 @@ pub(crate) fn follow_look(app: &mut App) {
     window
         .themes
         .apply(look, window.settings.preferences(), ctx);
+    window
+        .backdrop_blur
+        .set_enabled(look.transparency.frosted_glass);
     crate::preview::sync_theme(app);
 }
 
@@ -102,6 +105,9 @@ pub(crate) fn follow_look_tx(app: &mut App, tx: &mut Tx) {
     let ctx = look_context(window);
     let next = window.themes.build_look(window.settings.preferences(), ctx);
     window.themes.apply_tx(look, next, tx);
+    window
+        .backdrop_blur
+        .set_enabled(look.transparency.frosted_glass);
     crate::preview::refresh_header(app);
     crate::preview::sync_theme(app);
 }

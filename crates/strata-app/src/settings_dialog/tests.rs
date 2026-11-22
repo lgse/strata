@@ -513,6 +513,7 @@ fn appearance_transparency_controls_update_look_persist_and_follow_window_focus(
             assert_eq!(host.app().look.kit.c.bg_base.a, 1.0);
             assert_eq!(host.app().look.kit.c.bg_deep.a, 1.0);
             assert_eq!(host.app().look.transparency.backdrop_blur, 0.0);
+            assert!(!shell::backdrop_blur_enabled(host.app()));
 
             click(&mut host, "header-settings");
             click(&mut host, "settings-nav-theme");
@@ -539,6 +540,7 @@ fn appearance_transparency_controls_update_look_persist_and_follow_window_focus(
             assert!(host.app().look.transparency.enabled);
             assert!(host.app().look.transparency.frosted_glass);
             assert!(host.app().look.transparency.backdrop_blur > 0.0);
+            assert!(shell::backdrop_blur_enabled(host.app()));
             assert!((host.app().look.kit.c.bg_base.a - 0.85).abs() < 1e-4);
             assert!((host.app().look.kit.c.bg_deep.a - 0.90).abs() < 1e-4);
             assert_eq!(host.app().look.kit.c.text_base.a, 1.0);
@@ -570,6 +572,7 @@ fn appearance_transparency_controls_update_look_persist_and_follow_window_focus(
             assert!(!shell::transparency(host.app()).frosted_glass);
             assert!(!host.app().look.transparency.frosted_glass);
             assert_eq!(host.app().look.transparency.backdrop_blur, 0.0);
+            assert!(!shell::backdrop_blur_enabled(host.app()));
 
             // Step unfocused multiplier up (1.25 -> 1.50) and verify live focus/unfocus scaling.
             step_slider(&mut host, "settings-unfocused-transparency", Key::PageUp);

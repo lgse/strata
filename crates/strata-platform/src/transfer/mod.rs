@@ -183,7 +183,12 @@ enum Backend {
 }
 
 /// Runs at [`Transfer::shutdown`], on the UI thread, before anything is torn down.
-#[cfg(any(feature = "dnd", feature = "clipboard", feature = "foreign-parent"))]
+#[cfg(any(
+    feature = "dnd",
+    feature = "clipboard",
+    feature = "foreign-parent",
+    feature = "backdrop-blur"
+))]
 pub(crate) type BeforeShutdown = Box<dyn FnOnce(&Transfer) + Send>;
 
 struct Hub {
@@ -194,10 +199,15 @@ struct Hub {
     windows: Arc<Windows>,
     subs: Subscribers,
     backend: Backend,
-    /// What modules built on the substrate (P1, P2) must do first: tear down their own objects
-    /// on winit's display, undo properties they set on the app's windows, hand a selection to
-    /// a clipboard manager.
-    #[cfg(any(feature = "dnd", feature = "clipboard", feature = "foreign-parent"))]
+    /// What modules built on the substrate (P1, P2, P4, backdrop-blur) must do first: tear down
+    /// their own objects on winit's display, undo properties they set on the app's windows, hand
+    /// a selection to a clipboard manager.
+    #[cfg(any(
+        feature = "dnd",
+        feature = "clipboard",
+        feature = "foreign-parent",
+        feature = "backdrop-blur"
+    ))]
     before_shutdown: Mutex<Vec<BeforeShutdown>>,
 }
 
@@ -265,7 +275,12 @@ impl Transfer {
             windows,
             subs,
             backend,
-            #[cfg(any(feature = "dnd", feature = "clipboard", feature = "foreign-parent"))]
+            #[cfg(any(
+                feature = "dnd",
+                feature = "clipboard",
+                feature = "foreign-parent",
+                feature = "backdrop-blur"
+            ))]
             before_shutdown: Mutex::new(Vec::new()),
         });
         *hub = Some(h.clone());
@@ -470,7 +485,12 @@ impl Transfer {
             return Ok(false);
         };
         drop(slot);
-        #[cfg(any(feature = "dnd", feature = "clipboard", feature = "foreign-parent"))]
+        #[cfg(any(
+            feature = "dnd",
+            feature = "clipboard",
+            feature = "foreign-parent",
+            feature = "backdrop-blur"
+        ))]
         {
             let hooks = std::mem::take(&mut *lock(&hub.before_shutdown));
             let t = Transfer(hub.clone());
@@ -493,8 +513,9 @@ impl Transfer {
     }
 }
 
-/// What P1 (`dnd`) and P4 (`foreign-parent`) build on: the connection on winit's display.
-#[cfg(any(feature = "dnd", feature = "foreign-parent"))]
+/// What P1 (`dnd`), P4 (`foreign-parent`) and `backdrop-blur` build on: the connection on winit's
+/// display.
+#[cfg(any(feature = "dnd", feature = "foreign-parent", feature = "backdrop-blur"))]
 impl Transfer {
     /// The Wayland connection on winit's display, if bound.
     pub(crate) fn shared_conn(&self) -> Option<&Arc<wayland::Conn>> {
@@ -525,9 +546,14 @@ impl Transfer {
     }
 }
 
-/// What P1 (`dnd`), P2 (`clipboard`) and P4 (`foreign-parent`) build on: a hook before the
-/// teardown.
-#[cfg(any(feature = "dnd", feature = "clipboard", feature = "foreign-parent"))]
+/// What P1 (`dnd`), P2 (`clipboard`), P4 (`foreign-parent`) and `backdrop-blur` build on: a hook
+/// before the teardown.
+#[cfg(any(
+    feature = "dnd",
+    feature = "clipboard",
+    feature = "foreign-parent",
+    feature = "backdrop-blur"
+))]
 impl Transfer {
     /// Runs `f` at [`Transfer::shutdown`], on the UI thread, before the substrate tears down.
     pub(crate) fn before_shutdown(&self, f: BeforeShutdown) {

@@ -8,6 +8,8 @@
 //!
 //! This crate is generic: it depends on `rune` alone and carries no Strata names in its API.
 
+#[cfg(feature = "backdrop-blur")]
+pub mod backdrop_blur;
 #[cfg(feature = "clipboard")]
 pub mod clipboard;
 #[cfg(feature = "csd")]

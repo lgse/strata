@@ -31,7 +31,10 @@ use strata_fs::{
     app::{Browser, BrowserEvent, FreshnessInput},
 };
 use strata_kit::icons::IconName;
-use strata_platform::csd::{self, Csd};
+use strata_platform::{
+    backdrop_blur::BackdropBlur,
+    csd::{self, Csd},
+};
 
 use crate::{
     App, Built, PARTS, buttons,
@@ -111,6 +114,7 @@ pub(crate) struct Window {
     location: Option<Location>,
     title: String,
     csd: Csd,
+    backdrop_blur: BackdropBlur,
     /// Whether the window has keyboard focus.
     active: bool,
     /// Whether the window is on screen ([`presence`]).
@@ -581,6 +585,24 @@ pub(crate) fn csd_of(app: &mut App) -> &mut Csd {
     &mut app.window.csd
 }
 
+/// Binds `blur` to `app`, detaching any previous native-window handle and syncing the current
+/// frosted-glass state.
+pub(crate) fn bind_backdrop_blur(app: &mut App, blur: BackdropBlur) {
+    app.window.backdrop_blur.detach();
+    blur.set_enabled(app.look.transparency.frosted_glass);
+    app.window.backdrop_blur = blur;
+}
+
+/// Detaches the window's compositor backdrop-blur handle before its native surface closes.
+pub(crate) fn detach_backdrop_blur(app: &mut App) {
+    app.window.backdrop_blur.detach();
+}
+
+#[cfg(test)]
+pub(crate) fn backdrop_blur_enabled(app: &App) -> bool {
+    app.window.backdrop_blur.is_enabled()
+}
+
 /// The store and the pool as the saved settings set them: thumbnails on or off, and the
 /// number of workers (`thumbnail_workers`, which GTK hands the pool the same way).
 fn thumbnail_store(saved: &strata_desktop::settings::Preferences) -> ThumbnailStore {
@@ -674,6 +696,8 @@ impl Window {
                 window_active: true,
             },
         );
+        let backdrop_blur = BackdropBlur::new();
+        backdrop_blur.set_enabled(look.transparency.frosted_glass);
         let window = Self {
             id: siblings::next_id(),
             settings,
@@ -688,6 +712,7 @@ impl Window {
             location: None,
             title: title_for(None),
             csd,
+            backdrop_blur,
             active: true,
             on_screen: true,
             held: rune::Mods::default(),

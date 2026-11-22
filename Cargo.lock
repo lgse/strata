@@ -5174,6 +5174,7 @@ dependencies = [
  "wayland-backend",
  "wayland-client",
  "wayland-protocols",
+ "wayland-protocols-plasma",
  "wayland-protocols-wlr",
  "x11rb 0.13.2",
  "zbus 6.2.1",

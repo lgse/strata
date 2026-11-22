@@ -20,7 +20,7 @@ use crate::look::Look;
 mod tests;
 
 /// Gaussian blur sigma (in points) for frosted glass surfaces (`El::backdrop_blur`).
-pub const FROSTED_BLUR_SIGMA: f32 = 14.0;
+pub const FROSTED_BLUR_SIGMA: f32 = 22.0;
 
 /// Minimum opacity kept on floating overlays (popovers, context menus, dialogs) when frosted
 /// glass is active so overlapping text stays legible over translucent panes.

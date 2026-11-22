@@ -20,9 +20,9 @@ use std::cell::{OnceCell, RefCell};
 
 use rune::{AppHandle, Tx, WindowHandle, WindowSpec};
 use strata_core::model::Location;
-use strata_platform::csd::{self, Backend, Csd, Policy};
+use strata_platform::csd::{Backend, Csd, Policy};
 
-use super::chooser_window::{ChooserWindow, chooser_app};
+use super::chooser_window::{self, ChooserWindow, chooser_app};
 use crate::{
     App,
     chooser::{floating::FloatingRequest, geometry::chooser_initial_dimensions},
@@ -118,6 +118,7 @@ fn chooser_poll(app: &mut App, clock: f64, tx: &mut Tx) -> bool {
 }
 
 fn close_chooser(app: &mut App, tx: &mut Tx) {
+    shell::detach_backdrop_blur(app);
     crate::chooser::cancel(app, tx);
     folder_views::flush_at_exit(app);
     let chooser = shell::window_id(app);
@@ -150,7 +151,7 @@ fn open(
     let size = (width as f32, height as f32);
     let token = request.token.clone();
     let initial = Location::local(request.initial_directory.clone());
-    let state = App::new_chooser(
+    let mut state = App::new_chooser(
         &ui,
         Csd::new(frame, Backend::from_env()),
         settings,
@@ -161,6 +162,7 @@ fn open(
             waking(completion, browser),
         ),
     );
+    let blur = chooser_window::bind_backdrop_blur(&mut state);
     state.open(initial);
     let chooser = shell::window_id(&state);
     let app = chooser_app(ChooserWindow {
@@ -174,7 +176,7 @@ fn open(
     super::windowed::follow_queue(&state, handle.clone());
     let attach = handle.clone();
     let app = app.on_window(move |window: &WindowHandle| {
-        csd::attach(window, &attach, shell::csd_of);
+        chooser_window::attach_window(window, &attach, &blur);
     });
     let window = rune::open_window(WindowSpec::from_app(&token, app).state(state));
     tracing::debug!("a floating chooser opened");
