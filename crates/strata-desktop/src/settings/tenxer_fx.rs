@@ -16,6 +16,7 @@ pub enum TenxerFx {
     ShockwaveRing,
     PerimeterIgnite,
     TacticalHud,
+    InterfaceOnFire,
     Off,
 }
 
@@ -24,12 +25,13 @@ impl TenxerFx {
     pub const KEY: &'static str = "tenxer_fx";
 
     /// Every selectable option in display order.
-    pub const ALL: [Self; 6] = [
+    pub const ALL: [Self; 7] = [
         Self::HorizonScan,
         Self::VelocityWarp,
         Self::ShockwaveRing,
         Self::PerimeterIgnite,
         Self::TacticalHud,
+        Self::InterfaceOnFire,
         Self::Off,
     ];
 
@@ -41,6 +43,7 @@ impl TenxerFx {
             Self::ShockwaveRing => "shockwave_ring",
             Self::PerimeterIgnite => "perimeter_ignite",
             Self::TacticalHud => "tactical_hud",
+            Self::InterfaceOnFire => "interface_on_fire",
             Self::Off => "off",
         }
     }
@@ -53,6 +56,7 @@ impl TenxerFx {
             Self::ShockwaveRing => "Shockwave Ring",
             Self::PerimeterIgnite => "Perimeter Ignite",
             Self::TacticalHud => "Tactical HUD",
+            Self::InterfaceOnFire => "Interface on fire",
             Self::Off => "Off",
         }
     }
