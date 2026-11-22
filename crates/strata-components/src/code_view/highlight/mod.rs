@@ -72,6 +72,11 @@ use syntect::highlighting::Theme;
 pub use blocks::CodeBlocks;
 pub use spans::MAX_SPANS;
 
+/// Number of bundled syntax definitions loaded for code previews.
+pub fn language_count() -> usize {
+    detect::syntaxes().map_or(0, |set| set.syntaxes().len())
+}
+
 use engine::{LineTokens, Lines, OpenArgs, Reply};
 use worker::{Request, WakerSlot, Worker};
 

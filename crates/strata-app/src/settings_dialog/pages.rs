@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-//! Actions, Integrations, Updates, Diagnostics, and About pages.
+//! Actions, Integrations, Updates, and About pages.
 
 use rune::{El, Tx, col, row, text};
 use rune_kit::{Button, ButtonVariant};
@@ -29,14 +29,6 @@ pub(super) fn integrations_page(app: &App, search: &SettingsSearch<App>) -> Vec<
     placeholder_card(
         PageCtx { app, search },
         RowSpec::new("integrations", "Integrations", "Apps and services"),
-        "",
-    )
-}
-
-pub(super) fn diagnostics_page(app: &App, search: &SettingsSearch<App>) -> Vec<El> {
-    placeholder_card(
-        PageCtx { app, search },
-        RowSpec::new("diagnostics", "Run diagnostics", "Troubleshooting"),
         "",
     )
 }
