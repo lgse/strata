@@ -78,14 +78,24 @@ pub(crate) fn copy(state: &Content, sel: &TextSelection) -> String {
     let mut out = String::new();
     for (i, unit) in units.iter().enumerate().take(last + 1).skip(first) {
         let Some(pieces) = by_unit.get(&i).filter(|_| i == first || i == last) else {
-            out.push_str(&unit.copy_text);
+            out.push_str(&state.unit_copy_text(i));
             continue;
         };
         match &unit.kind {
             UnitKind::Table { rows, .. } => {
-                let cells: usize = rows.iter().map(Vec::len).sum();
-                if pieces.len() == cells && pieces.iter().all(|p| p.whole) {
-                    out.push_str(&unit.copy_text);
+                let body = state.table_body_rows(i);
+                let selectable_cells: usize = body
+                    .iter()
+                    .filter_map(|&r| rows.get(r))
+                    .flat_map(|row| row.iter())
+                    .filter(|c| !c.text.is_empty())
+                    .count();
+                if i > first
+                    && selectable_cells > 0
+                    && pieces.len() == selectable_cells
+                    && pieces.iter().all(|p| p.whole)
+                {
+                    out.push_str(&state.unit_copy_text(i));
                 } else {
                     table_part(&mut out, pieces);
                     if i < last {
@@ -143,11 +153,14 @@ fn ends(state: &Content) -> Option<((usize, Part), (usize, Part))> {
         let u = &units[i];
         match &u.kind {
             UnitKind::Table { rows, .. } => {
-                let mut cells = rows.iter().enumerate().flat_map(|(r, row)| {
-                    row.iter()
-                        .enumerate()
-                        .filter(|(_, c)| !c.text.is_empty())
-                        .map(move |(c, _)| Part::Cell(r, c))
+                let body = state.table_body_rows(i);
+                let mut cells = body.into_iter().enumerate().flat_map(|(dr, src)| {
+                    rows.get(src).into_iter().flat_map(move |row| {
+                        row.iter()
+                            .enumerate()
+                            .filter(|(_, c)| !c.text.is_empty())
+                            .map(move |(c, _)| Part::Cell(dr, c))
+                    })
                 });
                 let p = if last { cells.last() } else { cells.next() };
                 p.map(|p| (i, p))
