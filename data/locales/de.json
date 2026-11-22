@@ -1598,5 +1598,14 @@
   "PDF document": "PDF-Dokument",
   "Page %{page} of %{pages}": "Seite %{page} von %{pages}",
   "Page %{page} of %{pages}, %{zoom}%": "Seite %{page} von %{pages}, %{zoom} %",
-  "Loading page": "Seite wird geladen"
+  "Loading page": "Seite wird geladen",
+  "10x mode effect": "10x-Modus-Effekt",
+  "Visual effect played when entering 10xer mode.": "Visueller Effekt beim Aktivieren des 10xer-Modus.",
+  "Preview effect": "Effekt anzeigen",
+  "Horizon Scan": "Horizont-Scan",
+  "Velocity Warp": "Geschwindigkeits-Warp",
+  "Shockwave Ring": "Schockwellenring",
+  "Perimeter Ignite": "Rahmenzündung",
+  "Tactical HUD": "Taktisches HUD",
+  "Off": "Aus"
 }

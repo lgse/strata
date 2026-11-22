@@ -1598,5 +1598,14 @@
   "PDF document": "Документ PDF",
   "Page %{page} of %{pages}": "Страница %{page} из %{pages}",
   "Page %{page} of %{pages}, %{zoom}%": "Страница %{page} из %{pages}, %{zoom}%",
-  "Loading page": "Загрузка страницы"
+  "Loading page": "Загрузка страницы",
+  "10x mode effect": "Эффект режима 10x",
+  "Visual effect played when entering 10xer mode.": "Визуальный эффект при включении режима 10xer.",
+  "Preview effect": "Предпросмотр эффекта",
+  "Horizon Scan": "Сканирование горизонта",
+  "Velocity Warp": "Гиперпрыжок",
+  "Shockwave Ring": "Ударное кольцо",
+  "Perimeter Ignite": "Вспышка по периметру",
+  "Tactical HUD": "Тактический HUD",
+  "Off": "Выкл."
 }

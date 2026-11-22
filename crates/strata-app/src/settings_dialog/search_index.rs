@@ -118,6 +118,13 @@ const TARGETS: &[TargetDef] = &[
         "browsing keyboard modal prompts footer commands experimental",
     ),
     row!(
+        "tenxer-fx",
+        "general",
+        "browsing",
+        "10x mode effect",
+        "browsing 10xer 10x animation visual effect fx horizon scan velocity warp shockwave ring perimeter ignite tactical hud off",
+    ),
+    row!(
         "hints",
         "general",
         "browsing",

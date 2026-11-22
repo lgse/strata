@@ -1598,5 +1598,14 @@
   "PDF document": "Documento PDF",
   "Page %{page} of %{pages}": "Página %{page} de %{pages}",
   "Page %{page} of %{pages}, %{zoom}%": "Página %{page} de %{pages}, %{zoom} %",
-  "Loading page": "Cargando página"
+  "Loading page": "Cargando página",
+  "10x mode effect": "Efecto del modo 10x",
+  "Visual effect played when entering 10xer mode.": "Efecto visual reproducido al activar el modo 10xer.",
+  "Preview effect": "Previsualizar efecto",
+  "Horizon Scan": "Barrido de horizonte",
+  "Velocity Warp": "Distorsión de velocidad",
+  "Shockwave Ring": "Anillo de choque",
+  "Perimeter Ignite": "Ignición de perímetro",
+  "Tactical HUD": "HUD táctico",
+  "Off": "Desactivado"
 }

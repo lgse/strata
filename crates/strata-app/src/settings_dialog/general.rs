@@ -6,7 +6,7 @@
 use std::rc::Rc;
 
 use rune::{Cursor, El, Tx, col, icon, row, text};
-use rune_kit::{Button, ButtonVariant};
+use rune_kit::{Button, ButtonVariant, IconButton, IconButtonVariant};
 use strata_components::controls::{
     number_field::{NumberField, NumberFieldState},
     settings_search::SettingsSearch,
@@ -16,7 +16,7 @@ use strata_core::{
     model::{SortDirection, SortKey},
 };
 use strata_desktop::settings::{
-    Preferences, SEARCH_ENTRY_LIMIT_CHOICES, SEARCH_TIME_LIMIT_CHOICES, UnitSystem,
+    Preferences, SEARCH_ENTRY_LIMIT_CHOICES, SEARCH_TIME_LIMIT_CHOICES, TenxerFx, UnitSystem,
     sort_preferences,
 };
 use strata_kit::icons::IconName;
@@ -234,12 +234,12 @@ fn browsing_section(ctx: PageCtx<'_>, menu_layer: &mut Vec<El>) -> Option<El> {
         simple(3),
         simple(4),
     ];
-    rows.extend(columns_and_hints_rows(ctx));
+    rows.extend(columns_and_hints_rows(ctx, menu_layer));
     rows.extend(folder_view_rows(ctx, menu_layer));
     group_card(&app.look, rows)
 }
 
-fn columns_and_hints_rows(ctx: PageCtx<'_>) -> Vec<Option<El>> {
+fn columns_and_hints_rows(ctx: PageCtx<'_>, menu_layer: &mut Vec<El>) -> Vec<Option<El>> {
     let prefs = shell::preferences(ctx.app);
     vec![
         switch_row(
@@ -269,13 +269,23 @@ fn columns_and_hints_rows(ctx: PageCtx<'_>) -> Vec<Option<El>> {
                     .refresh_mirror_preferences(shell::preferences(app));
             },
         ),
-        pref_switch(
+        switch_row(
             ctx,
             RowSpec::new(BROWSING_TENXER.0, BROWSING_TENXER.1, BROWSING_TENXER.2)
                 .note(prefs.tenxer_mode.then_some(TENXER_EXPERIMENTAL)),
             prefs.tenxer_mode,
-            |s, v| s.tenxer_mode = v,
+            |app, on, tx| {
+                shell::saved(app).change(|s| s.tenxer_mode = on);
+                shell::live_keys(app).follow(shell::preferences(app));
+                if on {
+                    crate::tenxer_fx::trigger_current(app, tx);
+                } else {
+                    crate::tenxer::end_session(app, tx);
+                    crate::tenxer_fx::cancel(app);
+                }
+            },
         ),
+        tenxer_fx_row(ctx, menu_layer),
         pref_switch(
             ctx,
             RowSpec::new(
@@ -287,6 +297,62 @@ fn columns_and_hints_rows(ctx: PageCtx<'_>) -> Vec<Option<El>> {
             |s, v| s.show_keybinding_hints = v,
         ),
     ]
+}
+
+fn tenxer_fx_row(ctx: PageCtx<'_>, menu_layer: &mut Vec<El>) -> Option<El> {
+    let app = ctx.app;
+    let current = shell::tenxer_fx(app);
+    let options = TenxerFx::ALL
+        .into_iter()
+        .map(|effect| {
+            ChoiceOption::new(tr(effect.label()), current == effect, move |app, tx| {
+                shell::saved(app).set_tenxer_fx(effect);
+                if effect.is_enabled() {
+                    crate::tenxer_fx::trigger(app, effect, tx);
+                } else {
+                    crate::tenxer_fx::cancel(app);
+                }
+            })
+        })
+        .collect();
+    let menu = choice_menu(
+        app,
+        ChoiceSpec {
+            id: "tenxer-fx",
+            title: "10x mode effect",
+            current: tr(current.label()),
+            disabled: false,
+            options,
+        },
+        menu_layer,
+    );
+    let can_preview = current.is_enabled() && app.look.animations;
+    let preview = buttons::on_return(
+        "settings-tenxer-fx-preview",
+        IconButton::new(app.look.icon(IconName::Play))
+            .variant(IconButtonVariant::Ghost)
+            .label(tr("Preview effect"))
+            .disabled(!can_preview)
+            .on_press_tx(move |app: &mut App, tx: &mut Tx| {
+                crate::tenxer_fx::trigger(app, current, tx);
+            })
+            .build(&app.look.accent_icon_kit()),
+    );
+    let control = row()
+        .gap(app.look.space.sm)
+        .items_center()
+        .child(preview)
+        .child(menu);
+    option_row(
+        ctx,
+        RowSpec::new(
+            "tenxer-fx",
+            "10x mode effect",
+            "Visual effect played when entering 10xer mode.",
+        )
+        .indented(),
+        control,
+    )
 }
 
 const BROWSING_TENXER: (&str, &str, &str) = (
