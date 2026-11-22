@@ -332,6 +332,7 @@ pub fn isolated_test(
         // The parent already selected this exact case, including explicit --ignored runs.
         .args(["--exact", name, "--nocapture", "--include-ignored"])
         .env(ISOLATED_CHILD, name)
+        .env_remove("XDG_CURRENT_DESKTOP")
         .env("HOME", home)
         .env("XDG_STATE_HOME", sandbox.path().join("state"))
         .env("XDG_CONFIG_HOME", sandbox.path().join("config"))

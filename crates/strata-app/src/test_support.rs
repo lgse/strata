@@ -112,8 +112,18 @@ pub(crate) fn hosted_over(
     parts: fn() -> Vec<Entry<App>>,
     run: impl FnOnce(Offscreen),
 ) {
+    hosted_over_with((module, name, &[]), || {}, parts, run);
+}
+
+/// [`hosted_over`], with `env` set and `prepare` run before settings are read.
+pub(crate) fn hosted_over_with(
+    target: (&str, &str, &[(&str, &OsStr)]),
+    prepare: impl FnOnce(),
+    parts: fn() -> Vec<Entry<App>>,
+    run: impl FnOnce(Offscreen),
+) {
     let host = |ui, settings| Offscreen::with_parts(parts().leak(), ui, settings);
-    hosted_on((module, name, &[]), || {}, host, run);
+    hosted_on(target, prepare, host, run);
 }
 
 /// A view for a made-up table: `build` draws it, it answers to `name` as the saved mode and

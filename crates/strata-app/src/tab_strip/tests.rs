@@ -10,11 +10,14 @@
 use std::{path::Path, time::Duration};
 
 use rune::{Key, KeyEvent, Mods, Tx};
-use strata_core::model::Location;
+use strata_components::tabs::TabIcon;
+use strata_core::model::{FolderColor, FolderColorValue, Location};
+use strata_desktop::settings::Preferences;
+use strata_kit::icons::IconName;
 
 use strata_platform::csd::Outcome as Sent;
 
-use super::select;
+use super::{named, select, tab_icon};
 use crate::{
     App,
     commands::{On, Outcome, run},
@@ -23,7 +26,7 @@ use crate::{
         self,
         tabs::{shown_tab, tab_browser, tabs},
     },
-    slots::TabKey,
+    slots::{TabKey, color_of},
     test_support::{
         PATIENCE, fixture, held, hosted, send_key,
         view::{all, field, hosted_in, hosted_with, idle, press, text},
@@ -491,6 +494,206 @@ fn the_close_buttons_speak_the_users_language() {
                 .collect();
             let expected = rust_i18n::t!("Close tab", locale = "fr").into_owned();
             assert_eq!(close_buttons, [expected.clone(), expected]);
+        },
+    );
+}
+
+#[test]
+fn tab_icon_resolves_folder_customization_and_falls_back_when_uncustomized() {
+    let home_path = Path::new("/home/tester");
+    let home = Location::local(home_path);
+    let project_path = Path::new("/home/tester/project");
+    let project = Location::local(project_path);
+    let docs_path = Path::new("/home/tester/docs");
+    let docs = Location::local(docs_path);
+
+    let mut preferences = Preferences::default();
+    assert_eq!(
+        tab_icon(None, &home, &preferences),
+        (TabIcon::Name(IconName::Home), None)
+    );
+    assert_eq!(
+        tab_icon(Some(&home), &home, &preferences),
+        (TabIcon::Name(IconName::Home), None)
+    );
+    assert_eq!(
+        tab_icon(Some(&Location::local(Path::new("/"))), &home, &preferences),
+        (TabIcon::Name(IconName::Drive), None)
+    );
+    assert_eq!(
+        tab_icon(Some(&Location::uri("trash:///")), &home, &preferences),
+        (TabIcon::Name(IconName::Trash), None)
+    );
+    assert_eq!(
+        tab_icon(
+            Some(&Location::uri("sftp://example/share")),
+            &home,
+            &preferences
+        ),
+        (TabIcon::Name(IconName::Network), None)
+    );
+    assert_eq!(
+        tab_icon(Some(&project), &home, &preferences),
+        (TabIcon::Name(IconName::Folder), None)
+    );
+
+    let red = FolderColorValue::Preset(FolderColor::Red);
+    let custom = FolderColorValue::Custom("#34d399".to_owned());
+    preferences.set_item_colors(&[home_path.to_path_buf()], Some(&red));
+    preferences.set_item_colors(&[project_path.to_path_buf()], Some(&custom));
+    preferences.set_item_icon(project_path, Some("strata-terminal"));
+    preferences.set_item_icon(docs_path, Some("emoji:🚀"));
+
+    assert_eq!(
+        tab_icon(Some(&home), &home, &preferences),
+        (TabIcon::Name(IconName::Home), color_of(&red)),
+        "color-only customization keeps the semantic place icon"
+    );
+    assert_eq!(
+        tab_icon(Some(&project), &home, &preferences),
+        (
+            TabIcon::Catalog("strata-terminal".into()),
+            color_of(&custom)
+        ),
+        "custom icon and color both apply"
+    );
+    assert_eq!(
+        tab_icon(Some(&docs), &home, &preferences),
+        (TabIcon::Emoji("🚀".into()), None),
+        "emoji customization without color leaves tint unset"
+    );
+
+    preferences.clear_item_customization(project_path);
+    assert_eq!(
+        tab_icon(Some(&project), &home, &preferences),
+        (TabIcon::Name(IconName::Folder), None),
+        "clearing customization restores the default folder icon"
+    );
+}
+
+fn open_pictures_column_in_second_tab(host: &mut Offscreen, folder: &Path) {
+    let documents = folder.join("documents");
+    let pictures = folder.join("pictures");
+    opened(host, &documents);
+    act(host, |app, tx| {
+        super::open_in_new_tab(app, Location::local(folder), tx);
+    });
+    let ready = |h: &Offscreen| {
+        tabs(h.app()).len() == 2
+            && h.app().browser().active_location() == Some(Location::local(folder))
+            && h.app().browser().column_entry_counts(0).is_some()
+    };
+    assert!(host.run_until(PATIENCE, ready), "second tab listed");
+    idle(host);
+
+    act(host, |app, _| {
+        app.browser
+            .select_entries_by_name_at(0, &["pictures".to_owned()]);
+        app.browser.activate_focused();
+    });
+    let opened_pictures = |h: &Offscreen| {
+        h.app().browser().active_location() == Some(Location::local(&pictures))
+            && h.app().browser().column_entry_counts(1).is_some()
+    };
+    assert!(
+        host.run_until(PATIENCE, opened_pictures),
+        "pictures column opened in active tab"
+    );
+    idle(host);
+}
+
+fn rename_folder_and_focus_relocated(
+    host: &mut Offscreen,
+    old_path: &Path,
+    new_name: &str,
+    expected_icon: &str,
+) {
+    let old_loc = Location::local(old_path);
+    act(host, |app, tx| {
+        let row = On::Row((0, shell::id_of(app, &old_loc)));
+        assert_eq!(run(app, "rename", row, tx), Outcome::Ran);
+    });
+    assert!(field(host).is_some(), "rename editor opened");
+    typed(host, new_name);
+    press(host, Key::Enter, Mods::default());
+
+    let new_path = old_path.parent().expect("parent folder").join(new_name);
+    let relocated = |h: &Offscreen| {
+        new_path.exists()
+            && h.app().browser().location_at(1) == Some(Location::local(&new_path))
+            && shell::preferences(h.app()).item_icon(&new_path) == Some(expected_icon)
+    };
+    assert!(
+        host.run_until(PATIENCE, relocated),
+        "renamed folder and its customization relocated"
+    );
+    idle(host);
+
+    if host.app().browser().active_location() != Some(Location::local(&new_path)) {
+        act(host, |app, _| {
+            app.browser
+                .select_entries_by_name_at(0, &[new_name.to_owned()]);
+            app.browser.activate_focused();
+        });
+        let active =
+            |h: &Offscreen| h.app().browser().active_location() == Some(Location::local(&new_path));
+        assert!(host.run_until(PATIENCE, active));
+        idle(host);
+    }
+}
+
+#[test]
+fn open_tabs_update_live_on_customization_clear_and_folder_rename() {
+    hosted(
+        MODULE,
+        "open_tabs_update_live_on_customization_clear_and_folder_rename",
+        |mut host| {
+            let folder = fixture();
+            let documents = folder.path().join("documents");
+            let pictures = folder.path().join("pictures");
+            open_pictures_column_in_second_tab(&mut host, folder.path());
+
+            let initial = named(host.app());
+            assert_eq!(initial.len(), 2);
+            assert_eq!(initial[0].icon, TabIcon::Name(IconName::Folder));
+            assert_eq!(initial[0].tint, None);
+            assert_eq!(initial[1].icon, TabIcon::Name(IconName::Folder));
+            assert_eq!(initial[1].tint, None);
+
+            let blue = FolderColorValue::Preset(FolderColor::Blue);
+            let green = FolderColorValue::Preset(FolderColor::Green);
+            act(&mut host, |app, _| {
+                shell::change_customization(app, |settings| {
+                    settings.set_item_colors(std::slice::from_ref(&documents), Some(&blue));
+                    settings.set_item_icon(&documents, Some("strata-terminal"));
+                    settings.set_item_colors(std::slice::from_ref(&pictures), Some(&green));
+                    settings.set_item_icon(&pictures, Some("emoji:🚀"));
+                });
+            });
+
+            let customized = named(host.app());
+            assert_eq!(
+                customized[0].icon,
+                TabIcon::Catalog("strata-terminal".into())
+            );
+            assert_eq!(customized[0].tint, color_of(&blue));
+            assert_eq!(customized[1].icon, TabIcon::Emoji("🚀".into()));
+            assert_eq!(customized[1].tint, color_of(&green));
+
+            act(&mut host, |app, _| {
+                shell::change_customization(app, |settings| {
+                    settings.clear_item_customization(&documents);
+                });
+            });
+            let cleared = named(host.app());
+            assert_eq!(cleared[0].icon, TabIcon::Name(IconName::Folder));
+            assert_eq!(cleared[0].tint, None);
+
+            rename_folder_and_focus_relocated(&mut host, &pictures, "photos", "emoji:🚀");
+            let after_rename = named(host.app());
+            assert_eq!(after_rename[1].name, "photos");
+            assert_eq!(after_rename[1].icon, TabIcon::Emoji("🚀".into()));
+            assert_eq!(after_rename[1].tint, color_of(&green));
         },
     );
 }
