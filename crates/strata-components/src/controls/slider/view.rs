@@ -231,7 +231,7 @@ impl<S: 'static> Slider<S> {
         let knob_fill = if st.dragging() && !self.disabled {
             look.fill.highlight
         } else {
-            c.surface_raised
+            look.transparency.opaque(c.surface_raised)
         };
         let mut knob = el()
             .key(format!("{key}-knob"))

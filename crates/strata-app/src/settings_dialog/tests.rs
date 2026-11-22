@@ -487,3 +487,105 @@ fn page_switch_resets_scroll_without_breaking_settings_search_reveal() {
         },
     );
 }
+
+fn node_disabled(tree: &Value, key: &str) -> bool {
+    view::all(tree, &|node| node["key"] == key)
+        .first()
+        .is_some_and(|node| has_state(node, "disabled"))
+}
+
+fn step_slider(host: &mut Offscreen, key: &str, step_key: Key) {
+    let _ = reveal_and_center(host, key);
+    host.runtime().update(|_, tx| tx.focus(key, true));
+    idle(host);
+    press(host, step_key, Mods::default());
+}
+
+#[test]
+fn appearance_transparency_controls_update_look_persist_and_follow_window_focus() {
+    hosted(
+        MODULE,
+        "appearance_transparency_controls_update_look_persist_and_follow_window_focus",
+        |mut host| {
+            // Default: transparency off, all surfaces opaque, no backdrop blur.
+            assert!(!shell::transparency(host.app()).enabled);
+            assert!(!host.app().look.transparency.enabled);
+            assert_eq!(host.app().look.kit.c.bg_base.a, 1.0);
+            assert_eq!(host.app().look.kit.c.bg_deep.a, 1.0);
+            assert_eq!(host.app().look.transparency.backdrop_blur, 0.0);
+
+            click(&mut host, "header-settings");
+            click(&mut host, "settings-nav-theme");
+
+            let sub_controls = [
+                "settings-background-transparency",
+                "settings-raised-transparency",
+                "settings-switch-frosted-glass",
+                "settings-unfocused-transparency",
+            ];
+            let _ = reveal_and_center(&mut host, "settings-switch-transparency");
+            let tree = host.tree();
+            assert!(!node_disabled(&tree, "settings-switch-transparency"));
+            for key in sub_controls {
+                assert!(
+                    node_disabled(&tree, key),
+                    "{key} starts disabled while master transparency toggle is off"
+                );
+            }
+
+            // Enable master transparency toggle: sub-controls activate and Look scales live.
+            click(&mut host, "settings-switch-transparency");
+            assert!(shell::transparency(host.app()).enabled);
+            assert!(host.app().look.transparency.enabled);
+            assert!(host.app().look.transparency.frosted_glass);
+            assert!(host.app().look.transparency.backdrop_blur > 0.0);
+            assert!((host.app().look.kit.c.bg_base.a - 0.85).abs() < 1e-4);
+            assert!((host.app().look.kit.c.bg_deep.a - 0.90).abs() < 1e-4);
+            assert_eq!(host.app().look.kit.c.text_base.a, 1.0);
+
+            let tree = host.tree();
+            for key in sub_controls {
+                assert!(
+                    !node_disabled(&tree, key),
+                    "{key} becomes enabled once master transparency toggle is on"
+                );
+            }
+
+            // Step background and raised transparency independently via keyboard.
+            step_slider(&mut host, "settings-background-transparency", Key::PageUp);
+            assert_eq!(shell::transparency(host.app()).background_transparency, 25);
+            assert!((host.app().look.kit.c.bg_base.a - 0.75).abs() < 1e-4);
+            assert!((host.app().look.kit.c.bg_deep.a - 0.90).abs() < 1e-4);
+
+            step_slider(&mut host, "settings-raised-transparency", Key::PageUp);
+            assert_eq!(
+                shell::transparency(host.app()).raised_surface_transparency,
+                20
+            );
+            assert!((host.app().look.kit.c.bg_base.a - 0.75).abs() < 1e-4);
+            assert!((host.app().look.kit.c.bg_deep.a - 0.80).abs() < 1e-4);
+
+            // Toggle frosted glass off: backdrop blur clears while transparency stays active.
+            click(&mut host, "settings-switch-frosted-glass");
+            assert!(!shell::transparency(host.app()).frosted_glass);
+            assert!(!host.app().look.transparency.frosted_glass);
+            assert_eq!(host.app().look.transparency.backdrop_blur, 0.0);
+
+            // Step unfocused multiplier up (1.25 -> 1.50) and verify live focus/unfocus scaling.
+            step_slider(&mut host, "settings-unfocused-transparency", Key::PageUp);
+            assert!((shell::transparency(host.app()).unfocused_multiplier - 1.50).abs() < 1e-6);
+
+            // Unfocus: 25% * 1.50 = 37.5% transparent (0.625 alpha), 20% * 1.50 = 30% (0.70 alpha).
+            host.runtime().window_focus(false);
+            idle(&mut host);
+            assert!((host.app().look.kit.c.bg_base.a - 0.625).abs() < 1e-4);
+            assert!((host.app().look.kit.c.bg_deep.a - 0.70).abs() < 1e-4);
+
+            // Refocus: returns cleanly to focused alphas.
+            host.runtime().window_focus(true);
+            idle(&mut host);
+            assert!((host.app().look.kit.c.bg_base.a - 0.75).abs() < 1e-4);
+            assert!((host.app().look.kit.c.bg_deep.a - 0.80).abs() < 1e-4);
+        },
+    );
+}

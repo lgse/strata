@@ -635,10 +635,6 @@ impl<S: 'static> ListTable<S> {
         let strip = header::strip(&shared, &resolved, s);
         let strip = menu::headings(&shared, s, strip, layer);
         let header = Rc::new(RefCell::new(Some(strip)));
-        let list = self
-            .collection_with(s, base, &shared, &resolved)
-            .header(move |_: &S| header.borrow_mut().take())
-            .build(s);
         let parts = (shared.parts)(s);
         let width = parts.table.width;
         let (bar, sideways_bar) = (parts.table.bar.clone(), parts.table.sideways_bar.clone());
@@ -646,6 +642,18 @@ impl<S: 'static> ListTable<S> {
         let sideways_look = BarLook::app(parts.look).horizontal();
         let sideways_overflows =
             width >= sideways_look.min_length && resolved.row_width() - width > 0.5;
+        let bottom_pad = if sideways_overflows {
+            sideways_look.edge + sideways_look.band()
+        } else {
+            0.0
+        };
+        let body_fill = parts.look.kit.c.bg_base;
+        let list = self
+            .collection_with(s, base, &shared, &resolved)
+            .header(move |_: &S| header.borrow_mut().take())
+            .viewport_fill(body_fill)
+            .viewport_bottom_pad(bottom_pad)
+            .build(s);
         let sideways = sideways_bar.build::<S>(
             &format!("{}-sideways-bar", self.shared.key),
             &self.scroll_key(),
@@ -656,10 +664,7 @@ impl<S: 'static> ListTable<S> {
         let followers: Vec<Box<dyn Fn(ScrollPos)>> = shared.sideways.iter().map(|f| f(s)).collect();
         let (follow_bar, follow_sideways) = (bar.clone(), sideways_bar.clone());
         let layout_shared = shared.clone();
-        let mut inner = col().w(resolved.row_width().max(width)).h_full().min_h(0.0);
-        if sideways_overflows {
-            inner = inner.pb(sideways_look.edge + sideways_look.band());
-        }
+        let inner = col().w(resolved.row_width().max(width)).h_full().min_h(0.0);
         let scroll = col()
             .key(self.scroll_key())
             .w_full()

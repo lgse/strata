@@ -379,7 +379,7 @@ impl<S: 'static, K: Copy + PartialEq + std::fmt::Debug + 'static> FooterPrompt<S
             .child(keys);
         popover::anchored(
             k,
-            popover::raised(k, content, k.radius.md),
+            strata_kit::transparency::raised_popover(look, content, k.radius.md),
             &self.field_key(),
             Placement::TopStart,
             look.space.xs,

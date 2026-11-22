@@ -234,7 +234,7 @@ fn sleeve_art(st: &MediaState, a: &Art, key: &str, side: f32, look: &Look) -> El
     let sleeve = el()
         .size(side, side)
         .pin(Some(0.0), Some(0.0), None, None)
-        .fill(k.c.bg_base)
+        .fill(look.transparency.opaque(k.c.bg_base))
         .radius(radius)
         .shadow(side * 0.03, side * 0.07, k.alpha(k.c.black, 0.55))
         .child(cover_image(a, side, radius))

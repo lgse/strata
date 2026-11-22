@@ -1608,6 +1608,17 @@
   "Perimeter Ignite": "페리미터 이그나이트",
   "Tactical HUD": "택티컬 HUD",
   "Interface on fire": "불타는 인터페이스",
-  "Plasma splash": "플라즈마 스플래시",
-  "Off": "끄기"
+  "Off": "끄기",
+  "TRANSPARENCY": "투명도",
+  "Transparency effects": "투명 효과",
+  "Make window surfaces translucent while keeping text, icons, and previews opaque.": "텍스트, 아이콘, 미리보기는 불투명하게 유지하면서 창 표면을 반투명하게 만듭니다.",
+  "Background transparency": "배경 투명도",
+  "Transparency of the main file panes and preview background (0% is solid).": "기본 파일 창과 미리보기 배경의 투명도입니다(0%는 불투명).",
+  "Raised surface transparency": "돌출 표면 투명도",
+  "Independent transparency for raised chrome such as the sidebar, header, tab bar, and footer.": "사이드바, 헤더, 탭 표시줄, 바닥글 등 돌출된 UI 영역의 개별 투명도입니다.",
+  "Frosted glass": "반투명 유리",
+  "Apply backdrop blur and a subtle frosted sheen to translucent dialogs, menus, and popovers.": "반투명 대화 상자, 메뉴, 팝오버에 배경 흐림과 은은한 유리 광택을 적용합니다.",
+  "Unfocused window multiplier": "비활성 창 배율",
+  "Multiply transparency when the window is unfocused (higher is more see-through; 1.00× keeps it unchanged).": "창이 포커스를 잃었을 때 투명도에 곱하는 배율입니다(높을수록 더 투명하며 1.00×는 동일 유지).",
+  "Plasma splash": "플라즈마 스플래시"
 }

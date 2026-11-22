@@ -105,6 +105,8 @@ pub(super) fn build(app: &App, search: &SettingsSearch<App>, menu_layer: &mut Ve
             prefs.element_glow,
             |s, on| s.element_glow = on,
         ),
+        section_heading(ctx, "transparency", "TRANSPARENCY"),
+        super::transparency_section::build(ctx),
         section_heading(ctx, "motion-group", "MOTION"),
         look_switch_card(
             ctx,

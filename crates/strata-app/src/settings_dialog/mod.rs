@@ -42,6 +42,7 @@ mod pages;
 mod search_index;
 #[cfg(test)]
 mod tests;
+mod transparency_section;
 
 // Match GTK's responsive settings panel (`src/ui/settings/responsive.rs`, `src/style.css`):
 // 1250x800 capped to the window minus a 24 px margin (`look.space.xxl`), 240 px navigation
@@ -202,6 +203,7 @@ pub(crate) struct SettingsDialog {
     video_start: NumberFieldState,
     text_size: NumberFieldState,
     roundness: NumberFieldState,
+    transparency: transparency_section::TransparencySliders,
     theme_query: TextEdit,
     theme_filter: appearance_page::ThemeFilter,
     page_bar: Bar,
@@ -253,6 +255,7 @@ impl SettingsDialog {
             video_start,
             text_size,
             roundness,
+            transparency: transparency_section::TransparencySliders::new(),
             theme_query: TextEdit::default(),
             theme_filter: appearance_page::ThemeFilter::All,
             page_bar: controls::settings_bar(),
@@ -355,10 +358,12 @@ pub(crate) fn open_settings_tx(app: &mut App, tx: &mut Tx) {
         omarchy: shell::themes(app).omarchy_available(),
     };
     let prefs = shell::preferences(app).clone();
+    let transparency = shell::transparency(app);
     let state = &mut app.settings_dialog;
     controls::sync_search_index_if_needed(&mut state.index, &mut state.indexed_locale, avail);
     general::sync_general_fields(&mut state.workers, &mut state.video_start, &prefs);
     appearance_page::sync_appearance_fields(&mut state.text_size, &mut state.roundness, &prefs);
+    state.transparency.sync(transparency);
     state.open = true;
     state.open_choice = None;
     state.opened_page = state.page;
@@ -465,9 +470,11 @@ impl Part for SettingsDialog {
         changed |= integrations::poll(app, clock, tx);
         changed |= diagnostics::poll(app, clock, tx);
         let prefs = shell::preferences(app).clone();
+        let transparency = shell::transparency(app);
         let state = &mut app.settings_dialog;
         general::sync_general_fields(&mut state.workers, &mut state.video_start, &prefs);
         appearance_page::sync_appearance_fields(&mut state.text_size, &mut state.roundness, &prefs);
+        state.transparency.sync(transparency);
         changed
     }
 }
@@ -510,7 +517,7 @@ fn build(app: &App, frame: &mut Frame<'_, App>) -> Option<El> {
         .width(DIALOG_WIDTH)
         .height(DIALOG_HEIGHT)
         .margin(app.look.space.xxl)
-        .fill(app.look.kit.c.bg_base)
+        .fill(app.look.transparency.overlay_color(app.look.kit.c.bg_base))
         .panel_radius(app.look.kit.radius.xl)
         .child(stack);
     if let Some(view) = shell::view_focus(app) {

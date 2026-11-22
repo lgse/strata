@@ -1608,6 +1608,17 @@
   "Perimeter Ignite": "Ignition du périmètre",
   "Tactical HUD": "ATH tactique",
   "Interface on fire": "Interface en flammes",
-  "Plasma splash": "Écran plasma",
-  "Off": "Désactivé"
+  "Off": "Désactivé",
+  "TRANSPARENCY": "TRANSPARENCE",
+  "Transparency effects": "Effets de transparence",
+  "Make window surfaces translucent while keeping text, icons, and previews opaque.": "Rendre les surfaces de la fenêtre translucides tout en gardant le texte, les icônes et les aperçus opaques.",
+  "Background transparency": "Transparence de l’arrière-plan",
+  "Transparency of the main file panes and preview background (0% is solid).": "Transparence des panneaux de fichiers principaux et du fond d’aperçu (0 % est opaque).",
+  "Raised surface transparency": "Transparence des surfaces surélevées",
+  "Independent transparency for raised chrome such as the sidebar, header, tab bar, and footer.": "Transparence indépendante pour les éléments surélevés tels que la barre latérale, l’en-tête, la barre d’onglets et le pied de page.",
+  "Frosted glass": "Verre dépoli",
+  "Apply backdrop blur and a subtle frosted sheen to translucent dialogs, menus, and popovers.": "Appliquer un flou d’arrière-plan et un léger reflet dépoli aux boîtes de dialogue, menus et infobulles translucides.",
+  "Unfocused window multiplier": "Multiplicateur de fenêtre inactive",
+  "Multiply transparency when the window is unfocused (higher is more see-through; 1.00× keeps it unchanged).": "Multiplier la transparence lorsque la fenêtre n’est pas active (plus élevé = plus transparent ; 1,00× ne change rien).",
+  "Plasma splash": "Écran plasma"
 }

@@ -42,6 +42,7 @@
 use rune_kit::Radius;
 
 use crate::look::{Families, Look};
+use crate::transparency::{self, TransparencyParams};
 use crate::{density, fonts, typography};
 
 #[cfg(test)]
@@ -135,6 +136,8 @@ pub struct LookParams {
     /// False when the user or the desktop turned animations off (P5's switch, as data):
     /// `animations`.
     pub animations: bool,
+    /// Surface transparency and frosted glass parameters.
+    pub transparency: TransparencyParams,
 }
 
 impl Default for LookParams {
@@ -150,6 +153,7 @@ impl Default for LookParams {
             app_families: fonts::families(),
             element_glow: true,
             animations: true,
+            transparency: TransparencyParams::default(),
         }
     }
 }
@@ -157,8 +161,8 @@ impl Default for LookParams {
 impl Look {
     /// Sets the tokens K2 owns from `params`: the type ramp and icon sizes for the text size,
     /// the bars and rows for the densities (and the text size), the radii for the roundness,
-    /// the interface families, and the glow and animations switches. Applying the same
-    /// parameters again changes nothing.
+    /// the interface families, and the glow, animations, and transparency settings. Applying
+    /// the same parameters again changes nothing.
     pub fn apply_params(&mut self, params: &LookParams) {
         let root = typography::root_px(params.text_size, params.text_scale);
         typography::apply(self, root, params.font.as_deref(), &params.app_families);
@@ -174,6 +178,7 @@ impl Look {
         self.kit.radius = scale_radii(BASE_RADIUS, factor);
         self.glow.on = params.element_glow;
         self.animations = params.animations;
+        transparency::apply(self, params.transparency);
     }
 
     /// `self` with [`Look::apply_params`] applied.

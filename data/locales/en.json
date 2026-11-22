@@ -1608,6 +1608,17 @@
   "Perimeter Ignite": "Perimeter Ignite",
   "Tactical HUD": "Tactical HUD",
   "Interface on fire": "Interface on fire",
-  "Plasma splash": "Plasma splash",
-  "Off": "Off"
+  "Off": "Off",
+  "TRANSPARENCY": "TRANSPARENCY",
+  "Transparency effects": "Transparency effects",
+  "Make window surfaces translucent while keeping text, icons, and previews opaque.": "Make window surfaces translucent while keeping text, icons, and previews opaque.",
+  "Background transparency": "Background transparency",
+  "Transparency of the main file panes and preview background (0% is solid).": "Transparency of the main file panes and preview background (0% is solid).",
+  "Raised surface transparency": "Raised surface transparency",
+  "Independent transparency for raised chrome such as the sidebar, header, tab bar, and footer.": "Independent transparency for raised chrome such as the sidebar, header, tab bar, and footer.",
+  "Frosted glass": "Frosted glass",
+  "Apply backdrop blur and a subtle frosted sheen to translucent dialogs, menus, and popovers.": "Apply backdrop blur and a subtle frosted sheen to translucent dialogs, menus, and popovers.",
+  "Unfocused window multiplier": "Unfocused window multiplier",
+  "Multiply transparency when the window is unfocused (higher is more see-through; 1.00× keeps it unchanged).": "Multiply transparency when the window is unfocused (higher is more see-through; 1.00× keeps it unchanged).",
+  "Plasma splash": "Plasma splash"
 }

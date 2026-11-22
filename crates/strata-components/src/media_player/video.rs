@@ -227,12 +227,14 @@ fn frame<S: 'static>(
             .live_opacity(&st.live.stand_in)
             .a11y_hidden();
         if let Some(poster) = st.poster() {
-            stand_in = stand_in.fill(look.kit.c.bg_base).child(
-                el().w_full()
-                    .h_full()
-                    .pixels_fit(poster, SurfaceFit::Fit)
-                    .opacity(POSTER_OPACITY),
-            );
+            stand_in = stand_in
+                .fill(look.transparency.opaque(look.kit.c.bg_base))
+                .child(
+                    el().w_full()
+                        .h_full()
+                        .pixels_fit(poster, SurfaceFit::Fit)
+                        .opacity(POSTER_OPACITY),
+                );
         }
         frame = frame.child(stand_in);
     }
@@ -240,7 +242,7 @@ fn frame<S: 'static>(
         frame = frame.child(
             el().key(format!("{key}-cover-{i}"))
                 .pin(Some(0.0), Some(0.0), Some(0.0), Some(0.0))
-                .fill(look.kit.c.bg_base)
+                .fill(look.transparency.opaque(look.kit.c.bg_base))
                 .a11y_hidden()
                 .child(
                     el().w_full()

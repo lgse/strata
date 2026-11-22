@@ -49,6 +49,7 @@ impl Part for Columns {
                 .h_full()
                 .min_w(0.0)
                 .min_h(0.0)
+                .fill(app.look.kit.c.bg_base)
                 .child(built);
             let zoned = crate::dnd::PointZone::new(intents::strip_zone(), intents::strip_action);
             let host = crate::dnd::drop_target_by_point(app, host, "columns-host", zoned);

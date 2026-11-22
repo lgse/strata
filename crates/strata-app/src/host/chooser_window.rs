@@ -32,10 +32,14 @@ pub(crate) fn chooser_app(window: ChooserWindow) -> rune::App<App> {
         families: FAMILIES,
         ..AppSpec::new(OPENING_TITLE, window.size, || unreachable!(), shell::view)
     })
-    .window_options(WindowOptions {
-        visible: window.visible,
-        ..csd::window_options(window.frame, WindowOptions::default())
-    })
+    .window_options(csd::window_options(
+        window.frame,
+        WindowOptions {
+            visible: window.visible,
+            transparent: true,
+            ..WindowOptions::default()
+        },
+    ))
     .on_modifiers(shell::modifiers)
     .on_close(window.on_close)
 }

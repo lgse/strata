@@ -1608,6 +1608,17 @@
   "Perimeter Ignite": "Ignición de perímetro",
   "Tactical HUD": "HUD táctico",
   "Interface on fire": "Interfaz en llamas",
-  "Plasma splash": "Destello de plasma",
-  "Off": "Desactivado"
+  "Off": "Desactivado",
+  "TRANSPARENCY": "TRANSPARENCIA",
+  "Transparency effects": "Efectos de transparencia",
+  "Make window surfaces translucent while keeping text, icons, and previews opaque.": "Hace translúcidas las superficies de la ventana manteniendo opacos el texto, los iconos y las vistas previas.",
+  "Background transparency": "Transparencia del fondo",
+  "Transparency of the main file panes and preview background (0% is solid).": "Transparencia de los paneles de archivos y del fondo de vista previa (0 % es sólido).",
+  "Raised surface transparency": "Transparencia de superficies elevadas",
+  "Independent transparency for raised chrome such as the sidebar, header, tab bar, and footer.": "Transparencia independiente para elementos elevados como la barra lateral, la cabecera, la barra de pestañas y el pie.",
+  "Frosted glass": "Cristal esmerilado",
+  "Apply backdrop blur and a subtle frosted sheen to translucent dialogs, menus, and popovers.": "Aplica desenfoque de fondo y un sutil brillo esmerilado a los diálogos, menús y paneles emergentes translúcidos.",
+  "Unfocused window multiplier": "Multiplicador de ventana desenfocada",
+  "Multiply transparency when the window is unfocused (higher is more see-through; 1.00× keeps it unchanged).": "Multiplica la transparencia cuando la ventana no tiene el foco (más alto es más transparente; 1,00× la mantiene igual).",
+  "Plasma splash": "Destello de plasma"
 }

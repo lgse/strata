@@ -298,6 +298,8 @@ pub(crate) struct Config<S> {
     marks: Option<MarksFn<S>>,
     regions: Option<RegionFn<S>>,
     header: Option<PartFn<S>>,
+    viewport_fill: Option<rune::Color>,
+    viewport_bottom_pad: f32,
     overlay: Option<PartFn<S>>,
     empty: Option<PartFn<S>>,
     /// Every part [`Collection::edge`] added, in order.
@@ -383,6 +385,8 @@ impl<S: 'static> Collection<S> {
                 marks: None,
                 regions: None,
                 header: None,
+                viewport_fill: None,
+                viewport_bottom_pad: 0.0,
                 overlay: None,
                 empty: None,
                 edge: Vec::new(),
@@ -559,6 +563,20 @@ impl<S: 'static> Collection<S> {
     /// whose content isn't the default icon and label (C3's caption, C4's cells).
     pub fn regions(mut self, f: impl Fn(&S, usize, Point) -> Region + 'static) -> Self {
         self.cfg.regions = Some(Rc::new(f));
+        self
+    }
+
+    /// Fills the viewport area below [`Collection::header`] with `color` (so a translucent
+    /// header above the viewport never double-composites over a background fill).
+    pub fn viewport_fill(mut self, color: rune::Color) -> Self {
+        self.cfg.viewport_fill = Some(color);
+        self
+    }
+
+    /// Reserves `pad` points below the vertical viewport inside the filled area below
+    /// [`Collection::header`] (e.g., for an overflowing horizontal scrollbar).
+    pub fn viewport_bottom_pad(mut self, pad: f32) -> Self {
+        self.cfg.viewport_bottom_pad = pad.max(0.0);
         self
     }
 
@@ -1059,6 +1077,12 @@ impl<S: 'static> Collection<S> {
             .min_h(0.0)
             .clip_soft(0.0)
             .child(viewport);
+        if let Some(fill) = cfg.viewport_fill {
+            over = over.fill(fill);
+        }
+        if cfg.viewport_bottom_pad > 0.0 {
+            over = over.pb(cfg.viewport_bottom_pad);
+        }
         if len == 0
             && let Some(empty) = cfg.empty.as_ref().and_then(|f| f(s))
         {
