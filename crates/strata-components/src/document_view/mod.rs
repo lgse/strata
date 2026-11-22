@@ -268,11 +268,7 @@ impl<S: 'static> DocumentView<S> {
             )
             .virtual_rows_version((key.as_str(), st.revision()))
             .on_visible_rows(move |s: &mut S, r| get_mut(s).set_visible(r))
-            .selection_copy(move |sel| Some(content.copy(sel)))
-            .on_selection_change(move |s: &mut S, change, tx| {
-                get_mut(s).selection_changed(change.selection());
-                tx.live_only();
-            });
+            .selection_copy(move |sel| Some(content.copy(sel)));
         let viewport = col()
             .key(scroll_key.clone())
             .w_full()
@@ -281,6 +277,11 @@ impl<S: 'static> DocumentView<S> {
                 stick_bottom: false,
             })
             .on_scroll_offset(st.bar.watch())
+            .on_background_press_tx(move |s: &mut S, tx: &mut Tx| {
+                get_mut(s).clear_all_selected();
+                tx.live_only();
+            })
+            .press_on_down()
             .child(list);
         let bar = st
             .bar
@@ -312,24 +313,33 @@ impl<S: 'static> DocumentView<S> {
         }
         for notice in &st.document().notices {
             root = root.child(
-                col().w_full().px(look.space.lg).pt(look.space.md).child(
-                    col()
-                        .w_full()
-                        .fill(look.kit.c.info.bg)
-                        .border(1.0, look.kit.c.info.border)
-                        .radius(look.round(5.0))
-                        .px(9.0)
-                        .py(7.0)
-                        .child(
-                            text(notice.clone())
-                                .wrap()
-                                .w_full()
-                                .font(paint.small)
-                                .color(paint.text)
-                                .selectable(true)
-                                .selection_color(paint.selection),
-                        ),
-                ),
+                col()
+                    .w_full()
+                    .px(look.space.lg)
+                    .pt(look.space.md)
+                    .on_background_press_tx(move |s: &mut S, tx: &mut Tx| {
+                        get_mut(s).clear_all_selected();
+                        tx.live_only();
+                    })
+                    .press_on_down()
+                    .child(
+                        col()
+                            .w_full()
+                            .fill(look.kit.c.info.bg)
+                            .border(1.0, look.kit.c.info.border)
+                            .radius(look.round(5.0))
+                            .px(9.0)
+                            .py(7.0)
+                            .child(
+                                text(notice.clone())
+                                    .wrap()
+                                    .w_full()
+                                    .font(paint.small)
+                                    .color(paint.text)
+                                    .selectable(true)
+                                    .selection_color(paint.selection),
+                            ),
+                    ),
             );
         }
         root.child(body)
@@ -357,8 +367,11 @@ fn key_in<S: 'static>(
         return true;
     }
     if ev.is_command('c') && plain && st.all_selected() {
-        tx.copy(st.copy_all());
-        return true;
+        if tx.text_selection().is_some_and(|sel| st.reads_whole(sel)) {
+            tx.copy(st.copy_all());
+            return true;
+        }
+        st.clear_all_selected();
     }
     let ctrl = m.ctrl || m.cmd;
     if ev.key == Key::Left && !ctrl && !m.shift && !m.alt {

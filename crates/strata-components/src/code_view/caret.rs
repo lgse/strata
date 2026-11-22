@@ -14,6 +14,21 @@ use rune::{Drag, Key, KeyEvent, Phase, PointerButton, TextStyle, Tx};
 
 use super::state::CodeState;
 
+/// Whether `ev` belongs to caret navigation or selection.
+pub(super) fn handles_key(ev: &KeyEvent) -> bool {
+    let m = ev.mods;
+    if m.alt {
+        return false;
+    }
+    let ctrl = m.ctrl || m.cmd;
+    match ev.key {
+        Key::Home | Key::End => true,
+        Key::Left | Key::Right => m.shift || !ctrl,
+        Key::Up | Key::Down => m.shift && !ctrl,
+        _ => false,
+    }
+}
+
 /// Handles caret and keyboard-selection keys inside a focused [`super::CodeView`].
 ///
 /// Returns `Some(handled)` when the key belongs to caret navigation or selection, or `None` when
@@ -40,7 +55,7 @@ fn home_or_end(st: &mut CodeState, to_end: bool, (ctrl, shift): (bool, bool), tx
     let (anchor, head) = st.caret_or_selection(tx.text_selection());
     let target = if ctrl {
         let p = st.position.clone();
-        p.go(if to_end { f64::INFINITY } else { 0.0 }, tx);
+        p.go_step(if to_end { f64::INFINITY } else { 0.0 }, tx);
         if to_end { text.len() } else { 0 }
     } else {
         let (start, end) = line_bounds(&text, head);
@@ -108,6 +123,7 @@ pub(crate) fn gutter_drag(st: &mut CodeState, hit: GutterHit, d: &mut Drag, tx: 
     match d.phase {
         Phase::Down => {
             st.apply_caret(row.start, row.start, tx);
+            tx.live_only();
         }
         Phase::Move if !d.cancelled() => {
             let x = d.x - hit.text_x;
@@ -116,7 +132,10 @@ pub(crate) fn gutter_drag(st: &mut CodeState, hit: GutterHit, d: &mut Drag, tx: 
             } else {
                 row.start + byte_at_x(st.rows().source(hit.row), x, hit.mono)
             };
-            st.apply_caret(row.start, end, tx);
+            if st.caret() != Some((row.start, end)) {
+                st.apply_caret(row.start, end, tx);
+            }
+            tx.live_only();
         }
         Phase::Move | Phase::Up => {
             tx.live_only();
@@ -124,23 +143,47 @@ pub(crate) fn gutter_drag(st: &mut CodeState, hit: GutterHit, d: &mut Drag, tx: 
     }
 }
 
+/// Largest valid UTF-8 character boundary in `line` at or before `byte`.
+fn floor_boundary(line: &str, byte: usize) -> usize {
+    let mut b = byte.min(line.len());
+    while b > 0 && !line.is_char_boundary(b) {
+        b -= 1;
+    }
+    b
+}
+
 /// Byte offset in `line` whose glyph midpoint is nearest `x` points in `mono`.
 pub(crate) fn byte_at_x(line: &str, x: f32, mono: TextStyle) -> usize {
     if x <= 0.0 || line.is_empty() {
         return 0;
     }
-    let mut prev_end = 0;
-    let mut prev_w = 0.0_f32;
-    for (idx, ch) in line.char_indices() {
-        let end = idx + ch.len_utf8();
-        let w = rune::text::advance(&line[..end], mono);
-        if x < (prev_w + w) * 0.5 {
-            return prev_end;
-        }
-        prev_end = end;
-        prev_w = w;
+    let total = rune::text::advance(line, mono);
+    if x >= total {
+        return line.len();
     }
-    line.len()
+    let mut lo = 0usize;
+    let mut hi = line.len();
+    let mut w_lo = 0.0_f32;
+    let mut w_hi = total;
+    loop {
+        let next = next_char(line, lo);
+        if next >= hi {
+            break;
+        }
+        let mut mid = floor_boundary(line, lo + (hi - lo) / 2);
+        if mid <= lo {
+            mid = next;
+        }
+        let w_mid = rune::text::advance(&line[..mid], mono);
+        if w_mid <= x {
+            lo = mid;
+            w_lo = w_mid;
+        } else {
+            hi = mid;
+            w_hi = w_mid;
+        }
+    }
+    if x < (w_lo + w_hi) * 0.5 { lo } else { hi }
 }
 
 pub(crate) fn prev_char(text: &str, at: usize) -> usize {
