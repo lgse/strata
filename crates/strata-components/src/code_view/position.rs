@@ -221,6 +221,10 @@ impl Position {
         &self.0.fill
     }
 
+    pub fn dragging(&self) -> bool {
+        self.0.dragging.get()
+    }
+
     fn held(&self) -> bool {
         self.0.over.get() || self.0.dragging.get()
     }
@@ -433,6 +437,13 @@ impl Position {
         let at = self.0.said.get() + delta;
         let end = at >= range || at >= self.0.said_max.get() - 0.5;
         self.go(if end { f64::INFINITY } else { at.max(0.0) }, tx);
+    }
+
+    /// Jumps to row position `at` in response to an explicit keyboard or assistive-technology
+    /// navigation command, marking the accessible value for immediate update.
+    pub fn go_step(&self, at: f64, tx: &mut Tx) {
+        self.0.stepped.set(true);
+        self.go(at, tx);
     }
 
     /// A step from the keyboard: `delta` rows, clamped.

@@ -414,8 +414,7 @@ fn gap<S: 'static>(
         .key(band_key.clone())
         .absolute(0.0, -reach)
         .w_full()
-        .h(band_h)
-        .raise();
+        .h(band_h);
     let band = ctx.dnd.drop_zone_keyed(
         band,
         band_key,
@@ -427,6 +426,7 @@ fn gap<S: 'static>(
         .h(height)
         .px(look.space.xs)
         .justify_center()
+        .paint_order(1)
         .motion(look.kit.motion.disclosure)
         .a11y_hidden();
     if open {

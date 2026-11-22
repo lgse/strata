@@ -725,11 +725,14 @@ fn needs_selection_restore(
     tx: &Tx,
 ) -> bool {
     match saved {
-        crate::menus::SavedPreviewSelection::CodeRange(..) => app
-            .preview
-            .viewer
-            .code_state()
-            .is_some_and(|code| code.keyboard_selection().is_none()),
+        crate::menus::SavedPreviewSelection::CodeRange(..) => {
+            tx.text_selection().is_none()
+                || app
+                    .preview
+                    .viewer
+                    .code_state()
+                    .is_some_and(|code| code.keyboard_selection().is_none())
+        }
         crate::menus::SavedPreviewSelection::All
         | crate::menus::SavedPreviewSelection::Node(..) => tx.text_selection().is_none(),
     }
