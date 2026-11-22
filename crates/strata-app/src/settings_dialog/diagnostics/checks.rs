@@ -6,6 +6,7 @@ use std::{collections::HashSet, path::Path};
 
 use strata_desktop::services::package_manager::PackageManager;
 use strata_fs::services::network_error::NetworkError;
+use strata_platform::media::BackendKind;
 use strata_preview::sandbox::browser::WorkerSupport;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
@@ -147,6 +148,9 @@ pub(super) enum Finding {
     SlowVideoThumbnails,
     Found(Vec<String>),
     Missing(Vec<String>),
+    AudioOutput {
+        sink: String,
+    },
     NoRawConverter,
     LanguagesInstalled,
     LanguagesMissing,
@@ -436,6 +440,24 @@ pub(super) fn media_previews(
         return Check::problem(id, Finding::Missing(missing)).fixed_by(packages::FFMPEG);
     }
     sample_check(id, read)
+}
+
+pub(super) fn audio_playback(backend: BackendKind) -> Check {
+    match backend {
+        BackendKind::PulseAudio => Check::passed(
+            CheckId::AudioPlayback,
+            Finding::AudioOutput {
+                sink: "PulseAudio".to_owned(),
+            },
+        ),
+        BackendKind::Alsa => Check::passed(
+            CheckId::AudioPlayback,
+            Finding::AudioOutput {
+                sink: "ALSA".to_owned(),
+            },
+        ),
+        BackendKind::Silent => Check::not_run(CheckId::AudioPlayback),
+    }
 }
 
 pub(super) fn raw_photos(found: &[&str]) -> Check {

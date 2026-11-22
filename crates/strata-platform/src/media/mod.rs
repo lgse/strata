@@ -46,6 +46,14 @@ mod tests;
 
 pub use ring::MAX_VOLUME;
 
+/// Probes the best available Linux PCM backend (`PulseAudio` -> `Alsa` -> `Silent`) synchronously.
+/// Call off the UI thread; opening an audio daemon or device may block briefly.
+#[must_use]
+pub fn probe_backend(app_name: &str, stream_name: &str) -> BackendKind {
+    let spec = PcmSpec::new(SampleFormat::S16Le, 48_000, 2);
+    backend::open_backend(spec, app_name, stream_name, false).kind()
+}
+
 use ring::sanitize_volume;
 use worker::{BackendFactory, EventCallback, Shared, State};
 

@@ -340,6 +340,22 @@ fn install_hints_and_check_evaluators_match_expected_outcomes() {
         Status::Warning
     );
     assert_eq!(
+        checks::audio_playback(strata_platform::media::BackendKind::PulseAudio).finding,
+        Finding::AudioOutput {
+            sink: "PulseAudio".into(),
+        }
+    );
+    assert_eq!(
+        checks::audio_playback(strata_platform::media::BackendKind::Alsa).finding,
+        Finding::AudioOutput {
+            sink: "ALSA".into(),
+        }
+    );
+    assert_eq!(
+        checks::audio_playback(strata_platform::media::BackendKind::Silent).status,
+        Status::Warning
+    );
+    assert_eq!(
         checks::custom_actions(0, Vec::new(), Vec::new()).finding,
         Finding::NoActions
     );

@@ -72,6 +72,9 @@ pub(super) fn message(check: &Check) -> String {
         Finding::Missing(names) => {
             rust_i18n::t!("Not installed: %{items}", items = items(names)).into_owned()
         }
+        Finding::AudioOutput { sink } => {
+            rust_i18n::t!("Audio plays through %{sink}.", sink = sink).into_owned()
+        }
         Finding::WatchLimitLow { limit } => rust_i18n::t!(
             "The inotify watch limit is %{limit}, so some folders may not refresh automatically.",
             limit = integer(*limit)
@@ -181,6 +184,7 @@ fn sentence(finding: &Finding) -> &'static str {
         Finding::PrlimitMissing { .. }
         | Finding::Found(_)
         | Finding::Missing(_)
+        | Finding::AudioOutput { .. }
         | Finding::WatchLimitLow { .. }
         | Finding::TerminalMissing
         | Finding::ActionsBroken { .. } => {

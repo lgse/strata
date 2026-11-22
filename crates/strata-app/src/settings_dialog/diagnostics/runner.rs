@@ -22,9 +22,9 @@ use strata_fs::services::{gio_error_message, io_error_message};
 use strata_preview::sandbox::{self, Cancellation, MediaPreviewBackend, ParseOperation};
 
 use super::checks::{
-    self, Check, CheckId, VfsState, appimage_icons, drives, file_types_for, folder_monitoring_for,
-    gvfs, media_previews, mtp, preview_sandbox, rar_archives, raw_photos, remote_backend,
-    sample_check, session_service, update_server, video_thumbnails, workers,
+    self, Check, CheckId, VfsState, appimage_icons, audio_playback, drives, file_types_for,
+    folder_monitoring_for, gvfs, media_previews, mtp, preview_sandbox, rar_archives, raw_photos,
+    remote_backend, sample_check, session_service, update_server, video_thumbnails, workers,
 };
 
 type Worker = fn(&Sender<Check>);
@@ -193,8 +193,10 @@ fn system_checks(sender: &Sender<Check>) {
     let send = |check| {
         let _ = sender.send(check);
     };
-    // Rune audio playback is deferred (packet entry 26); no GStreamer backend is linked.
-    send(Check::not_run(CheckId::AudioPlayback));
+    send(audio_playback(strata_platform::media::probe_backend(
+        "Strata",
+        "Diagnostics",
+    )));
     let vfs = detect_vfs();
     send(gvfs(&vfs));
     let session = bus_names(gio::BusType::Session);
