@@ -196,8 +196,7 @@ impl<'a, S: 'static> PlacesSidebar<'a, S> {
             .role("list")
             .focus_group()
             .w_full()
-            .px(pad)
-            .pb(look.space.md)
+            .padding(pad)
             .child(places(&ctx, &self.data, self.trash));
         if let Some(pinned) = pinned(&ctx, &self.data) {
             list = list.child(pinned);
