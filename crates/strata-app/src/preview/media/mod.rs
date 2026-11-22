@@ -288,7 +288,7 @@ fn received(app: &mut App, (viewer, session): (u64, u64), events: Received, tx: 
         return false;
     };
     let frame = media.stream.receive(session, events);
-    media.show(frame);
+    media.show(frame, tx.clock());
     media.sync_error();
     if media.family.is_some() && !media.stream.has_video() {
         media.maybe_start_peaks(later, tx);
@@ -440,9 +440,10 @@ impl MediaViewer {
         self.state.feed_bands(levels);
     }
 
-    fn show(&mut self, frame: Option<stream::Shown>) {
+    fn show(&mut self, frame: Option<stream::Shown>, now: f64) {
         if let Some(frame) = frame {
             let [width, height] = frame.size;
+            self.state.feed_ambient(&frame.pixels, frame.size, now);
             self.pixels.set(width, height, frame.pixels);
             self.state.set_frame(Some(frame.size));
         }
@@ -508,6 +509,7 @@ impl MediaViewer {
         if self.stream.playing() {
             self.stream.pause();
         }
+        self.state.clear_ambient();
         self.details = None;
         self.audio_details = None;
         self.peaks = None;
@@ -531,7 +533,7 @@ pub(super) fn poll(app: &mut App, clock: f64, tx: &mut Tx) -> bool {
         return false;
     };
     let frame = media.stream.advance(clock, tx);
-    media.show(frame);
+    media.show(frame, clock);
     media.sync_error();
     media.feed_spectrum();
     let changed = media.state.tick(&media.stream, clock, tx);

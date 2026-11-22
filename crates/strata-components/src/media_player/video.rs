@@ -8,6 +8,7 @@ use rune::{Cx, El, Pixels, SurfaceFit, Tx, col, el, text};
 use strata_kit::look::Look;
 use strata_kit::slots::media as slot;
 
+use super::ambient;
 use super::badges::badges;
 use super::data::{Details, MediaKind};
 use super::state::MediaState;
@@ -77,7 +78,12 @@ pub(crate) fn video<S: 'static>(
             look,
         ))
         .child(super::error(st, key, look));
-    layout::section(
+    let glow_inset = if look.glow.on && look.animations {
+        ambient::BAND
+    } else {
+        0.0
+    };
+    layout::section_with_inset(
         key.to_owned(),
         Areas {
             content,
@@ -94,6 +100,7 @@ pub(crate) fn video<S: 'static>(
             )),
             controls: super::transport::transport(st, access, emit, key, look),
         },
+        glow_inset,
         look,
     )
 }
@@ -246,7 +253,38 @@ fn frame<S: 'static>(
     if let Some(bubble) = bubble(st, key, look) {
         frame = frame.child(bubble);
     }
-    frame
+    wrap_with_ambient(st, key, frame, look)
+}
+
+/// Mounts the blurred 6×4 ambient glow halo behind the rounded video frame without clipping it
+/// to the frame's tight bounds. Keeps `{key}-frame` at a stable tree position so focus never
+/// drops when the first video frame lights the glow.
+fn wrap_with_ambient(st: &MediaState, key: &str, frame: El, look: &Look) -> El {
+    if st.clip().kind != MediaKind::Video {
+        return frame;
+    }
+    let radius = slot::frame_radius(look) + ambient::OUTSET;
+    let glow = st.ambient_shown().then(|| {
+        el().key(format!("{key}-ambient"))
+            .pin(
+                Some(-ambient::OUTSET),
+                Some(-ambient::OUTSET),
+                Some(-ambient::OUTSET),
+                Some(-ambient::OUTSET),
+            )
+            .radius(radius)
+            .pixels(st.ambient().pixels())
+            .blur(ambient::BLUR_SIGMA)
+            .live_opacity(&st.live.ambient)
+            .inert()
+            .a11y_hidden()
+    });
+    el().key(format!("{key}-frame-wrap"))
+        .w_full()
+        .h_full()
+        .child_exit(rune::Transition::none())
+        .children(glow)
+        .child(frame)
 }
 
 /// The bubble over the frame while the pointer is over the timeline: the nearest storyboard
