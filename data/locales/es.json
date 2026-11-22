@@ -1619,5 +1619,6 @@
   "Frosted glass": "Cristal esmerilado",
   "Apply backdrop blur and a subtle frosted sheen to translucent dialogs, menus, and popovers.": "Aplica desenfoque de fondo y un sutil brillo esmerilado a los diálogos, menús y paneles emergentes translúcidos.",
   "Unfocused window multiplier": "Multiplicador de ventana desenfocada",
-  "Multiply transparency when the window is unfocused (higher is more see-through; 1.00× keeps it unchanged).": "Multiplica la transparencia cuando la ventana no tiene el foco (más alto es más transparente; 1,00× la mantiene igual)."
+  "Multiply transparency when the window is unfocused (higher is more see-through; 1.00× keeps it unchanged).": "Multiplica la transparencia cuando la ventana no tiene el foco (más alto es más transparente; 1,00× la mantiene igual).",
+  "Plasma splash": "Destello de plasma"
 }

@@ -117,6 +117,17 @@ impl Memory {
     fn same(&self, other: &Self) -> bool {
         Rc::ptr_eq(&self.0, &other.0)
     }
+
+    pub(crate) fn collect_ids(&self, out: &mut impl Extend<EntryId>) {
+        let kept = self.0.borrow();
+        kept.places.collect_ids(out);
+        if let Some((_, id)) = kept.visit {
+            out.extend(std::iter::once(id));
+        }
+        if let Some(id) = kept.visit_rows.1 {
+            out.extend(std::iter::once(id));
+        }
+    }
 }
 
 #[derive(Default)]

@@ -33,18 +33,37 @@ pub const STATUS: &str = "status";
 /// [`LABEL`].
 pub const STUCK: &str = "stuck";
 
+/// Formats `prefix` followed by decimal `value` without `core::fmt` overhead on 100k-row key scans.
+fn prefixed_u64(prefix: &str, mut value: u64) -> String {
+    let mut digits = [0_u8; 20];
+    let mut start = digits.len();
+    loop {
+        start -= 1;
+        digits[start] = b'0' + (value % 10) as u8;
+        value /= 10;
+        if value == 0 {
+            break;
+        }
+    }
+    let tail = std::str::from_utf8(&digits[start..]).unwrap_or("0");
+    let mut out = String::with_capacity(prefix.len() + tail.len());
+    out.push_str(prefix);
+    out.push_str(tail);
+    out
+}
+
 /// The key of the row (or grid cell) that shows entry `id`.
 ///
 /// Used by: C1e, C5 (the row to keep on screen), C23 (flight sources), scripts.
 pub fn row_key(id: EntryId) -> String {
-    format!("row-{}", id.get())
+    prefixed_u64("row-", id.get())
 }
 
 /// The key of the header line of the group keyed `key` (`Group::key`).
 ///
 /// Used by: C4, scripts.
 pub fn header_key(key: u64) -> String {
-    format!("head-{key}")
+    prefixed_u64("head-", key)
 }
 
 /// The key of the virtual line whose first entry is `first`: the row itself when each line
@@ -53,7 +72,7 @@ pub(super) fn line_key(first: EntryId, per_line: usize) -> String {
     if per_line <= 1 {
         row_key(first)
     } else {
-        format!("line-{}", first.get())
+        prefixed_u64("line-", first.get())
     }
 }
 

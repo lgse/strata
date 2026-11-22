@@ -191,3 +191,39 @@ enumeration and sorting (`936` to `2,460` turns with `wait = 0 ms`, compared to 
 - **Process tree overhead:** Sandboxed thumbnail worker processes (`--browser-worker` under
   bubblewrap, up to `thumbnail_workers = 4`) plus shared GLib/GIO and graphics driver mappings
   contribute to the `315–324 MiB` peak process-tree PSS.
+
+## 5. Follow-up measurements (2026-11-22)
+
+After addressing bottlenecks #1–#8 on `perf/2160-large-directory-open` (branched from
+`strata-next` `59fbfe5f0`), re-measured on the same 24-core machine and 99,998-image fixture:
+
+### Windowed launch timings (`--release`, LTO, private headless `sway`, median `[min, max]` over 3 runs)
+
+| View mode | Mapped (ms) | Settled (ms) | Peak PSS (MiB) | Total CPU (s) |
+| --- | ---: | ---: | ---: | ---: |
+| Columns | 623 `[588, 739]` | **954** `[927, 1,083]` (was `1,633`, `-42%`) | **252.6** `[251.4, 252.7]` (was `315.3`, `-62.7 MiB`) | **0.96** `[0.92, 1.03]` (was `1.37`, `-30%`) |
+| List (ungrouped) | 581 `[560, 602]` | **938** `[884, 1,075]` (was `1,665`, `-44%`) | **253.0** `[252.5, 253.5]` (was `315.2`, `-62.2 MiB`) | **0.86** `[0.85, 0.96]` (was `1.33`, `-35%`) |
+| List (grouped by type) | 557 `[528, 586]` | **877** `[874, 935]` (was `1,922`, `-54%`) | **253.6** `[253.6, 253.9]` (was `323.7`, `-70.1 MiB`) | **0.89** `[0.84, 0.93]` (was `1.82`, `-51%`) |
+| Icons (62 pt tiles) | 578 `[571, 604]` | **888** `[770, 906]` (was `1,887`, `-53%`) | **254.7** `[230.1, 254.9]` (was `319.6`, `-64.9 MiB`) | **0.84** `[0.74, 0.84]` (was `2.10`, `-60%`) |
+
+### Offscreen phase breakdown (`--profile perf`, 99,998 images)
+
+| Mode | Total to `LoadFinished` | To `EntriesReplaced` (enum + sort) | To first 128 visible rows | GLib dispatch | Rune frames | Turns before `EntriesReplaced` (`anim`) | Idle wait |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Columns (root) | **170.5 ms** (was `340.3 ms`) | **99.8 ms** (was `158.2 ms`) | **105.7 ms** (was `169.9 ms`) | **51.1 ms** (was `93.0 ms`) | **30.8 ms** | `21` (`1`) | `81.8 ms` |
+| Icons (62 pt tiles) | **170.4 ms** (was `266.7 ms`) | **105.8 ms** (was `133.8 ms`) | **112.7 ms** (was `141.2 ms`) | **51.0 ms** (was `88.0 ms`) | **23.5 ms** | `23` (`1`) | `88.1 ms` |
+| List (ungrouped) | **170.5 ms** (was `286.2 ms`) | **98.4 ms** (was `137.8 ms`) | **105.3 ms** (was `144.0 ms`) | **51.3 ms** (was `85.2 ms`) | **30.6 ms** | `19` (`1`) | `82.1 ms` |
+| List (grouped by type) | **183.3 ms** (was `617.9 ms`) | **105.4 ms** (was `183.4 ms`) | **110.6 ms** (was `192.8 ms`) | **51.9 ms** (was `132.9 ms`) | **41.5 ms** | `17` (`1`) | `81.3 ms` |
+
+### Startup and memory baseline (empty folder, `0` files, `--release`)
+
+- **Mapped / Settled:** `560–573 ms` / `588–600 ms` (`0.52–0.54 s` CPU), `145.2–147.0 MiB` PSS.
+- **Breakdown:** Strata's own process/state/font setup (`UiThread::claim` + `Saved::load` +
+  `ThemeEngine::load` + `App::new` + `TextSystem::new`) accounts for `~25 ms`; the remaining
+  `~540 ms` map time and `~146 MiB` base PSS are `winit` / `wgpu` / graphics driver / Wayland
+  compositor initialization inside Rune.
+- **99,998-image delta over empty baseline:** `+~290–350 ms` settled time, `+~0.31–0.42 s` CPU,
+  `+~78 MiB` main-process PSS (`~224–227 MiB` main + `4 × 6.8 MiB` sandboxed `--browser-worker`
+  processes). `strata_app::slots::Ids` now prunes unreferenced entries above `131,072` mappings
+  between folder/tab transitions so long sessions visiting multiple large directories stay
+  bounded.

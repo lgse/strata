@@ -433,3 +433,37 @@ fn row_at_matches_row_of_id_at() {
     }
     assert!(column.row_at(column.len()).is_none());
 }
+
+#[test]
+fn incremental_grouped_appends_match_full_replace() {
+    let ids = Ids::default();
+    let prefs = ViewPreferences::default();
+    let all = [
+        "folder_a/",
+        "a.jpg",
+        ".hidden.png",
+        "b.png",
+        "c.jpg",
+        "d.webp",
+        "e.png",
+        "f.jpg",
+    ];
+    let mut replaced = Column::new(Location::local(FOLDER), false, None);
+    replaced.set_grouping(Some(prefs));
+    replaced.apply(Edit::Replace(rows(&ids, &all)));
+
+    let mut staged = Column::new(Location::local(FOLDER), false, None);
+    staged.set_grouping(Some(prefs));
+    staged.apply(Edit::Replace(rows(&ids, &all[..2])));
+    staged.apply(Edit::Insert(vec![(2, rows(&ids, &all[2..5]))]));
+    staged.apply(Edit::Insert(vec![(5, rows(&ids, &all[5..]))]));
+
+    assert_eq!(shown(&staged), shown(&replaced));
+    assert_eq!(positions(&staged), positions(&replaced));
+    assert_eq!(staged.group_runs(), replaced.group_runs());
+    for index in 0..staged.len() {
+        let id = staged.id_at(index);
+        assert_eq!(staged.index_of(id), Some(index));
+        assert_eq!(staged.group_at(index), replaced.group_at(index));
+    }
+}

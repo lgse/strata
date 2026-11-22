@@ -49,6 +49,7 @@ use crate::{
 
 pub(crate) mod close_guard;
 mod held;
+mod ids_prune;
 mod preferences;
 mod presence;
 mod siblings;
@@ -143,10 +144,15 @@ pub(crate) struct Window {
     size: (f32, f32),
 }
 
+/// Tail chunk size for Rune's staged publication: first paint still lands 128 rows
+/// immediately, and larger tails avoid repeated O(k) virtual-list key scans (Rune #203).
+const RUNE_TAIL_PUBLISH_CHUNK: usize = 131_072;
+
 /// A browser over the local file source, as `src/ui/window/launch.rs` builds one, with the
 /// saved sort and hidden-files choice.
 fn browser_for(saved: &strata_desktop::settings::Preferences) -> Rc<Browser> {
     let browser = Browser::with_preferences(Rc::new(LocalFileSource), sort_preferences(saved));
+    browser.set_publication_chunks(RUNE_TAIL_PUBLISH_CHUNK, RUNE_TAIL_PUBLISH_CHUNK);
     browser.set_operation_provider(Rc::new(LocalOperationProvider));
     browser
 }
@@ -432,6 +438,7 @@ impl App {
         }
         tx.set_title(self.window.title.clone());
         self.window.location = location;
+        ids_prune::prune_if_needed(self);
         true
     }
 
@@ -445,6 +452,14 @@ impl App {
             can_maximize: capabilities.maximize,
             active: self.window.active,
         }
+    }
+}
+
+impl App {
+    /// Returns `true` once after a non-empty `EntriesReplaced` arrived so the host lets Rune
+    /// paint the first visible rows before dispatching staged tail chunks.
+    pub(crate) fn take_yield_paint(&self) -> bool {
+        self.window.events.take_yield_paint()
     }
 }
 

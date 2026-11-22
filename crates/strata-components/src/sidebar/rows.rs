@@ -63,7 +63,8 @@ fn rail_row(look: &Look, icon: El, selected: bool) -> El {
 /// A full-width row: leading icon, primary-ink regular-weight label (`kit.c.text_base` in
 /// `kit.ty.ui_compact`), and an optional trailing slot (`Keybind`, device actions or busy
 /// spinner). The `space.md` icon-to-label gap matches `list.px + ROW_INSET` (`space.xs + 4`),
-/// and `space.md` trailing padding keeps trailing controls clear of the 7 pt resize grip.
+/// and `full_row_trailing_pad` keeps trailing controls clear of the vertical scrollbar and the
+/// 7 pt resize grip.
 fn full_row(look: &Look, icon: El, label: &str, selected: bool, trailing: Option<El>) -> El {
     let label = text(label)
         .key("label")
@@ -74,7 +75,7 @@ fn full_row(look: &Look, icon: El, label: &str, selected: bool, trailing: Option
         .shrink()
         .a11y_hidden();
     let mut r = row_shell(look, icon, selected)
-        .pr(look.space.md)
+        .pr(super::build::full_row_trailing_pad(look))
         .gap(look.space.md)
         .child(label);
     if let Some(t) = trailing {

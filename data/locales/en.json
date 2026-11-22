@@ -1619,5 +1619,6 @@
   "Frosted glass": "Frosted glass",
   "Apply backdrop blur and a subtle frosted sheen to translucent dialogs, menus, and popovers.": "Apply backdrop blur and a subtle frosted sheen to translucent dialogs, menus, and popovers.",
   "Unfocused window multiplier": "Unfocused window multiplier",
-  "Multiply transparency when the window is unfocused (higher is more see-through; 1.00× keeps it unchanged).": "Multiply transparency when the window is unfocused (higher is more see-through; 1.00× keeps it unchanged)."
+  "Multiply transparency when the window is unfocused (higher is more see-through; 1.00× keeps it unchanged).": "Multiply transparency when the window is unfocused (higher is more see-through; 1.00× keeps it unchanged).",
+  "Plasma splash": "Plasma splash"
 }

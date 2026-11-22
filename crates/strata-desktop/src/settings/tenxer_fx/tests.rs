@@ -30,6 +30,8 @@ fn finish_save(save: PendingSave) -> FinishedSave {
 
 #[test]
 fn all_variants_round_trip_through_toml() {
+    assert_eq!(TenxerFx::ALL.last().copied(), Some(TenxerFx::Off));
+    assert_eq!(TenxerFx::PlasmaSplash.as_str(), "plasma_splash");
     for effect in TenxerFx::ALL {
         let encoded =
             toml::to_string(&StoredTenxerFx { tenxer_fx: effect }).expect("serialize tenxer_fx");

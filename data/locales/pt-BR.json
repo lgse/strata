@@ -1619,5 +1619,6 @@
   "Frosted glass": "Vidro fosco",
   "Apply backdrop blur and a subtle frosted sheen to translucent dialogs, menus, and popovers.": "Aplica desfoque de fundo e um brilho fosco sutil a diálogos, menus e popovers translúcidos.",
   "Unfocused window multiplier": "Multiplicador de janela sem foco",
-  "Multiply transparency when the window is unfocused (higher is more see-through; 1.00× keeps it unchanged).": "Multiplica a transparência quando a janela perde o foco (maior é mais transparente; 1,00× mantém igual)."
+  "Multiply transparency when the window is unfocused (higher is more see-through; 1.00× keeps it unchanged).": "Multiplica a transparência quando a janela perde o foco (maior é mais transparente; 1,00× mantém igual).",
+  "Plasma splash": "Explosão de plasma"
 }

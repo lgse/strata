@@ -13,6 +13,7 @@
 use std::{
     collections::HashMap,
     ffi::{OsStr, OsString},
+    hash::{BuildHasherDefault, Hasher},
     path::Path,
     rc::Rc,
 };
@@ -22,13 +23,36 @@ use strata_core::{
     i18n::tr,
     model::{EntryKind as Kind, FileEntry, Location, MetadataValue, ViewPreferences},
 };
-use strata_fs::app::compare_type_groups;
 
 use crate::slots::{Ids, Worn};
 
+mod groups;
 mod type_group;
 
+use groups::GroupedBuckets;
 pub(crate) use type_group::{TypeGroup, entry_type_of};
+
+/// Fast non-cryptographic hasher for in-process sequential [`EntryId`] keys.
+#[derive(Default)]
+struct EntryIdHasher(u64);
+
+impl Hasher for EntryIdHasher {
+    fn finish(&self) -> u64 {
+        self.0
+    }
+
+    fn write(&mut self, bytes: &[u8]) {
+        for &b in bytes {
+            self.0 = self.0.wrapping_mul(0x517cc1b727220a95) ^ u64::from(b);
+        }
+    }
+
+    fn write_u64(&mut self, value: u64) {
+        self.0 = value.wrapping_mul(0x9e3779b97f4a7c15);
+    }
+}
+
+type EntryIdMap<V> = HashMap<EntryId, V, BuildHasherDefault<EntryIdHasher>>;
 
 /// What a row is, as assistive technology hears it: `entry_kind_name` in
 /// `src/ui/accessibility.rs`.
@@ -120,24 +144,40 @@ pub(crate) struct Facts {
     pub(crate) mode: Option<u32>,
 }
 
-impl Facts {
+/// The two facts a thumbnail key depends on (`modified` and `size`), stored compactly on
+/// [`Row`] instead of duplicating all six [`Facts`] fields.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+struct KeyedFacts {
+    modified: Option<i64>,
+    size: Option<u64>,
+}
+
+impl KeyedFacts {
+    fn of(facts: &Facts) -> Self {
+        Self {
+            modified: facts.modified,
+            size: facts.size,
+        }
+    }
+
     /// These facts, with a time or a size still unknown here taken from `now`.
-    fn learning(&self, now: &Facts) -> Facts {
-        Facts {
+    fn learning(self, now: &Facts) -> Self {
+        Self {
             modified: self.modified.or(now.modified),
             size: self.size.or(now.size),
-            ..*self
         }
     }
 
     /// Whether a time or a size known in both differs: the file changed.
-    fn contradict(&self, other: &Facts) -> bool {
+    fn contradict(self, other: &Facts) -> bool {
         fn differ<T: PartialEq>(a: Option<T>, b: Option<T>) -> bool {
             matches!((a, b), (Some(a), Some(b)) if a != b)
         }
         differ(self.modified, other.modified) || differ(self.size, other.size)
     }
+}
 
+impl Facts {
     fn of(entry: &FileEntry) -> Self {
         Self {
             size: known(&entry.size),
@@ -183,7 +223,7 @@ pub(crate) struct Row {
     /// The time and size the thumbnail key was made under, with any learnt since while it was
     /// kept: what a later row is compared against, so a change across a reload that listed
     /// them unknown is still seen.
-    keyed: Facts,
+    keyed: KeyedFacts,
 }
 
 impl Row {
@@ -212,24 +252,30 @@ impl Row {
     fn same_file_as(&self, previous: &Row) -> bool {
         let keyed = previous.thumbnail.is_some() && self.thumbnail.is_some();
         let same_entry = self.id == previous.id;
-        keyed && same_entry && !self.facts.contradict(&previous.keyed)
+        keyed && same_entry && !previous.keyed.contradict(&self.facts)
     }
 
     pub(crate) fn of(entry: &FileEntry, ids: &Ids) -> Self {
+        Self::of_with_id(entry, ids.of(&entry.location))
+    }
+
+    pub(crate) fn of_with_id(entry: &FileEntry, id: EntryId) -> Self {
         let (kind, described) = kinds(entry);
+        let (thumbnail, rendered_model) = crate::thumbnails::classify(entry);
+        let facts = Facts::of(entry);
         Self {
-            id: ids.of(&entry.location),
+            id,
             name: entry.display_name.clone(),
             kind,
             icon: crate::entry_icon::entry_icon(entry),
             described,
             hidden: entry.is_hidden,
-            thumbnail: crate::thumbnails::key_of(entry),
-            rendered_model: crate::thumbnails::is_rendered_model(entry),
+            thumbnail,
+            rendered_model,
             entry_kind: entry.kind,
             group: None,
-            facts: Facts::of(entry),
-            keyed: Facts::of(entry),
+            keyed: KeyedFacts::of(&facts),
+            facts,
         }
     }
 
@@ -269,7 +315,7 @@ impl Row {
         let reuse = origin.key != to
             && self.entry_kind == origin.entry_kind
             && same_ext
-            && !self.facts.contradict(&origin.keyed);
+            && !origin.keyed.contradict(&self.facts);
         reuse.then_some((origin.key, to))
     }
 }
@@ -280,7 +326,7 @@ pub(crate) struct ThumbOrigin {
     key: ThumbKey,
     entry_kind: Kind,
     extension: Option<OsString>,
-    keyed: Facts,
+    keyed: KeyedFacts,
 }
 
 /// A change to a column's rows, as the browser's event described it. Positions are the
@@ -318,7 +364,8 @@ pub(crate) struct Column {
     /// (`usize::MAX` for one it does not). Empty otherwise, when `shown` is in the browser's
     /// order and a binary search finds an index.
     back: Vec<usize>,
-    positions: HashMap<EntryId, usize>,
+    grouped: GroupedBuckets,
+    positions: EntryIdMap<usize>,
     show_hidden: bool,
     /// Moves on every edit to the column's rows (including metadata refills).
     version: u64,
@@ -348,7 +395,8 @@ impl Column {
             rows: Vec::new(),
             shown: Vec::new(),
             back: Vec::new(),
-            positions: HashMap::new(),
+            grouped: GroupedBuckets::default(),
+            positions: EntryIdMap::default(),
             show_hidden,
             version: 0,
             key_version: 0,
@@ -454,12 +502,18 @@ impl Column {
     /// Rows on the end join the index as they are, which is how a folder still loading
     /// publishes them; rows anywhere else move the ones after them.
     fn insert(&mut self, position: usize, rows: Vec<Row>) {
-        // A grouped listing places a row by its type, not at the end.
-        if position < self.rows.len() || self.grouping.is_some() {
+        if position < self.rows.len() {
             self.rows.splice(position..position, rows);
             self.index();
             return;
         }
+        if let Some(preferences) = self.grouping {
+            self.append_grouped(rows, preferences);
+            return;
+        }
+        self.rows.reserve(rows.len());
+        self.positions.reserve(rows.len());
+        self.shown.reserve(rows.len());
         for row in rows {
             let position = self.rows.len();
             self.positions.insert(row.id, position);
@@ -471,6 +525,50 @@ impl Column {
         self.version += 1;
         self.key_version += 1;
         self.thumb_version += 1;
+    }
+
+    /// Appends staged rows in browser order into an already-grouped listing without
+    /// rebuilding `positions` or re-classifying earlier rows.
+    fn append_grouped(&mut self, rows: Vec<Row>, preferences: ViewPreferences) {
+        if rows.is_empty() {
+            return;
+        }
+        let start = self.rows.len();
+        self.rows.reserve(rows.len());
+        self.positions.reserve(rows.len());
+        let folder = &self.location;
+        for mut row in rows {
+            let position = self.rows.len();
+            self.positions.insert(row.id, position);
+            if self.show_hidden || !row.hidden {
+                let group = *row
+                    .group
+                    .get_or_insert_with(|| TypeGroup::of_row(folder, row.entry_kind, &row.name));
+                self.grouped.push(position, group, preferences);
+            }
+            self.rows.push(row);
+        }
+        self.grouped.refresh_runs();
+        if self.grouped.single_group() {
+            self.append_single_group_tail(start);
+        } else {
+            self.grouped
+                .flatten_into(self.rows.len(), &mut self.shown, &mut self.back);
+        }
+        self.version += 1;
+        self.key_version += 1;
+        self.thumb_version += 1;
+    }
+
+    fn append_single_group_tail(&mut self, start: usize) {
+        self.back.resize(self.rows.len(), usize::MAX);
+        for position in start..self.rows.len() {
+            if self.show_hidden || !self.rows[position].hidden {
+                let index = self.shown.len();
+                self.shown.push(position);
+                self.back[position] = index;
+            }
+        }
     }
 
     /// A refill never moves a row; one that changes whether it is hidden still changes which
@@ -510,7 +608,9 @@ impl Column {
 
     fn index(&mut self) {
         self.positions.clear();
+        self.positions.reserve(self.rows.len());
         self.shown.clear();
+        self.shown.reserve(self.rows.len());
         for (position, row) in self.rows.iter().enumerate() {
             self.positions.insert(row.id, position);
             if self.show_hidden || !row.hidden {
@@ -530,45 +630,28 @@ impl Column {
     fn group(&mut self) {
         self.back.clear();
         let Some(preferences) = self.grouping else {
+            self.grouped.clear();
             return;
         };
-        let folder = self.location.clone();
-        let mut types: Vec<TypeGroup> = Vec::new();
-        let mut known: HashMap<TypeGroup, usize> = HashMap::new();
-        for position in &self.shown {
-            let row = &mut self.rows[*position];
-            let group = *row
-                .group
-                .get_or_insert_with(|| TypeGroup::of_row(&folder, row.entry_kind, &row.name));
-            known.entry(group).or_insert_with(|| {
-                types.push(group);
-                types.len() - 1
-            });
-        }
-        let names: Vec<_> = types.iter().map(|group| group.description()).collect();
-        let mut ranked: Vec<usize> = (0..types.len()).collect();
-        ranked.sort_by(|a, b| compare_type_groups(&names[*a], &names[*b], preferences));
-        let rank: HashMap<TypeGroup, usize> = ranked
-            .into_iter()
-            .enumerate()
-            .map(|(place, kind)| (types[kind], place))
-            .collect();
-        // One pass into a bucket for each group, in the browser's order: linear in the rows,
-        // so a folder that arrives in many batches costs one pass a batch, not a sort.
-        let mut buckets: Vec<Vec<usize>> = vec![Vec::new(); types.len()];
-        for position in &self.shown {
-            let group = self.rows[*position].group;
-            let place = group
-                .and_then(|group| rank.get(&group))
-                .copied()
-                .unwrap_or(0);
-            buckets[place].push(*position);
-        }
-        self.shown = buckets.concat();
-        self.back = vec![usize::MAX; self.rows.len()];
-        for (index, position) in self.shown.iter().enumerate() {
-            self.back[*position] = index;
-        }
+        let folder = &self.location;
+        let rows = &mut self.rows;
+        self.grouped.rebuild(
+            preferences,
+            self.shown.iter().map(|&position| {
+                let row = &mut rows[position];
+                let group = *row
+                    .group
+                    .get_or_insert_with(|| TypeGroup::of_row(folder, row.entry_kind, &row.name));
+                (position, group)
+            }),
+        );
+        self.grouped
+            .flatten_into(self.rows.len(), &mut self.shown, &mut self.back);
+    }
+
+    /// The file-type runs of this column's shown rows, in O(groups). Empty when ungrouped.
+    pub(crate) fn group_runs(&self) -> &[(TypeGroup, usize)] {
+        self.grouped.runs()
     }
 
     /// The browser's position of the row the view shows at `index`.
@@ -611,12 +694,26 @@ impl Column {
         self.busy || self.load == Load::Loading
     }
 
+    /// A sort or a refresh is actively running over this column's listing.
+    pub(crate) fn is_busy(&self) -> bool {
+        self.busy
+    }
+
     /// The row of the column before this one whose folder this is.
     pub(crate) fn from(&self) -> Option<EntryId> {
         self.from
     }
 
+    /// Appends every [`EntryId`] currently referenced by this listing into `out`.
+    pub(crate) fn collect_ids(&self, out: &mut impl Extend<EntryId>) {
+        out.extend(self.rows.iter().map(|row| row.id));
+        if let Some(from) = self.from {
+            out.extend(std::iter::once(from));
+        }
+    }
+
     /// The file type of the row shown at `index`.
+    #[cfg(test)]
     pub(crate) fn group_at(&self, index: usize) -> Option<TypeGroup> {
         self.rows.get(self.position_at(index)?)?.group
     }

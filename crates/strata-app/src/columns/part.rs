@@ -108,11 +108,22 @@ impl Part for Columns {
     fn listen(setup: &Setup<'_>) -> Option<Listener<App>> {
         let ids = setup.ids.clone();
         Some(Box::new(move |event, browser, heard| {
-            if matches!(event, strata_fs::app::BrowserEvent::FolderCountsInvalidated) {
-                heard.then(|app: &mut App, _: &mut Tx| {
-                    app.columns.fills.invalidate();
-                    true
-                });
+            match event {
+                strata_fs::app::BrowserEvent::FolderCountsInvalidated => {
+                    heard.then(|app: &mut App, _: &mut Tx| {
+                        app.columns.fills.invalidate();
+                        true
+                    });
+                }
+                strata_fs::app::BrowserEvent::ColumnReloaded { depth }
+                | strata_fs::app::BrowserEvent::ColumnRefreshing { depth } => {
+                    let depth = *depth;
+                    heard.then(move |app: &mut App, _: &mut Tx| {
+                        app.columns.fills.invalidate_depth(depth);
+                        true
+                    });
+                }
+                _ => {}
             }
             let read = events::read(event, browser, &ids);
             heard.copied(read.copied);

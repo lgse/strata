@@ -267,7 +267,8 @@ impl Fills {
         }
     }
 
-    /// Re-admits rows near the viewport at the next poll after `FolderCountsInvalidated`.
+    /// Re-admits rows near the viewport at the next poll after `FolderCountsInvalidated`,
+    /// `ColumnReloaded`, or `ColumnRefreshing`.
     pub(crate) fn invalidate(&mut self) {
         self.asked.clear();
         self.fresh = true;

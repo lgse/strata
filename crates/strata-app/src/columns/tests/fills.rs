@@ -77,3 +77,31 @@ fn a_column_asks_no_folder_count_while_sizes_are_hidden() {
         false,
     );
 }
+
+/// Reloading the active column while initial metadata fills are in flight cancels those fills
+/// in `Browser`; `ColumnReloaded` must invalidate `Fills` so the reloaded folder's entries
+/// and folder counts still get filled.
+#[test]
+fn a_reload_during_in_flight_fills_still_fills_folder_counts() {
+    hosted_after(
+        MODULE,
+        "fills::a_reload_during_in_flight_fills_still_fills_folder_counts",
+        || save_settings("columns_show_sizes = true\n"),
+        |mut host| {
+            let folder = fixture();
+            open(&mut host, folder.path());
+            // Trigger a reload immediately after the initial entries appear (while or right
+            // after metadata fills were requested for the same Location).
+            host.app().browser().reload_active();
+            let reached = host.run_until(PATIENCE, |host| {
+                filled(host, 0, "readme.md")
+                    && entry(host, 0, "documents")
+                        .is_some_and(|e| e.child_count != MetadataValue::Unknown)
+            });
+            assert!(
+                reached,
+                "reloaded column must still fill metadata and folder counts"
+            );
+        },
+    );
+}

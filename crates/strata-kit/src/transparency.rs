@@ -202,23 +202,14 @@ impl Transparency {
         }
     }
 
-    /// Blends a subtle frosted sheen into `border` when frosted glass is active, or returns
-    /// `border` unchanged otherwise.
+    /// Blends a subtle perceptual lightness lift into `border` in OKLab when frosted glass is
+    /// active, preserving the theme's hue and chroma, or returns `border` unchanged otherwise.
     pub fn frosted_border(self, border: Color) -> Color {
         if !self.frosted_glass {
             return border;
         }
-        let white = Color {
-            r: 1.0,
-            g: 1.0,
-            b: 1.0,
-            a: 1.0,
-        };
-        let lift = border.mix(white, 0.18);
-        Color {
-            a: border.a.max(self.frost_border.a),
-            ..lift
-        }
+        let [l, a, b, _] = border.to_oklab();
+        Color::from_oklab([(l + 0.06).min(1.0), a, b, border.a.max(self.frost_border.a)])
     }
 }
 
@@ -295,21 +286,6 @@ fn scale_alpha(color: Color, factor: f32) -> Color {
     }
 }
 
-fn frosted_tint(color: Color, dark: bool) -> Color {
-    let mix = if dark { 0.04 } else { 0.06 };
-    let white = Color {
-        r: 1.0,
-        g: 1.0,
-        b: 1.0,
-        a: color.a,
-    };
-    let lifted = color.mix(white, mix);
-    Color {
-        a: color.a,
-        ..lifted
-    }
-}
-
 /// Applies `params` to `look` idempotently from `look.base_surfaces`.
 pub(crate) fn apply(look: &mut Look, params: TransparencyParams) {
     look.base_surfaces.restore(&mut look.kit.c);
@@ -319,27 +295,17 @@ pub(crate) fn apply(look: &mut Look, params: TransparencyParams) {
         return;
     }
 
-    let dark = look.kit.dark;
     let p = &mut look.kit.c;
     p.page = scale_alpha(p.page, resolved.background_alpha);
     p.bg_base = scale_alpha(p.bg_base, resolved.background_alpha);
 
-    let paint_raised = |c: Color, alpha: f32| {
-        let base = if resolved.frosted_glass {
-            frosted_tint(c, dark)
-        } else {
-            c
-        };
-        scale_alpha(base, alpha)
-    };
+    p.bg_deep = scale_alpha(p.bg_deep, resolved.raised_alpha);
+    p.surface_raised = scale_alpha(p.surface_raised, resolved.raised_alpha);
+    p.surface_raised_base = scale_alpha(p.surface_raised_base, resolved.raised_alpha);
+    p.surface_weak = scale_alpha(p.surface_weak, resolved.raised_alpha);
+    p.layer_02 = scale_alpha(p.layer_02, resolved.raised_alpha);
+    p.layer_03 = scale_alpha(p.layer_03, resolved.raised_alpha);
+    p.layer_04 = scale_alpha(p.layer_04, resolved.raised_alpha);
 
-    p.bg_deep = paint_raised(p.bg_deep, resolved.raised_alpha);
-    p.surface_raised = paint_raised(p.surface_raised, resolved.raised_alpha);
-    p.surface_raised_base = paint_raised(p.surface_raised_base, resolved.raised_alpha);
-    p.surface_weak = paint_raised(p.surface_weak, resolved.raised_alpha);
-    p.layer_02 = paint_raised(p.layer_02, resolved.raised_alpha);
-    p.layer_03 = paint_raised(p.layer_03, resolved.raised_alpha);
-    p.layer_04 = paint_raised(p.layer_04, resolved.raised_alpha);
-
-    p.layer_01 = paint_raised(p.layer_01, resolved.overlay_alpha);
+    p.layer_01 = scale_alpha(p.layer_01, resolved.overlay_alpha);
 }

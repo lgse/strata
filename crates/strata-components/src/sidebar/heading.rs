@@ -93,7 +93,7 @@ fn heading_body<S>(
     }
     // Wrap the chevron in the same trailing action slot as a device row's eject button so the
     // section disclosure chevrons and device eject icons share one vertical centerline while
-    // staying clear of the 7 pt trailing resize grip.
+    // staying clear of the vertical scrollbar and the 7 pt trailing resize grip.
     let chevron_slot = row()
         .key("chevron-slot")
         .size(ACTION_SLOT, ACTION_SLOT)
@@ -102,7 +102,7 @@ fn heading_body<S>(
         .a11y_hidden();
     let mut h = h
         .pl(slot::ROW_INSET)
-        .pr(look.space.md)
+        .pr(super::build::full_row_trailing_pad(look))
         .gap(look.space.sm)
         .child(
             text(ctx.labels.heading(section))

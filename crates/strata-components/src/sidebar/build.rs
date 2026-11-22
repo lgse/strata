@@ -16,6 +16,7 @@ use super::rows::{Ctx, Spec, device_row, folder_row, row_icon, trash_full, trash
 use super::state::{SidebarState, Step};
 use super::{ActionFn, Emit, drops};
 use crate::contract::dnd::{Dnd, DropAction, DropHover, DropOffer};
+use crate::scroll::{Bar, BarLook, anchor};
 
 type DragFn<S> = Rc<dyn Fn(&mut S, &mut Drag, &mut Tx)>;
 
@@ -30,10 +31,10 @@ type DragFn<S> = Rc<dyn Fn(&mut S, &mut Drag, &mut Tx)>;
 ///     .build(&look)
 /// ```
 ///
-/// Keys, under `key` (default `places`): `<key>-list`, `<key>-place-<id>`, `<key>-pin-<id>`,
-/// `<key>-device-<id>` with `-lock` and `-eject`, `<key>-gap-<i>` and its drop band
-/// `<key>-band-<i>`, `<key>-heading-pinned`, `<key>-heading-devices`, `<key>-divider-<g>`,
-/// `<key>-grip` and [`super::trash_target_key`].
+/// Keys, under `key` (default `places`): `<key>-list`, `<key>-scroll`, `<key>-scrollbar`,
+/// `<key>-place-<id>`, `<key>-pin-<id>`, `<key>-device-<id>` with `-lock` and `-eject`,
+/// `<key>-gap-<i>` and its drop band `<key>-band-<i>`, `<key>-heading-pinned`,
+/// `<key>-heading-devices`, `<key>-divider-<g>`, `<key>-grip` and [`super::trash_target_key`].
 pub struct PlacesSidebar<'a, S> {
     key: String,
     state: &'a SidebarState,
@@ -166,6 +167,9 @@ impl<'a, S: 'static> PlacesSidebar<'a, S> {
 
     pub fn build(self, look: &Look) -> El {
         let shown = self.state.width.shown();
+        if self.state.last_shown.replace(Some(shown)) != Some(shown) || shown == Step::Hidden {
+            self.state.scroll_bar.release();
+        }
         let root = col()
             .key(self.key.clone())
             .h_full()
@@ -190,26 +194,23 @@ impl<'a, S: 'static> PlacesSidebar<'a, S> {
             tenxer: self.tenxer,
             labels: self.data.labels,
         };
-        let pad = look.space.xs;
-        let mut list = col()
-            .key(format!("{}-list", self.key))
-            .role("list")
-            .focus_group()
-            .w_full()
-            .padding(pad)
-            .child(places(&ctx, &self.data, self.trash));
-        if let Some(pinned) = pinned(&ctx, &self.data) {
-            list = list.child(pinned);
-        }
-        if let Some(devices) = devices(&ctx, &self.data) {
-            list = list.child(devices);
-        }
+        let list = build_list(&ctx, &self.data, self.trash);
         let width = if rail {
             slot::rail_width(look)
         } else {
             self.state.width.pane.width()
         };
-        let scroll = scroll_area(&self.key, list, &self.emit, self.background_drag);
+        let scroll = scroll_area(
+            list,
+            ScrollAreaSpec {
+                key: &self.key,
+                look,
+                bar: &self.state.scroll_bar,
+                rail,
+                emit: &self.emit,
+                background_drag: self.background_drag,
+            },
+        );
         let mut root = root
             .w(width)
             .fill(look.kit.c.bg_deep)
@@ -235,32 +236,110 @@ impl<'a, S: 'static> PlacesSidebar<'a, S> {
     }
 }
 
-fn scroll_area<S: 'static>(
-    key: &str,
-    list: El,
-    emit: &super::Emit<S>,
-    background_drag: Option<DragFn<S>>,
+fn build_list<S: 'static>(
+    ctx: &Ctx<'_, S>,
+    data: &SidebarData<'_>,
+    trash_hook: Option<Box<dyn FnOnce(El) -> El + '_>>,
 ) -> El {
-    let emit = emit.clone();
-    let scroll = col()
-        .key(format!("{key}-scroll"))
+    let mut list = col()
+        .key(format!("{}-list", ctx.key))
+        .role("list")
+        .focus_group()
         .w_full()
-        .grow(1.0)
+        .padding(ctx.look.space.xs)
+        .child(places(ctx, data, trash_hook));
+    if let Some(pinned) = pinned(ctx, data) {
+        list = list.child(pinned);
+    }
+    if let Some(devices) = devices(ctx, data) {
+        list = list.child(devices);
+    }
+    list
+}
+
+/// Full-sidebar trailing resize grip width: 1 pt right border plus `space.sm` (6 pt) inside.
+pub(crate) fn full_grip_width(look: &Look) -> f32 {
+    look.space.sm + 1.0
+}
+
+/// Trailing inset from the sidebar's right edge to the vertical scrollbar in full mode: keeps
+/// a 1 pt gap to the left of the 7 pt resize grip and leaves chooser's `start - 2` marquee
+/// band untouched.
+pub(crate) fn full_bar_edge(look: &Look) -> f32 {
+    full_grip_width(look) + 1.0
+}
+
+/// Trailing padding inside full-width rows and section headings so `ACTION_SLOT` controls
+/// (device eject/lock buttons, pending spinners and disclosure chevrons) stay clear of the
+/// vertical scrollbar while keeping `list`'s even `space.xs` padding intact.
+pub(crate) fn full_row_trailing_pad(look: &Look) -> f32 {
+    let clear = full_bar_edge(look) + strata_kit::slots::scroll::bar_width(look) + look.space.xxs
+        - look.space.xs;
+    clear.max(look.space.md)
+}
+
+fn sidebar_bar_look(look: &Look, rail: bool) -> BarLook {
+    let mut bar_look = BarLook::app(look);
+    bar_look.ends = look.space.xs;
+    bar_look.edge = if rail {
+        // The icon rail has no resize grip: inset by `space.xxs` (1 pt border + 1 pt gap) so
+        // the 4 pt bar sits cleanly to the right of the icon column without widening the rail.
+        look.space.xxs
+    } else {
+        full_bar_edge(look)
+    };
+    bar_look
+}
+
+struct ScrollAreaSpec<'a, S> {
+    key: &'a str,
+    look: &'a Look,
+    bar: &'a Bar,
+    rail: bool,
+    emit: &'a super::Emit<S>,
+    background_drag: Option<DragFn<S>>,
+}
+
+fn scroll_area<S: 'static>(list: El, spec: ScrollAreaSpec<'_, S>) -> El {
+    let scroll_key = format!("{}-scroll", spec.key);
+    let bar_key = format!("{}-scrollbar", spec.key);
+    let emit = spec.emit.clone();
+    let scroll = col()
+        .key(scroll_key.clone())
+        .w_full()
+        .h_full()
         .min_h(0.0)
         .scroll(ScrollSpec {
             stick_bottom: false,
         })
+        .on_scroll_offset(spec.bar.watch())
         .child(list)
         .on_secondary_press(move |s: &mut S, point: PointerPress, tx: &mut Tx| {
             emit(s, SidebarIntent::ContextMenu { item: None, point }, tx)
         });
-    match background_drag {
+    let viewport = match spec.background_drag {
         Some(drag) => scroll
             .on_drag(move |s: &mut S, d: &mut Drag, tx: &mut Tx| drag(s, d, tx))
             .focusable(false)
             .preserve_focus_on_press(true),
         None => scroll,
-    }
+    };
+    let bar_el = spec
+        .bar
+        .build::<S>(
+            &bar_key,
+            &scroll_key,
+            sidebar_bar_look(spec.look, spec.rail),
+        )
+        .wheel_scrolls(scroll_key);
+    col()
+        .w_full()
+        .grow(1.0)
+        .min_h(0.0)
+        .min_w(0.0)
+        .clip_soft(0.0)
+        .child(viewport)
+        .child(anchor(0.0, 0.0, bar_el))
 }
 
 /// The built-in places block: one reorderable list.
@@ -522,7 +601,7 @@ fn grip<S: 'static>(
     let w = if spec.confined {
         1.0
     } else {
-        look.space.sm + 1.0
+        full_grip_width(look)
     };
     let x = spec.width - w;
     let line_x = w - 1.0;

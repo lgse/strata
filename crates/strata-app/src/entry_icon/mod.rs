@@ -4,6 +4,8 @@
 //! `src/ui/browser/entry.rs`): Catppuccin VSCode icons for code/config files and Strata's
 //! Lucide category icons for documents, media, archives, keys, executables, and folders.
 
+use std::{collections::HashMap, sync::OnceLock};
+
 use strata_core::model::FileEntry;
 
 pub(crate) mod catppuccin;
@@ -273,16 +275,33 @@ static EXTENSION_GROUPS: &[(&[&str], &str)] = &[
     ),
 ];
 
-fn exact_filename_icon(lowered: &str) -> Option<&'static str> {
-    catppuccin::icon_for_lowercased_name(lowered).or_else(|| {
-        FILENAME_ICONS
+fn filename_icon_map() -> &'static HashMap<&'static str, &'static str> {
+    static MAP: OnceLock<HashMap<&'static str, &'static str>> = OnceLock::new();
+    MAP.get_or_init(|| FILENAME_ICONS.iter().copied().collect())
+}
+
+fn extension_icon_map() -> &'static HashMap<&'static str, &'static str> {
+    static MAP: OnceLock<HashMap<&'static str, &'static str>> = OnceLock::new();
+    MAP.get_or_init(|| {
+        EXTENSION_GROUPS
             .iter()
-            .find(|(name, _)| *name == lowered)
-            .map(|(_, icon)| *icon)
+            .flat_map(|(exts, icon)| exts.iter().map(move |ext| (*ext, *icon)))
+            .collect()
     })
 }
 
+fn exact_filename_icon(lowered: &str) -> Option<&'static str> {
+    catppuccin::icon_for_lowercased_name(lowered)
+        .or_else(|| filename_icon_map().get(lowered).copied())
+}
+
 fn affix_pattern_icon(name: &str) -> Option<&'static str> {
+    let bytes = name.as_bytes();
+    let first = *bytes.first()?;
+    let last = *bytes.last()?;
+    if !matches!(first, b'D' | b'.' | b't') && !matches!(last, b'y' | b'k') {
+        return None;
+    }
     FILENAME_AFFIX_PATTERNS
         .iter()
         .find(|(prefix, suffix, _)| name.starts_with(prefix) && name.ends_with(suffix))
@@ -290,10 +309,7 @@ fn affix_pattern_icon(name: &str) -> Option<&'static str> {
 }
 
 fn fallback_extension_icon(extension: &str) -> Option<&'static str> {
-    EXTENSION_GROUPS
-        .iter()
-        .find(|(exts, _)| exts.contains(&extension))
-        .map(|(_, icon)| *icon)
+    extension_icon_map().get(extension).copied()
 }
 
 /// Catalog icon key for `entry`, matching `entry_icon` in `src/ui/browser/entry.rs`.
@@ -313,14 +329,30 @@ pub(crate) fn entry_icon(entry: &FileEntry) -> &'static str {
 /// Catalog icon key for a file named `name`, matching `icon_for_name` in
 /// `src/ui/browser/entry.rs`.
 pub(crate) fn icon_for_name(name: &str) -> &'static str {
+    if !name.bytes().any(|b| b.is_ascii_uppercase()) {
+        return icon_for_lowercased_name(name, name);
+    }
+    if name.len() <= 256 {
+        let mut buf = [0_u8; 256];
+        for (dst, &byte) in buf.iter_mut().zip(name.as_bytes()) {
+            *dst = byte.to_ascii_lowercase();
+        }
+        if let Ok(lowered) = std::str::from_utf8(&buf[..name.len()]) {
+            return icon_for_lowercased_name(name, lowered);
+        }
+    }
     let lowered = name.to_ascii_lowercase();
-    if let Some(icon) = exact_filename_icon(&lowered) {
+    icon_for_lowercased_name(name, &lowered)
+}
+
+fn icon_for_lowercased_name(original: &str, lowered: &str) -> &'static str {
+    if let Some(icon) = exact_filename_icon(lowered) {
         return icon;
     }
-    if let Some(icon) = affix_pattern_icon(name) {
+    if let Some(icon) = affix_pattern_icon(original) {
         return icon;
     }
-    if let Some(icon) = catppuccin::icon_for_lowercased_extension(&lowered) {
+    if let Some(icon) = catppuccin::icon_for_lowercased_extension(lowered) {
         return icon;
     }
     lowered
