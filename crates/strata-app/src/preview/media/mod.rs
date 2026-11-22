@@ -14,6 +14,10 @@
 //! - **The eyebrow** counts the folder's files of the clip's kind whose bytes back their name
 //!   ([`sequence`]), and the previous and next buttons and keys step through them.
 //! - **The badges** come from the sandboxed metadata probe ([`details`]).
+//! - **The timeline waveform & storyboard** ([`peaks`], [`storyboard`]): videos of at least 4 s
+//!   stream keyframe storyboard cells on the shared background decode slot, then hand the slot to
+//!   `audio-peaks` (which audio files start directly) so timeline bars grow in from decoded RMS
+//!   levels; GIFs and silent videos skip `audio-peaks`.
 //! - **The media keys** reach the player where [`super::keys::media_keys_reach`] holds
 //!   ([`super::transport`]).
 //! - **The volume** is Settings' `preview_volume` and `preview_muted`, saved as it changes.
@@ -44,13 +48,24 @@ use super::{
     labels,
     viewer::{self, Viewer},
 };
-use crate::{App, location::labels::with_keys, shell};
+use crate::{App, location::labels::with_keys, shell, slots::Later};
 
+mod cache;
 mod details;
+mod peaks;
 mod positions;
 pub(super) mod sequence;
+mod storyboard;
 mod stream;
 
+#[cfg(test)]
+pub(in crate::preview) use peaks::{
+    MockPeaks, START as START_PEAKS, clear_cache as clear_peaks_cache,
+};
+#[cfg(test)]
+pub(in crate::preview) use storyboard::{
+    MockStoryboard, START as START_STORYBOARD, clear_cache as clear_storyboard_cache,
+};
 #[cfg(test)]
 pub(in crate::preview) use stream::START as START_DECODER;
 
@@ -79,6 +94,11 @@ pub(super) struct MediaViewer {
     family: Option<Family>,
     id: u64,
     _details: Option<details::DetailsLoad>,
+    peaks: Option<peaks::PeaksLoad>,
+    peaks_started: bool,
+    storyboard: Option<storyboard::StoryboardLoad>,
+    storyboard_started: bool,
+    storyboard_done: bool,
 }
 
 /// A sandboxed media preview, as the provider answered it.
@@ -163,7 +183,13 @@ pub(super) fn ready(app: &mut App, arrived: Arrived, tx: &mut Tx) -> Viewer {
         family,
         id,
         _details: details,
+        peaks: None,
+        peaks_started: false,
+        storyboard: None,
+        storyboard_started: false,
+        storyboard_done: false,
     };
+    viewer.restore_cached_background(tx);
     let (position, previous, next) = place(app, family, &viewer.entry.location);
     viewer.state.set_listing(position, previous, next);
     Viewer::Media(Box::new(viewer))
@@ -238,12 +264,16 @@ pub(super) fn refresh_listing(app: &mut App) -> bool {
 
 /// A pump's events for the player `viewer`, dropped when it has gone.
 fn received(app: &mut App, (viewer, session): (u64, u64), events: Received, tx: &mut Tx) -> bool {
+    let later = app.preview.loader.later.clone();
     let Some(media) = shown(app, viewer) else {
         return false;
     };
     let frame = media.stream.receive(session, events);
     media.show(frame);
     media.sync_error();
+    if media.family.is_some() && !media.stream.has_video() {
+        media.maybe_start_peaks(later, tx);
+    }
     // The poll's tick reads the clock: the duration, the first frame, an error.
     tx.wake_after(Duration::ZERO);
     true
@@ -258,6 +288,62 @@ fn detailed(app: &mut App, viewer: u64, details: Details) -> bool {
     true
 }
 
+/// Waveform peak batches for the player `viewer`, dropped when it has gone.
+fn peaks_received(app: &mut App, viewer: u64, batch: peaks::Batch, tx: &mut Tx) -> bool {
+    let Some(media) = shown(app, viewer) else {
+        return false;
+    };
+    for (start, levels) in batch {
+        apply_levels(&mut media.state, start, &levels);
+    }
+    tx.wake_after(Duration::ZERO);
+    true
+}
+
+#[cfg(test)]
+pub(in crate::preview) fn deliver_peaks(
+    app: &mut App,
+    viewer: u64,
+    batch: peaks::Batch,
+    tx: &mut Tx,
+) -> bool {
+    peaks_received(app, viewer, batch, tx)
+}
+
+/// Storyboard progress for the player `viewer`, dropped when it has gone.
+fn storyboard_updated(app: &mut App, viewer: u64, update: storyboard::Update, tx: &mut Tx) -> bool {
+    let later = app.preview.loader.later.clone();
+    let Some(media) = shown(app, viewer) else {
+        return false;
+    };
+    match update {
+        storyboard::Update::Board(board) => {
+            media.state.set_storyboard(Some(board));
+            tx.wake_after(Duration::ZERO);
+            true
+        }
+        storyboard::Update::Done => {
+            media.storyboard = None;
+            media.storyboard_done = true;
+            media.maybe_start_peaks(later, tx);
+            true
+        }
+    }
+}
+
+fn apply_levels(state: &mut MediaState, start: u32, levels: &[u8]) {
+    let rms: Vec<f32> = levels
+        .iter()
+        .copied()
+        .map(strata_preview::media::peaks::rms)
+        .collect();
+    state.set_levels(
+        strata_preview::media::peaks::BUCKETS as usize,
+        start as usize,
+        &rms,
+    );
+}
+
 fn shown(app: &mut App, viewer: u64) -> Option<&mut MediaViewer> {
     match &mut app.preview.viewer {
         Viewer::Media(media) if media.id == viewer => Some(media),
@@ -266,6 +352,22 @@ fn shown(app: &mut App, viewer: u64) -> Option<&mut MediaViewer> {
 }
 
 impl MediaViewer {
+    fn restore_cached_background(&mut self, tx: &mut Tx) {
+        if self.family.is_some()
+            && let Some(cached) = peaks::cached(&self.entry)
+        {
+            apply_levels(&mut self.state, 0, &cached);
+            self.peaks_started = true;
+            tx.wake_after(Duration::ZERO);
+        }
+        if self.family == Some(Family::Video)
+            && let Some((board, complete)) = storyboard::cached(&self.entry)
+        {
+            self.state.set_storyboard(Some(board));
+            self.storyboard_done = complete;
+        }
+    }
+
     fn show(&mut self, frame: Option<stream::Shown>) {
         if let Some(frame) = frame {
             let [width, height] = frame.size;
@@ -282,15 +384,70 @@ impl MediaViewer {
         }
     }
 
+    fn start_storyboard(&mut self, later: Later<App>, tx: &mut Tx) {
+        if self.storyboard_started || self.family != Some(Family::Video) {
+            return;
+        }
+        self.storyboard_started = true;
+        let long_enough = self
+            .stream
+            .duration_us()
+            .is_some_and(|duration| duration >= storyboard::MIN_DURATION_US);
+        if self.storyboard_done || !long_enough {
+            self.storyboard_done = true;
+            self.maybe_start_peaks(later, tx);
+            return;
+        }
+        let inlet = storyboard::Inlet {
+            later,
+            viewer: self.id,
+            deliver: storyboard_updated,
+        };
+        self.storyboard = Some(storyboard::load(
+            &self.entry,
+            self.stream.source().clone(),
+            inlet,
+        ));
+    }
+
+    fn maybe_start_peaks(&mut self, later: Later<App>, tx: &mut Tx) {
+        if self.peaks_started || !self.stream.can_decode_peaks() {
+            return;
+        }
+        self.peaks_started = true;
+        if let Some(cached) = peaks::cached(&self.entry) {
+            apply_levels(&mut self.state, 0, &cached);
+            tx.wake_after(Duration::ZERO);
+            return;
+        }
+        let inlet = peaks::Inlet {
+            later,
+            viewer: self.id,
+            deliver: peaks_received,
+        };
+        self.peaks = Some(peaks::load(
+            &self.entry,
+            self.stream.source().clone(),
+            inlet,
+        ));
+    }
+
     pub(super) fn stop(&mut self) {
         if self.stream.playing() {
             self.stream.pause();
         }
+        self.peaks = None;
+        self.storyboard = None;
     }
 
     #[cfg(test)]
     pub(super) fn audio_levels(&self) -> Option<(f32, bool)> {
         self.stream.audio_levels()
+    }
+
+    #[cfg(test)]
+    pub(super) fn viewer_id(&self) -> u64 {
+        self.id
     }
 }
 
@@ -338,6 +495,7 @@ fn apply(app: &mut App, intent: MediaIntent, tx: &mut Tx) -> bool {
         MediaIntent::HandOff { .. } => super::open_current(app),
         _ => {}
     }
+    let later = app.preview.loader.later.clone();
     let Viewer::Media(media) = &mut app.preview.viewer else {
         return false;
     };
@@ -350,8 +508,8 @@ fn apply(app: &mut App, intent: MediaIntent, tx: &mut Tx) -> bool {
             media.stream.set_audio(volume, muted);
         }
         MediaIntent::DecodeSize(size) => media.stream.resize(size),
-        // No storyboard yet: A16's "Open".
-        MediaIntent::StoryboardWanted | MediaIntent::Step(_) | MediaIntent::HandOff { .. } => {}
+        MediaIntent::StoryboardWanted => media.start_storyboard(later, tx),
+        MediaIntent::Step(_) | MediaIntent::HandOff { .. } => {}
     }
     tx.wake_after(Duration::ZERO);
     true
