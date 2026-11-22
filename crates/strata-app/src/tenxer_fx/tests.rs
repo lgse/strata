@@ -1,12 +1,9 @@
 // SPDX-License-Identifier: MIT
 
-use std::fs;
-
 use rune::{Key, KeyEvent, Mods, Tx};
 use rune_fx::{ElectricStyle, FireStyle, Fx};
 use serde_json::Value;
 use strata_core::model::Location;
-use strata_desktop::settings::{TenxerFx, parse_tenxer_fx, settings_path};
 use strata_kit::{look::Look, shape::LookParams};
 
 use super::*;
@@ -72,10 +69,10 @@ fn node_bounds(tree: &Value, key: &str) -> Option<[f32; 4]> {
 }
 
 #[test]
-fn entering_tenxer_mode_starts_fx_and_auto_unmounts_within_one_second() {
+fn entering_tenxer_mode_starts_plasma_splash_and_auto_unmounts_on_completion() {
     hosted(
         MODULE,
-        "entering_tenxer_mode_starts_fx_and_auto_unmounts_within_one_second",
+        "entering_tenxer_mode_starts_plasma_splash_and_auto_unmounts_on_completion",
         |mut host| {
             let _folder = open_and_focus(&mut host);
             assert!(!is_active(host.app()));
@@ -86,17 +83,33 @@ fn entering_tenxer_mode_starts_fx_and_auto_unmounts_within_one_second() {
             assert!(is_active(host.app()));
             assert!(overlay_mounted(&host));
 
-            // Advance virtual clock smoothly in 16 ms frames — must complete & unmount within 1 s.
+            // Advance virtual clock smoothly — 1.68 s plasma splash finishes & unmounts cleanly.
             let mut stepped = 0.0;
-            while is_active(host.app()) && stepped < 1.0 {
-                host.runtime().frame(0.016);
-                stepped += 0.016;
+            while is_active(host.app()) && stepped < 2.2 {
+                host.runtime().frame(0.032);
+                stepped += 0.032;
             }
             assert!(
                 !is_active(host.app()),
-                "FX must finish within 1 s (stepped {stepped:.3}s)"
+                "FX must finish within 2.2 s (stepped {stepped:.3}s)"
             );
             assert!(!overlay_mounted(&host), "FX overlay must unmount cleanly");
+            assert!(
+                host.app().tenxer_fx.splash_pixels.is_none(),
+                "completed splash must release its Pixels handle"
+            );
+
+            // Turning 10xer mode off and back on, then off mid-flight cancels immediately.
+            toggle_tenxer(&mut host);
+            assert!(!shell::preferences(host.app()).tenxer_mode);
+            toggle_tenxer(&mut host);
+            assert!(is_active(host.app()));
+            assert!(overlay_mounted(&host));
+            toggle_tenxer(&mut host);
+            assert!(!shell::preferences(host.app()).tenxer_mode);
+            assert!(!is_active(host.app()));
+            assert!(!overlay_mounted(&host));
+            assert!(host.app().tenxer_fx.splash_pixels.is_none());
         },
     );
 }
@@ -118,40 +131,40 @@ fn starting_already_in_tenxer_mode_does_not_trigger_activation_fx() {
 }
 
 #[test]
-fn off_and_disabled_animations_mount_no_fx_overlay() {
+fn disabled_animations_mount_no_fx_overlay_and_cancel_active_splash() {
     hosted(
         MODULE,
-        "off_and_disabled_animations_mount_no_fx_overlay",
+        "disabled_animations_mount_no_fx_overlay_and_cancel_active_splash",
         |mut host| {
             let _folder = open_and_focus(&mut host);
 
-            // Setting TenxerFx::Off suppresses FX on entering 10xer mode.
-            host.runtime().update(|app, _| {
-                shell::saved(app).set_tenxer_fx(TenxerFx::Off);
-            });
+            // Disabling animations mid-flight cancels an active splash cleanly.
             toggle_tenxer(&mut host);
-            assert!(shell::preferences(host.app()).tenxer_mode);
-            assert!(!is_active(host.app()));
-            assert!(!overlay_mounted(&host));
-
-            // Exit 10xer mode, re-enable a visual concept, then disable animations (reduced motion).
-            toggle_tenxer(&mut host);
+            assert!(is_active(host.app()));
+            assert!(overlay_mounted(&host));
             host.runtime().update(|app, _| {
-                shell::saved(app).set_tenxer_fx(TenxerFx::VelocityWarp);
                 shell::disable_animations(app);
-            });
-            toggle_tenxer(&mut host);
-            assert!(shell::preferences(host.app()).tenxer_mode);
-            assert!(!is_active(host.app()));
-            assert!(!overlay_mounted(&host));
-
-            // Direct preview trigger is also suppressed while animations are disabled.
-            host.runtime().update(|app, tx| {
-                trigger(app, TenxerFx::TacticalHud, tx);
             });
             idle(&mut host);
             assert!(!is_active(host.app()));
             assert!(!overlay_mounted(&host));
+            assert!(host.app().tenxer_fx.splash_pixels.is_none());
+
+            // Exiting and re-entering 10xer mode while animations are disabled mounts no overlay.
+            toggle_tenxer(&mut host);
+            toggle_tenxer(&mut host);
+            assert!(shell::preferences(host.app()).tenxer_mode);
+            assert!(!is_active(host.app()));
+            assert!(!overlay_mounted(&host));
+
+            // Direct trigger is also suppressed while animations are disabled.
+            host.runtime().update(|app, tx| {
+                trigger(app, tx);
+            });
+            idle(&mut host);
+            assert!(!is_active(host.app()));
+            assert!(!overlay_mounted(&host));
+            assert!(host.app().tenxer_fx.splash_pixels.is_none());
         },
     );
 }
@@ -220,10 +233,10 @@ fn active_fx_overlay_never_blocks_keyboard_or_pointer_input_underneath() {
 }
 
 #[test]
-fn settings_fx_choice_triggers_live_preview_and_persists_selection() {
+fn settings_tenxer_switch_triggers_plasma_splash_and_has_no_effect_picker() {
     hosted(
         MODULE,
-        "settings_fx_choice_triggers_live_preview_and_persists_selection",
+        "settings_tenxer_switch_triggers_plasma_splash_and_has_no_effect_picker",
         |mut host| {
             // Open Settings via Ctrl+,
             send_key(
@@ -239,56 +252,32 @@ fn settings_fx_choice_triggers_live_preview_and_persists_selection() {
             idle(&mut host);
             assert!(host.app().settings_dialog.is_open());
 
-            let toggle_key = "settings-choice-tenxer-fx-toggle";
-            assert!(
-                host.elements()
-                    .iter()
-                    .any(|el| !el.exiting && el.key.as_deref() == Some(toggle_key)),
-                "10x mode effect dropdown should mount on General page"
-            );
+            // The temporary trial effect picker and preview button are no longer mounted.
+            for removed_key in [
+                "settings-choice-tenxer-fx-toggle",
+                "settings-tenxer-fx-preview",
+            ] {
+                assert!(
+                    !host
+                        .elements()
+                        .iter()
+                        .any(|el| !el.exiting && el.key.as_deref() == Some(removed_key)),
+                    "{removed_key} must not mount on General page"
+                );
+            }
 
-            // Open the dropdown and select "Plasma splash" (option 6).
-            click_settings_control(&mut host, toggle_key);
-            click_settings_control(&mut host, "settings-choice-tenxer-fx-opt-6");
-
-            assert_eq!(shell::tenxer_fx(host.app()), TenxerFx::PlasmaSplash);
-            assert!(is_active(host.app()), "picking a concept previews it live");
+            // Enabling 10xer mode in Settings triggers the plasma splash automatically.
+            click_settings_control(&mut host, "settings-switch-tenxer");
+            assert!(shell::preferences(host.app()).tenxer_mode);
+            assert!(is_active(host.app()));
             assert!(overlay_mounted(&host));
 
-            // Wait for async settings write to hit disk and confirm persistence.
-            assert!(
-                host.run_until(PATIENCE, |_| {
-                    fs::read_to_string(settings_path())
-                        .ok()
-                        .is_some_and(|s| parse_tenxer_fx(&s) == (TenxerFx::PlasmaSplash, false))
-                }),
-                "tenxer_fx persisted to settings.toml"
-            );
-
-            // Step preview to completion, then click the Preview effect replay button.
-            let mut stepped = 0.0;
-            while is_active(host.app()) && stepped < 2.2 {
-                host.runtime().frame(0.05);
-                stepped += 0.05;
-            }
+            // Disabling 10xer mode cancels the active splash immediately.
+            click_settings_control(&mut host, "settings-switch-tenxer");
+            assert!(!shell::preferences(host.app()).tenxer_mode);
             assert!(!is_active(host.app()));
             assert!(!overlay_mounted(&host));
-            click_settings_control(&mut host, "settings-tenxer-fx-preview");
-            assert!(is_active(host.app()), "replay button triggers live preview");
-
-            // Switching to Off cancels active preview immediately.
-            let off_index = TenxerFx::ALL
-                .iter()
-                .position(|&fx| fx == TenxerFx::Off)
-                .expect("Off in TenxerFx::ALL");
-            click_settings_control(&mut host, toggle_key);
-            click_settings_control(
-                &mut host,
-                &format!("settings-choice-tenxer-fx-opt-{off_index}"),
-            );
-            assert_eq!(shell::tenxer_fx(host.app()), TenxerFx::Off);
-            assert!(!is_active(host.app()));
-            assert!(!overlay_mounted(&host));
+            assert!(host.app().tenxer_fx.splash_pixels.is_none());
         },
     );
 }
@@ -296,71 +285,6 @@ fn settings_fx_choice_triggers_live_preview_and_persists_selection() {
 fn active_fx_slots(host: &mut Offscreen) -> Vec<crate::fx::DecodedSlot> {
     let rt = host.runtime();
     crate::fx::collect_slots(&rt.instances, &rt.marks)
-}
-
-#[test]
-fn interface_on_fire_emits_effect_slots_during_playback_and_unmounts_to_zero() {
-    hosted(
-        MODULE,
-        "interface_on_fire_emits_effect_slots_during_playback_and_unmounts_to_zero",
-        |mut host| {
-            let _folder = open_and_focus(&mut host);
-
-            // At rest: zero KIND_EFFECT slots -> FxCompositor stays idle.
-            assert!(
-                active_fx_slots(&mut host).is_empty(),
-                "idle frame must emit no effect slots"
-            );
-
-            // Trigger Interface on fire and step into the peak blaze window.
-            host.runtime().update(|app, tx| {
-                trigger(app, TenxerFx::InterfaceOnFire, tx);
-            });
-            for _ in 0..20 {
-                host.runtime().frame(0.02);
-            }
-            assert!(is_active(host.app()));
-            assert!(overlay_mounted(&host));
-
-            let peak_slots = active_fx_slots(&mut host);
-            assert_eq!(
-                peak_slots.len(),
-                5,
-                "peak InterfaceOnFire frame must emit all 5 rune-fx slots (haze, border, bottom, badge flame, badge haze)"
-            );
-            assert!(
-                peak_slots.iter().all(|s| s.layer.is_animating()),
-                "all active fire slots must animate"
-            );
-
-            // Step to completion: overlay unmounts cleanly and returns to 0 effect slots.
-            let mut stepped = 0.4;
-            while is_active(host.app()) && stepped < 2.2 {
-                host.runtime().frame(0.04);
-                stepped += 0.04;
-            }
-            assert!(
-                !is_active(host.app()),
-                "InterfaceOnFire must finish within 2.2 s"
-            );
-            assert!(!overlay_mounted(&host));
-            assert!(
-                active_fx_slots(&mut host).is_empty(),
-                "completed InterfaceOnFire must emit zero effect slots"
-            );
-
-            // Reduced motion / disabled animations emits zero effect slots.
-            host.runtime().update(|app, tx| {
-                shell::disable_animations(app);
-                trigger(app, TenxerFx::InterfaceOnFire, tx);
-            });
-            idle(&mut host);
-            assert!(
-                active_fx_slots(&mut host).is_empty(),
-                "disabled animations must emit no effect slots"
-            );
-        },
-    );
 }
 
 #[test]
@@ -375,9 +299,9 @@ fn plasma_splash_mounts_artwork_and_effect_slots_then_unmounts_to_zero() {
             assert!(active_fx_slots(&mut host).is_empty());
             assert!(host.app().tenxer_fx.splash_pixels.is_none());
 
-            // Trigger PlasmaSplash and step into the entrance lightning slam (~0.24 s).
+            // Trigger plasma splash and step into the entrance lightning slam (~0.24 s).
             host.runtime().update(|app, tx| {
-                trigger(app, TenxerFx::PlasmaSplash, tx);
+                trigger(app, tx);
             });
             for _ in 0..12 {
                 host.runtime().frame(0.02);
@@ -389,7 +313,7 @@ fn plasma_splash_mounts_artwork_and_effect_slots_then_unmounts_to_zero() {
                     .iter()
                     .any(|el| !el.exiting
                         && el.key.as_deref() == Some(plasma_splash::SPLASH_CARD_KEY)),
-                "splash artwork card must mount while PlasmaSplash is active"
+                "splash artwork card must mount while plasma splash is active"
             );
             let initial_sig = host
                 .app()
@@ -405,32 +329,32 @@ fn plasma_splash_mounts_artwork_and_effect_slots_then_unmounts_to_zero() {
                     s.layer.fx,
                     Fx::Fire(p) if p.style == FireStyle::Border && p.swirl > 0.0
                 )),
-                "PlasmaSplash must emit a swirling plasma border slot"
+                "plasma splash must emit a swirling plasma border slot"
             );
             assert!(
                 slam_slots.iter().any(|s| matches!(
                     s.layer.fx,
                     Fx::Electric(p) if p.style == ElectricStyle::Border
                 )),
-                "PlasmaSplash must emit an overload electric border slot"
+                "plasma splash must emit an overload electric border slot"
             );
             assert!(
                 slam_slots.iter().any(|s| matches!(
                     s.layer.fx,
                     Fx::Electric(p) if p.style == ElectricStyle::Charged
                 )),
-                "PlasmaSplash must emit a charged window perimeter slot"
+                "plasma splash must emit a charged window perimeter slot"
             );
             assert!(
                 slam_slots.iter().any(|s| matches!(
                     s.layer.fx,
                     Fx::Electric(p) if matches!(p.style, ElectricStyle::Arc { .. })
                 )),
-                "PlasmaSplash must emit forking corner lightning arc slots"
+                "plasma splash must emit forking corner lightning arc slots"
             );
             assert!(
                 slam_slots.iter().all(|s| s.layer.is_animating()),
-                "every active PlasmaSplash slot must animate"
+                "every active plasma splash slot must animate"
             );
 
             // Stepping further reuses the exact same cached Pixels handle (zero re-uploads).
@@ -453,22 +377,22 @@ fn plasma_splash_mounts_artwork_and_effect_slots_then_unmounts_to_zero() {
             }
             assert!(
                 !is_active(host.app()),
-                "PlasmaSplash must finish within 2.2 s"
+                "plasma splash must finish within 2.2 s"
             );
             assert!(!overlay_mounted(&host));
             assert!(
                 active_fx_slots(&mut host).is_empty(),
-                "completed PlasmaSplash must emit zero effect slots"
+                "completed plasma splash must emit zero effect slots"
             );
             assert!(
                 host.app().tenxer_fx.splash_pixels.is_none(),
-                "completed PlasmaSplash must release its Pixels handle"
+                "completed plasma splash must release its Pixels handle"
             );
 
             // Disabled animations emits zero effect slots and allocates no Pixels.
             host.runtime().update(|app, tx| {
                 shell::disable_animations(app);
-                trigger(app, TenxerFx::PlasmaSplash, tx);
+                trigger(app, tx);
             });
             idle(&mut host);
             assert!(!is_active(host.app()));
@@ -480,7 +404,7 @@ fn plasma_splash_mounts_artwork_and_effect_slots_then_unmounts_to_zero() {
 }
 
 #[test]
-fn every_concept_renders_cleanly_in_dark_and_light_looks_and_roundness_extremes() {
+fn plasma_splash_renders_cleanly_in_dark_and_light_looks_and_roundness_extremes() {
     let splash = plasma_splash::create_pixels();
     assert!(splash.is_some(), "embedded splash artwork decodes cleanly");
     for dark in [true, false] {
@@ -490,12 +414,9 @@ fn every_concept_renders_cleanly_in_dark_and_light_looks_and_roundness_extremes(
                 ..LookParams::default()
             };
             let look = Look::fallback(dark).with_params(&params);
-            for effect in TenxerFx::ALL {
-                for t in [0.0_f32, 0.25, 0.5, 0.8, 1.0] {
-                    let frame = FxFrame::new(&look, 1280.0, 800.0, t);
-                    let built = render_effect(effect, &frame, splash.as_ref());
-                    assert_eq!(built.is_some(), effect.is_enabled());
-                }
+            for t in [0.0_f32, 0.25, 0.5, 0.8, 1.0] {
+                let frame = FxFrame::new(&look, 1280.0, 800.0, t);
+                let _ = plasma_splash::build(&frame, splash.as_ref());
             }
         }
     }

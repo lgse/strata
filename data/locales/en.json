@@ -1599,15 +1599,6 @@
   "Page %{page} of %{pages}": "Page %{page} of %{pages}",
   "Page %{page} of %{pages}, %{zoom}%": "Page %{page} of %{pages}, %{zoom}%",
   "Loading page": "Loading page",
-  "10x mode effect": "10x mode effect",
-  "Visual effect played when entering 10xer mode.": "Visual effect played when entering 10xer mode.",
-  "Preview effect": "Preview effect",
-  "Horizon Scan": "Horizon Scan",
-  "Velocity Warp": "Velocity Warp",
-  "Shockwave Ring": "Shockwave Ring",
-  "Perimeter Ignite": "Perimeter Ignite",
-  "Tactical HUD": "Tactical HUD",
-  "Interface on fire": "Interface on fire",
   "Off": "Off",
   "TRANSPARENCY": "TRANSPARENCY",
   "Transparency effects": "Transparency effects",
@@ -1620,6 +1611,5 @@
   "Apply backdrop blur and a subtle frosted sheen to translucent dialogs, menus, and popovers.": "Apply backdrop blur and a subtle frosted sheen to translucent dialogs, menus, and popovers.",
   "Requires a compositor that supports backdrop blur and has it enabled.": "Requires a compositor that supports backdrop blur and has it enabled.",
   "Unfocused window multiplier": "Unfocused window multiplier",
-  "Multiply transparency when the window is unfocused (higher is more see-through; 1.00× keeps it unchanged).": "Multiply transparency when the window is unfocused (higher is more see-through; 1.00× keeps it unchanged).",
-  "Plasma splash": "Plasma splash"
+  "Multiply transparency when the window is unfocused (higher is more see-through; 1.00× keeps it unchanged).": "Multiply transparency when the window is unfocused (higher is more see-through; 1.00× keeps it unchanged)."
 }

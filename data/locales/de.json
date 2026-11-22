@@ -1599,15 +1599,6 @@
   "Page %{page} of %{pages}": "Seite %{page} von %{pages}",
   "Page %{page} of %{pages}, %{zoom}%": "Seite %{page} von %{pages}, %{zoom} %",
   "Loading page": "Seite wird geladen",
-  "10x mode effect": "10x-Modus-Effekt",
-  "Visual effect played when entering 10xer mode.": "Visueller Effekt beim Aktivieren des 10xer-Modus.",
-  "Preview effect": "Effekt anzeigen",
-  "Horizon Scan": "Horizont-Scan",
-  "Velocity Warp": "Geschwindigkeits-Warp",
-  "Shockwave Ring": "Schockwellenring",
-  "Perimeter Ignite": "Rahmenzündung",
-  "Tactical HUD": "Taktisches HUD",
-  "Interface on fire": "Oberfläche in Flammen",
   "Off": "Aus",
   "TRANSPARENCY": "TRANSPARENZ",
   "Transparency effects": "Transparenzeffekte",
@@ -1620,6 +1611,5 @@
   "Apply backdrop blur and a subtle frosted sheen to translucent dialogs, menus, and popovers.": "Hintergrundunschärfe und einen dezenten Milchglas-Schimmer auf durchscheinende Dialoge, Menüs und Popovers anwenden.",
   "Requires a compositor that supports backdrop blur and has it enabled.": "Erfordert einen Compositor, der Hintergrundunschärfe unterstützt und aktiviert hat.",
   "Unfocused window multiplier": "Multiplikator für unfokussierte Fenster",
-  "Multiply transparency when the window is unfocused (higher is more see-through; 1.00× keeps it unchanged).": "Transparenz multiplizieren, wenn das Fenster nicht fokussiert ist (höher ist durchsichtiger; 1,00× bleibt unverändert).",
-  "Plasma splash": "Plasma-Splash"
+  "Multiply transparency when the window is unfocused (higher is more see-through; 1.00× keeps it unchanged).": "Transparenz multiplizieren, wenn das Fenster nicht fokussiert ist (höher ist durchsichtiger; 1,00× bleibt unverändert)."
 }

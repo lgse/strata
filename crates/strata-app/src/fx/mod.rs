@@ -11,23 +11,13 @@ use rune::{
     render::{EffectPhase, EffectSite, Instance, KIND_EFFECT},
 };
 use rune_fx::{
-    DistortParams, ElectricParams, ElectricStyle, FireParams, FireStyle, Fx, FxFrame, FxLayer,
-    FxOptions, FxRenderer, FxSlot, Shape, rgb,
+    ElectricParams, ElectricStyle, FireParams, Fx, FxFrame, FxLayer, FxOptions, FxRenderer, FxSlot,
+    Shape, rgb,
 };
 
 #[cfg(test)]
 mod tests;
 
-/// Effect slot mark: rising backdrop heat haze above the bottom window blaze.
-pub(crate) const MARK_FIRE_HAZE: u32 = 0x10F0_0001;
-/// Effect slot mark: fluid-simulated bottom fire wall, smoke, and rising embers.
-pub(crate) const MARK_FIRE_BOTTOM: u32 = 0x10F0_0002;
-/// Effect slot mark: blazing filament border wrapping the window perimeter.
-pub(crate) const MARK_FIRE_BORDER: u32 = 0x10F0_0003;
-/// Effect slot mark: fluid-simulated heat flames licking off the centered `10X` emblem.
-pub(crate) const MARK_FIRE_BADGE_FLAME: u32 = 0x10F0_0004;
-/// Effect slot mark: heat haze shimmering above the centered `10X` emblem.
-pub(crate) const MARK_FIRE_BADGE_HAZE: u32 = 0x10F0_0005;
 /// Effect slot mark: swirling plasma filaments hugging a rounded splash card perimeter.
 pub(crate) const MARK_PLASMA_BORDER: u32 = 0x10F0_0006;
 /// Effect slot mark: crackling overload lightning crawling around a splash card perimeter.
@@ -129,8 +119,8 @@ impl FxCompositor {
         }
     }
 
-    /// Releases transient fluid-sim grids and cached backdrop `TextureView` references on the
-    /// one-time transition from active effects back to idle while keeping WGSL pipelines warm.
+    /// Releases cached `BindSet` and backdrop `TextureView` references on the one-time
+    /// transition from active effects back to idle while keeping WGSL pipelines warm.
     fn flush_on_idle<S: 'static>(&mut self, f: &Frame<'_, S>) {
         if !self.active {
             return;
@@ -149,8 +139,8 @@ impl FxCompositor {
             backdrop: None,
             sources: &[],
         };
-        // Both `Sims::grids` (`Claim::alive`) and `BindSet` (`now`/`last`) evict entries after
-        // two empty frames, releasing sim textures and cloned backdrop `TextureView` handles.
+        // `BindSet` (`now`/`last`) evicts entries after two empty frames, releasing transient
+        // bind groups and cloned backdrop `TextureView` handles.
         gpu.renderer
             .prepare_with_slots(f.device, f.queue, &empty, &[]);
         gpu.renderer
@@ -178,7 +168,6 @@ impl FxCompositor {
             renderer.add_format(device, format.remove_srgb_suffix());
             renderer.add_format(device, format.add_srgb_suffix());
             renderer.add_format(device, wgpu::TextureFormat::Rgba16Float);
-            renderer.set_fire_sim(device, true);
             self.gpu = Some(GpuFx {
                 device_key,
                 format,
@@ -226,7 +215,6 @@ impl<S: 'static> Compositor<S> for FxCompositor {
             },
             &placements,
         );
-        fx.simulate(queue, f.encoder, None);
 
         let clear = f.rt.clear_color();
         f.ui.prepare(device, queue, &mut f.rt.text.atlas, &f.rt.instances, size);
@@ -302,8 +290,7 @@ fn decode_mark(inst: &Instance, fallback: u32) -> u32 {
 /// Decodes one `KIND_EFFECT` instance into a `rune-fx` layer based on its `mark` and `effect_data`.
 pub(crate) fn decode_layer(mark: u32, inst: &Instance) -> Option<FxLayer> {
     let p = SlotParams::from_instance(inst)?;
-    let (fx, shape, seed_offset) =
-        decode_fire_layer(mark, &p).or_else(|| decode_plasma_electric_layer(mark, &p))?;
+    let (fx, shape, seed_offset) = decode_plasma_electric_layer(mark, &p)?;
     Some(
         fx.on(shape)
             .at(p.time)
@@ -312,63 +299,16 @@ pub(crate) fn decode_layer(mark: u32, inst: &Instance) -> Option<FxLayer> {
     )
 }
 
-fn decode_fire_layer(mark: u32, p: &SlotParams) -> Option<(Fx, Shape, u32)> {
-    match mark {
-        MARK_FIRE_HAZE => Some((
-            Fx::distort(DistortParams::HeatHaze {
-                height: (p.rect[3] * 0.48).clamp(180.0, 380.0),
-                scale: 14.0,
-                speed: 2.2,
-                amount: 2.8 * p.intensity,
-                whole_shape: false,
-            }),
-            bottom_hearth_shape(p.rect),
-            11,
-        )),
-        MARK_FIRE_BOTTOM => {
-            // Quantize height to whole points so the fluid sim grid stays stable across frames.
-            let fire_height = (p.rect[3] * 0.27).clamp(130.0, 220.0).round();
-            Some((
-                Fx::fire(bottom_fire_params(fire_height, p.intensity, p.is_light)),
-                bottom_hearth_shape(p.rect),
-                5,
-            ))
-        }
-        MARK_FIRE_BORDER => Some((
-            Fx::fire(border_fire_params(p.intensity, p.is_light)),
-            inset_border_shape(p.rect, p.radius),
-            17,
-        )),
-        MARK_FIRE_BADGE_FLAME => Some((
-            Fx::fire(badge_fire_params(p.intensity, p.is_light)),
-            badge_shape(p.rect, p.radius),
-            23,
-        )),
-        MARK_FIRE_BADGE_HAZE => Some((
-            Fx::distort(DistortParams::HeatHaze {
-                height: 42.0,
-                scale: 9.0,
-                speed: 2.1,
-                amount: 1.35 * p.intensity,
-                whole_shape: false,
-            }),
-            badge_shape(p.rect, p.radius),
-            29,
-        )),
-        _ => None,
-    }
-}
-
 fn decode_plasma_electric_layer(mark: u32, p: &SlotParams) -> Option<(Fx, Shape, u32)> {
     match mark {
         MARK_PLASMA_BORDER => Some((
             Fx::fire(plasma_border_params(p.intensity, p.is_light)),
-            badge_shape(p.rect, p.radius),
+            card_shape(p.rect, p.radius),
             37,
         )),
         MARK_ELECTRIC_BORDER => Some((
             Fx::electric(electric_border_params(p.intensity, p.is_light)),
-            badge_shape(p.rect, p.radius),
+            card_shape(p.rect, p.radius),
             41,
         )),
         MARK_ELECTRIC_CHARGED => Some((
@@ -400,23 +340,7 @@ fn arc_endpoints(mark: u32, [x, y, w, h]: [f32; 4]) -> ([f32; 2], [f32; 2]) {
     }
 }
 
-/// Hearth strip anchored along the window bottom so `FireStyle::Top` flames erupt upward cleanly
-/// across the full width with a non-zero corner radius for the fluid sim's edge taper.
-fn bottom_hearth_shape([x, y, w, h]: [f32; 4]) -> Shape {
-    const EDGE_PAD: f32 = 16.0;
-    const BASE_LIFT: f32 = 6.0;
-    const HEARTH_HEIGHT: f32 = 48.0;
-    const HEARTH_RADIUS: f32 = 14.0;
-    Shape::rounded(
-        x - EDGE_PAD,
-        y + h - BASE_LIFT,
-        w + 2.0 * EDGE_PAD,
-        HEARTH_HEIGHT,
-        HEARTH_RADIUS,
-    )
-}
-
-/// Slightly inset window rect so `FireStyle::Border`'s outer filament band hugs inside the frame.
+/// Slightly inset window rect so the outer charged perimeter band hugs inside the frame.
 fn inset_border_shape([x, y, w, h]: [f32; 4], radius: f32) -> Shape {
     const INSET: f32 = 6.0;
     let inset = INSET.min(w * 0.25).min(h * 0.25);
@@ -426,68 +350,11 @@ fn inset_border_shape([x, y, w, h]: [f32; 4], radius: f32) -> Shape {
     Shape::rounded(x + inset, y + inset, iw, ih, ir)
 }
 
-/// Badge shape guaranteed to keep a non-zero corner radius for `firesim.wgsl`'s edge taper.
-fn badge_shape([x, y, w, h]: [f32; 4], radius: f32) -> Shape {
+/// Splash card shape guaranteed to keep a non-zero corner radius for border filament tapers.
+fn card_shape([x, y, w, h]: [f32; 4], radius: f32) -> Shape {
     let max_r = (w.min(h) * 0.5).max(1.0);
     let safe_r = radius.clamp(6.0_f32.min(max_r), max_r);
     Shape::rounded(x, y, w, h, safe_r)
-}
-
-fn bottom_fire_params(height: f32, intensity: f32, is_light: bool) -> FireParams {
-    FireParams {
-        style: FireStyle::Top,
-        height,
-        scale: 38.0,
-        speed: 1.75,
-        intensity: 1.18 * intensity,
-        embers: 38,
-        ember_rise: 165.0,
-        ember_size: 1.05,
-        ember_life: 1.55,
-        warp: 1.15,
-        sides: 0.36,
-        base_glow: 0.9,
-        occlusion: if is_light { 0.95 } else { 0.40 },
-        swirl: 0.35,
-        smoke: if is_light { 0.85 } else { 0.65 },
-        ..FireParams::default()
-    }
-}
-
-fn border_fire_params(intensity: f32, is_light: bool) -> FireParams {
-    FireParams {
-        style: FireStyle::Border,
-        height: 36.0,
-        scale: 22.0,
-        speed: 1.45,
-        intensity: (if is_light { 1.1 } else { 0.92 }) * intensity,
-        embers: 0,
-        warp: 1.0,
-        sides: 0.52,
-        base_glow: 0.65,
-        occlusion: if is_light { 0.95 } else { 0.26 },
-        swirl: 0.65,
-        smoke: 0.0,
-        ..FireParams::default()
-    }
-}
-
-fn badge_fire_params(intensity: f32, is_light: bool) -> FireParams {
-    FireParams {
-        height: 32.0,
-        scale: 12.0,
-        speed: 1.5,
-        intensity: 1.1 * intensity,
-        embers: 10,
-        ember_rise: 48.0,
-        ember_size: 0.75,
-        ember_life: 1.2,
-        warp: 0.9,
-        base_glow: 0.55,
-        occlusion: if is_light { 0.95 } else { 0.20 },
-        smoke: if is_light { 0.6 } else { 0.35 },
-        ..FireParams::heat()
-    }
 }
 
 fn plasma_border_params(intensity: f32, is_light: bool) -> FireParams {

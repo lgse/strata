@@ -538,11 +538,6 @@ pub(crate) fn preferences(app: &App) -> &strata_desktop::settings::Preferences {
     app.window.settings.preferences()
 }
 
-/// The saved 10xer-mode activation visual effect.
-pub(crate) fn tenxer_fx(app: &App) -> strata_desktop::settings::TenxerFx {
-    app.window.settings.tenxer_fx()
-}
-
 /// The saved surface transparency and frosted glass settings.
 pub(crate) fn transparency(app: &App) -> strata_desktop::settings::TransparencyPreferences {
     app.window.settings.transparency()
