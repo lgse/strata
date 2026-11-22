@@ -219,6 +219,9 @@ pub struct ColumnsState {
     pub(super) recheck: Option<Recheck>,
     /// Last built clipped-column slices `(left_clipped, visible_width)` per column.
     clipped: Vec<Option<(bool, f32)>>,
+    /// Whether the horizontal strip currently overflows its viewport, so the bottom strip bar
+    /// reserves space beneath the columns.
+    pub(super) strip_overflows: std::cell::Cell<bool>,
     /// Timestamp and window point of the last peek-reveal click, so the second press of a
     /// double-click on a clipped column is ignored (`src/ui/browser/columns/reveal.rs`).
     pub(super) peek_seq: Option<(f64, Point)>,
@@ -304,6 +307,7 @@ impl ColumnsState {
             ticks: 0,
             recheck: None,
             clipped: Vec::new(),
+            strip_overflows: std::cell::Cell::new(false),
             peek_seq: None,
             header_peek: None,
         }
@@ -358,6 +362,12 @@ impl ColumnsState {
     /// The strip's viewport in window points, as last laid out.
     pub fn strip_rect(&self) -> Rect {
         self.strip
+    }
+
+    /// Whether the horizontal strip currently overflows its viewport, reserving space for the
+    /// bottom strip scrollbar beneath the columns.
+    pub fn strip_overflows(&self) -> bool {
+        self.strip_overflows.get()
     }
 
     /// When the strip's and the columns' scroll bars show: hidden at rest by default
@@ -630,6 +640,9 @@ impl ColumnsState {
         if !self.columns.is_empty() {
             self.set_active_quiet(active.min(self.columns.len() - 1));
             self.reveal(look, tx);
+        }
+        if look.animations && self.strip_overflows.get() {
+            tx.wake_after(std::time::Duration::ZERO);
         }
     }
 
@@ -1008,6 +1021,36 @@ impl ColumnsState {
             .collect();
         if next != self.clipped {
             self.clipped = next;
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Whether the horizontal strip currently overflows its viewport (from live column widths
+    /// against the laid-out viewport width, or while an animated column exit still holds layout
+    /// width in Rune).
+    pub(super) fn strip_overflows_now(&self, look: &Look) -> bool {
+        let bar = crate::scroll::BarLook::strip(look);
+        let page = self.strip.w;
+        if page < bar.min_length {
+            return false;
+        }
+        let total = self.spans(look).last().map_or(0.0, |s| s.1);
+        if total - page > 0.5 {
+            return true;
+        }
+        let bar_pos = self.strip_bar.pos();
+        let bar_fresh = (bar_pos.viewport[0] - page).abs() <= 0.5;
+        look.animations && bar_fresh && self.strip_bar.overflows()
+    }
+
+    /// Updates the cached strip-overflow state; returns `true` only on a `false <-> true`
+    /// transition so scroll frames never trigger view rebuilds.
+    pub(super) fn sync_strip_overflow(&self, look: &Look) -> bool {
+        let next = self.strip_overflows_now(look);
+        if next != self.strip_overflows.get() {
+            self.strip_overflows.set(next);
             true
         } else {
             false

@@ -140,6 +140,12 @@ impl ListTableState {
         self.bar.is_dragging()
     }
 
+    /// Whether the sideways scroll currently overflows, reserving space for the horizontal bar
+    /// beneath the rows.
+    pub fn sideways_overflows(&self) -> bool {
+        self.sideways_bar.overflows()
+    }
+
     /// When both scroll bars show: overlay (Strata's, the default) or always.
     pub fn set_bar_mode(&mut self, mode: BarMode) {
         self.bar.set_mode(mode);
