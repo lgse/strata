@@ -135,7 +135,8 @@ pub(super) struct ButtonSpec<'a, S> {
     pub key: String,
 }
 
-/// The button, lit while a drag that opens tabs is over it or runs in the window.
+/// The button, accented to match GTK's `header-action` chrome icon and lit while a drag that opens
+/// tabs is over it or runs in the window.
 pub(super) fn button<S: 'static>(
     cx: &Ctx<S>,
     state: &BrowserTabsState,

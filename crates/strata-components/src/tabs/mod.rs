@@ -1,22 +1,13 @@
 // SPDX-License-Identifier: MIT
 
-//! BrowserTabs (C7): the browser window's tab strip (`browser/tabs`), on rune-kit's
-//! `TabStrip`, with what a file manager adds: tabs and New tab as drop targets, a drag that
-//! rests on a tab selecting it, the closed-tabs stack, and a window title that follows the
-//! active tab.
+//! BrowserTabs (C7): the browser window's GTK-matched horizontal tab strip (`browser/tabs`),
+//! with compact content-sized tabs, graceful shrinking before scrolling, variable-width reorder
+//! and tear-out, tabs and New tab as drop targets, spring-loaded hover switching, the closed-tabs
+//! stack, and a window title that follows the active tab.
 //!
 //! Work package: C7, `docs/rune/work/phase-1-leaves/C7-browser-tabs.md`. Behaviour follows the
 //! feature map, against lgse/strata `upstream/main` 35ee677ab
 //! (`src/ui/window/composition/tabs.rs`, `tabs/strip.rs`, `tabs/strip/drop.rs`, `style.css`).
-//!
-//! Rune dev 631e8a67: **partly**. rune-kit's `TabStrip` covers reorder (with Escape to put the
-//! tab back), tear-out, a gap for a tab coming in from another strip, middle-click close
-//! (`El::on_middle_press`), shrink-then-scroll with edge fades, virtualization past 40 tabs and
-//! auto-scroll while dragging, a keyboard-focused tab's close button, translated status and close
-//! words (`TabStrip::words`), `live_only` hover and non-drag click release, and the `tablist` and
-//! `tab` roles with the selected state; `Tx::set_title` applies the title. Nothing covers drop
-//! targets on tabs, the spring, the closed-tabs stack, the wheel's sideways mapping or Strata's
-//! look.
 //!
 //! # Parts
 //!
@@ -49,17 +40,19 @@
 //! // Ctrl+Tab / Ctrl+Page Down   => data.step(1); Ctrl+Shift+Page Down => data.moved(active, 1); Ctrl+Shift+1 => data.nth(0)
 //! ```
 //!
-//! # Built on rune-kit
+//! # Layout and look
 //!
-//! The tabs are `TabStrip`'s, with its pill look (Kit tokens through `fill`, `close_icon`,
-//! `row_height`, `gap` and the overflow policy, from [`strata_kit::slots::tabs`]), and C7 sets
-//! over each built tab, through `TabItem::decorate`: its whole name as its accessible name, the
-//! drop tint, Strata's 3 point accent underline on the active tab (shared between tabs with
-//! `El::matched`, so it slides; it jumps with animations off), its drop zone, and the wheel's
-//! sideways mapping (`wheel.rs`). Tab keys carry the strip's key ([`tab_key`]: `t-<key>-<id>`).
-//! Hidden markers report where the strip, tab 0 and the active tab drew (`probe.rs`), so the
-//! wheel can read the strip's offset and a newly active tab can be revealed clear of the edge
-//! fades, which Rune can't do from the outside (U-C7-2, U-C7-7).
+//! Each tab fills the strip's full height (`tabs.tab.height`) with no rounded pill background,
+//! compact content-sized widths (water-filling down to `tabs.tab.min_width` before horizontal
+//! scrolling with edge fades), and the New tab button right beside the tabs. Active and hovered
+//! tabs accent both their location icon and semibold label (`icon_accent` / `text_accent`), with
+//! Strata's full-width 3 point accent indicator bar flush along the active tab's bottom edge
+//! (shared via `El::matched` when animations are enabled) over the strip's 1 point bottom hairline.
+//! Each tab's close button stays visible at rest in `icon_muted` and turns `icon_accent` on direct
+//! hover; corner radii follow `look.round(...)` (sharp at 0 % roundness). Tab keys carry the
+//! strip's key ([`tab_key`]: `t-<key>-<id>`). Hidden markers report where the strip, tab 0 and the
+//! active tab drew (`probe.rs`), so the wheel (`wheel.rs`) can read the strip's offset and a newly
+//! active tab can be revealed clear of the edge fades (U-C7-2, U-C7-7).
 //!
 //! # Drops and the spring
 //!
@@ -106,13 +99,14 @@
 //!
 //! [`BrowserTabs::tear_out`] (off by default) lets a tab be dragged 36 points off the strip.
 //! While the button is down the host hears [`TabsIntent::TearMove`] and may open the tab's
-//! window under the pointer, then call `state.drag.hand_off()`; on release it hears
+//! window under the pointer, then call [`BrowserTabsState::hand_off`]; on release it hears
 //! [`TabsIntent::TearOut`]. The torn tab stays in the source window's list until then (its
 //! slot holds the gesture). To move it into another window's strip, the host maps the move's
-//! `screen_point` into that window and calls its `state.drag.set_incoming(Some(point))`, reads
-//! `incoming_slot()` at the release, moves the tab there and calls `set_incoming(None)`.
-//! `screen_point` is `None` on Wayland (the protocol hides window positions) and headless, so
-//! moving between windows and placing a window under the pointer work on X11 only.
+//! `screen_point` into that window and calls its [`BrowserTabsState::set_incoming`] with
+//! `Some(point)`, reads [`BrowserTabsState::incoming_slot`] at the release, moves the tab there
+//! and calls `set_incoming(None)`. `screen_point` is `None` on Wayland (the protocol hides window
+//! positions) and headless, so moving between windows and placing a window under the pointer work
+//! on X11 only.
 //!
 //! # Keyboard and assistive technology
 //!
@@ -207,28 +201,21 @@
 //!
 //! # Deliberate changes
 //!
-//! - **The look is rune-kit's pill tabs**: the active tab's pill, a hover wash, faint and base
-//!   title colours, separators between quiet tabs, and the close button in a slot that shows
-//!   on hover or focus. Over it C7 draws Strata's sliding 3 point accent underline. Strata's
-//!   tabs are bare labels that turn accent when active, hovered or under a drag, with the X
-//!   always shown at half opacity. A tab under a drag shows a highlight tint instead of an
-//!   accent label (U-C7-3). Owner item: the coordinator takes this to the owner.
-//! - **Reorder lifts the tab** and its neighbours step aside, with no insertion line (as C8).
-//! - **A drag that opens tabs opens a gap** where the tab will land, rune-kit's incoming gap,
-//!   and the tabs give up a share of their width for it; Strata draws an accent line.
-//! - **Widths:** tabs share the strip from 224 points down to room for about 10 characters of
-//!   their label beside the icon and the close button (`tabs.tab.min_width`: 136 points at the
-//!   default type, growing with the text size), then the strip scrolls with faded edges. Names
-//!   longer than that fade at the tab's end. Owner item: the widths. Strata's tabs take
-//!   their label's width. The 22-character label is kept as well.
-//! - **Each tab shows its location's icon**, which rune-kit's lead slot would otherwise fill
-//!   with an empty box; the number badges take its place while they show (Strata's sit after
-//!   the label).
+//! - **Each tab keeps its location's icon** alongside its semibold label, matching the active and
+//!   hovered accent colours (`icon_accent` / `text_accent`) and muted rest state (`icon_muted` /
+//!   `text_muted`); number badges take the icon's place while Ctrl+Shift is held (Strata's sit
+//!   after the label).
+//! - **Reorder lifts the tab** and its neighbours step aside by the dragged tab's laid-out width,
+//!   with no insertion line (as C8).
+//! - **Widths:** tabs size compactly around their own content (icon, label up to 22 characters,
+//!   and close button) with `+` right beside them; when many tabs are open, wider tabs shrink
+//!   first via water-filling down to `tabs.tab.min_width` (room for 10 characters at default
+//!   type) while short tabs stay compact, and excess tabs scroll horizontally with edge fades.
 //! - **Tear-out** is new and off by default; moving tabs between windows works on X11 only.
 //! - **The tab list is one Tab stop** with arrow keys, as rune-kit's lists are; Strata makes
-//!   each tab button a Tab stop. The close buttons are pointer-only.
+//!   each tab button a Tab stop. The close buttons are pointer-only and always visible at rest.
 //! - **The close button has no tooltip** (U-C7-1): [`BrowserTabs::words`] sets its translated
-//!   accessible name through `TabStrip::words`, while Strata's tooltip also names Ctrl+W.
+//!   accessible name, while Strata's tooltip also names Ctrl+W.
 //! - **An image dropped on a tab behind a modal** isn't delivered: Rune routes no drop outside
 //!   a modal.
 //!
@@ -283,10 +270,12 @@
 mod build;
 mod closed;
 mod data;
+mod drag;
 mod drops;
 mod intent;
 mod new_tab;
 mod probe;
+mod sizing;
 mod state;
 mod wheel;
 
