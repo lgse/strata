@@ -168,7 +168,8 @@ impl Spectrum {
         }
     }
 
-    pub(crate) fn count(&self) -> usize {
+    /// The number of laid-out bars (0 before the first layout).
+    pub fn count(&self) -> usize {
         self.bars.len()
     }
 

@@ -6,15 +6,16 @@
 pub mod layout;
 pub mod spectrum;
 
-use rune::{El, LoopSpec, Shape, SurfaceFit, Tx, canvas, col, el, icon, row, text};
+use rune::{El, LoopSpec, Shape, Span, SurfaceFit, Tx, canvas, col, el, icon, row, text};
 use strata_kit::icons::IconName;
 use strata_kit::look::Look;
 use strata_kit::slots::media as slot;
 
+use super::data::{Art, AudioTags};
 use super::state::MediaState;
 use super::time;
 use super::{Emit, commit_after};
-use layout::{PANEL_MAX, plan};
+use layout::{ART_ASPECT, PANEL_MAX, plan};
 
 /// The record turns once in this long while playing (`SECONDS_PER_TURN`).
 const SECONDS_PER_TURN: f64 = 2.4;
@@ -22,13 +23,33 @@ const SECONDS_PER_TURN: f64 = 2.4;
 const LABEL: f32 = 0.34;
 /// The disc's share of its box (`DISC`).
 const DISC: f32 = 0.94;
+/// The peeking disc's resting offset behind the album cover, as a share of cover side (`TUCKED`).
+pub const DISC_TUCKED: f32 = 0.06;
+/// The peeking disc's playing offset behind the album cover, as a share of cover side (`SLID_OUT`).
+pub const DISC_SLID_OUT: f32 = 0.3;
+/// Exponential slide-out rate while playing (`SLIDE_RATE`).
+pub(crate) const DISC_SLIDE_RATE: f32 = 7.0;
+/// Exponential tuck-in rate when paused (`TUCK_RATE`).
+pub(crate) const DISC_TUCK_RATE: f32 = 14.0;
+
+/// Strata's `.preview-audio-title`: 1.85× the base UI text size, extra-bold, tight tracking.
+fn audio_title_style(look: &Look) -> rune::TextStyle {
+    let size = (look.kit.ty.ui.size * 1.85).round();
+    rune::TextStyle {
+        size,
+        weight: 800.0,
+        tracking: -size * 0.01,
+        ..look.ty.title
+    }
+    .lh((size * 1.2).round())
+}
 
 /// The height the tags, timeline and transport take: the title line, the byline, the
 /// eyebrow, the waveform, the transport and the gaps between them.
 fn fixed_height(look: &Look) -> f32 {
     let k = &look.kit;
     let lh = |t: rune::TextStyle| t.line_height.max(t.size * 1.2);
-    lh(look.ty.title)
+    lh(audio_title_style(look))
         + 2.0 * lh(k.ty.small)
         + slot::waveform_height(look)
         + 32.0
@@ -59,7 +80,6 @@ pub(crate) fn audio<S: 'static>(
         st.clip().position,
         st.labels(),
     );
-    let byline = time::byline(tags.artist.as_deref(), tags.album.as_deref());
     // Rows keep their space while tags load, so changing tracks doesn't move the layout.
     let volume = super::transport::volume(st, access, emit.clone(), key, look);
     let header = row().w_full().gap(look.space.md).child(
@@ -71,18 +91,11 @@ pub(crate) fn audio<S: 'static>(
             .child(
                 text(title)
                     .key(format!("{key}-title"))
-                    .font(look.ty.title)
+                    .font(audio_title_style(look))
                     .color(k.c.text_base)
                     .truncate(),
             )
-            .child(
-                text(byline)
-                    .key(format!("{key}-byline"))
-                    .font(k.ty.small)
-                    .color(k.c.text_muted)
-                    .truncate()
-                    .min_h(k.ty.small.size),
-            )
+            .child(byline_el(key, tags, look))
             .child(super::error(st, key, look)),
     );
 
@@ -161,9 +174,30 @@ pub(crate) fn audio<S: 'static>(
         .child(body)
 }
 
-/// The art, or the record when the track has none. A press toggles playback. Art keeps its
-/// key while its id stays, so a track with the same art keeps it in place; new art mounts
-/// fresh (deviation D4: Strata crossfades).
+/// The artist (accent, bold) and album (muted), matching `.preview-audio-artist` and
+/// `.preview-audio-album` in a single accessible text node.
+fn byline_el(key: &str, tags: &AudioTags, look: &Look) -> El {
+    let k = &look.kit;
+    let byline = time::byline(tags.artist.as_deref(), tags.album.as_deref());
+    let mut e = text(byline)
+        .key(format!("{key}-byline"))
+        .font(k.ty.small)
+        .color(k.c.text_muted)
+        .truncate()
+        .min_h(k.ty.small.size);
+    if let Some(artist) = tags.artist.as_deref()
+        && !artist.is_empty()
+    {
+        e = e.spans([Span::new(0, artist.len())
+            .weight(700.0)
+            .color(k.c.text_accent)]);
+    }
+    e
+}
+
+/// The art (square sleeve with peeking grooved vinyl disc behind its right side), or the
+/// centered record when the track has none. A press toggles playback. Art keeps its key
+/// while its id stays, so a track with the same art keeps it in place.
 fn art<S: 'static>(
     st: &MediaState,
     access: fn(&mut S) -> &mut MediaState,
@@ -172,34 +206,73 @@ fn art<S: 'static>(
     side: f32,
     look: &Look,
 ) -> El {
-    let k = &look.kit;
-    let mut e = match st.art() {
-        Some(a) => {
-            let radius = (side * 0.035).clamp(4.0, 14.0);
-            el().key(format!("{key}-art-{}", a.id))
-                .size(side, side)
-                .radius(radius)
-                .clip_rounded(radius)
-                .border(1.0, k.alpha(k.c.text_base, 0.08))
-                .pixels_fit(&a.pixels, SurfaceFit::Fill)
-        }
+    let e = match st.art() {
+        Some(a) => sleeve_art(st, a, key, side, look),
         None => record(st, key, side, look),
     };
-    e = e
-        .role("image")
+    e.role("image")
         .label(st.labels().artwork.clone())
         .on_press_tx(move |s: &mut S, tx: &mut Tx| {
             access(s).toggle();
             commit_after(s, access, &emit, tx);
-        });
-    e
+        })
 }
 
-/// Strata's record (`paint_disc`, `paint_label`), simplified (deviation D4): a dark disc with
-/// grooves and the accent label, whose mark turns while playing. Only icon quads can turn
-/// without a view commit at this Rune rev (`LoopSpec::rotation`), so the turning mark is an
-/// icon; under reduced motion it holds still.
-fn record(st: &MediaState, key: &str, side: f32, look: &Look) -> El {
+/// Square album cover on the left with the grooved vinyl disc peeking from behind its right
+/// side (`artwork.rs`: `ASPECT = 1.3`, sliding from `TUCKED` when paused to `SLID_OUT` while
+/// playing via `live_offset`).
+fn sleeve_art(st: &MediaState, a: &Art, key: &str, side: f32, look: &Look) -> El {
+    let k = &look.kit;
+    let radius = (side * 0.035).clamp(4.0, 14.0);
+    let width = (side * ART_ASPECT).round();
+    let peeking_disc = canvas(disc_shape(side, look))
+        .key(format!("{key}-peeking-disc"))
+        .size(side, side)
+        .pin(Some(0.0), Some(0.0), None, None)
+        .live_offset(&st.live.disc)
+        .a11y_hidden();
+    let sleeve = el()
+        .size(side, side)
+        .pin(Some(0.0), Some(0.0), None, None)
+        .fill(k.c.bg_base)
+        .radius(radius)
+        .shadow(side * 0.03, side * 0.07, k.alpha(k.c.black, 0.55))
+        .child(cover_image(a, side, radius))
+        .child(
+            el().size(side, side)
+                .pin(Some(0.0), Some(0.0), None, None)
+                .radius(radius)
+                .border(1.0, k.alpha(k.c.text_base, 0.08))
+                .a11y_hidden(),
+        );
+    el().key(format!("{key}-art-{}", a.id))
+        .size(width, side)
+        .child(peeking_disc)
+        .child(sleeve)
+}
+
+/// Center-cropped cover image clipped to the sleeve's rounded corners (`paint_cover`).
+fn cover_image(a: &Art, side: f32, radius: f32) -> El {
+    let [w, h] = a.size;
+    let (drawn_w, drawn_h) = if w > 0 && h > 0 {
+        let scale = (side / w as f32).max(side / h as f32);
+        (w as f32 * scale, h as f32 * scale)
+    } else {
+        (side, side)
+    };
+    el().size(side, side)
+        .clip_rounded(radius)
+        .center()
+        .a11y_hidden()
+        .child(
+            el().size(drawn_w, drawn_h)
+                .pixels_fit(&a.pixels, SurfaceFit::Fill)
+                .a11y_hidden(),
+        )
+}
+
+/// The grooved vinyl disc shape (`paint_disc` + `paint_label`).
+fn disc_shape(side: f32, look: &Look) -> Shape {
     let r = side * DISC / 2.0;
     let c = side / 2.0;
     let circle = |radius: f32| -> Vec<[f32; 2]> {
@@ -211,6 +284,7 @@ fn record(st: &MediaState, key: &str, side: f32, look: &Look) -> El {
             .collect()
     };
     let groove = slot::record_groove(look);
+    let rim = look.kit.alpha(groove, (groove.a * 2.8).min(1.0));
     let mut shape = Shape::new().fill(circle(r), slot::record_disc(look));
     let mut ring = 0.42;
     while ring < 0.97 {
@@ -219,9 +293,20 @@ fn record(st: &MediaState, key: &str, side: f32, look: &Look) -> El {
         shape = shape.stroke(pts, 1.0, groove);
         ring += 0.055;
     }
-    shape = shape
+    let mut outline = circle(r);
+    outline.push(outline[0]);
+    shape
+        .stroke(outline, 1.0, rim)
         .fill(circle(r * LABEL), slot::record_label(look))
-        .fill(circle((r * 0.035).max(1.5)), look.kit.c.bg_base);
+        .fill(circle((r * 0.035).max(1.5)), look.kit.c.bg_base)
+}
+
+/// Strata's record (`paint_disc`, `paint_label`), simplified (deviation D4): a dark disc with
+/// grooves and the accent label, whose mark turns while playing. Only icon quads can turn
+/// without a view commit at this Rune rev (`LoopSpec::rotation`), so the turning mark is an
+/// icon; under reduced motion it holds still.
+fn record(st: &MediaState, key: &str, side: f32, look: &Look) -> El {
+    let r = side * DISC / 2.0;
     let mark = r * LABEL * 1.2;
     let mut turning = icon(look.icon(IconName::Music), mark)
         .key(format!("{key}-record-mark"))
@@ -234,7 +319,7 @@ fn record(st: &MediaState, key: &str, side: f32, look: &Look) -> El {
         .size(side, side)
         .center()
         .child(
-            canvas(shape)
+            canvas(disc_shape(side, look))
                 .size(side, side)
                 .pin(Some(0.0), Some(0.0), None, None)
                 .a11y_hidden(),

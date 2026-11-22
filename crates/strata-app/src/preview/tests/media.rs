@@ -19,7 +19,7 @@ use std::{
 };
 
 use rune::Tx;
-use rune::{Key, Mods};
+use rune::{Key, KeyEvent, Mods};
 use strata_components::{
     media_player::{MediaKind, MediaState},
     viewers::layout::Position,
@@ -44,12 +44,13 @@ use crate::{
     host::offscreen::Offscreen,
     preview::{
         media::{
-            MEDIA_KEY, MockPeaks, MockStoryboard, START_DECODER, START_PEAKS, START_STORYBOARD,
-            clear_peaks_cache, clear_storyboard_cache, deliver_peaks,
+            MEDIA_KEY, MockPeaks, MockStoryboard, PARSE_AUDIO_DETAILS, START_DECODER, START_PEAKS,
+            START_STORYBOARD, clear_audio_details_cache, clear_peaks_cache, clear_storyboard_cache,
+            deliver_peaks,
         },
         session,
     },
-    test_support::{PATIENCE, hosted},
+    test_support::{PATIENCE, hosted, send_key},
 };
 
 /// Bytes no text is: what a listing reads as backing a video's name.
@@ -883,6 +884,232 @@ fn closing_preview_cancels_active_peaks() {
             assert!(
                 cancelled.load(Ordering::Acquire),
                 "closing preview cancels active audio-peaks handle immediately"
+            );
+        },
+    );
+}
+
+fn ten_seconds_of_1khz_tone(_: SandboxedMedia, start_tick: u32) -> Result<Session, String> {
+    fixtures::stream_tone(
+        Header {
+            width: 0,
+            height: 0,
+            audio: true,
+            duration_us: 10_000_000,
+            start_tick,
+        },
+        1_000.0,
+    )
+}
+
+#[test]
+fn audio_preview_feeds_live_spectrum_while_playing_and_settles_when_paused() {
+    hosted(
+        MODULE,
+        "media::audio_preview_feeds_live_spectrum_while_playing_and_settles_when_paused",
+        |mut host| {
+            decode_with(ten_seconds_of_1khz_tone);
+            let (_provider, _folder) = open(
+                &mut host,
+                &[("tone.wav", MP4)],
+                "tone.wav",
+                "audio/vnd.wave",
+            );
+            shows(
+                &mut host,
+                |s| s.duration() == Some(Duration::from_secs(10)),
+                "audio ready",
+            );
+            assert!(
+                state(&host).is_some_and(|s| s.spectrum().ballistics().is_settled()),
+                "paused audio starts with settled spectrum"
+            );
+
+            send_key(
+                &mut host,
+                KeyEvent {
+                    key: Key::Text(" ".to_owned()),
+                    mods: ctrl_alt(),
+                },
+            );
+            shows(&mut host, MediaState::playing, "audio playing");
+            shows(
+                &mut host,
+                |s| {
+                    s.spectrum()
+                        .ballistics()
+                        .bars()
+                        .iter()
+                        .any(|&level| level > 0.5)
+                },
+                "live PCM spectrum lights bars while playing",
+            );
+
+            send_key(
+                &mut host,
+                KeyEvent {
+                    key: Key::Text(" ".to_owned()),
+                    mods: ctrl_alt(),
+                },
+            );
+            shows(&mut host, |s| !s.playing(), "audio paused");
+            shows(
+                &mut host,
+                |s| s.spectrum().ballistics().is_settled(),
+                "spectrum bars and peak caps settle cleanly when paused",
+            );
+        },
+    );
+}
+
+struct AudioDetailsHook;
+
+impl AudioDetailsHook {
+    fn install(
+        hook: impl Fn(
+            &Path,
+            strata_preview::sandbox::ParseOperation,
+            &strata_preview::sandbox::Cancellation,
+        ) -> Option<Vec<u8>>
+        + Send
+        + Sync
+        + 'static,
+    ) -> Self {
+        clear_audio_details_cache();
+        PARSE_AUDIO_DETAILS.replace(Some(Arc::new(hook)));
+        Self
+    }
+}
+
+impl Drop for AudioDetailsHook {
+    fn drop(&mut self) {
+        PARSE_AUDIO_DETAILS.replace(None);
+        clear_audio_details_cache();
+    }
+}
+
+fn solid_png(rgb: [u8; 3]) -> Vec<u8> {
+    let img = image::RgbaImage::from_pixel(4, 4, image::Rgba([rgb[0], rgb[1], rgb[2], 255]));
+    let mut out = std::io::Cursor::new(Vec::new());
+    img.write_to(&mut out, image::ImageFormat::Png)
+        .expect("encode png");
+    out.into_inner()
+}
+
+#[test]
+fn audio_preview_loads_tags_and_cover_caches_and_cancels_on_close() {
+    use std::sync::atomic::AtomicUsize;
+    use strata_preview::sandbox::ParseOperation;
+
+    hosted(
+        MODULE,
+        "media::audio_preview_loads_tags_and_cover_caches_and_cancels_on_close",
+        |mut host| {
+            decode_with(ten_seconds_of_sound);
+            let cover_bytes = solid_png([120, 40, 200]);
+            let probes = Arc::new(AtomicUsize::new(0));
+            let gamma_cancelled = Arc::new(AtomicBool::new(false));
+            let hook_probes = probes.clone();
+            let hook_cover = cover_bytes.clone();
+            let hook_cancelled = gamma_cancelled.clone();
+            let _hook = AudioDetailsHook::install(move |path, op, cancel| {
+                let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+                if name == "gamma.mp3" {
+                    let deadline = Instant::now() + Duration::from_secs(5);
+                    while !cancel.is_cancelled() && Instant::now() < deadline {
+                        std::thread::sleep(Duration::from_millis(2));
+                    }
+                    if cancel.is_cancelled() {
+                        hook_cancelled.store(true, Ordering::Release);
+                    }
+                    return None;
+                }
+                match op {
+                    ParseOperation::AudioTags => {
+                        hook_probes.fetch_add(1, Ordering::AcqRel);
+                        Some(
+                            br#"{"format":{"tags":{"title":"Neon Rain Opera","artist":"wmfeht","album":"Night","track":"1/2"}}}"#
+                                .to_vec(),
+                        )
+                    }
+                    ParseOperation::AudioCover if name == "alpha.mp3" => {
+                        hook_probes.fetch_add(1, Ordering::AcqRel);
+                        Some(hook_cover.clone())
+                    }
+                    ParseOperation::AudioCover => {
+                        hook_probes.fetch_add(1, Ordering::AcqRel);
+                        Some(b"null".to_vec())
+                    }
+                    ParseOperation::PreviewImage => std::fs::read(path).ok(),
+                    _ => None,
+                }
+            });
+
+            let files = [("alpha.mp3", MP4), ("beta.mp3", MP4), ("gamma.mp3", MP4)];
+            let (provider, folder) = open(&mut host, &files, "alpha.mp3", "audio/mpeg");
+            std::fs::write(folder.path().join("cover.png"), &cover_bytes).expect("write cover.png");
+
+            shows(
+                &mut host,
+                |s| s.tags().title.as_deref() == Some("Neon Rain Opera") && s.art().is_some(),
+                "alpha tags and embedded cover loaded",
+            );
+            let alpha_art_id = state(&host).and_then(|s| s.art()).expect("alpha art").id;
+            let tags = state(&host).expect("alpha state").tags().clone();
+            assert_eq!(tags.artist.as_deref(), Some("wmfeht"));
+            assert_eq!(tags.album.as_deref(), Some("Night"));
+            assert_eq!((tags.track, tags.track_total), (Some(1), Some(2)));
+            let probes_after_alpha = probes.load(Ordering::Acquire);
+            assert_eq!(probes_after_alpha, 2);
+
+            // Reopening alpha hits the 12-entry LRU cache immediately without re-probing.
+            space(&mut host);
+            assert!(host.run_until(PATIENCE, |host| state(host).is_none()));
+            space(&mut host);
+            provider.wait_for(&mut host, 1);
+            provider.answer_as(1, "audio/mpeg", sandboxed(folder.path().join("alpha.mp3")));
+            shows(
+                &mut host,
+                |s| s.tags().title.as_deref() == Some("Neon Rain Opera") && s.art().is_some(),
+                "reopened alpha restored from cache",
+            );
+            dwell(&mut host, Duration::from_millis(80));
+            assert_eq!(
+                probes.load(Ordering::Acquire),
+                probes_after_alpha,
+                "cached track does not re-probe tags or cover"
+            );
+
+            // beta.mp3 has no embedded cover and falls back to folder cover.png with identical id.
+            select(&mut host, &Location::local(folder.path().join("beta.mp3")));
+            provider.wait_for(&mut host, 2);
+            provider.answer_as(2, "audio/mpeg", sandboxed(folder.path().join("beta.mp3")));
+            shows(
+                &mut host,
+                |s| s.clip().name == "beta.mp3" && s.art().is_some(),
+                "beta falls back to folder cover.png",
+            );
+            assert_eq!(
+                state(&host).and_then(|s| s.art()).expect("beta art").id,
+                alpha_art_id,
+                "identical cover bytes preserve Art.id across tracks"
+            );
+
+            // Closing preview while gamma.mp3 is probing cancels its Cancellation token.
+            select(&mut host, &Location::local(folder.path().join("gamma.mp3")));
+            provider.wait_for(&mut host, 3);
+            provider.answer_as(3, "audio/mpeg", sandboxed(folder.path().join("gamma.mp3")));
+            shows(
+                &mut host,
+                |s| s.clip().name == "gamma.mp3",
+                "gamma viewer mounted",
+            );
+            dwell(&mut host, Duration::from_millis(80));
+            space(&mut host);
+            assert!(host.run_until(PATIENCE, |host| state(host).is_none()));
+            assert!(
+                host.run_until(PATIENCE, |_| gamma_cancelled.load(Ordering::Acquire)),
+                "closing preview cancels active audio details probe"
             );
         },
     );

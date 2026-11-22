@@ -31,7 +31,7 @@ use strata_preview::{
     sandbox::media::{Event, Session},
 };
 
-use super::positions;
+use super::{history::PcmHistory, positions};
 use crate::{App, slots::Later};
 
 /// Frames decoded ahead of the one shown (GTK's `PRESENTATION_QUEUE`).
@@ -176,6 +176,7 @@ pub(super) struct Stream {
     header: Option<Header>,
     frames: VecDeque<Frame>,
     audio: Option<PcmOutput>,
+    history: Option<PcmHistory>,
     pending_audio: VecDeque<Vec<u8>>,
     audio_chunks: u32,
     audio_base_us: u64,
@@ -220,6 +221,7 @@ impl Stream {
             header: None,
             frames: VecDeque::new(),
             audio: None,
+            history: None,
             pending_audio: VecDeque::new(),
             audio_chunks: 0,
             audio_base_us: 0,
@@ -249,6 +251,42 @@ impl Stream {
     /// Plays from the start again at the end, as a GIF does.
     pub(super) fn set_loop(&mut self, looped: bool) {
         self.looped = looped;
+    }
+
+    /// Retains a bounded mono PCM history synced to `PcmOutput`'s heard position for the live
+    /// audio spectrum analyzer (`DecodedMedia::retain_played_audio`).
+    pub(super) fn retain_played_audio(&mut self) {
+        self.history.get_or_insert_with(PcmHistory::default);
+    }
+
+    /// Fills `window` with mono samples ending at the audible playhead. Returns `false` when
+    /// paused, before the first frame, or when no audio samples have reached the playhead yet.
+    pub(super) fn played_samples(&self, window: &mut [f32]) -> bool {
+        if !self.playing || !self.first_frame {
+            return false;
+        }
+        let Some(played) = self.played_frame() else {
+            return false;
+        };
+        self.history
+            .as_ref()
+            .is_some_and(|history| history.window_ending_at(played, window))
+    }
+
+    fn played_frame(&self) -> Option<u64> {
+        self.audio.as_ref().map(PcmOutput::position_frames)
+    }
+
+    fn clear_history(&mut self) {
+        if let Some(history) = &mut self.history {
+            history.clear();
+        }
+    }
+
+    fn trim_history(&mut self) {
+        if let (Some(played), Some(history)) = (self.played_frame(), &mut self.history) {
+            history.trim_behind(played);
+        }
     }
 
     /// Applies linear output volume (`0.0..=1.0+`) and mute immediately to live audio.
@@ -355,6 +393,7 @@ impl Stream {
         self.session += 1;
         self.frames.clear();
         self.pending_audio.clear();
+        self.clear_history();
         self.audio_chunks = 0;
         self.audio_eos_pending = false;
         self.held_room = 0;
@@ -385,6 +424,7 @@ impl Stream {
         self.release_idle();
         self.start_waiting(tx);
         self.drain_pending_audio();
+        self.trim_history();
         self.flush_room();
         if !self.playing || !self.first_frame {
             return None;
@@ -428,6 +468,7 @@ impl Stream {
             self.restart = None;
             self.frames.clear();
             self.pending_audio.clear();
+            self.clear_history();
             self.audio_eos_pending = false;
             self.held_room = 0;
             self.dormant = true;
@@ -512,6 +553,7 @@ impl Stream {
         self.audio_base_us = media::timestamp(header.start_tick);
         self.audio_chunks = 0;
         self.pending_audio.clear();
+        self.clear_history();
         self.audio_eos_pending = false;
         if !header.audio {
             self.audio = None;
@@ -591,6 +633,9 @@ impl Stream {
             let max_frames = samples_left.min(block.len() as u64 / 4) as usize;
             let trimmed = &block[..max_frames * 4];
             if !trimmed.is_empty() {
+                if let Some(history) = &mut self.history {
+                    history.push(trimmed);
+                }
                 self.push_or_pend_audio(trimmed);
             }
             self.audio_chunks = chunk + 1;
@@ -724,6 +769,7 @@ impl Stream {
         self.pump = None;
         self.audio = None;
         self.pending_audio.clear();
+        self.clear_history();
         self.audio_eos_pending = false;
         self.held_room = 0;
         self.playing = false;
@@ -739,6 +785,7 @@ impl Stream {
         self.restart = None;
         self.frames.clear();
         self.pending_audio.clear();
+        self.clear_history();
         self.audio_eos_pending = false;
         self.held_room = 0;
         self.playing = false;
@@ -752,6 +799,7 @@ impl Stream {
         self.pump = None;
         self.audio = None;
         self.pending_audio.clear();
+        self.clear_history();
         let path = self.source.path.clone();
         let duration = self.end.or(self.header.map(|header| header.duration_us));
         let partway = self.position_us > positions::RESTORE_MIN_US
