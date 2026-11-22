@@ -2,6 +2,8 @@
 
 //! The Icons view as a part of the window: the second of the view slot.
 
+use std::time::Duration;
+
 use rune::Tx;
 use strata_fs::app::VisibleDepths;
 
@@ -30,12 +32,21 @@ pub(super) fn locate(app: &App, id: EntryId) -> Option<(usize, usize)> {
     Some((depth, pane.position(depth, id)?))
 }
 
-/// Asks for the fills the rows near the viewport lack, once a poll.
-fn fill(app: &mut App) {
+/// Asks for the fills the rows near the viewport lack, once a poll after scrolling settles
+/// (or immediately when a scrollbar thumb drag releases).
+fn fill(app: &mut App, clock: f64, tx: &mut Tx) {
     let icons = &mut app.icons;
+    let dragging = icons.grid.is_dragging();
     let pane = &icons.single.pane;
-    if let (Some(depth), Some(listing)) = (pane.depth(), pane.listing()) {
-        icons.fills.request(&app.browser, depth, listing);
+    if let (Some(depth), Some(listing)) = (pane.depth(), pane.listing())
+        && let Some(left) = icons.fills.request_settled(
+            &app.browser,
+            depth,
+            listing,
+            crate::fills::ScrollPoll { clock, dragging },
+        )
+    {
+        tx.wake_after(Duration::from_secs_f64(left));
     }
 }
 
@@ -43,7 +54,7 @@ fn sync_worn(app: &mut App) {
     single::sync_worn::<Icons>(app);
     if let Some(id) = app.icons.thumbs.id() {
         let pane = &app.icons.single.pane;
-        let version = pane.version();
+        let version = pane.thumb_version();
         let source = pane.source();
         app.window.thumbnails_mut().resync(id, source, version);
     }
@@ -144,18 +155,20 @@ impl Part for Icons {
             true => {
                 let results = view::results();
                 let ticked = results.collection(app).tick(app, tx);
-                results.poll(app, tx);
-                ticked
+                let pruned = results.poll(app, tx);
+                ticked | pruned
             }
             false => {
                 let grid = view::grid();
                 let ticked = grid.collection(app).tick(app, tx);
-                grid.poll(app, tx);
-                ticked
+                let pruned = grid.poll(app, tx);
+                ticked | pruned
             }
         };
-        Viewer::pump(app, thumbnail_parts, clock);
-        fill(app);
+        if !app.icons.grid.thumbs_deferred() {
+            Viewer::pump(app, thumbnail_parts, clock);
+        }
+        fill(app, clock, tx);
         ticked | said
     }
 }

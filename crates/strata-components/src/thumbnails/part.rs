@@ -98,6 +98,7 @@ pub fn icon_slot<S: 'static>(
         points,
         dim_files: false,
         badge: None,
+        dragging: None,
     }
 }
 
@@ -108,6 +109,7 @@ pub struct IconSlot<S> {
     points: f32,
     dim_files: bool,
     badge: Option<BadgeAccess<S>>,
+    dragging: Option<fn(&S) -> bool>,
 }
 
 impl<S: 'static> IconSlot<S> {
@@ -129,6 +131,13 @@ impl<S: 'static> IconSlot<S> {
         self.badge = Some((version, pixels));
         self
     }
+
+    /// While `is_dragging` returns true (a scrollbar thumb drag is active), transient uncached
+    /// rows draw their placeholder icon without allocating new `Pixels`/`Live` store handles.
+    pub fn dragging(mut self, is_dragging: fn(&S) -> bool) -> Self {
+        self.dragging = Some(is_dragging);
+        self
+    }
 }
 
 impl<S: 'static> From<IconSlot<S>> for Slot<S> {
@@ -139,6 +148,7 @@ impl<S: 'static> From<IconSlot<S>> for Slot<S> {
             points,
             dim_files,
             badge,
+            dragging,
         } = slot;
         Slot::new(
             move |s: &S, rcx: &RowCx<'_>| {
@@ -151,7 +161,13 @@ impl<S: 'static> From<IconSlot<S>> for Slot<S> {
                 if mark.is_none()
                     && let Some(key) = shown_thumbnail(rcx.entry)
                 {
-                    store(s).version(key).hash(&mut h);
+                    let st = store(s);
+                    let ver = if dragging.is_some_and(|f| f(s)) {
+                        st.existing_version(key)
+                    } else {
+                        st.version(key)
+                    };
+                    ver.hash(&mut h);
                 }
                 badge
                     .map_or(0, |(ver, _)| ver(s, rcx.entry.id))
@@ -161,11 +177,18 @@ impl<S: 'static> From<IconSlot<S>> for Slot<S> {
             move |s: &S, rcx: &RowCx<'_>| {
                 let glyph = placeholder(rcx, points, icon_opacity(rcx, dim_files));
                 let st = store(s);
-                let built = match shown_thumbnail(rcx.entry) {
-                    Some(key) if st.enabled() && mark_icon(rcx.state.marks).is_none() => {
-                        picture(&st.thumb(key), glyph, points, points).key(ICON)
-                    }
-                    _ => row()
+                let thumb = shown_thumbnail(rcx.entry)
+                    .filter(|_| st.enabled() && mark_icon(rcx.state.marks).is_none())
+                    .and_then(|key| {
+                        if dragging.is_some_and(|f| f(s)) {
+                            st.existing_thumb(key)
+                        } else {
+                            Some(st.thumb(key))
+                        }
+                    });
+                let built = match thumb {
+                    Some(thumb) => picture(&thumb, glyph, points, points).key(ICON),
+                    None => row()
                         .key(ICON)
                         .w(points)
                         .h(points)

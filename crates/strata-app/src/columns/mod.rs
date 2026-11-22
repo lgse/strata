@@ -470,7 +470,11 @@ impl Columns {
         let Some(column) = self.listings.columns.get_mut(depth) else {
             return;
         };
+        let before = column.key_version();
         column.apply(edit);
+        if marks.is_none() && before == column.key_version() {
+            return;
+        }
         self.arrived(depth);
         match marks {
             Some(marks) => self.settle(depth, &marks, hands),

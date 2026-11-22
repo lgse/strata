@@ -17,32 +17,15 @@
 use std::{ops::Range, time::Duration};
 
 use rune::Tx;
-use strata_core::model::Location;
 
 use crate::{
     App,
     fills::{Details, Fills},
 };
 
-/// How long a column's range stays still before its rows are asked for: GTK's 150 ms.
-const SETTLE: f64 = 0.150;
-
-/// One column's fills, and when its range last moved.
-struct Column {
-    fills: Fills,
-    /// The folder the column shows: another folder at this depth starts unscrolled.
-    folder: Option<Location>,
-    /// The poll's clock when the range was last seen moving, until it settles.
-    moved_at: Option<f64>,
-    moved: bool,
-    /// The range last seen: a first range, or one that only grows as rows arrive, is no
-    /// scroll.
-    last: Range<usize>,
-}
-
 pub(super) struct ColumnFills {
     details: Details,
-    columns: Vec<Column>,
+    columns: Vec<Fills>,
 }
 
 impl ColumnFills {
@@ -65,13 +48,13 @@ impl ColumnFills {
             false => Details::Off,
         };
         for column in &mut self.columns {
-            column.fills.set_details(self.details);
+            column.set_details(self.details);
         }
     }
 
     pub(crate) fn invalidate(&mut self) {
         for column in &mut self.columns {
-            column.fills.invalidate();
+            column.invalidate();
         }
     }
 
@@ -79,11 +62,7 @@ impl ColumnFills {
     /// reported before the poll that counts the column open is kept.
     pub(super) fn see(&mut self, depth: usize, range: Range<usize>) {
         self.grow(depth + 1);
-        let column = &mut self.columns[depth];
-        let scrolled = !column.last.is_empty() && column.last.start != range.start;
-        column.moved |= scrolled;
-        column.last = range.clone();
-        column.fills.see(range);
+        self.columns[depth].see(range);
     }
 
     fn fit(&mut self, open: usize) {
@@ -94,41 +73,7 @@ impl ColumnFills {
     fn grow(&mut self, len: usize) {
         let details = self.details;
         while self.columns.len() < len {
-            self.columns.push(Column {
-                fills: Fills::unfilled(details),
-                folder: None,
-                moved_at: None,
-                moved: false,
-                last: 0..0,
-            });
-        }
-    }
-}
-
-impl Column {
-    /// The column shows `folder` now. A first range in another folder is no scroll, as a new
-    /// column in GTK is a new scrolled window.
-    fn visit(&mut self, folder: &Location) {
-        if self.folder.as_ref() != Some(folder) {
-            self.folder = Some(folder.clone());
-            self.moved = false;
-            self.moved_at = None;
-            self.last = 0..0;
-        }
-    }
-
-    /// Whether the range is still: it last moved at least [`SETTLE`] ago. When it is not, the
-    /// time left before it is.
-    fn settled(&mut self, clock: f64) -> Result<(), f64> {
-        if std::mem::take(&mut self.moved) {
-            self.moved_at = Some(clock);
-        }
-        match self.moved_at {
-            Some(at) if clock - at < SETTLE => Err(SETTLE - (clock - at)),
-            _ => {
-                self.moved_at = None;
-                Ok(())
-            }
+            self.columns.push(Fills::unfilled(details));
         }
     }
 }
@@ -137,6 +82,7 @@ impl Column {
 /// wakes the part once it has settled.
 pub(super) fn poll(app: &mut App, clock: f64, tx: &mut Tx) {
     let open = app.columns.open();
+    let state = &app.columns.state;
     let fills = &mut app.columns.fills;
     fills.fit(open);
     let mut wake: Option<f64> = None;
@@ -149,10 +95,10 @@ pub(super) fn poll(app: &mut App, clock: f64, tx: &mut Tx) {
         let Some(column) = fills.columns.get_mut(depth) else {
             continue;
         };
-        column.visit(listing.location());
-        match column.settled(clock) {
-            Ok(()) => column.fills.request(&app.browser, depth, listing),
-            Err(left) => wake = Some(wake.map_or(left, |at| at.min(left))),
+        let dragging = state.column(depth).is_some_and(|c| c.is_dragging());
+        let poll = crate::fills::ScrollPoll { clock, dragging };
+        if let Some(left) = column.request_settled(&app.browser, depth, listing, poll) {
+            wake = Some(wake.map_or(left, |at| at.min(left)));
         }
     }
     if let Some(left) = wake {

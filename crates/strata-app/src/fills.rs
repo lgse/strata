@@ -102,6 +102,91 @@ impl Details {
     }
 }
 
+/// How long a scrolling viewport stays still before deferred fills or thumb-dragged
+/// thumbnails flush: GTK's 150 ms (`track_listing_scrolling` in
+/// `src/ui/browser/columns/append/surface.rs`).
+pub(crate) const SCROLL_SETTLE: f64 = 0.150;
+
+/// Tracks when a view's visible range last moved, so metadata fills (all scrolling) and
+/// thumbnails (while dragging the scrollbar thumb) wait until scrolling pauses for
+/// [`SCROLL_SETTLE`] or the thumb is released.
+#[derive(Clone, Default)]
+pub(crate) struct ScrollSettle {
+    folder: Option<Location>,
+    moved_at: Option<f64>,
+    moved: bool,
+    was_dragging: bool,
+    last: Range<usize>,
+}
+
+impl ScrollSettle {
+    /// Records the folder currently shown: a new folder starts unscrolled.
+    pub(crate) fn visit(&mut self, folder: &Location) {
+        if self.folder.as_ref() != Some(folder) {
+            self.folder = Some(folder.clone());
+            self.moved = false;
+            self.moved_at = None;
+            self.was_dragging = false;
+            self.last = 0..0;
+        }
+    }
+
+    /// Records the visible range: a first range, or one that only grows as rows arrive, is
+    /// not a scroll.
+    pub(crate) fn see(&mut self, range: &Range<usize>) {
+        let scrolled = !self.last.is_empty() && self.last.start != range.start;
+        self.moved |= scrolled;
+        self.last = range.clone();
+    }
+
+    /// Whether the viewport is settled for metadata fills: defers while scrolling, flushes
+    /// immediately on thumb release or after [`SCROLL_SETTLE`] of stillness.
+    pub(crate) fn settled(&mut self, clock: f64, dragging: bool) -> Result<(), f64> {
+        if dragging {
+            self.was_dragging = true;
+        } else if std::mem::take(&mut self.was_dragging) {
+            self.moved = false;
+            self.moved_at = None;
+            return Ok(());
+        }
+        self.wait_still(clock)
+    }
+
+    /// Whether a scrollbar thumb drag is settled enough to sync thumbnails: non-drag
+    /// scrolling always proceeds immediately; while dragging, defers until release or
+    /// [`SCROLL_SETTLE`] of stillness.
+    pub(crate) fn settled_for_drag(&mut self, clock: f64, dragging: bool) -> Result<(), f64> {
+        if !dragging {
+            self.was_dragging = false;
+            self.moved = false;
+            self.moved_at = None;
+            return Ok(());
+        }
+        self.was_dragging = true;
+        self.wait_still(clock)
+    }
+
+    fn wait_still(&mut self, clock: f64) -> Result<(), f64> {
+        if std::mem::take(&mut self.moved) {
+            self.moved_at = Some(clock);
+        }
+        match self.moved_at {
+            Some(at) if clock - at < SCROLL_SETTLE => Err(SCROLL_SETTLE - (clock - at)),
+            _ => {
+                self.moved_at = None;
+                Ok(())
+            }
+        }
+    }
+}
+
+/// Timing and thumb-drag state for a poll tick checking scroll settle.
+#[derive(Clone, Copy)]
+pub(crate) struct ScrollPoll {
+    pub(crate) clock: f64,
+    pub(crate) dragging: bool,
+}
+
 /// One view's fills: the range it shows, and the rows whose fills are out.
 pub(crate) struct Fills {
     /// Which rows are asked their details too.
@@ -114,6 +199,8 @@ pub(crate) struct Fills {
     seen: Option<(usize, Location, u64)>,
     /// The rows asked for, each with what the browser knew of it then.
     asked: HashMap<EntryId, Known>,
+    /// Scroll-settle tracker shared across Columns, List, and Icons.
+    settle: ScrollSettle,
 }
 
 /// What the browser knows of an entry's metadata: a fill that lands changes it.
@@ -161,6 +248,7 @@ impl Fills {
             fresh: false,
             seen: None,
             asked: HashMap::new(),
+            settle: ScrollSettle::default(),
         }
     }
 
@@ -178,10 +266,35 @@ impl Fills {
 
     /// The view's visible range changed. Nothing is asked until the next poll.
     pub(crate) fn see(&mut self, range: Range<usize>) {
+        self.settle.see(&range);
         if range != self.range {
             self.range = range;
             self.fresh = true;
         }
+    }
+
+    /// Asks for fills once the viewport has settled (or immediately on thumb release); returns
+    /// the remaining settle delay in seconds when still scrolling.
+    pub(crate) fn request_settled(
+        &mut self,
+        browser: &impl Filler,
+        depth: usize,
+        listing: &Column,
+        poll: ScrollPoll,
+    ) -> Option<f64> {
+        self.settle.visit(listing.location());
+        match self.settle.settled(poll.clock, poll.dragging) {
+            Ok(()) => {
+                self.request(browser, depth, listing);
+                None
+            }
+            Err(left) => Some(left),
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn settle_mut(&mut self) -> &mut ScrollSettle {
+        &mut self.settle
     }
 
     /// Asks for the fills the rows near the viewport lack, once for each row while it is out:

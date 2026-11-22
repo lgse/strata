@@ -239,9 +239,15 @@ impl Pane {
         (source, &mut self.collection)
     }
 
-    /// The collection's listing version: it moves with every change to what shows.
-    pub(crate) fn version(&self) -> u64 {
-        let version = self.listing().map_or(0, Column::version);
+    /// Moves only when the shown row keys or their order change (`virtual_rows_version`).
+    pub(crate) fn key_version(&self) -> u64 {
+        let version = self.listing().map_or(0, Column::key_version);
+        self.generation.wrapping_shl(40) ^ version
+    }
+
+    /// Moves when row keys, order, thumbnail keys, or worn customizations change.
+    pub(crate) fn thumb_version(&self) -> u64 {
+        let version = self.listing().map_or(0, Column::thumb_version);
         self.generation.wrapping_shl(40) ^ version
     }
 
@@ -444,12 +450,18 @@ impl Pane {
         else {
             return;
         };
+        let before = self.columns.get(depth).map(Column::key_version);
         self.follow_grouping(depth, grouping);
         let Some(column) = self.columns.get_mut(depth) else {
             return;
         };
         column.apply(edit);
         if self.shown != Some(depth) {
+            return;
+        }
+        // A pure metadata refill leaves row keys, order and groups unchanged: skip the O(N)
+        // `regroup` scan and `collection.sync` when no browser marks accompanied it.
+        if marks.is_none() && before == Some(column.key_version()) {
             return;
         }
         self.arrived();

@@ -12,7 +12,7 @@
 //! - **A key's number means nothing:** it is the order types were first met. The order of
 //!   groups comes from strata-fs's `compare_type_groups`, never from the key.
 
-use std::{cell::RefCell, collections::HashMap, rc::Rc};
+use std::{cell::RefCell, collections::HashMap, ffi::OsString, rc::Rc};
 
 use strata_core::model::{EntryKind, FileEntry, Location, MetadataValue};
 use strata_fs::services::{EntryType, entry_type};
@@ -36,13 +36,10 @@ impl TypeGroup {
     /// it: strata-fs's `entry_type`, over the two fields it reads (its kind and its name), since
     /// a listing keeps no `FileEntry`.
     pub(crate) fn of_row(folder: &Location, kind: EntryKind, name: &str) -> Self {
-        Self::of(&entry(&in_folder(folder, name), kind, name))
+        Self::intern(entry_type_of(folder, kind, name).description())
     }
 
-    /// The type of `entry`, as GTK's grouped List reads it.
-    pub(crate) fn of(entry: &FileEntry) -> Self {
-        let kind = entry_type(entry);
-        let description = kind.description();
+    fn intern(description: &str) -> Self {
         NAMES.with_borrow_mut(|table| {
             if let Some(key) = table.keys.get(description) {
                 return Self(*key);
@@ -79,38 +76,31 @@ impl TypeGroup {
     }
 }
 
-/// strata-fs's `entry_type` of the entry of `kind` named `name` in `folder`, from the two
-/// fields it reads, as [`TypeGroup::of_row`] reads it: what the List view's Type column shows.
+/// strata-fs's `entry_type` of the entry of `kind` named `name`, from the two fields
+/// `entry_type` reads (`kind` and `display_name`), avoiding a `Location::child` path join.
 pub(crate) fn entry_type_of(folder: &Location, kind: EntryKind, name: &str) -> EntryType {
-    entry_type(&entry(&in_folder(folder, name), kind, name))
-}
-
-fn in_folder(folder: &Location, name: &str) -> Location {
-    folder
-        .child(std::ffi::OsStr::new(name))
-        .unwrap_or_else(|| folder.clone())
-}
-
-/// An entry at `location` with what `entry_type` reads, its kind and its name, and nothing else
-/// known.
-fn entry(location: &Location, kind: EntryKind, name: &str) -> FileEntry {
-    FileEntry {
-        location: location.clone(),
-        thumbnail_path: None,
-        native_name: name.into(),
-        display_name: name.to_owned(),
-        kind,
-        size: MetadataValue::Unknown,
-        modified_unix_seconds: MetadataValue::Unknown,
-        created_unix_seconds: MetadataValue::Unknown,
-        recent_unix_seconds: MetadataValue::Unknown,
-        recent_uri: None,
-        mode: MetadataValue::Unknown,
-        image_dimensions: MetadataValue::Unknown,
-        child_count: MetadataValue::Unknown,
-        duration_seconds: MetadataValue::Unknown,
-        listable: MetadataValue::Unknown,
-        is_hidden: false,
+    match kind {
+        EntryKind::Directory | EntryKind::DirectorySymbolicLink => EntryType::Folder,
+        EntryKind::SymbolicLink => EntryType::BrokenLink,
+        EntryKind::Other => EntryType::Other,
+        EntryKind::File | EntryKind::FileSymbolicLink => entry_type(&FileEntry {
+            location: folder.clone(),
+            thumbnail_path: None,
+            native_name: OsString::new(),
+            display_name: name.to_owned(),
+            kind,
+            size: MetadataValue::Unknown,
+            modified_unix_seconds: MetadataValue::Unknown,
+            created_unix_seconds: MetadataValue::Unknown,
+            recent_unix_seconds: MetadataValue::Unknown,
+            recent_uri: None,
+            mode: MetadataValue::Unknown,
+            image_dimensions: MetadataValue::Unknown,
+            child_count: MetadataValue::Unknown,
+            duration_seconds: MetadataValue::Unknown,
+            listable: MetadataValue::Unknown,
+            is_hidden: false,
+        }),
     }
 }
 

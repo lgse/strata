@@ -1464,3 +1464,29 @@ fn custom_glyph_hides_thumbnail_while_colour_alone_keeps_it() {
     );
     assert_eq!(shown_thumbnail(base.glyph(EntryGlyph::Emoji("🚀"))), None);
 }
+
+#[test]
+fn existing_lookup_does_not_allocate_until_synced() {
+    let mut store = ThumbnailStore::default();
+    let viewer = store.viewer();
+    let k = key(0);
+    let absent_version = store.existing_version(k);
+
+    assert!(store.existing_thumb(k).is_none());
+    assert_eq!(
+        store.stats().entries,
+        0,
+        "existing lookup allocates nothing"
+    );
+
+    let src = source(1, &[]);
+    let _ = store.sync(viewer, &src, Viewport::new(0..1, Step::new(64)));
+
+    assert!(store.existing_thumb(k).is_some());
+    assert_eq!(store.existing_version(k), store.version(k));
+    assert_ne!(
+        store.existing_version(k),
+        absent_version,
+        "ensured entry moves past the absent sentinel so memoized rows rebind"
+    );
+}

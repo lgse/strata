@@ -380,6 +380,15 @@ impl ThumbnailStore {
         inner.entries[&key].thumb.clone()
     }
 
+    /// The key's handles only if the store already holds an entry for it, without allocating
+    /// a new entry (`Pixels` + `Live`). Used while actively dragging a scrollbar thumb so
+    /// transient rows scrolled past never churn store entries or live bindings.
+    pub fn existing_thumb(&self, key: ThumbKey) -> Option<Thumb> {
+        let inner = self.inner.borrow();
+        let entry = inner.entries.get(&key)?;
+        Some(entry.thumb.clone())
+    }
+
     /// A memo version for a part that draws `key`'s handles: it changes when the key's
     /// handles are replaced (after a prune) or thumbnails are turned on or off, and never when
     /// a thumbnail lands, changes size or is evicted.
@@ -388,6 +397,17 @@ impl ThumbnailStore {
         inner.ensure(key);
         let mut h = std::hash::DefaultHasher::new();
         inner.entries[&key].thumb.epoch.hash(&mut h);
+        inner.enabled.hash(&mut h);
+        h.finish()
+    }
+
+    /// Like [`ThumbnailStore::version`], without allocating an entry for keys not yet in the
+    /// store: absent keys hash epoch `0` (distinct from every ensured entry's `epoch >= 1`).
+    pub fn existing_version(&self, key: ThumbKey) -> u64 {
+        let inner = self.inner.borrow();
+        let epoch = inner.entries.get(&key).map_or(0, |e| e.thumb.epoch);
+        let mut h = std::hash::DefaultHasher::new();
+        epoch.hash(&mut h);
         inner.enabled.hash(&mut h);
         h.finish()
     }

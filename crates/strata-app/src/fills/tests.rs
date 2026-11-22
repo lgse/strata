@@ -4,7 +4,7 @@ use std::{cell::RefCell, collections::HashSet, path::Path};
 
 use strata_core::model::{EntryKind, FileEntry, Location, MetadataValue};
 
-use super::{Details, Filler, Fills};
+use super::{Details, Filler, Fills, SCROLL_SETTLE, ScrollSettle};
 use crate::{
     listing::{Column, Edit, Row},
     slots::Ids,
@@ -293,4 +293,45 @@ fn a_columns_row_lacking_only_its_mode_is_asked_only_for_a_folders_size() {
             "{how}"
         );
     }
+}
+
+#[test]
+fn scroll_settle_defers_during_thumb_drag_and_flushes_immediately_on_release() {
+    let mut settle = ScrollSettle::default();
+    let folder = Location::local("/tmp/big");
+    settle.visit(&folder);
+
+    // Initial range is ready immediately.
+    settle.see(&(0..30));
+    assert_eq!(settle.settled(0.0, false), Ok(()));
+    assert_eq!(settle.settled_for_drag(0.0, false), Ok(()));
+
+    // Normal wheel scroll defers metadata fills until SCROLL_SETTLE, but not thumbnails.
+    settle.see(&(10..40));
+    assert!(settle.settled(1.0, false).is_err());
+    assert_eq!(settle.settled_for_drag(1.0, false), Ok(()));
+
+    // Active thumb drag defers both fills and thumbnails while moving.
+    settle.see(&(500..530));
+    assert!(settle.settled(2.0, true).is_err());
+    assert!(settle.settled_for_drag(2.0, true).is_err());
+
+    // Pausing while still holding the thumb flushes after SCROLL_SETTLE.
+    assert!(settle.settled(2.0 + SCROLL_SETTLE / 2.0, true).is_err());
+    assert_eq!(settle.settled(2.0 + SCROLL_SETTLE + 0.001, true), Ok(()));
+
+    // Moving again mid-drag re-arms deferral, then releasing flushes immediately with 0ms wait.
+    settle.see(&(9000..9030));
+    assert!(settle.settled(3.0, true).is_err());
+    assert!(settle.settled_for_drag(3.0, true).is_err());
+    assert_eq!(
+        settle.settled(3.016, false),
+        Ok(()),
+        "releasing thumb flushes fills immediately"
+    );
+    assert_eq!(
+        settle.settled_for_drag(3.016, false),
+        Ok(()),
+        "releasing thumb flushes thumbnails immediately"
+    );
 }

@@ -148,10 +148,16 @@ fn tile_icon_version<S>(shared: &Shared<S>, key: u64, s: &S, rcx: &RowCx<'_>) ->
     let mut h = std::hash::DefaultHasher::new();
     key.hash(&mut h);
     mark.hash(&mut h);
+    let parts = (shared.parts)(s);
     if mark.is_none()
-        && let (Some(k), Some((store, _))) = (thumb, (shared.parts)(s).thumbs)
+        && let (Some(k), Some((store, _))) = (thumb, parts.thumbs)
     {
-        store.version(k).hash(&mut h);
+        let ver = if parts.grid.is_dragging() {
+            store.existing_version(k)
+        } else {
+            store.version(k)
+        };
+        ver.hash(&mut h);
     }
     shared
         .badge
@@ -179,19 +185,27 @@ pub(super) fn icon_slot<S: 'static>(shared: &Rc<Shared<S>>, b: Built) -> Slot<S>
                 .center()
                 .radius(tokens::frame_radius(look))
                 .a11y_hidden();
+            let parts = (build_shared.parts)(s);
             let thumb = rcx.entry.thumbnail.filter(|_| rcx.entry.glyph.is_none());
-            frame = match (thumb, (build_shared.parts)(s).thumbs) {
+            let resolved = match (thumb, parts.thumbs) {
                 (Some(key), Some((store, _))) if store.enabled() && !marked => {
-                    let thumb = store.thumb(key);
-                    frame.child(glyph.live_opacity(thumb.icon_alpha())).child(
-                        el().key(THUMB)
-                            .absolute(m.frame_pad, m.frame_pad)
-                            .w(m.slot)
-                            .h(m.slot)
-                            .pixels_fit(thumb.pixels(), SurfaceFit::Fit),
-                    )
+                    if parts.grid.is_dragging() {
+                        store.existing_thumb(key)
+                    } else {
+                        Some(store.thumb(key))
+                    }
                 }
-                _ => frame.child(glyph),
+                _ => None,
+            };
+            frame = match resolved {
+                Some(thumb) => frame.child(glyph.live_opacity(thumb.icon_alpha())).child(
+                    el().key(THUMB)
+                        .absolute(m.frame_pad, m.frame_pad)
+                        .w(m.slot)
+                        .h(m.slot)
+                        .pixels_fit(thumb.pixels(), SurfaceFit::Fit),
+                ),
+                None => frame.child(glyph),
             };
             let px = build_shared
                 .badge

@@ -628,19 +628,25 @@ impl<S: 'static> IconsGrid<S> {
 
     /// From the host's poll: catches a size or display scale the host changed without
     /// [`IconsGrid::size_changed`], so the thumbnail step and the cursor reveal follow within
-    /// a frame. Returns false: nothing the view reads changed.
+    /// a frame, and flushes thumbnail syncs deferred while dragging the scrollbar thumb once
+    /// the thumb releases or pauses. Returns true only when a flushed thumbnail sync pruned
+    /// handles so the view rebuilds once.
     pub fn poll(&self, s: &mut S, tx: &mut Tx) -> bool {
         let shared = Rc::new(self.shared.clone());
         let (size, last) = {
             let p = (shared.parts)(s);
             (p.size, p.grid.size.get())
         };
+        let mut pruned = false;
         if last != Some(size) {
             size_changed(&shared, s, tx);
         } else {
-            sync_step(&shared, s);
+            pruned |= flush_thumbs(&shared, s, tx);
+            if !pruned {
+                sync_step(&shared, s);
+            }
         }
-        false
+        pruned
     }
 }
 
@@ -727,10 +733,65 @@ fn row_cx<'a>(
     }
 }
 
+/// How long a held scrollbar thumb stays still before deferred thumbnail syncs flush.
+const THUMB_DRAG_SETTLE: f64 = 0.150;
+
 fn on_visible<S: 'static>(shared: &Rc<Shared<S>>, s: &mut S, range: Range<usize>) -> bool {
-    let synced = sync_thumbs(shared, s, Some(range.clone()));
+    let synced = if (shared.parts)(s).grid.bar.is_dragging() {
+        let grid = (shared.grid_mut)(s);
+        grid.pending_thumbs = Some(range.clone());
+        grid.thumb_moved = true;
+        false
+    } else {
+        let grid = (shared.grid_mut)(s);
+        grid.pending_thumbs = None;
+        grid.thumb_moved = false;
+        grid.thumb_moved_at = None;
+        sync_thumbs(shared, s, Some(range.clone()))
+    };
     let host = shared.on_visible.as_ref().is_some_and(|f| f(s, range));
     synced || host
+}
+
+/// Flushes a thumbnail sync deferred during a scrollbar thumb drag once the thumb releases or
+/// pauses for [`THUMB_DRAG_SETTLE`].
+fn flush_thumbs<S: 'static>(shared: &Rc<Shared<S>>, s: &mut S, tx: &mut Tx) -> bool {
+    let dragging = (shared.parts)(s).grid.bar.is_dragging();
+    let clock = tx.clock();
+    let ready = {
+        let grid = (shared.grid_mut)(s);
+        if grid.pending_thumbs.is_none() {
+            return false;
+        }
+        if !dragging {
+            grid.thumb_moved = false;
+            grid.thumb_moved_at = None;
+            grid.pending_thumbs.take()
+        } else {
+            if std::mem::take(&mut grid.thumb_moved) {
+                grid.thumb_moved_at = Some(clock);
+            }
+            match grid.thumb_moved_at {
+                Some(at) if clock - at < THUMB_DRAG_SETTLE => {
+                    tx.wake_after(std::time::Duration::from_secs_f64(
+                        THUMB_DRAG_SETTLE - (clock - at),
+                    ));
+                    None
+                }
+                _ => {
+                    grid.thumb_moved_at = None;
+                    grid.pending_thumbs.take()
+                }
+            }
+        }
+    };
+    let Some(range) = ready else {
+        return false;
+    };
+    let _ = sync_thumbs(shared, s, Some(range));
+    // Rows mounted mid-drag skipped allocating empty thumbnail handles (`existing_thumb`), so
+    // rebuild once on release/pause to attach the newly ensured handles for the visible tiles.
+    true
 }
 
 /// Tells the store what the grid shows at the step it draws at: `range` (as Rune reports it)

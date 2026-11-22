@@ -290,6 +290,11 @@ impl Bar {
         self.0.shows()
     }
 
+    /// Whether the user is actively dragging this bar's thumb.
+    pub fn is_dragging(&self) -> bool {
+        self.0.dragging.get()
+    }
+
     /// `listing`, wrapped so the pointer moving over it shows an overlay bar. Size it as the
     /// listing would be; the wrapper fills its parent.
     pub fn area(&self, listing: El) -> El {
@@ -556,9 +561,14 @@ impl Inner {
         let a = look.along();
         let (_, track, shows) = self.track();
         if d.phase == Phase::Up {
-            self.dragging.set(false);
+            let was_dragging = self.dragging.replace(false);
             self.tint();
             self.reveal();
+            if was_dragging {
+                // Wake the next frame's poll so views deferring thumbnails/fills during a thumb
+                // drag flush immediately on release.
+                tx.wake_after(Duration::ZERO);
+            }
             return;
         }
         if !shows {
@@ -586,6 +596,9 @@ impl Inner {
             track,
             look.min_length,
         );
+        if (to - p.offset[a]).abs() < 0.5 {
+            return;
+        }
         let target = self.target.borrow().clone();
         if look.horizontal {
             tx.scroll_to_instant(target, to, p.offset[1]);

@@ -139,6 +139,11 @@ impl ColumnState {
     pub fn width(&self) -> f32 {
         self.width
     }
+
+    /// Whether this column's vertical scrollbar thumb is currently dragged.
+    pub fn is_dragging(&self) -> bool {
+        self.bar.is_dragging()
+    }
 }
 
 impl std::fmt::Debug for ColumnState {
@@ -388,6 +393,11 @@ impl ColumnsState {
     /// Whether a column edge is being dragged right now.
     pub fn is_resizing(&self) -> bool {
         self.resize.is_some()
+    }
+
+    /// Whether any column's vertical scrollbar thumb is currently dragged.
+    pub fn is_dragging(&self) -> bool {
+        self.columns.iter().any(|c| c.bar.is_dragging())
     }
 
     // Settings.
