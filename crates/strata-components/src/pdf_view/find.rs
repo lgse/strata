@@ -5,7 +5,25 @@
 //! arrive (find's text-only requests, or pages scrolled to), their matches join in page
 //! order, as Strata's find re-runs over a source that grows while it loads.
 
+use super::layer::PlainText;
 use super::model::Shared;
+
+/// What find searches for one page: its full glyph layer when rendered, or plain text extracted
+/// ahead of rendering.
+#[derive(Clone, Copy)]
+pub(crate) enum SearchSource<'a> {
+    Layer(&'a Shared),
+    Plain(&'a PlainText),
+}
+
+impl SearchSource<'_> {
+    fn find(&self, query: &str) -> Vec<(usize, usize)> {
+        match self {
+            Self::Layer(layer) => layer.find(query),
+            Self::Plain(plain) => plain.find(query),
+        }
+    }
+}
 
 /// A match: a page and a character range of its text.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -30,8 +48,12 @@ impl Find {
         !self.query.is_empty()
     }
 
-    /// Runs `query` over every layer: the first match becomes current.
-    pub fn run<'a>(&mut self, query: &str, layers: impl Iterator<Item = (usize, &'a Shared)>) {
+    /// Runs `query` over every page source: the first match becomes current.
+    pub fn run<'a>(
+        &mut self,
+        query: &str,
+        sources: impl Iterator<Item = (usize, SearchSource<'a>)>,
+    ) {
         self.query = query.to_owned();
         self.hits.clear();
         self.current = None;
@@ -39,23 +61,23 @@ impl Find {
         if query.is_empty() {
             return;
         }
-        for (page, layer) in layers {
-            self.hits.extend(page_hits(query, page, layer));
+        for (page, source) in sources {
+            self.hits.extend(page_hits(query, page, source));
         }
         self.hits.sort();
         self.current = (!self.hits.is_empty()).then_some(0);
     }
 
-    /// A layer for `page` arrived or changed: its matches replace the page's, and the current
+    /// A source for `page` arrived or changed: its matches replace the page's, and the current
     /// match stays the same match. True when the current match was none and now is the first.
-    pub fn add(&mut self, page: usize, layer: Option<&Shared>) -> bool {
+    pub fn add(&mut self, page: usize, source: Option<SearchSource<'_>>) -> bool {
         if !self.active() {
             return false;
         }
         let current = self.current.map(|c| self.hits[c]);
         self.hits.retain(|h| h.page != page);
-        if let Some(layer) = layer {
-            self.hits.extend(page_hits(&self.query, page, layer));
+        if let Some(source) = source {
+            self.hits.extend(page_hits(&self.query, page, source));
         }
         self.hits.sort();
         match current {
@@ -111,8 +133,12 @@ impl Find {
     }
 }
 
-fn page_hits<'a>(query: &'a str, page: usize, layer: &'a Shared) -> impl Iterator<Item = Hit> + 'a {
-    layer
+fn page_hits<'a>(
+    query: &'a str,
+    page: usize,
+    source: SearchSource<'a>,
+) -> impl Iterator<Item = Hit> + 'a {
+    source
         .find(query)
         .into_iter()
         .map(move |(start, end)| Hit { page, start, end })

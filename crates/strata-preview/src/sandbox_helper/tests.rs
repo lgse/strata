@@ -21,8 +21,8 @@ use gdk_pixbuf::prelude::*;
 
 use super::{
     bounded_output, bounded_output_with_timeout, bounded_surface_dimensions,
-    exceeds_decoded_frame_budget, image_dimensions, is_svg_head, pdf_render_request,
-    read_exif_thumbnail, read_limited, read_png_dimensions, render_camera_raw,
+    exceeds_decoded_frame_budget, extract_text_with_limit, image_dimensions, is_svg_head,
+    pdf_render_request, read_exif_thumbnail, read_limited, read_png_dimensions, render_camera_raw,
     render_camera_raw_preview, render_pixbuf, render_raw, render_simple_dcraw, render_webp, run,
     scale_embedded_thumbnail, svg_source,
 };
@@ -144,6 +144,81 @@ fn pdf_surface_dimensions_stay_inside_the_parent_pixel_limit() {
     assert!(i64::from(width) * i64::from(height) <= 2_500_000);
     assert!(source_width * scale <= f64::from(width));
     assert!(source_height * scale <= f64::from(height));
+}
+
+fn write_multipage_pdf(path: &std::path::Path, page_texts: &[Option<&str>]) {
+    let surface = cairo::PdfSurface::new(612.0, 792.0, path).expect("create PDF surface");
+    {
+        let context = cairo::Context::new(&surface).expect("create PDF context");
+        for text in page_texts {
+            if let Some(text) = text {
+                context.set_source_rgb(0.1, 0.1, 0.1);
+                context.set_font_size(18.0);
+                context.move_to(72.0, 96.0);
+                context.show_text(text).expect("draw text");
+            }
+            context.show_page().expect("finish PDF page");
+        }
+    }
+    surface.finish();
+}
+
+#[test]
+fn preview_pdf_text_extracts_all_pages_in_one_pass_and_enforces_byte_cap() {
+    let directory = tempfile::tempdir().expect("PDF fixture directory");
+    let input = directory.path().join("multipage.pdf");
+    write_multipage_pdf(
+        &input,
+        &[
+            Some("First page alpha text"),
+            None, // Blank / scanned page.
+            Some("Third page needle match"),
+        ],
+    );
+
+    let output = directory.path().join("result.json");
+    run(&[
+        "preview-pdf-text".into(),
+        input.to_string_lossy().into_owned(),
+        output.to_string_lossy().into_owned(),
+        "0".into(),
+        "software".into(),
+    ])
+    .expect("extract all PDF pages");
+
+    assert!(output.exists(), "writes result.json");
+    assert!(
+        !directory.path().join("result.png").exists(),
+        "preview-pdf-text must not render PNG images"
+    );
+    let data = std::fs::read(&output).expect("read JSON output");
+    let index = crate::services::PdfTextIndex::from_json(&data).expect("parse PdfTextIndex");
+    assert!(!index.truncated);
+    assert_eq!(index.pages.len(), 3);
+    assert!(
+        index.pages[0]
+            .as_deref()
+            .is_some_and(|t| t.contains("First page alpha text")),
+        "page 0 text: {:?}",
+        index.pages[0]
+    );
+    assert_eq!(index.pages[1], None, "empty/scanned page stored as None");
+    assert!(
+        index.pages[2]
+            .as_deref()
+            .is_some_and(|t| t.contains("Third page needle match")),
+        "page 2 text: {:?}",
+        index.pages[2]
+    );
+
+    // Byte cap stops cleanly with truncated=true and preserves extracted prefix pages.
+    let first_len = index.pages[0].as_ref().expect("page 0 text").len();
+    let capped = extract_text_with_limit(&input, &output, first_len + 4)
+        .expect("bounded extraction succeeds");
+    assert!(capped.truncated, "exceeding cap sets truncated");
+    assert_eq!(capped.pages.len(), 2, "stops before the page exceeding cap");
+    assert_eq!(capped.pages[0], index.pages[0]);
+    assert_eq!(capped.pages[1], None);
 }
 
 #[test]

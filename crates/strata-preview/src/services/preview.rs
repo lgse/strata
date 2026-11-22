@@ -159,6 +159,26 @@ pub struct PdfTextLayer {
     pub glyphs: Vec<[f32; 4]>,
 }
 
+/// Maximum raw UTF-8 text bytes extracted across all pages of a PDF for search indexing.
+pub const MAX_PDF_INDEX_BYTES: usize = 16 * 1024 * 1024;
+
+/// Plain text extracted across all pages of a PDF in one pass for document-wide search.
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct PdfTextIndex {
+    /// One entry per extracted page (`None` for empty or scanned pages).
+    pub pages: Vec<Option<String>>,
+    /// True when extraction stopped early at the byte or page budget.
+    #[serde(default)]
+    pub truncated: bool,
+}
+
+impl PdfTextIndex {
+    pub fn from_json(data: &[u8]) -> Result<Self, String> {
+        serde_json::from_slice(data)
+            .map_err(|_| "The preview renderer produced invalid PDF text data".to_owned())
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct Preview {
     pub request_id: PreviewRequestId,
@@ -209,6 +229,16 @@ impl ModelPreviewStage {
 
 pub trait PreviewProvider {
     fn load(&self, request: PreviewRequest, emit: Rc<dyn Fn(PreviewEvent)>) -> LoadHandle;
+
+    /// Extracts plain text across all pages of a PDF in one sandboxed pass for search.
+    /// Returns `None` when the provider or entry does not support single-pass indexing.
+    fn extract_pdf_text(
+        &self,
+        _entry: &FileEntry,
+        _emit: Rc<dyn Fn(Result<PdfTextIndex, String>)>,
+    ) -> Option<LoadHandle> {
+        None
+    }
 }
 
 /// Leading bytes read to decide a local file's preview family.

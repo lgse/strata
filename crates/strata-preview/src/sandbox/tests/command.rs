@@ -113,6 +113,31 @@ fn sandbox_exposes_only_runtime_input_and_private_output() {
 }
 
 #[test]
+fn pdf_text_index_uses_resource_limited_sandbox_and_validated_json_output() {
+    let arguments = Sandbox::new("/fixtures/report.pdf", ParseOperation::PreviewPdfText)
+        .installed_at("/app/strata", "/private-output")
+        .joined();
+    assert_contains_all(
+        &arguments,
+        &[
+            ISOLATED,
+            SOFTWARE_LIMITS,
+            "preview-pdf-text /input.pdf /output/result.json 0 software",
+        ],
+    );
+    assert_contains_none(&arguments, &["--share-net", "--dev-bind"]);
+    let valid = serde_json::to_vec(&crate::services::PdfTextIndex {
+        pages: vec![Some("page one".into()), None, Some("page three".into())],
+        truncated: false,
+    })
+    .expect("serialize PDF text index");
+    assert_validity(
+        &ParseOperation::PreviewPdfText,
+        &[(&valid, true), (b"not json", false)],
+    );
+}
+
+#[test]
 fn workbook_parser_uses_resource_limited_sandbox_and_validated_output() {
     let arguments = Sandbox::new("/fixtures/book.xlsx", ParseOperation::PreviewWorkbook)
         .installed_at("/app/strata", "/private-output")

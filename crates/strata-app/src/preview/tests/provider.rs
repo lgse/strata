@@ -10,10 +10,10 @@ use std::{
 };
 
 use rune::Tx;
-use strata_core::model::Location;
+use strata_core::model::{FileEntry, Location};
 use strata_fs::services::{
-    LoadHandle, ModelPreviewStage, Preview, PreviewContent, PreviewEvent, PreviewProvider,
-    PreviewRequest,
+    LoadHandle, ModelPreviewStage, PdfTextIndex, Preview, PreviewContent, PreviewEvent,
+    PreviewProvider, PreviewRequest,
 };
 
 use crate::{App, host::offscreen::Offscreen, test_support::PATIENCE};
@@ -27,15 +27,28 @@ struct Asked {
     dropped_unanswered: Rc<Cell<bool>>,
 }
 
+struct AskedPdfText {
+    emit: Rc<dyn Fn(Result<PdfTextIndex, String>)>,
+    answered: Rc<Cell<bool>>,
+    dropped_unanswered: Rc<Cell<bool>>,
+}
+
+#[derive(Default)]
+struct RecordedInner {
+    requests: Vec<Asked>,
+    supports_pdf_text: bool,
+    pdf_texts: Vec<AskedPdfText>,
+}
+
 #[derive(Clone, Default)]
-pub(super) struct Recorded(Rc<RefCell<Vec<Asked>>>);
+pub(super) struct Recorded(Rc<RefCell<RecordedInner>>);
 
 impl PreviewProvider for Recorded {
     fn load(&self, request: PreviewRequest, emit: Rc<dyn Fn(PreviewEvent)>) -> LoadHandle {
         let answered = Rc::new(Cell::new(false));
         let dropped_unanswered = Rc::new(Cell::new(false));
         let (seen, dropped) = (answered.clone(), dropped_unanswered.clone());
-        self.0.borrow_mut().push(Asked {
+        self.0.borrow_mut().requests.push(Asked {
             request,
             emit,
             answered,
@@ -43,19 +56,66 @@ impl PreviewProvider for Recorded {
         });
         LoadHandle::new(move || dropped.set(!seen.get()))
     }
+
+    fn extract_pdf_text(
+        &self,
+        _entry: &FileEntry,
+        emit: Rc<dyn Fn(Result<PdfTextIndex, String>)>,
+    ) -> Option<LoadHandle> {
+        let mut inner = self.0.borrow_mut();
+        if !inner.supports_pdf_text {
+            return None;
+        }
+        let answered = Rc::new(Cell::new(false));
+        let dropped_unanswered = Rc::new(Cell::new(false));
+        let (seen, dropped) = (answered.clone(), dropped_unanswered.clone());
+        inner.pdf_texts.push(AskedPdfText {
+            emit,
+            answered,
+            dropped_unanswered,
+        });
+        Some(LoadHandle::new(move || dropped.set(!seen.get())))
+    }
 }
 
 impl Recorded {
+    pub(super) fn enable_pdf_text(&self) {
+        self.0.borrow_mut().supports_pdf_text = true;
+    }
+
+    pub(super) fn pdf_text_count(&self) -> usize {
+        self.0.borrow().pdf_texts.len()
+    }
+
+    pub(super) fn wait_for_pdf_text(&self, host: &mut Offscreen, index: usize) {
+        let asked = host.run_until(PATIENCE, |_| self.pdf_text_count() > index);
+        assert!(asked, "pdf text request {index} asked of the provider");
+    }
+
+    pub(super) fn answer_pdf_text(&self, index: usize, result: Result<PdfTextIndex, String>) {
+        let emit = {
+            let inner = self.0.borrow();
+            let asked = &inner.pdf_texts[index];
+            asked.answered.set(true);
+            asked.emit.clone()
+        };
+        emit(result);
+    }
+
+    pub(super) fn pdf_text_dropped_unanswered(&self, index: usize) -> bool {
+        self.0.borrow().pdf_texts[index].dropped_unanswered.get()
+    }
+
     pub(super) fn count(&self) -> usize {
-        self.0.borrow().len()
+        self.0.borrow().requests.len()
     }
 
     pub(super) fn request(&self, index: usize) -> PreviewRequest {
-        self.0.borrow()[index].request.clone()
+        self.0.borrow().requests[index].request.clone()
     }
 
     pub(super) fn dropped_unanswered(&self, index: usize) -> bool {
-        self.0.borrow()[index].dropped_unanswered.get()
+        self.0.borrow().requests[index].dropped_unanswered.get()
     }
 
     /// Answers request `index` with `content`.
@@ -86,15 +146,15 @@ impl Recorded {
 
     /// Tells request `index` its load reached `stage`.
     pub(super) fn progress(&self, index: usize, stage: ModelPreviewStage) {
-        let asked = self.0.borrow();
-        let request_id = asked[index].request.id;
-        (asked[index].emit)(PreviewEvent::Progress { request_id, stage });
+        let inner = self.0.borrow();
+        let request_id = inner.requests[index].request.id;
+        (inner.requests[index].emit)(PreviewEvent::Progress { request_id, stage });
     }
 
     /// Ends request `index` with the event `event` makes of it.
     fn finish(&self, index: usize, event: impl FnOnce(&PreviewRequest) -> PreviewEvent) {
-        let asked = self.0.borrow();
-        let asked = &asked[index];
+        let inner = self.0.borrow();
+        let asked = &inner.requests[index];
         asked.answered.set(true);
         (asked.emit)(event(&asked.request));
     }

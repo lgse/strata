@@ -277,16 +277,49 @@ impl Layer {
     /// Non-overlapping, case-insensitive matches of `query`, as character ranges.
     pub fn find(&self, query: &str) -> Vec<(usize, usize)> {
         let folded = self.folded.get_or_init(|| Folded::new(&self.text));
-        let len = self.len();
-        folded
-            .find(query)
-            .into_iter()
-            .map(|r| (self.char_at(r.start), self.char_at(r.end)))
-            .filter(|&(s, e)| s < e && e <= len)
-            .collect()
+        find_in_folded(folded, &self.bytes, self.len(), query)
+    }
+}
+
+/// Plain text for an unrendered page, searched with the same case-folding and character offsets
+/// as [`Layer::find`] until the page's full glyph layer loads.
+#[derive(Debug)]
+pub(crate) struct PlainText {
+    text: String,
+    /// The byte offset each character starts at, and `text.len()` last.
+    bytes: Vec<usize>,
+    folded: OnceCell<Folded>,
+}
+
+impl PlainText {
+    pub fn new(text: String) -> Self {
+        let mut bytes: Vec<usize> = text.char_indices().map(|(b, _)| b).collect();
+        bytes.push(text.len());
+        Self {
+            text,
+            bytes,
+            folded: OnceCell::new(),
+        }
     }
 
-    fn char_at(&self, byte: usize) -> usize {
-        self.bytes.partition_point(|&b| b < byte)
+    pub fn find(&self, query: &str) -> Vec<(usize, usize)> {
+        let folded = self.folded.get_or_init(|| Folded::new(&self.text));
+        let len = self.bytes.len().saturating_sub(1);
+        find_in_folded(folded, &self.bytes, len, query)
     }
+}
+
+fn find_in_folded(
+    folded: &Folded,
+    bytes: &[usize],
+    max_chars: usize,
+    query: &str,
+) -> Vec<(usize, usize)> {
+    let char_at = |byte: usize| bytes.partition_point(|&b| b < byte);
+    folded
+        .find(query)
+        .into_iter()
+        .map(|r| (char_at(r.start), char_at(r.end)))
+        .filter(|&(s, e)| s < e && e <= max_chars)
+        .collect()
 }

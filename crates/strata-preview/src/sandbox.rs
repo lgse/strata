@@ -115,6 +115,21 @@ pub fn parse(
     parse_with_progress(request, &|_| {})
 }
 
+/// Extracts plain text for all pages of a PDF in one sandboxed Poppler pass.
+pub fn extract_pdf_text(
+    input: &Path,
+    cancellation: &Cancellation,
+) -> Result<crate::services::PdfTextIndex, String> {
+    let output = parse(
+        input,
+        ParseOperation::PreviewPdfText,
+        0,
+        MediaPreviewBackend::Software,
+        cancellation,
+    )?;
+    crate::services::PdfTextIndex::from_json(&output.data)
+}
+
 pub fn parse_with_progress(
     request: ParseRequest<'_>,
     progress: &dyn Fn(ModelPreviewStage),
@@ -298,11 +313,15 @@ fn reports_failure(operation: &ParseOperation) -> bool {
             | ParseOperation::InspectImage
             | ParseOperation::ConvertImage
             | ParseOperation::PreviewPdf(_)
+            | ParseOperation::PreviewPdfText
     )
 }
 
 fn reported_failure(operation: &ParseOperation, data: Vec<u8>) -> Option<String> {
-    if !matches!(operation, ParseOperation::PreviewPdf(_)) {
+    if !matches!(
+        operation,
+        ParseOperation::PreviewPdf(_) | ParseOperation::PreviewPdfText
+    ) {
         return String::from_utf8(data).ok();
     }
     matches!(

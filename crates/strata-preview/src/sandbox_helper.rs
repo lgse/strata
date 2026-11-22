@@ -32,7 +32,7 @@ mod route;
 
 pub use browser::browser_render;
 #[cfg(test)]
-use pdf::{bounded_surface_dimensions, pdf_render_request};
+use pdf::{bounded_surface_dimensions, extract_text_with_limit, pdf_render_request};
 pub use process::run_command_with_timeout;
 use process::{bounded_output, bounded_output_with_timeout, read_limited, stop_child};
 use raster::render_raw;
