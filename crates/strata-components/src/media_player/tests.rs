@@ -809,3 +809,91 @@ fn badge_and_caption_words_come_from_the_labels() {
         Some("Piste 3")
     );
 }
+
+#[test]
+fn peeking_vinyl_slides_out_while_playing_tucks_when_paused_and_snaps_without_motion() {
+    use super::audio::{DISC_SLID_OUT, DISC_TUCKED};
+
+    let mut st = MediaState::new(Clip {
+        kind: MediaKind::Audio,
+        name: "track.mp3".into(),
+        ..Clip::default()
+    });
+    st.set_art(Some(Art {
+        id: 42,
+        pixels: rune::Pixels::new(),
+        size: [200, 200],
+    }));
+    let mut clock = FakeClock::new(Some(secs(120)));
+    let mut rt = rune::Runtime::new(
+        (),
+        |_: &(), _| rune::el(),
+        (10.0, 10.0),
+        rune::Env::new(false, 1.0),
+    );
+    let mut t = 0.0;
+    let mut step = |st: &mut MediaState, clock: &FakeClock, dt: f64| {
+        t += dt;
+        rt.update(|_, tx| {
+            st.tick(clock, t, tx);
+        });
+    };
+
+    // Paused with album art starts tucked.
+    step(&mut st, &clock, 1.0 / 60.0);
+    assert!((st.disc_offset() - DISC_TUCKED).abs() < 1e-6);
+
+    // Playing slides smoothly toward DISC_SLID_OUT and settles there.
+    clock.play_now();
+    step(&mut st, &clock, 1.0 / 60.0);
+    let after_one = st.disc_offset();
+    assert!(
+        after_one > DISC_TUCKED && after_one < DISC_SLID_OUT,
+        "after one frame: {after_one}"
+    );
+    for _ in 0..90 {
+        step(&mut st, &clock, 1.0 / 60.0);
+    }
+    assert!(
+        (st.disc_offset() - DISC_SLID_OUT).abs() < 1e-6,
+        "settled slid out: {}",
+        st.disc_offset()
+    );
+
+    // Pausing tucks back faster toward DISC_TUCKED and settles there.
+    clock.apply(&MediaIntent::Pause);
+    step(&mut st, &clock, 1.0 / 60.0);
+    let tuck_one = st.disc_offset();
+    assert!(
+        tuck_one < DISC_SLID_OUT && tuck_one > DISC_TUCKED,
+        "tucking after one frame: {tuck_one}"
+    );
+    assert!(
+        (DISC_SLID_OUT - tuck_one) > (after_one - DISC_TUCKED),
+        "tucking is faster than sliding out"
+    );
+    for _ in 0..60 {
+        step(&mut st, &clock, 1.0 / 60.0);
+    }
+    assert!(
+        (st.disc_offset() - DISC_TUCKED).abs() < 1e-6,
+        "settled tucked: {}",
+        st.disc_offset()
+    );
+
+    // Reduced motion snaps immediately on play and pause.
+    st.motion.set(false);
+    clock.play_now();
+    step(&mut st, &clock, 1.0 / 60.0);
+    assert_eq!(st.disc_offset(), DISC_SLID_OUT);
+    clock.apply(&MediaIntent::Pause);
+    step(&mut st, &clock, 1.0 / 60.0);
+    assert_eq!(st.disc_offset(), DISC_TUCKED);
+}
+
+#[test]
+fn narrow_audio_pane_drops_art_without_panicking() {
+    let narrow = plan(100.0, 600.0, 200.0, 16.0, false);
+    assert!(narrow.art.is_none());
+    assert!(narrow.spectrum.is_some());
+}

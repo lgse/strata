@@ -7,6 +7,8 @@
 //! the art goes back on top, and between the two the layout keeps what it had. Stacked, when
 //! height runs short the spectrum hides first, then the art.
 
+/// Width over height of the artwork box: the square cover plus room for the peeking disc.
+pub const ART_ASPECT: f32 = 1.3;
 /// Strata's limits, in points.
 pub const ART_MIN: f32 = 96.0;
 pub const ART_MAX: f32 = 520.0;
@@ -47,7 +49,9 @@ pub fn plan(width: f32, height: f32, fixed: f32, gap: f32, was_wide: bool) -> Pl
         ratio >= ENTER_WIDE
     };
     if wide {
-        let art = (width * WIDE_ART_SHARE).min(height).min(ART_MAX);
+        let art = (width * WIDE_ART_SHARE / ART_ASPECT)
+            .min(height)
+            .min(ART_MAX);
         let free = height - fixed - gap;
         let spectrum = (free >= SPECTRUM_MIN).then(|| round(free.min(SPECTRUM_MAX)));
         return Plan {
@@ -57,8 +61,17 @@ pub fn plan(width: f32, height: f32, fixed: f32, gap: f32, was_wide: bool) -> Pl
         };
     }
     let free = height - fixed;
+    let widest = (width / ART_ASPECT).min(ART_MAX);
+    if widest < ART_MIN {
+        let spectrum = (free - gap >= SPECTRUM_MIN).then(|| round((free - gap).min(SPECTRUM_MAX)));
+        return Plan {
+            wide,
+            art: None,
+            spectrum,
+        };
+    }
     if free >= ART_MIN + SPECTRUM_MIN + 2.0 * gap {
-        let art = (free * ART_SHARE).clamp(ART_MIN, ART_MAX.min(width));
+        let art = (free * ART_SHARE).clamp(ART_MIN, widest);
         let spectrum = (free - art - 2.0 * gap).clamp(SPECTRUM_MIN, SPECTRUM_MAX);
         Plan {
             wide,
@@ -68,7 +81,7 @@ pub fn plan(width: f32, height: f32, fixed: f32, gap: f32, was_wide: bool) -> Pl
     } else if free >= ART_MIN + gap {
         Plan {
             wide,
-            art: Some(round((free - gap).min(ART_MAX).min(width))),
+            art: Some(round((free - gap).min(widest))),
             spectrum: None,
         }
     } else {
