@@ -206,8 +206,8 @@ mod tests;
 use std::rc::Rc;
 
 use rune::{
-    Cursor, Cx, Drag, El, GrowthSpec, Key, KeyEvent, PointerButton, PointerPress, ScrollSpec, Tx,
-    col, el, row, text,
+    Color, Cursor, Cx, Drag, El, GrowthSpec, Key, KeyEvent, PointerButton, PointerPress,
+    ScrollSpec, Tx, col, el, row, text,
 };
 use strata_kit::look::Look;
 
@@ -467,6 +467,7 @@ fn build_viewport_body<S: 'static>(st: &CodeState, viewport: El, spec: &Viewport
     let mut area = overlay(viewport, []);
     if let Some(w) = spec.gutter {
         area = area
+            .child(gutter_selection_sentinel(spec.key, st.content()))
             .child(gutter_hit(spec, w))
             .child(gutter_divider(spec.key, w, spec.paint));
     }
@@ -479,6 +480,21 @@ fn build_viewport_body<S: 'static>(st: &CodeState, viewport: El, spec: &Viewport
         BarLook::app(spec.look).horizontal(),
     );
     st.sideways.area(area.child(anchor(0.0, 0.0, bar)))
+}
+
+/// Invisible 0×0 selectable text node holding Rune's selection token for whole-line gutter
+/// selections so row highlights paint once via `RowHighlights` without double-compositing the
+/// first selected row's text, while external clicks and modals still clear the selection cleanly.
+fn gutter_selection_sentinel(key: &str, content: Rc<state::Content>) -> El {
+    text(" ")
+        .key(format!("{key}-gutter-sel"))
+        .pin(Some(0.0), Some(0.0), None, None)
+        .size(0.0, 0.0)
+        .color(Color::TRANSPARENT)
+        .selectable(true)
+        .selection_color(Color::TRANSPARENT)
+        .selection_copy(move |sel| Some(content.copy(sel)))
+        .a11y_hidden()
 }
 
 fn gutter_hit<S: 'static>(spec: &ViewportBody<'_, S>, w: f32) -> El {

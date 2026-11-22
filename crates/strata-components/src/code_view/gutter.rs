@@ -144,6 +144,12 @@ pub(crate) struct GutterDrag {
     /// Clock timestamp of the previous edge auto-scroll tick, or `None` while resting inside
     /// the viewport or at a scroll limit.
     pub last_tick: Option<f64>,
+    /// Whether `CodeView` has been observed holding focus during this drag; once true, losing
+    /// focus (e.g. a modal opening mid-drag) stops auto-scrolling immediately.
+    pub focus_seen: bool,
+    /// Scroll offset before the previous non-clamped auto-scroll request, used to stop if an
+    /// unmounted/suspended viewport ignores the scroll request (`U-C10b-8`).
+    pub expected_scroll_from: Option<f32>,
 }
 
 /// Handles a primary pointer click or drag on the persistent gutter hit strip.
@@ -161,7 +167,8 @@ pub(crate) fn gutter_drag(st: &mut CodeState, d: &mut Drag, tx: &mut Tx) {
 }
 
 fn gutter_press(st: &mut CodeState, y: f32, tx: &mut Tx) {
-    if tx.focused() != Some(st.view_key()) {
+    let focused_now = tx.focused() == Some(st.view_key());
+    if !focused_now {
         tx.focus(st.view_key().to_owned(), false);
     }
     let Some(row_idx) = st.position.hit_row(y) else {
@@ -180,6 +187,8 @@ fn gutter_press(st: &mut CodeState, y: f32, tx: &mut Tx) {
         anchor_line,
         pointer_y: y,
         last_tick: None,
+        focus_seen: focused_now,
+        expected_scroll_from: None,
     }));
     st.apply_gutter_lines(anchor_line, clicked_line, tx);
 }
@@ -200,14 +209,19 @@ fn gutter_move(st: &mut CodeState, y: f32, tx: &mut Tx) {
     let Some(mut drag) = st.gutter_drag() else {
         return;
     };
+    if tx.focused() == Some(st.view_key()) {
+        drag.focus_seen = true;
+    }
     drag.pointer_y = y;
     if edge_speed(st, y).is_some() {
         if drag.last_tick.is_none() {
             drag.last_tick = Some(tx.clock());
+            drag.expected_scroll_from = None;
             tx.wake_after(Duration::ZERO);
         }
     } else {
         drag.last_tick = None;
+        drag.expected_scroll_from = None;
     }
     st.set_gutter_drag(Some(drag));
     if let Some(row_idx) = st.position.drag_row(y) {
@@ -218,11 +232,33 @@ fn gutter_move(st: &mut CodeState, y: f32, tx: &mut Tx) {
 
 /// Steps viewport-edge auto-scrolling during an active gutter drag and extends the selection
 /// to newly revealed lines. Stops scheduling wakes immediately once the pointer re-enters the
-/// viewport, reaches a scroll boundary, or the drag ends.
+/// viewport, reaches a scroll boundary, loses focus (e.g. a modal opens), the viewport stops
+/// responding (suspended/unmounted), line numbers are hidden, or the drag ends.
 pub(crate) fn poll_gutter_drag(st: &mut CodeState, tx: &mut Tx) {
+    if !st.line_numbers() {
+        st.stop_gutter_drag();
+        return;
+    }
     let Some(mut drag) = st.gutter_drag() else {
         return;
     };
+    if drag_lost_focus(&mut drag, st.view_key(), tx.focused()) {
+        st.stop_gutter_drag();
+        return;
+    }
+    let now = tx.clock();
+    let dt = drag
+        .last_tick
+        .map_or(0.0, |prev| (now - prev).clamp(0.0, EDGE_MAX_STEP_SECS));
+    let p = st.position.scroll_pos();
+    if dt > 0.0
+        && drag
+            .expected_scroll_from
+            .is_some_and(|prev| (p.offset[1] - prev).abs() <= 0.005)
+    {
+        st.stop_gutter_drag();
+        return;
+    }
     let speed = edge_speed(st, drag.pointer_y);
     if let Some(row_idx) = st.position.drag_row(drag.pointer_y) {
         let target_line = st.rows().row(row_idx).line;
@@ -230,23 +266,30 @@ pub(crate) fn poll_gutter_drag(st: &mut CodeState, tx: &mut Tx) {
     }
     let Some(speed) = speed else {
         drag.last_tick = None;
+        drag.expected_scroll_from = None;
         st.set_gutter_drag(Some(drag));
         return;
     };
-    let now = tx.clock();
-    let dt = drag
-        .last_tick
-        .map_or(0.0, |prev| (now - prev).clamp(0.0, EDGE_MAX_STEP_SECS));
     drag.last_tick = Some(now);
-    st.set_gutter_drag(Some(drag));
     if dt > 0.0 {
-        let p = st.position.scroll_pos();
         let next_y = (p.offset[1] + speed * dt as f32).clamp(0.0, p.max[1]);
-        if (next_y - p.offset[1]).abs() > 0.01 {
+        let delta = (next_y - p.offset[1]).abs();
+        drag.expected_scroll_from = (delta > 0.05).then_some(p.offset[1]);
+        if delta > 0.01 {
             tx.scroll_to_instant(st.scroll_key(), p.offset[0], next_y);
         }
     }
+    st.set_gutter_drag(Some(drag));
     tx.wake_after(Duration::ZERO);
+}
+
+fn drag_lost_focus(drag: &mut GutterDrag, view_key: &str, focused: Option<&str>) -> bool {
+    if focused == Some(view_key) {
+        drag.focus_seen = true;
+        false
+    } else {
+        drag.focus_seen
+    }
 }
 
 /// Signed auto-scroll velocity in points per second when `y` lies outside the viewport and

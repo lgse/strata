@@ -278,8 +278,16 @@ impl Position {
                 best = Some((r, dist));
             }
         }
-        best.map(|(r, _)| r)
-            .or_else(|| Some(self.0.visible.get().0.min(n - 1)))
+        best.map(|(r, _)| r).or_else(|| {
+            let (a, b) = self.0.visible.get();
+            let (vp_top, vp_h) = self.0.viewport.get();
+            let row = if vp_h > 0.0 && y >= vp_top + vp_h * 0.5 && b > a {
+                b - 1
+            } else {
+                a
+            };
+            Some(row.min(n - 1))
+        })
     }
 
     /// The viewport's vertical offset, as last reported.

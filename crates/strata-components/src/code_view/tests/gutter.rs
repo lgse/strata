@@ -118,7 +118,8 @@ fn gutter_click_focuses_selects_whole_line_empty_line_and_chunked_continuation()
     let clip = clipboard::memory();
     rt.use_clipboard(&clip);
 
-    // 1. Clicking line 0 in the gutter focuses CodeView automatically and Ctrl+C copies it.
+    // 1. Clicking line 0 in the gutter focuses CodeView automatically, uses the transparent
+    //    sentinel (no row text node selected -> uniform single-paint highlight), and Ctrl+C copies it.
     let gx = gutter_x(&rt);
     let y0 = row_center_y(&rt, 0);
     rt.pointer_move(gx, y0);
@@ -126,6 +127,11 @@ fn gutter_click_focuses_selects_whole_line_empty_line_and_chunked_continuation()
     rt.pointer_up(gx, y0);
     rt.frame(1.0 / 60.0);
     assert_eq!(rt.state.code.gutter_highlighted_lines(), Some((0, 0)));
+    let (sel_path, sel_range) = rt.text_selection().expect("gutter sentinel selected");
+    assert!(
+        sel_path.ends_with("/code-gutter-sel") && sel_range == (0..1),
+        "gutter selection must use transparent sentinel instead of double-painting a code row: {sel_path:?} {sel_range:?}"
+    );
     send_copy(&mut rt);
     assert_eq!(copied_text(&clip).as_deref(), Some("alpha\n"));
 
@@ -312,7 +318,7 @@ fn gutter_shift_click_extends_from_gutter_and_text_selections() {
 #[test]
 fn gutter_drag_edge_autoscrolls_down_and_up_and_stops_cleanly_with_zero_idle_wakes() {
     let text: String = (0..200).map(|i| format!("line {i:03}\n")).collect();
-    let (mut rt, views) = runtime(text, true, (400.0, 200.0), true);
+    let (mut rt, _) = runtime(text, true, (400.0, 200.0), true);
     let clip = clipboard::memory();
     rt.use_clipboard(&clip);
     rt.update(|_, tx| tx.focus("code", false));
@@ -325,7 +331,6 @@ fn gutter_drag_edge_autoscrolls_down_and_up_and_stops_cleanly_with_zero_idle_wak
 
     // 1. Start on line 1, drag below the viewport bottom edge -> auto-scrolls and extends selection.
     rt.state.poll_changes.set(0);
-    views.set(0);
     rt.pointer_move(gx, y1);
     rt.pointer_down(gx, y1);
     rt.frame(1.0 / 60.0);
@@ -460,7 +465,7 @@ fn external_click_clears_gutter_highlight_on_poll_without_committing() {
     let views = Rc::new(Cell::new(0));
     let mut rt = Runtime::new(
         OutsideHost {
-            code: CodeState::new("alpha\nbeta\ngamma\n"),
+            code: CodeState::new("alpha\n\nbeta\ngamma\n"),
             look: Look::fallback(false),
             views: views.clone(),
         },
@@ -472,29 +477,29 @@ fn external_click_clears_gutter_highlight_on_poll_without_committing() {
     for _ in 0..8 {
         rt.frame(1.0 / 60.0);
     }
-    let r0 = rt
-        .elements()
-        .into_iter()
-        .find(|e| e.path.contains("/code-l0/") && e.path.ends_with("/n"))
-        .expect("row 0 gutter")
-        .rect;
-    let r1 = rt
-        .elements()
-        .into_iter()
-        .find(|e| e.path.contains("/code-l1/") && e.path.ends_with("/n"))
-        .expect("row 1 gutter")
-        .rect;
+    let gutter_rect = |rt: &Runtime<OutsideHost>, row: usize| {
+        let needle = format!("/code-l{row}/");
+        rt.elements()
+            .into_iter()
+            .find(|e| e.path.contains(&needle) && e.path.ends_with("/n"))
+            .unwrap_or_else(|| panic!("row {row} gutter"))
+            .rect
+    };
+    let r0 = gutter_rect(&rt, 0);
+    let r1 = gutter_rect(&rt, 1);
+    let r2 = gutter_rect(&rt, 2);
     let gx = r0[0] + r0[2] * 0.4;
+
+    // 1. Multi-line gutter drag cleared by external click.
     rt.pointer_move(gx, r0[1] + r0[3] * 0.5);
     rt.pointer_down(gx, r0[1] + r0[3] * 0.5);
     rt.frame(1.0 / 60.0);
-    rt.pointer_move(gx, r1[1] + r1[3] * 0.5);
+    rt.pointer_move(gx, r2[1] + r2[3] * 0.5);
     rt.frame(1.0 / 60.0);
-    rt.pointer_up(gx, r1[1] + r1[3] * 0.5);
+    rt.pointer_up(gx, r2[1] + r2[3] * 0.5);
     rt.frame(1.0 / 60.0);
-    assert_eq!(rt.state.code.gutter_highlighted_lines(), Some((0, 1)));
+    assert_eq!(rt.state.code.gutter_highlighted_lines(), Some((0, 2)));
 
-    // Clicking outside clears Rune's selection, and poll clears the gutter highlight.
     rt.pointer_move(20.0, 15.0);
     rt.pointer_down(20.0, 15.0);
     rt.pointer_up(20.0, 15.0);
@@ -503,4 +508,126 @@ fn external_click_clears_gutter_highlight_on_poll_without_committing() {
     }
     assert_eq!(rt.state.code.gutter_highlighted_lines(), None);
     assert_eq!(rt.state.code.keyboard_selection(), None);
+
+    // 2. Single empty-line ("\n") gutter selection also clears on external click via sentinel.
+    rt.pointer_move(gx, r1[1] + r1[3] * 0.5);
+    rt.pointer_down(gx, r1[1] + r1[3] * 0.5);
+    rt.pointer_up(gx, r1[1] + r1[3] * 0.5);
+    rt.frame(1.0 / 60.0);
+    assert_eq!(rt.state.code.gutter_highlighted_lines(), Some((1, 1)));
+    assert_eq!(rt.state.code.copy_keyboard().as_deref(), Some("\n"));
+
+    rt.pointer_move(20.0, 15.0);
+    rt.pointer_down(20.0, 15.0);
+    rt.pointer_up(20.0, 15.0);
+    for _ in 0..4 {
+        rt.frame(1.0 / 60.0);
+    }
+    assert_eq!(rt.state.code.gutter_highlighted_lines(), None);
+    assert_eq!(rt.state.code.keyboard_selection(), None);
+}
+
+#[test]
+fn suspend_modal_or_hiding_gutter_mid_autoscroll_stops_wakes_cleanly() {
+    struct SuspendHost {
+        code: CodeState,
+        look: Look,
+        mounted: bool,
+        modal_open: bool,
+    }
+    fn suspend_view(h: &SuspendHost, cx: &mut Cx<SuspendHost>) -> El {
+        let mut root = col().w_full().h_full();
+        if h.mounted {
+            root = root.child(
+                CodeView::new(|s: &SuspendHost| &s.code, |s: &mut SuspendHost| &mut s.code)
+                    .build(h, &h.look, cx),
+            );
+        }
+        if h.modal_open {
+            root = root.child(
+                el().key("modal")
+                    .pin(Some(0.0), Some(0.0), Some(0.0), Some(0.0))
+                    .focusable(true)
+                    .modal(true, |s: &mut SuspendHost| s.modal_open = false),
+            );
+        }
+        root
+    }
+
+    let text: String = (0..200).map(|i| format!("line {i:03}\n")).collect();
+    let start_autoscroll = || {
+        let mut rt = Runtime::new(
+            SuspendHost {
+                code: CodeState::new(text.clone()),
+                look: Look::fallback(false),
+                mounted: true,
+                modal_open: false,
+            },
+            suspend_view,
+            (400.0, 200.0),
+            Env::new(false, 1.0),
+        );
+        rt.poll = Some(|h, _, tx| h.code.poll(tx));
+        for _ in 0..10 {
+            rt.frame(1.0 / 60.0);
+        }
+        let r1 = rt
+            .elements()
+            .into_iter()
+            .find(|e| e.path.contains("/code-l1/") && e.path.ends_with("/n"))
+            .expect("row 1 gutter")
+            .rect;
+        let gx = r1[0] + r1[2] * 0.4;
+        let y1 = r1[1] + r1[3] * 0.5;
+        rt.pointer_move(gx, y1);
+        rt.pointer_down(gx, y1);
+        rt.frame(1.0 / 60.0);
+        rt.pointer_move(gx, 280.0);
+        for _ in 0..8 {
+            rt.frame(1.0 / 60.0);
+        }
+        assert!(rt.state.code.scroll_offset() > 20.0);
+        assert!(rt.wake_deadline().is_some());
+        rt
+    };
+
+    let assert_stopped_idle = |rt: &mut Runtime<SuspendHost>, label: &str| {
+        for _ in 0..4 {
+            rt.frame(1.0 / 60.0);
+        }
+        let stopped_at = rt.state.code.scroll_offset();
+        for _ in 0..5 {
+            rt.frame(0.2);
+        }
+        rt.frame(1.0 / 60.0);
+        assert_eq!(
+            rt.state.code.scroll_offset(),
+            stopped_at,
+            "{label}: scroll offset must stay stopped"
+        );
+        assert_eq!(
+            rt.wake_deadline(),
+            None,
+            "{label}: must not leave pending auto-scroll wakes"
+        );
+        assert!(!rt.frame(1.0 / 60.0), "{label}: must rest idle");
+    };
+
+    // 1. Unmounting/suspending CodeView mid-auto-scroll while poll keeps running stops wakes.
+    let mut rt = start_autoscroll();
+    rt.update(|s, _| s.mounted = false);
+    assert_stopped_idle(&mut rt, "suspended view");
+
+    // 2. Opening a modal mid-auto-scroll stops wakes cleanly.
+    let mut rt = start_autoscroll();
+    rt.update(|s, tx| {
+        s.modal_open = true;
+        tx.focus("modal", true);
+    });
+    assert_stopped_idle(&mut rt, "modal open");
+
+    // 3. Hiding line numbers mid-auto-scroll stops wakes cleanly.
+    let mut rt = start_autoscroll();
+    rt.update(|s, _| s.code.set_line_numbers(false));
+    assert_stopped_idle(&mut rt, "hiding line numbers");
 }

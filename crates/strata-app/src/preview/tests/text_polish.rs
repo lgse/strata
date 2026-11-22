@@ -316,6 +316,18 @@ fn code_preview_gutter_line_selection_copies_via_context_menu_and_shortcut() {
             assert_eq!(code_keyboard_text(host.app()).as_deref(), Some(expected));
             assert_eq!(focused_key(&mut host).as_deref(), Some(CODE_KEY));
 
+            // Ctrl+C copies lines 1..=3 immediately after gutter drag.
+            press(
+                &mut host,
+                Key::Command('c'),
+                Mods {
+                    cmd: true,
+                    ..Mods::default()
+                },
+            );
+            assert_eq!(clipboard_text(&mem).as_deref(), Some(expected));
+            mem.set_text("cleared");
+
             // Right-click -> Escape preserves the gutter selection.
             let (cx, cy) = element_center(&mut host, CODE_KEY);
             secondary_click_at(&mut host, cx, cy);

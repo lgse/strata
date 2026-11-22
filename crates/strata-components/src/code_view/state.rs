@@ -38,6 +38,17 @@ pub(crate) enum Request {
     Reveal(String),
 }
 
+/// Rune text selection most recently requested by [`CodeState`], used to detect when an
+/// external click or drag replaces or clears our selection.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum ExpectedSelect {
+    /// Single-row Rune selection `(row, start, end)` on `{key}-l{row}/t`.
+    Row(usize, usize, usize),
+    /// Transparent 0×0 sentinel selection `0..1` on `{key}-gutter-sel`, so gutter line
+    /// selections paint once via live row fills without double-compositing the first row's text.
+    GutterSentinel,
+}
+
 /// What doesn't change between [`CodeState::set_text`]s. The view's copy handler holds it,
 /// since Rune gives that handler no app state.
 #[derive(Debug)]
@@ -53,9 +64,10 @@ pub(crate) struct Content {
     pub all: Cell<bool>,
     /// Active keyboard or gutter-drag byte range `(lo, hi)` when `lo < hi`.
     pub keyboard_range: Cell<Option<(usize, usize)>>,
-    /// Single-row Rune selection `(row, start, end)` most recently requested by
-    /// [`CodeState::apply_caret`], or `None` when `keyboard_range` covers no non-empty row.
-    pub expected_select: Cell<Option<(usize, usize, usize)>>,
+    /// Rune selection most recently requested by [`CodeState::apply_caret`] or
+    /// [`CodeState::apply_gutter_lines`], or `None` when `keyboard_range` covers no non-empty
+    /// row in keyboard mode.
+    pub expected_select: Cell<Option<ExpectedSelect>>,
 }
 
 impl Content {
@@ -267,6 +279,9 @@ impl CodeState {
     /// Line numbers in the gutter: on by default.
     pub fn set_line_numbers(&mut self, on: bool) {
         self.line_numbers = on;
+        if !on {
+            self.stop_gutter_drag();
+        }
     }
 
     pub(crate) fn line_numbers(&self) -> bool {
@@ -349,9 +364,14 @@ impl CodeState {
     pub fn restore_selection_range(&mut self, lo: usize, hi: usize, tx: &mut Tx) {
         let text = &self.content.rows.text;
         if lo < hi && hi <= text.len() && text.is_char_boundary(lo) && text.is_char_boundary(hi) {
-            self.apply_caret_inner(lo, hi, tx);
-            let whole = self.content.rows.line_bounds_if_whole(lo, hi);
-            self.highlights.set_lines(whole, &self.content.rows);
+            if self.line_numbers
+                && let Some((lo_line, hi_line)) = self.content.rows.line_bounds_if_whole(lo, hi)
+            {
+                self.apply_gutter_lines(lo_line, hi_line, tx);
+            } else {
+                self.highlights.clear();
+                self.apply_caret_inner(lo, hi, tx);
+            }
         }
     }
 
@@ -399,6 +419,10 @@ impl CodeState {
 
     pub fn scroll_key(&self) -> String {
         format!("{}-scroll", self.content.key)
+    }
+
+    pub(crate) fn gutter_sentinel_key(&self) -> String {
+        format!("{}-gutter-sel", self.content.key)
     }
 
     /// Rune's visible rows: asks for the colours of the lines they show.
@@ -628,6 +652,9 @@ impl CodeState {
 
     /// Selects whole logical lines between `anchor_line` and `target_line` (inclusive) without
     /// redundant Rune selection commands when the span is unchanged.
+    ///
+    /// Uses the transparent `{key}-gutter-sel` sentinel instead of selecting a code row's text
+    /// node so every selected row paints once via `RowHighlights` with uniform selection alpha.
     pub(crate) fn apply_gutter_lines(
         &mut self,
         anchor_line: usize,
@@ -645,13 +672,30 @@ impl CodeState {
         };
         let range = (lo < hi).then_some((lo, hi));
         let lines = (lo < hi).then(|| (anchor_line.min(target_line), anchor_line.max(target_line)));
+        let sentinel_synced = self.content.expected_select.get()
+            == Some(ExpectedSelect::GutterSentinel)
+            && copy::matches_expected(&self.content, tx.text_selection());
         if self.caret == Some((anchor, head))
             && self.content.keyboard_range.get() == range
             && self.highlights.lines() == lines
+            && (range.is_none() || sentinel_synced)
         {
             return;
         }
-        self.apply_caret_inner(anchor, head, tx);
+        self.caret = Some((anchor, head));
+        self.content.all.set(false);
+        self.content.keyboard_range.set(range);
+        if range.is_some() {
+            self.content
+                .expected_select
+                .set(Some(ExpectedSelect::GutterSentinel));
+            if !sentinel_synced {
+                tx.select_text(self.gutter_sentinel_key(), 0..1);
+            }
+        } else {
+            self.content.expected_select.set(None);
+            tx.clear_text_selection();
+        }
         self.highlights.set_lines(lines, &self.content.rows);
     }
 
@@ -667,7 +711,7 @@ impl CodeState {
             let already_synced = copy::matches_expected(&self.content, tx.text_selection());
             self.content.keyboard_range.set(Some((lo, hi)));
             if let Some((r, range)) = self.first_nonempty_row_slice(lo, hi) {
-                let next = (r, range.start, range.end);
+                let next = ExpectedSelect::Row(r, range.start, range.end);
                 self.content.expected_select.set(Some(next));
                 if !(already_synced && prev_expected == Some(next)) {
                     tx.select_text(format!("{}/t", self.row_key(r)), range);
