@@ -111,6 +111,7 @@ wayland-backend = "0.3"
 wayland-client = "0.31"
 wayland-protocols = "0.32"
 wayland-protocols-misc = "0.3"
+wayland-protocols-plasma = "0.3"
 wayland-protocols-wlr = "0.3"
 wgpu = { version = "30.0.1", default-features = false }
 x11rb = "0.13"

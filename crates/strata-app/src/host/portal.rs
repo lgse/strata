@@ -24,13 +24,14 @@ use rune::{AppHandle, AppSpec, Cx, El, Tx, WindowHandle, WindowSpec, col};
 use strata_core::model::Location;
 use strata_kit::fonts::{FAMILIES, FONTS};
 use strata_platform::{
-    csd::{self, Backend, Csd, Policy},
+    backdrop_blur::BackdropBlur,
+    csd::{Backend, Csd, Policy},
     dnd::Dnd,
     foreign_parent::{self, Options, Parent},
     glib_loop::GlibLoop,
 };
 
-use super::chooser_window::ChooserWindow;
+use super::chooser_window::{self, ChooserWindow};
 use crate::{
     App,
     chooser::{geometry::chooser_initial_dimensions, source::ChooserFileSource},
@@ -233,6 +234,7 @@ fn lost_parent(app: &mut App, tx: &mut Tx) {
 
 /// A chooser window closing, by its close button or after its request finished.
 fn close_chooser(app: &mut App, tx: &mut Tx) {
+    shell::detach_backdrop_blur(app);
     crate::chooser::cancel(app, tx);
     folder_views::flush_at_exit(app);
     let Some(token) = app.chooser.token() else {
@@ -249,7 +251,7 @@ fn close_chooser(app: &mut App, tx: &mut Tx) {
 fn chooser_app(
     request: &ChooserRequest,
     (state_size, frame): ((f32, f32), strata_platform::csd::Frame),
-    dnd: Dnd<App>,
+    (dnd, blur): (Dnd<App>, BackdropBlur),
 ) -> rune::App<App> {
     let parent = request
         .parent
@@ -266,7 +268,7 @@ fn chooser_app(
     });
     let handle = app.handle();
     app.on_window(move |window: &WindowHandle| {
-        csd::attach(window, &handle, shell::csd_of);
+        chooser_window::attach_window(window, &handle, &blur);
         crate::dnd::attach(&dnd, window, &handle);
         let options = Options::new().modal(modal).on_lost(lost_parent);
         let _ = foreign_parent::apply(window, &handle, &parent, options);
@@ -297,7 +299,8 @@ fn open_chooser_window(
     let size = (width as f32, height as f32);
     let initial = Location::local(request.initial_directory.clone());
     let dnd = Dnd::<App>::new();
-    let app = chooser_app(&request, (size, frame), dnd.clone());
+    let blur = BackdropBlur::new();
+    let app = chooser_app(&request, (size, frame), (dnd.clone(), blur.clone()));
     let app = HOOKS.with(
         |cell| match cell.get().and_then(|hooks| hooks.chooser.as_ref()) {
             Some(chooser) => chooser(app, &token),
@@ -311,6 +314,7 @@ fn open_chooser_window(
         (request, ChooserFileSource::new(None), None, completion),
     );
     crate::dnd::bind(&mut state, dnd);
+    shell::bind_backdrop_blur(&mut state, blur);
     state.open(initial);
     let handle = app.handle();
     let window = rune::open_window(WindowSpec::from_app(&token, app).state(state));

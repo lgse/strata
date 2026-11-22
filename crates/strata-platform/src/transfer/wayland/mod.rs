@@ -184,10 +184,10 @@ impl State {
     /// The extension state of type `T`, made with `Default` on first use. For other modules'
     /// handlers on this queue; see [`Conn::with_globals`].
     #[cfg_attr(
-        not(any(feature = "dnd", feature = "foreign-parent")),
+        not(any(feature = "dnd", feature = "foreign-parent", feature = "backdrop-blur")),
         expect(
             dead_code,
-            reason = "the extension point for P1 (dnd) and P4 (foreign-parent)"
+            reason = "the extension point for P1 (dnd), P4 (foreign-parent) and backdrop-blur"
         )
     )]
     pub(crate) fn extension<T: Any + Send + Default>(&mut self) -> &mut T {
@@ -531,14 +531,14 @@ impl Conn {
     }
 
     /// Runs `f` with the registry's globals and the queue, to bind a protocol P0 doesn't (P4's
-    /// `zxdg_importer_v2`). The module binding it implements `Dispatch<I, U> for State` for its
-    /// objects and keeps its state in [`State::extension`]. None after shutdown, or off the
-    /// UI thread on winit's display.
+    /// `zxdg_importer_v2`, `backdrop-blur`'s effect managers). The module binding it implements
+    /// `Dispatch<I, U> for State` for its objects and keeps its state in [`State::extension`].
+    /// None after shutdown, or off the UI thread on winit's display.
     #[cfg_attr(
-        not(any(feature = "dnd", feature = "foreign-parent")),
+        not(any(feature = "dnd", feature = "foreign-parent", feature = "backdrop-blur")),
         expect(
             dead_code,
-            reason = "the extension point for P1 (dnd) and P4 (foreign-parent)"
+            reason = "the extension point for P1 (dnd), P4 (foreign-parent) and backdrop-blur"
         )
     )]
     pub(crate) fn with_globals<R>(
@@ -740,6 +740,14 @@ impl Conn {
     }
 }
 
+/// What P1 (`dnd`) and `backdrop-blur` read of the queue's `wl_compositor`.
+#[cfg(any(feature = "dnd", feature = "backdrop-blur"))]
+impl State {
+    pub(crate) fn compositor(&self) -> Option<&WlCompositor> {
+        self.compositor.as_ref()
+    }
+}
+
 /// What P1 (`dnd`) reads of the queue's state, from its own handlers on this queue and from
 /// [`Conn::with_globals`]. Read-only: P0's handlers keep these fields.
 #[cfg(feature = "dnd")]
@@ -752,10 +760,6 @@ impl State {
         self.device.as_ref()
     }
 
-    pub(crate) fn compositor(&self) -> Option<&WlCompositor> {
-        self.compositor.as_ref()
-    }
-
     pub(crate) fn shm(&self) -> Option<&WlShm> {
         self.shm.as_ref()
     }
@@ -766,7 +770,7 @@ impl State {
     }
 }
 
-#[cfg(any(feature = "dnd", feature = "foreign-parent"))]
+#[cfg(any(feature = "dnd", feature = "foreign-parent", feature = "backdrop-blur"))]
 impl Conn {
     /// Sends what was queued. Requests P1 and P4 make through [`Conn::with_globals`] need it.
     pub(crate) fn flush(&self) {

@@ -101,9 +101,9 @@ pub(super) fn winit_display(
 
 /// Runs `f` with a proxy for `window`'s own `wl_surface`, built on `conn` (winit's display)
 /// for this call only, as Rune's `platform/activation.rs` builds one: the proxy is never kept,
-/// and a request sent on it names winit's live surface. For a drag's origin (P1). Call it on
-/// the UI thread. For P4's `set_parent_of` too.
-#[cfg(any(feature = "dnd", feature = "foreign-parent"))]
+/// and a request sent on it names winit's live surface. For a drag's origin (P1), P4's
+/// `set_parent_of`, and `backdrop-blur`. Call it on the UI thread.
+#[cfg(any(feature = "dnd", feature = "foreign-parent", feature = "backdrop-blur"))]
 pub(super) fn with_surface<R>(
     conn: &wayland_client::Connection,
     window: &WindowHandle,

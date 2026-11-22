@@ -73,6 +73,7 @@ use std::{
 use rune::{AppHandle, AppSpec, Tx, WindowHandle, WindowOptions, WindowSpec};
 use strata_kit::fonts::{FAMILIES, FONTS};
 use strata_platform::{
+    backdrop_blur::BackdropBlur,
     csd::{self, Backend, Csd, Policy},
     glib_loop::GlibLoop,
 };
@@ -294,8 +295,8 @@ pub(crate) fn run_with(
     run_initial(ui, settings, initial, extend)
 }
 
-/// One window's app from `start`: its state, its hooks, and the clipboard, drag and drop and
-/// frame that attach to each native window it gets.
+/// One window's app from `start`: its state, its hooks, and the clipboard, drag and drop,
+/// backdrop blur and frame that attach to each native window it gets.
 fn window(ui: UiThread, start: Start) -> rune::App<App> {
     let frame = Policy::Auto.frame();
     let clip =
@@ -303,6 +304,8 @@ fn window(ui: UiThread, start: Start) -> rune::App<App> {
     let clip_for_init = clip.clone();
     let dnd = strata_platform::dnd::Dnd::<App>::new();
     let dnd_for_init = dnd.clone();
+    let blur = BackdropBlur::new();
+    let blur_for_init = blur.clone();
     let app = rune::App::new(AppSpec {
         poll: Some(poll),
         on_key: Some(commands::on_key),
@@ -317,6 +320,7 @@ fn window(ui: UiThread, start: Start) -> rune::App<App> {
         if refused::keep_open(app) {
             return;
         }
+        shell::detach_backdrop_blur(app);
         super::floating::close_with_browser(shell::window_id(app));
         folder_views::flush_at_exit(app);
         if closed(shell::window_id(app)) {
@@ -324,6 +328,7 @@ fn window(ui: UiThread, start: Start) -> rune::App<App> {
         }
     })
     .on_quit(|app: &mut App, _: &mut Tx| {
+        shell::detach_backdrop_blur(app);
         folder_views::flush_at_exit(app);
         if closed(shell::window_id(app)) {
             shut_down();
@@ -358,6 +363,7 @@ fn window(ui: UiThread, start: Start) -> rune::App<App> {
         };
         crate::clipboard::bind(&mut app, clip_for_init);
         crate::dnd::bind(&mut app, dnd_for_init);
+        shell::bind_backdrop_blur(&mut app, blur_for_init);
         follow_queue(&app, registered.clone());
         opened(shell::window_id(&app), registered);
         if let Some(initial) = initial {
@@ -369,6 +375,7 @@ fn window(ui: UiThread, start: Start) -> rune::App<App> {
         crate::clipboard::attach(&clip, window, &handle);
         crate::dnd::attach(&dnd, window, &handle);
         csd::attach(window, &handle, shell::csd_of);
+        blur.attach(window, &handle);
     })
 }
 

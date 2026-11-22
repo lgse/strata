@@ -19,6 +19,7 @@ pub(super) fn keep_open(app: &mut App) -> bool {
     let Some(ui) = UI.with(|ui| ui.get().copied()) else {
         return false;
     };
+    shell::detach_backdrop_blur(app);
     let csd = Csd::new(Policy::Auto.frame(), Backend::from_env());
     let stand_in = App::new(&ui, csd, shell::share_settings(app));
     let mut kept = std::mem::replace(app, stand_in);
