@@ -61,9 +61,12 @@
 //!   without rebuilding it. The selected match becomes the selection through
 //!   [`DocumentState::flush`], which the host calls from its poll: the find calls carry no
 //!   `Tx`.
-//! - **Tables** fit their columns to the text column (the viewport's width at the last
-//!   layout, `Cx::layout_with`), shrinking them in proportion down to a floor, then scroll
-//!   sideways.
+//! - **Tables** measure their columns from content (72–640 pt) and fit them to the text column
+//!   (the viewport's width at the last layout, `Cx::layout_with`), keep per-table column resize
+//!   dividers (48 pt floor, double-click auto-fit), clickable headers with multi-key sorting
+//!   (ascending -> descending -> unsorted, Shift-click secondary keys, theme-accent sort
+//!   indicator), and a horizontal scroll viewport with C24's overlay scrollbar when wider than
+//!   the text column.
 //! - **Links** are keyed `link-{n}` within their text (a URI's slashes would read as a key
 //!   path) and open through [`DocumentIntent::OpenLink`] on a plain click: not on Shift, and
 //!   once for a double-click, timed by the host's clock against
@@ -77,8 +80,9 @@
 //!
 //! # Deviations
 //!
-//! - **D1** Tables draw static: columns sized from an estimate of their widest text, wrapping
-//!   within 320 points; no sorting or resizing (C11b).
+//! - **D1** Embedded tables keep their interactive sort, column widths and horizontal scroll per
+//!   table unit inside `DocumentState` (reset on `set_document`), while standalone spreadsheets
+//!   and cell ranges stay in `SheetGrid` (C11b).
 //! - **D2** An inline equation shows its source in the mono face: `El::inline_icon` draws only
 //!   a square icon before a word and is skipped by selection, copy and `Role::Image`
 //!   accessibility (R3, `anomalyco/rune#350`). It still copies as `$source$`. (Owner item.)
@@ -143,6 +147,7 @@ mod model;
 mod render;
 mod shown;
 mod state;
+mod table;
 
 #[cfg(test)]
 mod tests;
@@ -164,7 +169,9 @@ pub use model::{
     Cell, Document, ListChildKind, Media, Span, SpanStyle, Unit, UnitKind, char_spans,
 };
 pub use render::{DocumentLabels, HEADING_SCALE};
+pub use rune_kit::SortDir;
 pub use state::{COPIED_FOR, DOUBLE_CLICK, DocumentState, MediaState};
+pub use table::{MAX_WIDTH as TABLE_MAX_WIDTH, MIN_WIDTH as TABLE_MIN_WIDTH};
 
 use render::{Ctx, IntentFn, Paint, build_row};
 

@@ -167,6 +167,7 @@ impl Demo {
             Selected {
                 count: self.selected.len(),
                 details: Some(d),
+                single: None,
             }
         });
         let filter = self.filter.as_ref().map(|f| {
