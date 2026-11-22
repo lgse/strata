@@ -36,7 +36,7 @@ use strata_components::{
         element::{CollectionState, Group, Groups},
         selection::{Listing, SyncRule},
     },
-    contract::{Entry, EntryId, EntrySource},
+    contract::{Entry, EntryId, EntrySource, ThumbKey},
 };
 use strata_core::{i18n::tr, model::ViewPreferences};
 use strata_fs::app::Browser;
@@ -292,9 +292,7 @@ impl Pane {
                 columns,
             } => self.relocate(from_depth, columns, tx),
             Change::Moved { from, to } => {
-                let columns = &self.columns;
-                let lists = |id: EntryId| columns.iter().any(|c| c.position_of(id).is_some());
-                self.moving.moved(from, to, lists);
+                self.moving.moved_in(from, to, &self.columns);
             }
             within => self.apply_within(within, tx),
         }
@@ -608,6 +606,11 @@ impl Pane {
         if followed {
             self.held = Held::of(&self.collection);
         }
+    }
+
+    /// Thumbnail `(from, to)` keys to relocate in the window's store after an arrived rename.
+    pub(crate) fn take_relocated_thumbnails(&mut self) -> Vec<(ThumbKey, ThumbKey)> {
+        self.moving.take_thumbnails()
     }
 
     /// Selects entry `id` of column `depth` alone, with the cursor on it.

@@ -450,8 +450,12 @@ pub(crate) fn apply<V: SinglePane>(app: &mut App, change: Change, tx: &mut Tx) -
     single.pane.set_layout_key(layout);
     single.pane.share_memory(&memory);
     let applied = single.pane.apply(change, tx);
+    let relocated = single.pane.take_relocated_thumbnails();
     // A folder back at its remembered position arms no first visit.
     single.first_visit.follow(applied, &single.pane);
+    for (from, to) in relocated {
+        app.window.thumbnails_mut().relocate(from, to);
+    }
     if matches!(applied, Applied::Entered | Applied::Returned) {
         // The GTK window gives a new listing the keyboard.
         tx.focus(V::KEY, false);
