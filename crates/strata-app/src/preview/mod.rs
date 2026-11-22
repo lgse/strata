@@ -63,6 +63,10 @@ use crate::{
     slots::{Frame, Listener, Part, Place, Setup},
 };
 
+pub(crate) fn highlighter(app: &mut App) -> strata_components::code_view::highlight::Highlighter {
+    app.preview.loader.highlighter(&app.look)
+}
+
 pub(crate) struct Preview {
     drawer: DrawerState,
     viewer: Viewer,

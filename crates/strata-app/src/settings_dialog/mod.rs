@@ -26,6 +26,7 @@ use crate::{
     slots::{Frame, Part, Place, Scope, Setup},
 };
 
+mod actions;
 mod appearance_page;
 mod controls;
 mod diagnostics;
@@ -198,6 +199,7 @@ pub(crate) struct SettingsDialog {
     theme_query: TextEdit,
     theme_filter: appearance_page::ThemeFilter,
     notice: notice::NoticeState,
+    actions: actions::ActionsState,
     keyboard: keyboard::KeyboardState,
     diagnostics: diagnostics::DiagnosticsState,
 }
@@ -243,9 +245,14 @@ impl SettingsDialog {
             theme_query: TextEdit::default(),
             theme_filter: appearance_page::ThemeFilter::All,
             notice: notice::NoticeState::default(),
+            actions: actions::ActionsState::new(later.clone()),
             keyboard: keyboard::KeyboardState::default(),
             diagnostics: diagnostics::DiagnosticsState::new(later),
         }
+    }
+
+    pub(crate) fn poll_editor_highlight(&mut self) -> bool {
+        self.actions.poll_editor_highlight()
     }
 
     pub(super) fn is_open(&self) -> bool {
@@ -277,6 +284,7 @@ impl SettingsDialog {
             || self.text_size.edit().focused
             || self.roundness.edit().focused
             || self.keyboard.query.focused
+            || self.actions.has_focused_field()
     }
 
     /// Whether one of the pages' choice menus is open over Settings, with no message over it.
@@ -322,7 +330,12 @@ pub(crate) fn open_settings_tx(app: &mut App, tx: &mut Tx) {
     state.open = true;
     state.open_choice = None;
     state.opened_page = state.page;
-    tx.focus_when_shown(state.page.nav_key(), tx.focus_visible() || tx.by_keys());
+    let nav_key = state.page.nav_key();
+    let on_actions = state.page == PageId::Actions;
+    if on_actions {
+        actions::ensure_observing(app);
+    }
+    tx.focus_when_shown(nav_key, tx.focus_visible() || tx.by_keys());
 }
 
 pub(super) fn close_settings(app: &mut App) {
@@ -334,6 +347,7 @@ pub(super) fn close_settings(app: &mut App) {
     state.theme_filter = appearance_page::ThemeFilter::All;
     // GTK hides its Settings layer and keeps it: the keybind search and the table shown stay as
     // they were, and only a capture or a confirmation ends with it.
+    state.actions.closed();
     state.keyboard.closed();
     state.diagnostics.closed();
 }
@@ -364,9 +378,10 @@ impl Part for SettingsDialog {
         if !dialog.open && !dialog.notice.is_open() {
             return None;
         }
-        if dialog.choice_menu_open() {
-            // A choice menu is a second modal, which leaves only the menu in the tree. Its keys
-            // stay in it, as GTK's popover in the Settings window keeps them from the browser.
+        if dialog.choice_menu_open() || (dialog.open && dialog.actions.popover_open()) {
+            // A choice menu or editor popover is a second modal, which leaves only the popover
+            // in the tree. Its keys stay in it, as GTK's popover in the Settings window keeps
+            // them from the browser.
             return Some(Holds::Popover);
         }
         Some(Holds::Modal {
@@ -391,11 +406,17 @@ impl Part for SettingsDialog {
                 avail,
             );
         }
+        if app.settings_dialog.page == PageId::Actions
+            && !app.settings_dialog.actions.is_observing()
+        {
+            actions::ensure_observing(app);
+        }
         changed |= controls::search_handle().tick(app, clock, tx);
         changed |= general_more::workers_field().poll(app, tx);
         changed |= general::video_start_field().poll(app, tx);
         changed |= appearance_page::text_size_field().poll(app, tx);
         changed |= appearance_page::roundness_field().poll(app, tx);
+        changed |= actions::poll(app, tx);
         changed |= keyboard::poll(app, tx);
         changed |= diagnostics::poll(app, clock, tx);
         let prefs = shell::preferences(app).clone();
@@ -452,6 +473,7 @@ fn build(app: &App, frame: &mut Frame<'_, App>) -> Option<El> {
     }
     shell.build(&app.look, frame.layer);
     frame.layer.extend(menu_layer);
+    actions::build_overlays(app, frame.layer);
     None
 }
 
@@ -574,6 +596,9 @@ fn nav_button(app: &App, entry: &NavEntry) -> El {
         .on_press_tx(move |app: &mut App, _: &mut Tx| {
             let tenxer_mode = shell::preferences(app).tenxer_mode;
             app.settings_dialog.select_page(page, tenxer_mode);
+            if page == PageId::Actions {
+                actions::ensure_observing(app);
+            }
         });
     if entry.id == app.settings_dialog.opened_page {
         btn = btn.autofocus();
@@ -686,7 +711,7 @@ fn build_page_content(
     match page {
         PageId::General => general::build(app, search, menu_layer),
         PageId::Appearance => appearance_page::build(app, search, menu_layer),
-        PageId::Actions => pages::actions_page(app, search),
+        PageId::Actions => actions::build(app, search),
         PageId::Keyboard => keyboard::build(app, search),
         PageId::Integrations => pages::integrations_page(app, search),
         PageId::Updates => pages::updates_page(app, search, menu_layer),
