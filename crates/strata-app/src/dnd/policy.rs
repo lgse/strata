@@ -502,6 +502,15 @@ impl Spring {
     }
 }
 
+/// A dragged folder and its descendants are not spring-load navigation destinations
+/// (`file_drag_hover_target` in `src/ui/browser/clipboard.rs`).
+fn is_drag_self_or_descendant(app: &App, destination: &Location) -> bool {
+    let Some(sources) = super::drag_sources(app) else {
+        return false;
+    };
+    !sources.is_empty() && sources.iter().all(|source| destination.is_within(source))
+}
+
 fn current_spring_target(app: &App) -> Option<SpringTarget> {
     if !super::is_dragging(app) || drops_blocked(app) {
         return None;
@@ -511,7 +520,11 @@ fn current_spring_target(app: &App) -> Option<SpringTarget> {
         app.sidebar.drop_over()
     {
         let is_trash = matches!(item, ItemId::Place(id) if id == "trash");
-        if !is_trash {
+        let self_target = app
+            .sidebar
+            .item_location(item)
+            .is_some_and(|loc| is_drag_self_or_descendant(app, loc));
+        if !is_trash && !self_target {
             return Some(SpringTarget::SidebarRow {
                 tab,
                 item: item.clone(),
@@ -525,7 +538,12 @@ fn view_spring_target(app: &App, tab: TabKey) -> Option<SpringTarget> {
     let view = shell::shown_view(app)?;
     if (view.shows)("columns") {
         let (depth, id) = app.columns.hovered_folder_drop()?;
-        return Some(SpringTarget::ViewRow { tab, depth, id });
+        let self_target = app
+            .columns
+            .position(depth, id)
+            .and_then(|pos| app.browser.entry_at(depth, pos))
+            .is_some_and(|entry| is_drag_self_or_descendant(app, &entry.location));
+        return (!self_target).then_some(SpringTarget::ViewRow { tab, depth, id });
     }
     if app.filter.pane.shows() {
         return None;
@@ -539,7 +557,13 @@ fn view_spring_target(app: &App, tab: TabKey) -> Option<SpringTarget> {
     };
     let depth = pane.depth()?;
     match pane.collection().drop_over() {
-        Some(DropOver::Row(id)) => Some(SpringTarget::ViewRow { tab, depth, id }),
+        Some(DropOver::Row(id)) => {
+            let self_target = pane
+                .position(depth, id)
+                .and_then(|pos| app.browser.entry_at(depth, pos))
+                .is_some_and(|entry| is_drag_self_or_descendant(app, &entry.location));
+            (!self_target).then_some(SpringTarget::ViewRow { tab, depth, id })
+        }
         _ => None,
     }
 }

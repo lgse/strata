@@ -7,6 +7,7 @@ mod header;
 mod perf;
 mod reveal;
 mod scrollbar;
+mod tooltip;
 
 use strata_kit::look::Look;
 

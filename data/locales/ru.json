@@ -1609,6 +1609,7 @@
   "Independent transparency for raised chrome such as the sidebar, header, tab bar, and footer.": "Независимая прозрачность для боковой панели, заголовка, панели вкладок и нижней строки.",
   "Frosted glass": "Матовое стекло",
   "Apply backdrop blur and a subtle frosted sheen to translucent dialogs, menus, and popovers.": "Применять размытие фона и лёгкий матовый блик к полупрозрачным диалогам, меню и всплывающим окнам.",
+  "Requires a compositor that supports backdrop blur and has it enabled.": "Требуется композитор, который поддерживает размытие фона и в котором оно включено.",
   "Unfocused window multiplier": "Множитель для неактивного окна",
   "Multiply transparency when the window is unfocused (higher is more see-through; 1.00× keeps it unchanged).": "Умножать прозрачность при потере фокуса окна (больше — прозрачнее; 1,00× без изменений)."
 }

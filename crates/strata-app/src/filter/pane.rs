@@ -128,8 +128,7 @@ impl PaneHits {
         self.collection.selection.in_band()
     }
 
-    /// The results' rows, while they show: what the QA backend's invariants hold the tree to.
-    #[cfg(feature = "qa")]
+    /// The results' rows, while they show: read for hover tooltips and QA invariants.
     pub(crate) fn hits(&self) -> Option<&Column> {
         self.hits.as_ref()
     }

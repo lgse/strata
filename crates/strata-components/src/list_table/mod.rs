@@ -207,7 +207,7 @@
 //! | column-layout: Hiding, showing, reordering, or resetting columns never changes the sort key, direction, or file order | `toggle-hide`, `reorder`, `reset-columns` (no sort sent; the gallery's host sorts only on a sort) |
 //! | column-layout: A hidden sort column stays the active sort… | `hidden-sort-column`, *partial*: the table sends no sort while its column is hidden; folder sorts and view switches are the host's |
 //! | column-layout: Showing the hidden sort column again restores its arrow; clicking it then reverses the existing direction | `hidden-sort-column` |
-//! | pointer-intent: In List, unused Name-column space and its row padding are blank, even when Name is not the first column; other column cells count as item content | `name-gutter-and-cells` (with Name last: a band from blank Name space, a drag from a cell that carries the selection, then a band from the row's padding); unit `the_name_columns_blank_space…` |
+//! | pointer-intent: In List, only the icon and rendered filename are item hit targets; unused Name space, row padding, and metadata columns stay selection space even when Name is reordered | unit `only_the_name_columns_icon_and_drawn_name_are_content_and_metadata_stays_gutter` |
 //! | marquee: A drag from blank space in a pane header, List's heading strip… starts a marquee | `heading-strip-marquee`, *partial*: List's heading strip (C1e's header rule) |
 //! | marquee: A press on a button… keeps that control's own behavior and starts no marquee | `reorder-outside`, *partial*: List's headings |
 //! | view-modes: Click the first of five entries and Ctrl+click the third. Shift+Down in List… selects only the third and fourth | gallery `a_ctrl_click_then_shift_down…`, *partial*: List |
@@ -316,6 +316,7 @@ pub use sort::{SortDir, SortIntent, SortShown, next_direction};
 pub use state::{ListTableState, MenuAt};
 
 use crate::collection::element::{Collection, CollectionState, Roles, RowCx, Slot, viewport_path};
+use crate::collection::pointer::PointerSettings;
 use crate::contract::EntrySource;
 use crate::scroll::{BarLook, Target, overlay};
 use resolve::{Inputs, Resolved, resolve};
@@ -372,6 +373,7 @@ pub struct ListParts<'a> {
 type PartsFn<S> = Rc<dyn for<'a> Fn(&'a S) -> ListParts<'a>>;
 type TableMutFn<S> = Rc<dyn Fn(&mut S) -> &mut ListTableState>;
 type VersionFn<S> = Rc<dyn Fn(&S, &RowCx<'_>) -> u64>;
+type TooltipFn<S> = Rc<dyn Fn(&S, &RowCx<'_>, &dyn Fn() -> bool) -> Option<String>>;
 type SortFn<S> = Rc<dyn Fn(&mut S, SortIntent, &mut Tx)>;
 type LayoutFn<S> = Rc<dyn Fn(&mut S, LayoutChange, &mut Tx)>;
 type WidthsFn<S> = Rc<dyn Fn(&mut S, ColumnWidths, &mut Tx)>;
@@ -384,6 +386,7 @@ pub(crate) struct Shared<S> {
     parts: PartsFn<S>,
     table_mut: TableMutFn<S>,
     cells_version: Option<VersionFn<S>>,
+    tooltip: Option<TooltipFn<S>>,
     label: Option<Slot<S>>,
     on_sort: Option<SortFn<S>>,
     on_layout: Option<LayoutFn<S>>,
@@ -400,6 +403,7 @@ impl<S> Clone for Shared<S> {
             parts: self.parts.clone(),
             table_mut: self.table_mut.clone(),
             cells_version: self.cells_version.clone(),
+            tooltip: self.tooltip.clone(),
             label: self.label.clone(),
             on_sort: self.on_sort.clone(),
             on_layout: self.on_layout.clone(),
@@ -443,6 +447,7 @@ impl<S: 'static> ListTable<S> {
                 parts: Rc::new(parts),
                 table_mut: Rc::new(table_mut),
                 cells_version: None,
+                tooltip: None,
                 label: None,
                 on_sort: None,
                 on_layout: None,
@@ -458,6 +463,18 @@ impl<S: 'static> ListTable<S> {
     /// entry, its state or the layout.
     pub fn cells_version(mut self, f: impl Fn(&S, &RowCx<'_>) -> u64 + 'static) -> Self {
         self.shared.cells_version = Some(Rc::new(f));
+        self
+    }
+
+    /// Hover tooltip text for a row's primary (Name) cell, given a lazy predicate reporting
+    /// whether the entry's displayed name is truncated at the primary column's resolved width.
+    /// Rebuilt whenever [`Self::cells_version`], the entry, its state, or the resolved column
+    /// layout changes; omitted while renaming, dragging, or anchored by a folder peek.
+    pub fn tooltip(
+        mut self,
+        f: impl Fn(&S, &RowCx<'_>, &dyn Fn() -> bool) -> Option<String> + 'static,
+    ) -> Self {
+        self.shared.tooltip = Some(Rc::new(f));
         self
     }
 
@@ -593,7 +610,13 @@ impl<S: 'static> ListTable<S> {
             viewport_path(base.scope()),
         );
         let edge_shared = shared.clone();
+        let pointer = base
+            .setting::<PointerSettings>()
+            .copied()
+            .unwrap_or_default()
+            .drag_selected_rows(false);
         base.roles(Roles::LIST)
+            .settings(pointer)
             .on_scroll(move |p| {
                 feed.set(p);
                 bar.follow(p);

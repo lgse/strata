@@ -1609,6 +1609,7 @@
   "Independent transparency for raised chrome such as the sidebar, header, tab bar, and footer.": "Independent transparency for raised chrome such as the sidebar, header, tab bar, and footer.",
   "Frosted glass": "Frosted glass",
   "Apply backdrop blur and a subtle frosted sheen to translucent dialogs, menus, and popovers.": "Apply backdrop blur and a subtle frosted sheen to translucent dialogs, menus, and popovers.",
+  "Requires a compositor that supports backdrop blur and has it enabled.": "Requires a compositor that supports backdrop blur and has it enabled.",
   "Unfocused window multiplier": "Unfocused window multiplier",
   "Multiply transparency when the window is unfocused (higher is more see-through; 1.00× keeps it unchanged).": "Multiply transparency when the window is unfocused (higher is more see-through; 1.00× keeps it unchanged)."
 }

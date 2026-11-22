@@ -1609,6 +1609,7 @@
   "Independent transparency for raised chrome such as the sidebar, header, tab bar, and footer.": "Független átlátszóság a kiemelt elemekhez, például az oldalsávhoz, fejléchez, lapsávhoz és lábléchez.",
   "Frosted glass": "Mattüveg",
   "Apply backdrop blur and a subtle frosted sheen to translucent dialogs, menus, and popovers.": "Háttérelmosás és finom mattüveg fény alkalmazása az áttetsző párbeszédablakokra, menükre és felugró panelekre.",
+  "Requires a compositor that supports backdrop blur and has it enabled.": "Olyan kompozitort igényel, amely támogatja a háttérelmosást, és engedélyezve is van benne.",
   "Unfocused window multiplier": "Inaktív ablak szorzója",
   "Multiply transparency when the window is unfocused (higher is more see-through; 1.00× keeps it unchanged).": "Az átlátszóság megszorzása, ha az ablak nincs fókuszban (nagyobb érték jobban átlátszó; az 1,00× változatlanul hagyja)."
 }

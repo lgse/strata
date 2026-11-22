@@ -1609,6 +1609,7 @@
   "Independent transparency for raised chrome such as the sidebar, header, tab bar, and footer.": "Transparence indépendante pour les éléments surélevés tels que la barre latérale, l’en-tête, la barre d’onglets et le pied de page.",
   "Frosted glass": "Verre dépoli",
   "Apply backdrop blur and a subtle frosted sheen to translucent dialogs, menus, and popovers.": "Appliquer un flou d’arrière-plan et un léger reflet dépoli aux boîtes de dialogue, menus et infobulles translucides.",
+  "Requires a compositor that supports backdrop blur and has it enabled.": "Nécessite un compositeur qui prend en charge le flou d’arrière-plan et l’a activé.",
   "Unfocused window multiplier": "Multiplicateur de fenêtre inactive",
   "Multiply transparency when the window is unfocused (higher is more see-through; 1.00× keeps it unchanged).": "Multiplier la transparence lorsque la fenêtre n’est pas active (plus élevé = plus transparent ; 1,00× ne change rien)."
 }

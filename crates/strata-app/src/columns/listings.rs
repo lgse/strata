@@ -8,14 +8,20 @@
 //! (`search_recursively` in `src/ui/browser/columns/append/query.rs`): the column's listing
 //! stays, and follows the browser underneath.
 
-use std::{borrow::Cow, collections::HashMap, rc::Rc, time::Duration};
+use std::{
+    borrow::Cow,
+    collections::HashMap,
+    hash::{DefaultHasher, Hash, Hasher},
+    rc::Rc,
+    time::Duration,
+};
 
 use rune::Tx;
 use strata_components::{
     columns::ColumnSources,
     contract::{EntryId, EntrySource},
 };
-use strata_core::model::Location;
+use strata_core::{model::Location, util::DateFormat};
 
 use crate::{
     details,
@@ -84,6 +90,10 @@ pub(super) struct Listings {
     hit_details: bool,
     /// Moves each time results are shown or dropped, so two sets never share a version.
     swaps: u64,
+    /// Active date format, synced with preferences for hover tooltip versioning.
+    date_format: DateFormat,
+    /// Relative-date refresh epoch, bumped every 30 s while dates are relative.
+    relative_epoch: u64,
 }
 
 impl Listings {
@@ -97,7 +107,25 @@ impl Listings {
             hit_paths: HashMap::new(),
             hit_details: false,
             swaps: 0,
+            date_format: DateFormat::Relative,
+            relative_epoch: 0,
         }
+    }
+
+    pub(super) fn sync_date_format(&mut self, format: DateFormat) {
+        self.date_format = format;
+    }
+
+    pub(super) fn date_format(&self) -> DateFormat {
+        self.date_format
+    }
+
+    pub(super) fn set_relative_epoch(&mut self, epoch: u64) {
+        self.relative_epoch = epoch;
+    }
+
+    pub(super) fn has_rows(&self) -> bool {
+        (0..self.columns.len()).any(|depth| self.shown(depth).is_some_and(|c| !c.is_empty()))
     }
 
     /// Advances each column's spinner grace timer at `clock`. Returns `true` when any column's
@@ -255,6 +283,26 @@ impl ColumnSources for Listings {
             .then(|| self.hit_path(depth, index))
             .flatten()
             .map(Cow::Borrowed)
+    }
+
+    fn tooltip_version(&self, depth: usize, index: usize) -> u64 {
+        let mut hasher = DefaultHasher::new();
+        let modified = self
+            .shown(depth)
+            .and_then(|column| column.row_at(index))
+            .and_then(|row| row.facts().modified);
+        modified.hash(&mut hasher);
+        self.date_format.as_str().hash(&mut hasher);
+        if self.date_format == DateFormat::Relative {
+            self.relative_epoch.hash(&mut hasher);
+        }
+        hasher.finish()
+    }
+
+    fn tooltip(&self, depth: usize, index: usize) -> Option<Cow<'_, str>> {
+        let row = self.shown(depth)?.row_at(index)?;
+        let date = details::modified_tooltip_date(row.facts())?;
+        details::entry_tooltip_text(row.name(), false, Some(&date)).map(Cow::Owned)
     }
 }
 

@@ -112,11 +112,13 @@ pub(crate) fn follow_look_tx(app: &mut App, tx: &mut Tx) {
     crate::preview::sync_theme(app);
 }
 
-/// Syncs live preferences (`date_format`, `List` relative-date timer, and active `Preview`
+/// Syncs live preferences (`date_format`, relative-date timers, and active `Preview`
 /// backend/wrap/header) after a Settings edit or external reload.
 pub(crate) fn sync_live_preferences(app: &mut App, tx: &mut Tx) {
     let format = DateFormat::parse(&preferences(app).date_format);
     strata_core::util::set_date_format(format);
+    app.columns.sync_date_format(format);
+    app.icons.sync_date_format(format);
     app.list.sync_date_format(format);
     if app.list.is_relative_dates() {
         tx.wake_after(Duration::ZERO);

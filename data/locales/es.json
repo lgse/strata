@@ -1609,6 +1609,7 @@
   "Independent transparency for raised chrome such as the sidebar, header, tab bar, and footer.": "Transparencia independiente para elementos elevados como la barra lateral, la cabecera, la barra de pestañas y el pie.",
   "Frosted glass": "Cristal esmerilado",
   "Apply backdrop blur and a subtle frosted sheen to translucent dialogs, menus, and popovers.": "Aplica desenfoque de fondo y un sutil brillo esmerilado a los diálogos, menús y paneles emergentes translúcidos.",
+  "Requires a compositor that supports backdrop blur and has it enabled.": "Requiere un compositor compatible con el desenfoque de fondo y que lo tenga activado.",
   "Unfocused window multiplier": "Multiplicador de ventana desenfocada",
   "Multiply transparency when the window is unfocused (higher is more see-through; 1.00× keeps it unchanged).": "Multiplica la transparencia cuando la ventana no tiene el foco (más alto es más transparente; 1,00× la mantiene igual)."
 }

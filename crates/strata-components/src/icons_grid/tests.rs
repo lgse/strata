@@ -4,6 +4,7 @@
 
 mod perf;
 mod runtime;
+mod tooltip;
 
 use strata_kit::look::Look;
 

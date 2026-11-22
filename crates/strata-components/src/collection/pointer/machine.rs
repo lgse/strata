@@ -35,7 +35,7 @@ pub enum Spot {
     /// The drawn text of the entry's name: content, and where a slow click renames. In Icons,
     /// the caption band.
     Name,
-    /// The rest of the entry itself: its icon or thumbnail, and in List the other columns.
+    /// The rest of the entry's hit content: its icon or thumbnail (and Icons' details text).
     Content,
     /// Blank row or card space beside the entry, or no entry at all.
     Gutter,
@@ -468,8 +468,10 @@ fn primary(
     let selected = s.selection().is_selected_at(s.source(), index);
     let len = s.selection().len();
     g.sole_before = selected && len == 1;
-    // The entry itself, or blank space on a selected one, is where a drag drags files.
-    let on_entry = press.spot != Spot::Gutter || selected;
+    // The entry itself, or blank space on a selected one when this view reserves selected rows
+    // for outgoing file drags, is where a drag drags files.
+    let on_entry =
+        press.spot != Spot::Gutter || (settings.drag_selected_rows && settings.drags && selected);
     if !settings.multiple {
         return primary_single(g, (index, on_entry), settings, s);
     }
