@@ -97,11 +97,17 @@ impl GlibLoop {
     /// A pass that runs out of budget leaves sources ready; the helper then notifies again at
     /// once, so the caller's loop runs between two passes.
     pub fn pump(&self, budget: Duration) -> bool {
+        self.pump_until(budget, || false)
+    }
+
+    /// Like [`Self::pump`], stopping early once `stop()` returns `true` after a dispatched
+    /// source so the caller can render an intermediate frame before remaining ready sources run.
+    pub fn pump_until(&self, budget: Duration, mut stop: impl FnMut() -> bool) -> bool {
         let started = Instant::now();
         let mut dispatched = false;
         while self.context.iteration(false) {
             dispatched = true;
-            if started.elapsed() >= budget {
+            if stop() || started.elapsed() >= budget {
                 break;
             }
         }

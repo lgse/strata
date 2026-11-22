@@ -25,7 +25,7 @@
 use std::{
     cell::RefCell,
     collections::VecDeque,
-    hash::{BuildHasher, Hash, Hasher, RandomState},
+    hash::{BuildHasher, Hasher, RandomState},
     path::{Path, PathBuf},
     sync::OnceLock,
     time::UNIX_EPOCH,
@@ -48,37 +48,63 @@ use kind::Kind;
 use crate::listing::known;
 pub(crate) use viewer::Viewer;
 
-/// Whether `entry`'s thumbnail is an STL rendered model, gated by `stl_thumbnails`.
-pub(crate) fn is_rendered_model(entry: &FileEntry) -> bool {
-    !entry.is_directory()
-        && entry
-            .location
-            .native_path()
-            .and_then(kind::of)
-            .is_some_and(|kind| kind == Kind::RenderedModel)
-}
-
-/// The key of `entry`'s thumbnail: its path, modification time and size, so a change to the
-/// file is a new key. None for an entry that gets no thumbnail: not a local file, or a kind
-/// no renderer takes.
-pub(crate) fn key_of(entry: &FileEntry) -> Option<ThumbKey> {
+/// Classifies `entry`'s thumbnail in a single `kind::of` pass, returning `(thumbnail_key,
+/// is_rendered_model)`.
+pub(crate) fn classify(entry: &FileEntry) -> (Option<ThumbKey>, bool) {
     if entry.is_directory() {
-        return None;
+        return (None, false);
     }
-    let path = entry.location.native_path()?;
-    kind::of(path)?;
-    let mut hasher = keys().build_hasher();
-    path.hash(&mut hasher);
-    known(&entry.modified_unix_seconds).hash(&mut hasher);
-    known(&entry.size).hash(&mut hasher);
-    Some(ThumbKey::new(hasher.finish()))
+    let Some(path) = entry.location.native_path() else {
+        return (None, false);
+    };
+    let Some(kind) = kind::of(path) else {
+        return (None, false);
+    };
+    let key = hash_thumb_key(
+        path.as_os_str().as_encoded_bytes(),
+        known(&entry.modified_unix_seconds),
+        known(&entry.size),
+    );
+    (Some(ThumbKey::new(key)), kind == Kind::RenderedModel)
 }
 
-/// The hash keys of this process: random, so no folder of names can be made to collide.
+/// Per-process random seed so no folder of names can be made to collide.
 /// Nothing keeps a thumbnail key past the process; the disk cache is keyed by path.
-fn keys() -> &'static RandomState {
-    static KEYS: OnceLock<RandomState> = OnceLock::new();
-    KEYS.get_or_init(RandomState::new)
+fn thumb_seed() -> u64 {
+    static SEED: OnceLock<u64> = OnceLock::new();
+    *SEED.get_or_init(|| RandomState::new().build_hasher().finish())
+}
+
+/// Fast word-at-a-time 64-bit hash over raw path bytes plus optional `(mtime, size)`.
+fn hash_thumb_key(path_bytes: &[u8], modified: Option<i64>, size: Option<u64>) -> u64 {
+    const K: u64 = 0x517cc1b727220a95;
+    let mut h = thumb_seed();
+    let (chunks, rem) = path_bytes.as_chunks::<8>();
+    for &chunk in chunks {
+        let word = u64::from_ne_bytes(chunk);
+        h = (h.rotate_left(5) ^ word).wrapping_mul(K);
+    }
+    if !rem.is_empty() {
+        let mut tail = [0_u8; 8];
+        tail[..rem.len()].copy_from_slice(rem);
+        let word = u64::from_ne_bytes(tail);
+        h = (h.rotate_left(5) ^ word ^ (rem.len() as u64)).wrapping_mul(K);
+    }
+    let (m_tag, m_val) = match modified {
+        Some(v) => (1_u64, v.cast_unsigned()),
+        None => (0_u64, 0_u64),
+    };
+    let (s_tag, s_val) = match size {
+        Some(v) => (1_u64, v),
+        None => (0_u64, 0_u64),
+    };
+    h = (h.rotate_left(5) ^ ((m_tag << 1) | s_tag)).wrapping_mul(K);
+    h = (h.rotate_left(5) ^ m_val).wrapping_mul(K);
+    h = (h.rotate_left(5) ^ s_val).wrapping_mul(K);
+    h ^= h >> 33;
+    h = h.wrapping_mul(0xff51afd7ed558ccd);
+    h ^= h >> 33;
+    h
 }
 
 /// One thumbnail to make.

@@ -145,7 +145,8 @@ impl Offscreen {
         let mut dispatched = false;
         while self.context.iteration(false) {
             dispatched = true;
-            if started.elapsed() >= super::DISPATCH_BUDGET {
+            if self.runtime.state.take_yield_paint() || started.elapsed() >= super::DISPATCH_BUDGET
+            {
                 break;
             }
         }

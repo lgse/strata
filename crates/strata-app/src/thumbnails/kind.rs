@@ -38,12 +38,29 @@ impl Kind {
     }
 }
 
+fn lowercase_ascii_extension(path: &Path) -> Option<([u8; 16], usize)> {
+    let ext = path.extension()?.to_str()?;
+    let bytes = ext.as_bytes();
+    if bytes.is_empty() || bytes.len() > 16 {
+        return None;
+    }
+    if !bytes.is_ascii() {
+        return None;
+    }
+    let mut buf = [0_u8; 16];
+    for (dst, &byte) in buf.iter_mut().zip(bytes) {
+        *dst = byte.to_ascii_lowercase();
+    }
+    Some((buf, bytes.len()))
+}
+
 pub(crate) fn of(path: &Path) -> Option<Kind> {
-    if raw_metadata::is_raw(path) {
+    let (buf, len) = lowercase_ascii_extension(path)?;
+    let extension = std::str::from_utf8(&buf[..len]).ok()?;
+    if raw_metadata::is_raw_lowercased_extension(extension) {
         return Some(Kind::RawImage);
     }
-    let extension = path.extension()?.to_str()?.to_ascii_lowercase();
-    match extension.as_str() {
+    match extension {
         "png" | "jpg" | "jpeg" | "webp" | "gif" | "bmp" | "tif" | "tiff" | "svg" | "heic"
         | "heif" | "avif" | "jxl" => Some(Kind::Image),
         "pdf" => Some(Kind::Pdf),
@@ -57,7 +74,7 @@ pub(crate) fn of(path: &Path) -> Option<Kind> {
         }
         // FFmpeg exposes no art stream for tag-only Ogg, Opus or WAV covers.
         "mp3" | "flac" | "m4a" | "m4b" | "mka" | "aiff" | "aif" | "wma" => Some(Kind::Video),
-        _ => CoverFormat::from_argument(&extension).map(Kind::Cover),
+        _ => CoverFormat::from_argument(extension).map(Kind::Cover),
     }
 }
 

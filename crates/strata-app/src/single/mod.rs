@@ -397,7 +397,7 @@ pub(crate) fn poll<V: SinglePane>(app: &mut App, clock: f64, tx: &mut Tx) -> boo
         first_visit,
         ..
     } = V::single_mut(app);
-    let placed = first_visit.settle(pane);
+    let placed = first_visit.settle(pane, tx);
     if placed {
         memory.set_visit_cursor(pane.depth().zip(pane.collection().selection.cursor()));
         let source = pane.source();

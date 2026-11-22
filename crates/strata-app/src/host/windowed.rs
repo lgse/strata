@@ -121,7 +121,7 @@ pub(super) fn pump(app: &mut App, tx: &mut Tx) -> bool {
     shell::publish(app);
     GLIB.with(|glib| {
         if let Some(glib) = glib.get() {
-            glib.pump(super::DISPATCH_BUDGET);
+            glib.pump_until(super::DISPATCH_BUDGET, || app.take_yield_paint());
         }
     });
     let settled = shell::settle(app, tx);

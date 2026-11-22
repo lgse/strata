@@ -81,6 +81,9 @@ struct Queue<S> {
     queued: HashMap<TabKey, u64>,
     heard: u64,
     copied: u64,
+    /// Set when a non-empty `EntriesReplaced` lands so the host lets Rune paint the first
+    /// visible rows before dispatching staged tail chunks in the same GLib pump.
+    yield_paint: bool,
 }
 
 pub(crate) struct Inbox<S>(Rc<RefCell<Queue<S>>>);
@@ -184,6 +187,7 @@ impl<S: 'static> Inbox<S> {
             queued: HashMap::new(),
             heard: 0,
             copied: 0,
+            yield_paint: false,
         })))
     }
 
@@ -241,6 +245,9 @@ impl<S: 'static> Inbox<S> {
         let mut queue = self.0.borrow_mut();
         queue.heard += 1;
         queue.copied += batch.copied;
+        if matches!(event, BrowserEvent::EntriesReplaced { count, .. } if *count > 0) {
+            queue.yield_paint = true;
+        }
         if let Some(tab) = tab {
             *queue.queued.entry(tab).or_default() += batch.updates.len() as u64;
         }
@@ -274,6 +281,12 @@ impl<S: 'static> Inbox<S> {
 
     pub(crate) fn is_empty(&self) -> bool {
         self.0.borrow().updates.is_empty()
+    }
+
+    /// Returns `true` once after a non-empty `EntriesReplaced` arrived, clearing the flag so
+    /// the host yields to Rune to paint the initial visible rows before draining tail chunks.
+    pub(crate) fn take_yield_paint(&self) -> bool {
+        std::mem::take(&mut self.0.borrow_mut().yield_paint)
     }
 
     /// How many events the browser has sent, shown or not.
