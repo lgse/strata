@@ -839,8 +839,13 @@ impl HostedPreview for Viewer {
     }
 
     fn find_end(&mut self) {
-        if let Some(hosted) = self.active_hosted_mut() {
-            hosted.find_end();
+        match self {
+            Self::Pdf(pdf) => pdf.find_end(),
+            _ => {
+                if let Some(hosted) = self.active_hosted_mut() {
+                    hosted.find_end();
+                }
+            }
         }
     }
 
@@ -849,6 +854,7 @@ impl HostedPreview for Viewer {
             Self::Code(code) => code.busy(),
             Self::Model(model) => model.state.busy(),
             Self::Document(doc) => doc.active_hosted()?.busy(),
+            Self::Pdf(pdf) => pdf.state.busy(),
             _ => None,
         }
     }

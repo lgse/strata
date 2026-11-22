@@ -9,7 +9,8 @@ use std::time::Duration;
 
 use rune::{Drag, Phase, Tx};
 
-use super::find::{Find, Hit};
+use super::find::{Find, Hit, SearchSource};
+use super::layer::PlainText;
 use super::model::{
     Content, PageReply, PdfDocument, RenderCaps, RenderKind, RenderRequest, Shared, Ticket,
 };
@@ -79,6 +80,12 @@ pub struct PdfState {
     pub(crate) over_text: bool,
     pub(crate) find: Find,
     searchable: bool,
+    /// Per-page plain text supplied in one pass for searching unrendered pages.
+    page_texts: Vec<Option<PlainText>>,
+    /// True once the host has supplied the document's single-pass text index.
+    text_index_loaded: bool,
+    /// Busy label while the host is building the single-pass text index.
+    text_index_busy: Option<String>,
     pub(crate) anchor: Option<Anchor>,
     pub(crate) reveal: Option<Reveal>,
     /// The host's clock at its last [`PdfState::tick`].
@@ -139,6 +146,9 @@ impl PdfState {
             over_text: false,
             find: Find::default(),
             searchable: false,
+            page_texts: Vec::new(),
+            text_index_loaded: false,
+            text_index_busy: None,
             anchor: None,
             reveal: None,
             clock: 0.0,
@@ -168,6 +178,9 @@ impl PdfState {
         self.selection.clear();
         self.gesture = Gesture::Idle;
         self.find.clear();
+        self.page_texts.clear();
+        self.text_index_loaded = false;
+        self.text_index_busy = None;
         self.anchor = None;
         self.reveal = None;
         self.settle_at = None;
@@ -219,7 +232,88 @@ impl PdfState {
         self.searchable = on;
         if !on {
             self.find.clear();
+            self.text_index_busy = None;
         }
+    }
+
+    /// Marks the document's single-pass text index as loading (showing `label` in the preview
+    /// header's busy indicator) or finished (`None`). Suppresses per-page `RenderKind::TextOnly`
+    /// requests while loading.
+    pub fn set_text_index_loading(&mut self, label: Option<String>) {
+        self.text_index_busy = label;
+        let want = self.want();
+        self.queue.reconcile(&self.doc, &want);
+        self.wake_if_idle();
+    }
+
+    /// Supplies per-page plain text extracted in one pass for searching unrendered pages.
+    /// Suppresses per-page `RenderKind::TextOnly` requests for the rest of this document and
+    /// immediately indexes unrendered pages for any active find query.
+    pub fn set_page_texts(&mut self, texts: Vec<Option<String>>) -> bool {
+        let n = self.doc.pages();
+        self.page_texts = texts
+            .into_iter()
+            .take(n)
+            .map(|opt| opt.filter(|s| !s.is_empty()).map(PlainText::new))
+            .collect();
+        let was_loading = self.text_index_busy.take().is_some();
+        self.text_index_loaded = true;
+        let want = self.want();
+        self.queue.reconcile(&self.doc, &want);
+        let updated = self.apply_page_texts_to_find();
+        was_loading || updated
+    }
+
+    fn apply_page_texts_to_find(&mut self) -> bool {
+        if !self.find.active() {
+            return false;
+        }
+        let prev = (self.find.hits.len(), self.find.current);
+        let mut became_current = false;
+        for page in 0..self.doc.pages() {
+            if self
+                .queue
+                .slots
+                .get(page)
+                .is_some_and(|s| s.layer.is_some())
+            {
+                continue;
+            }
+            let source = self
+                .page_texts
+                .get(page)
+                .and_then(Option::as_ref)
+                .map(SearchSource::Plain);
+            if self.find.add(page, source) {
+                became_current = true;
+            }
+        }
+        if became_current {
+            self.select_hit();
+        }
+        became_current || (self.find.hits.len(), self.find.current) != prev
+    }
+
+    /// Whether a find query is active and unrendered pages would benefit from a single-pass
+    /// text index. Returns `false` for 1-page PDFs whose sole page is already rendered.
+    pub fn needs_text_index(&self) -> bool {
+        if !self.searchable
+            || !self.find.active()
+            || self.text_index_loaded
+            || self.text_index_busy.is_some()
+        {
+            return false;
+        }
+        let n = self.doc.pages();
+        if n <= 1 && self.queue.slots.first().is_some_and(|s| s.held.is_some()) {
+            return false;
+        }
+        self.queue.slots.iter().any(|s| s.layer.is_none())
+    }
+
+    /// Busy label while the host is indexing document text for find.
+    pub fn busy(&self) -> Option<&str> {
+        self.text_index_busy.as_deref()
     }
 
     pub fn set_caps(&mut self, caps: RenderCaps) {
@@ -298,6 +392,16 @@ impl PdfState {
         self.queue.slots.get(page).and_then(|s| s.layer.as_ref())
     }
 
+    fn plain_text(&self, page: usize) -> Option<&PlainText> {
+        self.page_texts.get(page).and_then(Option::as_ref)
+    }
+
+    fn page_search_source(&self, page: usize) -> Option<SearchSource<'_>> {
+        self.layer(page)
+            .map(SearchSource::Layer)
+            .or_else(|| self.plain_text(page).map(SearchSource::Plain))
+    }
+
     pub(crate) fn key(&self) -> &str {
         &self.key
     }
@@ -352,7 +456,10 @@ impl PdfState {
             forward: self.forward,
             width_px: self.page_width() * self.scale,
             settled: self.settle_at.is_none(),
-            text_lane: self.searchable && self.find.active(),
+            text_lane: self.searchable
+                && self.find.active()
+                && !self.text_index_loaded
+                && self.text_index_busy.is_none(),
             search: self.find.generation,
         }
     }
@@ -384,9 +491,10 @@ impl PdfState {
     pub fn complete(&mut self, ticket: Ticket, reply: PageReply) -> Landed {
         // Any answer to the request in flight counts the page for this query, even one that
         // changes nothing (a text-only reply with no text): else the page is asked again.
+        let page = ticket.page();
+        let had_layer = self.layer(page).is_some();
         let answered = self.queue.is_wanted(ticket);
         let landed = self.queue.complete(&mut self.doc, ticket, reply);
-        let page = ticket.page();
         if (answered || landed != Landed::Dropped)
             && self.find.active()
             && let Some(slot) = self.queue.slots.get_mut(page)
@@ -394,17 +502,7 @@ impl PdfState {
             slot.searched = self.find.generation;
         }
         if landed == Landed::Shown {
-            let layer = self.layer(page).cloned();
-            if self.find.add(page, layer.as_ref()) {
-                self.select_hit();
-            }
-            // The selection keeps its offsets on a page whose text came back the same; a page
-            // whose text changed drops its part.
-            if let Some(&(_, end)) = self.selection.ranges.get(&page)
-                && layer.as_ref().is_none_or(|l| end > l.len())
-            {
-                self.selection.ranges.remove(&page);
-            }
+            self.reconcile_page_find_and_selection(page, had_layer);
         }
         let want = self.want();
         let ranges = &self.selection.ranges;
@@ -522,7 +620,8 @@ impl PdfState {
     /// Mounts the element that wakes the host when work is waiting and the host may be at
     /// rest. True when it did (the view runs again).
     fn wake_if_idle(&mut self) -> bool {
-        if !self.idle || !self.queue.has_work(&self.doc, &self.want()) {
+        if !self.idle || (!self.queue.has_work(&self.doc, &self.want()) && !self.needs_text_index())
+        {
             return false;
         }
         self.idle = false;
@@ -828,13 +927,36 @@ impl PdfState {
         }
     }
 
-    /// The pages whose layers find searches.
-    fn layers(&self) -> impl Iterator<Item = (usize, &Shared)> {
-        self.queue
-            .slots
-            .iter()
-            .enumerate()
-            .filter_map(|(p, s)| s.layer.as_ref().map(|l| (p, l)))
+    fn reconcile_page_find_and_selection(&mut self, page: usize, had_layer: bool) {
+        let layer = self.layer(page).cloned();
+        let prev_hit = self.find.current_hit();
+        let source = layer.as_ref().map(SearchSource::Layer).or_else(|| {
+            self.page_texts
+                .get(page)
+                .and_then(Option::as_ref)
+                .map(SearchSource::Plain)
+        });
+        let became_current = self.find.add(page, source);
+        let current_hit = self.find.current_hit();
+        // When the active hit's page upgrades from plain text (or unrendered) to its real glyph
+        // layer, re-select its glyph range and refine scroll reveal to center the matched line.
+        let upgraded_current =
+            !had_layer && layer.is_some() && current_hit.is_some_and(|h| h.page == page);
+        if became_current || current_hit != prev_hit || upgraded_current {
+            self.select_hit();
+        }
+        // The selection keeps its offsets on a page whose text came back the same; a page
+        // whose text changed drops its part.
+        if let Some(&(_, end)) = self.selection.ranges.get(&page)
+            && layer.as_ref().is_none_or(|l| end > l.len())
+        {
+            self.selection.ranges.remove(&page);
+        }
+    }
+
+    /// The pages whose glyph layers or plain-text fallback find searches.
+    fn search_sources(&self) -> impl Iterator<Item = (usize, SearchSource<'_>)> {
+        (0..self.doc.pages()).filter_map(|p| self.page_search_source(p).map(|s| (p, s)))
     }
 
     /// Whether the content overflows sideways and isn't at its left edge.
@@ -871,7 +993,7 @@ impl HostedPreview for PdfState {
         self.selection.clear();
         self.reveal = None;
         let mut find = std::mem::take(&mut self.find);
-        find.run(query, self.layers());
+        find.run(query, self.search_sources());
         self.find = find;
         if self.find.active() {
             let generation = self.find.generation;
@@ -901,9 +1023,14 @@ impl HostedPreview for PdfState {
     fn find_end(&mut self) {
         // The selected match stays selected for Ctrl+C.
         self.find.clear();
+        self.text_index_busy = None;
         self.reveal = None;
         let want = self.want();
         self.queue.reconcile(&self.doc, &want);
+    }
+
+    fn busy(&self) -> Option<&str> {
+        PdfState::busy(self)
     }
 }
 

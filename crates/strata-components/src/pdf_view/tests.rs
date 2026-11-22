@@ -6,14 +6,17 @@
 
 use std::rc::Rc;
 
-use super::find::Find;
+use super::PdfView;
+use super::find::{Find, SearchSource};
 use super::layer::Layer;
 use super::model::{PageReply, PdfDocument, RenderCaps, RenderKind, Shared, TextLayer, Ticket};
 use super::queue::{Landed, Queue, Want};
+use super::render::Paint;
 use super::selection::{Selection, Unit};
 use super::state::PdfState;
-use crate::preview_drawer::HostedPreview;
-use rune::Tx;
+use crate::preview_drawer::{FindStatus, HostedPreview};
+use rune::{Color, Env, Runtime, Tx};
+use strata_kit::look::Look;
 
 mod identity;
 mod perf;
@@ -396,9 +399,12 @@ fn the_budgets_drop_far_pages_first_and_keep_selected_layers() {
 fn matches_join_in_page_order_and_the_current_one_stays() {
     let ls = layers(3);
     let mut f = Find::default();
-    f.run("last", [(2, &ls[2])].into_iter());
+    f.run("last", [(2, SearchSource::Layer(&ls[2]))].into_iter());
     assert_eq!(f.current_hit().map(|h| h.page), Some(2));
-    assert!(!f.add(0, Some(&ls[0])), "already had a current match");
+    assert!(
+        !f.add(0, Some(SearchSource::Layer(&ls[0]))),
+        "already had a current match"
+    );
     assert_eq!(
         f.current_hit().map(|h| h.page),
         Some(2),
@@ -414,7 +420,7 @@ fn the_first_match_to_arrive_becomes_current() {
     let mut f = Find::default();
     f.run("first", std::iter::empty());
     assert_eq!(f.current, None);
-    assert!(f.add(1, Some(&ls[1])));
+    assert!(f.add(1, Some(SearchSource::Layer(&ls[1]))));
     assert_eq!(f.current_hit().map(|h| h.page), Some(1));
 }
 
@@ -727,5 +733,184 @@ fn text_only_reply_feeds_find_without_storing_image_and_upgrades_on_page_render(
         st.find_status().map(|s| s.total),
         Some(1),
         "stale TextOnly reply must not populate text on a newer scanned page"
+    );
+}
+
+#[test]
+fn paint_hit_is_translucent_across_light_dark_and_opaque_theme_highlights() {
+    let mut themed_dark = Look::fallback(true);
+    themed_dark.fill.highlight = Color {
+        r: 0.14,
+        g: 0.30,
+        b: 0.41,
+        a: 1.0,
+    };
+    let mut themed_light = Look::fallback(false);
+    themed_light.fill.highlight = Color {
+        r: 0.80,
+        g: 0.88,
+        b: 0.96,
+        a: 1.0,
+    };
+
+    for (name, look) in [
+        ("default light", Look::fallback(false)),
+        ("default dark", Look::fallback(true)),
+        ("opaque theme dark", themed_dark),
+        ("opaque theme light", themed_light),
+    ] {
+        let paint = Paint::from_look(&look);
+        assert!(
+            paint.hit.a > 0.0 && paint.hit.a < 0.6,
+            "{name}: expected translucent hit color, got alpha {}",
+            paint.hit.a
+        );
+        assert!(
+            paint.selection.a > 0.0 && paint.selection.a < 0.6,
+            "{name}: expected translucent selection color, got alpha {}",
+            paint.selection.a
+        );
+    }
+}
+
+#[test]
+fn active_find_match_is_not_double_painted_under_selection() {
+    struct Host {
+        pdf: PdfState,
+        look: Look,
+    }
+    let mut pdf = PdfState::new("pdf");
+    pdf.set_searchable(true);
+    pdf.open_with(
+        PdfDocument::new(1, [400.0, 600.0]),
+        0,
+        reply(400, Some("alpha beta alpha")),
+    );
+    pdf.find("alpha");
+    assert_eq!(
+        pdf.find_status(),
+        Some(FindStatus {
+            current: Some(1),
+            total: 2,
+        })
+    );
+    let host = Host {
+        pdf,
+        look: Look::fallback(false),
+    };
+    let mut rt = Runtime::new(
+        host,
+        |s: &Host, cx| {
+            PdfView::new(|h: &Host| &h.pdf, |h: &mut Host| &mut h.pdf).build(s, &s.look, cx)
+        },
+        (500.0, 700.0),
+        Env::new(false, 1.0),
+    );
+    rt.frame(0.0);
+    rt.frame(0.016);
+    let keys: Vec<String> = rt
+        .elements()
+        .into_iter()
+        .filter(|el| !el.exiting)
+        .filter_map(|el| el.key)
+        .collect();
+    assert!(
+        keys.iter().any(|k| k.ends_with("/sel-0") || k == "sel-0"),
+        "active match paints selection band: {keys:?}"
+    );
+    assert!(
+        !keys
+            .iter()
+            .any(|k| k.ends_with("/hit-0-0") || k == "hit-0-0"),
+        "active match must not also paint hit-0-0 beneath selection: {keys:?}"
+    );
+    assert!(
+        keys.iter()
+            .any(|k| k.ends_with("/hit-1-0") || k == "hit-1-0"),
+        "non-active match still paints its hit band: {keys:?}"
+    );
+}
+
+#[test]
+fn page_texts_index_finds_unrendered_pages_without_text_only_and_upgrades_on_page_render() {
+    let mut st = state(5);
+    st.set_searchable(true);
+    // Render page 0 (visible) and page 1 (margin) with no match.
+    for page in 0..2 {
+        let req = st.pop().expect("initial page render");
+        assert_eq!((req.page, req.kind), (page, RenderKind::Page));
+        st.complete(req.ticket, reply(500, Some("intro text")));
+    }
+
+    st.find("treasure");
+    assert!(st.needs_text_index());
+    st.set_text_index_loading(Some("Loading…".into()));
+    assert_eq!(st.busy(), Some("Loading…"));
+    assert!(
+        st.pop().is_none(),
+        "no TextOnly requests while single-pass index is loading"
+    );
+
+    // Single-pass index arrives with matches on unrendered pages 3 and 4.
+    assert!(st.set_page_texts(vec![
+        Some("intro text\n".into()),
+        Some("intro text\n".into()),
+        None,
+        Some("line one\nline two\nfound TREASURE here\n".into()),
+        Some("second treasure on last page\n".into()),
+    ]));
+    assert_eq!(st.busy(), None);
+    assert!(!st.needs_text_index());
+    assert!(
+        st.pop().is_none(),
+        "no TextOnly requests after single-pass index is loaded"
+    );
+    assert_eq!(
+        st.find_status(),
+        Some(FindStatus {
+            current: Some(1),
+            total: 2,
+        })
+    );
+    // First match on unrendered page 3 queued a reveal to page 3.
+    let initial_reveal = st.reveal.expect("reveal queued for unrendered page 3");
+    assert_eq!(initial_reveal.page, 3);
+    assert!(st.flush(&mut Tx::default()));
+
+    // Stepping to unrendered page 4 queues a reveal to page 4.
+    st.find_step(true);
+    assert_eq!(
+        st.find_status(),
+        Some(FindStatus {
+            current: Some(2),
+            total: 2,
+        })
+    );
+    assert_eq!(st.reveal.map(|r| r.page), Some(4));
+    assert!(st.flush(&mut Tx::default()));
+
+    // Step back to page 3, scroll it into view, and complete its full Page render:
+    // the glyph layer upgrades the hit, highlights the matched text, and refines scroll reveal.
+    st.find_step(false);
+    assert!(st.flush(&mut Tx::default()));
+    st.set_visible(3..4);
+    let page3 = st.pop().expect("full Page render for visible page 3");
+    assert_eq!((page3.page, page3.kind), (3, RenderKind::Page));
+    let page3_reply = PageReply::Rendered {
+        width: 500,
+        height: 666,
+        rgba: vec![255; 500 * 666 * 4],
+        text: Some(layer_of(&["line one", "line two", "found TREASURE here"])),
+    };
+    assert_eq!(st.complete(page3.ticket, page3_reply), Landed::Shown);
+    assert_eq!(st.selected_text(), "TREASURE");
+    let refined = st
+        .reveal
+        .expect("upgrading active hit's page refines scroll reveal to the matched line");
+    assert_eq!(refined.page, 3);
+    assert!(
+        refined.at[1] > 0.0,
+        "refined reveal targets the matched line instead of page top: {:?}",
+        refined.at
     );
 }

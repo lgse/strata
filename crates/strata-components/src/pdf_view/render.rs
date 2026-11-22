@@ -44,6 +44,7 @@ pub(crate) struct Paint {
     pub edge: Color,
     pub selection: Color,
     pub hit: Color,
+    pub active_hit_border: Color,
     pub spinner: Color,
     pub focus: Color,
 }
@@ -60,7 +61,10 @@ impl Paint {
             paper: look.transparency.opaque(k.c.layer_01),
             edge: k.c.border_muted,
             selection: k.selection(),
-            hit: look.fill.highlight,
+            // PDF text is baked into the rasterized page below the highlight bands, so an opaque
+            // theme highlight would obscure it. Keep hits translucent so the text stays readable.
+            hit: k.alpha(look.fill.highlight, 0.35),
+            active_hit_border: k.alpha(k.c.border_focus, 0.85),
             spinner: k.c.icon_muted,
             focus: k.c.border_focus,
         }
@@ -321,21 +325,34 @@ fn layer_children<S>(
             .fill(fill)
     };
     let band = &band;
-    let hits = st.hits_on(i).iter().enumerate().flat_map(|(m, hit)| {
-        let runs = layer.selection_runs(hit.start, hit.end).into_iter();
-        runs.enumerate()
-            .map(move |(j, r)| band(r, p.hit, format!("hit-{m}-{j}")))
-    });
-    let selected = st
-        .selection
-        .ranges
-        .get(&i)
-        .into_iter()
-        .flat_map(|&(start, end)| {
-            let runs = layer.selection_runs(start, end).into_iter();
+    let selected_range = st.selection.ranges.get(&i).copied();
+    let active_hit = st
+        .find
+        .current_hit()
+        .filter(|h| h.page == i)
+        .map(|h| (h.start, h.end));
+    let hits = st
+        .hits_on(i)
+        .iter()
+        .enumerate()
+        // Avoid double-painting a hit band underneath the active match's selection band.
+        .filter(move |(_, hit)| selected_range != Some((hit.start, hit.end)))
+        .flat_map(|(m, hit)| {
+            let runs = layer.selection_runs(hit.start, hit.end).into_iter();
             runs.enumerate()
-                .map(move |(j, r)| band(r, p.selection, format!("sel-{j}")))
+                .map(move |(j, r)| band(r, p.hit, format!("hit-{m}-{j}")))
         });
+    let selected = selected_range.into_iter().flat_map(|(start, end)| {
+        let active = active_hit == Some((start, end));
+        let runs = layer.selection_runs(start, end).into_iter();
+        runs.enumerate().map(move |(j, r)| {
+            let mut el = band(r, p.selection, format!("sel-{j}"));
+            if active {
+                el = el.outline(1.0, 0.0, p.active_hit_border);
+            }
+            el
+        })
+    });
     // The page's text, for assistive technology (Strata exposes none; deviation D7).
     let text = layer.has_text().then(|| {
         el().key("text")

@@ -61,6 +61,7 @@ const WRITES: &[(&[&str], Write)] = &[
     }),
     (&["preview-workbook"], preview_workbook),
     (&["preview-document"], preview_document),
+    (&["preview-pdf-text"], preview_pdf_text),
     (&["media-metadata"], |request| {
         write_media_metadata(request.input, request.output)
     }),
@@ -140,6 +141,15 @@ fn preview_document(request: &Request<'_>) -> Result<(), String> {
             DocumentFormat::Odt => crate::services::odt::read_document(request.input)?,
         };
     write_bounded_json(request.output, &document, "Document output budget exceeded")
+}
+
+fn preview_pdf_text(request: &Request<'_>) -> Result<(), String> {
+    let index = pdf::extract_text(request.input, request.output)?;
+    write_bounded_json(
+        request.output,
+        &index,
+        "PDF text index output budget exceeded",
+    )
 }
 
 /// Runs an operation that writes its own files, when `request` names one.

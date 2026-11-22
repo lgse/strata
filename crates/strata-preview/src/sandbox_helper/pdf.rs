@@ -192,3 +192,96 @@ pub(super) fn preview(input: &Path, output: &Path, value: &str) -> Result<PdfPre
     let (png, page, pages, text_layer) = render_pdf_page(&document, page, size)?;
     Ok((png, format!("{page} {pages}"), text_layer))
 }
+
+/// Upper bound matching `PdfDocument`'s page cap (`MAX_PAGES`).
+const MAX_INDEX_PAGES: usize = 10_000;
+
+/// Reserves headroom for the JSON envelope (`{"pages":[...],"truncated":true}`).
+const JSON_ENVELOPE_RESERVE: usize = 1024;
+
+/// Exact UTF-8 byte length of `text` once serialized as a JSON string (quotes included).
+fn json_string_bytes(text: &str) -> usize {
+    let mut len = 2;
+    for byte in text.bytes() {
+        len += match byte {
+            b'"' | b'\\' | 0x08 | 0x0c | b'\n' | b'\r' | b'\t' => 2,
+            0x00..=0x1f => 6,
+            _ => 1,
+        };
+    }
+    len
+}
+
+fn extract_text_from_document(
+    document: &poppler::Document,
+    max_raw_bytes: usize,
+    max_json_bytes: usize,
+) -> Result<crate::services::PdfTextIndex, String> {
+    let total = document.n_pages();
+    if total <= 0 {
+        return Err("This PDF has no pages".to_owned());
+    }
+    let total_usize = usize::try_from(total).unwrap_or(0);
+    let page_limit = total_usize.min(MAX_INDEX_PAGES);
+    let mut pages = Vec::with_capacity(page_limit.min(1024));
+    let mut raw_used = 0usize;
+    let mut json_used = JSON_ENVELOPE_RESERVE;
+    let mut truncated = total_usize > MAX_INDEX_PAGES;
+
+    for index in 0..page_limit {
+        let text = document
+            .page(index as i32)
+            .and_then(|page| page.text())
+            .map(|text| text.to_string())
+            .filter(|text| !text.is_empty());
+        let Some(text) = text else {
+            let entry_bytes = 5; // `null,`
+            if json_used.saturating_add(entry_bytes) > max_json_bytes {
+                truncated = true;
+                break;
+            }
+            json_used += entry_bytes;
+            pages.push(None);
+            continue;
+        };
+        let next_raw = raw_used.saturating_add(text.len());
+        let entry_json = json_string_bytes(&text).saturating_add(1);
+        let next_json = json_used.saturating_add(entry_json);
+        if next_raw > max_raw_bytes || next_json > max_json_bytes {
+            truncated = true;
+            break;
+        }
+        raw_used = next_raw;
+        json_used = next_json;
+        pages.push(Some(text));
+    }
+
+    Ok(crate::services::PdfTextIndex { pages, truncated })
+}
+
+/// Opens the PDF once and extracts plain text from every page without rendering PNG images or glyph boxes.
+pub(super) fn extract_text(
+    input: &Path,
+    output: &Path,
+) -> Result<crate::services::PdfTextIndex, String> {
+    let document = open_preview_document(input, output)?;
+    extract_text_from_document(
+        &document,
+        crate::services::MAX_PDF_INDEX_BYTES,
+        crate::sandbox::MAX_OUTPUT_BYTES as usize,
+    )
+}
+
+#[cfg(test)]
+pub(super) fn extract_text_with_limit(
+    input: &Path,
+    output: &Path,
+    max_raw_bytes: usize,
+) -> Result<crate::services::PdfTextIndex, String> {
+    let document = open_preview_document(input, output)?;
+    extract_text_from_document(
+        &document,
+        max_raw_bytes,
+        crate::sandbox::MAX_OUTPUT_BYTES as usize,
+    )
+}

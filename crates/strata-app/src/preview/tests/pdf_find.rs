@@ -11,7 +11,7 @@ use std::{sync::Arc, time::Duration};
 use rune::{Key, Mods, Tx};
 use strata_components::preview_drawer::{FindStatus, HostedPreview};
 use strata_core::model::{FileEntry, Location};
-use strata_fs::services::{MediaPreviewSize, PdfTextLayer, PreviewContent};
+use strata_fs::services::{MediaPreviewSize, PdfTextIndex, PdfTextLayer, PreviewContent};
 use strata_preview::sandbox::PDF_PASSWORD_PROTECTED;
 
 use super::{
@@ -538,6 +538,161 @@ fn pdf_find_works_with_tenxer_slash_and_rejects_locked_or_failed_pdfs() {
                 "failed PDF is not searchable"
             );
             assert!(!has_element(&mut host, "preview-find"));
+        },
+    );
+}
+
+#[test]
+fn pdf_find_uses_single_pass_text_index_and_upgrades_unrendered_page_on_jump() {
+    hosted(
+        MODULE,
+        "pdf_find::pdf_find_uses_single_pass_text_index_and_upgrades_unrendered_page_on_jump",
+        |mut host| {
+            let pages = Recorded::default();
+            pages.enable_pdf_text();
+            let page_texts = [
+                Some("Page zero intro"),
+                Some("Page one no hit"),
+                Some("Page two no hit"),
+                Some("Page three no hit"),
+                Some("Page four contains TREASURE"),
+            ];
+            let _folder = show_pdf_with_text(&mut host, &pages, 5, page_texts[0]);
+            let after_initial = answer_pending_pages(&mut host, &pages, 5, &page_texts, 0);
+
+            focus_pdf(&mut host);
+            press(&mut host, Key::Command('f'), CTRL);
+            type_text(&mut host, "treasure");
+
+            // Single-pass text extraction starts immediately and shows the header busy indicator.
+            pages.wait_for_pdf_text(&mut host, 0);
+            assert!(
+                host.run_until(PATIENCE, |h| h.app().preview.viewer.busy().is_some()),
+                "busy indicator shows while single-pass text index loads"
+            );
+            assert_eq!(
+                pages.count(),
+                after_initial,
+                "single-pass text index suppresses per-page 16x16 TextOnly requests"
+            );
+
+            // Answer single-pass index with all 5 pages.
+            pages.answer_pdf_text(
+                0,
+                Ok(PdfTextIndex {
+                    pages: page_texts.iter().map(|t| t.map(str::to_owned)).collect(),
+                    truncated: false,
+                }),
+            );
+            assert!(
+                host.run_until(PATIENCE, |h| {
+                    h.app().preview.viewer.find_status()
+                        == Some(FindStatus {
+                            current: Some(1),
+                            total: 1,
+                        })
+                        && h.app().preview.viewer.busy().is_none()
+                }),
+                "single-pass index populates offscreen match immediately and clears busy"
+            );
+            assert!(
+                host.run_until(PATIENCE, |h| pdf_scroll_offset(h) > 0.0),
+                "viewport scrolls to reveal the unrendered match on page 4"
+            );
+
+            // Scrolling page 4 into view triggers a normal full-width Page render (never 16x16),
+            // which upgrades the match with its real glyph layer and selects "TREASURE".
+            pages.wait_for(&mut host, after_initial);
+            let after_jump = answer_pending_pages(&mut host, &pages, 5, &page_texts, after_initial);
+            assert!(
+                (after_initial..after_jump)
+                    .all(|i| pages.request(i).media_size != MediaPreviewSize::new(16, 16)),
+                "no 16x16 TextOnly requests are issued once single-pass index is loaded"
+            );
+            assert!(
+                host.run_until(PATIENCE, |h| pdf_selected_text(h) == "TREASURE"),
+                "full page render upgrades the current match's glyph selection"
+            );
+
+            // Closing and reopening find reuses the loaded index without another extraction pass.
+            press(&mut host, Key::Escape, Mods::default());
+            press(&mut host, Key::Command('f'), CTRL);
+            type_text(&mut host, "intro");
+            assert_eq!(
+                host.app().preview.viewer.find_status(),
+                Some(FindStatus {
+                    current: Some(1),
+                    total: 1,
+                })
+            );
+            assert_eq!(
+                pages.pdf_text_count(),
+                1,
+                "loaded text index is reused across find sessions"
+            );
+        },
+    );
+}
+
+#[test]
+fn pdf_find_cancels_inflight_text_index_and_skips_single_page_pdfs() {
+    hosted(
+        MODULE,
+        "pdf_find::pdf_find_cancels_inflight_text_index_and_skips_single_page_pdfs",
+        |mut host| {
+            let pages = Recorded::default();
+            pages.enable_pdf_text();
+            let folder = show_pdf_with_text(&mut host, &pages, 4, Some("Page zero"));
+            let _ = answer_pending_pages(&mut host, &pages, 4, &[Some("Page zero"); 4], 0);
+
+            // 1. Escape cancels an in-flight single-pass text extraction.
+            focus_pdf(&mut host);
+            press(&mut host, Key::Command('f'), CTRL);
+            type_text(&mut host, "missing");
+            pages.wait_for_pdf_text(&mut host, 0);
+            press(&mut host, Key::Escape, Mods::default());
+            assert!(
+                host.run_until(PATIENCE, |_| pages.pdf_text_dropped_unanswered(0)),
+                "Escape cancels in-flight single-pass text extraction"
+            );
+
+            // 2. Switching files cancels an in-flight single-pass text extraction.
+            press(&mut host, Key::Command('f'), CTRL);
+            pages.wait_for_pdf_text(&mut host, 1);
+            select(&mut host, &Location::local(folder.path().join("readme.md")));
+            assert!(
+                host.run_until(PATIENCE, |_| pages.pdf_text_dropped_unanswered(1)),
+                "switching previewed file cancels in-flight single-pass text extraction"
+            );
+
+            // 3. Single-page PDFs skip single-pass text extraction completely.
+            let single = Recorded::default();
+            single.enable_pdf_text();
+            install(&mut host, &single);
+            host.runtime().update(move |app: &mut App, _: &mut Tx| {
+                let entry: FileEntry = app.preview.current.clone().expect("a previewed file");
+                app.preview.viewer = pdf::viewer(
+                    entry,
+                    (&page_png(80), 0, 1),
+                    Some(text_layer("Only page", 400.0, 550.0)),
+                );
+            });
+            while host.turn() {}
+            focus_pdf(&mut host);
+            press(&mut host, Key::Command('f'), CTRL);
+            type_text(&mut host, "only");
+            assert_eq!(
+                host.app().preview.viewer.find_status(),
+                Some(FindStatus {
+                    current: Some(1),
+                    total: 1,
+                })
+            );
+            assert_eq!(
+                single.pdf_text_count(),
+                0,
+                "single-page PDF already loaded must skip PreviewPdfText"
+            );
         },
     );
 }

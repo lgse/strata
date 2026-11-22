@@ -33,8 +33,8 @@ use strata_components::pdf_view::{
 use strata_core::{i18n::tr, model::FileEntry};
 use strata_desktop::keys::{Modifiers, bindings::PDF_ZOOM_RESET};
 use strata_fs::services::{
-    LoadHandle, MediaPreviewSize, PdfTextLayer, Preview, PreviewContent, PreviewEvent,
-    PreviewRequest, PreviewRequestId,
+    LoadHandle, MediaPreviewSize, PdfTextIndex, PdfTextLayer, Preview, PreviewContent,
+    PreviewEvent, PreviewRequest, PreviewRequestId,
 };
 
 use super::{
@@ -83,11 +83,21 @@ struct Busy {
     _load: Option<LoadHandle>,
 }
 
+/// Lifecycle of the single-pass document-wide PDF text extraction for find.
+enum TextIndexState {
+    Idle,
+    Loading(#[expect(dead_code, reason = "drop cancels the sandboxed text extraction")] LoadHandle),
+    Loaded,
+    Failed,
+    Unsupported,
+}
+
 pub(super) struct PdfViewer {
     pub(super) state: PdfState,
     id: u64,
     entry: FileEntry,
     busy: Option<Busy>,
+    text_index: TextIndexState,
     next_request: u64,
 }
 
@@ -114,6 +124,7 @@ impl PdfViewer {
             id: NEXT_VIEWER.with(|next| next.replace(next.get().wrapping_add(1))),
             entry,
             busy: None,
+            text_index: TextIndexState::Idle,
             next_request: 1,
         })
     }
@@ -124,6 +135,14 @@ impl PdfViewer {
 
     pub(super) fn stop(&mut self) {
         self.busy = None;
+        self.text_index = TextIndexState::Idle;
+    }
+
+    pub(super) fn find_end(&mut self) {
+        if matches!(self.text_index, TextIndexState::Loading(_)) {
+            self.text_index = TextIndexState::Idle;
+        }
+        strata_components::preview_drawer::HostedPreview::find_end(&mut self.state);
     }
 }
 
@@ -271,16 +290,81 @@ pub(super) fn poll(app: &mut App, clock: f64, tx: &mut Tx) -> bool {
         return false;
     };
     let changed = pdf.state.tick(clock) | pdf.state.flush(tx);
-    pump(app);
-    changed
+    changed | pump(app)
 }
 
-/// Drops a render the view no longer wants, and starts the next one when none runs.
-fn pump(app: &mut App) {
+/// Starts a single-pass document-wide PDF text extraction when find is active on a multi-page PDF.
+fn maybe_start_text_index(app: &mut App) -> bool {
+    let (id, entry) = match &app.preview.viewer {
+        Viewer::Pdf(pdf)
+            if matches!(pdf.text_index, TextIndexState::Idle) && pdf.state.needs_text_index() =>
+        {
+            (pdf.id, pdf.entry.clone())
+        }
+        _ => return false,
+    };
+    let provider = app.preview.loader.provider();
+    let later = app.preview.loader.later.clone();
+    let emit = Rc::new(move |result: Result<PdfTextIndex, String>| {
+        later.then(move |app: &mut App, tx: &mut Tx| on_text_index(app, id, result, tx));
+    });
+    match provider.extract_pdf_text(&entry, emit) {
+        Some(handle) => {
+            if let Some(pdf) = viewer_mut(app, id) {
+                pdf.text_index = TextIndexState::Loading(handle);
+                pdf.state.set_text_index_loading(Some(tr("Loading…")));
+                return true;
+            }
+            false
+        }
+        None => {
+            if let Some(pdf) = viewer_mut(app, id) {
+                pdf.text_index = TextIndexState::Unsupported;
+            }
+            false
+        }
+    }
+}
+
+fn on_text_index(
+    app: &mut App,
+    id: u64,
+    result: Result<PdfTextIndex, String>,
+    tx: &mut Tx,
+) -> bool {
+    let Some(pdf) = viewer_mut(app, id) else {
+        return false;
+    };
+    if !matches!(pdf.text_index, TextIndexState::Loading(_)) {
+        return false;
+    }
+    match result {
+        Ok(index) => {
+            pdf.text_index = TextIndexState::Loaded;
+            pdf.state.set_page_texts(index.pages);
+            let _ = pdf.state.flush(tx);
+        }
+        Err(error) => {
+            tracing::debug!(
+                %error,
+                "single-pass PDF text extraction failed; falling back to per-page text"
+            );
+            pdf.text_index = TextIndexState::Failed;
+            pdf.state.set_text_index_loading(None);
+        }
+    }
+    pump(app);
+    true
+}
+
+/// Drops a render the view no longer wants, starts single-pass find indexing if needed, and starts
+/// the next page render when none runs. True when the header busy indicator changed.
+fn pump(app: &mut App) -> bool {
+    let started_index = maybe_start_text_index(app);
     let provider = app.preview.loader.provider();
     let later = app.preview.loader.later.clone();
     let Viewer::Pdf(pdf) = &mut app.preview.viewer else {
-        return;
+        return started_index;
     };
     let cancelled = pdf.state.take_cancelled();
     if pdf
@@ -291,10 +375,10 @@ fn pump(app: &mut App) {
         pdf.busy = None;
     }
     if pdf.busy.is_some() {
-        return;
+        return started_index;
     }
     let Some(asked) = pdf.state.pop() else {
-        return;
+        return started_index;
     };
     let (id, ticket) = (pdf.id, asked.ticket);
     pdf.busy = Some(Busy {
@@ -312,6 +396,7 @@ fn pump(app: &mut App) {
     {
         busy._load = Some(load);
     }
+    started_index
 }
 
 fn page_request(pdf: &mut PdfViewer, asked: &RenderRequest) -> PreviewRequest {
@@ -390,6 +475,6 @@ fn land(app: &mut App, (id, ticket): (u64, Ticket), reply: PageReply, tx: &mut T
     }
     let commits = pdf.state.complete(ticket, reply).commits();
     let flushed = pdf.state.flush(tx);
-    pump(app);
-    commits | flushed
+    let started_index = pump(app);
+    commits | flushed | started_index
 }
