@@ -25,6 +25,8 @@ const PA_SAMPLE_S16LE: c_int = 3;
 const PA_SAMPLE_FLOAT32LE: c_int = 5;
 /// Target server playback buffer length in milliseconds (low enough for crisp volume/pause).
 const TARGET_LATENCY_MS: u64 = 60;
+/// Pre-buffer threshold in milliseconds (one 10 ms quantum so short clips/tails start cleanly).
+const PREBUF_MS: u64 = 10;
 /// Minimum server request block in milliseconds.
 const MIN_REQUEST_MS: u64 = 15;
 
@@ -179,7 +181,7 @@ impl PulseBackend {
         let attr = PaBufferAttr {
             maxlength: u32::MAX,
             tlength: aligned_ms_bytes(spec, TARGET_LATENCY_MS, 4),
-            prebuf: u32::MAX,
+            prebuf: aligned_ms_bytes(spec, PREBUF_MS, 1),
             minreq: aligned_ms_bytes(spec, MIN_REQUEST_MS, 1),
             fragsize: u32::MAX,
         };

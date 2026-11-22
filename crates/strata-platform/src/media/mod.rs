@@ -452,6 +452,7 @@ impl PcmOutput {
         if state.playing {
             let heard = state.current_heard_frames(self.shared.spec);
             state.heard_frames = heard;
+            state.reported_frames = heard;
             state.playing = false;
             state.anchor_at = None;
             self.shared.wake.notify_all();
@@ -475,6 +476,7 @@ impl PcmOutput {
         state.underrun_notified = false;
         state.written_frames = 0;
         state.heard_frames = 0;
+        state.reported_frames = 0;
         state.anchor_at = None;
         state.generation = state.generation.wrapping_add(1);
         state.flush_pending = true;
@@ -529,7 +531,7 @@ impl PcmOutput {
     /// Monotonic playback position in PCM frames heard since open or last [`Self::flush`].
     #[must_use]
     pub fn position_frames(&self) -> u64 {
-        let state = self.shared.lock();
+        let mut state = self.shared.lock();
         state.current_heard_frames(self.shared.spec)
     }
 

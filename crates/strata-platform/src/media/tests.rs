@@ -22,6 +22,8 @@ struct MockState {
     written: Vec<u8>,
     flushes: usize,
     latency_us: u64,
+    latency_script: Vec<u64>,
+    latency_calls: usize,
     fail_after_writes: Option<usize>,
     writes: usize,
 }
@@ -38,6 +40,8 @@ impl MockHandle {
                 written: Vec::new(),
                 flushes: 0,
                 latency_us,
+                latency_script: Vec::new(),
+                latency_calls: 0,
                 fail_after_writes: None,
                 writes: 0,
             }),
@@ -49,6 +53,12 @@ impl MockHandle {
             },
             MockBackend { state },
         )
+    }
+
+    fn set_latency_script(&self, script: Vec<u64>) {
+        let mut guard = self.state.0.lock().unwrap();
+        guard.latency_script = script;
+        guard.latency_calls = 0;
     }
 
     fn set_fail_after_writes(&self, count: usize) {
@@ -112,7 +122,13 @@ impl AudioBackend for MockBackend {
     }
 
     fn latency_us(&mut self) -> Option<u64> {
-        Some(self.state.0.lock().unwrap().latency_us)
+        let mut guard = self.state.0.lock().unwrap();
+        if !guard.latency_script.is_empty() {
+            let idx = guard.latency_calls.min(guard.latency_script.len() - 1);
+            guard.latency_calls += 1;
+            return Some(guard.latency_script[idx]);
+        }
+        Some(guard.latency_us)
     }
 
     fn flush(&mut self) -> Result<(), ()> {
@@ -439,5 +455,61 @@ fn silent_fallback_paces_clock_and_tears_down_cleanly() {
         elapsed >= Duration::from_millis(40),
         "silent fallback should pace in real time, drained in {elapsed:?}"
     );
+    drop(output);
+}
+
+#[test]
+fn position_stays_monotonic_under_constant_and_jittering_latency() {
+    let (mock, backend) = MockHandle::new(40_000);
+    // Latency jumps up and down across writes and stays non-zero during drain ticks.
+    mock.set_latency_script(vec![
+        15_000, 45_000, 20_000, 55_000, 40_000, 40_000, 40_000, 40_000,
+    ]);
+
+    let output = PcmOutput::open_with_backend(
+        OutputConfig::new(STEREO_48K_S16).buffer_duration(Duration::from_millis(300)),
+        move || Box::new(backend),
+    )
+    .unwrap();
+
+    // Push 60 ms (6 quanta of 480 frames), finish, and sample position continuously while draining.
+    let total_frames = 2880u64;
+    output
+        .push_s16(&vec![0; (total_frames as usize) * 2])
+        .unwrap();
+    output.finish();
+    output.play();
+
+    let mut prev = 0u64;
+    let deadline = Instant::now() + Duration::from_secs(2);
+    while !output.is_drained() {
+        assert!(Instant::now() < deadline, "timed out waiting for drain");
+        let now = output.position_frames();
+        assert!(
+            now >= prev,
+            "playback position moved backward under jittering latency: {prev} -> {now}"
+        );
+        prev = now;
+        std::thread::sleep(Duration::from_millis(2));
+    }
+    let final_pos = output.position_frames();
+    assert!(final_pos >= prev);
+    assert_eq!(final_pos, total_frames);
+}
+
+#[test]
+fn flush_wakes_starved_underrun_worker_immediately() {
+    let (mock, backend) = MockHandle::new(0);
+    let output = PcmOutput::open_with_backend(
+        OutputConfig::new(STEREO_48K_S16).buffer_duration(Duration::from_millis(100)),
+        move || Box::new(backend),
+    )
+    .unwrap();
+
+    // Enter idle underrun wait, then verify flush wakes the worker and flushes the backend.
+    output.play();
+    std::thread::sleep(Duration::from_millis(15));
+    output.flush();
+    assert!(mock.wait_for(Duration::from_secs(1), |s| s.flushes >= 1));
     drop(output);
 }

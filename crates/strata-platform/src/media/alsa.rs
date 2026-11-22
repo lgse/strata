@@ -28,6 +28,8 @@ const SND_PCM_FORMAT_S16_LE: c_int = 2;
 const SND_PCM_FORMAT_FLOAT_LE: c_int = 14;
 /// Target ALSA playback latency in microseconds (60 ms).
 const TARGET_LATENCY_US: c_uint = 60_000;
+/// Maximum consecutive ALSA recovery attempts per write before failing over to the silent backend.
+const MAX_RECOVERIES_PER_WRITE: usize = 3;
 
 #[repr(C)]
 struct SndPcm {
@@ -56,23 +58,6 @@ type SndPcmDelayFn = unsafe extern "C" fn(pcm: *mut SndPcm, delayp: *mut c_long)
 type SndPcmDropFn = unsafe extern "C" fn(pcm: *mut SndPcm) -> c_int;
 type SndPcmPrepareFn = unsafe extern "C" fn(pcm: *mut SndPcm) -> c_int;
 type SndPcmRecoverFn = unsafe extern "C" fn(pcm: *mut SndPcm, err: c_int, silent: c_int) -> c_int;
-type SndLibErrorHandlerFn = unsafe extern "C" fn(
-    file: *const c_char,
-    line: c_int,
-    function: *const c_char,
-    err: c_int,
-    fmt: *const c_char,
-);
-type SndLibErrorSetHandlerFn = unsafe extern "C" fn(handler: Option<SndLibErrorHandlerFn>) -> c_int;
-
-unsafe extern "C" fn quiet_alsa_error(
-    _file: *const c_char,
-    _line: c_int,
-    _function: *const c_char,
-    _err: c_int,
-    _fmt: *const c_char,
-) {
-}
 
 struct AlsaApi {
     pcm_open: SndPcmOpenFn,
@@ -105,16 +90,6 @@ fn load_api() -> Option<AlsaApi> {
         return None;
     }
     let resolved = (|| {
-        // Silence ALSA's default stderr messages when probing in headless containers.
-        // SAFETY: `handle` is valid and `snd_lib_error_set_handler` matches `<alsa/error.h>`.
-        let set_handler =
-            unsafe { symbol::<SndLibErrorSetHandlerFn>(handle, c"snd_lib_error_set_handler") };
-        if let Some(set_handler) = set_handler {
-            // SAFETY: `quiet_alsa_error` matches `snd_lib_error_handler_t`.
-            unsafe {
-                set_handler(Some(quiet_alsa_error));
-            }
-        }
         // SAFETY: `handle` is valid and `snd_pcm_open` matches `<alsa/pcm.h>`.
         let pcm_open = unsafe { symbol(handle, c"snd_pcm_open")? };
         // SAFETY: `handle` is valid and `snd_pcm_close` matches `<alsa/pcm.h>`.
@@ -216,6 +191,17 @@ impl AlsaBackend {
         }
         Ok(Self { api, pcm, spec })
     }
+
+    fn recover_write(&mut self, written: c_long, recoveries: &mut usize) -> Result<(), ()> {
+        if written == 0 || *recoveries >= MAX_RECOVERIES_PER_WRITE {
+            return Err(());
+        }
+        *recoveries += 1;
+        let err = c_int::try_from(written).map_err(|_| ())?;
+        // SAFETY: `self.pcm` is open; `snd_pcm_recover` attempts XRUN/suspend recovery.
+        let recovered = unsafe { (self.api.pcm_recover)(self.pcm, err, 1) };
+        if recovered < 0 { Err(()) } else { Ok(()) }
+    }
 }
 
 impl AudioBackend for AlsaBackend {
@@ -226,6 +212,7 @@ impl AudioBackend for AlsaBackend {
     fn write(&mut self, bytes: &[u8]) -> Result<(), ()> {
         let frame_bytes = self.spec.frame_bytes().max(1);
         let mut offset = 0;
+        let mut recoveries = 0;
         while offset < bytes.len() {
             let frames = (bytes.len() - offset) / frame_bytes;
             if frames == 0 {
@@ -236,27 +223,29 @@ impl AudioBackend for AlsaBackend {
                 (self.api.pcm_writei)(self.pcm, bytes[offset..].as_ptr().cast(), frames as c_ulong)
             };
             if written > 0 {
-                offset += (written as usize) * frame_bytes;
+                let advanced = usize::try_from(written).unwrap_or(frames).min(frames);
+                offset += advanced * frame_bytes;
+                recoveries = 0;
             } else {
-                // SAFETY: `self.pcm` is open; `snd_pcm_recover` attempts XRUN/suspend recovery.
-                let recovered = unsafe { (self.api.pcm_recover)(self.pcm, written as c_int, 1) };
-                if recovered < 0 {
-                    return Err(());
-                }
+                self.recover_write(written, &mut recoveries)?;
             }
         }
         Ok(())
     }
 
     fn latency_us(&mut self) -> Option<u64> {
+        if self.spec.sample_rate == 0 {
+            return None;
+        }
         let mut delay: c_long = 0;
         // SAFETY: `self.pcm` is open and `delay` is a valid out-pointer.
         let rc = unsafe { (self.api.pcm_delay)(self.pcm, &mut delay) };
         if rc < 0 || delay < 0 {
-            None
-        } else {
-            Some(delay as u64 * 1_000_000 / u64::from(self.spec.sample_rate))
+            return None;
         }
+        let delay_frames = u64::try_from(delay).ok()?;
+        let us = u128::from(delay_frames) * 1_000_000 / u128::from(self.spec.sample_rate);
+        u64::try_from(us).ok()
     }
 
     fn flush(&mut self) -> Result<(), ()> {

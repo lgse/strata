@@ -16,8 +16,9 @@ use super::{
 
 /// Size of each write quantum sent to the audio backend (~10 ms).
 const QUANTUM_MS: u64 = 10;
-/// History kept for restoring unheard frames when pausing flushes the device buffer (~250 ms).
-const UNHEARD_TAIL_MS: u64 = 250;
+/// History kept for restoring unheard frames when pausing flushes the device buffer (~500 ms,
+/// covering typical Bluetooth A2DP latencies).
+const UNHEARD_TAIL_MS: u64 = 500;
 /// Maximum sub-quantum clock extrapolation ahead of the last backend latency reading.
 const MAX_EXTRAPOLATION_US: u64 = 100_000;
 /// Safety margin added to initial latency when waiting for a backend to finish draining at EOF.
@@ -40,6 +41,7 @@ pub(super) struct State {
     pub(super) muted: bool,
     pub(super) written_frames: u64,
     pub(super) heard_frames: u64,
+    pub(super) reported_frames: u64,
     pub(super) anchor_at: Option<Instant>,
     pub(super) backend_kind: BackendKind,
     pub(super) device_lost: bool,
@@ -63,6 +65,7 @@ impl State {
             muted,
             written_frames: 0,
             heard_frames: 0,
+            reported_frames: 0,
             anchor_at: None,
             backend_kind: BackendKind::Silent,
             device_lost: false,
@@ -70,7 +73,7 @@ impl State {
         }
     }
 
-    pub(super) fn current_heard_frames(&self, spec: PcmSpec) -> u64 {
+    pub(super) fn current_heard_frames(&mut self, spec: PcmSpec) -> u64 {
         let mut heard = self.heard_frames;
         if self.playing
             && !self.drained
@@ -81,7 +84,22 @@ impl State {
                 elapsed_us.min(MAX_EXTRAPOLATION_US) * u64::from(spec.sample_rate) / 1_000_000;
             heard = heard.saturating_add(extra).min(self.written_frames);
         }
-        heard
+        self.reported_frames = self.reported_frames.max(heard).min(self.written_frames);
+        self.reported_frames
+    }
+
+    pub(super) fn record_heard_frames(&mut self, new_heard: u64) {
+        let clamped = new_heard.min(self.written_frames);
+        if clamped > self.heard_frames {
+            self.heard_frames = clamped;
+            self.reported_frames = self.reported_frames.max(clamped);
+            self.anchor_at = self.playing.then(Instant::now);
+        } else if self.playing
+            && self.anchor_at.is_none()
+            && self.heard_frames < self.written_frames
+        {
+            self.anchor_at = Some(Instant::now());
+        }
     }
 
     pub(super) fn gain(&self) -> f32 {
@@ -264,8 +282,7 @@ impl Worker {
         state.written_frames = state.written_frames.saturating_add(frames);
         let latency_frames = latency.map_or(0, |us| us_to_frames(us, self.shared.spec));
         let heard = state.written_frames.saturating_sub(latency_frames);
-        state.heard_frames = state.heard_frames.max(heard).min(state.written_frames);
-        state.anchor_at = state.playing.then(Instant::now);
+        state.record_heard_frames(heard);
         state.underrun_notified = false;
     }
 
@@ -285,6 +302,7 @@ impl Worker {
                 let mut state = self.shared.lock();
                 if state.generation == generation && !state.flush_pending && state.finished {
                     state.heard_frames = state.written_frames;
+                    state.reported_frames = state.written_frames;
                     state.drained = true;
                     state.anchor_at = None;
                     true
@@ -301,8 +319,7 @@ impl Worker {
         let updated_heard = written.saturating_sub(us_to_frames(latency_us, self.shared.spec));
         let mut state = self.shared.lock();
         if state.generation == generation && !state.flush_pending && state.playing {
-            state.heard_frames = state.heard_frames.max(updated_heard).min(written);
-            state.anchor_at = Some(Instant::now());
+            state.record_heard_frames(updated_heard);
             drop(self.shared.wake.wait_timeout(state, IDLE_SLICE));
         }
     }
@@ -312,8 +329,13 @@ impl Worker {
             self.shared.emit(OutputEvent::Underrun);
         }
         let state = self.shared.lock();
-        if !state.closed && state.playing && state.ring.is_empty() && !state.finished {
-            drop(self.shared.wake.wait_timeout(state, IDLE_SLICE));
+        if !state.closed
+            && !state.flush_pending
+            && state.playing
+            && state.ring.is_empty()
+            && !state.finished
+        {
+            drop(self.shared.wake.wait(state));
         }
     }
 
@@ -355,6 +377,7 @@ fn handle_paused(state: &mut State, spec: PcmSpec, was_playing: &mut bool) -> Ac
     }
     state.written_frames = state.written_frames.saturating_sub(restored_frames);
     state.heard_frames = state.heard_frames.min(state.written_frames);
+    state.reported_frames = state.reported_frames.min(state.written_frames);
     state.anchor_at = None;
     Action::PauseFlush
 }
