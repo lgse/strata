@@ -906,7 +906,8 @@ pub(crate) fn column_actions(app: &App, depth: usize) -> Vec<El> {
     .checked(open_here)
     .key(format!("columns-filter-{depth}"))
     // Not a focus stop, as every column header's action (C2's slot).
-    .focusable(false);
+    .focusable(false)
+    .no_focus_ring();
     vec![toggle]
 }
 

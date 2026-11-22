@@ -6,6 +6,7 @@ use crate::tokens::{self, Value};
 /// Each slot token that inherits from a core token, with that token.
 const SEEDS: &[(&str, &str)] = &[
     ("collection.row.radius", "radius.md"),
+    ("columns.header.height", "frame.bar"),
     ("list.row.height", "row.list"),
     ("sidebar.row.height", "row.sidebar"),
     ("tabs.tab.height", "frame.bar"),

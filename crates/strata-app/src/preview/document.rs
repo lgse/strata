@@ -235,9 +235,12 @@ pub(super) fn build_view(
         .build(app, &app.look, cx)
 }
 
-fn on_document_intent(app: &mut App, intent: DocumentIntent, _: &mut Tx) {
+fn on_document_intent(app: &mut App, intent: DocumentIntent, tx: &mut Tx) {
     match intent {
-        DocumentIntent::Leave => app.preview.drawer.focus_files(),
+        DocumentIntent::Leave => {
+            super::return_to_files(app);
+            tx.wake_after(std::time::Duration::ZERO);
+        }
         DocumentIntent::OpenLink(uri) => {
             if has_web_scheme(&uri)
                 && let Err(error) =

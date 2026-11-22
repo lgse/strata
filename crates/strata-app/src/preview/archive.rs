@@ -92,7 +92,10 @@ fn archive_view(
     let letters = !shell::live_keys(app).type_to_search_active();
     ArchiveView::new(get, get_mut, |app: &App| &app.look)
         .letters(letters)
-        .on_leave(|app: &mut App, _| app.preview.drawer.focus_files())
+        .on_leave(|app: &mut App, tx| {
+            super::return_to_files(app);
+            tx.wake_after(std::time::Duration::ZERO);
+        })
 }
 
 pub(super) fn build_prompt_view(

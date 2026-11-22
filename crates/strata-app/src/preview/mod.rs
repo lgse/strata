@@ -50,6 +50,7 @@ pub(crate) use archive::{ARCHIVE_KEY, PROMPT_KEY};
 pub(crate) use follow::{
     follow_active_column, follow_filter_close, follow_filter_pick, note_click_opening,
 };
+pub(crate) use layout::draws_divider;
 use load::Loader;
 #[cfg(feature = "qa")]
 pub(crate) use pdf::PDF_KEY;
@@ -78,6 +79,9 @@ pub(crate) struct Preview {
     current_depth: Option<usize>,
     header_source: Option<(FileEntry, Option<String>)>,
     content_focus: ContentFocus,
+    /// Whether keyboard focus is currently inside `preview-drawer` (excluding its resize grip):
+    /// drives the Miller column header's active-destination bar (`UI-30`).
+    owns_focus: bool,
     tab_shown: bool,
     click_opening: Option<ClickOpening>,
     focus_timer: Rc<RefCell<Option<glib::SourceId>>>,
@@ -189,6 +193,7 @@ impl Part for Preview {
             current_depth: None,
             header_source: None,
             content_focus: ContentFocus::None,
+            owns_focus: false,
             tab_shown: false,
             click_opening: None,
             focus_timer: Rc::default(),
@@ -228,16 +233,29 @@ impl Part for Preview {
             false
         };
         let msg_focus = app.preview.sync_message_focus(tx);
+        let owns_focus = preview_owns_focus(app, tx);
+        let focus_changed = app.preview.owns_focus != owns_focus;
+        app.preview.owns_focus = owns_focus;
         let viewer = app.preview.viewer.poll(clock, &app.look, tx);
         let archive = viewer::tick_archive_if_active(app, tx);
         let pdf = pdf::poll(app, clock, tx);
         let route = route::poll(app, clock, tx);
         let media = media::poll(app, clock, tx);
-        blocks | viewer | archive | pdf | route | media | lit_changed | band_synced | msg_focus
+        blocks
+            | viewer
+            | archive
+            | pdf
+            | route
+            | media
+            | lit_changed
+            | band_synced
+            | msg_focus
+            | focus_changed
     }
 
     fn switched(app: &mut App, tx: &mut Tx) {
         let tab_shown = std::mem::take(&mut app.preview.tab_shown);
+        app.preview.owns_focus = false;
         session::sync_reservation(app);
         if !app.preview.enabled && !app.preview.reserves_column_space(app) {
             app.preview.drawer.close(&app.look, tx);
@@ -250,6 +268,7 @@ impl Part for Preview {
 
     fn tab_shown(app: &mut App, _tx: &mut Tx) {
         app.preview.tab_shown = true;
+        app.preview.owns_focus = false;
         ensure_operations_watch(app);
         sync_preferences(app);
         let prefs = shell::preferences(app);
@@ -260,6 +279,30 @@ impl Part for Preview {
 
 pub(crate) fn current_entry(app: &App) -> Option<&FileEntry> {
     app.preview.current.as_ref()
+}
+
+/// Whether the preview drawer currently owns keyboard focus (and shows its own top focus bar).
+pub(crate) fn owns_focus(app: &App) -> bool {
+    app.preview.owns_focus
+}
+
+/// Whether the preview drawer is currently open.
+pub(crate) fn is_open(app: &App) -> bool {
+    app.preview.drawer.is_open()
+}
+
+fn preview_owns_focus(app: &App, tx: &Tx) -> bool {
+    if !app.preview.drawer.is_open() {
+        return false;
+    }
+    if app.preview.drawer.is_find_focused() || app.preview.viewer.is_prompt_focused() {
+        return true;
+    }
+    tx.focused().is_some_and(is_drawer_focus_key)
+}
+
+fn is_drawer_focus_key(key: &str) -> bool {
+    key != "preview-grip" && (key == "preview" || key.starts_with("preview-"))
 }
 
 fn wrap(app: &App, files: El, frame: &mut Frame<'_, App>) -> El {
@@ -461,6 +504,7 @@ pub(crate) fn to_top(app: &App, tx: &mut Tx) {
 
 /// The listing takes the keys back; the drawer stays open (`return_from_preview`).
 pub(crate) fn return_to_files(app: &mut App) {
+    app.preview.owns_focus = false;
     app.preview.drawer.focus_files();
 }
 

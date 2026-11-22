@@ -450,7 +450,7 @@ impl<'a, S: 'static> PreviewDrawer<'a, S> {
                 .child(divider::divider(&shared, st, solved, columns, look))
                 .child(stub("preview-open-stub".into(), &files_key));
         } else {
-            slot = empty_reserved_slot(slot, &shared, slot_width, look);
+            slot = empty_reserved_slot(slot, &shared, st.lit, slot_width, look);
         }
         slot = append_slot_markers(
             slot,
@@ -747,6 +747,7 @@ fn stub(key: String, to: &str) -> El {
 fn empty_reserved_slot<S: 'static>(
     slot: El,
     shared: &Shared<S>,
+    lit: bool,
     slot_width: f32,
     look: &Look,
 ) -> El {
@@ -771,12 +772,17 @@ fn empty_reserved_slot<S: 'static>(
             empty_slot_press(&empty, s, tx);
         })
     };
+    let line_color = if lit {
+        look.kit.c.border_focus
+    } else {
+        look.kit.c.border_base
+    };
     slot.child(
         el().key("preview-empty-line")
             .w(shared.rules.line)
             .h_full()
             .pin(Some(0.0), Some(0.0), None, Some(0.0))
-            .fill(look.kit.c.border_base)
+            .fill(line_color)
             .a11y_hidden()
             .inert(),
     )

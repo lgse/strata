@@ -694,3 +694,135 @@ fn tenxer_shift_j_and_k_scroll_the_open_preview_from_the_listing() {
         },
     );
 }
+
+#[test]
+fn columns_divider_and_active_header_yield_to_preview_drawer() {
+    hosted(
+        MODULE,
+        "columns_divider_and_active_header_yield_to_preview_drawer",
+        |mut host| {
+            let folder = listed(&mut host);
+            disable_auto_preview(&mut host);
+            let archive = Location::local(folder.path().join("archive"));
+            let nested = folder.path().join("archive").join("note.txt");
+            std::fs::write(&nested, "hello preview\n").expect("write note.txt");
+
+            // Open a child column so we exercise both a between-column divider and the
+            // rightmost column beside the preview drawer.
+            select(&mut host, &archive);
+            focus_view(&mut host);
+            press(&mut host, Key::Right, Mods::default());
+            assert!(host.run_until(PATIENCE, |host| {
+                host.app().browser().column_entry_counts(1).is_some()
+            }));
+            while host.turn() {}
+
+            select(&mut host, &Location::local(nested));
+            focus_view(&mut host);
+            space(&mut host);
+            wait_for_code_preview(&mut host);
+            while host.turn() {}
+
+            let keys = host.app().columns.list_keys();
+            let col0 = keys[0].clone();
+            let col1 = keys[1].clone();
+            let col0_line = strata_components::columns::keys::edge_line(&col0);
+            let col1_line = strata_components::columns::keys::edge_line(&col1);
+            let col1_indicator = strata_components::columns::keys::indicator(&col1);
+
+            assert!(super::draws_divider(host.app()));
+            assert!(has_element_key(&mut host, &col0_line));
+            assert!(
+                !has_element_key(&mut host, &col1_line),
+                "rightmost column omits its duplicate line beside the preview divider"
+            );
+            assert!(
+                has_element_key(&mut host, &col1_indicator),
+                "active column shows its top bar while columns hold focus"
+            );
+
+            // Entering the preview moves the top focus bar off the active Miller column.
+            press(&mut host, Key::Right, Mods::default());
+            while host.turn() {}
+            assert_eq!(focused_key(&mut host).as_deref(), Some("preview-code"));
+            assert!(super::owns_focus(host.app()));
+            assert!(
+                !has_element_key(&mut host, &col1_indicator),
+                "active column loses its top focus bar while preview owns focus"
+            );
+
+            // Returning focus to files restores the active column's top focus bar.
+            press(&mut host, Key::Left, Mods::default());
+            while host.turn() {}
+            assert_eq!(focused_key(&mut host).as_deref(), Some("columns"));
+            assert!(!super::owns_focus(host.app()));
+            assert!(has_element_key(&mut host, &col1_indicator));
+
+            // Turning the preview panel off restores the rightmost column's own edge line.
+            host.runtime().update(|app, tx| {
+                let (depth, entry) = super::session::selected_entry(app);
+                super::session::toggle_panel(app, entry, depth, tx);
+            });
+            while host.turn() {}
+            assert!(!super::draws_divider(host.app()));
+            assert!(has_element_key(&mut host, &col1_line));
+        },
+    );
+}
+
+#[test]
+fn columns_header_buttons_stay_non_focusable_across_tenxer_toggle() {
+    hosted(
+        MODULE,
+        "columns_header_buttons_stay_non_focusable_across_tenxer_toggle",
+        |mut host| {
+            let folder = listed(&mut host);
+            let archive = Location::local(folder.path().join("archive"));
+
+            select(&mut host, &archive);
+            focus_view(&mut host);
+            press(&mut host, Key::Right, Mods::default());
+            assert!(host.run_until(PATIENCE, |host| {
+                host.app().browser().column_entry_counts(1).is_some()
+            }));
+            while host.turn() {}
+
+            // Focus the columns strip via keyboard focus (as Tab or dialog dismissal does)
+            // and toggle 10xer mode on and off so all column header buttons unmount and remount.
+            host.runtime().update(|app, tx| {
+                tx.focus(crate::columns::VIEW, true);
+                shell::saved(app).change(|settings| settings.tenxer_mode = true);
+            });
+            while host.turn() {}
+            host.runtime().update(|app, tx| {
+                shell::saved(app).change(|settings| settings.tenxer_mode = false);
+                tx.focus(crate::columns::VIEW, true);
+            });
+            while host.turn() {}
+
+            let col1 = host.app().columns.list_keys()[1].clone();
+            let close_key = strata_components::columns::keys::close(&col1);
+            let button_keys = [
+                "columns-refresh-1",
+                "columns-sort-direction-1",
+                "columns-sort-1",
+                "columns-filter-1",
+                close_key.as_str(),
+            ];
+            let elements = host.runtime().elements();
+            for key in button_keys {
+                let button = elements
+                    .iter()
+                    .find(|el| !el.exiting && el.key.as_deref() == Some(key))
+                    .unwrap_or_else(|| panic!("expected column header button {key}"));
+                assert!(!button.focusable, "{key} must not be focusable");
+                assert!(!button.focused, "{key} must not be focused");
+                assert!(!button.focus_visible, "{key} must not show focus_visible");
+            }
+            assert_eq!(
+                focused_key(&mut host).as_deref(),
+                Some(crate::columns::VIEW)
+            );
+        },
+    );
+}
