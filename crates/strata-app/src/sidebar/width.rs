@@ -44,6 +44,7 @@ fn stepped(app: &mut App, _: &Call<'_>, tx: &mut Tx) -> Outcome {
         super::start(app);
     }
     let step = app.sidebar.state.width.advance();
+    app.sidebar.state.scroll_bar.release();
     if !app.browser.is_chooser_mode() {
         shell::saved(app).change(|settings| save(settings, step));
     }
