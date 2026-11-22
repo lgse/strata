@@ -24,6 +24,7 @@ mod pdf;
 mod provider;
 mod route;
 mod spare;
+mod text_polish;
 
 fn listed(host: &mut Offscreen) -> tempfile::TempDir {
     let folder = fixture();

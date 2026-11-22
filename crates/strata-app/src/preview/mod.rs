@@ -58,7 +58,7 @@ use viewer::Viewer;
 
 use crate::{
     App,
-    commands::{Action, Holds},
+    commands::{Action, Holds, Situation},
     shell,
     slots::{Frame, Listener, Part, Place, Setup},
 };
@@ -301,7 +301,7 @@ pub(crate) fn is_open(app: &App) -> bool {
 /// Marks a focus-into-preview handoff that commits on this or the next frame so `Preview::poll`
 /// does not clear `owns_focus` before the target mounts, then schedules a zero-delay poll to
 /// reconcile against `tx.focused()`.
-pub(super) fn arm_focus_handoff(app: &mut App, tx: &mut Tx) {
+pub(crate) fn arm_focus_handoff(app: &mut App, tx: &mut Tx) {
     app.preview.owns_focus = true;
     app.preview.focus_pending = true;
     tx.wake_after(std::time::Duration::ZERO);
@@ -476,42 +476,135 @@ pub(crate) fn dismiss_escape(app: &mut App, tx: &mut Tx) -> bool {
     true
 }
 
-/// 10xer's J and K (`scroll_open_preview`): the open preview's source text `lines` lines
-/// down, or up for negative, wherever the keyboard is. False when it shows none: a rendered
-/// document, a sheet or a PDF keeps no offset this can step from (A11's open item).
-pub(crate) fn scroll_lines(app: &App, lines: i32, tx: &mut Tx) -> bool {
-    let Some(code) = app
-        .preview
-        .viewer
-        .code_state()
-        .filter(|_| app.preview.enabled)
-    else {
+/// Document-body scroll motions matching GTK's `DocumentScroll` (`src/ui/preview/keyboard.rs`).
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum DocumentScroll {
+    Line(i32),
+    HalfPage(i32),
+    Page(i32),
+    Start,
+    End,
+}
+
+/// Default line-scroll step in points when a viewer has no line-height metric of its own.
+const DOCUMENT_LINE_STEP: f32 = 40.0;
+
+/// Scrolls the open scrollable preview viewer (`CodeView`, `DocumentView`, `SheetGrid`, or
+/// `PdfView`) by `motion`. Returns `false` when no scrollable document viewer is showing.
+pub(crate) fn scroll_document(app: &mut App, motion: DocumentScroll, tx: &mut Tx) -> bool {
+    if !app.preview.enabled {
+        return false;
+    }
+    let Some(target) = app.preview.viewer.scroll_target() else {
         return false;
     };
-    let ty = &app.look.kit.ty;
-    let line = rune::TextStyle {
-        size: ty.body.size,
-        ..ty.mono
+    let page = target.pos.viewport[1].max(1.0);
+    match motion {
+        DocumentScroll::Line(dir) => {
+            let step = line_scroll_step(app, target.kind, page);
+            tx.scroll_to_y(
+                target.key,
+                (target.pos.offset[1] + dir as f32 * step).max(0.0),
+            );
+        }
+        DocumentScroll::HalfPage(dir) => {
+            let y = (target.pos.offset[1] + dir as f32 * (page * 0.5)).max(0.0);
+            tx.scroll_to_y(target.key, y);
+        }
+        DocumentScroll::Page(dir) => tx.scroll_page(target.key, dir),
+        DocumentScroll::Start => scroll_target_edge(app, &target, false, tx),
+        DocumentScroll::End => scroll_target_edge(app, &target, true, tx),
     }
-    .line_px();
-    let y = (code.scroll_offset() + lines as f32 * line).max(0.0);
-    tx.scroll_to_y(format!("{}-scroll", code.view_key()), y);
     true
 }
 
-/// Whether the open preview has a top for 10xer's `g g`: source text, a rendered document or
-/// an archive (`preview_to_top`'s surfaces).
+fn scroll_target_edge(app: &App, target: &viewer::ScrollTarget, end: bool, tx: &mut Tx) {
+    match target.kind {
+        viewer::ScrollTargetKind::Code => {
+            let _ = app.preview.viewer.scroll_code_edge(end, tx);
+        }
+        viewer::ScrollTargetKind::Document if end => {
+            tx.scroll_to_bottom_instant(target.key.clone());
+        }
+        viewer::ScrollTargetKind::Document => tx.scroll_to_y(target.key.clone(), 0.0),
+        viewer::ScrollTargetKind::Pdf => {
+            tx.scroll_to_y(target.key.clone(), if end { f32::MAX } else { 0.0 });
+        }
+    }
+}
+
+fn line_scroll_step(app: &App, kind: viewer::ScrollTargetKind, page: f32) -> f32 {
+    if kind == viewer::ScrollTargetKind::Code {
+        let ty = &app.look.kit.ty;
+        return rune::TextStyle {
+            size: ty.body.size,
+            ..ty.mono
+        }
+        .line_px();
+    }
+    if page > 1.0 {
+        (page / 10.0).clamp(24.0, DOCUMENT_LINE_STEP)
+    } else {
+        DOCUMENT_LINE_STEP
+    }
+}
+
+/// 10xer's `J` and `K` (`scroll_open_preview`): scrolls the open document preview by `lines`
+/// lines from either the listing or inside the preview.
+pub(crate) fn scroll_lines(app: &mut App, lines: i32, tx: &mut Tx) -> bool {
+    scroll_document(app, DocumentScroll::Line(lines), tx)
+}
+
+/// Whether keyboard focus (or an active text selection) is inside a scrollable preview document
+/// body (excluding the find field, archive password prompt, resize grip, header buttons, archive
+/// tree, and media player).
+pub(crate) fn in_document_body(app: &App, at: &Situation) -> bool {
+    let available = app.preview.enabled
+        && !app.preview.drawer.is_find_focused()
+        && !app.preview.viewer.is_prompt_focused()
+        && !at.within("preview-grip");
+    available && is_document_viewer(&app.preview.viewer) && focused_in_document_body(at)
+}
+
+fn is_document_viewer(viewer: &Viewer) -> bool {
+    matches!(
+        viewer,
+        Viewer::Code(_) | Viewer::Document(_) | Viewer::Pdf(_)
+    )
+}
+
+fn focused_in_document_body(at: &Situation) -> bool {
+    const KEYS: [&str; 4] = [
+        viewer::CODE_KEY,
+        document::DOCUMENT_KEY,
+        pdf::PDF_KEY,
+        sheet::SHEET_KEY,
+    ];
+    KEYS.iter().any(|key| at.within(key))
+        || at.focused() == Some(strata_components::preview_drawer::BODY_KEY)
+}
+
+/// Whether the open preview is showing a media player (whose own transport owns `J`/`K`).
+pub(crate) fn is_media_preview(app: &App) -> bool {
+    app.preview.enabled && matches!(app.preview.viewer, Viewer::Media(_))
+}
+
+/// Whether the open preview has a top for 10xer's `g g`: source text, rendered document, PDF,
+/// sheet, or archive (`preview_to_top`'s surfaces).
 pub(crate) fn has_top(app: &App) -> bool {
     app.preview.enabled
         && matches!(
             app.preview.viewer,
-            viewer::Viewer::Code(_) | viewer::Viewer::Document(_) | viewer::Viewer::Archive(_)
+            viewer::Viewer::Code(_)
+                | viewer::Viewer::Document(_)
+                | viewer::Viewer::Pdf(_)
+                | viewer::Viewer::Archive(_)
         )
 }
 
 /// 10xer's `g g` in the preview (`preview_to_top`): a document's top, or an archive's first
 /// member, which its tree takes as Home.
-pub(crate) fn to_top(app: &App, tx: &mut Tx) {
+pub(crate) fn to_top(app: &mut App, tx: &mut Tx) {
     if matches!(app.preview.viewer, viewer::Viewer::Archive(_)) {
         tx.send_key(rune::KeyEvent {
             key: rune::Key::Home,
@@ -519,15 +612,83 @@ pub(crate) fn to_top(app: &App, tx: &mut Tx) {
         });
         return;
     }
-    let code = app.preview.viewer.code_state().map(|code| code.view_key());
-    let bodies = [
-        Some(viewer::CODE_KEY),
-        Some(document::DOCUMENT_KEY),
-        Some(sheet::SHEET_KEY),
-    ];
-    for key in bodies.into_iter().chain([code]).flatten() {
-        tx.scroll_to_y(format!("{key}-scroll"), 0.0);
+    let _ = scroll_document(app, DocumentScroll::Start, tx);
+}
+
+/// Opens Strata's styled read-only text context menu (`Copy`, `Select All`) for the active
+/// preview text viewer at `at`.
+pub(super) fn open_text_context_menu(
+    app: &mut App,
+    at: strata_components::contract::Point,
+    tx: &mut Tx,
+) {
+    let Some(snapshot) = app.preview.viewer.text_menu_info(tx.text_selection()) else {
+        return;
+    };
+    crate::menus::open_preview_text(
+        app,
+        crate::menus::PreviewTextRequest {
+            stamp: snapshot.stamp,
+            anchor: at,
+            focus_key: snapshot.focus_key,
+            selected: snapshot.selected,
+            restore: snapshot.restore,
+            can_select_all: snapshot.can_select_all,
+        },
+        tx,
+    );
+}
+
+fn is_current_text_viewer(app: &App, stamp: crate::menus::TextViewerStamp) -> bool {
+    app.preview.enabled
+        && app.preview.drawer.is_open()
+        && app.preview.viewer.text_viewer_stamp() == Some(stamp)
+}
+
+/// Runs a chosen item from a preview text viewer's context menu. Ignores viewer mutations and
+/// focus handoffs when the preview closed, reloaded, or switched files while the menu was open.
+pub(crate) fn run_text_menu_action(
+    app: &mut App,
+    action: &str,
+    outcome: &crate::menus::PreviewTextMenuOutcome<'_>,
+    tx: &mut Tx,
+) {
+    let current = is_current_text_viewer(app, outcome.stamp);
+    match action {
+        "copy" => {
+            if let Some(text) = outcome.selected
+                && !text.is_empty()
+            {
+                tx.copy(text.to_owned());
+            }
+            if current && let Some(saved) = outcome.restore {
+                app.preview.viewer.restore_text_selection(saved, tx);
+            }
+        }
+        "select-all" if current => {
+            let _ = app.preview.viewer.select_all_text(tx);
+        }
+        _ => {}
     }
+    if current {
+        arm_focus_handoff(app, tx);
+    }
+}
+
+/// Restores preview focus and any active text selection when the preview text menu dismisses via
+/// Escape or click-away, unless the preview closed or switched while the menu was open.
+pub(crate) fn dismiss_text_menu(
+    app: &mut App,
+    outcome: &crate::menus::PreviewTextMenuOutcome<'_>,
+    tx: &mut Tx,
+) {
+    if !is_current_text_viewer(app, outcome.stamp) {
+        return;
+    }
+    if let Some(saved) = outcome.restore {
+        app.preview.viewer.restore_text_selection(saved, tx);
+    }
+    arm_focus_handoff(app, tx);
 }
 
 /// The listing takes the keys back; the drawer stays open (`return_from_preview`).

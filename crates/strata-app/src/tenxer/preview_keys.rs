@@ -1,18 +1,31 @@
 // SPDX-License-Identifier: MIT
 
-//! 10xer's keys on an open preview (`tenxer_preview`, `scroll_open_preview` and
-//! `preview_to_top` in `src/ui/window/keyboard/preview.rs`): `J` and `K` scroll it a line from
-//! the listing or inside it, and `g g` takes a focused document or archive to its top. A15's
-//! drawer keys (`l`, `h`, Escape, `i`, `/`) and Shift+Tab are the preview part's.
+//! 10xer's keys on an open preview (`tenxer_preview`, `scroll_open_preview`,
+//! `preview_document_key`, and `preview_to_top` in `src/ui/window/keyboard/preview.rs`):
+//! - `J` and `K` scroll a document preview a line from either the listing or inside the preview;
+//! - inside a focused document preview (`CodeView`, `DocumentView`, `PdfView`, `SheetGrid`),
+//!   `Up`/`Down`/`j`/`k`, `PageUp`/`PageDown`/`Ctrl+B`/`Ctrl+F`, `Ctrl+U`/`Ctrl+D`, `Home`/`End`,
+//!   `Ctrl+Up`/`Ctrl+Down`, `G`, and `g g` scroll the preview while `Left`/`h` return focus to
+//!   the listing. A15's drawer keys (`Escape`, `i`, `/`) and `Shift+Tab` stay in the preview part.
+
+use std::time::Duration;
 
 use rune::Tx;
 use strata_desktop::keys::{
-    KeyPress,
-    bindings::{GO, GO_FIRST, SCROLL_PREVIEW_DOWN, SCROLL_PREVIEW_UP},
+    KeyPress, Match, Modifiers,
+    bindings::{
+        DOWN, END_KEY, FIRST_ITEM, FIRST_ITEM_UP, GO, GO_FIRST, HALF_PAGE_DOWN, HALF_PAGE_UP,
+        HOME_KEY, LAST_ITEM, LAST_ITEM_DOWN, LEFT, PAGE_DOWN, PAGE_DOWN_KEY, PAGE_UP, PAGE_UP_KEY,
+        SCROLL_PREVIEW_DOWN, SCROLL_PREVIEW_UP, UP,
+    },
 };
 
 use super::{ChordKind, arm_default_chord, go};
-use crate::{App, commands::Outcome, preview};
+use crate::{
+    App,
+    commands::{Outcome, Situation},
+    preview::{self, DocumentScroll},
+};
 
 /// `J` and `K`, from the listing or the preview: claimed whether or not a preview shows, as
 /// GTK's are.
@@ -24,12 +37,19 @@ pub(super) fn scroll(app: &mut App, press: &KeyPress, tx: &mut Tx) -> Option<Out
     } else {
         return None;
     };
-    let _ = preview::scroll_lines(app, lines, tx);
+    if !preview::is_media_preview(app) {
+        let _ = preview::scroll_lines(app, lines, tx);
+    }
     Some(Outcome::Ran)
 }
 
 /// The keys inside a focused preview.
-pub(super) fn in_preview(app: &mut App, press: &KeyPress, tx: &mut Tx) -> Option<Outcome> {
+pub(super) fn in_preview(
+    app: &mut App,
+    press: &KeyPress,
+    at: &Situation,
+    tx: &mut Tx,
+) -> Option<Outcome> {
     if let Some(outcome) = scroll(app, press, tx) {
         return Some(outcome);
     }
@@ -37,7 +57,44 @@ pub(super) fn in_preview(app: &mut App, press: &KeyPress, tx: &mut Tx) -> Option
         arm_default_chord(app, ChordKind::PreviewTop);
         return Some(Outcome::Ran);
     }
-    None
+    if !preview::in_document_body(app, at) {
+        return None;
+    }
+    if press.is(LEFT.or_alternates()) {
+        preview::return_to_files(app);
+        tx.wake_after(Duration::ZERO);
+        return Some(Outcome::Ran);
+    }
+    let motion = document_motion(press)?;
+    let _ = preview::scroll_document(app, motion, tx);
+    Some(Outcome::Ran)
+}
+
+fn document_motion(press: &KeyPress) -> Option<DocumentScroll> {
+    let down_or_j = DOWN.or_alternates();
+    let up_or_k = UP.or_alternates();
+    let page_up_any_shift = PAGE_UP_KEY.ignoring(Modifiers::SHIFT_MASK);
+    let page_down_any_shift = PAGE_DOWN_KEY.ignoring(Modifiers::SHIFT_MASK);
+    let motions: [(&dyn Match, DocumentScroll); 14] = [
+        (&HALF_PAGE_UP, DocumentScroll::HalfPage(-1)),
+        (&HALF_PAGE_DOWN, DocumentScroll::HalfPage(1)),
+        (&PAGE_UP, DocumentScroll::Page(-1)),
+        (&PAGE_DOWN, DocumentScroll::Page(1)),
+        (&FIRST_ITEM_UP, DocumentScroll::Start),
+        (&LAST_ITEM_DOWN, DocumentScroll::End),
+        (&down_or_j, DocumentScroll::Line(1)),
+        (&up_or_k, DocumentScroll::Line(-1)),
+        (&page_up_any_shift, DocumentScroll::Page(-1)),
+        (&page_down_any_shift, DocumentScroll::Page(1)),
+        (&HOME_KEY, DocumentScroll::Start),
+        (&END_KEY, DocumentScroll::End),
+        (&FIRST_ITEM, DocumentScroll::Start),
+        (&LAST_ITEM, DocumentScroll::End),
+    ];
+    motions
+        .into_iter()
+        .find(|(key, _)| press.is(*key))
+        .map(|(_, motion)| motion)
 }
 
 /// The step after `g` in a preview: `g` goes to its top; a place's key leaves the preview for

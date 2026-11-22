@@ -302,6 +302,11 @@ impl Bar {
         self.0.reveal();
     }
 
+    /// The viewport's latest [`ScrollPos`].
+    pub fn pos(&self) -> ScrollPos {
+        self.0.pos.get()
+    }
+
     #[cfg(test)]
     pub(crate) fn offset(&self) -> [f32; 2] {
         self.0.pos.get().offset
