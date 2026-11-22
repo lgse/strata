@@ -36,7 +36,7 @@ use crate::{
         operation::{BoundOperation, OperationOptions},
     },
     shell,
-    slots::Later,
+    slots::{Later, WeakLater},
 };
 
 const RELEASE_PROGRESS_DELAY: Duration = Duration::from_millis(350);
@@ -132,8 +132,25 @@ struct PendingRelease {
 
 struct WatchEntry {
     window_id: u64,
-    window_later: Later<App>,
+    window_later: WeakLater<App>,
     browser: Weak<Browser>,
+}
+
+/// RAII guard for an in-flight network share disconnect.
+struct DisconnectGuard(String);
+
+impl DisconnectGuard {
+    fn acquire(id: String) -> Option<Self> {
+        DISCONNECTING
+            .with(|set| set.borrow_mut().insert(id.clone()))
+            .then_some(Self(id))
+    }
+}
+
+impl Drop for DisconnectGuard {
+    fn drop(&mut self) {
+        DISCONNECTING.with(|set| set.borrow_mut().remove(&self.0));
+    }
 }
 
 thread_local! {
@@ -163,7 +180,7 @@ pub(super) fn register_sidebar(app: &App) -> SidebarWatch {
     });
     let entry = Rc::new(WatchEntry {
         window_id: shell::window_id(app),
-        window_later: shell::window_later(app),
+        window_later: shell::window_later(app).downgrade(),
         browser: Rc::downgrade(&app.browser),
     });
     WATCHES.with(|watches| watches.borrow_mut().push((id, Rc::downgrade(&entry))));
@@ -179,7 +196,7 @@ pub(super) fn refresh_all_sidebars() {
             .iter()
             .filter_map(|(_, entry)| entry.upgrade())
             .filter(|entry| seen_windows.insert(entry.window_id))
-            .map(|entry| entry.window_later.clone())
+            .filter_map(|entry| entry.window_later.upgrade())
             .collect()
     });
     for later in laters {
@@ -427,18 +444,21 @@ where
     super::redress(app);
     refresh_all_sidebars();
 
-    let window_later = shell::window_later(app);
+    let window_later = shell::window_later(app).downgrade();
     schedule_overlay(&window_later, target.key.clone(), overlay_id);
 
     glib::MainContext::default().spawn_local(async move {
         let _reads = release_reads(target.sync_root.clone()).await;
         let decision = run_flush_and_gio(&window_later, &target, &way_back, run_gio).await;
         let finished = finish_release(&target.key);
-        window_later.then(move |app: &mut App, _: &mut Tx| {
-            settle_release(app, finished, decision);
-            true
-        });
         on_settled();
+        refresh_all_sidebars();
+        if let Some(later) = window_later.upgrade() {
+            later.then(move |app: &mut App, _: &mut Tx| {
+                settle_release(app, finished, decision);
+                true
+            });
+        }
     });
     true
 }
@@ -466,7 +486,7 @@ fn register_release(target: &ReleaseTarget, overlay_id: u64) -> bool {
     })
 }
 
-fn schedule_overlay(window_later: &Later<App>, key: ReleaseKey, overlay_id: u64) {
+fn schedule_overlay(window_later: &WeakLater<App>, key: ReleaseKey, overlay_id: u64) {
     let later = window_later.clone();
     let present_key = key.clone();
     let source = glib::timeout_add_local_once(RELEASE_PROGRESS_DELAY, move || {
@@ -487,7 +507,10 @@ fn schedule_overlay(window_later: &Later<App>, key: ReleaseKey, overlay_id: u64)
     });
 }
 
-fn present_overlay(window_later: &Later<App>, key: &ReleaseKey, overlay_id: u64) {
+fn present_overlay(window_later: &WeakLater<App>, key: &ReleaseKey, overlay_id: u64) {
+    let Some(later) = window_later.upgrade() else {
+        return;
+    };
     let spec = RELEASES.with(|releases| {
         let mut releases = releases.borrow_mut();
         let entry = releases
@@ -510,7 +533,7 @@ fn present_overlay(window_later: &Later<App>, key: &ReleaseKey, overlay_id: u64)
         return;
     };
     let hide_key = key.clone();
-    window_later.then(move |app: &mut App, _: &mut Tx| {
+    later.then(move |app: &mut App, _: &mut Tx| {
         mount_prompts::show_release_overlay(app, spec, move || mark_dismissed(&hide_key));
         true
     });
@@ -532,7 +555,7 @@ fn mark_dismissed(key: &ReleaseKey) {
     });
 }
 
-fn note_unmount_progress(window_later: &Later<App>, key: &ReleaseKey, message: &str) {
+fn note_unmount_progress(window_later: &WeakLater<App>, key: &ReleaseKey, message: &str) {
     let trimmed = message.trim();
     if trimmed.is_empty() {
         return;
@@ -547,8 +570,10 @@ fn note_unmount_progress(window_later: &Later<App>, key: &ReleaseKey, message: &
             .overlay_shown
             .then(|| (entry.overlay_id, body_for_progress(Some(trimmed))))
     });
-    if let Some((overlay_id, body)) = update {
-        window_later.then(move |app: &mut App, _: &mut Tx| {
+    if let Some((overlay_id, body)) = update
+        && let Some(later) = window_later.upgrade()
+    {
+        later.then(move |app: &mut App, _: &mut Tx| {
             mount_prompts::update_release_overlay_body(app, overlay_id, body);
             true
         });
@@ -567,7 +592,7 @@ async fn release_reads(sync_root: Option<PathBuf>) -> ActiveOperation {
 }
 
 async fn run_flush_and_gio<F, Fut>(
-    window_later: &Later<App>,
+    window_later: &WeakLater<App>,
     target: &ReleaseTarget,
     way_back: &WayBack,
     run_gio: F,
@@ -646,7 +671,6 @@ fn settle_release(app: &mut App, finished: Option<FinishedRelease>, decision: Re
         }
     }
     super::refresh(app);
-    refresh_all_sidebars();
     if let (Some(title), Some(message)) = (decision.dialog_title, decision.dialog_message) {
         error_dialog::show(app, Error::new(tr(&title), message));
     }
@@ -767,11 +791,11 @@ pub(super) struct ShareDisconnect {
 /// Disconnects a GVfs network share (`src/ui/window/device_release/disconnect.rs`).
 pub(super) fn disconnect_share(app: &mut App, share: ShareDisconnect, tx: &mut Tx) {
     let ShareDisconnect { id, mount, root } = share;
-    if !DISCONNECTING.with(|set| set.borrow_mut().insert(id.clone())) {
+    let Some(guard) = DisconnectGuard::acquire(id) else {
         return;
-    }
+    };
     let way_back = leave_device_across_all(app, &root, Some(tx));
-    let window_later = shell::window_later(app);
+    let window_later = shell::window_later(app).downgrade();
     glib::MainContext::default().spawn_local(async move {
         let bound = BoundOperation::new(window_later.clone(), OperationOptions::default());
         let gio_root = mount.root();
@@ -779,7 +803,7 @@ pub(super) fn disconnect_share(app: &mut App, share: ShareDisconnect, tx: &mut T
             .unmount_with_operation_future(gio::MountUnmountFlags::NONE, Some(bound.operation()))
             .await;
         let outcome = bound.finish(result);
-        DISCONNECTING.with(|set| set.borrow_mut().remove(&id));
+        drop(guard);
         if outcome.result.is_err() && share_still_mounted(&gio_root) {
             way_back.restore();
         }
@@ -787,14 +811,16 @@ pub(super) fn disconnect_share(app: &mut App, share: ShareDisconnect, tx: &mut T
             Err(error) if !release_error_is_quiet(&error) => Some(error.to_string()),
             _ => None,
         };
-        window_later.then(move |app: &mut App, _: &mut Tx| {
-            super::refresh(app);
-            refresh_all_sidebars();
-            if let Some(message) = error_message {
-                error_dialog::show(app, Error::new(tr("Unable to disconnect"), message));
-            }
-            true
-        });
+        refresh_all_sidebars();
+        if let Some(later) = window_later.upgrade() {
+            later.then(move |app: &mut App, _: &mut Tx| {
+                super::refresh(app);
+                if let Some(message) = error_message {
+                    error_dialog::show(app, Error::new(tr("Unable to disconnect"), message));
+                }
+                true
+            });
+        }
     });
 }
 

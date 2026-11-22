@@ -31,11 +31,11 @@ use crate::{
         self,
         operation::{
             BoundOperation, MountCredentials, MountOutcome, MountPromptDetails, OperationOptions,
-            show_retry_prompt,
+            RetryDefaults, show_retry_prompt,
         },
     },
     shell,
-    slots::Later,
+    slots::WeakLater,
 };
 
 const UNLOCK_PROGRESS_DELAY: Duration = Duration::from_millis(350);
@@ -155,12 +155,42 @@ struct DeviceAttempt {
     user_asked_to_open: bool,
 }
 
-#[derive(Clone)]
 struct DeviceMount {
     row_id: String,
     device: UnlockDevice,
     waited: DeviceMatch,
     attempt: DeviceAttempt,
+    guard: UnlockSlotGuard,
+}
+
+/// RAII guard for an in-flight unlock slot; releases the slot and dismisses its progress
+/// overlay on drop even if the initiating window closes or an async step is abandoned.
+pub(super) struct UnlockSlotGuard {
+    keys: Option<DeviceKeys>,
+    window_later: WeakLater<App>,
+}
+
+impl UnlockSlotGuard {
+    pub(super) fn acquire(window_later: WeakLater<App>, keys: DeviceKeys) -> Option<Self> {
+        begin_unlock_slot(&keys).then_some(Self {
+            keys: Some(keys),
+            window_later,
+        })
+    }
+
+    fn finish(mut self) {
+        if let Some(keys) = self.keys.take() {
+            finish_unlock_slot(&self.window_later, &keys);
+        }
+    }
+}
+
+impl Drop for UnlockSlotGuard {
+    fn drop(&mut self) {
+        if let Some(keys) = self.keys.take() {
+            finish_unlock_slot(&self.window_later, &keys);
+        }
+    }
 }
 
 enum DeviceReadiness {
@@ -259,12 +289,13 @@ struct UnlockRequest {
     device: UnlockDevice,
     credentials: Option<MountCredentials>,
     attempt: DeviceAttempt,
+    guard: Option<UnlockSlotGuard>,
 }
 
 /// Mounts or unlocks `volume` and opens its root once ready.
 pub(super) fn mount_volume(app: &mut App, row_id: String, volume: gio::Volume) {
     app.sidebar.current = Some(ItemId::Device(row_id.clone()));
-    let window_later = shell::window_later(app);
+    let window_later = shell::window_later(app).downgrade();
     start_unlock_device(
         window_later,
         UnlockRequest {
@@ -275,6 +306,7 @@ pub(super) fn mount_volume(app: &mut App, row_id: String, volume: gio::Volume) {
                 already_waited: false,
                 user_asked_to_open: true,
             },
+            guard: None,
         },
     );
 }
@@ -282,7 +314,7 @@ pub(super) fn mount_volume(app: &mut App, row_id: String, volume: gio::Volume) {
 /// Starts a password-protected drive and opens its mounted volume once ready.
 pub(super) fn start_password_drive(app: &mut App, row_id: String, drive: gio::Drive) {
     app.sidebar.current = Some(ItemId::Device(row_id.clone()));
-    let window_later = shell::window_later(app);
+    let window_later = shell::window_later(app).downgrade();
     start_unlock_device(
         window_later,
         UnlockRequest {
@@ -293,22 +325,27 @@ pub(super) fn start_password_drive(app: &mut App, row_id: String, drive: gio::Dr
                 already_waited: false,
                 user_asked_to_open: true,
             },
+            guard: None,
         },
     );
 }
 
-fn start_unlock_device(window_later: Later<App>, request: UnlockRequest) {
+fn start_unlock_device(window_later: WeakLater<App>, request: UnlockRequest) {
     let UnlockRequest {
         row_id,
         device,
         credentials,
         attempt,
+        guard,
     } = request;
     let waited = device.waited();
-    let first_attempt = credentials.is_none() && !attempt.already_waited;
-    if first_attempt && !begin_unlock_slot(&waited.keys) {
-        return;
-    }
+    let guard = match guard {
+        Some(guard) => guard,
+        None => match UnlockSlotGuard::acquire(window_later.clone(), waited.keys.clone()) {
+            Some(guard) => guard,
+            None => return,
+        },
+    };
     let encrypted = device.is_encrypted();
     let name = device.name();
     if encrypted {
@@ -319,12 +356,13 @@ fn start_unlock_device(window_later: Later<App>, request: UnlockRequest) {
         device,
         waited,
         attempt,
+        guard,
     };
     spawn_device_mount(window_later, mount, credentials);
 }
 
 fn spawn_device_mount(
-    window_later: Later<App>,
+    window_later: WeakLater<App>,
     mount: DeviceMount,
     credentials: Option<MountCredentials>,
 ) {
@@ -357,7 +395,7 @@ fn spawn_device_mount(
     });
 }
 
-fn finish_device_mount(window_later: Later<App>, mount: DeviceMount, outcome: MountOutcome) {
+fn finish_device_mount(window_later: WeakLater<App>, mount: DeviceMount, outcome: MountOutcome) {
     let in_flight = outcome
         .result
         .as_ref()
@@ -386,7 +424,7 @@ fn finish_device_mount(window_later: Later<App>, mount: DeviceMount, outcome: Mo
     }
 }
 
-fn open_unlocked_identity(window_later: Later<App>, mount: DeviceMount) {
+fn open_unlocked_identity(window_later: WeakLater<App>, mount: DeviceMount) {
     let location = mount
         .device
         .volume()
@@ -394,43 +432,45 @@ fn open_unlocked_identity(window_later: Later<App>, mount: DeviceMount) {
         .and_then(|m| location_for_file(&m.root()))
         .or_else(|| successor_mount_location(&mount.waited));
     let dismissed = unlock_progress_dismissed(&mount.waited.keys);
-    finish_unlock_slot(&window_later, &mount.waited.keys);
+    mount.guard.finish();
+    refresh_all_sidebars();
     let user_asked_to_open = mount.attempt.user_asked_to_open;
     let row_id = mount.row_id;
-    window_later.then(move |app: &mut App, tx: &mut Tx| {
-        super::refresh(app);
-        refresh_all_sidebars();
-        if let Some(location) = location {
-            invalidate_mount_snapshot();
-            match unlock_view_follow_up(
-                app.browser.active_location().as_ref(),
-                &location,
-                user_asked_to_open,
-                dismissed,
-            ) {
-                UnlockViewFollowUp::Reload => {
-                    shell::publish(app);
-                    app.browser.reload_active();
-                    shell::settle(app, tx);
+    if let Some(later) = window_later.upgrade() {
+        later.then(move |app: &mut App, tx: &mut Tx| {
+            super::refresh(app);
+            if let Some(location) = location {
+                invalidate_mount_snapshot();
+                match unlock_view_follow_up(
+                    app.browser.active_location().as_ref(),
+                    &location,
+                    user_asked_to_open,
+                    dismissed,
+                ) {
+                    UnlockViewFollowUp::Reload => {
+                        shell::publish(app);
+                        app.browser.reload_active();
+                        shell::settle(app, tx);
+                    }
+                    UnlockViewFollowUp::Navigate => {
+                        app.sidebar.current = Some(ItemId::Device(row_id));
+                        shell::publish(app);
+                        app.browser.navigate(location);
+                        shell::settle(app, tx);
+                    }
+                    UnlockViewFollowUp::None => {}
                 }
-                UnlockViewFollowUp::Navigate => {
-                    app.sidebar.current = Some(ItemId::Device(row_id));
-                    shell::publish(app);
-                    app.browser.navigate(location);
-                    shell::settle(app, tx);
-                }
-                UnlockViewFollowUp::None => {}
             }
-        }
-        true
-    });
+            true
+        });
+    }
 }
 
 fn handle_device_mount_error(
-    window_later: Later<App>,
+    window_later: WeakLater<App>,
     mount: DeviceMount,
     error: glib::Error,
-    (attempted, details): (Option<MountCredentials>, Option<MountPromptDetails>),
+    (attempted, details): (Option<RetryDefaults>, Option<MountPromptDetails>),
 ) {
     if volume_error_is_authentication_failure(&error)
         && let Some(details) = details
@@ -439,33 +479,43 @@ fn handle_device_mount_error(
     } else if volume_error_is_in_flight_mount(&error) {
         await_foreign_mount(window_later, mount);
     } else {
-        finish_unlock_slot(&window_later, &mount.waited.keys);
+        mount.guard.finish();
+        refresh_all_sidebars();
         let message = (!mount_error_is_cancelled(&error)).then(|| gio_device_error_message(&error));
-        window_later.then(move |app: &mut App, _: &mut Tx| {
-            super::refresh(app);
-            if let Some(message) = message {
-                error_dialog::show(app, Error::new(tr("Unable to mount volume"), message));
-            }
-            true
-        });
+        if let Some(later) = window_later.upgrade() {
+            later.then(move |app: &mut App, _: &mut Tx| {
+                super::refresh(app);
+                if let Some(message) = message {
+                    error_dialog::show(app, Error::new(tr("Unable to mount volume"), message));
+                }
+                true
+            });
+        }
     }
 }
 
 fn prompt_device_retry(
-    window_later: Later<App>,
+    window_later: WeakLater<App>,
     mount: DeviceMount,
-    attempted: Option<MountCredentials>,
+    attempted: Option<RetryDefaults>,
     details: MountPromptDetails,
 ) {
+    let Some(later) = window_later.upgrade() else {
+        return;
+    };
     let retry_later = window_later.clone();
-    let cancel_later = window_later.clone();
-    let cancel_keys = mount.waited.keys.clone();
-    window_later.then(move |app: &mut App, _: &mut Tx| {
+    let shared_mount = Rc::new(RefCell::new(Some(mount)));
+    let submit_mount = Rc::clone(&shared_mount);
+    let cancel_mount = Rc::clone(&shared_mount);
+    later.then(move |app: &mut App, _: &mut Tx| {
         show_retry_prompt(
             app,
             &details,
             attempted.as_ref(),
             move |credentials| {
+                let Some(mount) = submit_mount.borrow_mut().take() else {
+                    return;
+                };
                 start_unlock_device(
                     retry_later,
                     UnlockRequest {
@@ -476,16 +526,19 @@ fn prompt_device_retry(
                             already_waited: false,
                             ..mount.attempt
                         },
+                        guard: Some(mount.guard),
                     },
                 );
             },
-            move || finish_unlock_slot(&cancel_later, &cancel_keys),
+            move || {
+                let _ = cancel_mount.borrow_mut().take();
+            },
         );
         true
     });
 }
 
-fn await_foreign_mount(window_later: Later<App>, mount: DeviceMount) {
+fn await_foreign_mount(window_later: WeakLater<App>, mount: DeviceMount) {
     glib::MainContext::default().spawn_local(async move {
         let outcome = mount.device.wait_for_foreign_mount(&mount.waited).await;
         let successor = foreign_wait_successor(outcome, &mount.waited);
@@ -506,20 +559,23 @@ fn await_foreign_mount(window_later: Later<App>, mount: DeviceMount) {
                         already_waited: true,
                         ..mount.attempt
                     },
+                    guard: Some(mount.guard),
                 },
             ),
             ForeignVolumeWaitFollowUp::Quiet => {
-                finish_unlock_slot(&window_later, &mount.waited.keys);
+                mount.guard.finish();
+                refresh_all_sidebars();
             }
         }
     });
 }
 
-fn start_owned_successor(window_later: Later<App>, mount: DeviceMount) {
+fn start_owned_successor(window_later: WeakLater<App>, mount: DeviceMount) {
     let user_asked_to_open =
         mount.attempt.user_asked_to_open && !unlock_progress_dismissed(&mount.waited.keys);
-    finish_unlock_slot(&window_later, &mount.waited.keys);
+    mount.guard.finish();
     if mount.waited.is_absent() {
+        refresh_all_sidebars();
         return;
     }
     let device = successor_volume(&mount.waited)
@@ -536,12 +592,15 @@ fn start_owned_successor(window_later: Later<App>, mount: DeviceMount) {
                     already_waited: false,
                     user_asked_to_open,
                 },
+                guard: None,
             },
         );
+    } else {
+        refresh_all_sidebars();
     }
 }
 
-fn await_started_drive_volume(window_later: Later<App>, mount: DeviceMount) {
+fn await_started_drive_volume(window_later: WeakLater<App>, mount: DeviceMount) {
     glib::MainContext::default().spawn_local(async move {
         wait_until(
             || {
@@ -556,18 +615,21 @@ fn await_started_drive_volume(window_later: Later<App>, mount: DeviceMount) {
         } else if successor_volume(&mount.waited).is_some() {
             start_owned_successor(window_later, mount);
         } else {
-            finish_unlock_slot(&window_later, &mount.waited.keys);
-            window_later.then(move |app: &mut App, _: &mut Tx| {
-                super::refresh(app);
-                error_dialog::show(
-                    app,
-                    Error::new(
-                        tr("Unable to mount volume"),
-                        tr("The device started, but no mountable volume appeared."),
-                    ),
-                );
-                true
-            });
+            mount.guard.finish();
+            refresh_all_sidebars();
+            if let Some(later) = window_later.upgrade() {
+                later.then(move |app: &mut App, _: &mut Tx| {
+                    super::refresh(app);
+                    error_dialog::show(
+                        app,
+                        Error::new(
+                            tr("Unable to mount volume"),
+                            tr("The device started, but no mountable volume appeared."),
+                        ),
+                    );
+                    true
+                });
+            }
         }
     });
 }
@@ -607,7 +669,7 @@ fn unlock_progress_dismissed(keys: &DeviceKeys) -> bool {
     })
 }
 
-fn schedule_unlock_progress(window_later: &Later<App>, keys: &DeviceKeys, name: &str) {
+fn schedule_unlock_progress(window_later: &WeakLater<App>, keys: &DeviceKeys, name: &str) {
     dismiss_unlock_progress(window_later, keys);
     if unlock_progress_dismissed(keys) {
         return;
@@ -645,7 +707,10 @@ fn schedule_unlock_progress(window_later: &Later<App>, keys: &DeviceKeys, name: 
     }
 }
 
-fn present_unlock_progress(window_later: &Later<App>, keys: &DeviceKeys, name: &str) {
+fn present_unlock_progress(window_later: &WeakLater<App>, keys: &DeviceKeys, name: &str) {
+    let Some(later) = window_later.upgrade() else {
+        return;
+    };
     let overlay_id = UNLOCK_SLOTS.with(|slots| {
         let mut slots = slots.borrow_mut();
         let slot = slots
@@ -661,7 +726,7 @@ fn present_unlock_progress(window_later: &Later<App>, keys: &DeviceKeys, name: &
     };
     let volume_name = name.to_owned();
     let hide_keys = keys.clone();
-    window_later.then(move |app: &mut App, _: &mut Tx| {
+    later.then(move |app: &mut App, _: &mut Tx| {
         mount_prompts::show_unlock_progress(app, overlay_id, volume_name, move || {
             UNLOCK_SLOTS.with(|slots| {
                 if let Some(slot) = slots
@@ -677,7 +742,7 @@ fn present_unlock_progress(window_later: &Later<App>, keys: &DeviceKeys, name: &
     });
 }
 
-fn dismiss_unlock_progress(window_later: &Later<App>, keys: &DeviceKeys) {
+fn dismiss_unlock_progress(window_later: &WeakLater<App>, keys: &DeviceKeys) {
     let overlay_id = UNLOCK_SLOTS.with(|slots| {
         let mut slots = slots.borrow_mut();
         let slot = slots
@@ -688,15 +753,17 @@ fn dismiss_unlock_progress(window_later: &Later<App>, keys: &DeviceKeys) {
         }
         Some(slot.overlay_id)
     });
-    if let Some(overlay_id) = overlay_id {
-        window_later.then(move |app: &mut App, _: &mut Tx| {
+    if let Some(overlay_id) = overlay_id
+        && let Some(later) = window_later.upgrade()
+    {
+        later.then(move |app: &mut App, _: &mut Tx| {
             mount_prompts::dismiss_unlock_progress(app, overlay_id);
             true
         });
     }
 }
 
-fn finish_unlock_slot(window_later: &Later<App>, keys: &DeviceKeys) {
+fn finish_unlock_slot(window_later: &WeakLater<App>, keys: &DeviceKeys) {
     dismiss_unlock_progress(window_later, keys);
     UNLOCK_SLOTS.with(|slots| {
         slots

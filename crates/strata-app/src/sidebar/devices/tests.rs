@@ -18,7 +18,7 @@ use super::{
     display_name, leaves,
     listing::{Seen, Source, device_identity, is_network_share, is_system_loop, label_identity},
     lock::{
-        ForgetCachedPasswordError, LockDeviceError, forget_failure_from_delete_prompt,
+        ForgetCachedPasswordError, LockDeviceError, LockGuard, forget_failure_from_delete_prompt,
         forget_failure_from_search, lock_encrypted_device, luks_password_lookups,
     },
     order::{DeviceHome, DevicePlacement, DriveRank, group_by_drive},
@@ -28,14 +28,14 @@ use super::{
     },
     release_action, seed_for_test,
     unlock::{
-        ForeignVolumeWaitFollowUp, ForeignVolumeWaitOutcome, UnlockViewFollowUp,
-        VolumeSuccessorKind, device_volume_mount_is_ready, foreign_volume_wait_follow_up,
-        unlock_view_follow_up, volume_error_is_authentication_failure,
-        volume_error_is_in_flight_mount,
+        DeviceKeys, ForeignVolumeWaitFollowUp, ForeignVolumeWaitOutcome, UnlockSlotGuard,
+        UnlockViewFollowUp, VolumeSuccessorKind, device_volume_mount_is_ready,
+        foreign_volume_wait_follow_up, unlock_view_follow_up,
+        volume_error_is_authentication_failure, volume_error_is_in_flight_mount,
     },
 };
 use crate::{
-    properties, shell,
+    App, properties, shell,
     sidebar::{
         keys::DEVICES_HEADING,
         menu::{
@@ -43,6 +43,7 @@ use crate::{
             device_rows,
         },
     },
+    slots::Inbox,
     test_support::{
         PATIENCE, fixture, hosted,
         view::{all, idle, press, text},
@@ -812,21 +813,14 @@ fn encrypted_rows_ghost_stand_in_and_device_context_menus_work_in_hosted_sidebar
             idle(&mut host);
             assert_eq!(properties::shown_location(host.app()), Some(&mounted));
 
-            // Close Properties, then open the locked encrypted volume menu via keyboard Menu key.
+            // Close Properties, focus the locked encrypted volume row, and open its menu via Menu key.
             press(&mut host, Key::Escape, Mods::default());
             idle(&mut host);
-            let locked_el = host
-                .runtime()
-                .elements()
-                .into_iter()
-                .find(|el| !el.exiting && el.key.as_deref() == Some("sidebar-device-vault-locked"))
-                .expect("vault-locked row");
-            let [lx, ly, lw, lh] = locked_el.visible;
-            let (rx, ry) = (lx + lw / 2.0, ly + lh / 2.0);
-            host.runtime().pointer_move(rx, ry);
-            host.runtime().secondary_down(rx, ry);
-            host.turn();
-            host.runtime().secondary_up(rx, ry);
+            host.runtime().update(|_, tx| {
+                tx.focus("sidebar-device-vault-locked", true);
+            });
+            idle(&mut host);
+            press(&mut host, Key::ContextMenu, Mods::default());
             idle(&mut host);
             assert!(host.run_until(PATIENCE, |h| {
                 keyed(&h.tree(), "sidebar-menu-menu").is_some()
@@ -842,6 +836,25 @@ fn encrypted_rows_ghost_stand_in_and_device_context_menus_work_in_hosted_sidebar
             clear_pending_for_test();
         },
     );
+}
+
+#[test]
+fn lock_and_unlock_guards_release_on_drop_even_when_window_is_gone() {
+    let first_lock = LockGuard::acquire("vault-guard-test").expect("first lock guard");
+    assert!(LockGuard::acquire("vault-guard-test").is_none());
+    drop(first_lock);
+    assert!(LockGuard::acquire("vault-guard-test").is_some());
+
+    let inbox = Inbox::<App>::new();
+    let dead_later = inbox.later().downgrade();
+    drop(inbox);
+
+    let keys = DeviceKeys::new([Some("/dev/mapper/vault-guard-test".into())], []);
+    let first_unlock =
+        UnlockSlotGuard::acquire(dead_later.clone(), keys.clone()).expect("first unlock guard");
+    assert!(UnlockSlotGuard::acquire(dead_later.clone(), keys.clone()).is_none());
+    drop(first_unlock);
+    assert!(UnlockSlotGuard::acquire(dead_later, keys).is_some());
 }
 
 #[test]

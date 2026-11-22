@@ -5,6 +5,7 @@
 
 use std::{
     cell::{Cell, RefCell},
+    fmt,
     rc::Rc,
 };
 
@@ -16,10 +17,12 @@ use strata_components::mount_prompts::{
 use strata_core::i18n::{list, tr};
 
 use super::{PromptTicket, next_id, open_prompt, withdraw_prompt};
-use crate::{App, slots::Later};
+use crate::{App, slots::WeakLater};
 
-/// Credentials submitted from a mount authentication prompt or carried into a retry.
-#[derive(Clone, Debug, PartialEq, Eq)]
+/// Credentials submitted from a mount authentication prompt or supplied for a retry.
+///
+/// The password is redacted from [`fmt::Debug`] and overwritten in [`Drop`].
+#[derive(Clone, PartialEq, Eq)]
 pub(crate) struct MountCredentials {
     pub(crate) anonymous: bool,
     pub(crate) username: String,
@@ -28,21 +31,71 @@ pub(crate) struct MountCredentials {
     pub(crate) save: gio::PasswordSave,
 }
 
-impl MountCredentials {
-    pub(crate) fn default_for_prompt(flags: gio::AskPasswordFlags) -> Self {
+impl fmt::Debug for MountCredentials {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("MountCredentials")
+            .field("anonymous", &self.anonymous)
+            .field("username", &self.username)
+            .field("domain", &self.domain)
+            .field(
+                "password",
+                &(!self.password.is_empty()).then_some("<redacted>"),
+            )
+            .field("save", &self.save)
+            .finish()
+    }
+}
+
+impl Drop for MountCredentials {
+    fn drop(&mut self) {
+        wipe_string(&mut self.password);
+    }
+}
+
+fn wipe_string(secret: &mut String) {
+    let len = secret.len();
+    secret.clear();
+    for _ in 0..len {
+        secret.push('\0');
+    }
+    std::hint::black_box(secret.as_bytes());
+    secret.clear();
+}
+
+/// Non-secret defaults retained after an attempt so an authentication-failure retry pre-fills
+/// username and domain without retaining any plaintext password in memory.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct RetryDefaults {
+    pub(crate) username: String,
+    pub(crate) domain: String,
+}
+
+impl RetryDefaults {
+    pub(crate) fn from_credentials(credentials: &MountCredentials) -> Self {
         Self {
-            anonymous: false,
-            username: glib::user_name().to_string_lossy().into_owned(),
-            domain: if flags.contains(gio::AskPasswordFlags::NEED_DOMAIN) {
-                "WORKGROUP".to_owned()
-            } else {
-                String::new()
-            },
-            password: String::new(),
-            save: gio::PasswordSave::Never,
+            username: credentials.username.clone(),
+            domain: credentials.domain.clone(),
         }
     }
 
+    pub(crate) fn fallback_for(details: &MountPromptDetails) -> Self {
+        let mut username = glib::user_name().to_string_lossy().into_owned();
+        if !details.default_user.is_empty() {
+            username.clone_from(&details.default_user);
+        }
+        let mut domain = if details.flags.contains(gio::AskPasswordFlags::NEED_DOMAIN) {
+            "WORKGROUP".to_owned()
+        } else {
+            String::new()
+        };
+        if !details.default_domain.is_empty() {
+            domain.clone_from(&details.default_domain);
+        }
+        Self { username, domain }
+    }
+}
+
+impl MountCredentials {
     pub(crate) fn from_response(response: &MountResponse) -> Option<Self> {
         match response {
             MountResponse::Anonymous => Some(Self {
@@ -79,7 +132,7 @@ impl MountPromptDetails {
     pub(crate) fn password_request(
         &self,
         retry: bool,
-        previous: Option<&MountCredentials>,
+        previous: Option<&RetryDefaults>,
     ) -> PasswordRequest {
         let secret = if self.encrypted || Secret::guess(&self.message) == Secret::Passphrase {
             Secret::Passphrase
@@ -106,10 +159,10 @@ impl MountPromptDetails {
     }
 }
 
-/// How a mount operation ended, with the credentials last tried and what the backend asked for.
+/// How a mount operation ended, with non-secret retry defaults and what the backend asked for.
 pub(crate) struct MountOutcome {
     pub(crate) result: Result<(), glib::Error>,
-    pub(crate) attempted: Option<MountCredentials>,
+    pub(crate) attempted: Option<RetryDefaults>,
     pub(crate) details: Option<MountPromptDetails>,
 }
 
@@ -129,20 +182,26 @@ pub(crate) struct OperationOptions {
     pub(crate) on_unmount_progress: Option<ProgressHandler>,
 }
 
-/// A bound [`gio::MountOperation`] whose signals are routed through [`super::MountPromptsPart`].
+/// A bound [`gio::MountOperation`] whose signals are routed through [`super::MountPromptsPart`]
+/// via a [`WeakLater`]. If the initiating window closes, queued or subsequent prompts abort
+/// immediately so GIO's async future never hangs.
 pub(crate) struct BoundOperation {
     operation: gio::MountOperation,
-    later: Later<App>,
+    later: WeakLater<App>,
     pending: PendingPrompts,
-    attempted: Rc<RefCell<Option<MountCredentials>>>,
+    attempted: Rc<RefCell<Option<RetryDefaults>>>,
     details: Rc<RefCell<Option<MountPromptDetails>>>,
 }
 
 impl BoundOperation {
-    pub(crate) fn new(later: Later<App>, options: OperationOptions) -> Self {
+    pub(crate) fn new(later: WeakLater<App>, options: OperationOptions) -> Self {
         let operation = gio::MountOperation::new();
         let pending: PendingPrompts = Rc::default();
-        let attempted = Rc::new(RefCell::new(options.supplied.clone()));
+        let initial_attempted = options
+            .supplied
+            .as_ref()
+            .map(RetryDefaults::from_credentials);
+        let attempted = Rc::new(RefCell::new(initial_attempted));
         let details = Rc::new(RefCell::new(None));
 
         connect_ask_password(
@@ -188,18 +247,28 @@ impl BoundOperation {
     }
 }
 
+impl Drop for BoundOperation {
+    fn drop(&mut self) {
+        withdraw_all(&self.later, &self.pending);
+    }
+}
+
 struct PasswordState {
     encrypted: bool,
     supplied: RefCell<Option<MountCredentials>>,
     already_prompted: Cell<bool>,
     pending: PendingPrompts,
-    attempted: Rc<RefCell<Option<MountCredentials>>>,
+    attempted: Rc<RefCell<Option<RetryDefaults>>>,
     details: Rc<RefCell<Option<MountPromptDetails>>>,
     on_prompt_open: Option<Rc<dyn Fn()>>,
     on_submitted: Option<Rc<dyn Fn()>>,
 }
 
-fn connect_ask_password(operation: &gio::MountOperation, later: Later<App>, state: PasswordState) {
+fn connect_ask_password(
+    operation: &gio::MountOperation,
+    later: WeakLater<App>,
+    state: PasswordState,
+) {
     operation.connect_ask_password(move |op, message, default_user, default_domain, flags| {
         op.stop_signal_emission_by_name("ask-password");
         let info = MountPromptDetails {
@@ -229,7 +298,7 @@ fn connect_ask_password(operation: &gio::MountOperation, later: Later<App>, stat
             MountRequest::Password(request),
             move |response| {
                 if let Some(credentials) = MountCredentials::from_response(&response) {
-                    attempted.replace(Some(credentials.clone()));
+                    attempted.replace(Some(RetryDefaults::from_credentials(&credentials)));
                     if let Some(on_submitted) = on_submitted.as_ref() {
                         on_submitted();
                     }
@@ -245,7 +314,7 @@ fn connect_ask_password(operation: &gio::MountOperation, later: Later<App>, stat
 
 fn connect_ask_question(
     operation: &gio::MountOperation,
-    later: Later<App>,
+    later: WeakLater<App>,
     pending: PendingPrompts,
 ) {
     operation.connect_local("ask-question", false, move |values| {
@@ -288,27 +357,35 @@ fn connect_unmount_progress(operation: &gio::MountOperation, on_progress: Progre
     });
 }
 
-fn connect_aborted(operation: &gio::MountOperation, later: Later<App>, pending: PendingPrompts) {
+fn connect_aborted(
+    operation: &gio::MountOperation,
+    later: WeakLater<App>,
+    pending: PendingPrompts,
+) {
     operation.connect_aborted(move |_| withdraw_all(&later, &pending));
 }
 
 fn enqueue_prompt(
-    later: &Later<App>,
+    later: &WeakLater<App>,
     pending: &PendingPrompts,
     request: MountRequest,
     reply: impl FnOnce(MountResponse) + 'static,
 ) {
+    let Some(strong) = later.upgrade() else {
+        reply(MountResponse::Abort);
+        return;
+    };
     let id = next_id();
     let withdrawn = Rc::new(Cell::new(false));
     pending.borrow_mut().push((id, Rc::clone(&withdrawn)));
     let ticket = PromptTicket::new(id, withdrawn, reply);
-    later.then(move |app: &mut App, _: &mut Tx| {
+    strong.then(move |app: &mut App, _: &mut Tx| {
         open_prompt(app, request, ticket);
         true
     });
 }
 
-fn withdraw_all(later: &Later<App>, pending: &PendingPrompts) {
+fn withdraw_all(later: &WeakLater<App>, pending: &PendingPrompts) {
     let ids: Vec<u64> = pending
         .borrow_mut()
         .drain(..)
@@ -320,12 +397,14 @@ fn withdraw_all(later: &Later<App>, pending: &PendingPrompts) {
     if ids.is_empty() {
         return;
     }
-    later.then(move |app: &mut App, _: &mut Tx| {
-        for id in ids {
-            withdraw_prompt(app, id);
-        }
-        true
-    });
+    if let Some(strong) = later.upgrade() {
+        strong.then(move |app: &mut App, _: &mut Tx| {
+            for id in ids {
+                withdraw_prompt(app, id);
+            }
+            true
+        });
+    }
 }
 
 /// Opens a standalone retry prompt (after GIO reported an authentication failure), returning the
@@ -333,14 +412,14 @@ fn withdraw_all(later: &Later<App>, pending: &PendingPrompts) {
 pub(crate) fn show_retry_prompt(
     app: &mut App,
     details: &MountPromptDetails,
-    previous: Option<&MountCredentials>,
+    previous: Option<&RetryDefaults>,
     on_submit: impl FnOnce(MountCredentials) + 'static,
     on_cancel: impl FnOnce() + 'static,
 ) {
     let retry = previous.is_some();
     let defaults = previous
         .cloned()
-        .unwrap_or_else(|| MountCredentials::default_for_prompt(details.flags));
+        .unwrap_or_else(|| RetryDefaults::fallback_for(details));
     let request = details.password_request(retry, Some(&defaults));
     let id = next_id();
     let withdrawn = Rc::new(Cell::new(false));

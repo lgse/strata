@@ -8,6 +8,7 @@ use std::{
     cell::RefCell,
     collections::{HashMap, HashSet},
     path::Path,
+    rc::Rc,
 };
 
 use gio::prelude::*;
@@ -28,6 +29,7 @@ use crate::{
     App,
     error_dialog::{self, Error},
     mount_prompts, shell,
+    slots::WeakLater,
 };
 
 // GVfs and GNOME Disks use different Secret Service attribute names.
@@ -206,12 +208,24 @@ fn block_device_for_path(path: &Path) -> Option<String> {
         .map(|source| source.to_string_lossy().into_owned())
 }
 
-fn begin_lock_guard(id: &str) -> bool {
-    LOCKING.with(|set| set.borrow_mut().insert(id.to_owned()))
+/// RAII guard preventing duplicate lock attempts for the same device; releases on drop even
+/// when the initiating window closes or an async step is abandoned.
+#[derive(Debug)]
+pub(super) struct LockGuard(String);
+
+impl LockGuard {
+    pub(super) fn acquire(id: impl Into<String>) -> Option<Self> {
+        let id = id.into();
+        LOCKING
+            .with(|set| set.borrow_mut().insert(id.clone()))
+            .then_some(Self(id))
+    }
 }
 
-fn finish_lock_guard(id: &str) {
-    LOCKING.with(|set| set.borrow_mut().remove(id));
+impl Drop for LockGuard {
+    fn drop(&mut self) {
+        LOCKING.with(|set| set.borrow_mut().remove(&self.0));
+    }
 }
 
 fn request_encrypted_lock(app: &mut App, request: LockRequest) {
@@ -227,74 +241,87 @@ fn request_encrypted_lock(app: &mut App, request: LockRequest) {
         );
         return;
     }
-    if !begin_lock_guard(&request.lock_id) {
+    let Some(guard) = LockGuard::acquire(request.lock_id.clone()) else {
         return;
-    }
-    let window_later = shell::window_later(app);
+    };
+    let window_later = shell::window_later(app).downgrade();
     let uuid_for_check = request.luks_uuid.clone();
     glib::MainContext::default().spawn_local(async move {
         let cached = password_is_cached(uuid_for_check).await;
+        let Some(later) = window_later.upgrade() else {
+            return;
+        };
         if cached {
             let volume_name = request.volume_name.clone();
-            let cancel_id = request.lock_id.clone();
             let confirm_later = window_later.clone();
-            window_later.then(move |app: &mut App, _: &mut Tx| {
+            let shared_guard = Rc::new(RefCell::new(Some(guard)));
+            let confirm_guard = Rc::clone(&shared_guard);
+            let cancel_guard = Rc::clone(&shared_guard);
+            later.then(move |app: &mut App, _: &mut Tx| {
                 mount_prompts::show_forget_password(
                     app,
                     volume_name,
-                    move || spawn_forget_then_lock(request, confirm_later),
-                    move || finish_lock_guard(&cancel_id),
+                    move || {
+                        if let Some(guard) = confirm_guard.borrow_mut().take() {
+                            spawn_forget_then_lock(request, guard, confirm_later);
+                        }
+                    },
+                    move || {
+                        let _ = cancel_guard.borrow_mut().take();
+                    },
                 );
                 true
             });
         } else {
-            window_later.then(move |app: &mut App, _: &mut Tx| {
-                start_lock_release(app, request);
+            later.then(move |app: &mut App, _: &mut Tx| {
+                start_lock_release(app, request, guard);
                 true
             });
         }
     });
 }
 
-fn spawn_forget_then_lock(request: LockRequest, window_later: crate::slots::Later<App>) {
+fn spawn_forget_then_lock(request: LockRequest, guard: LockGuard, window_later: WeakLater<App>) {
     let Some(uuid) = request.luks_uuid.clone() else {
-        window_later.then(move |app: &mut App, _: &mut Tx| {
-            start_lock_release(app, request);
-            true
-        });
+        if let Some(later) = window_later.upgrade() {
+            later.then(move |app: &mut App, _: &mut Tx| {
+                start_lock_release(app, request, guard);
+                true
+            });
+        }
         return;
     };
     glib::MainContext::default().spawn_local(async move {
         let forget = gio::spawn_blocking(move || forget_cached_volume_password(&uuid)).await;
         let error_message = match forget {
             Ok(Ok(())) => {
-                window_later.then(move |app: &mut App, _: &mut Tx| {
-                    start_lock_release(app, request);
-                    true
-                });
+                if let Some(later) = window_later.upgrade() {
+                    later.then(move |app: &mut App, _: &mut Tx| {
+                        start_lock_release(app, request, guard);
+                        true
+                    });
+                }
                 return;
             }
             Ok(Err(error)) => error.user_message(),
             Err(_) => tr("The saved password could not be deleted."),
         };
-        finish_lock_guard(&request.lock_id);
-        window_later.then(move |app: &mut App, _: &mut Tx| {
-            error_dialog::show(
-                app,
-                Error::new(tr("Couldn't forget the saved password"), error_message),
-            );
-            true
-        });
+        drop(guard);
+        if let Some(later) = window_later.upgrade() {
+            later.then(move |app: &mut App, _: &mut Tx| {
+                error_dialog::show(
+                    app,
+                    Error::new(tr("Couldn't forget the saved password"), error_message),
+                );
+                true
+            });
+        }
     });
 }
 
-fn start_lock_release(app: &mut App, request: LockRequest) {
+fn start_lock_release(app: &mut App, request: LockRequest, guard: LockGuard) {
     let LockRequest {
-        lock_id,
-        mount,
-        target,
-        key,
-        ..
+        mount, target, key, ..
     } = request;
     let away_root: Option<Location> = mount
         .as_ref()
@@ -307,11 +334,11 @@ fn start_lock_release(app: &mut App, request: LockRequest) {
         sync_root,
         away_root,
     };
-    let settled_id = lock_id.clone();
-    let started = release::begin_release_with(
+    // If `begin_release_with` declines a duplicate release, it drops the closure and `guard`.
+    let _ = release::begin_release_with(
         app,
         release_target,
-        (None, Box::new(move || finish_lock_guard(&settled_id))),
+        (None, Box::new(move || drop(guard))),
         move |operation| async move {
             if let Some(mount) = mount {
                 mount
@@ -321,9 +348,6 @@ fn start_lock_release(app: &mut App, request: LockRequest) {
             lock_target_device(target, &operation).await
         },
     );
-    if !started {
-        finish_lock_guard(&lock_id);
-    }
 }
 
 async fn lock_target_device(

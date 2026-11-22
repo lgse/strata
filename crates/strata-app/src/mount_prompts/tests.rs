@@ -16,14 +16,15 @@ use strata_kit::icons::IconName;
 use super::{
     PromptTicket, ReleaseOverlaySpec, next_id, open_prompt,
     operation::{
-        BoundOperation, MountCredentials, MountPromptDetails, OperationOptions,
-        authentication_retry_message,
+        BoundOperation, MountCredentials, MountPromptDetails, OperationOptions, RetryDefaults,
+        authentication_retry_message, show_retry_prompt,
     },
     show_forget_password, show_release_overlay, show_release_safe_to_remove, show_unlock_progress,
     withdraw_prompt,
 };
 use crate::{
-    shell,
+    App, shell,
+    slots::Inbox,
     test_support::{
         PATIENCE, hosted,
         view::{all, idle, press, text},
@@ -82,7 +83,7 @@ fn luks_passphrase_prompt_submits_secret_and_storage_choice_to_gio_operation() {
         MODULE,
         "luks_passphrase_prompt_submits_secret_and_storage_choice_to_gio_operation",
         |mut host| {
-            let later = shell::window_later(host.app());
+            let later = shell::window_later(host.app()).downgrade();
             let submitted_hook = Rc::new(Cell::new(false));
             let prompt_opened = Rc::new(Cell::new(false));
             let bound = BoundOperation::new(
@@ -159,8 +160,11 @@ fn luks_passphrase_prompt_submits_secret_and_storage_choice_to_gio_operation() {
             );
             let outcome = bound.finish(Ok(()));
             assert_eq!(
-                outcome.attempted.as_ref().map(|c| c.password.as_str()),
-                Some("top-secret")
+                outcome.attempted,
+                Some(RetryDefaults {
+                    username: String::new(),
+                    domain: String::new(),
+                })
             );
             assert!(outcome.details.is_some());
         },
@@ -332,15 +336,124 @@ fn mount_prompt_details_preserves_previous_user_and_domain_on_retry() {
             | gio::AskPasswordFlags::NEED_PASSWORD,
         encrypted: false,
     };
-    let prev = MountCredentials {
-        anonymous: false,
+    let prev = RetryDefaults {
         username: "alice".into(),
         domain: "CORP".into(),
-        password: "wrong".into(),
-        save: gio::PasswordSave::Never,
     };
     let request = details.password_request(true, Some(&prev));
     assert_eq!(request.default_user, "alice");
     assert_eq!(request.default_domain, "CORP");
     assert!(request.error.is_some());
+
+    // When `previous` is `None`, retry preserves non-empty server defaults instead of clearing them.
+    hosted(
+        MODULE,
+        "mount_prompt_details_preserves_previous_user_and_domain_on_retry",
+        |mut host| {
+            host.runtime().update(|app, _| {
+                show_retry_prompt(app, &details, None, |_| {}, || {});
+            });
+            idle(&mut host);
+            let form = host
+                .app()
+                .mount_prompts
+                .prompt
+                .password_form()
+                .expect("retry password form");
+            assert_eq!(form.user.text, "guest");
+            assert_eq!(form.domain.text, "OLD");
+        },
+    );
+}
+
+#[test]
+fn mount_credentials_debug_redacts_password() {
+    let creds = MountCredentials {
+        anonymous: false,
+        username: "alice".into(),
+        domain: "CORP".into(),
+        password: "super-secret-passphrase".into(),
+        save: gio::PasswordSave::Never,
+    };
+    let rendered = format!("{creds:?}");
+    assert!(
+        !rendered.contains("super-secret-passphrase"),
+        "Debug output leaked password: {rendered}"
+    );
+    assert!(rendered.contains("<redacted>"), "Debug output: {rendered}");
+    assert!(rendered.contains("alice"), "Debug output: {rendered}");
+}
+
+#[test]
+fn window_close_aborts_bound_operation_before_and_after_prompt_queued() {
+    let flags = gio::AskPasswordFlags::NEED_PASSWORD;
+
+    // Case 1: Window closed before `ask-password` fires -> immediate Abort reply.
+    let inbox = Inbox::<App>::new();
+    let weak = inbox.later().downgrade();
+    drop(inbox);
+
+    let bound = BoundOperation::new(weak, OperationOptions::default());
+    let replied: Rc<Cell<Option<gio::MountOperationResult>>> = Rc::default();
+    let sink = Rc::clone(&replied);
+    bound.operation().connect_reply(move |_, result| {
+        sink.set(Some(result));
+    });
+    bound
+        .operation()
+        .emit_by_name::<()>("ask-password", &[&"Enter passphrase", &"", &"", &flags]);
+    assert_eq!(replied.get(), Some(gio::MountOperationResult::Aborted));
+    drop(bound);
+
+    // Case 2: Window closes while the prompt closure is still queued in `Inbox` -> Abort reply.
+    let inbox = Inbox::<App>::new();
+    let weak = inbox.later().downgrade();
+
+    let bound = BoundOperation::new(weak, OperationOptions::default());
+    let replied2: Rc<Cell<Option<gio::MountOperationResult>>> = Rc::default();
+    let sink2 = Rc::clone(&replied2);
+    bound.operation().connect_reply(move |_, result| {
+        sink2.set(Some(result));
+    });
+    bound
+        .operation()
+        .emit_by_name::<()>("ask-password", &[&"Enter passphrase", &"", &"", &flags]);
+    assert_eq!(
+        replied2.get(),
+        None,
+        "prompt is waiting in inbox while window is alive"
+    );
+    drop(inbox);
+    assert_eq!(
+        replied2.get(),
+        Some(gio::MountOperationResult::Aborted),
+        "dropping the window inbox must abort the queued prompt immediately"
+    );
+    drop(bound);
+
+    // Case 3: Dropping `BoundOperation` withdraws an already-open prompt without replying.
+    hosted(
+        MODULE,
+        "window_close_aborts_bound_operation_before_and_after_prompt_queued",
+        |mut host| {
+            let weak = shell::window_later(host.app()).downgrade();
+            let bound = BoundOperation::new(weak, OperationOptions::default());
+            let replied3: Rc<Cell<Option<gio::MountOperationResult>>> = Rc::default();
+            let sink3 = Rc::clone(&replied3);
+            bound.operation().connect_reply(move |_, result| {
+                sink3.set(Some(result));
+            });
+            bound
+                .operation()
+                .emit_by_name::<()>("ask-password", &[&"Enter passphrase", &"", &"", &flags]);
+            assert!(host.run_until(PATIENCE, |h| {
+                keyed(&h.tree(), "mount-password-dialog").is_some()
+            }));
+            drop(bound);
+            assert!(host.run_until(PATIENCE, |h| {
+                keyed(&h.tree(), "mount-password-dialog").is_none()
+            }));
+            assert_eq!(replied3.get(), None);
+        },
+    );
 }

@@ -107,11 +107,14 @@ fn volume_row(volume: &gio::Volume) -> Seen {
     } else {
         LockState::Unlocked
     });
+    let removable = volume
+        .drive()
+        .is_some_and(|drive| drive.is_removable() || drive.is_media_removable());
     Seen {
         id: volume_identity(volume).unwrap_or_else(|| format!("volume:{}", volume.name())),
         name: volume.name().to_string(),
         label_id: label_identity(uuid.as_deref(), uri.as_deref()),
-        can_mount: root.is_none() && volume.can_mount(),
+        can_mount: removable && root.is_none() && volume.can_mount(),
         root,
         description,
         release: release_action(volume.can_eject(), mount_can_eject, mount_can_unmount),
