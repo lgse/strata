@@ -14,6 +14,21 @@ use rune::{Drag, Key, KeyEvent, Phase, PointerButton, TextStyle, Tx};
 
 use super::state::CodeState;
 
+/// Whether `ev` belongs to caret navigation or selection.
+pub(super) fn handles_key(ev: &KeyEvent) -> bool {
+    let m = ev.mods;
+    if m.alt {
+        return false;
+    }
+    let ctrl = m.ctrl || m.cmd;
+    match ev.key {
+        Key::Home | Key::End => true,
+        Key::Left | Key::Right => m.shift || !ctrl,
+        Key::Up | Key::Down => m.shift && !ctrl,
+        _ => false,
+    }
+}
+
 /// Handles caret and keyboard-selection keys inside a focused [`super::CodeView`].
 ///
 /// Returns `Some(handled)` when the key belongs to caret navigation or selection, or `None` when
@@ -25,22 +40,12 @@ pub(super) fn on_key(st: &mut CodeState, ev: &KeyEvent, tx: &mut Tx) -> Option<b
     }
     let ctrl = m.ctrl || m.cmd;
     match ev.key {
-        Key::Home | Key::End => {
-            st.sync_caret_from_selection(tx.text_selection());
-            Some(home_or_end(st, ev.key == Key::End, (ctrl, m.shift), tx))
-        }
+        Key::Home | Key::End => Some(home_or_end(st, ev.key == Key::End, (ctrl, m.shift), tx)),
         Key::Left | Key::Right if m.shift => {
-            st.sync_caret_from_selection(tx.text_selection());
             Some(step_horizontal(st, ev.key == Key::Right, ctrl, tx))
         }
-        Key::Left | Key::Right if !ctrl => {
-            st.sync_caret_from_selection(tx.text_selection());
-            plain_horizontal(st, ev.key == Key::Right, tx)
-        }
-        Key::Up | Key::Down if m.shift && !ctrl => {
-            st.sync_caret_from_selection(tx.text_selection());
-            Some(step_vertical(st, ev.key == Key::Down, tx))
-        }
+        Key::Left | Key::Right if !ctrl => plain_horizontal(st, ev.key == Key::Right, tx),
+        Key::Up | Key::Down if m.shift && !ctrl => Some(step_vertical(st, ev.key == Key::Down, tx)),
         _ => None,
     }
 }
@@ -50,7 +55,7 @@ fn home_or_end(st: &mut CodeState, to_end: bool, (ctrl, shift): (bool, bool), tx
     let (anchor, head) = st.caret_or_selection(tx.text_selection());
     let target = if ctrl {
         let p = st.position.clone();
-        p.go(if to_end { f64::INFINITY } else { 0.0 }, tx);
+        p.go_step(if to_end { f64::INFINITY } else { 0.0 }, tx);
         if to_end { text.len() } else { 0 }
     } else {
         let (start, end) = line_bounds(&text, head);

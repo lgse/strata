@@ -648,8 +648,11 @@ fn key_in<S: 'static>(
     if scroll_key_in(st, ev, document_home_end, tx) {
         return true;
     }
-    if let Some(handled) = caret::on_key(st, ev, tx) {
-        return handled;
+    if caret::handles_key(ev) {
+        st.sync_caret_from_selection(tx.text_selection());
+        if let Some(handled) = caret::on_key(st, ev, tx) {
+            return handled;
+        }
     }
     false
 }

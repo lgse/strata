@@ -290,4 +290,134 @@ fn poll_defers_a11y_value_during_continuous_scroll_and_updates_when_settled() {
         settled.starts_with("Line ") && settled != "Line 1 of 600",
         "settled value={settled:?}"
     );
+
+    // Explicit Ctrl+End / Ctrl+Home jumps update `a11y_value` immediately via `go_step`,
+    // without waiting for the 150 ms settle window.
+    let ctrl = Mods {
+        ctrl: true,
+        ..Mods::default()
+    };
+    rt.update(|_, tx| tx.focus("code", true));
+    rt.frame(1.0 / 60.0);
+    rt.key(KeyEvent {
+        key: Key::End,
+        mods: ctrl,
+    });
+    for _ in 0..3 {
+        rt.frame(1.0 / 60.0);
+    }
+    let at_end = bar_value(&rt);
+    assert_ne!(at_end, settled, "Ctrl+End updates a11y_value immediately");
+    assert_ne!(at_end, "Line 1 of 600");
+
+    rt.key(KeyEvent {
+        key: Key::Home,
+        mods: ctrl,
+    });
+    for _ in 0..3 {
+        rt.frame(1.0 / 60.0);
+    }
+    assert_eq!(
+        bar_value(&rt),
+        "Line 1 of 600",
+        "Ctrl+Home updates a11y_value immediately"
+    );
+}
+
+#[test]
+fn external_selection_clear_invalidates_stale_keyboard_and_select_all_state() {
+    use rune::{col, el};
+
+    struct OutsideHost {
+        code: CodeState,
+        look: Look,
+    }
+    fn outside_view(h: &OutsideHost, cx: &mut Cx<OutsideHost>) -> El {
+        col()
+            .w_full()
+            .h_full()
+            .child(
+                el().key("outside")
+                    .w_full()
+                    .h(30.0)
+                    .focusable(true)
+                    .on_press(|_: &mut OutsideHost| {}),
+            )
+            .child(
+                col().w_full().grow(1.0).min_h(0.0).child(
+                    CodeView::new(|h: &OutsideHost| &h.code, |h: &mut OutsideHost| &mut h.code)
+                        .build(h, &h.look, cx),
+                ),
+            )
+    }
+
+    let mut rt = Runtime::new(
+        OutsideHost {
+            code: CodeState::new("alpha\nbeta\ngamma\n"),
+            look: Look::fallback(false),
+        },
+        outside_view,
+        (400.0, 240.0),
+        Env::new(false, 1.0),
+    );
+    for _ in 0..8 {
+        rt.frame(1.0 / 60.0);
+    }
+    let click_outside = |rt: &mut Runtime<OutsideHost>| {
+        rt.pointer_move(20.0, 15.0);
+        rt.pointer_down(20.0, 15.0);
+        rt.pointer_up(20.0, 15.0);
+        for _ in 0..4 {
+            rt.frame(1.0 / 60.0);
+        }
+    };
+    let focus_code = |rt: &mut Runtime<OutsideHost>| {
+        rt.update(|_, tx| tx.focus("code", true));
+        rt.frame(1.0 / 60.0);
+    };
+    let send = |rt: &mut Runtime<OutsideHost>, key: Key, mods: Mods| {
+        rt.key(KeyEvent { key, mods });
+        rt.frame(1.0 / 60.0);
+    };
+    let ctrl = Mods {
+        ctrl: true,
+        ..Mods::default()
+    };
+    let cmd = Mods {
+        cmd: true,
+        ..Mods::default()
+    };
+    let shift = Mods {
+        shift: true,
+        ..Mods::default()
+    };
+
+    // 1. Shift+Down creates a keyboard selection; clicking outside clears Rune's selection.
+    focus_code(&mut rt);
+    send(&mut rt, Key::Home, ctrl);
+    send(&mut rt, Key::Down, shift);
+    assert_eq!(rt.state.code.copy_keyboard().as_deref(), Some("alpha\n"));
+    click_outside(&mut rt);
+    assert_eq!(rt.selected_text(), None);
+    assert_eq!(rt.state.code.keyboard_selection_for(None), None);
+
+    // Returning focus via keyboard: plain Left must not collapse a dead selection, and
+    // Shift+Right must start fresh at offset 0 rather than resurrecting `alpha\n`.
+    focus_code(&mut rt);
+    send(&mut rt, Key::Left, Mods::default());
+    assert_eq!(rt.state.code.keyboard_selection(), None);
+    send(&mut rt, Key::Right, shift);
+    assert_eq!(rt.state.code.copy_keyboard().as_deref(), Some("a"));
+
+    // 2. Ctrl+A selects all; clicking outside clears Rune's selection. Returning focus and
+    // pressing Shift+Left must not resurrect/shrink the cleared 0..len range.
+    send(&mut rt, Key::Command('a'), cmd);
+    assert!(rt.state.code.all_selected());
+    click_outside(&mut rt);
+    assert_eq!(rt.selected_text(), None);
+
+    focus_code(&mut rt);
+    send(&mut rt, Key::Left, shift);
+    assert!(!rt.state.code.all_selected());
+    assert_eq!(rt.state.code.copy_keyboard(), None);
 }

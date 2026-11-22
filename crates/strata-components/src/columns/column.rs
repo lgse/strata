@@ -185,7 +185,8 @@ fn edge_line(key: &str, look: &Look) -> El {
 }
 
 /// The resize edge over the line on a column's right: it reaches [`EDGE_REACH`] either side,
-/// over the next column too (raised, so it takes the press first), and resizes this column.
+/// over the next column too (ordered above later columns via `paint_order`, and raised only
+/// when overlapping the window's east CSD resize band), and resizes this column.
 ///
 /// Under the pointer, and while it resizes, the line turns the accent at once (Strata's
 /// `.column-resize-handle.resize-hover`): a line of its own over the column's, shown by the

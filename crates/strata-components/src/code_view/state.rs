@@ -497,13 +497,30 @@ impl CodeState {
         self.caret = None;
     }
 
-    /// Lazily seeds the read-only caret from Rune's current pointer selection when keyboard
-    /// navigation begins after a mouse click/drag.
+    /// Reconciles `all`, `keyboard_range`, and `caret` against Rune's current `sel`, clearing
+    /// stale selection state if Rune's selection was cleared or replaced outside this viewport
+    /// (for example by clicking another pane or via touch drag), and lazily seeding `caret`
+    /// from any live pointer selection in this view.
     pub(crate) fn sync_caret_from_selection(&mut self, sel: Option<&TextSelection>) {
-        if self.caret.is_none()
-            && let Some(sel) = sel
-        {
-            self.caret = copy::span(&self.content, sel);
+        if self.content.all.get() {
+            if sel.is_some_and(|s| copy::reads_whole(&self.content, s)) {
+                return;
+            }
+            self.content.all.set(false);
+            self.caret = sel.and_then(|s| copy::span(&self.content, s));
+            return;
+        }
+        if self.content.keyboard_range.get().is_some() {
+            if copy::matches_expected(&self.content, sel) {
+                return;
+            }
+            self.content.keyboard_range.set(None);
+            self.content.expected_select.set(None);
+            self.caret = sel.and_then(|s| copy::span(&self.content, s));
+            return;
+        }
+        if let Some(span) = sel.and_then(|s| copy::span(&self.content, s)) {
+            self.caret = Some(span);
         }
     }
 
@@ -513,6 +530,14 @@ impl CodeState {
 
     pub fn keyboard_selection(&self) -> Option<(usize, usize)> {
         self.content.keyboard_range.get()
+    }
+
+    /// Active keyboard or gutter-drag byte range `(lo, hi)` when Rune's selection `sel` still
+    /// matches what [`Self::apply_caret`] requested.
+    pub fn keyboard_selection_for(&self, sel: Option<&TextSelection>) -> Option<(usize, usize)> {
+        copy::matches_expected(&self.content, sel)
+            .then(|| self.content.keyboard_range.get())
+            .flatten()
     }
 
     pub(crate) fn caret_or_selection(&self, sel: Option<&TextSelection>) -> (usize, usize) {
