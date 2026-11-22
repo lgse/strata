@@ -853,3 +853,91 @@ fn closing_settings_discards_in_flight_edit_and_notices() {
         },
     );
 }
+
+#[test]
+fn action_editor_tab_and_runtime_switches_release_bars_cleanly() {
+    crate::test_support::view::hosted_with(
+        MODULE,
+        "columns",
+        "text_size = 20\n".to_owned(),
+        "action_editor_tab_and_runtime_switches_release_bars_cleanly",
+        |mut host| {
+            open_actions(&mut host);
+            click(&mut host, super::view::NEW_ACTION_KEY);
+            click(&mut host, "settings-action-editor-tabs-tab-2");
+            let bar_el = host
+                .elements()
+                .into_iter()
+                .find(|el| {
+                    !el.exiting
+                        && el.key.as_deref() == Some("settings-action-editor-tab-2-scrollbar")
+                })
+                .expect("behavior tab scrollbar mounted");
+            let editor = host
+                .app()
+                .settings_dialog
+                .actions
+                .editor
+                .as_ref()
+                .expect("editor open");
+            assert!(
+                editor.editor_bars[2].overflows(),
+                "behavior tab overflows: {:?}",
+                editor.editor_bars[2].pos()
+            );
+            let [bx, by, bw, bh] = bar_el.visible;
+            host.runtime().pointer_move(bx + bw / 2.0, by + bh / 2.0);
+            host.turn();
+            host.runtime().pointer_down(bx + bw / 2.0, by + bh / 2.0);
+            host.turn();
+            assert!(
+                host.app()
+                    .settings_dialog
+                    .actions
+                    .editor
+                    .as_ref()
+                    .expect("editor open")
+                    .editor_bars[2]
+                    .is_dragging(),
+                "pointer press on the behavior tab scrollbar ({bx},{by},{bw},{bh}) starts a drag"
+            );
+
+            // Switching tabs via keyboard mid-drag releases the outgoing tab's bar.
+            press(
+                &mut host,
+                Key::PageUp,
+                Mods {
+                    ctrl: true,
+                    ..Mods::default()
+                },
+            );
+            let editor = host
+                .app()
+                .settings_dialog
+                .actions
+                .editor
+                .as_ref()
+                .expect("editor open");
+            assert_eq!(editor.tabs.selected(), super::editor::SCRIPT_TAB);
+            assert!(
+                !editor.editor_bars[2].is_dragging(),
+                "switching tabs releases drag state on the unmounted scrollbar"
+            );
+            host.runtime().pointer_up(bx + bw / 2.0, by + bh / 2.0);
+            idle(&mut host);
+
+            // Switching runtimes swaps the mounted CodeEditor bars cleanly.
+            let has_el = |h: &Offscreen, key: &str| {
+                h.elements()
+                    .iter()
+                    .any(|el| !el.exiting && el.key.as_deref() == Some(key))
+            };
+            assert!(has_el(&host, "settings-action-script-python-bar"));
+            click(&mut host, "settings-action-editor-runtime-1");
+            assert!(has_el(&host, "settings-action-script-bash-bar"));
+            assert!(!has_el(&host, "settings-action-script-python-bar"));
+            click(&mut host, "settings-action-editor-runtime-2");
+            assert!(!has_el(&host, "settings-action-script-bash-bar"));
+        },
+    );
+}

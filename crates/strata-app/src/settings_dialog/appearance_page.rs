@@ -23,9 +23,9 @@ use strata_kit::{
 };
 
 use super::controls::{
-    ChoiceOption, ChoiceSpec, PageCtx, RowSpec, SearchField, card_surface, choice_menu,
-    first_section_heading, group_card, number_field, option_row, panel_border, search_field,
-    section_heading, segmented_toggles, switch_row,
+    ChoiceOption, ChoiceSpec, PageCtx, RowSpec, SearchField, bounded_scroll_with_bar, card_surface,
+    choice_menu, first_section_heading, group_card, number_field, option_row, panel_border,
+    search_field, section_heading, segmented_toggles, settings_bar_look, switch_row,
 };
 use crate::{App, buttons, shell};
 
@@ -309,17 +309,7 @@ fn theme_library_section(ctx: PageCtx<'_>) -> Option<El> {
             }
         })
         .collect();
-    let scroller = col()
-        .key("settings-theme-catalog-scroll")
-        .w_full()
-        .max_h(336.0)
-        .radius(look.round(10.0))
-        .fill(card_surface(look))
-        .border(1.0, panel_border(look))
-        .scroll(ScrollSpec {
-            stick_bottom: false,
-        })
-        .children(cards);
+    let scroller = theme_catalog_scroller(app, cards);
     let footer = text(tr("Custom themes live in ~/.config/strata/themes"))
         .font(look.kit.ty.small)
         .color(look.kit.c.text_muted)
@@ -335,6 +325,37 @@ fn theme_library_section(ctx: PageCtx<'_>) -> Option<El> {
         section = section.inert().layer_opacity(0.45);
     }
     ctx.search.row(app, look, "themes", section)
+}
+
+fn theme_catalog_scroller(app: &App, cards: Vec<El>) -> El {
+    let look = &app.look;
+    let theme_bar = &app.settings_dialog.theme_bar;
+    let inner = col().w_full().min_w(0.0).pb(look.space.xs).children(cards);
+    let viewport = col()
+        .key("settings-theme-catalog-scroll")
+        .w_full()
+        .max_h(336.0)
+        .shrink()
+        .min_h(0.0)
+        .scroll(ScrollSpec {
+            stick_bottom: false,
+        })
+        .on_scroll_offset(theme_bar.watch())
+        .child(inner);
+    let radius = look.round(10.0);
+    bounded_scroll_with_bar(
+        viewport,
+        theme_bar,
+        (
+            "settings-theme-catalog-scrollbar",
+            "settings-theme-catalog-scroll",
+        ),
+        settings_bar_look(look, 3.0, 6.0),
+    )
+    .radius(radius)
+    .clip_soft(radius)
+    .fill(card_surface(look))
+    .border(1.0, panel_border(look))
 }
 
 fn library_toolbar(app: &App) -> El {
