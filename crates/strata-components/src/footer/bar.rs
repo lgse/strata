@@ -268,6 +268,8 @@ impl<S: 'static> Footer<S> {
         }
         right.extend(self.flash);
         // A status: polite already, so its changes are heard without interrupting.
+        // Middle-elided when narrow so long selected names keep both ends, matching GTK's
+        // `EllipsizeMode::Middle` on `.shortcut-footer-count`.
         if let Some(count) = &self.count {
             right.push(
                 text(count.text.clone())
@@ -276,7 +278,10 @@ impl<S: 'static> Footer<S> {
                     .label(count.text.clone())
                     .description(count.description.clone())
                     .font(k.ty.small)
-                    .color(k.c.text_base),
+                    .color(k.c.text_base)
+                    .truncate_middle()
+                    .shrink()
+                    .min_w(0.0),
             );
         }
         right.extend(self.jobs);
