@@ -151,7 +151,6 @@ slots::parts! {
     tab_strip: tab_strip::TabStrip,
     // A5 Location bar
     location: location::Bar,
-    error_dialog: error_dialog::ErrorDialog,
     open_failed: open_failed::OpenFailed,
     pane_header: pane_header::PaneHeader,
     // A6 Menus, dialogs and keymap
@@ -202,6 +201,8 @@ slots::parts! {
     // A20 Portal chooser
     chooser: chooser::Chooser,
     chooser_dialog: chooser::ChooserDialog,
+    // Error and informational dialogs paint above Settings and every other modal.
+    error_dialog: error_dialog::ErrorDialog,
     // 10x mode activation visual FX overlay: paints above dialogs (including Settings live previews)
     // while staying completely inert and pointer-transparent.
     tenxer_fx: tenxer_fx::TenxerFxOverlay,

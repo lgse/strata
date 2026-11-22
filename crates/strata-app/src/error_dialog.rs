@@ -186,6 +186,7 @@ fn dialog(app: &App, frame: &mut Frame<'_, App>) -> Option<rune::El> {
         .unwrap_or_else(|| labels.summary.clone());
     let built = StrataDialog::new("error", error.title.clone(), close)
         .open(dialog.open)
+        .stacked(app.settings_dialog.is_open())
         .subtitle(subtitle)
         .message(error.message.clone())
         .initial_focus(Focus::Primary)
