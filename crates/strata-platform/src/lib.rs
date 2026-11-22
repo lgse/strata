@@ -22,6 +22,8 @@ pub mod glib_bridge;
 pub mod glib_loop;
 #[cfg(feature = "icon-theme")]
 pub mod icon_theme;
+#[cfg(feature = "media-audio")]
+pub mod media;
 #[cfg(feature = "settings")]
 pub mod settings;
 #[cfg(feature = "single-instance")]
