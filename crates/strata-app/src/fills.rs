@@ -211,6 +211,7 @@ pub(crate) struct Fills {
 struct Known {
     size: MetadataValue<u64>,
     modified: MetadataValue<i64>,
+    created: MetadataValue<i64>,
     mode: MetadataValue<u32>,
     dimensions: MetadataValue<(u32, u32)>,
     child_count: MetadataValue<u64>,
@@ -223,6 +224,7 @@ impl Known {
         Self {
             size: entry.size.clone(),
             modified: entry.modified_unix_seconds.clone(),
+            created: entry.created_unix_seconds.clone(),
             mode: entry.mode.clone(),
             dimensions: entry.image_dimensions.clone(),
             child_count: entry.child_count.clone(),
@@ -255,10 +257,14 @@ impl Fills {
         }
     }
 
-    /// Which rows are asked their details now: the next poll asks the range again.
+    /// Which rows are asked their details now: when the detail level changes, previously
+    /// asked rows are re-admitted at the next poll.
     pub(crate) fn set_details(&mut self, details: Details) {
-        self.details = details;
-        self.fresh = true;
+        if self.details != details {
+            self.details = details;
+            self.asked.clear();
+            self.fresh = true;
+        }
     }
 
     /// Re-admits rows near the viewport at the next poll after `FolderCountsInvalidated`.

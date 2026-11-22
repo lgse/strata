@@ -231,3 +231,70 @@ fn hiding_make_default_or_reset_keeps_the_menu_open_and_focused() {
         assert_eq!(focused(&mut host).as_deref(), Some(FOLDERS_FIRST));
     });
 }
+
+/// Optional Duration, Dimensions and Created sorts show in the Sort menu, display a List
+/// toolbar sort label while their column is hidden, and hide that label once the column is
+/// shown so clicking the heading sorts and toggles direction.
+#[test]
+fn optional_column_sorts_follow_column_visibility_and_headings() {
+    let name = "optional_column_sorts_follow_column_visibility_and_headings";
+    hosted_in(MODULE, "list", name, |mut host| {
+        let _folder = listed(&mut host);
+        opened(&mut host, "list-sort");
+        assert!(drawn(&host, "sort-field-duration"));
+        assert!(drawn(&host, "sort-field-dimensions"));
+
+        click(&mut host, "sort-field-duration");
+        let sorted = host.run_until(PATIENCE, |host| {
+            sorted_by(host, 0) == Some(SortKey::Duration)
+        });
+        assert!(sorted, "Duration sort activates from the Sort menu");
+        press(&mut host, Key::Escape, Mods::default());
+
+        let label_shown = host.run_until(PATIENCE, |host| {
+            node(&host.tree(), "list-sort")
+                .is_some_and(|button| view::text(button, "name") == "Sort: Duration ↑")
+        });
+        assert!(
+            label_shown,
+            "List shows Sort: Duration ↑ while the Duration column is hidden"
+        );
+
+        // Opt Duration in via preferences and resync the List columns: the toolbar label clears.
+        host.runtime().update(|app: &mut App, _| {
+            shell::saved(app).change(|settings| {
+                settings.list_shown_columns =
+                    vec![strata_desktop::settings::ListColumnId::Duration];
+            });
+            let prefs = shell::preferences(app).clone();
+            app.list.sync_columns(&prefs, false);
+        });
+        idle(&mut host);
+        let label_cleared = host.run_until(PATIENCE, |host| {
+            node(&host.tree(), "list-sort")
+                .is_some_and(|button| view::text(button, "name") == "Choose sort field")
+        });
+        assert!(
+            label_cleared,
+            "showing the Duration column clears the toolbar sort label"
+        );
+
+        // Clicking the visible Duration column heading flips the direction to Descending.
+        let heading_key = "head-duration";
+        assert!(
+            host.run_until(PATIENCE, |host| drawn(host, heading_key)),
+            "Duration heading is drawn once enabled"
+        );
+        click(&mut host, heading_key);
+        let flipped = host.run_until(PATIENCE, |host| {
+            host.app()
+                .browser()
+                .column_preferences(0)
+                .is_some_and(|prefs| {
+                    prefs.sort_key == SortKey::Duration
+                        && prefs.sort_direction == strata_core::model::SortDirection::Descending
+                })
+        });
+        assert!(flipped, "clicking Duration heading toggles Descending");
+    });
+}

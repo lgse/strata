@@ -6,9 +6,8 @@
 scenario = "appearance-menu-switches-view-list"
 run = "columns"
 package = "A8"
-status = "pending"
-reason = "scope"
-blocker = "A8: `main`'s #2603 added the List's optional Duration, Dimensions and Created columns, merged on 2026-11-20; this scenario now toggles Duration in the Appearance menu (line 27), which Rune's List does not have yet"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "appearance-menu-switches-view"

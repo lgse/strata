@@ -23,7 +23,7 @@ use strata_desktop::settings::Preferences;
 
 use crate::{
     App,
-    fills::{Details, Fills},
+    fills::Fills,
     single::{Made, Single},
     slots::Setup,
 };
@@ -34,6 +34,7 @@ mod part;
 mod thumbs;
 pub(crate) mod view;
 
+pub(crate) use columns::is_visible as is_column_visible;
 pub(crate) use part::tick_active;
 
 /// The table's key: its collection's, and the element that takes the keyboard. Every
@@ -104,15 +105,17 @@ impl List {
             )),
         ));
         let date_format = DateFormat::parse(&settings.date_format);
+        let layout = columns::layout(settings);
+        let fills = Fills::new(columns::fill_details(&layout));
         Self {
             single,
             table,
             autoscroll,
-            layout: columns::layout(settings),
+            layout,
             widths: columns::widths(settings),
             headings: columns::Headings::translated(),
             menu_labels: columns::menu_labels(),
-            fills: Fills::new(Details::Folders),
+            fills,
             date_format,
             relative_dates: date_format == DateFormat::Relative,
             dates: dates::Dates::default(),
@@ -122,6 +125,16 @@ impl List {
 
     pub(crate) fn autoscroll(&self) -> &Autoscroll {
         &self.autoscroll
+    }
+
+    pub(crate) fn sync_columns(&mut self, settings: &Preferences, chooser: bool) {
+        self.layout = columns::layout(settings);
+        self.widths = if chooser {
+            columns::chooser_widths(settings)
+        } else {
+            columns::widths(settings)
+        };
+        self.fills.set_details(columns::fill_details(&self.layout));
     }
 
     pub(crate) fn sync_date_format(&mut self, format: DateFormat) {

@@ -6,25 +6,22 @@
 scenario = "additional-sort-choices"
 run = "columns"
 package = "A10"
-status = "pending"
-reason = "scope"
-blocker = "A10: `main`'s #2603 added the Duration and Dimensions sorts, merged on 2026-11-20; this scenario now chooses Duration (line 122), which Rune's sort menu does not offer yet"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "additional-sort-choices"
 run = "icons"
 package = "A10"
-status = "pending"
-reason = "scope"
-blocker = "A10: `main`'s #2603 added the Duration and Dimensions sorts, merged on 2026-11-20; this scenario now chooses Duration (line 122), which Rune's sort menu does not offer yet"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "additional-sort-choices"
 run = "list"
 package = "A10"
-status = "pending"
-reason = "scope"
-blocker = "A10: `main`'s #2603 added the Duration and Dimensions sorts, merged on 2026-11-20; this scenario now chooses Duration (line 122), which Rune's sort menu does not offer yet"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "dismissing-filter-keeps-hidden"

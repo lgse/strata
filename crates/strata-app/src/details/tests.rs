@@ -7,7 +7,10 @@ use strata_core::{
 };
 use strata_fs::services::{EntryType, entry_type};
 
-use super::{duration, icons_line, mode_cell, modified_cell, permissions, size_cell, type_cell};
+use super::{
+    created_cell, dimensions_cell, duration, duration_cell, icons_line, mode_cell, modified_cell,
+    permissions, size_cell, type_cell,
+};
 use crate::listing::Facts;
 
 /// GTK's `format_duration`: minutes and seconds under an hour, hours on from one.
@@ -150,10 +153,12 @@ fn the_size_and_mode_cells_show_what_the_browser_knows() {
 #[test]
 fn the_modified_cell_shows_the_date_in_the_saved_format() {
     assert_eq!(modified_cell(&Facts::default()), "—");
+    assert_eq!(created_cell(&Facts::default()), "");
     set_date_format(DateFormat::Iso8601);
     // 2001-09-09 01:46:40 UTC.
     let known = Facts {
         modified: Some(1_000_000_000),
+        created: Some(1_000_000_000),
         ..Facts::default()
     };
     let shown = modified_cell(&known);
@@ -161,6 +166,41 @@ fn the_modified_cell_shows_the_date_in_the_saved_format() {
         shown.starts_with("2001-09-0") && shown.len() == 16 && shown.as_bytes()[10] == b' ',
         "{shown}"
     );
+    assert_eq!(created_cell(&known), shown);
+}
+
+/// Optional Duration and Dimensions cells show formatted media facts for files only, and stay
+/// blank for folders or unknown values (`list_cell_text`).
+#[test]
+fn the_optional_media_cells_format_files_and_leave_folders_or_unknowns_blank() {
+    let media = Facts {
+        duration_seconds: Some(3_661),
+        dimensions: Some((1_920, 1_080)),
+        ..Facts::default()
+    };
+    let cases = [
+        (
+            "file with media facts",
+            false,
+            media,
+            "1:01:01",
+            "1920×1080",
+        ),
+        ("folder with media facts", true, media, "", ""),
+        ("file without media facts", false, Facts::default(), "", ""),
+    ];
+    for (case, folder, facts, expected_duration, expected_dimensions) in cases {
+        assert_eq!(
+            duration_cell(folder, &facts),
+            expected_duration,
+            "{case}: duration"
+        );
+        assert_eq!(
+            dimensions_cell(folder, &facts),
+            expected_dimensions,
+            "{case}: dimensions"
+        );
+    }
 }
 
 /// GTK's `entry_type`: a folder, a broken link and an entry of no known kind read their kind's

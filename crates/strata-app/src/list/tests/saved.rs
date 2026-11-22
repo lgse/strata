@@ -53,7 +53,7 @@ fn an_untouched_list_window_writes_nothing() {
 
 /// A layout and widths the person made are saved through the settings' rules, and a window
 /// that starts over the file reads back what this one keeps: the same order, the same hidden
-/// columns, the same widths.
+/// standard columns, the same opted-in optional columns, and the same widths.
 #[test]
 fn the_columns_saved_read_back_as_the_window_keeps_them() {
     hosted_in(
@@ -64,16 +64,27 @@ fn the_columns_saved_read_back_as_the_window_keeps_them() {
             let folder = mixed();
             open(&mut host, LIST, folder.path());
             let id = ColumnId::new;
-            let defaults = ["name", "mode", "size", "type", "modified"].map(id);
+            let defaults = [
+                "name",
+                "mode",
+                "size",
+                "type",
+                "modified",
+                "duration",
+                "dimensions",
+                "created",
+            ]
+            .map(id);
             let layout = ColumnLayout::normalize(
                 &defaults,
                 Some(&id("name")),
                 ["size", "name", "type"],
-                ["mode", "name"],
+                ["mode", "name", "dimensions", "created"],
             );
             // A dragged width is fractional; the file keeps whole points.
             let widths = ColumnWidths::new()
                 .with(&id("size"), 120.4)
+                .with(&id("duration"), 130.2)
                 .with(&id("name"), 240.0);
             host.runtime().update(|app, _| {
                 columns::keep_layout(
@@ -86,7 +97,9 @@ fn the_columns_saved_read_back_as_the_window_keeps_them() {
                 columns::keep_widths(app, widths);
             });
             let written = host.run_until(PATIENCE, |_| {
-                saved_text().contains("list_hidden_columns") && saved_text().contains("size = 120")
+                saved_text().contains("list_hidden_columns")
+                    && saved_text().contains("list_shown_columns")
+                    && saved_text().contains("size = 120")
             });
             assert!(written, "{}", saved_text());
 
@@ -94,71 +107,72 @@ fn the_columns_saved_read_back_as_the_window_keeps_them() {
             let list = &host.app().list;
             assert_eq!(columns::layout(&read), list.layout);
             assert_eq!(columns::widths(&read), list.widths);
+            assert_eq!(read.list_hidden_columns, [ListColumnId::Mode]);
+            assert_eq!(read.list_shown_columns, [ListColumnId::Duration]);
             assert!(!list.layout.is_visible(&id("mode")), "{:?}", list.layout);
+            assert!(list.layout.is_visible(&id("duration")), "{:?}", list.layout);
+            assert!(
+                !list.layout.is_visible(&id("dimensions")),
+                "{:?}",
+                list.layout
+            );
             assert_eq!(list.widths.get(&id("size")), Some(120.0));
+            assert_eq!(list.widths.get(&id("duration")), Some(130.0));
         },
     );
 }
 
-/// GTK's optional columns, which this table does not build, keep what GTK saved for them
-/// through a reorder and a resize here: their places in the order, their hidden state, their
-/// widths, and the set GTK shows.
+/// Optional columns saved by GTK round-trip through Rune's layout and widths, and Reset
+/// clears `list_column_order`, `list_hidden_columns`, and `list_shown_columns` while hiding
+/// optional columns again.
 #[test]
-fn a_rune_save_keeps_the_columns_gtk_alone_shows() {
+fn optional_columns_round_trip_and_reset_clears_opt_ins() {
     let gtk_saved = "list_column_order = [\"name\", \"duration\", \"mode\", \"size\", \"type\", \
                      \"created\", \"modified\", \"dimensions\"]\n\
-                     list_hidden_columns = [\"dimensions\"]\n\
+                     list_hidden_columns = [\"mode\"]\n\
                      list_shown_columns = [\"duration\", \"created\"]\n\
                      [browser_list_columns]\n\
                      mode = 90\nsize = 100\ntype = 120\nmodified = 150\n\
                      duration = 130\ncreated = 140\ndimensions = 125\n"
         .to_owned();
-    let name = "saved::a_rune_save_keeps_the_columns_gtk_alone_shows";
+    let name = "saved::optional_columns_round_trip_and_reset_clears_opt_ins";
     hosted_with(MODULE, "list", gtk_saved, name, |mut host| {
         let folder = mixed();
         open(&mut host, LIST, folder.path());
         let id = ColumnId::new;
-        let defaults = ["name", "mode", "size", "type", "modified"].map(id);
-        let layout = ColumnLayout::normalize(
-            &defaults,
-            Some(&id("name")),
-            ["size", "name", "type"],
-            ["mode"],
-        );
-        let widths = ColumnWidths::new().with(&id("size"), 110.0);
+        {
+            let list = &host.app().list;
+            assert!(list.layout.is_visible(&id("duration")));
+            assert!(list.layout.is_visible(&id("created")));
+            assert!(!list.layout.is_visible(&id("dimensions")));
+            assert!(!list.layout.is_visible(&id("mode")));
+            assert_eq!(list.widths.get(&id("duration")), Some(130.0));
+            assert_eq!(list.widths.get(&id("created")), Some(140.0));
+            assert_eq!(list.widths.get(&id("dimensions")), Some(125.0));
+        }
+
         host.runtime().update(|app, _| {
+            let layout = ColumnLayout::new(app.list.layout.order().iter().cloned());
             columns::keep_layout(
                 app,
                 LayoutChange {
                     layout,
-                    why: LayoutWhy::Reorder,
+                    why: LayoutWhy::Reset,
                 },
             );
-            columns::keep_widths(app, widths);
         });
-        let written = host.run_until(PATIENCE, |_| saved_text().contains("size = 110"));
-        assert!(written, "{}", saved_text());
+        let cleared = host.run_until(PATIENCE, |_| {
+            let text = saved_text();
+            !text.contains("list_hidden_columns")
+                && !text.contains("list_shown_columns")
+                && !text.contains("list_column_order")
+        });
+        assert!(cleared, "{}", saved_text());
 
-        let read: Preferences = toml::from_str(&saved_text()).expect("the saved settings");
-        let order = &read.list_column_order;
-        let place = |column| order.iter().position(|saved| *saved == column);
-        assert_eq!(place(ListColumnId::Duration), Some(1), "{order:?}");
-        assert_eq!(place(ListColumnId::Created), Some(5), "{order:?}");
-        assert_eq!(place(ListColumnId::Dimensions), Some(7), "{order:?}");
-        assert!(
-            place(ListColumnId::Size) < place(ListColumnId::Name),
-            "{order:?}"
-        );
-        assert!(read.list_hidden_columns.contains(&ListColumnId::Dimensions));
-        assert!(read.list_hidden_columns.contains(&ListColumnId::Mode));
-        assert_eq!(
-            read.list_shown_columns,
-            [ListColumnId::Duration, ListColumnId::Created]
-        );
-        let saved = read.browser_list_columns.expect("the saved widths");
-        assert_eq!(saved.width(ListColumnId::Duration), Some(130));
-        assert_eq!(saved.width(ListColumnId::Created), Some(140));
-        assert_eq!(saved.width(ListColumnId::Dimensions), Some(125));
-        assert_eq!(saved.width(ListColumnId::Size), Some(110));
+        let list = &host.app().list;
+        assert!(list.layout.is_visible(&id("mode")));
+        assert!(!list.layout.is_visible(&id("duration")));
+        assert!(!list.layout.is_visible(&id("dimensions")));
+        assert!(!list.layout.is_visible(&id("created")));
     });
 }

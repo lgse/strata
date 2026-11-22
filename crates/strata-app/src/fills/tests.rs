@@ -244,6 +244,20 @@ fn the_list_view_asks_a_folders_count_and_no_files_details() {
             "{details:?}"
         );
     }
+
+    // Enabling a media column upgrades an existing Fills instance from Folders to All,
+    // re-admitting already-asked rows so media details are requested at the next poll.
+    let mut fills = Fills::new(Details::Folders);
+    fills.see(0..3);
+    fills.request(&browser, 0, &column);
+    let _ = std::mem::take(&mut *browser.details.borrow_mut());
+    fills.set_details(Details::All);
+    fills.request(&browser, 0, &column);
+    assert_eq!(
+        std::mem::take(&mut *browser.details.borrow_mut()),
+        vec![(0, true), (1, true), (2, true)],
+        "switching to Details::All re-requests visible media rows with details"
+    );
 }
 
 /// GTK's Columns rows register a fill only when the time, a file's size or a folder's

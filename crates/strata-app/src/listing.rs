@@ -114,6 +114,8 @@ pub(crate) struct Facts {
     pub(crate) dimensions: Option<(u32, u32)>,
     /// When it was last modified, in seconds since the epoch: the List view's Modified column.
     pub(crate) modified: Option<i64>,
+    /// When it was created, in seconds since the epoch: the List view's Created column.
+    pub(crate) created: Option<i64>,
     /// Its permission bits: the List view's Mode column.
     pub(crate) mode: Option<u32>,
 }
@@ -143,6 +145,7 @@ impl Facts {
             duration_seconds: known(&entry.duration_seconds),
             dimensions: known(&entry.image_dimensions),
             modified: known(&entry.modified_unix_seconds),
+            created: known(&entry.created_unix_seconds),
             mode: known(&entry.mode),
         }
     }

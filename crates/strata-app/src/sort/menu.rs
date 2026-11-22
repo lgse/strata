@@ -31,13 +31,15 @@ const RESET: &str = "sort-reset";
 
 /// GTK's fields, in its order, with their row keys. Unsorted has no row: choosing the checked
 /// field turns sorting off.
-pub(super) const FIELDS: [(&str, SortKey, &str); 8] = [
+pub(super) const FIELDS: [(&str, SortKey, &str); 10] = [
     ("Name", SortKey::Name, "sort-field-name"),
     ("Size", SortKey::Size, "sort-field-size"),
     ("Modified", SortKey::Modified, "sort-field-modified"),
     ("Type", SortKey::Type, "sort-field-type"),
     ("Extension", SortKey::Extension, "sort-field-extension"),
     ("Created", SortKey::Created, "sort-field-created"),
+    ("Duration", SortKey::Duration, "sort-field-duration"),
+    ("Dimensions", SortKey::Dimensions, "sort-field-dimensions"),
     ("Device order", SortKey::DeviceOrder, "sort-field-device"),
     ("Recency", SortKey::Recency, "sort-field-recency"),
 ];
