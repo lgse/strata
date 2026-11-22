@@ -57,7 +57,11 @@ impl FirstVisit {
     /// with rows and no cursor the browser or the user placed gives its first row shown the
     /// cursor. True when it did. A folder still loading leaves the visit armed, and an empty
     /// one ends it: a file that appears later takes no cursor.
-    pub(super) fn settle(&mut self, pane: &mut Pane) -> bool {
+    ///
+    /// When the load finishes on row 0 (placed here or by the browser's load cursor), also
+    /// scrolls back to the top so staged rows inserted into earlier file-type groups above the
+    /// initial chunk cannot leave the viewport anchored mid-list.
+    pub(super) fn settle(&mut self, pane: &mut Pane, tx: &mut rune::Tx) -> bool {
         if !self.armed {
             return false;
         }
@@ -70,7 +74,13 @@ impl FirstVisit {
             Some(Load::Loading) | None => return false,
         }
         let (source, collection) = pane.parts_mut();
-        if collection.selection.cursor().is_some() || source.is_empty() {
+        if source.is_empty() {
+            return false;
+        }
+        if let Some(cursor) = collection.selection.cursor() {
+            if source.id_at(0) == cursor {
+                pane.scroll_to_top(tx);
+            }
             return false;
         }
         // The anchor stays missing: GTK's browser holds none for a first visit, so a Shift+click
@@ -79,6 +89,7 @@ impl FirstVisit {
             .selection
             .move_cursor(source, 0, AnchorRule::Keep);
         collection.note_selection(source);
+        pane.scroll_to_top(tx);
         true
     }
 }

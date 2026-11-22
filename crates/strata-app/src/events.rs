@@ -195,10 +195,12 @@ struct Reader<'a> {
 impl Reader<'_> {
     fn rows(&mut self, entries: &[FileEntry]) -> Vec<Row> {
         self.copied += entries.len() as u64;
-        entries
-            .iter()
-            .map(|entry| Row::of(entry, self.ids))
-            .collect()
+        self.ids.with_batch(entries.len(), |ids| {
+            entries
+                .iter()
+                .map(|entry| Row::of_with_id(entry, ids.of(&entry.location)))
+                .collect()
+        })
     }
 
     fn range(&mut self, depth: usize, range: Range<usize>) -> Vec<Row> {

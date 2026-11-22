@@ -29,7 +29,7 @@
 //! - **One pane for the window.** The collection is keyed by a fixed `scope`; a window with
 //!   tabs will need one pane, and one key, for each tab.
 
-use std::{rc::Rc, sync::Arc};
+use std::rc::Rc;
 
 use strata_components::{
     collection::{
@@ -38,7 +38,7 @@ use strata_components::{
     },
     contract::{Entry, EntryId, EntrySource, ThumbKey},
 };
-use strata_core::{i18n::tr, model::ViewPreferences};
+use strata_core::model::ViewPreferences;
 use strata_fs::app::Browser;
 
 use crate::{
@@ -112,23 +112,12 @@ pub(crate) struct Pane {
 }
 
 /// The groups of `column`'s rows as it shows them: one for each run of a file type, headed by
-/// its description, translated once for the group.
+/// its description, cached once per interned type.
 fn groups_of(column: &Column) -> Groups {
-    let mut groups: Vec<Group> = Vec::new();
-    let mut current = None;
-    for index in 0..column.len() {
-        let Some(group) = column.group_at(index) else {
-            continue;
-        };
-        match (current, groups.last_mut()) {
-            (Some(open), Some(last)) if open == group => last.len += 1,
-            _ => {
-                let label: Arc<str> = Arc::from(tr(&group.description()));
-                groups.push(Group::new(group.key(), label, 1));
-                current = Some(group);
-            }
-        }
-    }
+    let groups = column
+        .group_runs()
+        .iter()
+        .map(|&(group, len)| Group::new(group.key(), group.translated_label(), len));
     Groups::new(groups)
 }
 
@@ -137,6 +126,18 @@ impl Pane {
     /// single-pane view.
     pub(crate) fn share_memory(&mut self, memory: &Memory) {
         self.restore.share(memory);
+    }
+
+    /// Appends every [`EntryId`] referenced by this pane's listings, kept selection neighbour,
+    /// or pending renames into `out`.
+    pub(crate) fn collect_ids(&self, out: &mut impl Extend<EntryId>) {
+        for column in &self.columns {
+            column.collect_ids(out);
+        }
+        if let Some(id) = self.kept.id() {
+            out.extend(std::iter::once(id));
+        }
+        self.moving.collect_ids(out);
     }
 
     pub(crate) fn new(scope: &'static str, collection: CollectionState) -> Self {
@@ -498,6 +499,16 @@ impl Pane {
         if let Some(index) = self.collection.selection.cursor_index(column) {
             self.collection.reveal(self.scope, column, index, tx);
         }
+    }
+
+    /// Scrolls the listing immediately to its top (`y = 0`), countering any growth-anchor
+    /// shift from staged rows inserted above the initial chunk on a first visit.
+    pub(crate) fn scroll_to_top(&self, tx: &mut rune::Tx) {
+        tx.scroll_to_instant(
+            strata_components::collection::element::viewport_path(self.scope),
+            0.0,
+            0.0,
+        );
     }
 
     /// Brings the collection in step with its rows after they changed.

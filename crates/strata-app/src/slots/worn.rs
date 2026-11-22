@@ -127,4 +127,8 @@ impl Worn {
         let item = self.by_id.get(&id)?;
         Some((item.color, item.glyph.as_ref().map(SavedGlyph::as_entry)))
     }
+
+    pub(crate) fn collect_ids(&self, out: &mut impl Extend<EntryId>) {
+        out.extend(self.by_id.keys().copied());
+    }
 }

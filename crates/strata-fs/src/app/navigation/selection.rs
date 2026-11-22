@@ -102,7 +102,7 @@ impl SelectedLocations {
         &self,
         entries: &[FileEntry],
         cursor: Option<usize>,
-        each_location_once: impl FnOnce() -> bool,
+        known_unique: Option<bool>,
     ) -> &[usize] {
         if let Some(positions) = self.positions.get() {
             #[cfg(feature = "invariant-checks")]
@@ -122,9 +122,19 @@ impl SelectedLocations {
                     && entries
                         .get(*cursor)
                         .is_some_and(|entry| self.set.contains(&entry.location))
-            }) && each_location_once()
-            {
-                return vec![cursor];
+            }) {
+                if known_unique == Some(true) {
+                    return vec![cursor];
+                }
+                // Check for repeats of the single selected location directly instead of
+                // allocating an O(N) HashSet over the entire listing.
+                let target = &entries[cursor].location;
+                return entries
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, entry)| entry.location == *target)
+                    .map(|(position, _)| position)
+                    .collect();
             }
             self.scan(entries)
         })

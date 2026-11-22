@@ -468,3 +468,88 @@ fn a_weak_way_into_a_queue_says_whether_it_holds_an_update() {
     assert!(!weak.is_live());
     assert!(!weak.is_pending(), "a queue that has gone");
 }
+
+/// Inline directory publications (no staged tail chunks) must not trigger a mid-batch
+/// `yield_paint`, whereas staged publications (> `STAGE_INLINE_LIMIT`) yield right after the
+/// initial chunk and stay cleared once `LoadFinished` arrives.
+#[test]
+fn yield_paint_only_triggers_for_staged_publications_and_clears_on_load_finished() {
+    crate::test_support::in_own_process(
+        "slots::tests::yield_paint_only_triggers_for_staged_publications_and_clears_on_load_finished",
+        &[],
+        || {
+            let small = tempfile::tempdir().expect("small tempdir");
+            for i in 0..5 {
+                std::fs::write(small.path().join(format!("f{i}.txt")), "").expect("file");
+            }
+            let large = tempfile::tempdir().expect("large tempdir");
+            for i in 0..600 {
+                std::fs::write(large.path().join(format!("f{i:04}.txt")), "").expect("file");
+            }
+
+            let browser =
+                Browser::with_preferences(Rc::new(LocalFileSource), ViewPreferences::default());
+            let inbox = Inbox::<Log>::new();
+            inbox.observe(&browser, Vec::new());
+
+            let loaded = Rc::new(std::cell::Cell::new(false));
+            let replaced_count = Rc::new(std::cell::Cell::new(None::<usize>));
+            let loaded_flag = loaded.clone();
+            let replaced_flag = replaced_count.clone();
+            browser.observe(move |event| match event {
+                BrowserEvent::EntriesReplaced { count, .. } => replaced_flag.set(Some(*count)),
+                BrowserEvent::LoadFinished { .. } => loaded_flag.set(true),
+                _ => {}
+            });
+
+            let ctx = glib::MainContext::default();
+
+            // Inline publication: EntriesReplaced + LoadFinished arrive together -> never yields.
+            browser.navigate_location(strata_core::model::Location::local(small.path()), false);
+            let mut saw_yield = false;
+            let deadline = std::time::Instant::now() + crate::test_support::PATIENCE;
+            while !loaded.get() {
+                assert!(
+                    std::time::Instant::now() < deadline,
+                    "small directory load timed out"
+                );
+                let _ = ctx.iteration(true);
+                saw_yield |= inbox.take_yield_paint();
+            }
+            assert_eq!(replaced_count.get(), Some(5));
+            assert!(
+                !saw_yield,
+                "inline publication with LoadFinished must not set yield_paint"
+            );
+
+            // Staged publication: initial EntriesReplaced yields while tail chunks remain.
+            loaded.set(false);
+            replaced_count.set(None);
+            browser.navigate_location(strata_core::model::Location::local(large.path()), false);
+            let mut yielded_before_finish = false;
+            let deadline = std::time::Instant::now() + crate::test_support::PATIENCE;
+            while !loaded.get() {
+                assert!(
+                    std::time::Instant::now() < deadline,
+                    "large directory load timed out"
+                );
+                let _ = ctx.iteration(true);
+                if replaced_count.get().is_some() && !loaded.get() {
+                    yielded_before_finish |= inbox.take_yield_paint();
+                }
+            }
+            assert!(
+                replaced_count.get().is_some_and(|count| count < 600),
+                "large directory should publish an initial staged chunk"
+            );
+            assert!(
+                yielded_before_finish,
+                "staged publication must set yield_paint before tail chunks drain"
+            );
+            assert!(
+                !inbox.take_yield_paint(),
+                "yield_paint must be false once LoadFinished arrives"
+            );
+        },
+    );
+}

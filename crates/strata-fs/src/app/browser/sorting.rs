@@ -88,19 +88,25 @@ impl Browser {
     fn run_sort_task(self: &Rc<Self>, task: SortTask, entries: Vec<FileEntry>) {
         if entries.len() <= SORT_INLINE_LIMIT {
             let sorted = sort_entries(entries, task.plan.ordering_preferences);
-            self.finish_staged_sort(task, sorted);
+            let unique = prove_unique_locations(&sorted, task.plan.ordering_preferences);
+            self.finish_staged_sort_with_uniqueness(task, sorted, unique);
             return;
         }
         let weak = Rc::downgrade(self);
         glib::MainContext::default().spawn_local(async move {
-            let sorted =
-                gio::spawn_blocking(move || sort_entries(entries, task.plan.ordering_preferences))
-                    .await;
+            let sorted = gio::spawn_blocking(move || {
+                let sorted = sort_entries(entries, task.plan.ordering_preferences);
+                let unique = prove_unique_locations(&sorted, task.plan.ordering_preferences);
+                (sorted, unique)
+            })
+            .await;
             let Some(browser) = weak.upgrade() else {
                 return;
             };
             match sorted {
-                Ok(sorted) => browser.finish_staged_sort(task, sorted),
+                Ok((sorted, unique)) => {
+                    browser.finish_staged_sort_with_uniqueness(task, sorted, unique)
+                }
                 Err(_) => browser.fail_staged_sort(task),
             }
         });
@@ -114,11 +120,28 @@ impl Browser {
         sorting.remove(&task.depth)
     }
 
+    #[cfg(test)]
     pub(super) fn finish_staged_sort(self: &Rc<Self>, task: SortTask, sorted: Vec<FileEntry>) {
+        self.finish_staged_sort_with_uniqueness(task, sorted, None);
+    }
+
+    fn finish_staged_sort_with_uniqueness(
+        self: &Rc<Self>,
+        task: SortTask,
+        sorted: Vec<FileEntry>,
+        unique_locations: Option<bool>,
+    ) {
         let Some(sorting) = self.take_sorting_load(task) else {
             return;
         };
-        if !self.install_sorted_snapshot(task, sorted, sorting) {
+        if !self.install_sorted_snapshot(
+            task,
+            SortedSnapshot {
+                entries: sorted,
+                unique_locations,
+            },
+            sorting,
+        ) {
             return;
         }
         let current = self.sort_preferences(task.depth);
@@ -132,12 +155,18 @@ impl Browser {
     fn install_sorted_snapshot(
         self: &Rc<Self>,
         task: SortTask,
-        sorted: Vec<FileEntry>,
+        snapshot: SortedSnapshot,
         sorting: SortingLoad,
     ) -> bool {
         let mut state = self.state.borrow_mut();
         if state.request_id_for_depth(task.depth) != Some(task.request_id)
-            || state.install_snapshot(task.request_id, sorted).is_none()
+            || state
+                .install_snapshot_with_uniqueness(
+                    task.request_id,
+                    snapshot.entries,
+                    snapshot.unique_locations,
+                )
+                .is_none()
         {
             return false;
         }
@@ -257,4 +286,76 @@ impl Browser {
             });
         }
     }
+}
+
+struct SortedSnapshot {
+    entries: Vec<FileEntry>,
+    unique_locations: Option<bool>,
+}
+
+/// Proves whether every entry in a sorted listing has a distinct `Location` without
+/// allocating an O(N) `HashSet` when entries are native children sorted by name.
+fn prove_unique_locations(entries: &[FileEntry], preferences: ViewPreferences) -> Option<bool> {
+    if entries.len() <= 1 {
+        return Some(true);
+    }
+    if preferences.sort_key != SortKey::Name {
+        return None;
+    }
+    let first_parent = entries[0].location.native_path()?.parent()?;
+    if !all_native_children_named_by_leaf(entries, first_parent) {
+        return None;
+    }
+    if !preferences.folders_first {
+        return Some(no_adjacent_duplicate_locations(entries));
+    }
+    prove_partitioned_unique(entries)
+}
+
+fn prove_partitioned_unique(entries: &[FileEntry]) -> Option<bool> {
+    let dirs = entries.partition_point(FileEntry::is_directory);
+    let (dir_slice, file_slice) = entries.split_at(dirs);
+    if !(no_adjacent_duplicate_locations(dir_slice) && no_adjacent_duplicate_locations(file_slice))
+    {
+        return Some(false);
+    }
+    if dir_slice.is_empty() || file_slice.is_empty() {
+        return Some(true);
+    }
+    disjoint_locations(dir_slice, file_slice)
+}
+
+fn disjoint_locations(left: &[FileEntry], right: &[FileEntry]) -> Option<bool> {
+    let (smaller, larger) = if left.len() <= right.len() {
+        (left, right)
+    } else {
+        (right, left)
+    };
+    if smaller.len() > 4096 {
+        return None;
+    }
+    let small_set: std::collections::HashSet<&crate::model::Location> =
+        smaller.iter().map(|entry| &entry.location).collect();
+    Some(
+        larger
+            .iter()
+            .all(|entry| !small_set.contains(&entry.location)),
+    )
+}
+
+fn all_native_children_named_by_leaf(entries: &[FileEntry], parent: &std::path::Path) -> bool {
+    entries.iter().all(|entry| {
+        let Some(path) = entry.location.native_path() else {
+            return false;
+        };
+        path.parent() == Some(parent)
+            && path.file_name().and_then(std::ffi::OsStr::to_str)
+                == Some(entry.display_name.as_str())
+    })
+}
+
+fn no_adjacent_duplicate_locations(entries: &[FileEntry]) -> bool {
+    entries
+        .windows(2)
+        .all(|pair| pair[0].location != pair[1].location)
 }

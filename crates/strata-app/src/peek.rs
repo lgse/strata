@@ -113,6 +113,12 @@ impl Part for Peek {
     }
 }
 
+impl Peek {
+    pub(crate) fn collect_ids(&self, out: &mut impl Extend<strata_components::contract::EntryId>) {
+        self.rows.collect_ids(out);
+    }
+}
+
 #[derive(Clone, Copy)]
 struct Opened {
     scope: &'static str,

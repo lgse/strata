@@ -193,7 +193,7 @@ impl Visit {
                     },
                 ] {
                     self.apply(change);
-                    let _ = self.visit.settle(&mut self.pane);
+                    let _ = self.visit.settle(&mut self.pane, &mut self.tx);
                 }
                 return;
             }
@@ -222,7 +222,7 @@ impl Visit {
     fn run(mut self, steps: &[Step]) -> Option<String> {
         for step in steps {
             self.step(*step);
-            let _ = self.visit.settle(&mut self.pane);
+            let _ = self.visit.settle(&mut self.pane, &mut self.tx);
         }
         let cursor = self.pane.collection().selection.cursor()?;
         let listing = self.pane.listing()?;

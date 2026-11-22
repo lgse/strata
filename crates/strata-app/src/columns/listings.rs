@@ -8,12 +8,14 @@
 //! (`search_recursively` in `src/ui/browser/columns/append/query.rs`): the column's listing
 //! stays, and follows the browser underneath.
 
-use std::{borrow::Cow, collections::HashMap, rc::Rc};
+use std::{borrow::Cow, collections::HashMap, rc::Rc, time::Duration};
 
+use rune::Tx;
 use strata_components::{
     columns::ColumnSources,
     contract::{EntryId, EntrySource},
 };
+use strata_core::model::Location;
 
 use crate::{
     details,
@@ -21,9 +23,56 @@ use crate::{
     slots::Worn,
 };
 
+/// Grace period before a loading column's header shows its animated spinner, matching GTK's
+/// `COLUMN_SPINNER_DELAY` (`src/ui/browser/columns.rs`). Keeps fast folder opens from
+/// flashing a spinner or spinning loop animation frames while waiting on background reads.
+const SPINNER_DELAY: Duration = Duration::from_millis(120);
+
+#[derive(Default)]
+struct SpinnerDelay {
+    of: Option<Location>,
+    since: f64,
+    shown: bool,
+}
+
+impl SpinnerDelay {
+    fn watch(&mut self, column: &Column, clock: f64, tx: &mut Tx) -> bool {
+        if !column.is_loading() {
+            *self = Self::default();
+            return false;
+        }
+        if column.is_busy() {
+            let was = self.shown;
+            self.of = Some(column.location().clone());
+            self.shown = true;
+            return !was;
+        }
+        if self.of.as_ref() != Some(column.location()) {
+            *self = Self {
+                of: Some(column.location().clone()),
+                since: clock,
+                shown: false,
+            };
+            tx.wake_after(SPINNER_DELAY);
+            return false;
+        }
+        if self.shown {
+            return false;
+        }
+        let left = SPINNER_DELAY.as_secs_f64() - (clock - self.since);
+        if left > 1e-6 {
+            tx.wake_after(Duration::from_secs_f64(left));
+            return false;
+        }
+        self.shown = true;
+        true
+    }
+}
+
 /// The open columns, root first, and the words for what a row is.
 pub(super) struct Listings {
     pub(super) columns: Vec<Column>,
+    spinners: Vec<SpinnerDelay>,
     pub(super) worn: Rc<Worn>,
     described: Words,
     /// A filter's results, and the column whose rows they replace.
@@ -41,6 +90,7 @@ impl Listings {
     pub(super) fn translated(worn: Rc<Worn>) -> Self {
         Self {
             columns: Vec::new(),
+            spinners: Vec::new(),
             worn,
             described: Words::translated(),
             hits: None,
@@ -48,6 +98,18 @@ impl Listings {
             hit_details: false,
             swaps: 0,
         }
+    }
+
+    /// Advances each column's spinner grace timer at `clock`. Returns `true` when any column's
+    /// spinner newly becomes visible.
+    pub(super) fn watch_spinners(&mut self, clock: f64, tx: &mut Tx) -> bool {
+        self.spinners
+            .resize_with(self.columns.len(), SpinnerDelay::default);
+        let mut changed = false;
+        for (delay, column) in self.spinners.iter_mut().zip(&self.columns) {
+            changed |= delay.watch(column, clock, tx);
+        }
+        changed
     }
 
     pub(super) fn set_worn(&mut self, worn: &Rc<Worn>) {
@@ -112,6 +174,15 @@ impl Listings {
             self.drop_hits();
         }
     }
+
+    pub(super) fn collect_ids(&self, out: &mut impl Extend<EntryId>) {
+        for column in &self.columns {
+            column.collect_ids(out);
+        }
+        if let Some((_, hits)) = &self.hits {
+            hits.collect_ids(out);
+        }
+    }
 }
 
 impl ColumnSources for Listings {
@@ -142,6 +213,12 @@ impl ColumnSources for Listings {
 
     fn loading(&self, depth: usize) -> bool {
         self.columns[depth].is_loading()
+    }
+
+    fn spinner(&self, depth: usize) -> bool {
+        let column = &self.columns[depth];
+        column.is_busy()
+            || (column.is_loading() && self.spinners.get(depth).is_some_and(|delay| delay.shown))
     }
 
     /// None while results show in column `depth`: the next column is no folder of theirs.
@@ -180,3 +257,6 @@ impl ColumnSources for Listings {
             .map(Cow::Borrowed)
     }
 }
+
+#[cfg(test)]
+mod tests;

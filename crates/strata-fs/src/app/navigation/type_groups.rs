@@ -3,11 +3,11 @@
 //! The order of a listing grouped by file type. The view's sorter and the
 //! automatic cursor share it, so a load's cursor lands on the first row shown.
 
-use std::cmp::Ordering;
+use std::{cmp::Ordering, rc::Rc};
 
 use crate::{
     model::{SortDirection, SortKey, ViewPreferences},
-    services::{EntryType, FOLDER_TYPE_NAME, OTHER_TYPE_NAME, entry_type},
+    services::{FOLDER_TYPE_NAME, OTHER_TYPE_NAME, entry_type_description_for_name},
 };
 
 use super::{ColumnState, NavigationState, compare_display_names};
@@ -95,29 +95,88 @@ impl ColumnState {
     }
 
     fn first_in_file_groups(&self) -> Option<usize> {
-        // `min_by` keeps the first of equal groups, the earliest in listing order.
-        self.visible_file_groups()
-            .min_by(|(left, _), (right, _)| self.compare_groups(left, right))
-            .map(|(_, position)| position)
+        self.extreme_in_file_groups(Ordering::Less)
     }
 
     fn last_in_file_groups(&self) -> Option<usize> {
-        // `max_by` keeps the last of equal groups, the latest in listing order.
-        self.visible_file_groups()
-            .max_by(|(left, _), (right, _)| self.compare_groups(left, right))
-            .map(|(_, position)| position)
+        self.extreme_in_file_groups(Ordering::Greater)
     }
 
-    fn visible_file_groups(&self) -> impl Iterator<Item = (EntryType, usize)> + '_ {
-        self.entries
-            .iter()
-            .enumerate()
-            .filter(|(_, entry)| !entry.is_directory() && self.shows(entry))
-            .map(|(position, entry)| (entry_type(entry), position))
+    /// Finds the first row of the minimum group (`target == Ordering::Less`) or the last row
+    /// of the maximum group (`target == Ordering::Greater`), skipping repeated string
+    /// comparisons when a row shares an already-seen interned type description.
+    fn extreme_in_file_groups(&self, target: Ordering) -> Option<usize> {
+        let mut tracker = GroupExtreme::new(target, self.preferences);
+        for (position, entry) in self.entries.iter().enumerate() {
+            if !entry.is_directory() && self.shows(entry) {
+                let desc = entry_type_description_for_name(entry.kind, &entry.display_name);
+                tracker.consider(position, desc);
+            }
+        }
+        tracker.position()
+    }
+}
+
+struct GroupExtreme {
+    target: Ordering,
+    preferences: ViewPreferences,
+    best: Option<(Rc<str>, usize)>,
+    rejected: Vec<Rc<str>>,
+}
+
+impl GroupExtreme {
+    fn new(target: Ordering, preferences: ViewPreferences) -> Self {
+        Self {
+            target,
+            preferences,
+            best: None,
+            rejected: Vec::new(),
+        }
     }
 
-    fn compare_groups(&self, left: &EntryType, right: &EntryType) -> Ordering {
-        compare_type_groups(left.description(), right.description(), self.preferences)
+    fn position(&self) -> Option<usize> {
+        self.best.as_ref().map(|(_, pos)| *pos)
+    }
+
+    fn consider(&mut self, position: usize, desc: Rc<str>) {
+        let Some((best_desc, best_pos)) = &mut self.best else {
+            self.best = Some((desc, position));
+            return;
+        };
+        if Rc::ptr_eq(best_desc, &desc) {
+            if self.target == Ordering::Greater {
+                *best_pos = position;
+            }
+            return;
+        }
+        if self.rejected.iter().any(|seen| Rc::ptr_eq(seen, &desc)) {
+            return;
+        }
+        self.compare_new_type(position, desc);
+    }
+
+    fn compare_new_type(&mut self, position: usize, desc: Rc<str>) {
+        let Some((best_desc, best_pos)) = &mut self.best else {
+            return;
+        };
+        let ord = compare_type_groups(&desc, best_desc, self.preferences);
+        if ord == self.target {
+            let previous = std::mem::replace(best_desc, desc);
+            push_bounded(&mut self.rejected, previous);
+            *best_pos = position;
+        } else if ord == Ordering::Equal {
+            if self.target == Ordering::Greater {
+                *best_pos = position;
+            }
+        } else {
+            push_bounded(&mut self.rejected, desc);
+        }
+    }
+}
+
+fn push_bounded(rejected: &mut Vec<Rc<str>>, desc: Rc<str>) {
+    if rejected.len() < 32 {
+        rejected.push(desc);
     }
 }
 
