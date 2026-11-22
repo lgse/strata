@@ -24,8 +24,8 @@ use strata_kit::icons::IconName;
 use super::{
     controls::{
         ChoiceOption, ChoiceSpec, NamedSegment, PageCtx, RowSpec, choice_menu,
-        first_section_heading, group_card, number_field, option_row, panel_border, pref_switch,
-        section_heading, segmented_toggles, segmented_toggles_named, switch_row,
+        first_section_heading, group_card, mix_srgb, number_field, option_row, panel_border,
+        pref_switch, section_heading, segmented_toggles, segmented_toggles_named, switch_row,
     },
     general_more,
 };
@@ -655,6 +655,7 @@ fn sidebar_section(ctx: PageCtx<'_>) -> Option<El> {
     let kit = &app.look.kit;
     let content = col()
         .w_full()
+        .min_w(0.0)
         .px(18.0)
         .py(16.0)
         .gap(app.look.space.md)
@@ -670,10 +671,18 @@ fn sidebar_section(ctx: PageCtx<'_>) -> Option<El> {
                 .child(
                     text(tr("Toggle which locations appear in the sidebar."))
                         .font(kit.ty.small)
-                        .color(kit.c.text_muted),
+                        .color(kit.c.text_muted)
+                        .wrap(),
                 ),
         )
-        .child(row().w_full().wrap().gap(app.look.space.sm).children(chips));
+        .child(
+            row()
+                .w_full()
+                .min_w(0.0)
+                .flex_wrap()
+                .gap(app.look.space.sm)
+                .children(chips),
+        );
     let wrapped = ctx.search.row(app, &app.look, "sidebar-places", content);
     group_card(&app.look, vec![wrapped])
 }
@@ -686,7 +695,7 @@ fn sidebar_place_chip(app: &App, idx: usize, place: PlaceToggle) -> El {
     let c = &kit.c;
     let (fill, border, ink, icon_color) = if on {
         (
-            c.bg_base.mix(c.text_base, 0.12),
+            mix_srgb(c.bg_base, c.text_base, 0.12),
             kit.alpha(c.text_base, 0.40),
             c.text_base,
             c.icon_accent,
@@ -714,7 +723,7 @@ fn sidebar_place_chip(app: &App, idx: usize, place: PlaceToggle) -> El {
         .fill(fill)
         .border(1.0, border)
         .hover(look.fill.highlight)
-        .press(c.bg_base.mix(c.text_base, 0.20))
+        .press(mix_srgb(c.bg_base, c.text_base, 0.20))
         .focusable(true)
         .focus_ring(2.0, 2.0, c.border_focus)
         .cursor(Cursor::Pointer)
