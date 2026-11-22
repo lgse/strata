@@ -334,7 +334,13 @@ fn window(ui: UiThread, start: Start) -> rune::App<App> {
     .on_visibility(shell::window_shown)
     // Rune's own flags (`--snap`, `--tree`) are not this binary's.
     .args(Vec::new())
-    .window_options(csd::window_options(frame, WindowOptions::default()));
+    .window_options(csd::window_options(
+        frame,
+        WindowOptions {
+            transparent: true,
+            ..WindowOptions::default()
+        },
+    ));
     let handle = app.handle();
     let registered = handle.clone();
     app.init(move || {

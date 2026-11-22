@@ -57,6 +57,7 @@ use rune_kit::syntax::{Syntax, SyntaxTheme};
 use crate::icons::{self, IconName, IconSet};
 pub use crate::shape::LookParams;
 use crate::slots::Slots;
+use crate::transparency::{BaseSurfaces, Transparency};
 
 #[cfg(test)]
 mod tests;
@@ -119,6 +120,10 @@ pub struct Look {
     /// False when the user or the desktop turned animations off (P5's switch, as data). Set
     /// from [`LookParams::animations`], as `glow.on` is from [`LookParams::element_glow`].
     pub animations: bool,
+    /// Resolved surface transparency and frosted glass parameters for this look.
+    pub transparency: Transparency,
+    /// Theme surface colors before transparency scaling, for idempotent [`Look::apply_params`].
+    pub(crate) base_surfaces: BaseSurfaces,
     /// Component slots: tokens one component reads, which default to the tokens above.
     pub slots: Slots,
 }
@@ -138,6 +143,7 @@ impl Look {
     /// defaults: apply [`LookParams`] before drawing.
     pub fn from_kit(kit: Kit) -> Look {
         let syntax = SyntaxTheme::from_kit(&kit);
+        let base_surfaces = BaseSurfaces::from_palette(&kit.c);
         Look {
             ty: Ramp::from_kit(&kit),
             space: Space {
@@ -188,6 +194,8 @@ impl Look {
             icons: icons::lucide::SET,
             font: None,
             animations: true,
+            transparency: Transparency::disabled(),
+            base_surfaces,
             slots: Slots::default(),
             kit,
         }

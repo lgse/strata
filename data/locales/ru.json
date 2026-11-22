@@ -1608,5 +1608,16 @@
   "Perimeter Ignite": "Вспышка по периметру",
   "Tactical HUD": "Тактический HUD",
   "Interface on fire": "Интерфейс в огне",
-  "Off": "Выкл."
+  "Off": "Выкл.",
+  "TRANSPARENCY": "ПРОЗРАЧНОСТЬ",
+  "Transparency effects": "Эффекты прозрачности",
+  "Make window surfaces translucent while keeping text, icons, and previews opaque.": "Сделать поверхности окна полупрозрачными, сохраняя текст, значки и предпросмотр непрозрачными.",
+  "Background transparency": "Прозрачность фона",
+  "Transparency of the main file panes and preview background (0% is solid).": "Прозрачность основных панелей файлов и фона предпросмотра (0% — полностью непрозрачно).",
+  "Raised surface transparency": "Прозрачность приподнятых панелей",
+  "Independent transparency for raised chrome such as the sidebar, header, tab bar, and footer.": "Независимая прозрачность для боковой панели, заголовка, панели вкладок и нижней строки.",
+  "Frosted glass": "Матовое стекло",
+  "Apply backdrop blur and a subtle frosted sheen to translucent dialogs, menus, and popovers.": "Применять размытие фона и лёгкий матовый блик к полупрозрачным диалогам, меню и всплывающим окнам.",
+  "Unfocused window multiplier": "Множитель для неактивного окна",
+  "Multiply transparency when the window is unfocused (higher is more see-through; 1.00× keeps it unchanged).": "Умножать прозрачность при потере фокуса окна (больше — прозрачнее; 1,00× без изменений)."
 }

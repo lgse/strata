@@ -577,7 +577,7 @@ impl GroupStyle {
             font: kit.ty.small_medium,
             color: kit.c.text_muted,
             divider: Some(kit.c.border_muted),
-            fill: kit.c.bg_base,
+            fill: look.transparency.overlay_color(kit.c.bg_base),
             inset: strata_kit::slots::collection::row_inset(look) + look.space.xs,
             bottom: look.space.xs,
         }

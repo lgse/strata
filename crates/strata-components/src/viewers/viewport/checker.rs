@@ -21,7 +21,7 @@ use strata_kit::look::Look;
 /// of the content's visible part.
 pub fn checkerboard(key: impl Into<String>, size: [f32; 2], look: &Look) -> El {
     let square = look.space.md.max(1.0);
-    let light = look.kit.c.surface_raised;
+    let light = look.transparency.opaque(look.kit.c.surface_raised);
     let dark = look.kit.c.surface_base;
     let version = (
         size[0].to_bits(),

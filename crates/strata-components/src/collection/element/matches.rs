@@ -89,7 +89,7 @@ impl NameMatches {
         self.ranges()
             .map(|range| {
                 Span::new(range.start, range.end)
-                    .color(c.bg_base)
+                    .color(look.transparency.opaque(c.bg_base))
                     .bg(c.bg_accent, 0.0)
             })
             .collect()

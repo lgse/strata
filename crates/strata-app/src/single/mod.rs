@@ -365,20 +365,28 @@ pub(crate) fn group<V: SinglePane>(app: &App, component: El, actions: Option<El>
         .grow(1.0)
         .min_h(0.0);
     if !tenxer {
+        let filter_band = filter::pane::band(app)
+            .map(|band| col().w_full().fill(app.look.kit.c.bg_base).child(band));
         group = group
             .child(pane_header::bar(app, V::KEY, &title, actions))
             // The filter's field, under the header as GTK's revealer is.
-            .children(filter::pane::band(app));
+            .children(filter_band);
     }
     // What is left under the header: the component fills its parent's height.
-    group.child(body(app).child(component))
+    group.child(body::<V>(app).child(component))
 }
 
 /// The box under the header the component fills. A filter's results take the view's key, so
 /// theirs is keyed apart: Rune then lays them out as new elements, and their collection hears
 /// its viewport's size, which an element in the place of one of the same size never reports.
-fn body(app: &App) -> El {
-    let body = col().w_full().grow(1.0).min_h(0.0);
+fn body<V: SinglePane>(app: &App) -> El {
+    let mut body = col().w_full().grow(1.0).min_h(0.0);
+    // `ListTable` paints its own `bg_deep` heading strip and `bg_base` rows viewport, so skip
+    // an outer `bg_base` fill behind it to avoid double-compositing the column headers.
+    let table_paints_own_surface = V::KEY == crate::list::VIEW && !app.filter.pane.shows();
+    if !table_paints_own_surface {
+        body = body.fill(app.look.kit.c.bg_base);
+    }
     match app.filter.pane.shows() {
         true => body.key("filter-results"),
         false => body,

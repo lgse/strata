@@ -6,7 +6,7 @@ and **before shipping the Rune release**, alongside the optimization work tracke
 
 ## Variable surface transparency
 
-**Timing:** Post-parity, pre-release (alongside the large-directory performance work).
+**Status:** Implemented on `strata-next` (UI-54).
 
 ### Goal
 
@@ -17,33 +17,25 @@ look sharp and readable.
 
 ### How it fits Rune
 
-- **Transparent swapchain at window creation:** Pass `WindowOptions { transparent: true, .. }`
-  when constructing windowed Rune surfaces (`crates/strata-app/src/host/windowed.rs` and
-  `chooser_window.rs`). On Wayland/wgpu this selects `PreMultiplied` (or `PostMultiplied`)
-  alpha when the compositor supports it and falls back cleanly to `Opaque` on uncomposited
-  surfaces.
-- **Zero-restart live adjustment:** Because the swapchain always carries an alpha channel,
-  setting surface opacity to 100% renders identically to an opaque window, and dragging an
-  opacity slider updates live at full frame rate without recreating the window.
-- **Surface-only alpha scaling:** Scale the alpha of background surface tokens in
-  `strata_kit::look::Look` (`bg_base`, `bg_deep`, `bg_surface`, header/sidebar/pane/preview
-  backgrounds) while keeping foreground text, icons, thumbnails, media frames, and selection
-  fills at 100% opacity.
-- **Compositor backdrop blur:** On Hyprland and other Wayland compositors with blur enabled,
-  any window region painted with `alpha < 1.0` automatically receives native compositor blur
-  behind it.
-
-### Open design choices to settle at implementation time
-
-1. **Uniform vs. layered opacity:** A single opacity slider applied uniformly across window
-   surfaces, or layered opacity (e.g., sidebar/header chrome slightly more translucent than
-   the main file panes, or independent sliders).
-2. **Legibility floor for floating chrome:** Keep popovers, context menus, tooltips, and
-   modal dialogs either opaque or clamped to a higher minimum opacity so overlapping text
-   remains legible over translucent panes.
-3. **Preference & UI placement:** Persist the opacity preference in `strata-desktop`
-   settings (`Preferences`), expose a live slider in **Settings → Appearance** and/or the
-   **Appearance** popover, and localize all new labels across all 13 `data/locales/` catalogs.
-4. **CSD & corner interaction:** Verify client-side decorations, rounded window corners, and
-   `clear_color()` behavior when `transparent: true` is active across composited Wayland and
-   uncomposited fallback sessions.
+- **Transparent swapchain at window creation:** `WindowOptions { transparent: true, .. }` is
+  passed when constructing windowed Rune surfaces (`crates/strata-app/src/host/windowed.rs` and
+  `chooser_window.rs`). On Wayland/wgpu this selects `PreMultiplied` alpha when the compositor
+  supports it and falls back cleanly to `Opaque` on uncomposited surfaces.
+- **Zero-restart live adjustment:** Because the swapchain carries an alpha channel, disabling
+  transparency keeps every surface at 100% opacity (pixel-identical to an opaque window), and
+  adjusting any slider or toggling focus updates live without recreating the window.
+- **Layered surface-only alpha scaling:** `strata_kit::transparency` scales main background
+  surfaces (`bg_base`, `page`) and raised chrome surfaces (`bg_deep`, `surface_raised`,
+  sidebar, header, tab strip, footer) independently, keeps floating overlays above a legibility
+  floor, and leaves foreground text, icons, thumbnails, media frames, and selection fills at
+  full opacity. Regions paint their own surface once to avoid double-compositing.
+- **Frosted glass & unfocused multiplier:** When enabled, floating overlays (dialogs, context
+  menus, popovers, progress cards) apply Rune's GPU `El::backdrop_blur` alongside a subtle
+  frosted border sheen that pairs with native Wayland/Hyprland compositor blur behind
+  translucent chrome bands. Losing window focus (`app.window.active`) applies a live multiplier
+  to transparency percentages on the fly.
+- **Preferences & UI:** All five controls (**Transparency effects**, **Background
+  transparency**, **Raised surface transparency**, **Frosted glass**, and **Unfocused window
+  multiplier**) live under **Settings → Appearance → TRANSPARENCY**, persist in `settings.toml`
+  via `strata_desktop::settings::TransparencyPreferences`, and are localized across all 13
+  `data/locales/` catalogs.

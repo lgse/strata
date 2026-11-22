@@ -1608,5 +1608,16 @@
   "Perimeter Ignite": "边框点燃",
   "Tactical HUD": "战术 HUD",
   "Interface on fire": "燃烧界面",
-  "Off": "关闭"
+  "Off": "关闭",
+  "TRANSPARENCY": "透明度",
+  "Transparency effects": "透明效果",
+  "Make window surfaces translucent while keeping text, icons, and previews opaque.": "使窗口表面半透明，同时保持文字、图标和预览内容不透明。",
+  "Background transparency": "背景透明度",
+  "Transparency of the main file panes and preview background (0% is solid).": "主文件窗格和预览背景的透明度（0% 为完全不透明）。",
+  "Raised surface transparency": "浮层表面透明度",
+  "Independent transparency for raised chrome such as the sidebar, header, tab bar, and footer.": "侧边栏、标题栏、标签栏和底栏等浮层区域的独立透明度。",
+  "Frosted glass": "毛玻璃",
+  "Apply backdrop blur and a subtle frosted sheen to translucent dialogs, menus, and popovers.": "为半透明对话框、菜单和弹出面板应用背景模糊与细腻的磨砂光泽。",
+  "Unfocused window multiplier": "失焦窗口倍率",
+  "Multiply transparency when the window is unfocused (higher is more see-through; 1.00× keeps it unchanged).": "窗口失去焦点时对透明度应用的倍率（越高越通透，1.00× 保持不变）。"
 }

@@ -15,7 +15,8 @@ use strata_core::{
     storage,
 };
 use strata_desktop::settings::{
-    FileIconColors, OmarchyVariant, Preferences, ThemeAvailability, settings_path,
+    FileIconColors, OmarchyVariant, Preferences, ThemeAvailability, TransparencyPreferences,
+    settings_path,
 };
 use strata_fs::adapters::{Watched, watch};
 use strata_kit::{
@@ -23,6 +24,7 @@ use strata_kit::{
     icons::{catppuccin, lucide},
     look::{Look, LookParams},
     theme::{Library, Theme, omarchy, parse_custom, switch},
+    transparency::TransparencyParams,
 };
 
 use crate::{App, settings::Saved, slots::Later};
@@ -78,6 +80,14 @@ pub(crate) struct ThemeEngine {
     gnome_settings: Option<gio::Settings>,
     system_dark: bool,
     _watches: Vec<LoadHandle>,
+}
+
+/// Live window state combined with saved preferences when resolving a [`Look`].
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct LookContext {
+    pub(crate) transparency: TransparencyPreferences,
+    pub(crate) animations_allowed: bool,
+    pub(crate) window_active: bool,
 }
 
 impl ThemeEngine {
@@ -146,11 +156,24 @@ impl ThemeEngine {
         self.library.resolve(Some(selected)).clone()
     }
 
-    pub(crate) fn build_look(&self, saved: &Preferences, animations_allowed: bool) -> Look {
+    pub(crate) fn build_look(&self, saved: &Preferences, ctx: LookContext) -> Look {
         let theme = self.resolved_theme(saved);
         let dark_bg = theme.dark_background();
         let text_size = u16::try_from(saved.text_size.root_font_px()).unwrap_or(u16::MAX);
         let roundness = u16::try_from(saved.corner_roundness.percent()).unwrap_or(u16::MAX);
+        let t = ctx.transparency.normalized();
+        let transparency = TransparencyParams {
+            enabled: t.enabled,
+            background_percent: u8::try_from(t.background_transparency).unwrap_or(100),
+            raised_percent: u8::try_from(t.raised_surface_transparency).unwrap_or(100),
+            frosted_glass: t.frosted_glass,
+            #[expect(
+                clippy::cast_possible_truncation,
+                reason = "clamped 0.0..=2.0 multiplier fits f32 cleanly"
+            )]
+            unfocused_multiplier: t.unfocused_multiplier as f32,
+            window_active: ctx.window_active,
+        };
         let params = LookParams {
             roundness,
             frame_density: crate::appearance::density::FRAME.saved(saved),
@@ -158,7 +181,8 @@ impl ThemeEngine {
             text_size,
             font: saved.interface_font.clone(),
             element_glow: saved.element_glow,
-            animations: animations_allowed && !saved.reduce_motion,
+            animations: ctx.animations_allowed && !saved.reduce_motion,
+            transparency,
             ..LookParams::default()
         };
         let mut look = theme.look().with_params(&params);
@@ -169,8 +193,8 @@ impl ThemeEngine {
         look
     }
 
-    pub(crate) fn apply(&self, look: &mut Look, saved: &Preferences, animations_allowed: bool) {
-        *look = self.build_look(saved, animations_allowed);
+    pub(crate) fn apply(&self, look: &mut Look, saved: &Preferences, ctx: LookContext) {
+        *look = self.build_look(saved, ctx);
     }
 
     pub(crate) fn apply_tx(&self, look: &mut Look, next: Look, tx: &mut Tx) {

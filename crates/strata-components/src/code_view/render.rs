@@ -42,7 +42,11 @@ impl Paint {
             text: c.text_base,
             muted: c.text_muted,
             number: c.text_weak,
-            surface: c.bg_base,
+            surface: if look.transparency.enabled {
+                Color::TRANSPARENT
+            } else {
+                c.bg_base
+            },
             divider: c.border_base,
             selection: k.selection(),
             matched: look.fill.highlight,

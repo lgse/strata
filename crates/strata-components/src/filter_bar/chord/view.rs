@@ -83,7 +83,7 @@ pub fn panel<A: Clone>(look: &Look, key: &str, state: &ChordState<A>) -> Option<
         .child(columns);
     Some(popover::anchored(
         k,
-        popover::raised(k, content, k.radius.md),
+        strata_kit::transparency::raised_popover(look, content, k.radius.md),
         &pill_key(key),
         Placement::TopEnd,
         look.space.xs,
