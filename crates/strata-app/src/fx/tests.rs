@@ -9,7 +9,7 @@ use rune::{
     effect, el,
     render::{Instance, KIND_EFFECT, NO_CLIP},
 };
-use rune_fx::{DistortParams, FireStyle, Fx};
+use rune_fx::{DistortParams, ElectricStyle, FireStyle, Fx};
 
 use super::*;
 
@@ -237,13 +237,156 @@ fn decode_layer_rejects_non_finite_zero_size_and_non_positive_inputs() {
         ("NaN scale", valid_rect, 8.0, f32::NAN, valid_uv),
         ("inf scale", valid_rect, 8.0, f32::INFINITY, valid_uv),
     ];
-    for (label, rect, radius, scale, uv) in invalid_cases {
-        let inst = effect_instance(MARK_FIRE_BOTTOM, rect, radius, scale, uv);
-        assert!(
-            decode_layer(MARK_FIRE_BOTTOM, &inst).is_none(),
-            "decode_layer must reject {label}"
+    for mark in [
+        MARK_FIRE_BOTTOM,
+        MARK_PLASMA_BORDER,
+        MARK_ELECTRIC_BORDER,
+        MARK_ELECTRIC_CHARGED,
+        MARK_ELECTRIC_ARC_NW,
+    ] {
+        for (label, rect, radius, scale, uv) in invalid_cases {
+            let inst = effect_instance(mark, rect, radius, scale, uv);
+            assert!(
+                decode_layer(mark, &inst).is_none(),
+                "decode_layer must reject {label} for mark {mark:#x}"
+            );
+        }
+    }
+}
+
+#[test]
+fn decode_layer_decodes_plasma_and_electric_marks_with_scale_and_theme_contrast() {
+    let data = [0.55, 1.0, 0.9, 11.0];
+
+    let plasma = decode_layer(
+        MARK_PLASMA_BORDER,
+        &effect_instance(
+            MARK_PLASMA_BORDER,
+            [390.0, 150.0, 500.0, 500.0],
+            0.0,
+            1.0,
+            data,
+        ),
+    )
+    .expect("plasma border decodes");
+    assert!(plasma.is_animating());
+    assert!(plasma.shape.radius > 0.0);
+    assert!(matches!(
+        plasma.fx,
+        Fx::Fire(p) if p.style == FireStyle::Border && p.swirl > 0.0
+    ));
+
+    let border = decode_layer(
+        MARK_ELECTRIC_BORDER,
+        &effect_instance(
+            MARK_ELECTRIC_BORDER,
+            [390.0, 150.0, 500.0, 500.0],
+            14.0,
+            1.0,
+            data,
+        ),
+    )
+    .expect("electric overload border decodes");
+    assert!(border.is_animating());
+    assert!(matches!(
+        border.fx,
+        Fx::Electric(p) if p.style == ElectricStyle::Border && p.forks > 0.0
+    ));
+
+    let charged = decode_layer(
+        MARK_ELECTRIC_CHARGED,
+        &effect_instance(
+            MARK_ELECTRIC_CHARGED,
+            [0.0, 0.0, 1280.0, 800.0],
+            10.0,
+            1.0,
+            data,
+        ),
+    )
+    .expect("charged window perimeter decodes");
+    assert!(charged.is_animating());
+    assert!(matches!(
+        charged.fx,
+        Fx::Electric(p) if p.style == ElectricStyle::Charged
+    ));
+
+    let arc_cases = [
+        ([400.0, 160.0], [20.0, 20.0], MARK_ELECTRIC_ARC_NW),
+        ([880.0, 160.0], [1260.0, 20.0], MARK_ELECTRIC_ARC_NE),
+        ([400.0, 640.0], [20.0, 780.0], MARK_ELECTRIC_ARC_SW),
+        ([880.0, 640.0], [1260.0, 780.0], MARK_ELECTRIC_ARC_SE),
+    ];
+    for (from, to, expected_mark) in arc_cases {
+        assert_eq!(electric_arc_mark(from, to), expected_mark);
+        let rect = [
+            from[0].min(to[0]),
+            from[1].min(to[1]),
+            (to[0] - from[0]).abs(),
+            (to[1] - from[1]).abs(),
+        ];
+        let layer = decode_layer(
+            expected_mark,
+            &effect_instance(expected_mark, rect, 0.0, 1.0, data),
+        )
+        .expect("arc decodes");
+        assert!(layer.is_animating());
+        assert!(matches!(
+            layer.fx,
+            Fx::Electric(p) if p.style == ElectricStyle::Arc { a: from, b: to }
+        ));
+
+        // HiDPI scale = 2.0 round-trips device pixels back to identical point-space endpoints.
+        let scaled_rect = rect.map(|v| v * 2.0);
+        let scaled = collect_slots(
+            &[effect_instance(expected_mark, scaled_rect, 0.0, 2.0, data)],
+            &[expected_mark],
+        );
+        assert_eq!(scaled.len(), 1);
+        assert!(matches!(
+            scaled[0].layer.fx,
+            Fx::Electric(p) if p.style == ElectricStyle::Arc { a: from, b: to }
+        ));
+        assert_eq!(
+            scaled[0].placement,
+            FxSlot::default().scale(2.0).clip(NO_CLIP, [0; 4])
         );
     }
+
+    // Light-theme slots (negative signed seed) raise occlusion for contrast while keeping seed.
+    let light_data = [0.55, 1.0, 0.9, -11.0];
+    let light_plasma = decode_layer(
+        MARK_PLASMA_BORDER,
+        &effect_instance(
+            MARK_PLASMA_BORDER,
+            [390.0, 150.0, 500.0, 500.0],
+            14.0,
+            1.0,
+            light_data,
+        ),
+    )
+    .expect("light plasma decodes");
+    assert_eq!(light_plasma.seed, plasma.seed);
+    let (Fx::Fire(dark_p), Fx::Fire(light_p)) = (plasma.fx, light_plasma.fx) else {
+        panic!("expected Fx::Fire plasma layers");
+    };
+    assert!(light_p.occlusion > dark_p.occlusion);
+
+    let light_border = decode_layer(
+        MARK_ELECTRIC_BORDER,
+        &effect_instance(
+            MARK_ELECTRIC_BORDER,
+            [390.0, 150.0, 500.0, 500.0],
+            14.0,
+            1.0,
+            light_data,
+        ),
+    )
+    .expect("light electric border decodes");
+    assert_eq!(light_border.seed, border.seed);
+    let (Fx::Electric(dark_e), Fx::Electric(light_e)) = (border.fx, light_border.fx) else {
+        panic!("expected Fx::Electric layers");
+    };
+    assert!(light_e.occlusion > dark_e.occlusion);
 }
 
 /// Wrapper that records `(draws_own, animating)` after every frame `FxCompositor` renders.
@@ -408,5 +551,99 @@ fn headless_gpu_compositor_renders_fire_and_flushes_cleanly_to_idle() {
     assert!(
         history.len() >= 3 && history[1..].iter().all(|&s| s == (false, false)),
         "every frame after fire unmounts must remain idle: {history:?}"
+    );
+}
+
+fn plasma_toggle_scene(state: &ToggleState, _: &mut Cx<ToggleState>) -> El {
+    let mut root = el()
+        .size(240.0, 180.0)
+        .fill(hex("#14141a").expect("valid hex color"));
+    if state.fire_active {
+        let data = [0.45, 1.0, 1.0, 5.0];
+        root = root
+            .child(
+                effect(MARK_ELECTRIC_CHARGED)
+                    .pin(Some(0.0), Some(0.0), Some(0.0), Some(0.0))
+                    .radius(10.0)
+                    .effect_bleed(24.0)
+                    .effect_data(data),
+            )
+            .child(
+                effect(MARK_ELECTRIC_ARC_NW)
+                    .absolute(12.0, 12.0)
+                    .size(58.0, 28.0)
+                    .effect_bleed(96.0)
+                    .effect_data(data),
+            )
+            .child(
+                effect(MARK_ELECTRIC_ARC_SE)
+                    .absolute(170.0, 140.0)
+                    .size(58.0, 28.0)
+                    .effect_bleed(96.0)
+                    .effect_data(data),
+            )
+            .child(
+                effect(MARK_PLASMA_BORDER)
+                    .absolute(70.0, 40.0)
+                    .size(100.0, 100.0)
+                    .radius(12.0)
+                    .effect_bleed(64.0)
+                    .effect_data(data),
+            )
+            .child(
+                effect(MARK_ELECTRIC_BORDER)
+                    .absolute(70.0, 40.0)
+                    .size(100.0, 100.0)
+                    .radius(12.0)
+                    .effect_bleed(64.0)
+                    .effect_data(data),
+            );
+    }
+    root
+}
+
+#[test]
+fn headless_gpu_compositor_renders_plasma_and_electricity_and_flushes_cleanly_to_idle() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let transition_history = Arc::new(Mutex::new(Vec::new()));
+    let out_dir = dir.path().join("plasma-frames");
+    RuneApp::new(AppSpec {
+        poll: Some(toggle_poll),
+        ..AppSpec::new(
+            "fx-plasma-transition",
+            (240.0, 180.0),
+            || ToggleState {
+                fire_active: true,
+                polls: 0,
+            },
+            plasma_toggle_scene,
+        )
+    })
+    .compositor(SpyCompositor {
+        inner: FxCompositor::new(),
+        history: Arc::clone(&transition_history),
+    })
+    .args([
+        "--frames".to_owned(),
+        "3".to_owned(),
+        "--out".to_owned(),
+        out_dir.to_string_lossy().into_owned(),
+        "--scale".to_owned(),
+        "1".to_owned(),
+    ])
+    .run();
+
+    let history = transition_history
+        .lock()
+        .expect("plasma transition history")
+        .clone();
+    assert_eq!(
+        history.first().copied(),
+        Some((true, true)),
+        "active plasma + electricity frame must report draws_own and animating: {history:?}"
+    );
+    assert!(
+        history.len() >= 3 && history[1..].iter().all(|&s| s == (false, false)),
+        "every frame after plasma splash unmounts must remain idle: {history:?}"
     );
 }

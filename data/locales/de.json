@@ -1619,5 +1619,6 @@
   "Frosted glass": "Milchglas",
   "Apply backdrop blur and a subtle frosted sheen to translucent dialogs, menus, and popovers.": "Hintergrundunschärfe und einen dezenten Milchglas-Schimmer auf durchscheinende Dialoge, Menüs und Popovers anwenden.",
   "Unfocused window multiplier": "Multiplikator für unfokussierte Fenster",
-  "Multiply transparency when the window is unfocused (higher is more see-through; 1.00× keeps it unchanged).": "Transparenz multiplizieren, wenn das Fenster nicht fokussiert ist (höher ist durchsichtiger; 1,00× bleibt unverändert)."
+  "Multiply transparency when the window is unfocused (higher is more see-through; 1.00× keeps it unchanged).": "Transparenz multiplizieren, wenn das Fenster nicht fokussiert ist (höher ist durchsichtiger; 1,00× bleibt unverändert).",
+  "Plasma splash": "Plasma-Splash"
 }

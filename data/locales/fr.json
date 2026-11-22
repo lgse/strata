@@ -1619,5 +1619,6 @@
   "Frosted glass": "Verre dépoli",
   "Apply backdrop blur and a subtle frosted sheen to translucent dialogs, menus, and popovers.": "Appliquer un flou d’arrière-plan et un léger reflet dépoli aux boîtes de dialogue, menus et infobulles translucides.",
   "Unfocused window multiplier": "Multiplicateur de fenêtre inactive",
-  "Multiply transparency when the window is unfocused (higher is more see-through; 1.00× keeps it unchanged).": "Multiplier la transparence lorsque la fenêtre n’est pas active (plus élevé = plus transparent ; 1,00× ne change rien)."
+  "Multiply transparency when the window is unfocused (higher is more see-through; 1.00× keeps it unchanged).": "Multiplier la transparence lorsque la fenêtre n’est pas active (plus élevé = plus transparent ; 1,00× ne change rien).",
+  "Plasma splash": "Écran plasma"
 }

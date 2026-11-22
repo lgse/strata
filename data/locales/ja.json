@@ -1619,5 +1619,6 @@
   "Frosted glass": "すりガラス",
   "Apply backdrop blur and a subtle frosted sheen to translucent dialogs, menus, and popovers.": "半透明のダイアログ、メニュー、ポップオーバーに背景ぼかしと繊細なすりガラスの質感を加えます。",
   "Unfocused window multiplier": "非フォーカス時の倍率",
-  "Multiply transparency when the window is unfocused (higher is more see-through; 1.00× keeps it unchanged).": "ウィンドウが非フォーカスのときに透過率へ掛ける倍率（高いほど透過し、1.00×で変化なし）。"
+  "Multiply transparency when the window is unfocused (higher is more see-through; 1.00× keeps it unchanged).": "ウィンドウが非フォーカスのときに透過率へ掛ける倍率（高いほど透過し、1.00×で変化なし）。",
+  "Plasma splash": "プラズマスプラッシュ"
 }

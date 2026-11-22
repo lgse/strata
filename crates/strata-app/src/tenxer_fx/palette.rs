@@ -107,6 +107,22 @@ impl<'a> FxFrame<'a> {
     pub(super) fn bright(&self, alpha: f32) -> Color {
         self.palette.with_alpha(self.palette.bright, alpha)
     }
+
+    /// Encodes `[elapsed, intensity, opacity, signed_seed]` for `El::effect_data`.
+    ///
+    /// A negative seed tells `FxCompositor` that the active theme is light so additive shaders
+    /// raise occlusion for crisp contrast on bright surfaces.
+    pub(super) fn effect_slot_data(
+        &self,
+        intensity: f32,
+        opacity: f32,
+        seed_offset: u32,
+    ) -> [f32; 4] {
+        let is_light = self.look.kit.c.bg_base.luminance() >= 0.2;
+        let seed = (self.seed.wrapping_add(seed_offset) % 65_535).max(1) as f32;
+        let signed_seed = if is_light { -seed } else { seed };
+        [self.elapsed, intensity, opacity, signed_seed]
+    }
 }
 
 pub(super) fn clamp01(value: f32) -> f32 {

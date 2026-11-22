@@ -1619,5 +1619,6 @@
   "Frosted glass": "Vetro smerigliato",
   "Apply backdrop blur and a subtle frosted sheen to translucent dialogs, menus, and popovers.": "Applica sfocatura dello sfondo e un leggero riflesso smerigliato a finestre di dialogo, menu e popover traslucidi.",
   "Unfocused window multiplier": "Moltiplicatore finestra non attiva",
-  "Multiply transparency when the window is unfocused (higher is more see-through; 1.00× keeps it unchanged).": "Moltiplica la trasparenza quando la finestra non ha il focus (più alto è più trasparente; 1,00× la lascia invariata)."
+  "Multiply transparency when the window is unfocused (higher is more see-through; 1.00× keeps it unchanged).": "Moltiplica la trasparenza quando la finestra non ha il focus (più alto è più trasparente; 1,00× la lascia invariata).",
+  "Plasma splash": "Splash al plasma"
 }
