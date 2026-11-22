@@ -335,3 +335,35 @@ fn scroll_settle_defers_during_thumb_drag_and_flushes_immediately_on_release() {
         "releasing thumb flushes thumbnails immediately"
     );
 }
+
+/// When a reload cancels in-flight metadata fills and replaces the same folder with fresh
+/// `Unknown` entries, `invalidate()` clears `asked` so the next poll re-requests them.
+#[test]
+fn invalidate_readmits_rows_after_reload_cancels_in_flight_fills() {
+    let browser = Recorder::of(4);
+    let ids = Ids::default();
+    let mut column = listing(&browser, &ids);
+    let mut fills = Fills::new(Details::All);
+
+    fills.see(0..4);
+    fills.request(&browser, 0, &column);
+    assert_eq!(browser.take(), vec![0, 1, 2, 3]);
+
+    // Simulate a reload of the same folder replacing entries with fresh Unknown rows after
+    // cancelling the previous metadata load.
+    let reloaded_rows = browser
+        .entries
+        .borrow()
+        .iter()
+        .map(|entry| Row::of(entry, &ids))
+        .collect();
+    column.apply(Edit::Replace(reloaded_rows));
+
+    fills.invalidate();
+    fills.request(&browser, 0, &column);
+    assert_eq!(
+        browser.take(),
+        vec![0, 1, 2, 3],
+        "reloaded rows must be re-requested after invalidate()"
+    );
+}

@@ -146,14 +146,29 @@ impl NavigationState {
     }
 
     /// Entries must arrive pre-sorted; the caller marks the load finished and publishes.
+    #[cfg(test)]
     pub fn install_snapshot(
         &mut self,
         request_id: RequestId,
         entries: Vec<FileEntry>,
     ) -> Option<usize> {
+        self.install_snapshot_with_uniqueness(request_id, entries, None)
+    }
+
+    /// Installs a pre-sorted snapshot, optionally carrying an off-thread proof of whether
+    /// every entry has a distinct location.
+    pub(crate) fn install_snapshot_with_uniqueness(
+        &mut self,
+        request_id: RequestId,
+        entries: Vec<FileEntry>,
+        unique_locations: Option<bool>,
+    ) -> Option<usize> {
         let (depth, column) = self.column_for_request_mut(request_id)?;
         column.entries = entries;
         column.invalidate_entry_indexes();
+        if let Some(unique) = unique_locations {
+            let _ = column.each_location_once.set(unique);
+        }
         if let Some(selected_location) = column.selection_target.clone() {
             column.select_target(&selected_location);
         }

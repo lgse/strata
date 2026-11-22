@@ -246,10 +246,13 @@ impl<S: 'static> DockView<S> {
             .gap(space.xs)
             .radius(look.round(CARD_RADIUS))
             .fill(c.layer_01)
-            .border(1.0, c.border_base)
+            .border(1.0, look.transparency.frosted_border(c.border_base))
             .focus_within_ring(1.0, -1.0, c.text_accent)
             .child(header)
             .child(details);
+        if look.transparency.frosted_glass {
+            card = card.backdrop_blur(look.transparency.backdrop_blur);
+        }
         card = glow(look, card);
         if let Some(d) = &op.spec.destination_description {
             card = card.description(d.clone());
@@ -584,7 +587,10 @@ fn notice(look: &Look, key: &str, n: &DockNotice) -> El {
         .px(space.xl)
         .radius(look.round(CARD_RADIUS))
         .fill(c.layer_01)
-        .border(1.0, c.border_base);
+        .border(1.0, look.transparency.frosted_border(c.border_base));
+    if look.transparency.frosted_glass {
+        r = r.backdrop_blur(look.transparency.backdrop_blur);
+    }
     if notice.heading.is_some() {
         r = r.description(notice.text.clone());
     }

@@ -178,6 +178,20 @@ impl<K: Eq + Hash> RestoreMemory<K> {
         self.ids
     }
 
+    /// Appends every [`EntryId`] referenced by a remembered folder position (cursor, anchor,
+    /// and selected entries) into `out`.
+    pub fn collect_ids(&self, out: &mut impl Extend<EntryId>) {
+        for (_, position) in self.folders.values() {
+            if let Some(id) = position.cursor {
+                out.extend(std::iter::once(id));
+            }
+            if let Some(id) = position.anchor {
+                out.extend(std::iter::once(id));
+            }
+            out.extend(position.selected.iter().copied());
+        }
+    }
+
     fn forget_oldest(&mut self) {
         // A linear scan: a memory holds about a hundred folders, and this runs once per
         // folder left. Stamps are unique, so the oldest stamp names one folder.

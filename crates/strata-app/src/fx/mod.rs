@@ -11,8 +11,8 @@ use rune::{
     render::{EffectPhase, EffectSite, Instance, KIND_EFFECT},
 };
 use rune_fx::{
-    DistortParams, FireParams, FireStyle, Fx, FxFrame, FxLayer, FxOptions, FxRenderer, FxSlot,
-    Shape,
+    DistortParams, ElectricParams, ElectricStyle, FireParams, FireStyle, Fx, FxFrame, FxLayer,
+    FxOptions, FxRenderer, FxSlot, Shape, rgb,
 };
 
 #[cfg(test)]
@@ -28,6 +28,30 @@ pub(crate) const MARK_FIRE_BORDER: u32 = 0x10F0_0003;
 pub(crate) const MARK_FIRE_BADGE_FLAME: u32 = 0x10F0_0004;
 /// Effect slot mark: heat haze shimmering above the centered `10X` emblem.
 pub(crate) const MARK_FIRE_BADGE_HAZE: u32 = 0x10F0_0005;
+/// Effect slot mark: swirling plasma filaments hugging a rounded splash card perimeter.
+pub(crate) const MARK_PLASMA_BORDER: u32 = 0x10F0_0006;
+/// Effect slot mark: crackling overload lightning crawling around a splash card perimeter.
+pub(crate) const MARK_ELECTRIC_BORDER: u32 = 0x10F0_0007;
+/// Effect slot mark: calm crawling charged electric hairline around the outer window edge.
+pub(crate) const MARK_ELECTRIC_CHARGED: u32 = 0x10F0_0008;
+/// Effect slot mark: forking lightning arc shooting bottom-right -> top-left across the slot rect.
+pub(crate) const MARK_ELECTRIC_ARC_NW: u32 = 0x10F0_0009;
+/// Effect slot mark: forking lightning arc shooting bottom-left -> top-right across the slot rect.
+pub(crate) const MARK_ELECTRIC_ARC_NE: u32 = 0x10F0_000A;
+/// Effect slot mark: forking lightning arc shooting top-right -> bottom-left across the slot rect.
+pub(crate) const MARK_ELECTRIC_ARC_SW: u32 = 0x10F0_000B;
+/// Effect slot mark: forking lightning arc shooting top-left -> bottom-right across the slot rect.
+pub(crate) const MARK_ELECTRIC_ARC_SE: u32 = 0x10F0_000C;
+
+/// Selects the directional arc slot mark encoding the vector from `a` to `b`.
+pub(crate) const fn electric_arc_mark(a: [f32; 2], b: [f32; 2]) -> u32 {
+    match (b[0] < a[0], b[1] < a[1]) {
+        (true, true) => MARK_ELECTRIC_ARC_NW,
+        (false, true) => MARK_ELECTRIC_ARC_NE,
+        (true, false) => MARK_ELECTRIC_ARC_SW,
+        (false, false) => MARK_ELECTRIC_ARC_SE,
+    }
+}
 
 struct GpuFx {
     device_key: DeviceKey,
@@ -278,8 +302,19 @@ fn decode_mark(inst: &Instance, fallback: u32) -> u32 {
 /// Decodes one `KIND_EFFECT` instance into a `rune-fx` layer based on its `mark` and `effect_data`.
 pub(crate) fn decode_layer(mark: u32, inst: &Instance) -> Option<FxLayer> {
     let p = SlotParams::from_instance(inst)?;
-    let (fx, shape, seed_offset) = match mark {
-        MARK_FIRE_HAZE => (
+    let (fx, shape, seed_offset) =
+        decode_fire_layer(mark, &p).or_else(|| decode_plasma_electric_layer(mark, &p))?;
+    Some(
+        fx.on(shape)
+            .at(p.time)
+            .seed(p.seed.wrapping_add(seed_offset))
+            .opacity(p.opacity),
+    )
+}
+
+fn decode_fire_layer(mark: u32, p: &SlotParams) -> Option<(Fx, Shape, u32)> {
+    match mark {
+        MARK_FIRE_HAZE => Some((
             Fx::distort(DistortParams::HeatHaze {
                 height: (p.rect[3] * 0.48).clamp(180.0, 380.0),
                 scale: 14.0,
@@ -289,27 +324,27 @@ pub(crate) fn decode_layer(mark: u32, inst: &Instance) -> Option<FxLayer> {
             }),
             bottom_hearth_shape(p.rect),
             11,
-        ),
+        )),
         MARK_FIRE_BOTTOM => {
             // Quantize height to whole points so the fluid sim grid stays stable across frames.
             let fire_height = (p.rect[3] * 0.27).clamp(130.0, 220.0).round();
-            (
+            Some((
                 Fx::fire(bottom_fire_params(fire_height, p.intensity, p.is_light)),
                 bottom_hearth_shape(p.rect),
                 5,
-            )
+            ))
         }
-        MARK_FIRE_BORDER => (
+        MARK_FIRE_BORDER => Some((
             Fx::fire(border_fire_params(p.intensity, p.is_light)),
             inset_border_shape(p.rect, p.radius),
             17,
-        ),
-        MARK_FIRE_BADGE_FLAME => (
+        )),
+        MARK_FIRE_BADGE_FLAME => Some((
             Fx::fire(badge_fire_params(p.intensity, p.is_light)),
             badge_shape(p.rect, p.radius),
             23,
-        ),
-        MARK_FIRE_BADGE_HAZE => (
+        )),
+        MARK_FIRE_BADGE_HAZE => Some((
             Fx::distort(DistortParams::HeatHaze {
                 height: 42.0,
                 scale: 9.0,
@@ -319,15 +354,50 @@ pub(crate) fn decode_layer(mark: u32, inst: &Instance) -> Option<FxLayer> {
             }),
             badge_shape(p.rect, p.radius),
             29,
-        ),
-        _ => return None,
-    };
-    Some(
-        fx.on(shape)
-            .at(p.time)
-            .seed(p.seed.wrapping_add(seed_offset))
-            .opacity(p.opacity),
-    )
+        )),
+        _ => None,
+    }
+}
+
+fn decode_plasma_electric_layer(mark: u32, p: &SlotParams) -> Option<(Fx, Shape, u32)> {
+    match mark {
+        MARK_PLASMA_BORDER => Some((
+            Fx::fire(plasma_border_params(p.intensity, p.is_light)),
+            badge_shape(p.rect, p.radius),
+            37,
+        )),
+        MARK_ELECTRIC_BORDER => Some((
+            Fx::electric(electric_border_params(p.intensity, p.is_light)),
+            badge_shape(p.rect, p.radius),
+            41,
+        )),
+        MARK_ELECTRIC_CHARGED => Some((
+            Fx::electric(electric_charged_params(p.intensity, p.is_light)),
+            inset_border_shape(p.rect, p.radius),
+            43,
+        )),
+        MARK_ELECTRIC_ARC_NW | MARK_ELECTRIC_ARC_NE | MARK_ELECTRIC_ARC_SW
+        | MARK_ELECTRIC_ARC_SE => {
+            let (a, b) = arc_endpoints(mark, p.rect);
+            Some((
+                Fx::electric(electric_arc_params(a, b, p.intensity, p.is_light)),
+                Shape::rounded(p.rect[0], p.rect[1], p.rect[2], p.rect[3], 0.0),
+                47,
+            ))
+        }
+        _ => None,
+    }
+}
+
+fn arc_endpoints(mark: u32, [x, y, w, h]: [f32; 4]) -> ([f32; 2], [f32; 2]) {
+    let x1 = x + w;
+    let y1 = y + h;
+    match mark {
+        MARK_ELECTRIC_ARC_NW => ([x1, y1], [x, y]),
+        MARK_ELECTRIC_ARC_NE => ([x, y1], [x1, y]),
+        MARK_ELECTRIC_ARC_SW => ([x1, y], [x, y1]),
+        _ => ([x, y], [x1, y1]),
+    }
 }
 
 /// Hearth strip anchored along the window bottom so `FireStyle::Top` flames erupt upward cleanly
@@ -417,6 +487,79 @@ fn badge_fire_params(intensity: f32, is_light: bool) -> FireParams {
         occlusion: if is_light { 0.95 } else { 0.20 },
         smoke: if is_light { 0.6 } else { 0.35 },
         ..FireParams::heat()
+    }
+}
+
+fn plasma_border_params(intensity: f32, is_light: bool) -> FireParams {
+    let base = FireParams::plasma();
+    FireParams {
+        height: 44.0,
+        scale: 18.0,
+        speed: 1.45,
+        intensity: (if is_light { 1.25 } else { 1.08 }) * intensity,
+        warp: 1.1,
+        sides: 0.62,
+        base_glow: 0.72,
+        occlusion: if is_light { 0.90 } else { 0.28 },
+        swirl: 0.95,
+        ..base
+    }
+}
+
+fn electric_border_params(intensity: f32, is_light: bool) -> ElectricParams {
+    ElectricParams {
+        style: ElectricStyle::Border,
+        color: rgb(0x3ea6ff),
+        core: rgb(0xf2fbff),
+        cool: rgb(0xb04cff),
+        amplitude: 6.5,
+        frequency: 2.6,
+        speed: 3.8,
+        core_width: 0.75,
+        intensity: (if is_light { 1.25 } else { 1.12 }) * intensity,
+        glow: 6.5,
+        forks: 0.72,
+        flicker: 0.55,
+        strands: 2,
+        gap: 3.5,
+        fork_len: 28.0,
+        occlusion: if is_light { 0.88 } else { 0.18 },
+        zap: None,
+    }
+}
+
+fn electric_arc_params(a: [f32; 2], b: [f32; 2], intensity: f32, is_light: bool) -> ElectricParams {
+    ElectricParams {
+        style: ElectricStyle::Arc { a, b },
+        color: rgb(0x38b4ff),
+        core: rgb(0xf5fcff),
+        cool: rgb(0xc44dff),
+        amplitude: 9.5,
+        frequency: 2.5,
+        speed: 4.4,
+        core_width: 0.8,
+        intensity: (if is_light { 1.3 } else { 1.15 }) * intensity,
+        glow: 7.0,
+        forks: 0.78,
+        flicker: 0.6,
+        strands: 3,
+        gap: 0.0,
+        fork_len: 32.0,
+        occlusion: if is_light { 0.88 } else { 0.16 },
+        zap: None,
+    }
+}
+
+fn electric_charged_params(intensity: f32, is_light: bool) -> ElectricParams {
+    let base = ElectricParams::charged();
+    ElectricParams {
+        color: rgb(0x479eff),
+        core: rgb(0xedf7ff),
+        cool: rgb(0x9b5cff),
+        intensity: base.intensity * (if is_light { 1.25 } else { 1.0 }) * intensity,
+        glow: base.glow * 1.15,
+        occlusion: if is_light { 0.72 } else { 0.14 },
+        ..base
     }
 }
 

@@ -232,6 +232,36 @@ impl Tabs {
         }
     }
 
+    pub(super) fn has_held_updates(&self) -> bool {
+        self.parked
+            .iter()
+            .any(|(_, parked)| !parked.held.updates.is_empty())
+    }
+
+    pub(super) fn collect_parked_ids(
+        &self,
+        out: &mut impl Extend<strata_components::contract::EntryId>,
+    ) {
+        for (_, parked) in &self.parked {
+            if let Some(columns) = &parked.parts.columns {
+                columns.collect_ids(out);
+            }
+            if let Some(icons) = &parked.parts.icons {
+                icons.single.pane.collect_ids(out);
+            }
+            if let Some(list) = &parked.parts.list {
+                list.single.pane.collect_ids(out);
+            }
+            if let Some(filter) = &parked.parts.filter {
+                filter.pane.collect_ids(out);
+            }
+            if let Some(peek) = &parked.parts.peek {
+                peek.collect_ids(out);
+            }
+            parked.here.restore.collect_ids(out);
+        }
+    }
+
     /// Holds `queued` for its hidden tab. False when the tab is gone: it is dropped.
     pub(super) fn hold(&mut self, key: TabKey, queued: Queued<App>) -> bool {
         let Some(parked) = self.parked_mut(key) else {
@@ -518,6 +548,7 @@ pub(crate) fn close(app: &mut App, key: TabKey, tx: &mut Tx) -> bool {
     }
     app.window.tabs.order.remove(at);
     drop(app.window.tabs.take(key));
+    super::ids_prune::prune_if_needed(app);
     session::persist_session(app);
     true
 }

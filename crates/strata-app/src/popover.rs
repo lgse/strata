@@ -167,7 +167,8 @@ impl Plain {
             .preserve_focus_on_press(true)
             .on_press(|_: &mut App| {})
             .on_wheel(|_: &mut App, _: WheelEvent, _: &mut Tx| true);
-        let mut surface = popover::raised(kit, body, kit.radius.lg).border(1.0, kit.c.border_base);
+        let mut surface = strata_kit::transparency::raised_popover(look, body, kit.radius.lg)
+            .border(1.0, look.transparency.frosted_border(kit.c.border_base));
         if look.glow.on {
             surface = surface.shadow(
                 0.0,

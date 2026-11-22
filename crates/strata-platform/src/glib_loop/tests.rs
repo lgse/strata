@@ -155,6 +155,29 @@ fn a_pass_that_runs_out_of_budget_notifies_again_at_once() {
 }
 
 #[test]
+fn pump_until_stops_early_and_notifies_for_remaining_ready_sources() {
+    owned(|o| {
+        glib::idle_source_new(None, glib::Priority::DEFAULT, o.counting(3))
+            .attach(Some(&o.context));
+
+        assert!(o.glib.pump_until(BUDGET, || o.ran() >= 1));
+        assert_eq!(
+            o.ran(),
+            1,
+            "stopped right after the first dispatched source"
+        );
+        o.wait_for_a_notification();
+
+        assert!(o.glib.pump(BUDGET));
+        assert_eq!(
+            o.ran(),
+            3,
+            "the remaining ready sources ran on the next pass"
+        );
+    });
+}
+
+#[test]
 fn a_thread_that_does_not_own_the_context_cannot_start_the_loop() {
     let unowned = glib::MainContext::new();
 

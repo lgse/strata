@@ -87,9 +87,24 @@ fn filenames_with_the_same_simple_suffix_agree() {
 
 #[test]
 fn cached_guesses_preserve_compound_suffixes_and_filename_globs() {
-    let names = ["file.gz", "file.tar.gz", "file.am", "Makefile.am"];
+    let names = [
+        "file.gz",
+        "file.tar.gz",
+        "file.am",
+        "Makefile.am",
+        "notes.txt",
+        "README.txt",
+        "CMakeLists.txt",
+        "other.db",
+        "Thumbs.db",
+        "alpha.c",
+        "beta.C",
+        "backup.jpg~",
+        "photo.jpg",
+        "IMG.2026.01.JPG",
+    ];
     for reverse in [false, true] {
-        TYPE_CACHE.with_borrow_mut(HashMap::clear);
+        TYPE_CACHE.with_borrow_mut(TypeCache::clear);
         let mut names = names;
         if reverse {
             names.reverse();
@@ -102,4 +117,17 @@ fn cached_guesses_preserve_compound_suffixes_and_filename_globs() {
             );
         }
     }
+}
+
+#[test]
+fn simple_extensions_share_cached_interned_descriptions_across_unique_names() {
+    TYPE_CACHE.with_borrow_mut(TypeCache::clear);
+    let first = mime_description_rc("IMG_00001.jpg");
+    let second = mime_description_rc("IMG_99999.JPG");
+    assert_eq!(first, second);
+    assert!(Rc::ptr_eq(&first, &second));
+    TYPE_CACHE.with_borrow(|cache| {
+        assert_eq!(cache.ext_lower.len(), 1);
+        assert!(cache.by_name.is_empty());
+    });
 }

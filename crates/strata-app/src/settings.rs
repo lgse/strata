@@ -16,8 +16,8 @@ use std::{cell::RefCell, io, path::Path, rc::Rc};
 
 use strata_core::model::ViewPreferences;
 use strata_desktop::settings::{
-    ADOPTED_DEFAULT_KEYS, Commit, FinishedSave, Preferences, SaveOutcome, SaveProblem, Saving,
-    TenxerFx, ThemeAvailability,
+    ADOPTED_DEFAULT_KEYS, Commit, FinishedSave, Preferences, RunePreferences, SaveOutcome,
+    SaveProblem, Saving, TenxerFx, ThemeAvailability, TransparencyPreferences,
     save_notice::{NoticeProblem, SaveSubject, save_notice_summary, save_notice_text},
     store_sort,
 };
@@ -86,6 +86,7 @@ impl NoticeStreaks {
 struct Store {
     preferences: Preferences,
     tenxer_fx: TenxerFx,
+    transparency: TransparencyPreferences,
     saving: Saving,
     /// Moves with every change any window makes.
     version: u64,
@@ -122,6 +123,7 @@ pub(crate) struct Saved {
     /// The values as of `version`.
     preferences: Preferences,
     tenxer_fx: TenxerFx,
+    transparency: TransparencyPreferences,
     version: u64,
     /// The window's queue, where a finished save tells the bookkeeping its result. Without
     /// it a save is still written, and its keys are written again with the next.
@@ -141,11 +143,12 @@ impl Saved {
     /// Reads the file, salvaged entry by entry and brought within range, and makes its
     /// language the process's.
     pub(crate) fn load() -> Self {
-        let (preferences, tenxer_fx, saving) = strata_desktop::settings::load_with_tenxer_fx();
+        let (preferences, rune, saving) = strata_desktop::settings::load_rune();
         rust_i18n::set_locale(saving.startup_locale());
         let store = Store {
             preferences: preferences.clone(),
-            tenxer_fx,
+            tenxer_fx: rune.tenxer_fx,
+            transparency: rune.transparency,
             saving,
             version: 0,
             windows: Vec::new(),
@@ -155,7 +158,8 @@ impl Saved {
             store: Rc::new(RefCell::new(store)),
             id: 0,
             preferences,
-            tenxer_fx,
+            tenxer_fx: rune.tenxer_fx,
+            transparency: rune.transparency,
             version: 0,
             later: None,
             notices: NoticeStreaks::default(),
@@ -172,6 +176,7 @@ impl Saved {
             id,
             preferences: store.preferences.clone(),
             tenxer_fx: store.tenxer_fx,
+            transparency: store.transparency,
             version: store.version,
             later: None,
             notices: NoticeStreaks::default(),
@@ -201,6 +206,20 @@ impl Saved {
         self.commit();
     }
 
+    pub(crate) fn transparency(&self) -> TransparencyPreferences {
+        self.transparency
+    }
+
+    pub(crate) fn change_transparency(
+        &mut self,
+        change: impl FnOnce(&mut TransparencyPreferences),
+    ) {
+        self.follow();
+        change(&mut self.transparency);
+        self.transparency.normalize();
+        self.commit();
+    }
+
     /// How many windows the store would tell of a change, this one among them.
     #[cfg(test)]
     pub(crate) fn windows_told(&self) -> usize {
@@ -221,6 +240,7 @@ impl Saved {
         }
         self.preferences = store.preferences.clone();
         self.tenxer_fx = store.tenxer_fx;
+        self.transparency = store.transparency;
         self.version = store.version;
         true
     }
@@ -229,13 +249,17 @@ impl Saved {
     fn publish(&mut self, store: &mut Store) {
         store.preferences = self.preferences.clone();
         store.tenxer_fx = self.tenxer_fx;
+        store.transparency = self.transparency;
         store.version += 1;
         self.version = store.version;
     }
 
     /// Puts this window's values into the store when they differ from the process's.
     fn publish_changed(&mut self, store: &mut Store) {
-        if store.preferences != self.preferences || store.tenxer_fx != self.tenxer_fx {
+        if store.preferences != self.preferences
+            || store.tenxer_fx != self.tenxer_fx
+            || store.transparency != self.transparency
+        {
             self.publish(store);
         }
     }
@@ -355,9 +379,13 @@ impl Saved {
         let store = &mut *shared.borrow_mut();
         self.publish_changed(store);
         store.tell_others(self.id);
-        let Commit { save, problem, .. } = store
-            .saving
-            .commit_with_tenxer_fx(&self.preferences, self.tenxer_fx);
+        let Commit { save, problem, .. } = store.saving.commit_rune(
+            &self.preferences,
+            RunePreferences {
+                tenxer_fx: self.tenxer_fx,
+                transparency: self.transparency,
+            },
+        );
         match problem {
             Some(SaveProblem::UnreadableAtStartup { path }) => {
                 if let Some(error) = store.saving.load_failure() {

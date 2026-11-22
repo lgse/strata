@@ -49,6 +49,7 @@ use crate::{
 
 pub(crate) mod close_guard;
 mod held;
+mod ids_prune;
 mod preferences;
 mod presence;
 mod siblings;
@@ -143,10 +144,15 @@ pub(crate) struct Window {
     size: (f32, f32),
 }
 
+/// Tail chunk size for Rune's staged publication: first paint still lands 128 rows
+/// immediately, and larger tails avoid repeated O(k) virtual-list key scans (Rune #203).
+const RUNE_TAIL_PUBLISH_CHUNK: usize = 131_072;
+
 /// A browser over the local file source, as `src/ui/window/launch.rs` builds one, with the
 /// saved sort and hidden-files choice.
 fn browser_for(saved: &strata_desktop::settings::Preferences) -> Rc<Browser> {
     let browser = Browser::with_preferences(Rc::new(LocalFileSource), sort_preferences(saved));
+    browser.set_publication_chunks(RUNE_TAIL_PUBLISH_CHUNK, RUNE_TAIL_PUBLISH_CHUNK);
     browser.set_operation_provider(Rc::new(LocalOperationProvider));
     browser
 }
@@ -306,6 +312,9 @@ pub(crate) fn reopened(app: &mut App) {
     app.window.on_screen = true;
     app.window.active = false;
     presence::follow(app);
+    if transparency(app).varies_with_focus() {
+        follow_look(app);
+    }
     window_later(app).then(|app, tx| {
         retitle_now(app, tx);
         true
@@ -429,6 +438,7 @@ impl App {
         }
         tx.set_title(self.window.title.clone());
         self.window.location = location;
+        ids_prune::prune_if_needed(self);
         true
     }
 
@@ -442,6 +452,14 @@ impl App {
             can_maximize: capabilities.maximize,
             active: self.window.active,
         }
+    }
+}
+
+impl App {
+    /// Returns `true` once after a non-empty `EntriesReplaced` arrived so the host lets Rune
+    /// paint the first visible rows before dispatching staged tail chunks.
+    pub(crate) fn take_yield_paint(&self) -> bool {
+        self.window.events.take_yield_paint()
     }
 }
 
@@ -519,6 +537,11 @@ pub(crate) fn preferences(app: &App) -> &strata_desktop::settings::Preferences {
 /// The saved 10xer-mode activation visual effect.
 pub(crate) fn tenxer_fx(app: &App) -> strata_desktop::settings::TenxerFx {
     app.window.settings.tenxer_fx()
+}
+
+/// The saved surface transparency and frosted glass settings.
+pub(crate) fn transparency(app: &App) -> strata_desktop::settings::TransparencyPreferences {
+    app.window.settings.transparency()
 }
 
 /// The window's saved item colours and icons, indexed by [`EntryId`].
@@ -643,7 +666,14 @@ impl Window {
         let keys = Live::registered(saved, first_window_reports().as_deref());
         let thumbnail_share = thumbnail_budget::Share::join(&events.later());
         let thumbnails = thumbnail_store(saved);
-        let look = services.themes.build_look(saved, true);
+        let look = services.themes.build_look(
+            saved,
+            crate::theme::LookContext {
+                transparency: settings.transparency(),
+                animations_allowed: true,
+                window_active: true,
+            },
+        );
         let window = Self {
             id: siblings::next_id(),
             settings,
@@ -1199,7 +1229,6 @@ fn body(app: &App, sidebar: Option<El>, files: Option<El>) -> El {
         .w_full()
         .grow(1.0)
         .min_h(0.0)
-        .fill(app.look.kit.c.bg_base)
         .on_pointer_move_local(|app: &mut App, pointer, tx: &mut Tx| {
             if let Some(pointer_at) = shown_view(app).and_then(|view| view.pointer_at) {
                 pointer_at(app, (pointer.window_x, pointer.window_y));
@@ -1209,13 +1238,18 @@ fn body(app: &App, sidebar: Option<El>, files: Option<El>) -> El {
     // The same keyed wrappers with a sidebar or without one, so the view keeps its place in
     // the tree when the sidebar comes or goes: a view whose path changed would be mounted
     // anew, and lose its scroll and focus. Beside the sidebar the files take what it leaves.
-    let files = col()
+    // The sidebar paints its own `bg_deep`, and each file view (`columns-host`, `single::body`,
+    // `preview-drawer`) paints its own `bg_base` once so translucent surfaces never double-blend.
+    let mut files_col = col()
         .key("body-files")
         .grow(1.0)
         .h_full()
         .min_w(0.0)
-        .min_h(0.0)
-        .children(files);
+        .min_h(0.0);
+    if files.is_none() {
+        files_col = files_col.fill(app.look.kit.c.bg_base);
+    }
+    let files = files_col.children(files);
     let beside = row()
         .key("body-beside")
         .w_full()
@@ -1271,8 +1305,12 @@ pub(crate) fn view(app: &App, cx: &mut Cx<App>) -> El {
         // The window's zoom wheel, for what no scroll view holds (`appearance::wheel`).
         .on_wheel(crate::appearance::wheel::heard)
         .on_window_focus(|app: &mut App, focused, tx: &mut Tx| {
+            let focus_changed = app.window.active != focused;
             app.window.active = focused;
             presence::follow(app);
+            if focus_changed && transparency(app).varies_with_focus() {
+                follow_look_tx(app, tx);
+            }
             if !focused && app.window.held != rune::Mods::default() {
                 modifiers(app, rune::Mods::default(), tx);
             }

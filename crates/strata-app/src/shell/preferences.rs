@@ -12,7 +12,7 @@ use super::{App, Window, preferences, shown_view};
 use crate::{
     settings::Saved,
     slots::{Later, View},
-    theme::ThemeEngine,
+    theme::{LookContext, ThemeEngine},
 };
 
 pub(super) struct PowerMonitorGuard {
@@ -77,24 +77,30 @@ fn follow_power_saver(later: Later<App>) -> (bool, Option<PowerMonitorGuard>) {
     )
 }
 
+fn look_context(window: &Window) -> LookContext {
+    LookContext {
+        transparency: window.settings.transparency(),
+        animations_allowed: window.animations_allowed,
+        window_active: window.active,
+    }
+}
+
 /// The look follows the saved settings as they are now: a part that changes one the look
 /// reads calls this after `saved(app).change(…)`, as GTK's theme follows its preference.
 pub(crate) fn follow_look(app: &mut App) {
     let App { look, window, .. } = app;
-    window.themes.apply(
-        look,
-        window.settings.preferences(),
-        window.animations_allowed,
-    );
+    let ctx = look_context(window);
+    window
+        .themes
+        .apply(look, window.settings.preferences(), ctx);
     crate::preview::sync_theme(app);
 }
 
 /// Updates the look with colour motion and font family switching on `tx`.
 pub(crate) fn follow_look_tx(app: &mut App, tx: &mut Tx) {
     let App { look, window, .. } = app;
-    let next = window
-        .themes
-        .build_look(window.settings.preferences(), window.animations_allowed);
+    let ctx = look_context(window);
+    let next = window.themes.build_look(window.settings.preferences(), ctx);
     window.themes.apply_tx(look, next, tx);
     crate::preview::refresh_header(app);
     crate::preview::sync_theme(app);

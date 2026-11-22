@@ -9,7 +9,7 @@
 
 use std::time::Duration;
 
-use rune::{El, Tx, el};
+use rune::{El, Pixels, Tx, el};
 use strata_desktop::settings::TenxerFx;
 
 use crate::{
@@ -22,6 +22,7 @@ mod horizon;
 mod hud;
 mod palette;
 mod perimeter;
+mod plasma_splash;
 mod shockwave;
 #[cfg(test)]
 mod tests;
@@ -61,6 +62,7 @@ impl ActiveFx {
 
 pub(crate) struct TenxerFxOverlay {
     active: Option<ActiveFx>,
+    splash_pixels: Option<Pixels>,
     was_tenxer: bool,
     next_seed: u32,
 }
@@ -72,6 +74,7 @@ impl Part for TenxerFxOverlay {
     fn new(setup: &Setup<'_>) -> Self {
         Self {
             active: None,
+            splash_pixels: None,
             was_tenxer: setup.settings.tenxer_mode,
             next_seed: 1,
         }
@@ -105,6 +108,7 @@ fn duration_secs(effect: TenxerFx) -> f64 {
         TenxerFx::PerimeterIgnite => 0.84,
         TenxerFx::TacticalHud => 0.82,
         TenxerFx::InterfaceOnFire => 1.72,
+        TenxerFx::PlasmaSplash => 1.68,
         TenxerFx::Off => 0.0,
     }
 }
@@ -120,7 +124,15 @@ pub(crate) fn trigger(app: &mut App, effect: TenxerFx, tx: &mut Tx) {
     app.tenxer_fx.was_tenxer = shell::preferences(app).tenxer_mode;
     if !effect.is_enabled() || !app.look.animations {
         app.tenxer_fx.active = None;
+        app.tenxer_fx.splash_pixels = None;
         return;
+    }
+    if effect == TenxerFx::PlasmaSplash {
+        if app.tenxer_fx.splash_pixels.is_none() {
+            app.tenxer_fx.splash_pixels = plasma_splash::create_pixels();
+        }
+    } else {
+        app.tenxer_fx.splash_pixels = None;
     }
     let duration = duration_secs(effect);
     let seed = app.tenxer_fx.next_seed;
@@ -137,6 +149,7 @@ pub(crate) fn trigger(app: &mut App, effect: TenxerFx, tx: &mut Tx) {
 
 /// Cancels any active 10x FX overlay immediately.
 pub(crate) fn cancel(app: &mut App) -> bool {
+    app.tenxer_fx.splash_pixels = None;
     app.tenxer_fx.active.take().is_some()
 }
 
@@ -153,6 +166,7 @@ fn tick(app: &mut App, clock: f64, tx: &mut Tx) -> bool {
     let elapsed = (clock - active.started_at).max(0.0);
     if elapsed >= active.duration {
         app.tenxer_fx.active = None;
+        app.tenxer_fx.splash_pixels = None;
         return true;
     }
     let delta = elapsed - active.elapsed;
@@ -184,7 +198,7 @@ fn build(app: &App, frame: &mut Frame<'_, App>) -> Option<El> {
     )]
     let fx = FxFrame::new(&app.look, width, height, active.progress())
         .with_timing(active.elapsed as f32, active.seed);
-    let scene = render_effect(active.effect, &fx)?;
+    let scene = render_effect(active.effect, &fx, app.tenxer_fx.splash_pixels.as_ref())?;
     let overlay = el()
         .key(OVERLAY_KEY)
         .role("none")
@@ -198,7 +212,7 @@ fn build(app: &App, frame: &mut Frame<'_, App>) -> Option<El> {
     None
 }
 
-fn render_effect(effect: TenxerFx, frame: &FxFrame<'_>) -> Option<El> {
+fn render_effect(effect: TenxerFx, frame: &FxFrame<'_>, splash: Option<&Pixels>) -> Option<El> {
     match effect {
         TenxerFx::HorizonScan => Some(horizon::build(frame)),
         TenxerFx::VelocityWarp => Some(warp::build(frame)),
@@ -206,6 +220,7 @@ fn render_effect(effect: TenxerFx, frame: &FxFrame<'_>) -> Option<El> {
         TenxerFx::PerimeterIgnite => Some(perimeter::build(frame)),
         TenxerFx::TacticalHud => Some(hud::build(frame)),
         TenxerFx::InterfaceOnFire => Some(fire::build(frame)),
+        TenxerFx::PlasmaSplash => Some(plasma_splash::build(frame, splash)),
         TenxerFx::Off => None,
     }
 }

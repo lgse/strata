@@ -801,7 +801,7 @@ fn empty_reserved_slot<S: 'static>(
     } else {
         look.kit.c.border_base
     };
-    slot.child(
+    slot.fill(look.kit.c.bg_base).child(
         el().key("preview-empty-line")
             .w(shared.rules.line)
             .h_full()

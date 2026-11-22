@@ -229,8 +229,11 @@ impl<S: 'static> DialogShell<S> {
                     .unwrap_or_else(|| look.round(PANEL_RADIUS)),
             )
             .fill(self.fill.unwrap_or(kit.c.layer_01))
-            .border(1.0, kit.c.border_base)
+            .border(1.0, look.transparency.frosted_border(kit.c.border_base))
             .children(self.children);
+        if look.transparency.frosted_glass {
+            panel = panel.backdrop_blur(look.transparency.backdrop_blur);
+        }
         if let Some(height) = self.height {
             panel = panel.h_full().max_h(height);
         }

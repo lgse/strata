@@ -107,6 +107,11 @@ impl Part for Clipboard {
 }
 
 impl Clipboard {
+    pub(crate) fn collect_ids(&self, out: &mut impl Extend<EntryId>) {
+        out.extend(self.copied_ids.iter().copied());
+        out.extend(self.cut_ids.iter().copied());
+    }
+
     fn clear_marks(&mut self) {
         self.copied.clear();
         self.cut.clear();

@@ -535,6 +535,9 @@ pub struct Browser {
     staging: RefCell<HashMap<usize, StagingLoad>>,
     sorting: RefCell<HashMap<usize, SortingLoad>>,
     staged_publishes: RefCell<HashMap<usize, StagedPublish>>,
+    /// `(initial, max)` tail chunk sizes for staged publication; GTK keeps the default
+    /// `(512, 2048)` while Rune raises them to avoid repeated full-list virtual key scans.
+    publication_chunks: Cell<(usize, usize)>,
     preserving_refreshes: RefCell<HashSet<usize>>,
     kept_listings: RefCell<HashMap<usize, KeptListing>>,
     publish_timer: RefCell<Option<gio::glib::SourceId>>,
@@ -629,6 +632,7 @@ impl Browser {
             staging: RefCell::new(HashMap::new()),
             sorting: RefCell::new(HashMap::new()),
             staged_publishes: RefCell::new(HashMap::new()),
+            publication_chunks: Cell::new(publication::DEFAULT_CHUNKS),
             preserving_refreshes: RefCell::new(HashSet::new()),
             kept_listings: RefCell::new(HashMap::new()),
             publish_timer: RefCell::new(None),

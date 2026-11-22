@@ -167,7 +167,10 @@ pub(crate) fn bar(app: &App, view: &str, title: &str, own: Option<El>) -> El {
         .gap(look.space.sm)
         .items_center()
         .fill(look.kit.c.bg_deep)
-        .border_sides([0.0, 0.0, 1.0, 0.0], look.kit.c.border_base)
+        .border_sides(
+            [0.0, 0.0, 1.0, 0.0],
+            look.transparency.frosted_border(look.kit.c.border_base),
+        )
         .on_drag(crate::pointer::leading_origin_drag)
         .focusable(false)
         .preserve_focus_on_press(true)

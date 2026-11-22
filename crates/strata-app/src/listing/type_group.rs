@@ -12,10 +12,13 @@
 //! - **A key's number means nothing:** it is the order types were first met. The order of
 //!   groups comes from strata-fs's `compare_type_groups`, never from the key.
 
-use std::{cell::RefCell, collections::HashMap, ffi::OsString, rc::Rc};
+use std::{cell::RefCell, collections::HashMap, rc::Rc, sync::Arc};
 
-use strata_core::model::{EntryKind, FileEntry, Location, MetadataValue};
-use strata_fs::services::{EntryType, entry_type};
+use strata_core::{
+    i18n::tr,
+    model::{EntryKind, Location},
+};
+use strata_fs::services::{EntryType, entry_type_description_for_name, entry_type_for_name};
 
 /// A file type's description, by its key in the table.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -24,6 +27,7 @@ pub(crate) struct TypeGroup(u32);
 #[derive(Default)]
 struct Names {
     names: Vec<Rc<str>>,
+    translated: Vec<Arc<str>>,
     keys: HashMap<Rc<str>, u32>,
 }
 
@@ -35,19 +39,21 @@ impl TypeGroup {
     /// The type of the entry of `kind` named `name` in `folder`, as GTK's grouped List reads
     /// it: strata-fs's `entry_type`, over the two fields it reads (its kind and its name), since
     /// a listing keeps no `FileEntry`.
-    pub(crate) fn of_row(folder: &Location, kind: EntryKind, name: &str) -> Self {
-        Self::intern(entry_type_of(folder, kind, name).description())
+    pub(crate) fn of_row(_folder: &Location, kind: EntryKind, name: &str) -> Self {
+        let description = entry_type_description_for_name(kind, name);
+        Self::intern_rc(description)
     }
 
-    fn intern(description: &str) -> Self {
+    fn intern_rc(description: Rc<str>) -> Self {
         NAMES.with_borrow_mut(|table| {
-            if let Some(key) = table.keys.get(description) {
-                return Self(*key);
+            if let Some(&key) = table.keys.get(description.as_ref()) {
+                return Self(key);
             }
             let key = u32::try_from(table.names.len()).unwrap_or(u32::MAX);
-            let name: Rc<str> = Rc::from(description);
-            table.names.push(name.clone());
-            table.keys.insert(name, key);
+            let label: Arc<str> = Arc::from(tr(description.as_ref()));
+            table.names.push(description.clone());
+            table.translated.push(label);
+            table.keys.insert(description, key);
             Self(key)
         })
     }
@@ -61,6 +67,17 @@ impl TypeGroup {
                 .get(self.0 as usize)
                 .cloned()
                 .unwrap_or_else(|| Rc::from(""))
+        })
+    }
+
+    /// The type's translated heading label, cached once per interned type.
+    pub(crate) fn translated_label(self) -> Arc<str> {
+        NAMES.with_borrow(|table| {
+            table
+                .translated
+                .get(self.0 as usize)
+                .cloned()
+                .unwrap_or_else(|| Arc::from(""))
         })
     }
 
@@ -78,30 +95,8 @@ impl TypeGroup {
 
 /// strata-fs's `entry_type` of the entry of `kind` named `name`, from the two fields
 /// `entry_type` reads (`kind` and `display_name`), avoiding a `Location::child` path join.
-pub(crate) fn entry_type_of(folder: &Location, kind: EntryKind, name: &str) -> EntryType {
-    match kind {
-        EntryKind::Directory | EntryKind::DirectorySymbolicLink => EntryType::Folder,
-        EntryKind::SymbolicLink => EntryType::BrokenLink,
-        EntryKind::Other => EntryType::Other,
-        EntryKind::File | EntryKind::FileSymbolicLink => entry_type(&FileEntry {
-            location: folder.clone(),
-            thumbnail_path: None,
-            native_name: OsString::new(),
-            display_name: name.to_owned(),
-            kind,
-            size: MetadataValue::Unknown,
-            modified_unix_seconds: MetadataValue::Unknown,
-            created_unix_seconds: MetadataValue::Unknown,
-            recent_unix_seconds: MetadataValue::Unknown,
-            recent_uri: None,
-            mode: MetadataValue::Unknown,
-            image_dimensions: MetadataValue::Unknown,
-            child_count: MetadataValue::Unknown,
-            duration_seconds: MetadataValue::Unknown,
-            listable: MetadataValue::Unknown,
-            is_hidden: false,
-        }),
-    }
+pub(crate) fn entry_type_of(_folder: &Location, kind: EntryKind, name: &str) -> EntryType {
+    entry_type_for_name(kind, name)
 }
 
 #[cfg(test)]

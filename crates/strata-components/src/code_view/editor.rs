@@ -433,7 +433,7 @@ impl<S: 'static> CodeEditor<S> {
             .w_full()
             .h_full()
             .min_h(rows as f32 * line + paint.pad)
-            .fill(paint.surface)
+            .fill(look.transparency.overlay_color(k.c.bg_base))
             .radius(look.round(k.radius.sm))
             .clip_soft(look.round(k.radius.sm))
             .child(body);

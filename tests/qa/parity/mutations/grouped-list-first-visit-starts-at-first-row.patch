@@ -1,13 +1,13 @@
-diff --git a/crates/strata-app/src/listing.rs b/crates/strata-app/src/listing.rs
-index 23009258a..a11fdd1f8 100644
---- a/crates/strata-app/src/listing.rs
-+++ b/crates/strata-app/src/listing.rs
-@@ -491,7 +491,7 @@ impl Column {
-                 .unwrap_or(0);
-             buckets[place].push(*position);
+diff --git a/crates/strata-app/src/listing/groups.rs b/crates/strata-app/src/listing/groups.rs
+index 000000000..111111111 100644
+--- a/crates/strata-app/src/listing/groups.rs
++++ b/crates/strata-app/src/listing/groups.rs
+@@ -82,7 +82,7 @@ impl GroupedBuckets {
+         shown.clear();
+         let total_shown: usize = self.buckets.iter().map(|(_, rows)| rows.len()).sum();
+         shown.reserve(total_shown);
+-        for (_, rows) in &self.buckets {
++        for (_, rows) in self.buckets.iter().take(1) {
+             shown.extend_from_slice(rows);
          }
--        self.shown = buckets.concat();
-+        self.shown = buckets.into_iter().next().unwrap_or_default();
-         self.back = vec![usize::MAX; self.rows.len()];
-         for (index, position) in self.shown.iter().enumerate() {
-             self.back[*position] = index;
+         back.clear();

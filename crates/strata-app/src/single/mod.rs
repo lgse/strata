@@ -365,20 +365,28 @@ pub(crate) fn group<V: SinglePane>(app: &App, component: El, actions: Option<El>
         .grow(1.0)
         .min_h(0.0);
     if !tenxer {
+        let filter_band = filter::pane::band(app)
+            .map(|band| col().w_full().fill(app.look.kit.c.bg_base).child(band));
         group = group
             .child(pane_header::bar(app, V::KEY, &title, actions))
             // The filter's field, under the header as GTK's revealer is.
-            .children(filter::pane::band(app));
+            .children(filter_band);
     }
     // What is left under the header: the component fills its parent's height.
-    group.child(body(app).child(component))
+    group.child(body::<V>(app).child(component))
 }
 
 /// The box under the header the component fills. A filter's results take the view's key, so
 /// theirs is keyed apart: Rune then lays them out as new elements, and their collection hears
 /// its viewport's size, which an element in the place of one of the same size never reports.
-fn body(app: &App) -> El {
-    let body = col().w_full().grow(1.0).min_h(0.0);
+fn body<V: SinglePane>(app: &App) -> El {
+    let mut body = col().w_full().grow(1.0).min_h(0.0);
+    // `ListTable` paints its own `bg_deep` heading strip and `bg_base` rows viewport, so skip
+    // an outer `bg_base` fill behind it to avoid double-compositing the column headers.
+    let table_paints_own_surface = V::KEY == crate::list::VIEW && !app.filter.pane.shows();
+    if !table_paints_own_surface {
+        body = body.fill(app.look.kit.c.bg_base);
+    }
     match app.filter.pane.shows() {
         true => body.key("filter-results"),
         false => body,
@@ -397,7 +405,7 @@ pub(crate) fn poll<V: SinglePane>(app: &mut App, clock: f64, tx: &mut Tx) -> boo
         first_visit,
         ..
     } = V::single_mut(app);
-    let placed = first_visit.settle(pane);
+    let placed = first_visit.settle(pane, tx);
     if placed {
         memory.set_visit_cursor(pane.depth().zip(pane.collection().selection.cursor()));
         let source = pane.source();
@@ -428,11 +436,24 @@ pub(crate) fn wheeled_over_grid<V: SinglePane>(app: &mut App, e: WheelEvent, tx:
 pub(crate) fn listen<V: SinglePane>(setup: &Setup<'_>) -> Option<Listener<App>> {
     let ids = setup.ids.clone();
     Some(Box::new(move |event, browser, heard| {
-        if matches!(event, strata_fs::app::BrowserEvent::FolderCountsInvalidated) {
-            heard.then(|app: &mut App, _: &mut Tx| {
-                V::fills_mut(app).invalidate();
-                true
-            });
+        match event {
+            strata_fs::app::BrowserEvent::FolderCountsInvalidated => {
+                heard.then(|app: &mut App, _: &mut Tx| {
+                    V::fills_mut(app).invalidate();
+                    true
+                });
+            }
+            strata_fs::app::BrowserEvent::ColumnReloaded { depth }
+            | strata_fs::app::BrowserEvent::ColumnRefreshing { depth } => {
+                let depth = *depth;
+                heard.then(move |app: &mut App, _: &mut Tx| {
+                    if pane::<V>(app).depth() == Some(depth) {
+                        V::fills_mut(app).invalidate();
+                    }
+                    true
+                });
+            }
+            _ => {}
         }
         let read = events::read(event, browser, &ids);
         heard.copied(read.copied);

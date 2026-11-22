@@ -247,10 +247,13 @@ impl<S: 'static> Render<'_, S> {
                 frame.radius(look.round(RADIUS)).fill(kit.c.layer_01),
                 &kit.elevation.floating,
             )
-            .border(1.0, kit.c.border_base)
+            .border(1.0, look.transparency.frosted_border(kit.c.border_base))
             .label(spec.name.to_owned())
             .keeps_text_selection()
             .child(body);
+        if look.transparency.frosted_glass {
+            surface = surface.backdrop_blur(look.transparency.backdrop_blur);
+        }
         if look.glow.on {
             surface = surface.shadow(
                 0.0,

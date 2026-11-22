@@ -50,6 +50,14 @@ pub(crate) struct PaneHits {
     pub(crate) recursive: bool,
 }
 
+impl PaneHits {
+    pub(crate) fn collect_ids(&self, out: &mut impl Extend<EntryId>) {
+        if let Some(hits) = &self.hits {
+            hits.collect_ids(out);
+        }
+    }
+}
+
 /// What a pane shows while it has no results.
 struct Nothing;
 

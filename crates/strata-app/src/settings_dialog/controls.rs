@@ -138,7 +138,19 @@ pub(super) fn mix_srgb(base: Color, other: Color, t: f32) -> Color {
 
 /// Card background matching GTK's `.settings-group { background: mix(@strata_bg, @strata_muted, 0.25); }`.
 pub(super) fn card_surface(look: &Look) -> Color {
-    mix_srgb(look.kit.c.bg_base, look.fill.muted, 0.25)
+    let base = mix_srgb(
+        look.transparency.opaque(look.kit.c.bg_base),
+        look.fill.muted,
+        0.25,
+    );
+    if look.transparency.enabled {
+        Color {
+            a: (look.transparency.raised_alpha * 0.65).clamp(0.35, 0.88),
+            ..base
+        }
+    } else {
+        base
+    }
 }
 
 /// Panel/card/divider border matching GTK's `alpha(@strata_border, 0.55)`.
@@ -512,7 +524,8 @@ fn build_choice_popup(
             tx.focus(anchor_for_dismiss.clone(), true);
         })
         .child(scrolled);
-    let surface = popover::raised(kit, body, kit.radius.md);
+    let surface = strata_kit::transparency::raised_popover(look, body, kit.radius.md)
+        .border(1.0, look.transparency.frosted_border(kit.c.border_base));
     menu_layer.push(popover::anchored(
         kit,
         surface,

@@ -74,7 +74,7 @@ pub(super) fn view<S: 'static>(cx: &Ctx<'_, S>, width: f32, layer: &mut Vec<El>)
         .child(viewport);
     layer.push(popover::anchored(
         k,
-        popover::raised(k, content, k.radius.md),
+        strata_kit::transparency::raised_popover(look, content, k.radius.md),
         &field_key(cx.key),
         Placement::BottomStart,
         look.space.xs,

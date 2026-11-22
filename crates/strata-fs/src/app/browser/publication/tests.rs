@@ -465,3 +465,35 @@ fn tail_observer_can_cancel_publication_without_borrowing_or_completion() {
     ));
     assert!(fixture.browser.publish_timer.borrow().is_none());
 }
+
+#[test]
+fn configured_large_tail_chunks_publish_remainder_in_one_tail() {
+    let _guard = ASYNC_MAIN_CONTEXT_DEFAULT.lock().expect("async test lock");
+    let total = 10_000;
+    let fixture = Fixture::new(total);
+    fixture.browser.set_publication_chunks(131_072, 131_072);
+    fixture.publish();
+    assert!(matches!(
+        fixture.events.borrow().as_slice(),
+        [BrowserEvent::EntriesReplaced {
+            depth: 0,
+            count: FIRST_PUBLISH_COUNT
+        }]
+    ));
+    fixture.wait_for_completion();
+    let events = fixture.events.borrow();
+    let tail_chunks: Vec<(usize, usize)> = events
+        .iter()
+        .filter_map(|event| match event {
+            BrowserEvent::EntriesPublished {
+                position, count, ..
+            } => Some((*position, *count)),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        tail_chunks,
+        vec![(FIRST_PUBLISH_COUNT, total - FIRST_PUBLISH_COUNT)]
+    );
+    assert_selection_then_sorting(&events, total - 1);
+}

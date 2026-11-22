@@ -224,7 +224,10 @@ impl<S: 'static> Footer<S> {
             .gap(look.space.lg)
             .items_center()
             .fill(k.c.bg_deep)
-            .border_sides([1.0, 0.0, 0.0, 0.0], k.c.border_base);
+            .border_sides(
+                [1.0, 0.0, 0.0, 0.0],
+                look.transparency.frosted_border(k.c.border_base),
+            );
         if let Some(prompt) = self.prompt {
             return Some(base.child(prompt));
         }

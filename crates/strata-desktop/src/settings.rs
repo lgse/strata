@@ -54,6 +54,7 @@ mod saving;
 mod stored;
 mod tenxer_fx;
 mod text_size;
+mod transparency;
 pub mod trashed;
 
 pub use corner_roundness::CornerRoundness;
@@ -93,7 +94,8 @@ pub use persistence::{
     read_loaded_preferences, read_state_file, record_changes, salvage_preferences, settings_path,
 };
 pub use saving::{
-    Commit, FinishedSave, PendingSave, SaveOutcome, SaveProblem, Saving, load, load_with_tenxer_fx,
+    Commit, FinishedSave, PendingSave, RunePreferences, SaveOutcome, SaveProblem, Saving, load,
+    load_rune, load_with_tenxer_fx,
 };
 pub use stored::{
     MAX_PREVIEW_VIDEO_START, SEARCH_ENTRY_LIMIT_CHOICES, SEARCH_TIME_LIMIT_CHOICES,
@@ -103,6 +105,14 @@ pub use stored::{
 };
 pub use tenxer_fx::{TenxerFx, parse_tenxer_fx};
 pub use text_size::TextSize;
+pub use transparency::{
+    DEFAULT_BACKGROUND_TRANSPARENCY, DEFAULT_RAISED_SURFACE_TRANSPARENCY,
+    DEFAULT_UNFOCUSED_TRANSPARENCY_MULTIPLIER, MAX_SURFACE_TRANSPARENCY,
+    MAX_UNFOCUSED_TRANSPARENCY_MULTIPLIER, MIN_SURFACE_TRANSPARENCY,
+    MIN_UNFOCUSED_TRANSPARENCY_MULTIPLIER, TransparencyPreferences,
+    UNFOCUSED_TRANSPARENCY_MULTIPLIER_STEP, normalized_surface_transparency,
+    normalized_unfocused_transparency_multiplier, parse_transparency_preferences,
+};
 
 /// The range of the Icons view's thumbnail size, in pixels.
 pub const MIN_ICONS_THUMBNAIL_SIZE: i32 = 32;

@@ -117,7 +117,7 @@ pub(super) fn build_popover(look: &Look, session: &EditorSession, layer: &mut Ve
     if let Some(pending) = session.pending_example {
         body = body.child(replace_confirmation(look, pending, divider));
     }
-    let surface = popover::raised(kit, body, look.round(9.0));
+    let surface = strata_kit::transparency::raised_popover(look, body, look.round(9.0));
     layer.push(popover::anchored(
         kit,
         surface,
