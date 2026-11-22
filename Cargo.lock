@@ -4227,6 +4227,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "rune-fx"
+version = "0.0.1"
+source = "git+https://github.com/anomalyco/rune?rev=7a707454fbfb8d3fd200723c65778fb7b98fd31e#7a707454fbfb8d3fd200723c65778fb7b98fd31e"
+dependencies = [
+ "bytemuck",
+ "rune-motion",
+ "rune-staging",
+ "wgpu",
+]
+
+[[package]]
 name = "rune-gpu"
 version = "0.0.1"
 source = "git+https://github.com/anomalyco/rune?rev=7a707454fbfb8d3fd200723c65778fb7b98fd31e#7a707454fbfb8d3fd200723c65778fb7b98fd31e"
@@ -4994,6 +5005,7 @@ dependencies = [
  "glib",
  "image",
  "rune",
+ "rune-fx",
  "rune-kit",
  "rust-i18n",
  "rustix 1.1.6",
@@ -5014,6 +5026,7 @@ dependencies = [
  "wayland-client",
  "wayland-protocols-misc",
  "wayland-protocols-wlr",
+ "wgpu",
  "xkbcommon",
 ]
 

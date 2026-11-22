@@ -92,6 +92,7 @@ deny = [
   { crate = "strata-desktop", wrappers = ["strata", "strata-app"] },
   { crate = "strata-qa", wrappers = ["strata", "strata-app"] },
   { crate = "rune", wrappers = ["rune-kit", "strata-app", "strata-components", "strata-gallery", "strata-kit", "strata-platform"] },
+  { crate = "rune-fx", wrappers = ["strata-app"] },
   { crate = "rune-kit", wrappers = ["strata-app", "strata-components", "strata-gallery", "strata-kit"] },
   { crate = "strata-platform", wrappers = ["strata-app", "strata-gallery"] },
   { crate = "strata-kit", wrappers = ["strata-app", "strata-components", "strata-gallery"] },
