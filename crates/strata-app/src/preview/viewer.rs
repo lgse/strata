@@ -399,6 +399,7 @@ impl Viewer {
         doc_id: u64,
         task: &MediaTask,
         outcome: DecodedMedia,
+        look: &Look,
     ) -> bool {
         let Self::Document(DocumentViewer {
             rendered: Some(RenderedBody::Document(doc)),
@@ -407,7 +408,14 @@ impl Viewer {
         else {
             return false;
         };
-        doc.on_media_ready(doc_id, task, outcome)
+        doc.on_media_ready(doc_id, task, outcome, look)
+    }
+
+    pub(super) fn sync_theme(&mut self, look: &Look) -> bool {
+        match self {
+            Self::Document(doc) => doc.sync_theme(look),
+            _ => false,
+        }
     }
 
     pub(super) fn poll(&mut self, clock: f64, look: &Look, tx: &mut Tx) -> bool {
@@ -713,6 +721,21 @@ impl DocumentViewer {
             && doc.state.wrap().is_some()
         {
             doc.state.set_wrap(Some(wrap));
+        }
+    }
+
+    #[cfg(test)]
+    pub(super) fn rendered_document_for_test(&self) -> Option<&RenderedDocument> {
+        match self.rendered.as_ref() {
+            Some(RenderedBody::Document(doc)) => Some(doc),
+            _ => None,
+        }
+    }
+
+    fn sync_theme(&mut self, look: &Look) -> bool {
+        match &mut self.rendered {
+            Some(RenderedBody::Document(doc)) => doc.sync_theme(look),
+            _ => false,
         }
     }
 

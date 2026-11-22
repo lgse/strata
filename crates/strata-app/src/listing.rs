@@ -10,7 +10,12 @@
 //! browser's column holds hidden entries too, which the views leave out
 //! (`entry_matches` in `src/ui/browser/entry.rs`).
 
-use std::{collections::HashMap, rc::Rc};
+use std::{
+    collections::HashMap,
+    ffi::{OsStr, OsString},
+    path::Path,
+    rc::Rc,
+};
 
 use strata_components::contract::{Entry, EntryId, EntryKind, EntrySource, LinkTarget, ThumbKey};
 use strata_core::{
@@ -241,6 +246,38 @@ impl Row {
     pub(crate) fn entry_kind(&self) -> Kind {
         self.entry_kind
     }
+
+    /// What this row carries across a rename to reuse its thumbnail in the window's store,
+    /// matching GTK's `preserve_renamed_thumbnail` (`src/ui/thumbnail/cache.rs`).
+    pub(crate) fn thumb_origin(&self) -> Option<ThumbOrigin> {
+        Some(ThumbOrigin {
+            key: self.thumbnail?,
+            entry_kind: self.entry_kind,
+            extension: Path::new(&self.name).extension().map(OsStr::to_os_string),
+            keyed: self.keyed,
+        })
+    }
+
+    /// The `(from, to)` thumbnail keys to relocate when `self` replaced `origin` by a rename,
+    /// provided the entry kept its kind, extension, and compatible modification time and size.
+    pub(crate) fn relocated_thumbnail(&self, origin: &ThumbOrigin) -> Option<(ThumbKey, ThumbKey)> {
+        let to = self.thumbnail?;
+        let same_ext = Path::new(&self.name).extension() == origin.extension.as_deref();
+        let reuse = origin.key != to
+            && self.entry_kind == origin.entry_kind
+            && same_ext
+            && !self.facts.contradict(&origin.keyed);
+        reuse.then_some((origin.key, to))
+    }
+}
+
+/// What a renamed row needs from the row it replaced to reuse its thumbnail in the store.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct ThumbOrigin {
+    key: ThumbKey,
+    entry_kind: Kind,
+    extension: Option<OsString>,
+    keyed: Facts,
 }
 
 /// A change to a column's rows, as the browser's event described it. Positions are the

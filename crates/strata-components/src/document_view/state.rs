@@ -309,7 +309,8 @@ impl DocumentState {
         self.failed_text.get(&unit).map(String::as_str)
     }
 
-    pub(crate) fn media(&self, unit: usize) -> &MediaState {
+    /// Current media state for `unit` (`Loading` until set).
+    pub fn media(&self, unit: usize) -> &MediaState {
         const LOADING: MediaState = MediaState::Loading;
         self.media.get(&unit).unwrap_or(&LOADING)
     }

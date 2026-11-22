@@ -17,6 +17,7 @@ use strata_components::preview_drawer::{DocumentView, HostedPreview};
 
 const MODULE: &str = "preview::tests";
 
+mod document_media_colors;
 mod follow;
 mod media;
 mod model;
