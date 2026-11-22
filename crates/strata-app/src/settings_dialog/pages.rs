@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-//! Integrations, Updates, and About pages.
+//! Updates and About pages.
 
 use rune::{El, Tx, col, row, text};
 use rune_kit::{Button, ButtonVariant};
@@ -16,23 +16,6 @@ use super::controls::{
     section_heading,
 };
 use crate::{App, buttons, shell};
-
-pub(super) fn integrations_page(app: &App, search: &SettingsSearch<App>) -> Vec<El> {
-    placeholder_card(
-        PageCtx { app, search },
-        RowSpec::new("integrations", "Integrations", "Apps and services"),
-        "",
-    )
-}
-
-fn placeholder_card(ctx: PageCtx<'_>, spec: RowSpec<'_>, trailing: &str) -> Vec<El> {
-    let right = text(trailing.to_owned())
-        .font(ctx.app.look.kit.ty.ui)
-        .color(ctx.app.look.kit.c.text_muted);
-    group_card(&ctx.app.look, vec![option_row(ctx, spec, right)])
-        .into_iter()
-        .collect()
-}
 
 pub(super) fn updates_page(
     app: &App,

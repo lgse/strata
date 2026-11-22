@@ -2,8 +2,10 @@
 
 //! Rune view for Settings -> Diagnostics, matching `src/ui/settings/diagnostics.rs` and `src/style.css`.
 
+use std::rc::Rc;
+
 use rune::{Color, Cursor, El, Tx, col, el, icon, row, text};
-use rune_kit::{IconButton, IconButtonVariant, Spinner};
+use rune_kit::Spinner;
 use strata_components::{controls::settings_search::SettingsSearch, dialog::keep_words_whole};
 use strata_core::i18n::tr;
 use strata_kit::{icons::IconName, look::Look};
@@ -15,7 +17,10 @@ use super::{
 };
 use crate::{
     App, buttons,
-    settings_dialog::controls::{card_surface, control_border, group_card, panel_border},
+    settings_dialog::{
+        controls::{card_surface, group_card, panel_border},
+        install_command::{CommandBoxSpec, command_box},
+    },
 };
 
 const DESCRIPTION: &str = "Checks the tools and services that previews, locations, devices and desktop integration rely on. Sample files are rendered in the preview sandbox and GitHub is contacted to test the connection. Nothing is changed or installed.";
@@ -364,65 +369,19 @@ fn fix_block(look: &Look, state: &DiagnosticsState, id: CheckId, hint: InstallHi
 }
 
 fn install_command_box(look: &Look, state: &DiagnosticsState, id: CheckId, command: String) -> El {
-    let kit = &look.kit;
-    let c = &kit.c;
-    let accent_kit = look.accent_icon_kit();
     let copied = state.copied_command.is_some_and(|(who, _)| who == id);
     let cmd_for_run = command.clone();
-    let run_label = tr("Run in terminal");
-    let run_btn = IconButton::new(look.icon(IconName::Play))
-        .variant(IconButtonVariant::Ghost)
-        .label(run_label.clone())
-        .on_press_tx(move |app: &mut App, _: &mut Tx| {
-            run_install_command(app, id, &cmd_for_run);
-        })
-        .build(&accent_kit)
-        .help(run_label);
     let cmd_for_copy = command.clone();
-    let copy_icon = if copied {
-        IconName::Check
-    } else {
-        IconName::Copy
-    };
-    let copy_label = tr(if copied {
-        "Install command copied"
-    } else {
-        "Copy install command"
-    });
-    let copy_btn = IconButton::new(look.icon(copy_icon))
-        .variant(IconButtonVariant::Ghost)
-        .label(copy_label.clone())
-        .on_press_tx(move |app: &mut App, tx: &mut Tx| {
-            copy_command(app, id, &cmd_for_copy, tx);
-        })
-        .build(&accent_kit)
-        .help(copy_label);
-    row()
-        .key(format!("settings-diagnostics-fix-{}", id.key()))
-        .w_full()
-        .min_w(0.0)
-        .px(10.0)
-        .py(6.0)
-        .gap(6.0)
-        .items_center()
-        .radius(look.round(6.0))
-        .fill(look.fill.muted)
-        .border(1.0, control_border(look))
-        .child(
-            text(command)
-                .font(kit.ty.mono)
-                .color(c.text_base)
-                .selectable(true)
-                .grow(1.0)
-                .min_w(0.0)
-                .wrap(),
-        )
-        .child(buttons::on_return(
-            format!("settings-diagnostics-run-cmd-{}", id.key()),
-            run_btn,
-        ))
-        .child(buttons::on_return(
-            format!("settings-diagnostics-copy-cmd-{}", id.key()),
-            copy_btn,
-        ))
+    command_box(
+        look,
+        CommandBoxSpec {
+            key: format!("settings-diagnostics-fix-{}", id.key()),
+            run_key: format!("settings-diagnostics-run-cmd-{}", id.key()),
+            copy_key: format!("settings-diagnostics-copy-cmd-{}", id.key()),
+            command,
+            copied,
+            on_run: Rc::new(move |app, _| run_install_command(app, id, &cmd_for_run)),
+            on_copy: Rc::new(move |app, tx| copy_command(app, id, &cmd_for_copy, tx)),
+        },
+    )
 }

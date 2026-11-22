@@ -32,6 +32,8 @@ mod controls;
 mod diagnostics;
 mod general;
 mod general_more;
+mod install_command;
+mod integrations;
 mod keyboard;
 mod message;
 mod notice;
@@ -201,6 +203,7 @@ pub(crate) struct SettingsDialog {
     notice: notice::NoticeState,
     actions: actions::ActionsState,
     keyboard: keyboard::KeyboardState,
+    integrations: integrations::IntegrationsState,
     diagnostics: diagnostics::DiagnosticsState,
 }
 
@@ -247,6 +250,7 @@ impl SettingsDialog {
             notice: notice::NoticeState::default(),
             actions: actions::ActionsState::new(later.clone()),
             keyboard: keyboard::KeyboardState::default(),
+            integrations: integrations::IntegrationsState::new(later.clone()),
             diagnostics: diagnostics::DiagnosticsState::new(later),
         }
     }
@@ -262,9 +266,13 @@ impl SettingsDialog {
     /// Shows `page`. The Keyboard page is made the first time it shows, as GTK builds it on its
     /// first selection (`src/ui/settings.rs`), so it opens on the table of the mode in force then.
     pub(super) fn select_page(&mut self, page: PageId, tenxer_mode: bool) {
+        let changed = self.page != page;
         self.set_page(page);
         if page == PageId::Keyboard {
             self.keyboard.build_once(tenxer_mode);
+        }
+        if changed && page == PageId::Integrations {
+            self.integrations.mark_needs_scan();
         }
     }
 
@@ -332,8 +340,15 @@ pub(crate) fn open_settings_tx(app: &mut App, tx: &mut Tx) {
     state.opened_page = state.page;
     let nav_key = state.page.nav_key();
     let on_actions = state.page == PageId::Actions;
+    let on_integrations = state.page == PageId::Integrations;
+    if on_integrations {
+        state.integrations.mark_needs_scan();
+    }
     if on_actions {
         actions::ensure_observing(app);
+    }
+    if on_integrations {
+        integrations::ensure_scanned(app);
     }
     tx.focus_when_shown(nav_key, tx.focus_visible() || tx.by_keys());
 }
@@ -349,6 +364,7 @@ pub(super) fn close_settings(app: &mut App) {
     // they were, and only a capture or a confirmation ends with it.
     state.actions.closed();
     state.keyboard.closed();
+    state.integrations.closed();
     state.diagnostics.closed();
 }
 
@@ -411,6 +427,9 @@ impl Part for SettingsDialog {
         {
             actions::ensure_observing(app);
         }
+        if app.settings_dialog.page == PageId::Integrations {
+            integrations::ensure_scanned(app);
+        }
         changed |= controls::search_handle().tick(app, clock, tx);
         changed |= general_more::workers_field().poll(app, tx);
         changed |= general::video_start_field().poll(app, tx);
@@ -418,6 +437,7 @@ impl Part for SettingsDialog {
         changed |= appearance_page::roundness_field().poll(app, tx);
         changed |= actions::poll(app, tx);
         changed |= keyboard::poll(app, tx);
+        changed |= integrations::poll(app, clock, tx);
         changed |= diagnostics::poll(app, clock, tx);
         let prefs = shell::preferences(app).clone();
         let state = &mut app.settings_dialog;
@@ -599,6 +619,9 @@ fn nav_button(app: &App, entry: &NavEntry) -> El {
             if page == PageId::Actions {
                 actions::ensure_observing(app);
             }
+            if page == PageId::Integrations {
+                integrations::ensure_scanned(app);
+            }
         });
     if entry.id == app.settings_dialog.opened_page {
         btn = btn.autofocus();
@@ -713,7 +736,7 @@ fn build_page_content(
         PageId::Appearance => appearance_page::build(app, search, menu_layer),
         PageId::Actions => actions::build(app, search),
         PageId::Keyboard => keyboard::build(app, search),
-        PageId::Integrations => pages::integrations_page(app, search),
+        PageId::Integrations => integrations::build(app, search),
         PageId::Updates => pages::updates_page(app, search, menu_layer),
         PageId::Diagnostics => diagnostics::build(app, search),
         PageId::About => pages::about_page(app, search),
