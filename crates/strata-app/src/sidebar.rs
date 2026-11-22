@@ -189,6 +189,10 @@ impl Part for Sidebar {
     /// A new tab's sidebar starts here, before the tab's first frame, not in its first
     /// `poll`: a frame drawn without it puts the files where the sidebar goes, and the move
     /// back is a layout Rune may never report to the view (finding lgse/strata#2477).
+    fn tab_hidden(app: &mut App, _tx: &mut Tx) {
+        app.sidebar.state.scroll_bar.release();
+    }
+
     fn tab_shown(app: &mut App, _tx: &mut Tx) {
         if !app.sidebar.started {
             start(app);
@@ -203,6 +207,7 @@ impl Part for Sidebar {
         let state = &mut app.sidebar.state;
         if state.width.chosen() != step {
             state.width.choose(step);
+            state.scroll_bar.release();
         }
         (state.pinned_collapsed, state.devices_collapsed) = collapsed;
         relist(app);
@@ -364,7 +369,11 @@ impl Sidebar {
     pub(crate) fn set_auto_rail(&mut self, rail: bool) -> bool {
         let before = self.state.width.auto_rail();
         self.state.width.set_auto_rail(rail);
-        self.state.width.auto_rail() != before
+        let changed = self.state.width.auto_rail() != before;
+        if changed {
+            self.state.scroll_bar.release();
+        }
+        changed
     }
 
     /// Pinned places in sidebar display order, excluding rows the sidebar hides
@@ -445,6 +454,7 @@ impl Sidebar {
 fn build(app: &App, frame: &mut Frame<'_, App>) -> Option<El> {
     let sidebar = &app.sidebar;
     if !sidebar.started || app.chooser.is_confined() {
+        sidebar.state.scroll_bar.release();
         return None;
     }
     // GTK's headings and their count (`append_section_header`, `set_item_count` in

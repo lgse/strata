@@ -3,6 +3,7 @@
 //! The sidebar's own state, held by the app and reached by accessor: the width step, the
 //! collapsed sections, the reorder drags, the drop hover and the host's pin check.
 
+use std::cell::Cell;
 use std::collections::HashMap;
 
 use rune_kit::shell::PaneState;
@@ -13,6 +14,13 @@ use super::data::ItemId;
 use super::drag::RowDrag;
 use super::intent::DropSite;
 use crate::contract::dnd::{DropHover, DropOffer};
+use crate::scroll::{Bar, BarMode};
+
+fn sidebar_bar() -> Bar {
+    let bar = Bar::new();
+    bar.set_mode(BarMode::Always);
+    bar
+}
 
 /// The narrowest full sidebar (`MIN_SIDEBAR_WIDTH`, lgse/strata `upstream/main` 35ee677ab).
 pub const MIN_WIDTH: f32 = 169.0;
@@ -196,7 +204,7 @@ impl PinCheck {
 }
 
 /// The sidebar's state. Build it with [`SidebarState::new`] from the look, or `Default`.
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug)]
 #[non_exhaustive]
 pub struct SidebarState {
     pub width: Width,
@@ -210,6 +218,9 @@ pub struct SidebarState {
     pub pin_check: PinCheck,
     /// The `g` chord is armed: rows with a keycap show it.
     pub keycaps: bool,
+    /// Vertical scroll bar for the sidebar list: hidden when items fit, shown whenever the
+    /// sidebar overflows vertically.
+    pub scroll_bar: Bar,
     drop: Option<(DropSite, DropHover)>,
     /// The drag over the sidebar, as its offer said: from this process, and its serial.
     pub(crate) drag: Option<(bool, u64)>,
@@ -222,6 +233,30 @@ pub struct SidebarState {
     /// Whether the trailing resize grip is actively dragged: keeps the divider accent lit while
     /// the pointer moves faster than layout catches up.
     pub(crate) resizing: bool,
+    /// Last rendered width step so transitions between `Full`, `Rail` and `Hidden` always
+    /// release held hover/drag state on [`Self::scroll_bar`].
+    pub(crate) last_shown: Cell<Option<Step>>,
+}
+
+impl Default for SidebarState {
+    fn default() -> Self {
+        SidebarState {
+            width: Width::default(),
+            pinned_collapsed: false,
+            devices_collapsed: false,
+            places_reorder: RowDrag::default(),
+            pins_reorder: RowDrag::default(),
+            pin_check: PinCheck::default(),
+            keycaps: false,
+            scroll_bar: sidebar_bar(),
+            drop: None,
+            drag: None,
+            dropped: None,
+            boxes: HashMap::new(),
+            resizing: false,
+            last_shown: Cell::new(None),
+        }
+    }
 }
 
 impl SidebarState {
