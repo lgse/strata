@@ -1598,5 +1598,14 @@
   "PDF document": "Tài liệu PDF",
   "Page %{page} of %{pages}": "Trang %{page} / %{pages}",
   "Page %{page} of %{pages}, %{zoom}%": "Trang %{page} / %{pages}, %{zoom}%",
-  "Loading page": "Đang tải trang"
+  "Loading page": "Đang tải trang",
+  "10x mode effect": "Hiệu ứng chế độ 10x",
+  "Visual effect played when entering 10xer mode.": "Hiệu ứng thị giác phát khi vào chế độ 10xer.",
+  "Preview effect": "Xem trước hiệu ứng",
+  "Horizon Scan": "Quét chân trời",
+  "Velocity Warp": "Bước nhảy tốc độ",
+  "Shockwave Ring": "Vòng sóng xung kích",
+  "Perimeter Ignite": "Đốt sáng viền khung",
+  "Tactical HUD": "HUD chiến thuật",
+  "Off": "Tắt"
 }

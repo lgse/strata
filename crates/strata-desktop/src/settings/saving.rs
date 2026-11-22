@@ -12,8 +12,8 @@
 use std::{collections::BTreeSet, future::Future, io, path::PathBuf, pin::Pin};
 
 use super::{
-    InterfaceRenderer, Preferences, RETIRED_SETTINGS, SettingKey, merged_settings,
-    read_loaded_preferences, record_changes, settings_path,
+    InterfaceRenderer, Preferences, RETIRED_SETTINGS, SettingKey, TenxerFx, merged_settings,
+    read_loaded_preferences, record_changes, settings_path, tenxer_fx::read_saved_tenxer_fx,
 };
 use crate::storage::{
     file_stamp,
@@ -28,29 +28,52 @@ use crate::storage::{
 ///
 /// Call it once in a process. See [`Saving`].
 pub fn load() -> (Preferences, Saving) {
+    let (preferences, _, saving) = load_internal(false);
+    (preferences, saving)
+}
+
+/// Like [`load`], also reading Rune's `tenxer_fx` setting from `settings.toml` so changes to
+/// it merge and save through the same writer without altering [`Preferences`] for GTK.
+pub fn load_with_tenxer_fx() -> (Preferences, TenxerFx, Saving) {
+    load_internal(true)
+}
+
+fn load_internal(include_tenxer_fx: bool) -> (Preferences, TenxerFx, Saving) {
     writer::note(&settings_path(), file_stamp(&settings_path()));
     let (mut preferences, load_failure, salvaged) = read_loaded_preferences();
+    let (tenxer_fx, repaired_fx) = if include_tenxer_fx {
+        read_saved_tenxer_fx()
+    } else {
+        (TenxerFx::default(), false)
+    };
     let parsed = preferences.clone();
     preferences.normalize_loaded();
-    let saved_base = toml::Table::try_from(&preferences).unwrap_or_default();
+    let mut saved_base = toml::Table::try_from(&preferences).unwrap_or_default();
     let mut repaired: BTreeSet<SettingKey> = salvaged.into_iter().map(|key| (key, None)).collect();
     record_changes(
         &mut repaired,
         &toml::Table::try_from(&parsed).unwrap_or_default(),
         &saved_base,
     );
+    if include_tenxer_fx {
+        saved_base.insert(TenxerFx::KEY.to_owned(), tenxer_fx.to_toml_value());
+        if repaired_fx {
+            repaired.insert((TenxerFx::KEY.to_owned(), None));
+        }
+    }
     let saving = Saving {
         startup_interface_renderer: preferences.interface_renderer,
         startup_locale: preferences.language.locale(),
         load_failure,
         baseline: preferences.clone(),
+        baseline_tenxer_fx: include_tenxer_fx.then_some(tenxer_fx),
         revision: 0,
         unsaved: false,
         generation: 0,
         last_queued: saved_base,
         dirty_keys: repaired,
     };
-    (preferences, saving)
+    (preferences, tenxer_fx, saving)
 }
 
 /// The bookkeeping of one process's saves of `settings.toml`.
@@ -65,6 +88,8 @@ pub struct Saving {
     load_failure: Option<io::Error>,
     /// The values as of the last commit, to see whether the next one changes anything.
     baseline: Preferences,
+    /// Tracked `tenxer_fx` value for Rune processes; `None` in GTK processes.
+    baseline_tenxer_fx: Option<TenxerFx>,
     revision: u64,
     /// A save is owed: one is on its way, or the last one failed.
     unsaved: bool,
@@ -135,7 +160,33 @@ impl Saving {
     /// keys changed since a save last succeeded. A commit that changes nothing still queues
     /// one while a save is owed, because a retry with unchanged values can fail too.
     pub fn commit(&mut self, preferences: &Preferences) -> Commit {
-        let changed = self.record(preferences);
+        self.commit_internal(preferences, None)
+    }
+
+    /// Like [`Self::commit`], also persisting Rune's `tenxer_fx` preference into `settings.toml`.
+    pub fn commit_with_tenxer_fx(
+        &mut self,
+        preferences: &Preferences,
+        tenxer_fx: TenxerFx,
+    ) -> Commit {
+        self.commit_internal(preferences, Some(tenxer_fx))
+    }
+
+    fn commit_internal(
+        &mut self,
+        preferences: &Preferences,
+        tenxer_fx: Option<TenxerFx>,
+    ) -> Commit {
+        let mut changed = self.record(preferences);
+        if let Some(fx) = tenxer_fx
+            && self.baseline_tenxer_fx != Some(fx)
+        {
+            self.baseline_tenxer_fx = Some(fx);
+            if !changed {
+                self.revision = self.revision.wrapping_add(1);
+            }
+            changed = true;
+        }
         if !changed && !self.unsaved {
             return Commit {
                 changed,
@@ -153,11 +204,16 @@ impl Saving {
         }
         self.unsaved = true;
         match toml::Table::try_from(preferences).map_err(io::Error::other) {
-            Ok(snapshot) => Commit {
-                changed,
-                save: Some(self.queue(path, snapshot, preferences)),
-                problem: None,
-            },
+            Ok(mut snapshot) => {
+                if let Some(fx) = tenxer_fx {
+                    snapshot.insert(TenxerFx::KEY.to_owned(), fx.to_toml_value());
+                }
+                Commit {
+                    changed,
+                    save: Some(self.queue(path, snapshot, preferences)),
+                    problem: None,
+                }
+            }
             Err(error) => Commit {
                 changed,
                 save: None,
@@ -243,7 +299,10 @@ impl Saving {
     /// success would clear the keys this marks, and the repair would not be written until
     /// the value changed again.
     pub fn rebase(&mut self, preferences: &Preferences) {
-        if let Ok(normalized) = toml::Table::try_from(preferences) {
+        if let Ok(mut normalized) = toml::Table::try_from(preferences) {
+            if let Some(fx) = self.baseline_tenxer_fx {
+                normalized.insert(TenxerFx::KEY.to_owned(), fx.to_toml_value());
+            }
             record_changes(&mut self.dirty_keys, &self.last_queued, &normalized);
             self.last_queued = normalized;
         }

@@ -65,25 +65,15 @@ impl Folded {
 #[derive(Clone, Debug, Default)]
 pub(super) struct RowIndex {
     pub action: Folded,
-    pub before: Folded,
-    pub after: Folded,
-    keys: String,
+    pub keys: Folded,
     terms: Vec<String>,
 }
 
 impl RowIndex {
     fn new(row: &Shortcut) -> Self {
-        let (before, after) = row
-            .context
-            .as_ref()
-            .map_or((Folded::default(), Folded::default()), |c| {
-                (fold(&c.before), fold(&c.after))
-            });
         Self {
             action: fold(&row.action),
-            before,
-            after,
-            keys: fold(&row.key_text()).text,
+            keys: fold(&row.key_text()),
             terms: row.search.iter().map(|t| fold(t).text).collect(),
         }
     }

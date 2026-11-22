@@ -52,6 +52,7 @@ mod persistence;
 pub mod save_notice;
 mod saving;
 mod stored;
+mod tenxer_fx;
 mod text_size;
 pub mod trashed;
 
@@ -91,13 +92,16 @@ pub use persistence::{
     RETIRED_SETTINGS, SettingKey, lock_saves, merged_settings, parse_preferences,
     read_loaded_preferences, read_state_file, record_changes, salvage_preferences, settings_path,
 };
-pub use saving::{Commit, FinishedSave, PendingSave, SaveOutcome, SaveProblem, Saving, load};
+pub use saving::{
+    Commit, FinishedSave, PendingSave, SaveOutcome, SaveProblem, Saving, load, load_with_tenxer_fx,
+};
 pub use stored::{
     MAX_PREVIEW_VIDEO_START, SEARCH_ENTRY_LIMIT_CHOICES, SEARCH_TIME_LIMIT_CHOICES,
     configured_hardware_acceleration, configured_video_preview_backend, normalized_font_family,
     normalized_search_limit, normalized_video_start, normalized_volume, sort_preferences,
     store_sort,
 };
+pub use tenxer_fx::{TenxerFx, parse_tenxer_fx};
 pub use text_size::TextSize;
 
 /// The range of the Icons view's thumbnail size, in pixels.

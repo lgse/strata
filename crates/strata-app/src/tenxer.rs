@@ -37,7 +37,7 @@ mod prompts;
 mod tests;
 mod verbs;
 
-pub(crate) use prompts::finish_filter_descent;
+pub(crate) use prompts::{PromptKind, finish_filter_descent};
 
 const FLASH_KEY: &str = "footer-flash";
 const CHORD_KEY: &str = "footer-chord";

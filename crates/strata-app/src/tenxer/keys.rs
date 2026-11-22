@@ -93,8 +93,11 @@ fn toggle_mode(app: &mut App, _: &Call<'_>, tx: &mut Tx) -> Outcome {
         enabled = settings.tenxer_mode;
     });
     shell::live_keys(app).follow(shell::preferences(app));
-    if !enabled {
+    if enabled {
+        crate::tenxer_fx::trigger_current(app, tx);
+    } else {
         end_session(app, tx);
+        crate::tenxer_fx::cancel(app);
     }
     if in_view && let Some(view) = shell::view_focus(app) {
         tx.focus_when_shown(view, true);

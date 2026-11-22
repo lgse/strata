@@ -1598,5 +1598,14 @@
   "PDF document": "PDF 文件",
   "Page %{page} of %{pages}": "第 %{page} 頁，共 %{pages} 頁",
   "Page %{page} of %{pages}, %{zoom}%": "第 %{page} 頁，共 %{pages} 頁，%{zoom}%",
-  "Loading page": "正在載入頁面"
+  "Loading page": "正在載入頁面",
+  "10x mode effect": "10x 模式特效",
+  "Visual effect played when entering 10xer mode.": "進入 10xer 模式時播放的視覺特效。",
+  "Preview effect": "預覽特效",
+  "Horizon Scan": "地平線掃描",
+  "Velocity Warp": "極速躍遷",
+  "Shockwave Ring": "衝擊波環",
+  "Perimeter Ignite": "邊框點燃",
+  "Tactical HUD": "戰術 HUD",
+  "Off": "關閉"
 }
