@@ -101,7 +101,8 @@ fn notify_highlight_waiters() {
         later.then(|app: &mut App, tx: &mut Tx| {
             let blocks = app.preview.loader.poll_blocks();
             let viewer = app.preview.viewer.poll_async(tx);
-            blocks | viewer
+            let editor = app.settings_dialog.poll_editor_highlight();
+            blocks | viewer | editor
         });
     }
 }
@@ -210,7 +211,7 @@ impl Loader {
         self.blocks.as_mut().is_some_and(CodeBlocks::poll)
     }
 
-    fn highlighter(&mut self, look: &Look) -> Highlighter {
+    pub(super) fn highlighter(&mut self, look: &Look) -> Highlighter {
         if let Some(existing) = &self.highlighter {
             return existing.clone();
         }

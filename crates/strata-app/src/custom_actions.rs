@@ -36,6 +36,7 @@ use strata_fs::{
     services::{ActionRegistry, JobId, JobService, ListenerGuard},
 };
 
+pub(crate) use icons::{ACTION_ICON_SLUGS, action_icon, action_icon_glyph, is_known_action_icon};
 pub(crate) use jobs::build_footer_jobs as jobs_el;
 pub(crate) use menu::{activate_menu_action, begin_menu, is_menu_action};
 #[cfg_attr(

@@ -391,6 +391,20 @@ const TARGETS: &[TargetDef] = &[
         "scripts context menu commands automation python bash plugin extension",
     ),
     row!(
+        "new-action",
+        "actions",
+        "actions-group",
+        "New custom action",
+        "create script context menu command",
+    ),
+    row!(
+        "import-action",
+        "actions",
+        "actions-group",
+        "Import custom action",
+        "share copy actions folder",
+    ),
+    row!(
         KEYBOARD_SHORTCUTS,
         "keyboard",
         "keyboard-group",
