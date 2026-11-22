@@ -189,6 +189,107 @@ impl Position {
         self.0.pos.get()
     }
 
+    /// The viewport's `(top, height)` in window points, as last laid out.
+    pub fn viewport_bounds(&self) -> (f32, f32) {
+        self.0.viewport.get()
+    }
+
+    /// The display row directly under window `y`, or `None` when `y` falls outside any row
+    /// (for example in blank space below the last line of a short file).
+    pub fn hit_row(&self, y: f32) -> Option<usize> {
+        let i = &self.0;
+        let n = i.rows.get();
+        if n == 0 {
+            return None;
+        }
+        if let Some(h) = i.keys.borrow().fixed {
+            let (vp_top, _) = i.viewport.get();
+            let content_y = i.pos.get().offset[1] + (y - vp_top);
+            if content_y < 0.0 {
+                return None;
+            }
+            let r = (content_y / h.max(1.0)).floor() as usize;
+            return (r < n).then_some(r);
+        }
+        self.mounted_row_hit(y, n)
+    }
+
+    /// The display row to extend a gutter drag to at window `y`, clamping above the top edge
+    /// and below the bottom edge to the visible boundary or document ends.
+    pub fn drag_row(&self, y: f32) -> Option<usize> {
+        let i = &self.0;
+        let n = i.rows.get();
+        if n == 0 {
+            return None;
+        }
+        let (vp_top, vp_h) = i.viewport.get();
+        let p = i.pos.get();
+        if y <= vp_top && p.offset[1] <= 0.5 {
+            return Some(0);
+        }
+        if vp_h > 0.0 && y >= vp_top + vp_h && p.offset[1] >= p.max[1] - 0.5 {
+            return Some(n - 1);
+        }
+        let clamped_y = if vp_h > 0.0 {
+            let lo = vp_top + 0.5;
+            let hi = (vp_top + vp_h - 0.5).max(lo);
+            y.clamp(lo, hi)
+        } else {
+            y
+        };
+        if let Some(h) = i.keys.borrow().fixed {
+            let content_y = (p.offset[1] + clamped_y - vp_top).max(0.0);
+            return Some(((content_y / h.max(1.0)).floor() as usize).min(n - 1));
+        }
+        self.mounted_row_nearest(clamped_y, n)
+    }
+
+    fn visible_row_window(&self, n: usize) -> Range<usize> {
+        let (a, b) = self.0.visible.get();
+        if a < b {
+            a.saturating_sub(2)..(b + 2).min(n)
+        } else {
+            0..n.min(64)
+        }
+    }
+
+    fn mounted_row_hit(&self, y: f32, n: usize) -> Option<usize> {
+        let rects = self.0.rects.borrow();
+        let window = self.visible_row_window(n);
+        window.into_iter().find(|&r| {
+            rects
+                .get(&r)
+                .is_some_and(|&(top, h)| y >= top && y < top + h)
+        })
+    }
+
+    fn mounted_row_nearest(&self, y: f32, n: usize) -> Option<usize> {
+        let rects = self.0.rects.borrow();
+        let mut best: Option<(usize, f32)> = None;
+        for r in self.visible_row_window(n) {
+            let Some(&(top, h)) = rects.get(&r) else {
+                continue;
+            };
+            if y >= top && y < top + h {
+                return Some(r);
+            }
+            let dist = if y < top { top - y } else { y - (top + h) };
+            if best.is_none_or(|(_, d)| dist < d) {
+                best = Some((r, dist));
+            }
+        }
+        best.map(|(r, _)| r).or_else(|| {
+            let (a, b) = self.0.visible.get();
+            let (vp_top, vp_h) = self.0.viewport.get();
+            let row = if vp_h > 0.0 && y >= vp_top + vp_h * 0.5 && b > a {
+                b - 1
+            } else {
+                a
+            };
+            Some(row.min(n - 1))
+        })
+    }
+
     /// The viewport's vertical offset, as last reported.
     pub fn offset(&self) -> f32 {
         self.0.pos.get().offset[1]

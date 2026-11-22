@@ -10,7 +10,7 @@
 
 use rune::{SelectedText, TextSelection};
 
-use super::state::Content;
+use super::state::{Content, ExpectedSelect};
 
 /// The row of a selected text, from its path (`…/{key}-l{row}/…/t`).
 pub(crate) fn locate(key: &str, path: &str) -> Option<usize> {
@@ -55,27 +55,31 @@ pub(crate) fn span(c: &Content, sel: &TextSelection) -> Option<(usize, usize)> {
     Some((first_a.min(last_a), first_b.max(last_b)))
 }
 
-/// Whether `sel` still matches the single-row Rune selection requested by
-/// [`super::state::CodeState::apply_caret`] for `c.keyboard_range`.
+/// Whether `sel` still matches the Rune selection requested by
+/// [`super::state::CodeState::apply_caret`] or [`super::state::CodeState::apply_gutter_lines`]
+/// for `c.keyboard_range`.
 pub(crate) fn matches_expected(c: &Content, sel: Option<&TextSelection>) -> bool {
     if c.keyboard_range.get().is_none() {
         return false;
     }
     match c.expected_select.get() {
         None => sel.is_none_or(|s| span(c, s).is_none()),
-        Some((r, a, b)) => {
-            let Some(sel) = sel else {
-                return false;
-            };
-            let mut selected = sel.texts().iter().filter(|t| t.is_selected());
-            let Some(first) = selected.next() else {
-                return false;
-            };
-            selected.next().is_none()
-                && locate(&c.key, first.path()) == Some(r)
-                && first.range() == (a..b)
-        }
+        Some(ExpectedSelect::Row(r, a, b)) => single_selected(sel).is_some_and(|first| {
+            locate(&c.key, first.path()) == Some(r) && first.range() == (a..b)
+        }),
+        Some(ExpectedSelect::GutterSentinel) => single_selected(sel).is_some_and(|first| {
+            first
+                .key()
+                .is_some_and(|k| k.strip_prefix(&c.key) == Some("-gutter-sel"))
+                && first.range() == (0..1)
+        }),
     }
+}
+
+fn single_selected(sel: Option<&TextSelection>) -> Option<&SelectedText> {
+    let mut selected = sel?.texts().iter().filter(|t| t.is_selected());
+    let first = selected.next()?;
+    selected.next().is_none().then_some(first)
 }
 
 pub(crate) fn copy(c: &Content, sel: &TextSelection) -> String {
