@@ -1222,6 +1222,7 @@ pub(crate) fn view(app: &App, cx: &mut Cx<App>) -> El {
     };
     let reduced = !look.animations || frame.cx.system_reduced_motion();
     frame.cx.reduced_motion(reduced);
+    frame.cx.help_look(look.help_look());
     let chrome = app.chrome();
     let placed = Placed::build(app, &chrome, frame);
     let bar = csd::header(bar(app, &chrome, placed.location), &app.window.csd, csd_of);
