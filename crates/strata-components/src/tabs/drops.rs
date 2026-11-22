@@ -7,9 +7,9 @@
 //! - A **file or content** drag over an accepting tab tints it and arms its spring (unless it is
 //!   the active tab); a drop there is [`TabsIntent::DropInto`].
 //! - A drag that opens tabs [`TabOpen::AtGap`] (sidebar rows) neither tints nor springs a tab:
-//!   its moves place rune-kit's incoming gap ([`rune_kit::shell::TabDragState::set_incoming`])
-//!   across the strip, and its drop is [`TabsIntent::OpenTabs`] at the gap, or at the end on New
-//!   tab.
+//!   its moves place the strip's vertical accent insertion mark
+//!   ([`BrowserTabsState::set_incoming`]) across the strip, and its drop is
+//!   [`TabsIntent::OpenTabs`] at that slot, or at the end on New tab.
 //! - A drag that opens tabs [`TabOpen::AtEnd`] (folder-only view drags) transfers and springs on
 //!   accepting tabs, is refused on Trash/Recent tabs, and opens at the end on New tab and unused
 //!   strip space.
