@@ -104,7 +104,7 @@ pub(super) fn winit_display(
 /// and a request sent on it names winit's live surface. For a drag's origin (P1), P4's
 /// `set_parent_of`, and `backdrop-blur`. Call it on the UI thread.
 #[cfg(any(feature = "dnd", feature = "foreign-parent", feature = "backdrop-blur"))]
-pub(super) fn with_surface<R>(
+pub(crate) fn with_surface<R>(
     conn: &wayland_client::Connection,
     window: &WindowHandle,
     f: impl FnOnce(&wayland_client::protocol::wl_surface::WlSurface) -> R,

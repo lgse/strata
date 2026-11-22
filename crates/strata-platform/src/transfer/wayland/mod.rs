@@ -53,6 +53,8 @@ use super::gate::Gate;
 use super::pipe;
 use super::windows::Windows;
 use control::Control;
+#[cfg(feature = "backdrop-blur")]
+pub(crate) use display::with_surface;
 use echo::Echoes;
 pub use offer::DragOffer;
 use offer::{AnyOffer, Home, WlSelection};
@@ -800,9 +802,9 @@ impl Conn {
     }
 }
 
-/// What P4 (`foreign-parent`) builds on: a round trip, to learn at once whether the compositor
-/// destroyed an import.
-#[cfg(feature = "foreign-parent")]
+/// What P4 (`foreign-parent`) and `backdrop-blur` build on: a round trip, to learn at once
+/// whether the compositor destroyed an import or advertised blur capabilities.
+#[cfg(any(feature = "foreign-parent", feature = "backdrop-blur"))]
 impl Conn {
     /// Sends what is queued, waits for the compositor to answer a `wl_display.sync`, and runs
     /// every handler on the queue meanwhile, P0's included: their events reach subscribers as
@@ -890,7 +892,7 @@ impl Conn {
 }
 
 /// How a failed round trip leaves the connection.
-#[cfg(feature = "foreign-parent")]
+#[cfg(any(feature = "foreign-parent", feature = "backdrop-blur"))]
 #[derive(Debug, PartialEq, Eq)]
 enum Failure {
     /// libwayland has an error: the connection is dead, for good.
@@ -908,7 +910,7 @@ enum Failure {
 /// `blocking_dispatch` passes on as it is. `EINTR` included: libwayland counts it fatal in
 /// both, and wayland-client's `blocking_read` retries it in its own poll. So an I/O error
 /// with no last error is `EAGAIN` from the flush.
-#[cfg(feature = "foreign-parent")]
+#[cfg(any(feature = "foreign-parent", feature = "backdrop-blur"))]
 fn classify(e: &wayland_client::DispatchError, last_error: Option<String>) -> Failure {
     use std::io::ErrorKind;
     use wayland_backend::client::WaylandError;
@@ -926,9 +928,9 @@ fn classify(e: &wayland_client::DispatchError, last_error: Option<String>) -> Fa
 }
 
 /// How often a round trip waits for a full socket to drain, and how long each time.
-#[cfg(feature = "foreign-parent")]
+#[cfg(any(feature = "foreign-parent", feature = "backdrop-blur"))]
 const BUSY_TRIES: u32 = 4;
-#[cfg(feature = "foreign-parent")]
+#[cfg(any(feature = "foreign-parent", feature = "backdrop-blur"))]
 const BUSY_WAIT: std::time::Duration = std::time::Duration::from_millis(250);
 
 #[cfg(test)]

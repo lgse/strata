@@ -147,7 +147,7 @@ impl BackdropBlur {
         };
 
         if protocol != Protocol::None {
-            wayland::apply(window, desired);
+            let applied = wayland::apply(window, desired);
             let mut state = lock(&self.inner.state);
             if state
                 .attached
@@ -155,7 +155,7 @@ impl BackdropBlur {
                 .is_some_and(|attached| attached.key() == window.key())
                 && state.desired == desired
             {
-                state.applied = Some(desired);
+                state.applied = applied.then_some(desired);
             }
         }
         protocol
@@ -178,7 +178,7 @@ impl BackdropBlur {
             window
         };
 
-        wayland::apply(&window, enabled);
+        let applied = wayland::apply(&window, enabled);
         let mut state = lock(&self.inner.state);
         if state
             .attached
@@ -186,7 +186,7 @@ impl BackdropBlur {
             .is_some_and(|attached| attached.key() == window.key())
             && state.desired == enabled
         {
-            state.applied = Some(enabled);
+            state.applied = applied.then_some(enabled);
         }
     }
 

@@ -44,7 +44,7 @@ fn a_dead_connection_forgets_drags_and_dropped_offers() {
 
 /// Review 1 of P4, should-fix 1: a full socket buffer (`EAGAIN` on the flush) leaves the
 /// connection alive, and only libwayland's own error kills it.
-#[cfg(feature = "foreign-parent")]
+#[cfg(any(feature = "foreign-parent", feature = "backdrop-blur"))]
 #[test]
 fn only_libwaylands_own_error_counts_a_round_trip_failure_as_death() {
     use std::io::{Error as IoError, ErrorKind};
