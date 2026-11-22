@@ -749,3 +749,149 @@ fn bottom_row_stays_interactive_when_sideways_bar_overflows() {
         "clicking the last row must not hit the horizontal scrollbar"
     );
 }
+
+#[test]
+fn animated_width_change_keeps_single_pass_backdrop_across_viewport() {
+    use rune::{Anim, Color, Curve, Easing, Velocity};
+    use strata_kit::transparency::TransparencyParams;
+
+    struct AnimHost {
+        pane: Pane,
+        layout: ColumnLayout,
+        look: Look,
+        pane_width: f32,
+    }
+
+    fn anim_view(s: &AnimHost, _: &mut Cx<AnimHost>) -> El {
+        let mut layer = Vec::new();
+        let tbl = ListTable::new(
+            "t0",
+            vec![
+                Column::primary("name", "Name")
+                    .width(160.0)
+                    .min(160.0)
+                    .sortable(),
+                Column::new("size", "Size", |_: &AnimHost, _| Cell::text("1 kB"))
+                    .width(90.0)
+                    .min(70.0),
+            ],
+            |s: &AnimHost| ListParts {
+                source: &s.pane.listing,
+                collection: &s.pane.coll,
+                table: &s.pane.table,
+                layout: &s.layout,
+                widths: &s.pane.widths,
+                sort: None,
+                look: &s.look,
+            },
+            |s: &mut AnimHost| &mut s.pane.table,
+        );
+        let coll = Collection::new(
+            "list0",
+            |s: &AnimHost| (&s.pane.listing, &s.pane.coll),
+            |s: &mut AnimHost| (&s.pane.listing, &mut s.pane.coll),
+            |s: &AnimHost| &s.look,
+            |_: &AnimHost| 1,
+        );
+        let page = rune::row().size(W, H).child(
+            col()
+                .key("animated-pane")
+                .w(s.pane_width)
+                .h_full()
+                .child(tbl.build(s, coll, &mut layer)),
+        );
+        rune_kit::root(page, layer)
+    }
+
+    let look = Look::fallback(false).with_params(&LookParams {
+        transparency: TransparencyParams {
+            enabled: true,
+            background_percent: 30,
+            raised_percent: 40,
+            ..TransparencyParams::default()
+        },
+        ..LookParams::default()
+    });
+    let host = AnimHost {
+        pane: pane(20),
+        layout: ColumnLayout::new([ColumnId::new("name"), ColumnId::new("size")]),
+        look,
+        pane_width: W,
+    };
+    let mut rt = Runtime::new(host, anim_view, (W, H), Env::new(false, 1.0));
+    rt.frame(0.0);
+    for _ in 0..5 {
+        rt.frame(1.0 / 60.0);
+    }
+
+    let check = |rt: &Runtime<AnimHost>, phase: &str| {
+        let bg_deep = rt.state.look.kit.c.bg_deep;
+        let bg_base = rt.state.look.kit.c.bg_base;
+        let els = rt.elements();
+        let pane_rect = els
+            .iter()
+            .find(|e| !e.exiting && e.key.as_deref() == Some("animated-pane"))
+            .expect("animated-pane")
+            .visible;
+        let hdr = els
+            .iter()
+            .find(|e| !e.exiting && e.key.as_deref() == Some("t0-header-backdrop"))
+            .expect("t0-header-backdrop");
+        let body = els
+            .iter()
+            .find(|e| !e.exiting && e.key.as_deref() == Some("t0-body-backdrop"))
+            .expect("t0-body-backdrop");
+        let strip = els
+            .iter()
+            .find(|e| !e.exiting && e.key.as_deref() == Some("t0-headings"))
+            .expect("t0-headings");
+
+        assert_eq!(hdr.fill, bg_deep, "{phase}: header backdrop paints bg_deep");
+        assert_eq!(body.fill, bg_base, "{phase}: body backdrop paints bg_base");
+        assert_eq!(
+            strip.fill,
+            Color::TRANSPARENT,
+            "{phase}: heading strip does not double-paint bg_deep"
+        );
+        assert!(
+            (hdr.visible[2] - pane_rect[2]).abs() <= 0.5
+                && (body.visible[2] - pane_rect[2]).abs() <= 0.5,
+            "{phase}: backdrop bands ({}, {}) must match animated pane width {}",
+            hdr.visible[2],
+            body.visible[2],
+            pane_rect[2]
+        );
+        let bg_base_painters = els
+            .iter()
+            .filter(|e| !e.exiting && e.fill == bg_base && e.visible[2] > 0.0)
+            .count();
+        assert_eq!(
+            bg_base_painters, 1,
+            "{phase}: only body backdrop paints bg_base (no double-compositing)"
+        );
+    };
+
+    for (phase, next_width) in [("shrink", 500.0), ("grow", W)] {
+        rt.update(move |s, tx| {
+            let mut anim: Anim = Curve::tween(0.26, Easing::EASE_IN_OUT).into();
+            anim.velocity = Velocity::Zero;
+            tx.motion_curve(anim);
+            s.pane_width = next_width;
+        });
+        let mut saw_mid = false;
+        for dt in [0.0, 1.0 / 60.0, 0.05, 0.08, 0.08, 0.1] {
+            rt.frame(dt);
+            let pane_w = rt
+                .elements()
+                .into_iter()
+                .find(|e| !e.exiting && e.key.as_deref() == Some("animated-pane"))
+                .expect("animated-pane")
+                .visible[2];
+            if (pane_w - next_width).abs() > 10.0 {
+                saw_mid = true;
+            }
+            check(&rt, phase);
+        }
+        assert!(saw_mid, "{phase}: expected mid-animation frames");
+    }
+}

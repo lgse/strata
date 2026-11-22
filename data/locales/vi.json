@@ -1599,15 +1599,6 @@
   "Page %{page} of %{pages}": "Trang %{page} / %{pages}",
   "Page %{page} of %{pages}, %{zoom}%": "Trang %{page} / %{pages}, %{zoom}%",
   "Loading page": "Đang tải trang",
-  "10x mode effect": "Hiệu ứng chế độ 10x",
-  "Visual effect played when entering 10xer mode.": "Hiệu ứng thị giác phát khi vào chế độ 10xer.",
-  "Preview effect": "Xem trước hiệu ứng",
-  "Horizon Scan": "Quét chân trời",
-  "Velocity Warp": "Bước nhảy tốc độ",
-  "Shockwave Ring": "Vòng sóng xung kích",
-  "Perimeter Ignite": "Đốt sáng viền khung",
-  "Tactical HUD": "HUD chiến thuật",
-  "Interface on fire": "Giao diện rực lửa",
   "Off": "Tắt",
   "TRANSPARENCY": "ĐỘ TRONG SUỐT",
   "Transparency effects": "Hiệu ứng trong suốt",
@@ -1618,7 +1609,7 @@
   "Independent transparency for raised chrome such as the sidebar, header, tab bar, and footer.": "Độ trong suốt độc lập cho các thành phần nổi như thanh bên, thanh tiêu đề, thanh thẻ và chân trang.",
   "Frosted glass": "Kính mờ",
   "Apply backdrop blur and a subtle frosted sheen to translucent dialogs, menus, and popovers.": "Áp dụng làm mờ nền và ánh kính mờ nhẹ cho hộp thoại, trình đơn và khung bật lên trong suốt.",
+  "Requires a compositor that supports backdrop blur and has it enabled.": "Yêu cầu trình kết hợp hỗ trợ làm mờ nền và đã bật tính năng này.",
   "Unfocused window multiplier": "Hệ số khi cửa sổ mất tiêu điểm",
-  "Multiply transparency when the window is unfocused (higher is more see-through; 1.00× keeps it unchanged).": "Nhân độ trong suốt khi cửa sổ không được chọn (cao hơn sẽ trong suốt hơn; 1,00× giữ nguyên).",
-  "Plasma splash": "Màn hình plasma"
+  "Multiply transparency when the window is unfocused (higher is more see-through; 1.00× keeps it unchanged).": "Nhân độ trong suốt khi cửa sổ không được chọn (cao hơn sẽ trong suốt hơn; 1,00× giữ nguyên)."
 }

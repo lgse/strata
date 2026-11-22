@@ -304,7 +304,7 @@ mod tests;
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use rune::{El, ScrollPos, Tx, col};
+use rune::{El, ScrollPos, Tx, col, el};
 use strata_kit::look::Look;
 
 pub use column::{Cell, Column, ColumnId, WIDTH_CEILING};
@@ -318,7 +318,7 @@ pub use state::{ListTableState, MenuAt};
 use crate::collection::element::{Collection, CollectionState, Roles, RowCx, Slot, viewport_path};
 use crate::collection::pointer::PointerSettings;
 use crate::contract::EntrySource;
-use crate::scroll::{BarLook, Target, overlay};
+use crate::scroll::{BarLook, Target, anchor};
 use resolve::{Inputs, Resolved, resolve};
 
 /// The words of the columns menu and its button, which the host translates; the defaults are
@@ -661,7 +661,6 @@ impl<S: 'static> ListTable<S> {
         let parts = (shared.parts)(s);
         let width = parts.table.width;
         let (bar, sideways_bar) = (parts.table.bar.clone(), parts.table.sideways_bar.clone());
-        let sideways_feed = parts.table.sideways_feed.clone();
         let sideways_look = BarLook::app(parts.look).horizontal();
         let sideways_overflows =
             width >= sideways_look.min_length && resolved.row_width() - width > 0.5;
@@ -670,11 +669,9 @@ impl<S: 'static> ListTable<S> {
         } else {
             0.0
         };
-        let body_fill = parts.look.kit.c.bg_base;
         let list = self
             .collection_with(s, base, &shared, &resolved)
             .header(move |_: &S| header.borrow_mut().take())
-            .viewport_fill(body_fill)
             .viewport_bottom_pad(bottom_pad)
             .build(s);
         let sideways = sideways_bar.build::<S>(
@@ -682,13 +679,34 @@ impl<S: 'static> ListTable<S> {
             &self.scroll_key(),
             sideways_look,
         );
+        let scroll = self.sideways_scroll(s, &shared, resolved.row_width().max(width), list);
+        // Non-overlapping two-band backdrop behind the sideways scroll, plus the sideways bar
+        // along its bottom; the pointer over the table shows both bars.
+        let content = col()
+            .w_full()
+            .h_full()
+            .min_h(0.0)
+            .min_w(0.0)
+            .clip_soft(0.0)
+            .child(self.backdrop(parts.look))
+            .child(scroll)
+            .child(anchor(0.0, 0.0, sideways));
+        bar.area(sideways_bar.area(content))
+    }
+
+    /// Sideways scroll viewport around the column-sized inner wrapper: `inner` snaps column widths
+    /// instantaneously for accurate hit-testing while `scroll` animates smoothly with its parent.
+    fn sideways_scroll(&self, s: &S, shared: &Rc<Shared<S>>, inner_width: f32, list: El) -> El {
+        let parts = (shared.parts)(s);
+        let (follow_bar, follow_sideways) =
+            (parts.table.bar.clone(), parts.table.sideways_bar.clone());
+        let sideways_feed = parts.table.sideways_feed.clone();
         // The one handler on the sideways scroll (Rune's `on_scroll_offset` replaces, U-C24b-1):
         // the table's bars, then every host follower.
         let followers: Vec<Box<dyn Fn(ScrollPos)>> = shared.sideways.iter().map(|f| f(s)).collect();
-        let (follow_bar, follow_sideways) = (bar.clone(), sideways_bar.clone());
         let layout_shared = shared.clone();
-        let inner = col().w(resolved.row_width().max(width)).h_full().min_h(0.0);
-        let scroll = col()
+        let inner = col().w(inner_width).h_full().min_h(0.0).instant_changes();
+        col()
             .key(self.scroll_key())
             .w_full()
             .h_full()
@@ -702,9 +720,6 @@ impl<S: 'static> ListTable<S> {
                     f(p);
                 }
             })
-            // Columns land at their widths at once, as Strata's do: a width that sprang would
-            // put cells where the hit regions don't, and a press mid-spring would miss.
-            .instant_changes()
             .on_layout_tx(move |s: &mut S, r, tx: &mut Tx| {
                 let st = (layout_shared.table_mut)(s);
                 if st.width == r[2] {
@@ -713,10 +728,38 @@ impl<S: 'static> ListTable<S> {
                     st.width = r[2];
                 }
             })
-            .child(inner.child(list));
-        // The sideways bar over the scroll, along its bottom; the pointer over the table shows
-        // both.
-        bar.area(sideways_bar.area(overlay(scroll, [sideways])))
+            .child(inner.child(list))
+    }
+
+    /// Non-overlapping `bg_deep` heading strip and `bg_base` body fills pinned to the smoothly
+    /// animating table viewport so resizing or sliding a neighbour never exposes a transparent
+    /// gap or double-blends translucent surfaces.
+    fn backdrop(&self, look: &Look) -> El {
+        let kit = &look.kit;
+        let heading_h = strata_kit::slots::list::heading_height(look);
+        col()
+            .key(format!("{}-backdrop", self.shared.key))
+            .pin(Some(0.0), Some(0.0), Some(0.0), Some(0.0))
+            .a11y_hidden()
+            .inert()
+            .child(
+                el().key(format!("{}-header-backdrop", self.shared.key))
+                    .w_full()
+                    .h(heading_h)
+                    .fill(kit.c.bg_deep)
+                    .border_sides([0.0, 0.0, 1.0, 0.0], kit.c.border_base)
+                    .a11y_hidden()
+                    .inert(),
+            )
+            .child(
+                el().key(format!("{}-body-backdrop", self.shared.key))
+                    .w_full()
+                    .grow(1.0)
+                    .min_h(0.0)
+                    .fill(kit.c.bg_base)
+                    .a11y_hidden()
+                    .inert(),
+            )
     }
 
     /// The Columns button for the pane header, with the columns menu under it (mounted into

@@ -25,6 +25,7 @@ mod pdf;
 mod pdf_find;
 mod provider;
 mod route;
+mod slide_surface;
 mod spare;
 mod text_polish;
 
@@ -769,7 +770,12 @@ fn columns_divider_and_active_header_yield_to_preview_drawer() {
                 .find(|el| !el.exiting && el.key.as_deref() == Some("preview-header"))
                 .expect("preview-header")
                 .fill;
-            let body_fill = elements
+            let slot_fill = elements
+                .iter()
+                .find(|el| !el.exiting && el.key.as_deref() == Some("preview-slot"))
+                .expect("preview-slot")
+                .fill;
+            let drawer_fill = elements
                 .iter()
                 .find(|el| !el.exiting && el.key.as_deref() == Some("preview-drawer"))
                 .expect("preview-drawer")
@@ -780,8 +786,13 @@ fn columns_divider_and_active_header_yield_to_preview_drawer() {
                 "focused preview header takes the active header surface fill"
             );
             assert_eq!(
-                body_fill, look.kit.c.bg_base,
-                "preview body keeps the folder background fill"
+                slot_fill, look.kit.c.bg_base,
+                "preview slot keeps the folder background fill"
+            );
+            assert_eq!(
+                drawer_fill,
+                rune::Color::TRANSPARENT,
+                "preview drawer does not repaint bg_base over preview-slot"
             );
 
             // Returning focus to files restores the active column's top focus bar and clears the

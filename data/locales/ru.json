@@ -1599,15 +1599,6 @@
   "Page %{page} of %{pages}": "Страница %{page} из %{pages}",
   "Page %{page} of %{pages}, %{zoom}%": "Страница %{page} из %{pages}, %{zoom}%",
   "Loading page": "Загрузка страницы",
-  "10x mode effect": "Эффект режима 10x",
-  "Visual effect played when entering 10xer mode.": "Визуальный эффект при включении режима 10xer.",
-  "Preview effect": "Предпросмотр эффекта",
-  "Horizon Scan": "Сканирование горизонта",
-  "Velocity Warp": "Гиперпрыжок",
-  "Shockwave Ring": "Ударное кольцо",
-  "Perimeter Ignite": "Вспышка по периметру",
-  "Tactical HUD": "Тактический HUD",
-  "Interface on fire": "Интерфейс в огне",
   "Off": "Выкл.",
   "TRANSPARENCY": "ПРОЗРАЧНОСТЬ",
   "Transparency effects": "Эффекты прозрачности",
@@ -1618,7 +1609,7 @@
   "Independent transparency for raised chrome such as the sidebar, header, tab bar, and footer.": "Независимая прозрачность для боковой панели, заголовка, панели вкладок и нижней строки.",
   "Frosted glass": "Матовое стекло",
   "Apply backdrop blur and a subtle frosted sheen to translucent dialogs, menus, and popovers.": "Применять размытие фона и лёгкий матовый блик к полупрозрачным диалогам, меню и всплывающим окнам.",
+  "Requires a compositor that supports backdrop blur and has it enabled.": "Требуется композитор, который поддерживает размытие фона и в котором оно включено.",
   "Unfocused window multiplier": "Множитель для неактивного окна",
-  "Multiply transparency when the window is unfocused (higher is more see-through; 1.00× keeps it unchanged).": "Умножать прозрачность при потере фокуса окна (больше — прозрачнее; 1,00× без изменений).",
-  "Plasma splash": "Плазменная заставка"
+  "Multiply transparency when the window is unfocused (higher is more see-through; 1.00× keeps it unchanged).": "Умножать прозрачность при потере фокуса окна (больше — прозрачнее; 1,00× без изменений)."
 }

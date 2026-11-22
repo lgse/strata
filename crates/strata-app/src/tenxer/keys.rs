@@ -94,7 +94,7 @@ fn toggle_mode(app: &mut App, _: &Call<'_>, tx: &mut Tx) -> Outcome {
     });
     shell::live_keys(app).follow(shell::preferences(app));
     if enabled {
-        crate::tenxer_fx::trigger_current(app, tx);
+        crate::tenxer_fx::trigger(app, tx);
     } else {
         end_session(app, tx);
         crate::tenxer_fx::cancel(app);
