@@ -22,13 +22,18 @@
 //!
 //! # Built on rune-kit
 //!
-//! Full-width rows are rune-kit's `SidebarRow`s, with their selection and focus; the drag to
-//! reorder is the sidebar's own ([`RowDrag`]), in both widths. The sidebar replaces rune-kit's `Sidebar`, `SidebarSection` and `SidebarHeader`:
-//! their list presses each row the arrow keys reach (`focus_follows`), which would open a
-//! place on every arrow press; their headings take no keyboard focus; and a collapsed section
-//! drops every row, where Strata keeps the open pin. Over each built row the sidebar sets
-//! Strata's look ([`strata_kit::slots::sidebar`]): the accent tint and icon on the current row,
-//! a neutral hover, the rail's tooltip.
+//! Full-width and rail rows share the sidebar's own row shell ([`rows`](self)), built on
+//! `look.kit.interactive` with `Keybind`, `IconButton` and `Spinner` from rune-kit and the
+//! sidebar's own drag to reorder ([`RowDrag`]) in both widths. The sidebar replaces rune-kit's
+//! `Sidebar`, `SidebarSection`, `SidebarHeader` and `SidebarRow`: rune-kit's list presses each
+//! row the arrow keys reach (`focus_follows`), which would open a place on every arrow press;
+//! its headings take no keyboard focus; a collapsed section drops every row where Strata keeps
+//! the open pin; and `SidebarRow` hardcodes muted unselected labels, asymmetric left/gap
+//! spacing (`8 pt` inset vs `6 pt` gap) and a `16 pt` avatar box. Over each built row the
+//! sidebar sets Strata's look ([`strata_kit::slots::sidebar`]): primary regular-weight labels
+//! (`kit.c.text_base` in `kit.ty.ui_compact`), symmetrical `8 pt` left-edge-to-icon and
+//! icon-to-label spacing, the accent tint and icon on the current row, a neutral hover, and
+//! the rail's tooltip.
 //!
 //! In the rail each row is the sidebar's own icon-only list item, with its icon where the full
 //! row has it, so a step moves no icon and the keyboard order stays. Its name stays its
