@@ -1,16 +1,13 @@
 // SPDX-License-Identifier: MIT
 
-//! Read-only keyboard caret, Shift+arrow selection, and gutter-margin drag selection for
-//! [`super::CodeView`].
+//! Read-only keyboard caret and Shift+arrow selection for [`super::CodeView`].
 //!
 //! Workaround for Rune packet entry 34 (`docs/rune/upstream/rune/34-read-only-caret.md`):
-//! Rune's `El::selectable` text handles only `Cmd+A` and `Cmd+C` from the keyboard and starts
-//! pointer selections only on the text node itself (not in a line-number gutter). Tracking byte
+//! Rune's `El::selectable` text handles only `Cmd+A` and `Cmd+C` from the keyboard. Tracking byte
 //! offsets in [`CodeState`] and driving `Tx::select_text` / `Tx::copy` gives source previews
-//! `Ctrl+Home` / `Ctrl+End`, `Home` / `End`, `Shift+Arrow` / `Ctrl+Shift+Arrow` selection, and
-//! margin-to-text drag selection.
+//! `Ctrl+Home` / `Ctrl+End`, `Home` / `End`, and `Shift+Arrow` / `Ctrl+Shift+Arrow` selection.
 
-use rune::{Drag, Key, KeyEvent, Phase, PointerButton, TextStyle, Tx};
+use rune::{Key, KeyEvent, Tx};
 
 use super::state::CodeState;
 
@@ -100,90 +97,6 @@ fn step_vertical(st: &mut CodeState, down: bool, tx: &mut Tx) -> bool {
     let target = step_line(&text, head, down);
     st.apply_caret(anchor, target, tx);
     true
-}
-
-#[derive(Clone, Copy)]
-pub(crate) struct GutterHit {
-    pub row: usize,
-    pub text_x: f32,
-    pub mono: TextStyle,
-}
-
-/// Handles a primary pointer drag starting in row `hit.row`'s left gutter / padding
-/// (`0..hit.text_x`), extending the selection from the start of the row to `d.x - hit.text_x`.
-pub(crate) fn gutter_drag(st: &mut CodeState, hit: GutterHit, d: &mut Drag, tx: &mut Tx) {
-    if tx.button() != PointerButton::Primary {
-        tx.live_only();
-        return;
-    }
-    let Some(row) = st.rows().get(hit.row) else {
-        tx.live_only();
-        return;
-    };
-    match d.phase {
-        Phase::Down => {
-            st.apply_caret(row.start, row.start, tx);
-            tx.live_only();
-        }
-        Phase::Move if !d.cancelled() => {
-            let x = d.x - hit.text_x;
-            let end = if x <= 0.0 {
-                row.start
-            } else {
-                row.start + byte_at_x(st.rows().source(hit.row), x, hit.mono)
-            };
-            if st.caret() != Some((row.start, end)) {
-                st.apply_caret(row.start, end, tx);
-            }
-            tx.live_only();
-        }
-        Phase::Move | Phase::Up => {
-            tx.live_only();
-        }
-    }
-}
-
-/// Largest valid UTF-8 character boundary in `line` at or before `byte`.
-fn floor_boundary(line: &str, byte: usize) -> usize {
-    let mut b = byte.min(line.len());
-    while b > 0 && !line.is_char_boundary(b) {
-        b -= 1;
-    }
-    b
-}
-
-/// Byte offset in `line` whose glyph midpoint is nearest `x` points in `mono`.
-pub(crate) fn byte_at_x(line: &str, x: f32, mono: TextStyle) -> usize {
-    if x <= 0.0 || line.is_empty() {
-        return 0;
-    }
-    let total = rune::text::advance(line, mono);
-    if x >= total {
-        return line.len();
-    }
-    let mut lo = 0usize;
-    let mut hi = line.len();
-    let mut w_lo = 0.0_f32;
-    let mut w_hi = total;
-    loop {
-        let next = next_char(line, lo);
-        if next >= hi {
-            break;
-        }
-        let mut mid = floor_boundary(line, lo + (hi - lo) / 2);
-        if mid <= lo {
-            mid = next;
-        }
-        let w_mid = rune::text::advance(&line[..mid], mono);
-        if w_mid <= x {
-            lo = mid;
-            w_lo = w_mid;
-        } else {
-            hi = mid;
-            w_hi = w_mid;
-        }
-    }
-    if x < (w_lo + w_hi) * 0.5 { lo } else { hi }
 }
 
 pub(crate) fn prev_char(text: &str, at: usize) -> usize {

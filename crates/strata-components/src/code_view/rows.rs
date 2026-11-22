@@ -113,6 +113,40 @@ impl Rows {
         self.line_starts[line]
     }
 
+    /// Byte offset immediately after line `line`, including its line break when present.
+    pub fn line_end(&self, line: usize) -> usize {
+        self.line_starts
+            .get(line + 1)
+            .copied()
+            .unwrap_or(self.text.len())
+    }
+
+    /// The logical line containing byte offset `at`, in `O(log N)` time.
+    pub fn line_at_byte(&self, at: usize) -> usize {
+        self.line_starts
+            .partition_point(|&s| s <= at)
+            .saturating_sub(1)
+    }
+
+    /// Inclusive logical-line byte range `(lo, hi)` covering lines `a..=b` (in either order).
+    pub fn line_range_bytes(&self, a: usize, b: usize) -> (usize, usize) {
+        let last = self.lines().saturating_sub(1);
+        let lo_line = a.min(b).min(last);
+        let hi_line = a.max(b).min(last);
+        (self.line_start(lo_line), self.line_end(hi_line))
+    }
+
+    /// Returns `Some((lo_line, hi_line))` when `lo..hi` covers whole logical lines exactly.
+    pub fn line_bounds_if_whole(&self, lo: usize, hi: usize) -> Option<(usize, usize)> {
+        if lo >= hi || hi > self.text.len() || self.line_starts.is_empty() {
+            return None;
+        }
+        let lo_line = self.line_at_byte(lo);
+        let hi_line = self.line_at_byte(hi - 1);
+        (self.line_start(lo_line) == lo && self.line_end(hi_line) == hi)
+            .then_some((lo_line, hi_line))
+    }
+
     /// The lines rows `rows` show part of.
     pub fn lines_of(&self, rows: Range<usize>) -> Range<usize> {
         if rows.is_empty() || self.rows.is_empty() {

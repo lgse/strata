@@ -194,6 +194,7 @@ pub mod highlight;
 mod caret;
 mod copy;
 mod find;
+mod gutter;
 mod position;
 mod render;
 mod rows;
@@ -205,8 +206,8 @@ mod tests;
 use std::rc::Rc;
 
 use rune::{
-    Cx, El, GrowthSpec, Key, KeyEvent, PointerButton, PointerPress, ScrollSpec, Tx, col, el, row,
-    text,
+    Color, Cursor, Cx, Drag, El, GrowthSpec, Key, KeyEvent, PointerButton, PointerPress,
+    ScrollSpec, Tx, col, el, row, text,
 };
 use strata_kit::look::Look;
 
@@ -316,6 +317,14 @@ impl<S: 'static> CodeView<S> {
         let gutter = st
             .line_numbers()
             .then(|| gutter_width(rows.lines(), paint.mono, paint.pad));
+        st.highlights.set_color(paint.selection);
+        if gutter.is_none()
+            || cx
+                .layout_with(&format!("{key}-gutter-hit"), |_| ())
+                .is_none()
+        {
+            st.stop_gutter_drag();
+        }
         let bar_look = BarLook::app(look);
         configure_position_bar(
             st,
@@ -325,7 +334,6 @@ impl<S: 'static> CodeView<S> {
         );
         let ctx = Rc::new(Ctx {
             get,
-            get_mut,
             paint,
             gutter,
             wrap,
@@ -389,6 +397,7 @@ impl<S: 'static> CodeView<S> {
                 gutter,
                 paint: &paint,
                 look,
+                get_mut,
             },
         );
         let mut body = row()
@@ -444,19 +453,23 @@ impl<S: 'static> CodeView<S> {
     }
 }
 
-struct ViewportBody<'a> {
+struct ViewportBody<'a, S> {
     key: &'a str,
     scroll_key: &'a str,
     wrap: bool,
     gutter: Option<f32>,
     paint: &'a Paint,
     look: &'a Look,
+    get_mut: fn(&mut S) -> &mut CodeState,
 }
 
-fn build_viewport_body<S: 'static>(st: &CodeState, viewport: El, spec: &ViewportBody<'_>) -> El {
+fn build_viewport_body<S: 'static>(st: &CodeState, viewport: El, spec: &ViewportBody<'_, S>) -> El {
     let mut area = overlay(viewport, []);
     if let Some(w) = spec.gutter {
-        area = area.child(gutter_divider(spec.key, w, spec.paint));
+        area = area
+            .child(gutter_selection_sentinel(spec.key, st.content()))
+            .child(gutter_hit(spec, w))
+            .child(gutter_divider(spec.key, w, spec.paint));
     }
     if spec.wrap {
         return area;
@@ -467,6 +480,36 @@ fn build_viewport_body<S: 'static>(st: &CodeState, viewport: El, spec: &Viewport
         BarLook::app(spec.look).horizontal(),
     );
     st.sideways.area(area.child(anchor(0.0, 0.0, bar)))
+}
+
+/// Invisible 0×0 selectable text node holding Rune's selection token for whole-line gutter
+/// selections so row highlights paint once via `RowHighlights` without double-compositing the
+/// first selected row's text, while external clicks and modals still clear the selection cleanly.
+fn gutter_selection_sentinel(key: &str, content: Rc<state::Content>) -> El {
+    text(" ")
+        .key(format!("{key}-gutter-sel"))
+        .pin(Some(0.0), Some(0.0), None, None)
+        .size(0.0, 0.0)
+        .color(Color::TRANSPARENT)
+        .selectable(true)
+        .selection_color(Color::TRANSPARENT)
+        .selection_copy(move |sel| Some(content.copy(sel)))
+        .a11y_hidden()
+}
+
+fn gutter_hit<S: 'static>(spec: &ViewportBody<'_, S>, w: f32) -> El {
+    let get_mut = spec.get_mut;
+    el().key(format!("{}-gutter-hit", spec.key))
+        .pin(Some(0.0), Some(0.0), None, Some(0.0))
+        .w(w + spec.paint.pad)
+        .cursor(Cursor::Pointer)
+        .wheel_scrolls(spec.scroll_key.to_owned())
+        .keeps_text_selection()
+        .pointer_buttons([PointerButton::Primary])
+        .a11y_hidden()
+        .on_drag(move |s: &mut S, d: &mut Drag, tx: &mut Tx| {
+            gutter::gutter_drag(get_mut(s), d, tx);
+        })
 }
 
 fn gutter_divider(key: &str, x: f32, paint: &Paint) -> El {
