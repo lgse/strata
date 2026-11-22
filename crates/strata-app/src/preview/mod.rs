@@ -166,6 +166,11 @@ pub(crate) fn refresh_header(app: &mut App) {
     }
 }
 
+pub(crate) fn sync_theme(app: &mut App) {
+    app.preview.loader.sync_theme(&app.look);
+    let _ = app.preview.viewer.sync_theme(&app.look);
+}
+
 pub(crate) fn sync_preferences(app: &mut App) {
     let prefs = shell::preferences(app);
     let wrap = prefs.preview_text_wrap;
@@ -173,6 +178,7 @@ pub(crate) fn sync_preferences(app: &mut App) {
     app.preview.viewer.set_wrap(wrap);
     app.preview.loader.set_media_backend(backend);
     refresh_header(app);
+    sync_theme(app);
 }
 
 impl Part for Preview {
@@ -226,6 +232,7 @@ impl Part for Preview {
     fn poll(app: &mut App, clock: f64, tx: &mut Tx) -> bool {
         ensure_operations_watch(app);
         app.preview.loader.sync_theme(&app.look);
+        let media_theme = app.preview.viewer.sync_theme(&app.look);
         let blocks = app.preview.loader.poll_blocks();
         app.columns
             .refresh_mirror_preferences(shell::preferences(app));
@@ -248,6 +255,7 @@ impl Part for Preview {
         let route = route::poll(app, clock, tx);
         let media = media::poll(app, clock, tx);
         blocks
+            | media_theme
             | viewer
             | archive
             | pdf

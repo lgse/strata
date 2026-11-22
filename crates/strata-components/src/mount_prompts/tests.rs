@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: MIT
 
 use rune::{Cx, El, Env, Key, KeyEvent, Mods, Runtime, col};
-use strata_kit::look::Look;
+use strata_kit::look::{Look, LookParams};
 
+use super::segmented;
 use super::state::submission;
 use super::view::{Footer, footer, split};
 use super::*;
@@ -401,5 +402,168 @@ fn an_edit_that_reaches_the_spare_is_wiped_once_it_lands() {
     assert_eq!(
         form.secret.text, "hunter2",
         "the form's own field keeps its text"
+    );
+}
+
+fn tap_path(rt: &mut Runtime<Host>, path: &str) {
+    let (x, y) = rt
+        .find(path)
+        .unwrap_or_else(|| panic!("no element at {path}"));
+    rt.pointer_move(x, y);
+    rt.pointer_down(x, y);
+    rt.pointer_up(x, y);
+    rt.frame(1.0 / 60.0);
+    rt.frame(1.0 / 60.0);
+}
+
+fn radio_states(
+    rt: &Runtime<Host>,
+    group_label: &str,
+) -> Vec<(String, Option<rune::accesskit::Toggled>, bool)> {
+    use rune::accesskit::Role;
+
+    let tree = rt.accessibility_tree();
+    let (_, group) = tree
+        .nodes
+        .iter()
+        .find(|(_, n)| n.role() == Role::RadioGroup && n.label() == Some(group_label))
+        .unwrap_or_else(|| panic!("no radio-group labelled {group_label:?}"));
+    group
+        .children()
+        .iter()
+        .map(|id| {
+            let (_, child) = tree
+                .nodes
+                .iter()
+                .find(|(nid, _)| nid == id)
+                .expect("radio-group child node");
+            assert_eq!(child.role(), Role::RadioButton);
+            (
+                child.label().unwrap_or_default().to_owned(),
+                child.toggled(),
+                child.is_disabled(),
+            )
+        })
+        .collect()
+}
+
+#[test]
+fn segmented_radii_square_off_at_zero_and_stay_concentric_when_rounded() {
+    let sharp = Look::fallback(true).with_params(&LookParams {
+        roundness: 0,
+        ..LookParams::default()
+    });
+    assert_eq!(segmented::radii(&sharp), (0.0, 0.0));
+
+    let default = Look::fallback(true).with_params(&LookParams::default());
+    let (track, option) = segmented::radii(&default);
+    assert!(track > option && option > 0.0);
+
+    let full = Look::fallback(true).with_params(&LookParams {
+        roundness: 100,
+        ..LookParams::default()
+    });
+    assert_eq!(segmented::radii(&full), (6.0, 4.0));
+}
+
+#[test]
+fn picking_connect_as_and_storage_by_click_and_keyboard_tracks_checked_and_disabled_state() {
+    use rune::accesskit::Toggled;
+
+    let mut rt = mount(MountRequest::Password(smb()));
+
+    // Click Forever in Password storage and verify the radio checked state in a11y.
+    tap_path(&mut rt, "m-password-remember/segment2");
+    assert_eq!(
+        rt.state.prompt.password_form().expect("form").remember,
+        Remember::Permanently
+    );
+    assert_eq!(
+        radio_states(&rt, "Password storage"),
+        vec![
+            ("Don't remember".into(), Some(Toggled::False), false),
+            ("Until logout".into(), Some(Toggled::False), false),
+            ("Forever".into(), Some(Toggled::True), false),
+        ]
+    );
+
+    // Keyboard roving inside the storage radio group (Home, Right, End, Left, Space, Enter).
+    rt.update(|_, tx| tx.focus("m-password-remember/segment2", true));
+    rt.frame(1.0 / 60.0);
+    press(&mut rt, Key::Home);
+    assert_eq!(
+        rt.state.prompt.password_form().expect("form").remember,
+        Remember::Never
+    );
+    press(&mut rt, Key::Right);
+    assert_eq!(
+        rt.state.prompt.password_form().expect("form").remember,
+        Remember::ForSession
+    );
+    press(&mut rt, Key::End);
+    assert_eq!(
+        rt.state.prompt.password_form().expect("form").remember,
+        Remember::Permanently
+    );
+    press(&mut rt, Key::Left);
+    assert_eq!(
+        rt.state.prompt.password_form().expect("form").remember,
+        Remember::ForSession
+    );
+    press(&mut rt, Key::Text(" ".into()));
+    press(&mut rt, Key::Enter);
+    assert!(
+        rt.state.answers.is_empty() && rt.state.prompt.is_open(),
+        "Space and Enter on a focused segment do not submit the dialog"
+    );
+
+    // Choosing Anonymous disables Password storage so clicks on it are ignored.
+    tap_path(&mut rt, "m-password-connect-as/segment1");
+    assert!(rt.state.prompt.password_form().expect("form").anonymous);
+    assert_eq!(
+        radio_states(&rt, "Connect as"),
+        vec![
+            ("Registered user".into(), Some(Toggled::False), false),
+            ("Anonymous".into(), Some(Toggled::True), false),
+        ]
+    );
+    assert_eq!(
+        radio_states(&rt, "Password storage"),
+        vec![
+            ("Don't remember".into(), Some(Toggled::False), true),
+            ("Until logout".into(), Some(Toggled::True), true),
+            ("Forever".into(), Some(Toggled::False), true),
+        ]
+    );
+    tap_path(&mut rt, "m-password-remember/segment2");
+    assert_eq!(
+        rt.state.prompt.password_form().expect("form").remember,
+        Remember::ForSession,
+        "clicking a disabled storage segment leaves its selection alone"
+    );
+
+    // Switching back to Registered user re-enables Password storage and submits the chosen option.
+    tap_path(&mut rt, "m-password-connect-as/segment0");
+    assert!(!rt.state.prompt.password_form().expect("form").anonymous);
+    assert_eq!(
+        radio_states(&rt, "Password storage"),
+        vec![
+            ("Don't remember".into(), Some(Toggled::False), false),
+            ("Until logout".into(), Some(Toggled::True), false),
+            ("Forever".into(), Some(Toggled::False), false),
+        ]
+    );
+    tap_path(&mut rt, "m-password-primary");
+    assert_eq!(
+        rt.state.answers,
+        [(
+            7,
+            MountResponse::Password(Credentials {
+                user: Some("ann".into()),
+                domain: Some("WORKGROUP".into()),
+                password: Some(String::new()),
+                remember: Remember::ForSession,
+            })
+        )]
     );
 }
