@@ -363,3 +363,15 @@ pub fn mount_is_removable(mount: &gio::Mount) -> bool {
             .volume()
             .is_some_and(|volume| volume_can_unplug(&volume))
 }
+
+/// Returns whether the kernel refuses `O_EXCL` on a block device because a filesystem or another
+/// holder has claimed it, including one mounted where the volume monitor cannot see.
+pub fn block_device_is_exclusively_held(unix_device: &str) -> bool {
+    use std::os::unix::fs::OpenOptionsExt;
+    std::fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_EXCL | libc::O_NONBLOCK)
+        .open(unix_device)
+        .err()
+        .is_some_and(|error| error.raw_os_error() == Some(libc::EBUSY))
+}

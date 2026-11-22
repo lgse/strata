@@ -1,58 +1,51 @@
 // SPDX-License-Identifier: MIT
 
-//! DEVICES: the volumes and mounts GIO's volume monitor reports, on C8's device rows, as the
-//! GTK window's sidebar lists them (`append_devices` in `src/ui/window/sidebar_devices.rs`).
+//! DEVICES: the volumes, orphaned password-start drives, and mounts GIO's volume monitor reports,
+//! on C8's device rows, as the GTK window's sidebar lists them (`append_devices` in
+//! `src/ui/window/sidebar_devices.rs`).
 //!
 //! - **The rows** follow plug and unplug: the monitor's signals read it again ([`Watch`]). Each
-//!   drive's rows go together ([`order`]). A row is named by the label the user gave the
-//!   device, else by the system, and described by where it is mounted, else by its device.
-//!   No device, no heading: C8 draws DEVICES only over rows.
-//! - **A click** opens a mounted device's root; an unmounted volume is mounted first, then
-//!   opened, and a failed mount shows "Unable to mount volume" with GIO's text, leaving the
-//!   browser where it was (`mount_device_volume` in `src/ui/browser/location/volumes.rs`).
-//! - **Eject or Unmount**, by what the device allows ([`release_action`], GTK's
-//!   `volume_release_action`). The browser leaves a device it is in for Home first, the
-//!   device's files are flushed, then GIO ejects or unmounts it, while the row shows a spinner
-//!   (`begin_release` in `src/ui/window/device_release/run.rs`). A failure shows its error
-//!   and, while the device is still mounted, returns the browser where it was.
-//!
-//! Not here yet, each in A3's notes (`docs/rune/parity/packages/A3.md`): the device rows'
-//! menus, encrypted volumes and their lock buttons, password drives, Disconnect for network
-//! shares, the stand-in of a device that went while its release ran, the safe-to-remove
-//! notice, the probe for a volume another holder claimed, and leaving the device in the other
-//! tabs and windows.
+//!   drive's rows go together ([`order`]). Encrypted volumes show their lock/unlock button
+//!   ([`crypto`]), unmounted system loops and exclusively held block devices stay hidden
+//!   ([`probes`]), and a device that disappears while its release runs keeps a stand-in spinner
+//!   row ([`release`]).
+//! - **Clicking or unlocking** mounts plain volumes, prompts for a passphrase on locked encrypted
+//!   volumes via C26's mount prompts ([`unlock`]), starts password-protected drives, handles the
+//!   `AlreadyMounted` automounter race, and retries authentication failures.
+//! - **Locking** checks Secret Service for a cached passphrase, confirms forgetting it, leaves
+//!   the volume across every tab and window, flushes, unmounts, and closes the LUKS container via
+//!   UDisks2 or stops a password drive ([`lock`]).
+//! - **Eject, Unmount, and Disconnect** leave the device across every tab and window, cancel
+//!   Strata's own reads (`ActiveOperation::release_lexically`), flush off-thread, show the 350 ms
+//!   progress / safe-to-remove overlay, and return browsers if a release fails while still mounted
+//!   ([`release`]).
 
-use std::{
-    cell::Cell,
-    collections::{HashMap, HashSet},
-    io,
-    path::PathBuf,
-    rc::Rc,
-};
+use std::{cell::Cell, collections::HashMap, rc::Rc};
 
 use gio::prelude::*;
 use rune::Tx;
-use strata_components::sidebar::{Device, DeviceGroup, ItemId, Release};
+use strata_components::sidebar::{Device, DeviceGroup, ItemId, LockState, Release};
 use strata_core::{i18n::tr, model::Location};
-use strata_fs::adapters::{flush_filesystem, location_for_file};
-use strata_fs::services::{gio_device_error_message, io_error_message};
 use strata_kit::icons::IconName;
 
 use super::places::{self, Navigation};
-use crate::{
-    App,
-    error_dialog::{self, Error},
-    shell,
-    slots::Later,
-};
+use crate::{App, shell, slots::Later};
 
+mod crypto;
 mod listing;
+mod lock;
 mod order;
+mod probes;
+mod release;
+mod unlock;
 
 #[cfg(test)]
 mod tests;
 
 use listing::{Seen, Source};
+use release::{
+    ReleaseTarget, key_for_mount, key_for_volume, release_kind, release_unplug, unmatched_pending,
+};
 
 /// The labels the user gave devices, by `label_identity`.
 type Labels = HashMap<String, String>;
@@ -67,19 +60,24 @@ pub(super) enum MediaRelease {
 }
 
 impl MediaRelease {
-    fn shown(self) -> Release {
+    pub(super) fn shown(self) -> Release {
         match self {
             Self::EjectVolume | Self::EjectMount => Release::Eject,
             Self::UnmountMount => Release::Unmount,
         }
     }
+}
 
-    fn error_title(self) -> &'static str {
-        match self {
-            Self::EjectVolume | Self::EjectMount => "Unable to eject device",
-            Self::UnmountMount => "Unable to unmount device",
-        }
-    }
+/// What a device row's context menu needs in order to build its sections.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) struct DeviceMenuInfo {
+    pub(super) id: String,
+    pub(super) root: Option<Location>,
+    pub(super) lock: Option<LockState>,
+    pub(super) release: Option<MediaRelease>,
+    pub(super) can_mount: bool,
+    pub(super) network: bool,
+    pub(super) pending: bool,
 }
 
 /// GTK's `volume_release_action`: none for fixed storage that can do neither.
@@ -108,11 +106,8 @@ pub(super) struct Devices {
     groups: Vec<DeviceGroup>,
     /// The mounted rows, with where each opens.
     rows: Vec<places::Row>,
-    /// The devices whose release is running.
-    releasing: HashSet<String>,
-    /// The volumes being mounted from a click.
-    mounting: HashSet<String>,
     watch: Option<Watch>,
+    sidebar_watch: Option<release::SidebarWatch>,
 }
 
 impl Devices {
@@ -128,20 +123,56 @@ impl Devices {
         self.seen.iter().flatten().find(|seen| seen.id == id)
     }
 
-    /// Draws the rows again from what was last read, with the labels the settings give.
+    pub(super) fn menu_info(&self, id: &str) -> Option<DeviceMenuInfo> {
+        let seen = self.find(id)?;
+        Some(DeviceMenuInfo {
+            id: seen.id.clone(),
+            root: seen.root.clone(),
+            lock: seen.lock,
+            release: seen.release,
+            can_mount: seen.can_mount,
+            network: seen.network,
+            pending: release::is_pending(&seen.ids),
+        })
+    }
+
+    /// Draws the rows again from what was last read, with the labels the settings give and
+    /// stand-in ghost rows for any pending release whose device already left GIO.
     pub(super) fn dress(&mut self, labels: &Labels) {
-        self.groups = self
+        let mut live_ids = Vec::new();
+        let mut groups: Vec<DeviceGroup> = self
             .seen
             .iter()
             .map(|group| {
                 DeviceGroup::new(
                     group
                         .iter()
-                        .map(|seen| device(seen, labels, self.releasing.contains(&seen.id)))
+                        .map(|seen| {
+                            live_ids.push(seen.ids.clone());
+                            device(seen, labels, release::is_pending(&seen.ids))
+                        })
                         .collect(),
                 )
             })
             .collect();
+        let ghosts: Vec<Device> = unmatched_pending(&live_ids)
+            .into_iter()
+            .enumerate()
+            .map(|(index, key)| {
+                Device::new(
+                    format!("releasing-{index}"),
+                    key.display_name,
+                    IconName::Drive,
+                    "",
+                )
+                .mounted(false)
+                .pending(true)
+            })
+            .collect();
+        if !ghosts.is_empty() {
+            groups.push(DeviceGroup::new(ghosts).divided(false));
+        }
+        self.groups = groups;
         self.rows = self.seen.iter().flatten().filter_map(place_row).collect();
     }
 }
@@ -161,6 +192,9 @@ fn device(seen: &Seen, labels: &Labels, releasing: bool) -> Device {
     )
     .mounted(seen.root.is_some())
     .pending(releasing);
+    if let Some(lock) = seen.lock {
+        row = row.lock(lock);
+    }
     if let Some(release) = seen.release {
         row = row.release(release.shown());
     }
@@ -169,7 +203,7 @@ fn device(seen: &Seen, labels: &Labels, releasing: bool) -> Device {
 
 /// The label the user gave the device, when it is one the settings may hold, else the
 /// system's name (`device_label` in `src/ui/preferences/file_settings.rs`).
-fn display_name(label_id: Option<&str>, name: &str, labels: &Labels) -> String {
+pub(super) fn display_name(label_id: Option<&str>, name: &str, labels: &Labels) -> String {
     label_id
         .and_then(|id| labels.get(id))
         .filter(|label| is_shown_label(label))
@@ -185,8 +219,10 @@ fn is_shown_label(label: &str) -> bool {
 /// mount's checked first, as its place row.
 fn place_row(seen: &Seen) -> Option<places::Row> {
     let navigation = match seen.source {
-        Source::Volume(_) => Navigation::Direct,
+        Source::Volume(_) | Source::PasswordDrive(_) => Navigation::Direct,
         Source::Mount(_) => Navigation::Validate,
+        #[cfg(test)]
+        Source::Synthetic => Navigation::Direct,
     };
     Some(places::Row {
         item: ItemId::Device(seen.id.clone()),
@@ -195,8 +231,10 @@ fn place_row(seen: &Seen) -> Option<places::Row> {
     })
 }
 
-/// The sidebar starts: the rows as the monitor shows them, and the watch that reads it again.
+/// The sidebar starts: the rows as the monitor shows them, the process-wide sidebar watch,
+/// and the GIO volume-monitor watch that reads it again.
 pub(super) fn start(app: &mut App) {
+    app.sidebar.devices.sidebar_watch = Some(release::register_sidebar(app));
     if !cfg!(test) {
         app.sidebar.devices.watch = Some(Watch::new(&app.sidebar.later));
     }
@@ -208,11 +246,9 @@ pub(super) fn refresh(app: &mut App) {
     let local_only = places::Environment::current()
         .local_only(app.browser.is_chooser_mode())
         .local_only;
-    app.sidebar.devices.seen = if cfg!(test) {
-        Vec::new()
-    } else {
-        listing::read(local_only)
-    };
+    if !cfg!(test) {
+        app.sidebar.devices.seen = listing::read(local_only);
+    }
     redress(app);
 }
 
@@ -303,128 +339,167 @@ impl Drop for Watch {
     }
 }
 
-/// A click on an unmounted volume: GIO mounts it, then its root opens. The row is marked
-/// before, as GTK's `select_sidebar_row`; a second click while it mounts asks nothing more.
+/// A click on an unmounted volume or password drive, or "Mount" / "Unlock" from its menu or
+/// lock button: mounts or unlocks it through C26's prompts and opens its root.
 pub(super) fn mount(app: &mut App, id: &str) {
-    let devices = &mut app.sidebar.devices;
-    let Some(Source::Volume(volume)) = devices.find(id).map(|seen| seen.source.clone()) else {
+    let Some(source) = app.sidebar.devices.find(id).map(|seen| seen.source.clone()) else {
         return;
     };
-    if !devices.mounting.insert(id.to_owned()) {
+    match source {
+        Source::Volume(volume) => unlock::mount_volume(app, id.to_owned(), volume),
+        Source::PasswordDrive(drive) => unlock::start_password_drive(app, id.to_owned(), drive),
+        Source::Mount(_) => {}
+        #[cfg(test)]
+        Source::Synthetic => {}
+    }
+}
+
+/// Unlocks an encrypted volume or password-start drive (from its lock button or context menu).
+pub(super) fn unlock(app: &mut App, id: &str) {
+    mount(app, id);
+}
+
+/// Locks an unlocked encrypted volume or mount (from its lock button or context menu).
+pub(super) fn lock(app: &mut App, id: &str) {
+    let Some((source, label_id)) = app
+        .sidebar
+        .devices
+        .find(id)
+        .map(|seen| (seen.source.clone(), seen.label_id.clone()))
+    else {
         return;
-    }
-    app.sidebar.current = Some(ItemId::Device(id.to_owned()));
-    let later = app.sidebar.later.clone();
-    let id = id.to_owned();
-    glib::MainContext::default().spawn_local(async move {
-        let result = volume
-            .mount_future(gio::MountMountFlags::NONE, None::<&gio::MountOperation>)
-            .await;
-        let done = Mounted { id, volume, result };
-        later.then(move |app: &mut App, tx: &mut Tx| {
-            mounted(app, done, tx);
-            true
-        });
-    });
-}
-
-/// How a mount from a click ended.
-struct Mounted {
-    id: String,
-    volume: gio::Volume,
-    result: Result<(), glib::Error>,
-}
-
-fn mounted(app: &mut App, done: Mounted, tx: &mut Tx) {
-    let Mounted { id, volume, result } = done;
-    app.sidebar.devices.mounting.remove(&id);
-    refresh(app);
-    match result {
-        Ok(()) => {
-            let root = volume
-                .get_mount()
-                .and_then(|mount| location_for_file(&mount.root()));
-            if let Some(root) = root {
-                app.sidebar.current = Some(ItemId::Device(id));
-                shell::publish(app);
-                app.browser.navigate(root);
-                shell::settle(app, tx);
-            }
+    };
+    match source {
+        Source::Volume(volume) => {
+            lock::lock_encrypted_volume(app, id.to_owned(), &volume, label_id.as_deref());
         }
-        Err(error) => {
-            if !is_cancelled(&error) {
-                let message = gio_device_error_message(&error);
-                error_dialog::show(app, Error::new(tr("Unable to mount volume"), message));
-            }
+        Source::Mount(mount) => {
+            lock::lock_encrypted_mount(app, id.to_owned(), &mount, label_id.as_deref());
         }
+        Source::PasswordDrive(_) => {}
+        #[cfg(test)]
+        Source::Synthetic => {}
     }
 }
 
-/// A dismissed prompt, which GTK shows nothing for (`mount_error_is_cancelled`).
-fn is_cancelled(error: &glib::Error) -> bool {
-    error.matches(gio::IOErrorEnum::Cancelled) || error.matches(gio::IOErrorEnum::FailedHandled)
-}
-
-/// Why a release failed: its flush, or GIO.
-enum Failure {
-    Flush(io::Error),
-    Gio(glib::Error),
-}
-
-/// Eject or Unmount on a device's row.
+/// Eject or Unmount on a device's row or context menu.
 pub(super) fn release(app: &mut App, id: &str, tx: &mut Tx) {
     let Some(seen) = app.sidebar.devices.find(id).cloned() else {
         return;
     };
+    if seen.release.is_none() {
+        return;
+    }
+    match seen.source.clone() {
+        Source::PasswordDrive(drive) => lock::eject_password_drive(app, drive, tx),
+        Source::Volume(volume) => release_volume(app, volume, &seen, tx),
+        Source::Mount(mount) => release_mount(app, mount, &seen, tx),
+        #[cfg(test)]
+        Source::Synthetic => {}
+    }
+}
+
+fn release_volume(app: &mut App, volume: gio::Volume, seen: &Seen, tx: &mut Tx) {
     let Some(action) = seen.release else {
         return;
     };
-    if !app.sidebar.devices.releasing.insert(id.to_owned()) {
+    let mount = volume.get_mount();
+    if matches!(
+        action,
+        MediaRelease::EjectMount | MediaRelease::UnmountMount
+    ) && mount.is_none()
+    {
         return;
     }
-    // Leave first, so the folder's monitors let the device go.
-    let left = seen.root.as_ref().and_then(|root| leave(app, root, tx));
-    redress(app);
-    let later = app.sidebar.later.clone();
-    let id = id.to_owned();
-    let sync_root = seen
-        .root
-        .as_ref()
-        .and_then(Location::native_path)
-        .map(ToOwned::to_owned);
-    glib::MainContext::default().spawn_local(async move {
-        let result = run_release(action, seen.source, sync_root).await;
-        let done = Released {
-            id,
-            action,
-            result,
-            left,
-        };
-        later.then(move |app: &mut App, tx: &mut Tx| {
-            released(app, done, tx);
-            true
-        });
+    let labels = shell::preferences(app).device_labels.clone();
+    let target = ReleaseTarget {
+        key: key_for_volume(&volume, seen.label_id.as_deref(), &labels),
+        kind: release_kind(action),
+        unplug: release_unplug(action, mount.as_ref(), Some(&volume)),
+        sync_root: mount.as_ref().and_then(|m| m.root().path()),
+        away_root: seen.root.clone(),
+    };
+    release::begin_release(app, target, Some(tx), move |operation| async move {
+        release_volume_media(action, volume, mount, operation).await
     });
 }
 
-/// Where the browser was on a device it left for Home.
-struct Left {
-    before: Location,
-    home: Location,
+fn release_mount(app: &mut App, mount: gio::Mount, seen: &Seen, tx: &mut Tx) {
+    let Some(action) = seen.release else {
+        return;
+    };
+    let labels = shell::preferences(app).device_labels.clone();
+    let target = ReleaseTarget {
+        key: key_for_mount(&mount, seen.label_id.as_deref(), &labels),
+        kind: release_kind(action),
+        unplug: release_unplug(action, Some(&mount), None),
+        sync_root: mount.root().path(),
+        away_root: seen.root.clone(),
+    };
+    release::begin_release(app, target, Some(tx), move |operation| async move {
+        release_mount_media(action, mount, operation).await
+    });
 }
 
-/// The browser goes Home from inside `root`; what it left, to come back to if the release
-/// fails (GTK's `navigate_home_if_within` and `WayBack`).
-fn leave(app: &mut App, root: &Location, tx: &mut Tx) -> Option<Left> {
-    let before = app.browser.active_location()?;
-    if !leaves(&before, root) {
-        return None;
+async fn release_volume_media(
+    action: MediaRelease,
+    volume: gio::Volume,
+    mount: Option<gio::Mount>,
+    operation: gio::MountOperation,
+) -> Result<(), glib::Error> {
+    match (action, mount) {
+        (MediaRelease::EjectVolume, _) => {
+            volume
+                .eject_with_operation_future(gio::MountUnmountFlags::NONE, Some(&operation))
+                .await
+        }
+        (_, None) => Err(glib::Error::new(
+            gio::IOErrorEnum::Failed,
+            &tr("The volume is not mounted."),
+        )),
+        (_, Some(mount)) => release_mount_media(action, mount, operation).await,
     }
-    let home = Location::local(crate::launch::home_directory());
-    shell::publish(app);
-    app.browser.navigate(home.clone());
-    shell::settle(app, tx);
-    Some(Left { before, home })
+}
+
+async fn release_mount_media(
+    action: MediaRelease,
+    mount: gio::Mount,
+    operation: gio::MountOperation,
+) -> Result<(), glib::Error> {
+    match action {
+        MediaRelease::EjectVolume | MediaRelease::EjectMount => {
+            mount
+                .eject_with_operation_future(gio::MountUnmountFlags::NONE, Some(&operation))
+                .await
+        }
+        MediaRelease::UnmountMount => {
+            mount
+                .unmount_with_operation_future(gio::MountUnmountFlags::NONE, Some(&operation))
+                .await
+        }
+    }
+}
+
+/// Disconnects a network share from its context menu (`device_release::disconnect_share`).
+pub(super) fn disconnect(app: &mut App, id: &str, tx: &mut Tx) {
+    let Some(seen) = app.sidebar.devices.find(id).cloned() else {
+        return;
+    };
+    if !seen.network {
+        return;
+    }
+    let (Source::Mount(mount), Some(root)) = (seen.source, seen.root) else {
+        return;
+    };
+    release::disconnect_share(
+        app,
+        release::ShareDisconnect {
+            id: id.to_owned(),
+            mount,
+            root,
+        },
+        tx,
+    );
 }
 
 /// Whether a browser at `active` is on the device mounted at `root`.
@@ -432,85 +507,8 @@ pub(super) fn leaves(active: &Location, root: &Location) -> bool {
     active == root || active.is_within(root)
 }
 
-async fn run_release(
-    action: MediaRelease,
-    source: Source,
-    sync_root: Option<PathBuf>,
-) -> Result<(), Failure> {
-    if let Some(root) = sync_root {
-        // Even opening a stalled mount must not block the interface thread.
-        gio::spawn_blocking(move || flush_filesystem(&root))
-            .await
-            .unwrap_or_else(|_| Err(io::Error::other("the flush stopped")))
-            .map_err(Failure::Flush)?;
-    }
-    let flags = gio::MountUnmountFlags::NONE;
-    let operation = None::<&gio::MountOperation>;
-    let mount = match &source {
-        Source::Volume(volume) if action == MediaRelease::EjectVolume => {
-            return volume
-                .eject_with_operation_future(flags, operation)
-                .await
-                .map_err(Failure::Gio);
-        }
-        Source::Volume(volume) => volume.get_mount(),
-        Source::Mount(mount) => Some(mount.clone()),
-    };
-    let Some(mount) = mount else {
-        let error = glib::Error::new(gio::IOErrorEnum::Failed, &tr("The volume is not mounted."));
-        return Err(Failure::Gio(error));
-    };
-    let result = match action {
-        MediaRelease::UnmountMount => mount.unmount_with_operation_future(flags, operation).await,
-        MediaRelease::EjectVolume | MediaRelease::EjectMount => {
-            mount.eject_with_operation_future(flags, operation).await
-        }
-    };
-    result.map_err(Failure::Gio)
-}
-
-/// How a release ended.
-struct Released {
-    id: String,
-    action: MediaRelease,
-    result: Result<(), Failure>,
-    left: Option<Left>,
-}
-
-fn released(app: &mut App, done: Released, tx: &mut Tx) {
-    let Released {
-        id,
-        action,
-        result,
-        left,
-    } = done;
-    app.sidebar.devices.releasing.remove(&id);
-    refresh(app);
-    let message = match result {
-        Ok(()) => return,
-        Err(Failure::Gio(error)) if is_cancelled(&error) => None,
-        Err(Failure::Gio(error)) => Some(gio_device_error_message(&error)),
-        Err(Failure::Flush(error)) => Some(io_error_message(&error)),
-    };
-    if let Some(before) = way_back(app, &id, left) {
-        shell::publish(app);
-        app.browser.navigate(before);
-        shell::settle(app, tx);
-    }
-    if let Some(message) = message {
-        error_dialog::show(app, Error::new(tr(action.error_title()), message));
-    }
-}
-
-/// Where a failed release returns the browser: where it was, while the device is still
-/// mounted and the browser still at the Home it was sent to.
-fn way_back(app: &App, id: &str, left: Option<Left>) -> Option<Location> {
-    let Left { before, home } = left?;
-    let mounted = app
-        .sidebar
-        .devices
-        .find(id)
-        .is_some_and(|seen| seen.root.is_some());
-    let at_home = app.browser.active_location().as_ref() == Some(&home);
-    (mounted && at_home).then_some(before)
+#[cfg(test)]
+fn seed_for_test(app: &mut App, groups: Vec<Vec<Seen>>) {
+    app.sidebar.devices.seen = groups;
+    redress(app);
 }
