@@ -321,7 +321,7 @@ pub(crate) const CORE: &[&[Token]] = &[
 /// - `dark` is the appearance, which the theme picks, not a value to override;
 /// - `elevation` (shadow lists), `glyph` (icons) and `motion` (springs) have no token kind
 ///   yet; adding one is an addition;
-/// - `blend_over`, `ring` and `invalid_text` are how the theme is painted, not tokens.
+/// - `blend_over`, `ring`, `invalid_text` and `forced` are how the theme is painted, not tokens.
 const _: fn(Kit) = |Kit {
                         dark: _,
                         c: _,
@@ -333,6 +333,7 @@ const _: fn(Kit) = |Kit {
                         blend_over: _,
                         ring: _,
                         invalid_text: _,
+                        forced: _,
                     }| {};
 
 /// `color.<field>` for each `kit.c` colour. The pattern names every `Palette` field, so a
