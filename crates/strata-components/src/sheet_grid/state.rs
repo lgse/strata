@@ -558,6 +558,11 @@ impl SheetGridState {
     // --- Keys and paths ---------------------------------------------------------------------
 
     /// The active sheet's scroll viewport.
+    /// The viewport's latest [`ScrollPos`].
+    pub fn scroll_pos(&self) -> ScrollPos {
+        self.feed.get()
+    }
+
     pub fn scroll_key(&self) -> String {
         format!("{}-s{}-scroll", self.key, self.active)
     }

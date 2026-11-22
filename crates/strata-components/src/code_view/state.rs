@@ -279,9 +279,64 @@ impl CodeState {
         &self.content.rows
     }
 
+    /// The viewport's latest [`rune::ScrollPos`].
+    pub fn scroll_pos(&self) -> rune::ScrollPos {
+        self.position.scroll_pos()
+    }
+
     /// The viewport's vertical offset, as Rune last reported it.
     pub fn scroll_offset(&self) -> f32 {
         self.position.offset()
+    }
+
+    /// Whether the view has any text to select.
+    pub fn has_text(&self) -> bool {
+        !self.content.rows.text.is_empty()
+    }
+
+    /// The currently selected text belonging to this view, if any.
+    pub fn selected_text(&self, sel: Option<&TextSelection>) -> Option<String> {
+        if self.all_selected() && sel.is_some_and(|s| copy::reads_whole(&self.content, s)) {
+            return self.has_text().then(|| self.copy_all());
+        }
+        if let Some(text) = self.copy_keyboard()
+            && !text.is_empty()
+        {
+            return Some(text);
+        }
+        let sel = sel?;
+        copy::span(&self.content, sel)
+            .and_then(|(a, b)| (a < b).then(|| self.content.rows.text[a..b].to_owned()))
+    }
+
+    /// Whether `sel` currently selects the whole text.
+    pub fn selects_whole(&self, sel: Option<&TextSelection>) -> bool {
+        self.all_selected() || sel.is_some_and(|s| copy::reads_whole(&self.content, s))
+    }
+
+    /// Byte span `(lo, hi)` currently selected in this view, if any.
+    pub fn selection_span(&self, sel: Option<&TextSelection>) -> Option<(usize, usize)> {
+        if let Some(span) = self.keyboard_selection() {
+            return Some(span);
+        }
+        sel.and_then(|s| copy::span(&self.content, s))
+            .filter(|(a, b)| a < b)
+    }
+
+    /// Restores a byte-range selection `(lo, hi)` in this view.
+    pub fn restore_selection_range(&mut self, lo: usize, hi: usize, tx: &mut Tx) {
+        self.apply_caret(lo, hi, tx);
+    }
+
+    /// Selects the entire document text in Rune and arms model-backed whole-text copying.
+    pub fn select_all_text(&mut self, tx: &mut Tx) {
+        self.select_all(tx.text_selection());
+        tx.select_all_text(self.list_key());
+    }
+
+    /// Scrolls the viewport to the start (`end == false`) or end (`end == true`) of the text.
+    pub fn scroll_to_edge(&self, end: bool, tx: &mut Tx) {
+        self.position.go(if end { f64::INFINITY } else { 0.0 }, tx);
     }
 
     /// Whether line `line`'s colours have landed (a line with no grammar never colours).
@@ -308,7 +363,7 @@ impl CodeState {
         format!("{}-rows", self.content.key)
     }
 
-    pub(crate) fn scroll_key(&self) -> String {
+    pub fn scroll_key(&self) -> String {
         format!("{}-scroll", self.content.key)
     }
 

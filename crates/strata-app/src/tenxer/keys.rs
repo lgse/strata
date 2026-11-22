@@ -219,7 +219,7 @@ fn listing_or_unbound(
     tx: &mut Tx,
 ) -> Option<Outcome> {
     if at.within("preview")
-        && let Some(outcome) = preview_keys::in_preview(app, press, tx)
+        && let Some(outcome) = preview_keys::in_preview(app, press, at, tx)
     {
         return Some(outcome);
     }

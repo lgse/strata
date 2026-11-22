@@ -8,7 +8,7 @@ use std::borrow::Cow;
 use std::rc::Rc;
 
 use rune::{El, Key, KeyEvent, Mods, TextStyle, Tx, col, el, icon, row, text};
-use rune_kit::{Palette, Placement, popover, scrim};
+use rune_kit::{Palette, Placement, popover};
 use strata_kit::icons::IconName;
 use strata_kit::look::Look;
 
@@ -62,7 +62,7 @@ fn shortens(header: &[String]) -> bool {
 type Select<S> = Rc<dyn Fn(&mut S, &[usize], &mut Tx)>;
 type Submenu<S> = Rc<dyn Fn(&mut S, Vec<usize>)>;
 type CloseTo<S> = Rc<dyn Fn(&mut S, usize)>;
-type Dismiss<S> = Rc<dyn Fn(&mut S)>;
+type Dismiss<S> = Rc<dyn Fn(&mut S, &mut Tx)>;
 
 /// One menu to draw.
 pub(super) struct Render<'a, S> {
@@ -164,9 +164,12 @@ impl<S: 'static> Render<'_, S> {
                 .size(0.0, 0.0),
         );
         let scrim_dismiss = self.on_dismiss.clone();
-        layer.push(scrim(format!("{}-scrim", self.key), move |s: &mut S| {
-            scrim_dismiss(s);
-        }));
+        layer.push(
+            el().key(format!("{}-scrim", self.key))
+                .pin(Some(0.0), Some(0.0), Some(0.0), Some(0.0))
+                .keeps_text_selection()
+                .on_press_tx(move |s: &mut S, tx: &mut Tx| scrim_dismiss(s, tx)),
+        );
 
         let mut rows = Vec::new();
         let scope = CollectScope {
@@ -194,7 +197,7 @@ impl<S: 'static> Render<'_, S> {
         let top = self
             .build_surface(&top_spec, &rows, &mut subs)
             .focus_return(anchor_key)
-            .modal(true, move |s: &mut S| modal_dismiss(s));
+            .modal_tx(true, move |s: &mut S, tx: &mut Tx| modal_dismiss(s, tx));
         layer.push(popover::anchored(
             kit,
             top,
@@ -233,6 +236,7 @@ impl<S: 'static> Render<'_, S> {
             )
             .border(1.0, kit.c.border_base)
             .label(spec.name.to_owned())
+            .keeps_text_selection()
             .child(body);
         if look.glow.on {
             surface = surface.shadow(

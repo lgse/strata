@@ -433,7 +433,56 @@ impl DocumentState {
         format!("{}-rows", self.content.key)
     }
 
-    pub(crate) fn scroll_key(&self) -> String {
+    /// The viewport's latest [`rune::ScrollPos`].
+    pub fn scroll_pos(&self) -> rune::ScrollPos {
+        self.bar.pos()
+    }
+
+    /// The viewport's vertical scroll offset, as Rune last reported it.
+    pub fn scroll_offset(&self) -> f32 {
+        self.bar.pos().offset[1]
+    }
+
+    /// Whether the document has any selectable text (prose or tables).
+    pub fn has_text(&self) -> bool {
+        copy::has_selectable_text(&self.content)
+    }
+
+    /// The currently selected text belonging to this document, if any.
+    pub fn selected_text(&self, sel: Option<&TextSelection>) -> Option<String> {
+        if self.all_selected() && sel.is_some_and(|s| copy::reads_whole(&self.content, s)) {
+            let text = self.copy_all();
+            return (!text.is_empty()).then_some(text);
+        }
+        let sel = sel?;
+        if !copy::has_selection_in(&self.content, sel) {
+            return None;
+        }
+        let text = self.content.copy(sel);
+        (!text.is_empty()).then_some(text)
+    }
+
+    /// Whether `sel` currently selects the whole document.
+    pub fn selects_whole(&self, sel: Option<&TextSelection>) -> bool {
+        self.all_selected() || sel.is_some_and(|s| copy::reads_whole(&self.content, s))
+    }
+
+    /// Selects the entire document in Rune and arms model-backed whole-document copying.
+    pub fn select_all_text(&mut self, tx: &mut Tx) {
+        self.select_all(tx.text_selection());
+        tx.select_all_text(self.list_key());
+    }
+
+    /// Scrolls the document viewport to the top (`end == false`) or bottom (`end == true`).
+    pub fn scroll_to_edge(&self, end: bool, tx: &mut Tx) {
+        if end {
+            tx.scroll_to_bottom_instant(self.scroll_key());
+        } else {
+            tx.scroll_to_y(self.scroll_key(), 0.0);
+        }
+    }
+
+    pub fn scroll_key(&self) -> String {
         format!("{}-scroll", self.content.key)
     }
 

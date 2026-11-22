@@ -7,8 +7,8 @@ use std::rc::Rc;
 use std::time::Duration;
 
 use rune::{
-    Color, Cursor, Drag, El, GrowthSpec, Key, KeyEvent, PointerEvent, ScrollSpec, SurfaceFit, Tx,
-    WheelEvent, col, el,
+    Color, Cursor, Drag, El, GrowthSpec, Key, KeyEvent, PointerEvent, PointerPress, ScrollSpec,
+    SurfaceFit, Tx, WheelEvent, col, el,
 };
 use rune_kit::Spinner;
 use strata_kit::look::Look;
@@ -18,6 +18,7 @@ use super::queue::Slot;
 use super::state::{Gesture, PdfState};
 use super::zoom::GAP;
 use super::{PdfIntent, PdfLabels};
+use crate::contract::Point;
 use crate::dialog::FOCUS_RING_WIDTH;
 use crate::scroll::{BarLook, overlay};
 
@@ -131,6 +132,7 @@ pub(crate) fn pages<S: 'static>(ctx: Rc<Ctx<S>>, st: &PdfState, look: &Look, sca
         .replace("{pages}", &n.to_string())
         .replace("{zoom}", &format!("{:.0}", st.level() * 100.0));
     let keys_ctx = ctx.clone();
+    let menu_intent = ctx.intent.clone();
     let mut root = col()
         .key(key.clone())
         .role("document")
@@ -169,6 +171,11 @@ pub(crate) fn pages<S: 'static>(ctx: Rc<Ctx<S>>, st: &PdfState, look: &Look, sca
             tx.live_only();
         })
         .child(body);
+    if let Some(emit) = menu_intent {
+        root = root.on_secondary_press(move |s: &mut S, p: PointerPress, tx: &mut Tx| {
+            emit(s, PdfIntent::ContextMenu(Point::new(p.x, p.y)), tx);
+        });
+    }
     if st.wake > 0 {
         // Requests are waiting and the host may be at rest, or the host asked for a zoom: a
         // fresh element's first layout asks for a frame, whose poll pops them, and applies the
@@ -385,6 +392,12 @@ fn key_in<S: 'static>(ctx: &Ctx<S>, s: &mut S, ev: &KeyEvent, tx: &mut Tx) -> bo
         Key::PageUp | Key::PageDown => {
             st.anchor = None;
             tx.scroll_page(st.scroll_key(), if ev.key == Key::PageUp { -1 } else { 1 });
+            true
+        }
+        Key::Home | Key::End if !m.shift => {
+            st.anchor = None;
+            let y = if ev.key == Key::Home { 0.0 } else { f32::MAX };
+            tx.scroll_to_y(st.scroll_key(), y);
             true
         }
         Key::Right if !m.shift && st.can_pan_right() => {

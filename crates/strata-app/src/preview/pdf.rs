@@ -206,6 +206,9 @@ fn on_intent(app: &mut App, intent: PdfIntent, tx: &mut Tx) {
             super::return_to_files(app);
             tx.wake_after(std::time::Duration::ZERO);
         }
+        PdfIntent::ContextMenu(at) => {
+            super::open_text_context_menu(app, at, tx);
+        }
         _ => {}
     }
 }

@@ -265,6 +265,97 @@ impl Viewer {
         }
     }
 
+    /// The scrollable target of the active document viewer: its viewport key, latest scroll
+    /// position, and whether `End` should jump via `f32::MAX` (PDF) instead of bottom-instant.
+    pub(super) fn scroll_target(&mut self) -> Option<ScrollTarget> {
+        match self {
+            Self::Code(code) => Some(ScrollTarget::code(code)),
+            Self::Document(doc) => doc.scroll_target(),
+            Self::Pdf(pdf) => {
+                pdf.state.clear_anchor();
+                Some(ScrollTarget {
+                    key: pdf.state.scroll_key(),
+                    pos: pdf.state.scroll_pos(),
+                    kind: ScrollTargetKind::Pdf,
+                })
+            }
+            _ => None,
+        }
+    }
+
+    /// Context-menu snapshot for read-only preview text viewers: `(focus_key, selected_text,
+    /// saved_selection, can_select_all)`.
+    pub(super) fn text_menu_info(
+        &self,
+        sel: Option<&rune::TextSelection>,
+    ) -> Option<TextMenuSnapshot> {
+        match self {
+            Self::Code(code) => Some(code_menu_snapshot(code, sel)),
+            Self::Document(doc) => doc.text_menu_info(sel),
+            Self::Pdf(pdf) => {
+                let selected = pdf.state.selected_text();
+                Some(TextMenuSnapshot {
+                    focus_key: pdf::PDF_KEY,
+                    selected: (!selected.is_empty()).then_some(selected),
+                    restore: None,
+                    can_select_all: pdf.state.has_selectable_text(),
+                })
+            }
+            _ => None,
+        }
+    }
+
+    /// Restores a preview text selection that Rune cleared while the modal context menu was open.
+    pub(super) fn restore_text_selection(
+        &mut self,
+        saved: &crate::menus::SavedPreviewSelection,
+        tx: &mut Tx,
+    ) {
+        match saved {
+            crate::menus::SavedPreviewSelection::All => {
+                let _ = self.select_all_text(tx);
+            }
+            crate::menus::SavedPreviewSelection::Node(selector, range) => {
+                tx.select_text(selector.clone(), range.clone());
+            }
+            crate::menus::SavedPreviewSelection::CodeRange(lo, hi) => {
+                if let Some(code) = self.code_state_mut() {
+                    code.restore_selection_range(*lo, *hi, tx);
+                }
+            }
+        }
+    }
+
+    fn code_state_mut(&mut self) -> Option<&mut CodeState> {
+        match self {
+            Self::Code(code) => Some(code),
+            Self::Document(doc) if doc.active == DocumentView::Source => doc.source.as_deref_mut(),
+            _ => None,
+        }
+    }
+
+    /// Selects all text in the active preview text viewer.
+    pub(super) fn select_all_text(&mut self, tx: &mut Tx) -> bool {
+        match self {
+            Self::Code(code) => {
+                code.select_all_text(tx);
+                true
+            }
+            Self::Document(doc) => doc.select_all_text(tx),
+            Self::Pdf(pdf) => pdf.state.select_all(),
+            _ => false,
+        }
+    }
+
+    /// Scrolls the active `CodeView` to its exact start or end via its position controller.
+    pub(super) fn scroll_code_edge(&self, end: bool, tx: &mut Tx) -> bool {
+        let Some(code) = self.code_state() else {
+            return false;
+        };
+        code.scroll_to_edge(end, tx);
+        true
+    }
+
     pub(super) fn reset_viewport(&mut self, tx: &mut Tx) {
         if let Self::Image(img) = self {
             img.reset();
@@ -385,7 +476,159 @@ pub(super) fn build_code_state(source: CodeSource<'_>, highlighter: &Highlighter
     state
 }
 
+/// What a scrollable preview viewer exposes for keyboard scrolling.
+pub(super) struct ScrollTarget {
+    pub(super) key: String,
+    pub(super) pos: rune::ScrollPos,
+    pub(super) kind: ScrollTargetKind,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum ScrollTargetKind {
+    Code,
+    Document,
+    Pdf,
+}
+
+impl ScrollTarget {
+    fn code(code: &CodeState) -> Self {
+        Self {
+            key: code.scroll_key(),
+            pos: code.scroll_pos(),
+            kind: ScrollTargetKind::Code,
+        }
+    }
+}
+
+/// Captured selection metadata for opening a preview text viewer's context menu.
+pub(super) struct TextMenuSnapshot {
+    pub(super) focus_key: &'static str,
+    pub(super) selected: Option<String>,
+    pub(super) restore: Option<crate::menus::SavedPreviewSelection>,
+    pub(super) can_select_all: bool,
+}
+
+fn single_node_selection(
+    sel: Option<&rune::TextSelection>,
+) -> Option<crate::menus::SavedPreviewSelection> {
+    let sel = sel?;
+    let mut selected = sel.texts().iter().filter(|t| t.is_selected());
+    let first = selected.next()?;
+    if selected.next().is_some() {
+        return None;
+    }
+    let selector = first
+        .path()
+        .split('/')
+        .filter(|seg| !seg.starts_with('#'))
+        .collect::<Vec<_>>()
+        .join("/");
+    (!selector.is_empty())
+        .then(|| crate::menus::SavedPreviewSelection::Node(selector, first.range()))
+}
+
+fn code_menu_snapshot(code: &CodeState, sel: Option<&rune::TextSelection>) -> TextMenuSnapshot {
+    let selected = code.selected_text(sel);
+    let restore = if selected.is_none() {
+        None
+    } else if code.selects_whole(sel) {
+        Some(crate::menus::SavedPreviewSelection::All)
+    } else if let Some(node) = single_node_selection(sel) {
+        Some(node)
+    } else {
+        code.selection_span(sel)
+            .map(|(lo, hi)| crate::menus::SavedPreviewSelection::CodeRange(lo, hi))
+    };
+    TextMenuSnapshot {
+        focus_key: CODE_KEY,
+        selected,
+        restore,
+        can_select_all: code.has_text(),
+    }
+}
+
+fn document_menu_snapshot(
+    doc: &DocumentState,
+    sel: Option<&rune::TextSelection>,
+) -> TextMenuSnapshot {
+    let selected = doc.selected_text(sel);
+    let restore = if selected.is_none() {
+        None
+    } else if doc.selects_whole(sel) {
+        Some(crate::menus::SavedPreviewSelection::All)
+    } else {
+        single_node_selection(sel)
+    };
+    TextMenuSnapshot {
+        focus_key: document::DOCUMENT_KEY,
+        selected,
+        restore,
+        can_select_all: doc.has_text(),
+    }
+}
+
 impl DocumentViewer {
+    #[cfg(test)]
+    pub(super) fn is_rendered_document_for_test(&self) -> bool {
+        self.active == DocumentView::Rendered
+            && matches!(self.rendered, Some(RenderedBody::Document(_)))
+    }
+
+    #[cfg(test)]
+    pub(super) fn scroll_offset_for_test(&self) -> Option<f32> {
+        self.scroll_target().map(|target| target.pos.offset[1])
+    }
+
+    fn scroll_target(&self) -> Option<ScrollTarget> {
+        match self.active {
+            DocumentView::Rendered => match self.rendered.as_ref()? {
+                RenderedBody::Document(doc) => Some(ScrollTarget {
+                    key: doc.state.scroll_key(),
+                    pos: doc.state.scroll_pos(),
+                    kind: ScrollTargetKind::Document,
+                }),
+                RenderedBody::Sheet(sheet) => Some(ScrollTarget {
+                    key: sheet.scroll_key(),
+                    pos: sheet.scroll_pos(),
+                    kind: ScrollTargetKind::Document,
+                }),
+            },
+            DocumentView::Source => self.source.as_deref().map(ScrollTarget::code),
+        }
+    }
+
+    fn text_menu_info(&self, sel: Option<&rune::TextSelection>) -> Option<TextMenuSnapshot> {
+        match self.active {
+            DocumentView::Rendered => match self.rendered.as_ref()? {
+                RenderedBody::Document(doc) => Some(document_menu_snapshot(&doc.state, sel)),
+                RenderedBody::Sheet(_) => None,
+            },
+            DocumentView::Source => self
+                .source
+                .as_deref()
+                .map(|code| code_menu_snapshot(code, sel)),
+        }
+    }
+
+    fn select_all_text(&mut self, tx: &mut Tx) -> bool {
+        match self.active {
+            DocumentView::Rendered => match self.rendered.as_mut() {
+                Some(RenderedBody::Document(doc)) => {
+                    doc.state.select_all_text(tx);
+                    true
+                }
+                _ => false,
+            },
+            DocumentView::Source => match self.source.as_deref_mut() {
+                Some(code) => {
+                    code.select_all_text(tx);
+                    true
+                }
+                None => false,
+            },
+        }
+    }
+
     fn active_hosted(&self) -> Option<&dyn HostedPreview> {
         match self.active {
             DocumentView::Rendered => match self.rendered.as_ref()? {
@@ -718,11 +961,16 @@ fn code_view(
 ) -> El {
     CodeView::new(get, get_mut)
         .labels(labels::code())
-        .on_intent(|app: &mut App, intent, tx| {
-            if intent == CodeIntent::Leave {
+        .document_home_end(crate::shell::preferences(app).tenxer_mode)
+        .on_intent(|app: &mut App, intent, tx| match intent {
+            CodeIntent::Leave => {
                 super::return_to_files(app);
                 tx.wake_after(std::time::Duration::ZERO);
             }
+            CodeIntent::ContextMenu(at) => {
+                super::open_text_context_menu(app, at, tx);
+            }
+            _ => {}
         })
         .build(app, &app.look, cx)
         .no_focus_ring()

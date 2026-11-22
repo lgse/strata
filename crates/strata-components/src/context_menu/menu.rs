@@ -12,7 +12,7 @@ use super::state::{ContextMenuState, MenuIntent, MenuTarget};
 use super::view::{MIN_WIDTH, Render, width_with_min};
 
 type Emit<S> = Rc<dyn Fn(&mut S, MenuIntent, &mut Tx)>;
-type Dismissed<S> = Rc<dyn Fn(&mut S, MenuTarget)>;
+type Dismissed<S> = Rc<dyn Fn(&mut S, MenuTarget, &mut Tx)>;
 
 /// A context menu over [`ContextMenuState`]:
 ///
@@ -77,6 +77,12 @@ impl<S: 'static> ContextMenu<S> {
     /// Hears the menu for a target close without a choice: Escape or a press outside it. The
     /// selection is never touched.
     pub fn on_dismiss(mut self, f: impl Fn(&mut S, MenuTarget) + 'static) -> Self {
+        self.dismissed = Some(Rc::new(move |s, target, _| f(s, target)));
+        self
+    }
+
+    /// Like [`Self::on_dismiss`], with the closing transaction's [`Tx`].
+    pub fn on_dismiss_tx(mut self, f: impl Fn(&mut S, MenuTarget, &mut Tx) + 'static) -> Self {
         self.dismissed = Some(Rc::new(f));
         self
     }
@@ -120,11 +126,11 @@ impl<S: 'static> ContextMenu<S> {
             close_to: Rc::new(move |s: &mut S, depth: usize| {
                 get_mut(s).close_submenu(depth);
             }),
-            on_dismiss: Rc::new(move |s: &mut S| {
+            on_dismiss: Rc::new(move |s: &mut S, tx: &mut Tx| {
                 if let Some(target) = get_mut(s).close()
                     && let Some(f) = &dismissed
                 {
-                    f(s, target);
+                    f(s, target, tx);
                 }
             }),
         }

@@ -23,6 +23,8 @@
 //! command belongs to a part this interface does not have yet is shown as the GTK menu shows
 //! it at rest and does nothing: `commands::has` is false for its id.
 
+use std::rc::Rc;
+
 use rune::{El, Tx};
 use strata_components::{
     context_menu::{
@@ -34,7 +36,9 @@ use strata_core::{
     i18n::{count, tr},
     model::{ArchiveFormat, EntryKind, FileEntry, Location},
 };
-use strata_desktop::keys::{self, Command, Keys, Map, Shown, bindings as key};
+use strata_desktop::keys::{
+    self, Binding, Command, Key as DesktopKey, Keys, Map, Shown, bindings as key,
+};
 use strata_kit::icons::IconName;
 
 use crate::{
@@ -302,12 +306,93 @@ fn fill_custom_slot(app: &mut App, opening: &mut Opening, depth: usize, entry: O
     }
 }
 
+/// Snapshot of a preview text selection so opening the modal context menu (which causes Rune's
+/// `prune_text_selection` to clear selections behind the modal) still copies accurately and
+/// restores the visual selection when the menu closes.
+#[derive(Clone, Debug)]
+pub(crate) enum SavedPreviewSelection {
+    All,
+    Node(String, std::ops::Range<usize>),
+    CodeRange(usize, usize),
+}
+
+/// Marker target for a read-only preview text viewer's context menu (`CodeView`, `DocumentView`,
+/// `PdfView`).
+#[derive(Clone, Debug)]
+struct PreviewTextTarget {
+    selected: Option<String>,
+    restore: Option<SavedPreviewSelection>,
+}
+
+/// Inputs for opening a preview text viewer's context menu.
+pub(crate) struct PreviewTextRequest {
+    pub(crate) anchor: Point,
+    pub(crate) focus_key: &'static str,
+    pub(crate) selected: Option<String>,
+    pub(crate) restore: Option<SavedPreviewSelection>,
+    pub(crate) can_select_all: bool,
+}
+
+/// Opens Strata's styled context menu for read-only preview text (`Copy`, `Select All`).
+pub(crate) fn open_preview_text(app: &mut App, request: PreviewTextRequest, tx: &mut Tx) {
+    let model = preview_text_model(request.selected.is_some(), request.can_select_all);
+    let name = crate::preview::current_entry(app)
+        .map(|entry| entry.display_name.clone())
+        .unwrap_or_else(|| tr("Preview"));
+    tx.focus(request.focus_key, tx.by_keys());
+    crate::preview::arm_focus_handoff(app, tx);
+    app.menu.show_other(
+        name,
+        MenuTarget::Other(Rc::new(PreviewTextTarget {
+            selected: request.selected,
+            restore: request.restore,
+        })),
+        request.anchor,
+        model,
+    );
+}
+
+fn preview_text_model(has_selection: bool, can_select_all: bool) -> MenuModel {
+    let copy_hint = keys::label(&Keys::One(Shown::Binding(Binding::ctrl(DesktopKey::c))));
+    let select_all_hint = keys::label(&Keys::One(Shown::Binding(Binding::ctrl(DesktopKey::a))));
+    let copy = Item::new("copy", tr("Copy"))
+        .icon(IconName::Copy)
+        .shortcut(copy_hint)
+        .enabled(has_selection);
+    let select_all = Item::new("select-all", tr("Select All"))
+        .icon(IconName::ListChecks)
+        .shortcut(select_all_hint)
+        .enabled(can_select_all);
+    MenuModel::new().section(Section::new([copy, select_all]))
+}
+
+fn is_preview_text_menu(app: &App) -> bool {
+    matches!(
+        app.menu.state.target(),
+        Some(MenuTarget::Other(other)) if other.downcast_ref::<PreviewTextTarget>().is_some()
+    )
+}
+
 /// A row of the open menu was chosen. The menu has closed, and the keyboard is back in the
 /// view. The row runs the command registered under its id (`commands::run`), on the row's
 /// entry or on the column's folder: what the command does is decided once, where a key and
 /// a button ask for it too. A row no part has a command for does nothing.
 fn chosen(app: &mut App, intent: MenuIntent, tx: &mut Tx) {
     let MenuIntent::Activate { target, action } = intent;
+    if let MenuTarget::Other(other) = &target
+        && let Some(preview_target) = other.downcast_ref::<PreviewTextTarget>()
+    {
+        crate::preview::run_text_menu_action(
+            app,
+            &action,
+            (
+                preview_target.selected.as_deref(),
+                preview_target.restore.as_ref(),
+            ),
+            tx,
+        );
+        return;
+    }
     if crate::custom_actions::is_menu_action(&action) {
         crate::custom_actions::activate_menu_action(app, &action);
         return;
@@ -334,6 +419,14 @@ fn min_width(look: &strata_kit::look::Look) -> f32 {
     (MENU_MIN_WIDTH * scale).round()
 }
 
+fn dismissed(app: &mut App, target: MenuTarget, tx: &mut Tx) {
+    if let MenuTarget::Other(other) = target
+        && let Some(preview_target) = other.downcast_ref::<PreviewTextTarget>()
+    {
+        crate::preview::dismiss_text_menu(app, preview_target.restore.as_ref(), tx);
+    }
+}
+
 /// The menu's element, with its surfaces in the layer while it is open.
 fn build(app: &App, frame: &mut Frame<'_, App>) -> Option<El> {
     let mut menu = ContextMenu::new(
@@ -342,8 +435,9 @@ fn build(app: &App, frame: &mut Frame<'_, App>) -> Option<El> {
         |app: &mut App| &mut app.menu.state,
     )
     .name(app.menu.name())
-    .on_intent(chosen);
-    if !app.browser.is_chooser_mode() {
+    .on_intent(chosen)
+    .on_dismiss_tx(dismissed);
+    if !app.browser.is_chooser_mode() && !is_preview_text_menu(app) {
         menu = menu.min_width(min_width(&app.look));
     }
     Some(menu.build(app, &app.look, frame.layer))
@@ -374,6 +468,11 @@ impl Menu {
         self.provider_slot = opening.provider_slot;
         self.name = opening.name;
         self.state.open(opening.target, at, opening.model);
+    }
+
+    fn show_other(&mut self, name: String, target: MenuTarget, at: Point, model: MenuModel) {
+        self.name = name;
+        self.state.open(target, at, model);
     }
 
     pub(crate) fn depth(&self) -> usize {

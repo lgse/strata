@@ -359,26 +359,24 @@ pub(super) fn enter_entry(app: &mut App, entry: FileEntry, depth: Option<usize>,
 
 fn focus_loaded_or_pending(app: &mut App, tx: &mut Tx) -> bool {
     if app.preview.viewer.focus_into(tx) {
-        app.preview.owns_focus = true;
-        tx.wake_after(std::time::Duration::ZERO);
+        super::arm_focus_handoff(app, tx);
         return true;
     }
     if app.preview.viewer.can_focus() {
-        app.preview.owns_focus = true;
         app.preview.drawer.focus_content();
-        tx.wake_after(std::time::Duration::ZERO);
+        super::arm_focus_handoff(app, tx);
         return true;
     }
     if app.preview.viewer.needs_body_focus_owner() {
         app.preview.content_focus = ContentFocus::Pending;
         app.preview.drawer.focus_content_when_shown(tx);
-        tx.wake_after(std::time::Duration::ZERO);
+        super::arm_focus_handoff(app, tx);
         return true;
     }
     if let Some(request_id) = app.preview.loader.current_request {
         app.preview.loader.focus_archive_request = Some(request_id);
         app.preview.drawer.focus_content_when_shown(tx);
-        tx.wake_after(std::time::Duration::ZERO);
+        super::arm_focus_handoff(app, tx);
         return true;
     }
     false
