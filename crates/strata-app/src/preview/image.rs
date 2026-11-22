@@ -44,7 +44,7 @@ impl ImageViewer {
         let pixels = Pixels::new();
         pixels.set(tex_w, tex_h, rgba.into_raw());
 
-        let mut viewport = ViewportState::new(Mode::Fit);
+        let mut viewport = ViewportState::new(Mode::ScaleDown);
         viewport.set_content(Some([orig_w as f32, orig_h as f32]));
 
         Ok(Self {
@@ -84,3 +84,6 @@ pub(super) fn build_view(
         .drag_source(crate::dnd::binder(app), crate::dnd::preview_drag_source())
         .build(&app.look, cx)
 }
+
+#[cfg(test)]
+mod tests;

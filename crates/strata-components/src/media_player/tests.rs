@@ -1015,3 +1015,86 @@ fn video_ambient_glow_lights_on_frames_respects_switches_and_clears_on_reset() {
         );
     }
 }
+
+#[test]
+fn animation_clips_use_scale_down_while_videos_keep_fit() {
+    use crate::viewers::viewport::Mode;
+
+    let anim = MediaState::new(Clip {
+        kind: MediaKind::Animation,
+        name: "sticker.gif".into(),
+        ..Clip::default()
+    });
+    assert_eq!(anim.viewport.default_mode(), Mode::ScaleDown);
+    assert_eq!(anim.viewport.mode(), Mode::ScaleDown);
+
+    let video = MediaState::new(Clip {
+        kind: MediaKind::Video,
+        name: "clip.mp4".into(),
+        ..Clip::default()
+    });
+    assert_eq!(video.viewport.default_mode(), Mode::Fit);
+    assert_eq!(video.viewport.mode(), Mode::Fit);
+
+    let mut rt = host::mount();
+    // Small 128x128 animation inside the larger mounted viewport caps at 100% (level == 1.0).
+    rt.state.media.set_clip(Clip {
+        kind: MediaKind::Animation,
+        name: "sticker.gif".into(),
+        ..Clip::default()
+    });
+    rt.state.media.set_frame(Some([128, 128]));
+    rt.invalidate();
+    rt.frame(host::DT);
+    rt.frame(host::DT);
+    assert_eq!(rt.state.media.viewport.default_mode(), Mode::ScaleDown);
+    assert_eq!(rt.state.media.viewport.mode(), Mode::ScaleDown);
+    let small_anim_level = rt
+        .state
+        .media
+        .viewport
+        .level()
+        .expect("laid-out animation level");
+    assert!(
+        (small_anim_level - 1.0).abs() < 1e-4,
+        "small animation caps at 100%, got {small_anim_level}"
+    );
+
+    // Oversized animation scales down below 100%.
+    rt.state.media.set_frame(Some([2000, 1500]));
+    rt.invalidate();
+    rt.frame(host::DT);
+    let large_anim_level = rt
+        .state
+        .media
+        .viewport
+        .level()
+        .expect("oversized animation level");
+    assert!(
+        large_anim_level < 1.0,
+        "oversized animation scales down below 100%, got {large_anim_level}"
+    );
+
+    // Switching back to Video restores Mode::Fit and allows upscaling small frames to fit.
+    rt.state.media.set_clip(Clip {
+        kind: MediaKind::Video,
+        name: "clip.mp4".into(),
+        ..Clip::default()
+    });
+    rt.state.media.set_frame(Some([128, 128]));
+    rt.invalidate();
+    rt.frame(host::DT);
+    rt.frame(host::DT);
+    assert_eq!(rt.state.media.viewport.default_mode(), Mode::Fit);
+    assert_eq!(rt.state.media.viewport.mode(), Mode::Fit);
+    let small_video_level = rt
+        .state
+        .media
+        .viewport
+        .level()
+        .expect("laid-out video level");
+    assert!(
+        small_video_level > 1.0,
+        "small video fits the pane above 100%, got {small_video_level}"
+    );
+}

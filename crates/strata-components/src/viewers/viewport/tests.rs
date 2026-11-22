@@ -334,6 +334,29 @@ fn reset_returns_to_the_default_mode_centred() {
     assert_eq!(ViewportState::new(Mode::Free).default_mode(), Mode::Fit);
 }
 
+#[test]
+fn set_default_mode_switches_mode_preserves_frame_and_maps_free_to_fit() {
+    let mut st = ViewportState::new(Mode::Fit);
+    st.set_frame([400.0, 300.0], 1.0);
+    st.set_content(Some([100.0, 50.0]));
+    assert!(near(st.level().expect("fit level"), 4.0));
+
+    let report = st
+        .set_default_mode(Mode::ScaleDown)
+        .expect("switching to scale down changes level");
+    assert_eq!(st.default_mode(), Mode::ScaleDown);
+    assert_eq!(st.mode(), Mode::ScaleDown);
+    assert_eq!(st.frame(), Some([400.0, 300.0]));
+    assert!(near(report.level, 1.0));
+    assert!(near(st.level().expect("capped level"), 1.0));
+
+    st.zoom_to(3.0, None);
+    st.pan_by([40.0, 20.0]);
+    st.set_default_mode(Mode::Free);
+    assert_eq!(st.default_mode(), Mode::Fit);
+    assert_eq!((st.mode(), st.pan()), (Mode::Fit, [0.0, 0.0]));
+}
+
 // The element, in a runtime.
 
 thread_local! {

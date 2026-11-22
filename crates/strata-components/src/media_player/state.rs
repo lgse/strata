@@ -115,7 +115,8 @@ pub(crate) struct Shown {
 /// handlers, or [`MediaState::drain_intents`] after a tick or a [`MediaState::command`]).
 pub struct MediaState {
     clip: Clip,
-    /// The video surface's zoom state (C14a): fitted, never zoomed by the user.
+    /// The video surface's zoom state (C14a): fitted for video, scaled down for animations, never
+    /// zoomed by the user.
     pub viewport: ViewportState,
     labels: Labels,
     keys: MediaKeys,
@@ -180,12 +181,20 @@ impl Default for MediaState {
     }
 }
 
+fn viewport_mode(kind: MediaKind) -> Mode {
+    match kind {
+        MediaKind::Animation => Mode::ScaleDown,
+        MediaKind::Video | MediaKind::Audio | MediaKind::Plain => Mode::Fit,
+    }
+}
+
 impl MediaState {
     /// A player for `clip`, at its start, paused, at full volume.
     pub fn new(clip: Clip) -> MediaState {
+        let mode = viewport_mode(clip.kind);
         MediaState {
             clip,
-            viewport: ViewportState::new(Mode::Fit),
+            viewport: ViewportState::new(mode),
             labels: Labels::default(),
             keys: MediaKeys::default_map(),
             position: Duration::ZERO,
@@ -254,6 +263,8 @@ impl MediaState {
         self.aspect = None;
         self.frame = None;
         self.ambient.clear();
+        self.viewport
+            .set_default_mode(viewport_mode(self.clip.kind));
         self.viewport.set_content(None);
         self.tags = AudioTags::default();
         self.hover = None;
