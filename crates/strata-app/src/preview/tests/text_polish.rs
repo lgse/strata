@@ -271,6 +271,72 @@ fn code_preview_multiline_keyboard_selection_survives_context_menu() {
 }
 
 #[test]
+fn code_preview_gutter_line_selection_copies_via_context_menu_and_shortcut() {
+    hosted(
+        MODULE,
+        "text_polish::code_preview_gutter_line_selection_copies_via_context_menu_and_shortcut",
+        |mut host| {
+            let mem = attach_clipboard(&mut host);
+            let body = "alpha\nbeta\ngamma\ndelta\nepsilon\n";
+            let folder = open_folder_with_files(&mut host, &[("lines.txt", body)]);
+            select(&mut host, &Location::local(folder.path().join("lines.txt")));
+            wait_for_code_preview(&mut host);
+
+            let gutter_row = |host: &mut Offscreen, row: usize| {
+                let needle = format!("/{CODE_KEY}-l{row}/");
+                host.runtime()
+                    .elements()
+                    .into_iter()
+                    .find(|el| el.path.contains(&needle) && el.path.ends_with("/n"))
+                    .unwrap_or_else(|| panic!("gutter row {row} not mounted"))
+                    .rect
+            };
+            let r1 = gutter_row(&mut host, 1);
+            let r3 = gutter_row(&mut host, 3);
+            let gx = r1[0] + r1[2] * 0.4;
+            let y1 = r1[1] + r1[3] * 0.5;
+            let y3 = r3[1] + r3[3] * 0.5;
+
+            // Drag down the gutter from line 1 ("beta") to line 3 ("delta") without focusing first.
+            host.runtime().pointer_move(gx, y1);
+            host.runtime().pointer_down(gx, y1);
+            while host.turn() {}
+            host.runtime().pointer_move(gx, y3);
+            while host.turn() {}
+            host.runtime().pointer_up(gx, y3);
+            while host.turn() {}
+
+            let expected = "beta\ngamma\ndelta\n";
+            let code_keyboard_text = |app: &App| {
+                app.preview.viewer.code_state().and_then(|c| {
+                    let (lo, hi) = c.keyboard_selection()?;
+                    c.text().get(lo..hi).map(str::to_owned)
+                })
+            };
+            assert_eq!(code_keyboard_text(host.app()).as_deref(), Some(expected));
+            assert_eq!(focused_key(&mut host).as_deref(), Some(CODE_KEY));
+
+            // Right-click -> Escape preserves the gutter selection.
+            let (cx, cy) = element_center(&mut host, CODE_KEY);
+            secondary_click_at(&mut host, cx, cy);
+            assert_eq!(
+                menu_items(&host),
+                vec![("copy".into(), true), ("select-all".into(), true)]
+            );
+            press(&mut host, Key::Escape, Mods::default());
+            assert!(!host.app().menu.state.is_open());
+            assert_eq!(code_keyboard_text(host.app()).as_deref(), Some(expected));
+
+            // Right-click -> Copy copies lines 1..=3 cleanly and keeps the selection.
+            secondary_click_at(&mut host, cx, cy);
+            click_key(&mut host, "menu-item0");
+            assert_eq!(clipboard_text(&mem).as_deref(), Some(expected));
+            assert_eq!(code_keyboard_text(host.app()).as_deref(), Some(expected));
+        },
+    );
+}
+
+#[test]
 fn stale_preview_context_menu_ignores_switched_or_closed_preview() {
     hosted(
         MODULE,
