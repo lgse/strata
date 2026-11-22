@@ -1618,6 +1618,7 @@
   "Independent transparency for raised chrome such as the sidebar, header, tab bar, and footer.": "Trasparenza indipendente per gli elementi rialzati come barra laterale, intestazione, barra delle schede e piè di pagina.",
   "Frosted glass": "Vetro smerigliato",
   "Apply backdrop blur and a subtle frosted sheen to translucent dialogs, menus, and popovers.": "Applica sfocatura dello sfondo e un leggero riflesso smerigliato a finestre di dialogo, menu e popover traslucidi.",
+  "Requires a compositor that supports backdrop blur and has it enabled.": "Richiede un compositor che supporti la sfocatura dello sfondo e l’abbia attivata.",
   "Unfocused window multiplier": "Moltiplicatore finestra non attiva",
   "Multiply transparency when the window is unfocused (higher is more see-through; 1.00× keeps it unchanged).": "Moltiplica la trasparenza quando la finestra non ha il focus (più alto è più trasparente; 1,00× la lascia invariata).",
   "Plasma splash": "Splash al plasma"

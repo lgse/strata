@@ -1618,6 +1618,7 @@
   "Independent transparency for raised chrome such as the sidebar, header, tab bar, and footer.": "사이드바, 헤더, 탭 표시줄, 바닥글 등 돌출된 UI 영역의 개별 투명도입니다.",
   "Frosted glass": "반투명 유리",
   "Apply backdrop blur and a subtle frosted sheen to translucent dialogs, menus, and popovers.": "반투명 대화 상자, 메뉴, 팝오버에 배경 흐림과 은은한 유리 광택을 적용합니다.",
+  "Requires a compositor that supports backdrop blur and has it enabled.": "배경 흐림을 지원하고 활성화한 컴포지터가 필요합니다.",
   "Unfocused window multiplier": "비활성 창 배율",
   "Multiply transparency when the window is unfocused (higher is more see-through; 1.00× keeps it unchanged).": "창이 포커스를 잃었을 때 투명도에 곱하는 배율입니다(높을수록 더 투명하며 1.00×는 동일 유지).",
   "Plasma splash": "플라즈마 스플래시"

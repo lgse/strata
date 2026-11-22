@@ -1618,6 +1618,7 @@
   "Independent transparency for raised chrome such as the sidebar, header, tab bar, and footer.": "側邊欄、標題列、分頁列與底列等浮層區域的獨立透明度。",
   "Frosted glass": "毛玻璃",
   "Apply backdrop blur and a subtle frosted sheen to translucent dialogs, menus, and popovers.": "為半透明對話框、選單與彈出面板套用背景模糊與細緻的霧面光澤。",
+  "Requires a compositor that supports backdrop blur and has it enabled.": "需要支援並已啟用背景模糊的合成器。",
   "Unfocused window multiplier": "失焦視窗倍率",
   "Multiply transparency when the window is unfocused (higher is more see-through; 1.00× keeps it unchanged).": "視窗失去焦點時對透明度套用的倍率（越高越通透，1.00× 維持不變）。",
   "Plasma splash": "電漿閃屏"

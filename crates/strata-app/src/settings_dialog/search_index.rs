@@ -402,7 +402,7 @@ const TARGETS: &[TargetDef] = &[
         "theme",
         "transparency",
         "Frosted glass",
-        "appearance frosted glass blur backdrop sheen translucent menus dialogs popovers",
+        "appearance frosted glass blur backdrop sheen translucent menus dialogs popovers compositor",
     ),
     row!(
         "unfocused-transparency",
