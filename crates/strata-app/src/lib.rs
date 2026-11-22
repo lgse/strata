@@ -20,6 +20,8 @@ mod events;
 mod folder_views;
 // Metadata fills for the rows a view shows, once per poll.
 mod fills;
+// GPU shader compositor for `El::effect` slots backed by `rune-fx`.
+mod fx;
 // The cursor and selection handover every view shares.
 mod handover;
 mod host;

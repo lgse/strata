@@ -88,6 +88,7 @@ strata-test-support = { version = "0.0.0", path = "crates/strata-test-support" }
 # the macOS-only `metal-backend` and `ogg-audio` (MPL-2.0 decoders).
 rune = { version = "0.0.1", git = "https://github.com/anomalyco/rune", rev = "7a707454fbfb8d3fd200723c65778fb7b98fd31e", default-features = false, features = ["accessibility", "dbus", "svg"] }
 rune-kit = { version = "0.0.1", git = "https://github.com/anomalyco/rune", rev = "7a707454fbfb8d3fd200723c65778fb7b98fd31e" }
+rune-fx = { version = "0.0.1", git = "https://github.com/anomalyco/rune", rev = "7a707454fbfb8d3fd200723c65778fb7b98fd31e" }
 
 strata-app = { version = "0.0.1", path = "crates/strata-app", default-features = false }
 strata-components = { version = "0.0.1", path = "crates/strata-components" }
@@ -111,6 +112,7 @@ wayland-client = "0.31"
 wayland-protocols = "0.32"
 wayland-protocols-misc = "0.3"
 wayland-protocols-wlr = "0.3"
+wgpu = { version = "30.0.1", default-features = false }
 x11rb = "0.13"
 xkbcommon = "0.9"
 zbus = { version = "6", default-features = false }

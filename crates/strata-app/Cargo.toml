@@ -35,7 +35,9 @@ qa = [
 # (docs/workspace.md). It never depends on gtk4, gdk4, sourceview5 or the `strata` package.
 [dependencies]
 rune.workspace = true
+rune-fx.workspace = true
 rune-kit.workspace = true
+wgpu.workspace = true
 strata-components.workspace = true
 strata-core.workspace = true
 strata-desktop = { workspace = true, features = ["xkb-keys"] }

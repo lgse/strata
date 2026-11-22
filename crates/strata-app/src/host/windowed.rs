@@ -310,6 +310,7 @@ fn window(ui: UiThread, start: Start) -> rune::App<App> {
         families: FAMILIES,
         ..AppSpec::new("Strata", SIZE, unused, shell::view)
     })
+    .compositor(crate::fx::FxCompositor::new())
     // The last write of the per-folder views, before the writer is flushed. A quit runs no
     // `on_close`, so both ask for it; it is written once.
     .on_close(|app: &mut App, _: &mut Tx| {
