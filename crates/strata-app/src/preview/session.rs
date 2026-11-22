@@ -9,7 +9,7 @@ use std::time::Duration;
 
 use rune::Tx;
 use strata_components::preview_drawer::HeaderInfo;
-use strata_core::model::FileEntry;
+use strata_core::model::{FileEntry, MetadataValue};
 
 use super::{load, preview_target, viewer::Viewer};
 use crate::{App, filter, shell};
@@ -86,6 +86,16 @@ pub(super) fn toggle(app: &mut App, entry: Option<FileEntry>, depth: Option<usiz
     }
 }
 
+fn same_preview_version(current: &FileEntry, next: &FileEntry) -> bool {
+    current.location == next.location
+        && !metadata_changed(&current.size, &next.size)
+        && !metadata_changed(&current.modified_unix_seconds, &next.modified_unix_seconds)
+}
+
+fn metadata_changed<T: PartialEq>(old: &MetadataValue<T>, new: &MetadataValue<T>) -> bool {
+    matches!((old, new), (MetadataValue::Known(a), MetadataValue::Known(b)) if a != b)
+}
+
 pub(super) fn show(app: &mut App, entry: FileEntry, depth: Option<usize>, tx: &mut Tx) {
     let other_file = app
         .preview
@@ -101,7 +111,11 @@ pub(super) fn show(app: &mut App, entry: FileEntry, depth: Option<usize>, tx: &m
     cancel_focus_timer(app);
     app.preview.click_opening = None;
     let was_open = app.preview.drawer.is_open();
-    let already_showing = app.preview.current.as_ref() == Some(&entry)
+    let already_showing = app
+        .preview
+        .current
+        .as_ref()
+        .is_some_and(|current| same_preview_version(current, &entry))
         && (app.preview.loader.is_active() || !app.preview.viewer.is_empty());
     app.preview.current_depth = depth;
     app.preview.current = Some(entry.clone());
@@ -126,7 +140,11 @@ pub(super) fn show_after_focus_change(
     tx: &mut Tx,
 ) {
     cancel_focus_timer(app);
-    let already_showing = app.preview.current.as_ref() == Some(&entry)
+    let already_showing = app
+        .preview
+        .current
+        .as_ref()
+        .is_some_and(|current| same_preview_version(current, &entry))
         && (app.preview.loader.is_active() || !app.preview.viewer.is_empty());
     if already_showing {
         return;
@@ -216,8 +234,7 @@ pub(super) fn clear_target(app: &mut App, tx: &mut Tx) {
     app.preview.current_depth = None;
     app.preview.header_source = None;
     app.preview.content_focus = super::ContentFocus::None;
-    app.preview.owns_focus = false;
-    app.preview.focus_pending = false;
+    super::clear_focus_handoff(app);
     app.preview.viewer.stop();
     app.preview.viewer = Viewer::Empty;
     app.preview.header = HeaderInfo::default();

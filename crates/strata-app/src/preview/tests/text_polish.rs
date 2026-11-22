@@ -590,3 +590,317 @@ fn tenxer_right_arrow_into_code_document_and_pdf_scrolls_and_returns() {
         },
     );
 }
+
+fn live_selected_text(host: &mut Offscreen) -> Option<String> {
+    let mut out = None;
+    host.runtime().update(|_: &mut App, tx: &mut Tx| {
+        if let Some(sel) = tx.text_selection() {
+            let text = sel.text();
+            if !text.is_empty() {
+                out = Some(text.to_owned());
+            }
+        }
+    });
+    out
+}
+
+fn drag_select(host: &mut Offscreen, from: (f32, f32), to: (f32, f32)) {
+    host.runtime().pointer_move(from.0, from.1);
+    while host.turn() {}
+    host.runtime().pointer_down(from.0, from.1);
+    while host.turn() {}
+    host.runtime().pointer_move(to.0, to.1);
+    while host.turn() {}
+    host.runtime().pointer_up(to.0, to.1);
+    while host.turn() {}
+}
+
+fn step_recording_owns_focus(host: &mut Offscreen, log: &mut Vec<bool>) {
+    for _ in 0..8 {
+        let worked = host.turn();
+        log.push(super::super::owns_focus(host.app()));
+        if !worked {
+            break;
+        }
+    }
+}
+
+fn assert_no_focus_bounce(samples: &[bool], context: &str) {
+    let mut seen_true = false;
+    let mut dropped_after_true = false;
+    for &on in samples {
+        if on {
+            assert!(
+                !dropped_after_true,
+                "{context}: owns_focus bounced true -> false -> true: {samples:?}"
+            );
+            seen_true = true;
+        } else if seen_true {
+            dropped_after_true = true;
+        }
+    }
+    assert!(
+        seen_true && !dropped_after_true,
+        "{context}: expected monotonic false -> true without drop: {samples:?}"
+    );
+}
+
+#[test]
+fn document_preview_context_menu_keeps_drawer_focused_and_selection_visible() {
+    hosted(
+        MODULE,
+        "text_polish::document_preview_context_menu_keeps_drawer_focused_and_selection_visible",
+        |mut host| {
+            let mem = attach_clipboard(&mut host);
+            let markdown =
+                "# Heading\n\nFirst paragraph alpha beta.\n\nSecond paragraph gamma delta.\n";
+            let folder = open_folder_with_files(&mut host, &[("notes.md", markdown)]);
+            select(&mut host, &Location::local(folder.path().join("notes.md")));
+            wait_for_rendered_document(&mut host);
+
+            // Focus the rendered document preview first so owns_focus starts true.
+            focus_view(&mut host);
+            press(&mut host, Key::Right, Mods::default());
+            assert_eq!(
+                focused_key(&mut host).as_deref(),
+                Some(document::DOCUMENT_KEY)
+            );
+            assert!(super::super::owns_focus(host.app()));
+
+            // Find the two rendered paragraph text elements inside DocumentView.
+            let find_text_rect = |host: &mut Offscreen, needle: &str| -> [f32; 4] {
+                host.runtime()
+                    .elements()
+                    .into_iter()
+                    .find(|el| {
+                        !el.exiting
+                            && el.text.as_deref().is_some_and(|t| t.contains(needle))
+                            && el.rect[2] > 10.0
+                            && el.rect[3] > 5.0
+                    })
+                    .unwrap_or_else(|| {
+                        panic!("expected rendered text element containing {needle:?}")
+                    })
+                    .rect
+            };
+
+            // 1. Single-paragraph drag selection.
+            let p1 = find_text_rect(&mut host, "First paragraph");
+            drag_select(
+                &mut host,
+                (p1[0] + 4.0, p1[1] + p1[3] * 0.5),
+                (p1[0] + p1[2] - 4.0, p1[1] + p1[3] * 0.5),
+            );
+            let single_sel =
+                live_selected_text(&mut host).expect("single-paragraph drag should select text");
+            assert!(
+                single_sel.contains("First paragraph"),
+                "unexpected single selection: {single_sel:?}"
+            );
+
+            // Right-click on the paragraph: owns_focus must NEVER drop and selection must stay
+            // live on EVERY frame while the menu is open.
+            let mut focus_trace = vec![super::super::owns_focus(host.app())];
+            let (rx, ry) = (p1[0] + p1[2] * 0.5, p1[1] + p1[3] * 0.5);
+            host.runtime().secondary_down(rx, ry);
+            step_recording_owns_focus(&mut host, &mut focus_trace);
+            host.runtime().secondary_up(rx, ry);
+            step_recording_owns_focus(&mut host, &mut focus_trace);
+            assert!(host.app().menu.state.is_open(), "preview menu should open");
+            assert!(
+                live_selected_text(&mut host).is_some(),
+                "single-paragraph selection must stay visible WHILE menu is open"
+            );
+            assert!(
+                focus_trace.iter().all(|&on| on),
+                "owns_focus must never drop while opening/holding preview menu: {focus_trace:?}"
+            );
+
+            // Escape closes the menu, keeping focus and selection intact.
+            host.runtime().key(rune::KeyEvent {
+                key: Key::Escape,
+                mods: Mods::default(),
+            });
+            step_recording_owns_focus(&mut host, &mut focus_trace);
+            assert!(!host.app().menu.state.is_open(), "Escape closes menu");
+            assert!(
+                live_selected_text(&mut host).is_some(),
+                "selection must stay after Escape"
+            );
+            assert!(
+                focus_trace.iter().all(|&on| on),
+                "owns_focus must never drop across Escape: {focus_trace:?}"
+            );
+
+            // 2. Multi-paragraph drag selection across paragraph 1 and paragraph 2.
+            let p2 = find_text_rect(&mut host, "Second paragraph");
+            drag_select(
+                &mut host,
+                (p1[0] + 4.0, p1[1] + p1[3] * 0.5),
+                (p2[0] + p2[2] - 4.0, p2[1] + p2[3] * 0.5),
+            );
+            let multi_sel =
+                live_selected_text(&mut host).expect("multi-paragraph drag should select text");
+            assert!(
+                multi_sel.contains("First paragraph") && multi_sel.contains("Second paragraph"),
+                "expected multi-paragraph selection, got: {multi_sel:?}"
+            );
+
+            let mut multi_trace = vec![super::super::owns_focus(host.app())];
+            host.runtime().secondary_down(rx, ry);
+            step_recording_owns_focus(&mut host, &mut multi_trace);
+            host.runtime().secondary_up(rx, ry);
+            step_recording_owns_focus(&mut host, &mut multi_trace);
+            assert!(host.app().menu.state.is_open());
+            let while_open = live_selected_text(&mut host)
+                .expect("multi-paragraph selection must remain live WHILE menu is open");
+            assert!(
+                while_open.contains("First paragraph") && while_open.contains("Second paragraph"),
+                "multi-paragraph selection truncated while open: {while_open:?}"
+            );
+
+            // Click Copy: copies full multi-paragraph selection and keeps selection + focus intact.
+            let (copy_x, copy_y) = element_center(&mut host, "menu-item0");
+            host.runtime().pointer_down(copy_x, copy_y);
+            step_recording_owns_focus(&mut host, &mut multi_trace);
+            host.runtime().pointer_up(copy_x, copy_y);
+            step_recording_owns_focus(&mut host, &mut multi_trace);
+            assert!(!host.app().menu.state.is_open());
+            let copied = clipboard_text(&mem).unwrap_or_default();
+            assert!(
+                copied.contains("First paragraph") && copied.contains("Second paragraph"),
+                "Copy should copy full multi-paragraph selection, got: {copied:?}"
+            );
+            assert!(
+                live_selected_text(&mut host).is_some(),
+                "multi-paragraph selection must stay visible after Copy"
+            );
+            assert!(
+                multi_trace.iter().all(|&on| on),
+                "owns_focus must stay true on every frame through Copy: {multi_trace:?}"
+            );
+
+            // Right-click again, then secondary-click outside on the scrim: dismisses cleanly
+            // while preserving multi-paragraph selection and preview focus.
+            secondary_click_at(&mut host, rx, ry);
+            assert!(host.app().menu.state.is_open());
+            secondary_click_at(&mut host, 10.0, 10.0);
+            assert!(
+                !host.app().menu.state.is_open(),
+                "secondary click outside should dismiss preview text menu"
+            );
+            assert!(live_selected_text(&mut host).is_some());
+            assert!(super::super::owns_focus(host.app()));
+        },
+    );
+}
+
+fn switch_to_list_view(host: &mut Offscreen) {
+    host.runtime().update(|app: &mut App, tx: &mut Tx| {
+        crate::commands::run(app, "view-list", crate::commands::On::Focus, tx);
+    });
+    while host.turn() {}
+}
+
+fn enter_preview_and_record_focus(
+    host: &mut Offscreen,
+    key: Key,
+    expected_focus: &str,
+) -> Vec<bool> {
+    let mut samples = vec![super::super::owns_focus(host.app())];
+    host.runtime().key(rune::KeyEvent {
+        key,
+        mods: Mods::default(),
+    });
+    let deadline = std::time::Instant::now() + PATIENCE;
+    let mut settled_frames = 0usize;
+    loop {
+        let worked = host.turn();
+        samples.push(super::super::owns_focus(host.app()));
+        let landed = focused_key(host).as_deref() == Some(expected_focus)
+            && super::super::owns_focus(host.app());
+        if landed {
+            settled_frames += 1;
+            if settled_frames >= 6 && !worked {
+                break;
+            }
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "timed out waiting for {expected_focus}; samples={samples:?}, focused={:?}",
+            focused_key(host)
+        );
+        if !worked {
+            host.wait(std::time::Duration::from_millis(10));
+        }
+    }
+    samples
+}
+
+#[test]
+fn tenxer_right_arrow_into_preview_focuses_monotonically_without_bounce() {
+    hosted(
+        MODULE,
+        "text_polish::tenxer_right_arrow_into_preview_focuses_monotonically_without_bounce",
+        |mut host| {
+            let folder = open_folder_with_files(
+                &mut host,
+                &[
+                    ("doc.md", "# Title\n\nBody paragraph.\n"),
+                    ("code.rs", "fn main() {}\n"),
+                ],
+            );
+            enable_tenxer(&mut host);
+
+            // 1. Columns, preview ALREADY open -> Right and l.
+            select(&mut host, &Location::local(folder.path().join("doc.md")));
+            wait_for_rendered_document(&mut host);
+            focus_view(&mut host);
+            assert!(!super::super::owns_focus(host.app()));
+
+            let samples =
+                enter_preview_and_record_focus(&mut host, Key::Right, document::DOCUMENT_KEY);
+            assert_no_focus_bounce(&samples, "Columns already-open Right");
+
+            press(&mut host, Key::Left, Mods::default());
+            assert!(!super::super::owns_focus(host.app()));
+
+            let samples = enter_preview_and_record_focus(
+                &mut host,
+                Key::Text("l".into()),
+                document::DOCUMENT_KEY,
+            );
+            assert_no_focus_bounce(&samples, "Columns already-open l");
+
+            // 2. Columns, preview CLOSED (opening fresh via Right) -> must not bounce!
+            press(&mut host, Key::Escape, Mods::default());
+            assert!(!host.app().preview.enabled);
+            focus_view(&mut host);
+            assert!(!super::super::owns_focus(host.app()));
+
+            let samples =
+                enter_preview_and_record_focus(&mut host, Key::Right, document::DOCUMENT_KEY);
+            assert_no_focus_bounce(&samples, "Columns fresh-open Right");
+
+            // 3. List view, preview ALREADY open -> Right.
+            switch_to_list_view(&mut host);
+            select(&mut host, &Location::local(folder.path().join("code.rs")));
+            wait_for_code_preview(&mut host);
+            focus_view(&mut host);
+            assert!(!super::super::owns_focus(host.app()));
+
+            let samples = enter_preview_and_record_focus(&mut host, Key::Right, CODE_KEY);
+            assert_no_focus_bounce(&samples, "List already-open Right");
+
+            // 4. List view, preview CLOSED (opening fresh via l) -> must not bounce!
+            press(&mut host, Key::Escape, Mods::default());
+            assert!(!host.app().preview.enabled);
+            focus_view(&mut host);
+            assert!(!super::super::owns_focus(host.app()));
+
+            let samples =
+                enter_preview_and_record_focus(&mut host, Key::Text("l".into()), CODE_KEY);
+            assert_no_focus_bounce(&samples, "List fresh-open l");
+        },
+    );
+}

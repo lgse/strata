@@ -1679,3 +1679,133 @@ fn stale_submenu_scroll_bars_are_drained_on_sibling_switch_and_model_truncation(
     // Top-level bar stays the same instance until the menu closes.
     assert_eq!(format!("{:?}", st.scroll_bar(0)), format!("{:?}", top_bar));
 }
+
+#[test]
+fn keeps_text_selection_menu_preserves_selection_and_handles_keys_and_scrim() {
+    struct SelectHost {
+        look: Look,
+        menu: ContextMenuState,
+        heard: Vec<String>,
+        dismissed: u32,
+    }
+
+    fn select_view(s: &SelectHost, _: &mut Cx<SelectHost>) -> El {
+        let mut layer = Vec::new();
+        let prose = rune::text("selectable preview text")
+            .key("prose")
+            .font(s.look.kit.ty.body)
+            .selectable(true);
+        let menu = ContextMenu::new(
+            "m",
+            |s: &SelectHost| &s.menu,
+            |s: &mut SelectHost| &mut s.menu,
+        )
+        .keeps_text_selection(true)
+        .on_intent(|s: &mut SelectHost, intent, _| match intent {
+            MenuIntent::Activate { action, .. } => s.heard.push(action.to_string()),
+        })
+        .on_dismiss(|s: &mut SelectHost, _| s.dismissed += 1)
+        .build(s, &s.look, &mut layer);
+        rune_kit::root(col().size(W, H).child(prose).child(menu), layer)
+    }
+
+    let mut rt = Runtime::new(
+        SelectHost {
+            look: Look::fallback(false),
+            menu: ContextMenuState::new(),
+            heard: Vec::new(),
+            dismissed: 0,
+        },
+        select_view,
+        (W, H),
+        Env::new(false, 1.0),
+    );
+    rt.frame(0.0);
+    rt.frame(1.0 / 60.0);
+
+    let text_model = || {
+        MenuModel::new().section(Section::new([
+            Item::new("copy", "Copy"),
+            Item::new("select-all", "Select All"),
+        ]))
+    };
+
+    // Select a range inside `prose`, then open the non-modal `keeps_text_selection` menu.
+    rt.update(|s, tx| {
+        tx.select_text("prose", 0..10);
+        s.menu
+            .open(MenuTarget::Background, Point::new(40.0, 40.0), text_model());
+        tx.focus("m-menu", false);
+    });
+    for _ in 0..4 {
+        rt.frame(1.0 / 60.0);
+    }
+    assert!(rt.state.menu.is_open());
+    assert_eq!(rt.selected_text().as_deref(), Some("selectable"));
+
+    // Escape closes the non-modal menu while keeping the underlying selection intact.
+    rt.key(KeyEvent {
+        key: Key::Escape,
+        mods: Mods::default(),
+    });
+    for _ in 0..4 {
+        rt.frame(1.0 / 60.0);
+    }
+    assert!(!rt.state.menu.is_open());
+    assert_eq!(rt.state.dismissed, 1);
+    assert_eq!(rt.selected_text().as_deref(), Some("selectable"));
+
+    // Reopen, then secondary-click outside on the scrim: dismisses while keeping selection.
+    rt.update(|s, tx| {
+        s.menu
+            .open(MenuTarget::Background, Point::new(40.0, 40.0), text_model());
+        tx.focus("m-menu", false);
+    });
+    for _ in 0..4 {
+        rt.frame(1.0 / 60.0);
+    }
+    rt.secondary_down(W - 10.0, H - 10.0);
+    for _ in 0..4 {
+        rt.frame(1.0 / 60.0);
+    }
+    rt.secondary_up(W - 10.0, H - 10.0);
+    for _ in 0..4 {
+        rt.frame(1.0 / 60.0);
+    }
+    assert!(!rt.state.menu.is_open());
+    assert_eq!(rt.state.dismissed, 2);
+    assert_eq!(rt.selected_text().as_deref(), Some("selectable"));
+
+    // Reopen, navigate with Down and activate Select All with Enter.
+    rt.update(|s, tx| {
+        s.menu
+            .open(MenuTarget::Background, Point::new(40.0, 40.0), text_model());
+        tx.focus("m-menu", false);
+    });
+    for _ in 0..4 {
+        rt.frame(1.0 / 60.0);
+    }
+    rt.key(KeyEvent {
+        key: Key::Down,
+        mods: Mods::default(),
+    });
+    for _ in 0..4 {
+        rt.frame(1.0 / 60.0);
+    }
+    rt.key(KeyEvent {
+        key: Key::Down,
+        mods: Mods::default(),
+    });
+    for _ in 0..4 {
+        rt.frame(1.0 / 60.0);
+    }
+    rt.key(KeyEvent {
+        key: Key::Enter,
+        mods: Mods::default(),
+    });
+    for _ in 0..4 {
+        rt.frame(1.0 / 60.0);
+    }
+    assert!(!rt.state.menu.is_open());
+    assert_eq!(rt.state.heard, ["select-all"]);
+}

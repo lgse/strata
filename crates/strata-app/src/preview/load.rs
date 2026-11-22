@@ -395,18 +395,21 @@ pub(super) fn on_event(
             app.preview.loader.active_load = None;
             app.preview.loader.current_request = None;
             render_ready(app, loaded, tx);
+            super::wake_if_focus_handoff(app, tx);
             true
         }
         PreviewEvent::NeedsPassword { entry, .. } => {
             app.preview.loader.active_load = None;
             app.preview.loader.current_request = None;
             render_password_prompt(app, (expected, &entry), None, tx);
+            super::wake_if_focus_handoff(app, tx);
             true
         }
         PreviewEvent::Failed { entry, message, .. } => {
             app.preview.loader.active_load = None;
             app.preview.loader.current_request = None;
             render_failed(app, (expected, &entry), &message, tx);
+            super::wake_if_focus_handoff(app, tx);
             true
         }
     }
