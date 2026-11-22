@@ -5,9 +5,7 @@
 use std::rc::Rc;
 
 use rune::{El, KeyEvent, LiveRegion, TextEdit, Tx, col, row, text, text_input};
-use rune_kit::{
-    Button, ButtonVariant, ControlSize, IconButton, IconButtonVariant, SegmentedControl, State,
-};
+use rune_kit::{Button, ButtonVariant, ControlSize, IconButton, IconButtonVariant};
 use strata_kit::icons::IconName;
 use strata_kit::look::Look;
 
@@ -15,6 +13,7 @@ use super::labels::MountLabels;
 use super::request::{
     Choice, MountResponse, ProcessesRequest, PromptField, QuestionRequest, Remember, Secret,
 };
+use super::segmented::{self, SegmentedSpec};
 use super::state::{MountPromptState, PasswordPrompt, Prompt};
 use crate::contract::Point;
 use crate::dialog::{Focus, MESSAGE_WIDTH, StrataDialog, Tone};
@@ -162,7 +161,6 @@ impl<S: 'static, T: 'static> MountPrompts<S, T> {
 
     fn password(&self, look: &Look, p: &PasswordPrompt, attempt: u64, layer: &mut Vec<El>) {
         let (l, r, f) = (&*self.labels, &p.request, &p.form);
-        let kit = &look.kit;
         let dk = format!("{}-password", self.key);
         let title = match r.secret {
             Secret::Password => &l.sign_in_title,
@@ -181,32 +179,26 @@ impl<S: 'static, T: 'static> MountPrompts<S, T> {
             d = d.message(r.message.clone());
         }
         if let Some(error) = &r.error {
-            d = d.child(
-                text(error.clone())
-                    // A new node per refusal, so a second one is heard as well.
-                    .key(format!("{dk}-error-{attempt}"))
-                    .font(kit.ty.ui)
-                    .color(kit.c.danger.fg)
-                    .wrap()
-                    .live_region(LiveRegion::Polite),
-            );
+            d = d.child(error_banner(look, format!("{dk}-error-{attempt}"), error));
         }
         let off = f.anonymous && r.anonymous_allowed;
         if r.anonymous_allowed {
             let get_mut = self.get_mut.clone();
-            let pick = SegmentedControl::new(
-                &[l.registered.as_str(), l.anonymous.as_str()],
-                Some(usize::from(f.anonymous)),
-            )
-            .label(l.connect_as.clone())
-            .fit()
-            .on_pick(move |s: &mut S, i: usize, _tx: &mut Tx| {
-                if let Some(form) = get_mut(s).password_form_mut() {
-                    form.anonymous = i == 1;
-                }
-            })
-            .build(kit)
-            .key(format!("{dk}-connect-as"));
+            let pick = segmented::build(
+                look,
+                SegmentedSpec {
+                    key: format!("{dk}-connect-as"),
+                    group_label: l.connect_as.clone(),
+                    labels: &[l.registered.as_str(), l.anonymous.as_str()],
+                    selected: usize::from(f.anonymous),
+                    disabled: false,
+                },
+                move |s: &mut S, i: usize, _tx: &mut Tx| {
+                    if let Some(form) = get_mut(s).password_form_mut() {
+                        form.anonymous = i == 1;
+                    }
+                },
+            );
             d = d.child(group(look, &l.connect_as, pick));
         }
         let mut fields = col().w_full().gap(look.space.md);
@@ -255,27 +247,22 @@ impl<S: 'static, T: 'static> MountPrompts<S, T> {
         }
         if r.saving_allowed {
             let get_mut = self.get_mut.clone();
-            let mut pick = SegmentedControl::new(
-                &[l.never.as_str(), l.session.as_str(), l.forever.as_str()],
-                Some(f.remember.index()),
-            )
-            .label(l.storage.clone())
-            .fit()
-            .on_pick(move |s: &mut S, i: usize, _tx: &mut Tx| {
-                if let Some(form) = get_mut(s).password_form_mut() {
-                    form.remember = Remember::ALL.get(i).copied().unwrap_or_default();
-                }
-            });
-            if off {
-                for i in 0..Remember::ALL.len() {
-                    pick = pick.segment_state(i, State::Disabled);
-                }
-            }
-            d = d.child(group(
+            let pick = segmented::build(
                 look,
-                &l.storage,
-                pick.build(kit).key(format!("{dk}-remember")),
-            ));
+                SegmentedSpec {
+                    key: format!("{dk}-remember"),
+                    group_label: l.storage.clone(),
+                    labels: &[l.never.as_str(), l.session.as_str(), l.forever.as_str()],
+                    selected: f.remember.index(),
+                    disabled: off,
+                },
+                move |s: &mut S, i: usize, _tx: &mut Tx| {
+                    if let Some(form) = get_mut(s).password_form_mut() {
+                        form.remember = Remember::ALL.get(i).copied().unwrap_or_default();
+                    }
+                },
+            );
+            d = d.child(group(look, &l.storage, pick));
         }
         // Strata's `focus_first`: a field the form focused, else Connect.
         let on_field = (r.needs_user && r.default_user.is_empty()) || r.needs_password;
@@ -382,6 +369,7 @@ impl<S: 'static, T: 'static> MountPrompts<S, T> {
                 .build(&look.accent_icon_kit())
                 // The field stays the Tab stop, as GTK's peek icon is no stop of its own.
                 .focusable(false)
+                .no_focus_ring()
                 .key(format!("{dk}-reveal")),
             );
         }
@@ -574,4 +562,23 @@ fn group(look: &Look, label: &str, control: El) -> El {
                 .a11y_hidden(),
         )
         .child(control)
+}
+
+/// Refusal banner matching GTK's `.authentication-error` (`src/style.css`).
+fn error_banner(look: &Look, key: String, error: &str) -> El {
+    let kit = &look.kit;
+    let danger = kit.c.danger.fg;
+    text(error.to_owned())
+        // A new node per refusal, so a second one is heard as well.
+        .key(key)
+        .w_full()
+        .px(9.0)
+        .py(7.0)
+        .radius(kit.radius.sm)
+        .fill(kit.alpha(danger, danger.a * 0.10))
+        .border(1.0, kit.alpha(danger, danger.a * 0.50))
+        .font(kit.ty.small)
+        .color(danger)
+        .wrap()
+        .live_region(LiveRegion::Polite)
 }

@@ -550,11 +550,16 @@ impl<S: 'static> StrataDialog<S> {
 }
 
 fn icon_box(look: &Look, name: IconName, danger: bool) -> El {
-    let c = &look.kit.c;
+    let kit = &look.kit;
+    let c = &kit.c;
     let (fill, border, ink) = if danger {
         (c.danger.bg, c.danger.border, c.danger.icon)
     } else {
-        (c.layer_02, c.border_base, c.icon_accent)
+        (
+            kit.alpha(look.fill.highlight, look.fill.highlight.a * 0.64),
+            kit.alpha(c.bg_accent, c.bg_accent.a * 0.24),
+            c.icon_accent,
+        )
     };
     el().size(ICON_BOX, ICON_BOX)
         .radius(look.round(ICON_BOX_RADIUS))
