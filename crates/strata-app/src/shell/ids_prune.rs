@@ -27,6 +27,10 @@ pub(super) fn prune_if_needed(app: &App) {
     if !can_prune(app) {
         return;
     }
+    prune_now(app);
+}
+
+fn prune_now(app: &App) {
     let mut keep = HashSet::new();
     collect_live_ids(app, &mut keep);
     let dropped = app.window.ids.retain_ids(&keep);
@@ -59,3 +63,6 @@ fn collect_live_ids(app: &App, keep: &mut HashSet<EntryId>) {
     app.window.worn.collect_ids(keep);
     app.clipboard.collect_ids(keep);
 }
+
+#[cfg(test)]
+mod tests;

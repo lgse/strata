@@ -642,8 +642,8 @@ fn parallel_sort_matches_reference_comparator_and_preserves_stability() {
         "IMG_", "img_", "DSC", "photo", "a", "0", "00", "café_", "ß_", "README",
     ];
     let exts = ["jpg", "JPG", "png", "webp", "txt"];
-    let mut entries = Vec::with_capacity(10_000);
-    for i in 0..10_000_usize {
+    let mut entries = Vec::with_capacity(20_000);
+    for i in 0..20_000_usize {
         let prefix = prefixes[(i * 7 + 3) % prefixes.len()];
         let num = (i * 997) % 1_500;
         let ext = exts[(i * 13) % exts.len()];

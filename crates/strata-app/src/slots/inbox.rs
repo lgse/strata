@@ -81,8 +81,9 @@ struct Queue<S> {
     queued: HashMap<TabKey, u64>,
     heard: u64,
     copied: u64,
-    /// Set when a non-empty `EntriesReplaced` lands so the host lets Rune paint the first
-    /// visible rows before dispatching staged tail chunks in the same GLib pump.
+    /// Set when a staged `EntriesReplaced` lands with tail chunks still pending, so the host
+    /// lets Rune paint the first visible rows before draining staged tail chunks in the same
+    /// GLib pump. Cleared if `LoadFinished` or `SortingFinished` arrives before the yield.
     yield_paint: bool,
 }
 
@@ -245,8 +246,19 @@ impl<S: 'static> Inbox<S> {
         let mut queue = self.0.borrow_mut();
         queue.heard += 1;
         queue.copied += batch.copied;
-        if matches!(event, BrowserEvent::EntriesReplaced { count, .. } if *count > 0) {
-            queue.yield_paint = true;
+        match event {
+            BrowserEvent::EntriesReplaced { depth, count }
+                if *count > 0
+                    && browser
+                        .with_column_entries(*depth, |entries| entries.len() > *count)
+                        .unwrap_or(false) =>
+            {
+                queue.yield_paint = true;
+            }
+            BrowserEvent::LoadFinished { .. } | BrowserEvent::SortingFinished { .. } => {
+                queue.yield_paint = false;
+            }
+            _ => {}
         }
         if let Some(tab) = tab {
             *queue.queued.entry(tab).or_default() += batch.updates.len() as u64;
@@ -283,8 +295,9 @@ impl<S: 'static> Inbox<S> {
         self.0.borrow().updates.is_empty()
     }
 
-    /// Returns `true` once after a non-empty `EntriesReplaced` arrived, clearing the flag so
-    /// the host yields to Rune to paint the initial visible rows before draining tail chunks.
+    /// Returns `true` once after a staged `EntriesReplaced` arrived with tail chunks still
+    /// pending, clearing the flag so the host yields to Rune to paint the initial visible rows
+    /// before draining tail chunks.
     pub(crate) fn take_yield_paint(&self) -> bool {
         std::mem::take(&mut self.0.borrow_mut().yield_paint)
     }

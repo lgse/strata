@@ -391,6 +391,12 @@ impl Moving {
     pub(crate) fn forget(&mut self, listed: impl Fn(EntryId) -> bool) {
         self.pending.retain(|entry| listed(entry.from));
     }
+
+    /// Appends every [`EntryId`] referenced by pending renames (`from` and `to`) into `out`,
+    /// so id-table pruning does not evict an in-flight rename target before its row arrives.
+    pub(crate) fn collect_ids(&self, out: &mut impl Extend<EntryId>) {
+        out.extend(self.pending.iter().flat_map(|entry| [entry.from, entry.to]));
+    }
 }
 
 #[cfg(test)]

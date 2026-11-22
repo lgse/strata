@@ -128,7 +128,8 @@ impl Pane {
         self.restore.share(memory);
     }
 
-    /// Appends every [`EntryId`] referenced by this pane's listings into `out`.
+    /// Appends every [`EntryId`] referenced by this pane's listings, kept selection neighbour,
+    /// or pending renames into `out`.
     pub(crate) fn collect_ids(&self, out: &mut impl Extend<EntryId>) {
         for column in &self.columns {
             column.collect_ids(out);
@@ -136,6 +137,7 @@ impl Pane {
         if let Some(id) = self.kept.id() {
             out.extend(std::iter::once(id));
         }
+        self.moving.collect_ids(out);
     }
 
     pub(crate) fn new(scope: &'static str, collection: CollectionState) -> Self {

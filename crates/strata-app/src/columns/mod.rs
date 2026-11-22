@@ -562,8 +562,8 @@ impl Columns {
         surface | spinner
     }
 
-    /// Appends every [`EntryId`] referenced by open columns, active filter hits, or kept
-    /// selection neighbours into `out`.
+    /// Appends every [`EntryId`] referenced by open columns, active filter hits, kept
+    /// selection neighbours, or pending renames into `out`.
     pub(crate) fn collect_ids(&self, out: &mut impl Extend<EntryId>) {
         self.listings.collect_ids(out);
         for kept in &self.kept {
@@ -571,6 +571,7 @@ impl Columns {
                 out.extend(std::iter::once(id));
             }
         }
+        self.moving.collect_ids(out);
     }
 }
 

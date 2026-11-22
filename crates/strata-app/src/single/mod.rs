@@ -428,11 +428,24 @@ pub(crate) fn wheeled_over_grid<V: SinglePane>(app: &mut App, e: WheelEvent, tx:
 pub(crate) fn listen<V: SinglePane>(setup: &Setup<'_>) -> Option<Listener<App>> {
     let ids = setup.ids.clone();
     Some(Box::new(move |event, browser, heard| {
-        if matches!(event, strata_fs::app::BrowserEvent::FolderCountsInvalidated) {
-            heard.then(|app: &mut App, _: &mut Tx| {
-                V::fills_mut(app).invalidate();
-                true
-            });
+        match event {
+            strata_fs::app::BrowserEvent::FolderCountsInvalidated => {
+                heard.then(|app: &mut App, _: &mut Tx| {
+                    V::fills_mut(app).invalidate();
+                    true
+                });
+            }
+            strata_fs::app::BrowserEvent::ColumnReloaded { depth }
+            | strata_fs::app::BrowserEvent::ColumnRefreshing { depth } => {
+                let depth = *depth;
+                heard.then(move |app: &mut App, _: &mut Tx| {
+                    if pane::<V>(app).depth() == Some(depth) {
+                        V::fills_mut(app).invalidate();
+                    }
+                    true
+                });
+            }
+            _ => {}
         }
         let read = events::read(event, browser, &ids);
         heard.copied(read.copied);

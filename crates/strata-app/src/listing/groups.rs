@@ -55,7 +55,7 @@ impl GroupedBuckets {
         }
         let desc = group.description();
         let insert_at = self.buckets.partition_point(|(existing, _)| {
-            compare_type_groups(&existing.description(), &desc, preferences).is_lt()
+            compare_type_groups(&existing.description(), &desc, preferences).is_le()
         });
         self.buckets.insert(insert_at, (group, vec![position]));
         self.reindex_lookup();
