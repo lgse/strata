@@ -58,6 +58,10 @@ pub(super) fn shell<S: 'static>(sh: &Rc<Shared<S>>, s: &S, depth: usize) -> El {
     } else {
         String::new()
     };
+    // Earlier columns paint after later ones so each column's right resize edge (which reaches
+    // `EDGE_REACH` onto the next column) paints and hit-tests above its right neighbour without
+    // calling `.raise()`, keeping Rune's window-wide `PaintKeep` active.
+    let order = n.saturating_sub(depth).min(i16::MAX as usize) as i16;
     let mut shell = col()
         .key(keys::slot(&st.key, c.slot))
         .role("group")
@@ -66,6 +70,7 @@ pub(super) fn shell<S: 'static>(sh: &Rc<Shared<S>>, s: &S, depth: usize) -> El {
         .w(w)
         .h_full()
         .min_h(0.0)
+        .paint_order(order)
         .drawn_rect_into(&c.drawn)
         .transition(shell_motion)
         .child(body);
@@ -107,7 +112,7 @@ pub(super) fn shell<S: 'static>(sh: &Rc<Shared<S>>, s: &S, depth: usize) -> El {
                     Some(EDGE_REACH + look.space.xs),
                     None,
                 )
-                .raise(),
+                .paint_order(2),
         );
     }
     if st.drop_column() == Some(depth) {
@@ -214,7 +219,7 @@ fn edge<S: 'static>(sh: &Rc<Shared<S>>, st: &ColumnsState, spec: EdgeSpec<'_>, l
         .w(2.0 * EDGE_REACH)
         .cursor(Cursor::ResizeColumn)
         .a11y_hidden()
-        .raise()
+        .paint_order(1)
         .hover_group()
         .hover_motion(Anim::INSTANT, Anim::INSTANT)
         .on_hover_change(move |s: &mut S, inside: bool, tx: &mut Tx| {

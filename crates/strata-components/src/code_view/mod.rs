@@ -353,11 +353,7 @@ impl<S: 'static> CodeView<S> {
                 get_mut(s).set_visible(r);
                 false
             })
-            .selection_copy(move |sel| Some(content.copy(sel)))
-            .on_selection_change(move |s: &mut S, change, tx| {
-                get_mut(s).selection_changed(change.selection());
-                tx.live_only();
-            });
+            .selection_copy(move |sel| Some(content.copy(sel)));
         let (pos, sideways) = (st.position.clone(), st.sideways.clone());
         let pos_vp = st.position.clone();
         let viewport = col()
@@ -375,7 +371,12 @@ impl<S: 'static> CodeView<S> {
             .on_layout_tx(move |_: &mut S, rect, tx: &mut Tx| {
                 tx.live_only();
                 pos_vp.viewport(rect);
-            });
+            })
+            .on_background_press_tx(move |s: &mut S, tx: &mut Tx| {
+                get_mut(s).on_pointer_press();
+                tx.live_only();
+            })
+            .press_on_down();
         let viewport = if wrap { viewport } else { viewport.scroll_xy() };
         let viewport = viewport.child(list);
         let body = build_viewport_body::<S>(
@@ -419,15 +420,24 @@ impl<S: 'static> CodeView<S> {
         }
         for notice in st.notices() {
             root = root.child(
-                text(notice.clone())
-                    .wrap()
+                col()
                     .w_full()
-                    .font(paint.small)
-                    .color(paint.muted)
-                    .px(paint.pad)
-                    .py(look.space.sm)
-                    .selectable(true)
-                    .selection_color(paint.selection),
+                    .on_background_press_tx(move |s: &mut S, tx: &mut Tx| {
+                        get_mut(s).on_pointer_press();
+                        tx.live_only();
+                    })
+                    .press_on_down()
+                    .child(
+                        text(notice.clone())
+                            .wrap()
+                            .w_full()
+                            .font(paint.small)
+                            .color(paint.muted)
+                            .px(paint.pad)
+                            .py(look.space.sm)
+                            .selectable(true)
+                            .selection_color(paint.selection),
+                    ),
             );
         }
         root.child(body)
@@ -561,7 +571,7 @@ fn position_bar<S: 'static>(
         })
         .on_step_limit(move |s: &mut S, end, tx| {
             let p = get_mut(s).position.clone();
-            p.go(if end { f64::INFINITY } else { 0.0 }, tx);
+            p.go_step(if end { f64::INFINITY } else { 0.0 }, tx);
         })
         .on_key(move |s: &mut S, ev: &KeyEvent, tx: &mut Tx| {
             // Down and Page Down move toward the end, as a vertical scroll bar's keys do (a
@@ -671,15 +681,18 @@ fn scroll_key_in(st: &CodeState, ev: &KeyEvent, document_home_end: bool, tx: &mu
     }
 }
 
-fn copy_shortcut(st: &CodeState, ev: &KeyEvent, plain: bool, tx: &mut Tx) -> bool {
+fn copy_shortcut(st: &mut CodeState, ev: &KeyEvent, plain: bool, tx: &mut Tx) -> bool {
     if !(ev.is_command('c') && plain) {
         return false;
     }
     if st.all_selected() {
-        tx.copy(st.copy_all());
-        return true;
+        if tx.text_selection().is_some_and(|sel| st.reads_whole(sel)) {
+            tx.copy(st.copy_all());
+            return true;
+        }
+        st.clear_all_selected();
     }
-    if let Some(text) = st.copy_keyboard() {
+    if let Some(text) = st.copy_keyboard_if_valid(tx.text_selection()) {
         tx.copy(text);
         return true;
     }

@@ -18,6 +18,7 @@ use crate::document_view::Folded;
 use crate::scroll::BarLook;
 
 mod perf;
+mod selection_perf;
 
 fn rows(text: &str) -> Rows {
     Rows::new(Arc::from(text))

@@ -8,17 +8,20 @@
 //! A selection reaching more than 10,000 unbuilt rows is cut short there by Rune (R4, C11), so
 //! its far end is wrong; Ctrl+A is copied whole from the model instead.
 
-use rune::TextSelection;
+use rune::{SelectedText, TextSelection};
 
 use super::state::Content;
 
 /// The row of a selected text, from its path (`…/{key}-l{row}/…/t`).
 pub(crate) fn locate(key: &str, path: &str) -> Option<usize> {
-    let prefix = format!("{key}-l");
     let mut row = None;
     let mut last = "";
     for seg in path.split('/') {
-        if let Some(n) = seg.strip_prefix(&prefix).and_then(|n| n.parse().ok()) {
+        if let Some(n) = seg
+            .strip_prefix(key)
+            .and_then(|rest| rest.strip_prefix("-l"))
+            .and_then(|n| n.parse().ok())
+        {
             row = Some(n);
         }
         last = seg;
@@ -26,31 +29,64 @@ pub(crate) fn locate(key: &str, path: &str) -> Option<usize> {
     (last == "t").then_some(row?)
 }
 
-/// The text bytes a selection covers, if any of it is the view's.
-pub(crate) fn span(c: &Content, sel: &TextSelection) -> Option<(usize, usize)> {
-    let mut out: Option<(usize, usize)> = None;
-    for t in sel.texts().iter().filter(|t| t.is_selected()) {
-        let Some(r) = locate(&c.key, t.path()).filter(|&r| r < c.rows.len()) else {
-            continue;
-        };
-        let row = c.rows.row(r);
-        let len = row.end - row.start;
-        let range = t.range();
-        let a = row.start + range.start.min(len);
-        let b = row.start + range.end.min(len);
-        out = Some(out.map_or((a, b), |(lo, hi)| (lo.min(a), hi.max(b))));
+fn row_bounds(c: &Content, t: &SelectedText) -> Option<(usize, usize)> {
+    if !t.is_selected() {
+        return None;
     }
-    out
+    let r = locate(&c.key, t.path()).filter(|&r| r < c.rows.len())?;
+    let row = c.rows.row(r);
+    let len = row.end - row.start;
+    let range = t.range();
+    Some((
+        row.start + range.start.min(len),
+        row.start + range.end.min(len),
+    ))
+}
+
+/// The text bytes a selection covers, if any of it is the view's.
+///
+/// Rune hands over selected texts in tree order, so inspecting only the first and last texts
+/// belonging to this view gives the exact covered byte span in O(1) without scanning interior
+/// rows.
+pub(crate) fn span(c: &Content, sel: &TextSelection) -> Option<(usize, usize)> {
+    let texts = sel.texts();
+    let (first_a, first_b) = texts.iter().find_map(|t| row_bounds(c, t))?;
+    let (last_a, last_b) = texts.iter().rev().find_map(|t| row_bounds(c, t))?;
+    Some((first_a.min(last_a), first_b.max(last_b)))
+}
+
+/// Whether `sel` still matches the single-row Rune selection requested by
+/// [`super::state::CodeState::apply_caret`] for `c.keyboard_range`.
+pub(crate) fn matches_expected(c: &Content, sel: Option<&TextSelection>) -> bool {
+    if c.keyboard_range.get().is_none() {
+        return false;
+    }
+    match c.expected_select.get() {
+        None => sel.is_none_or(|s| span(c, s).is_none()),
+        Some((r, a, b)) => {
+            let Some(sel) = sel else {
+                return false;
+            };
+            let mut selected = sel.texts().iter().filter(|t| t.is_selected());
+            let Some(first) = selected.next() else {
+                return false;
+            };
+            selected.next().is_none()
+                && locate(&c.key, first.path()) == Some(r)
+                && first.range() == (a..b)
+        }
+    }
 }
 
 pub(crate) fn copy(c: &Content, sel: &TextSelection) -> String {
-    if c.all.get() {
+    if c.all.get() && reads_whole(c, sel) {
         return c.rows.text.to_string();
     }
-    if let Some((a, b)) = c
-        .keyboard_range
-        .get()
-        .filter(|(a, b)| a < b && *b <= c.rows.text.len())
+    if matches_expected(c, Some(sel))
+        && let Some((a, b)) = c
+            .keyboard_range
+            .get()
+            .filter(|(a, b)| a < b && *b <= c.rows.text.len())
     {
         return c.rows.text[a..b].to_owned();
     }
@@ -68,21 +104,29 @@ const RUNE_BYTES: usize = 4 << 20;
 /// Whether `sel` reads as the whole text: every selected text whole, from the first row with
 /// text to the last, or to where Rune's collection stops (R4).
 pub(crate) fn reads_whole(c: &Content, sel: &TextSelection) -> bool {
-    let selected: Vec<_> = sel.texts().iter().filter(|t| t.is_selected()).collect();
-    let (Some(first), Some(last)) = (selected.first(), selected.last()) else {
-        return false;
-    };
-    if !selected.iter().all(|t| t.is_whole()) {
-        return false;
-    }
     let Some((head, tail)) = c.ends else {
         return false;
     };
-    if locate(&c.key, first.path()) != Some(head) {
+    let mut first_path = None;
+    let mut last_path = None;
+    let mut bytes = 0usize;
+    for t in sel.texts().iter().filter(|t| t.is_selected()) {
+        if !t.is_whole() {
+            return false;
+        }
+        if first_path.is_none() {
+            first_path = Some(t.path());
+        }
+        last_path = Some(t.path());
+        bytes += t.len();
+    }
+    let (Some(first_path), Some(last_path)) = (first_path, last_path) else {
+        return false;
+    };
+    if locate(&c.key, first_path) != Some(head) {
         return false;
     }
-    let bytes: usize = selected.iter().map(|t| t.len()).sum();
-    let Some(end) = locate(&c.key, last.path()) else {
+    let Some(end) = locate(&c.key, last_path) else {
         return false;
     };
     // Rune's cap counts rows, empty ones too, which have no selected text.
