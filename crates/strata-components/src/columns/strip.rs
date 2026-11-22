@@ -23,6 +23,7 @@ pub(super) fn build<S: 'static>(sh: &Rc<Shared<S>>, s: &S) -> El {
         .w_full()
         .h_full()
         .min_w(0.0)
+        .min_h(0.0)
         .scroll_x()
         .drawn_rect_into(&st.strip_drawn)
         .on_scroll_offset(move |pos| {
@@ -33,9 +34,10 @@ pub(super) fn build<S: 'static>(sh: &Rc<Shared<S>>, s: &S) -> El {
             let p = (layout.parts_mut)(s);
             p.state.strip = Rect::from(r);
             let clipped_changed = p.state.sync_clipped(p.look);
+            let overflow_changed = p.state.sync_strip_overflow(p.look);
             if p.state.reveal_after_layout {
                 p.state.reveal(p.look, tx);
-            } else if !clipped_changed {
+            } else if !clipped_changed && !overflow_changed {
                 tx.live_only();
             }
         })
