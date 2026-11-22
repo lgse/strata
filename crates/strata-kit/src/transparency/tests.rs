@@ -219,3 +219,53 @@ fn apply_params_is_idempotent_across_zero_alpha_and_re_disabling() {
     assert_eq!(look.kit.c.bg_deep, base.kit.c.bg_deep);
     assert_eq!(look.kit.c.layer_01, base.kit.c.layer_01);
 }
+
+#[test]
+fn frosted_glass_preserves_theme_surface_rgb_and_border_chroma() {
+    let theme = crate::theme::Library::new(Vec::new())
+        .resolve(Some("catppuccin-mocha"))
+        .clone();
+    let base = theme.look();
+    let mut look = base.clone();
+    look.apply_params(&LookParams {
+        transparency: TransparencyParams {
+            enabled: true,
+            background_percent: 25,
+            raised_percent: 20,
+            frosted_glass: true,
+            unfocused_multiplier: 1.0,
+            window_active: true,
+        },
+        ..LookParams::default()
+    });
+
+    for (got, want) in [
+        (look.kit.c.page, base.kit.c.page),
+        (look.kit.c.bg_base, base.kit.c.bg_base),
+        (look.kit.c.bg_deep, base.kit.c.bg_deep),
+        (look.kit.c.surface_raised, base.kit.c.surface_raised),
+        (
+            look.kit.c.surface_raised_base,
+            base.kit.c.surface_raised_base,
+        ),
+        (look.kit.c.surface_weak, base.kit.c.surface_weak),
+        (look.kit.c.layer_01, base.kit.c.layer_01),
+        (look.kit.c.layer_02, base.kit.c.layer_02),
+        (look.kit.c.layer_03, base.kit.c.layer_03),
+        (look.kit.c.layer_04, base.kit.c.layer_04),
+    ] {
+        approx(got.r, want.r);
+        approx(got.g, want.g);
+        approx(got.b, want.b);
+    }
+
+    let base_border = base.kit.c.border_base;
+    let frosted = look.transparency.frosted_border(base_border);
+    let [l0, a0, b0, _] = base_border.to_oklab();
+    let [l1, a1, b1, _] = frosted.to_oklab();
+    assert!(
+        l1 > l0 && l1 <= l0 + 0.08,
+        "expected gentle OKLab lift: {l0} -> {l1}"
+    );
+    assert!((a1 - a0).abs() < 0.01 && (b1 - b0).abs() < 0.01);
+}

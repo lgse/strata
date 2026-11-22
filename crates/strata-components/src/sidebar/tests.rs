@@ -747,3 +747,193 @@ fn device_eject_button_heading_toggle_and_pending_row_behave_cleanly() {
         ]
     );
 }
+
+fn overflowing_sidebar_host() -> MountedHost {
+    let look = strata_kit::look::Look::default();
+    let places = (0..6)
+        .map(|i| Place::folder(format!("p{i}"), format!("Place {i}"), IconName::Folder))
+        .collect();
+    let pins = (0..6)
+        .map(|i| Pin::new(format!("pin{i}"), format!("Pin {i}")))
+        .collect();
+    let devices = (0..6)
+        .map(|i| {
+            dev(&format!("usb{i}"))
+                .mounted(true)
+                .release(Release::Eject)
+        })
+        .collect();
+    MountedHost {
+        sidebar: SidebarState::new(&look),
+        look,
+        places,
+        pins,
+        groups: vec![DeviceGroup::new(devices)],
+        intents: Vec::new(),
+    }
+}
+
+fn settle_frames<S: 'static>(rt: &mut rune::Runtime<S>, count: usize) -> bool {
+    let mut animating = false;
+    for _ in 0..count {
+        animating = rt.frame(1.0 / 60.0);
+    }
+    animating
+}
+
+fn mounted_key<S: 'static>(rt: &rune::Runtime<S>, key: &str) -> bool {
+    rt.elements()
+        .into_iter()
+        .any(|e| !e.exiting && e.key.as_deref() == Some(key))
+}
+
+fn start_thumb_drag(rt: &mut rune::Runtime<MountedHost>) -> (f32, f32) {
+    let (tx, ty) = element_center(rt, "thumb");
+    rt.pointer_move(tx, ty);
+    rt.pointer_down(tx, ty);
+    rt.frame(1.0 / 60.0);
+    assert!(rt.state.sidebar.scroll_bar.is_dragging());
+    (tx, ty)
+}
+
+#[test]
+fn scrollbar_hides_when_items_fit_and_tracks_wheel_and_thumb_drag_on_overflow() {
+    let mut fitting = mount_sidebar();
+    let animating = settle_frames(&mut fitting, 10);
+    assert!(mounted_key(&fitting, "places-scrollbar"));
+    assert!(!fitting.state.sidebar.scroll_bar.overflows());
+    assert!(!animating);
+    assert_eq!(fitting.wake_deadline(), None);
+
+    let mut rt = rune::Runtime::new(
+        overflowing_sidebar_host(),
+        mounted_view,
+        (260.0, 220.0),
+        rune::Env::default(),
+    );
+    let animating = settle_frames(&mut rt, 10);
+    assert!(mounted_key(&rt, "places-scrollbar"));
+    assert!(rt.state.sidebar.scroll_bar.overflows());
+    assert_eq!(rt.state.sidebar.scroll_bar.pos().offset[1], 0.0);
+    assert!(!animating);
+    assert_eq!(rt.wake_deadline(), None);
+
+    let (lx, ly) = element_center(&rt, "places-place-p1");
+    rt.wheel(lx, ly, -80.0);
+    settle_frames(&mut rt, 4);
+    let after_list_wheel = rt.state.sidebar.scroll_bar.pos().offset[1];
+    assert!(after_list_wheel > 0.0, "wheel over list scrolls sidebar");
+
+    let (bx, by) = element_center(&rt, "places-scrollbar");
+    rt.wheel(bx, by, -80.0);
+    settle_frames(&mut rt, 4);
+    let after_bar_wheel = rt.state.sidebar.scroll_bar.pos().offset[1];
+    assert!(
+        after_bar_wheel > after_list_wheel,
+        "wheel over scrollbar forwards to sidebar viewport"
+    );
+
+    let (tx, ty) = start_thumb_drag(&mut rt);
+    rt.pointer_move(tx, ty + 80.0);
+    rt.frame(1.0 / 60.0);
+    let after_drag = rt.state.sidebar.scroll_bar.pos().offset[1];
+    assert!(
+        after_drag > after_bar_wheel,
+        "dragging thumb scrolls further"
+    );
+    rt.pointer_up(tx, ty + 80.0);
+    let animating = settle_frames(&mut rt, 30);
+    assert!(!rt.state.sidebar.scroll_bar.is_dragging());
+    assert!(!animating);
+    assert_eq!(rt.wake_deadline(), None);
+}
+
+#[test]
+fn overflowing_scrollbar_leaves_resize_grip_and_device_eject_untouched() {
+    use rune::Cursor;
+
+    let mut host = overflowing_sidebar_host();
+    host.places = vec![Place::folder("home", "Home", IconName::Home)];
+    host.pins = Vec::new();
+    let mut rt = rune::Runtime::new(host, mounted_view, (400.0, 180.0), rune::Env::default());
+    settle_frames(&mut rt, 10);
+    assert!(rt.state.sidebar.scroll_bar.overflows());
+
+    let (ex, ey) = element_center(&rt, "places-device-usb0-eject");
+    rt.pointer_move(ex, ey);
+    rt.pointer_down(ex, ey);
+    rt.pointer_up(ex, ey);
+    rt.frame(1.0 / 60.0);
+    assert_eq!(rt.state.intents, [SidebarIntent::Eject("usb0".into())]);
+    assert!(!rt.state.sidebar.scroll_bar.is_dragging());
+
+    let start_width = rt.state.sidebar.width.full_width();
+    let grip_x = start_width - 3.0;
+    let grip_y = 90.0;
+    rt.pointer_move(grip_x, grip_y);
+    rt.frame(1.0 / 60.0);
+    assert_eq!(rt.cursor(), Cursor::ResizeColumn);
+    rt.pointer_down(grip_x, grip_y);
+    rt.frame(1.0 / 60.0);
+    rt.pointer_move(grip_x + 40.0, grip_y);
+    rt.frame(1.0 / 60.0);
+    rt.pointer_up(grip_x + 40.0, grip_y);
+    rt.frame(1.0 / 60.0);
+    assert_eq!(rt.state.sidebar.width.full_width(), start_width + 40.0);
+    assert_eq!(rt.state.sidebar.scroll_bar.pos().offset[1], 0.0);
+    assert!(!rt.state.sidebar.scroll_bar.is_dragging());
+}
+
+#[test]
+fn scrollbar_works_in_rail_mode_and_releases_on_mode_transitions() {
+    let mut rt = rune::Runtime::new(
+        overflowing_sidebar_host(),
+        mounted_view,
+        (260.0, 220.0),
+        rune::Env::default(),
+    );
+    settle_frames(&mut rt, 10);
+    assert!(rt.state.sidebar.scroll_bar.overflows());
+
+    // Begin dragging the thumb in Full mode, then switch to Rail mid-drag.
+    start_thumb_drag(&mut rt);
+    rt.update(|h, _| h.sidebar.width.choose(Step::Rail));
+    settle_frames(&mut rt, 40);
+    assert!(!rt.state.sidebar.scroll_bar.is_dragging());
+    assert!(mounted_key(&rt, "places-scrollbar"));
+    assert!(rt.state.sidebar.scroll_bar.overflows());
+
+    // Row activation and wheel scrolling keep working in overflowing Rail mode.
+    let (rx, ry) = element_center(&rt, "places-place-p0");
+    rt.pointer_move(rx, ry);
+    rt.pointer_down(rx, ry);
+    rt.pointer_up(rx, ry);
+    rt.frame(1.0 / 60.0);
+    assert_eq!(
+        rt.state.intents,
+        [SidebarIntent::Open {
+            item: ItemId::Place("p0".into()),
+            via: Via::Pointer,
+        }]
+    );
+    rt.wheel(rx, ry, -80.0);
+    settle_frames(&mut rt, 4);
+    assert!(rt.state.sidebar.scroll_bar.pos().offset[1] > 0.0);
+
+    // Begin a thumb drag in Rail mode, then hide the sidebar mid-drag.
+    start_thumb_drag(&mut rt);
+    rt.update(|h, _| h.sidebar.width.choose(Step::Hidden));
+    let animating = settle_frames(&mut rt, 40);
+    assert!(!rt.state.sidebar.scroll_bar.is_dragging());
+    assert!(!mounted_key(&rt, "places-scrollbar"));
+    assert!(!animating);
+    assert_eq!(rt.wake_deadline(), None);
+
+    // Restoring Full mode remounts the scrollbar cleanly and settles idle.
+    rt.update(|h, _| h.sidebar.width.choose(Step::Full));
+    let animating = settle_frames(&mut rt, 120);
+    assert!(mounted_key(&rt, "places-scrollbar"));
+    assert!(rt.state.sidebar.scroll_bar.overflows());
+    assert!(!animating);
+    assert_eq!(rt.wake_deadline(), None);
+}

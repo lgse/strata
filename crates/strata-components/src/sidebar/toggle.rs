@@ -63,7 +63,9 @@ impl<'a, S: 'static> WidthToggle<'a, S> {
             .label(format!("Toggle sidebar ({shortcut})"))
             .help(format!("{} ({shortcut})", self.state.width.next_label()))
             .on_press_tx(move |s: &mut S, tx: &mut Tx| {
-                let step = access(s).width.advance();
+                let state = access(s);
+                let step = state.width.advance();
+                state.scroll_bar.release();
                 emit(s, SidebarIntent::Stepped(step), tx);
             })
             .build(&look.accent_icon_kit())
