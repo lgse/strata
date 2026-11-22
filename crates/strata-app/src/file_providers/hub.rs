@@ -342,13 +342,6 @@ impl Hub {
         self.discovered && self.providers.is_empty() && self.retiring.is_empty()
     }
 
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "wired when A18 lands the Settings integrations pane"
-        )
-    )]
     pub(super) fn reload(&mut self, discovery: mpsc::Receiver<Vec<Registration>>) {
         self.discovery = Some(discovery);
         self.discovered = false;

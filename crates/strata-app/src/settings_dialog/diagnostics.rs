@@ -29,12 +29,12 @@ pub(super) use view::build;
 
 use crate::{
     App,
+    settings_dialog::install_command::{self, COPY_FEEDBACK_SECS as COMMAND_COPY_FEEDBACK_SECS},
     slots::{Later, WeakLater},
-    terminal::{Emulator, no_terminal_message},
+    terminal::Emulator,
 };
 
 const COPY_FEEDBACK_SECS: f64 = 1.5;
-const COMMAND_COPY_FEEDBACK_SECS: f64 = 2.0;
 const POLL_INTERVAL: Duration = Duration::from_millis(50);
 
 #[cfg(test)]
@@ -334,74 +334,15 @@ fn copy_command(app: &mut App, id: CheckId, command: &str, tx: &mut Tx) {
 fn run_install_command(app: &mut App, id: CheckId, command: &str) {
     let state = &app.settings_dialog.diagnostics;
     let generation = state.generation;
-    let later = state.later.clone();
-    let arguments = terminal_install_arguments(command);
+    let weak = state.later.downgrade();
     let finished =
         tr("The command opened in your terminal. Run diagnostics again when it finishes.");
-    spawn_reaped_with_outcome(
-        later,
-        move || {
-            let terminal = Emulator::resolve().ok_or_else(no_terminal_message)?;
-            terminal
-                .exec_command(&arguments)
-                .spawn()
-                .map_err(|error| terminal.launch_failure(&error))
-        },
-        move |app, outcome| {
-            let diag = &mut app.settings_dialog.diagnostics;
-            if diag.generation != generation {
-                return;
-            }
-            let status = outcome.map(|()| finished);
-            diag.terminal_status.insert(id, status);
-        },
-    );
-}
-
-fn spawn_reaped_with_outcome(
-    later: Later<App>,
-    start: impl FnOnce() -> Result<std::process::Child, String> + Send + 'static,
-    on_done: impl FnOnce(&mut App, Result<(), String>) + 'static,
-) {
-    let (answer, answered) = mpsc::channel();
-    let reaper = std::thread::Builder::new()
-        .name("diagnostics-install-reaper".into())
-        .spawn(move || match start() {
-            Ok(mut child) => {
-                let _ = answer.send(Ok(()));
-                if let Err(error) = child.wait() {
-                    tracing::warn!(%error, pid = child.id(), "unable to reap install terminal");
-                }
-            }
-            Err(error) => {
-                let _ = answer.send(Err(error));
-            }
-        });
-    if let Err(error) = reaper {
-        tracing::warn!(%error, "unable to start install reaper thread");
-    }
-    glib::MainContext::default().spawn_local(async move {
-        let started = gio::spawn_blocking(move || answered.recv()).await;
-        let outcome = match started {
-            Ok(Ok(result)) => result,
-            Ok(Err(_)) | Err(_) => Err(tr(strata_fs::services::UNEXPECTED_SYSTEM_ERROR)),
-        };
-        later.then(move |app, _| {
-            on_done(app, outcome);
-            true
-        });
+    install_command::run_in_terminal(weak, command, move |app, outcome| {
+        let diag = &mut app.settings_dialog.diagnostics;
+        if diag.generation != generation {
+            return;
+        }
+        let status = outcome.map(|()| finished);
+        diag.terminal_status.insert(id, status);
     });
-}
-
-/// Keeps the terminal open after the install so its output stays readable.
-fn terminal_install_arguments(command: &str) -> Vec<String> {
-    let mut arguments = vec![
-        "sh".to_owned(),
-        "-c".to_owned(),
-        r#"prompt=$1; shift; "$@"; printf '\n%s ' "$prompt"; read -r _"#.to_owned(),
-        "sh".to_owned(),
-        tr("Press Enter to close."),
-    ];
-    arguments.extend(command.split_whitespace().map(str::to_owned));
-    arguments
 }

@@ -45,6 +45,9 @@ pub(super) fn search_handle() -> SettingsSearch<App> {
         if let Some(page) = PageId::from_key(&to.page) {
             let tenxer_mode = shell::preferences(app).tenxer_mode;
             app.settings_dialog.select_page(page, tenxer_mode);
+            if page == PageId::Integrations {
+                super::integrations::ensure_scanned(app);
+            }
         }
     })
     .on_escape(|app: &mut App, _| {
