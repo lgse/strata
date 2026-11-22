@@ -84,6 +84,11 @@ pub(super) fn document() -> DocumentLabels {
     labels.loading_image = tr("Loading preview…");
     labels.diagram = tr("Mermaid diagram");
     labels.equation = tr("LaTeX equation");
+    labels.column = tr("Column %{value1}").replace("%{value1}", "{}");
+    labels.resize = tr("Resize %{column}").replace("%{column}", "{}");
+    labels.sort_key = tr("Sort key %{index}").replace("%{index}", "{}");
+    labels.ascending = tr("ascending");
+    labels.descending = tr("descending");
     labels
 }
 
