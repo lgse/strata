@@ -289,7 +289,7 @@ pub use bar::{
 };
 pub use count::{
     Count, CountWords, DETAILED_SELECTION, FilterCounts, ListWords, Listing, Plural, Selected,
-    SelectionDetails, Template, Template2, decimal_size, grouped, summary,
+    SelectionDetails, SingleSelection, Template, Template2, decimal_size, grouped, summary,
 };
 pub use marks::{FilterMark, PILL_BORDER_ALPHA, PILL_FILL_ALPHA, pill};
 pub use reference::{ReferenceKeys, ReferenceLabels, ReferenceState, ShortcutReference};

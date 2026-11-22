@@ -35,6 +35,20 @@ pub struct Selected {
     /// What they are, read only up to [`DETAILED_SELECTION`] selected entries. `None` past it
     /// (or while unknown): the count then names the selection without a size.
     pub details: Option<SelectionDetails>,
+    /// The sole selected entry, when `count == 1` and the host names it instead of counting.
+    pub single: Option<SingleSelection>,
+}
+
+/// The one selected entry, when a selection holds a single item and is not the whole listing.
+/// Shown as `<name>` (with `<size>` for a file, and ` — <modified>` when the host supplies a
+/// non-empty date, as Strata does in Columns and Icons views).
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct SingleSelection {
+    pub name: String,
+    pub is_directory: bool,
+    pub size: Option<u64>,
+    /// Pre-formatted modified date, or `None` when omitted (e.g. List view).
+    pub modified: Option<String>,
 }
 
 /// The selected entries' kinds and the selected files' known sizes. A symlink to a file counts
@@ -187,6 +201,8 @@ pub fn decimal_size(bytes: u64) -> String {
 /// - With every entry selected: the listing's folders and files, "1 folder, 2 files selected",
 ///   with no size.
 /// - With more than [`DETAILED_SELECTION`] selected (or no details): "N items selected".
+/// - With one entry selected and [`Selected::single`] provided: `<name>` with `<size>` for a
+///   file and ` — <modified>` when a non-empty date is supplied (Columns and Icons views).
 /// - Otherwise the selection's folders and files, with the selected files' size: all known
 ///   " (64 MB)", some " (3 B known; size incomplete)", none " (size unavailable)". Folder
 ///   contents are never counted.
@@ -206,19 +222,44 @@ pub fn summary(listing: &Listing, words: &CountWords) -> Count {
             description: breakdown(words, listing.files, listing.folders),
         };
     };
-    let text = if listing.total > 0 && selected.count == listing.total {
-        whole_listing(listing, words)
-    } else {
-        match selected.details {
-            Some(d) if selected.count <= DETAILED_SELECTION => details(&d, words),
-            _ => (words.selected)(&(words.items)(selected.count)),
-        }
-    };
+    let text = selection_text(listing, selected, words);
     let selection = (words.selected_of)(selected.count, listing.total);
     Count {
         text,
         description: (words.selection_description)(&selection),
     }
+}
+
+fn selection_text(listing: &Listing, selected: &Selected, words: &CountWords) -> String {
+    if listing.total > 0 && selected.count == listing.total {
+        return whole_listing(listing, words);
+    }
+    if selected.count > DETAILED_SELECTION {
+        return (words.selected)(&(words.items)(selected.count));
+    }
+    if selected.count == 1
+        && let Some(entry) = selected.single.as_ref()
+    {
+        return single_entry(entry, words);
+    }
+    match selected.details {
+        Some(d) => details(&d, words),
+        None => (words.selected)(&(words.items)(selected.count)),
+    }
+}
+
+fn single_entry(entry: &SingleSelection, words: &CountWords) -> String {
+    let mut text = entry.name.clone();
+    if !entry.is_directory {
+        match entry.size {
+            Some(bytes) => text.push_str(&(words.size_known)(&(words.size)(bytes))),
+            None => text.push_str(&words.size_unavailable),
+        }
+    }
+    if let Some(date) = entry.modified.as_deref().filter(|d| !d.is_empty()) {
+        text.push_str(&format!(" — {date}"));
+    }
+    text
 }
 
 fn breakdown(words: &CountWords, files: usize, folders: usize) -> String {

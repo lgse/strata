@@ -976,13 +976,23 @@ const TRAILING: [Button; 4] = [
     },
 ];
 
-/// The window buttons the header shows, of those the window manager can work.
+/// The window buttons enabled by the user's preferences (or the desktop session's default).
+fn configured_window_buttons(app: &App) -> WindowButtons {
+    let prefs = preferences(app);
+    WindowButtons {
+        minimize: prefs.window_show_minimize,
+        maximize: prefs.window_show_maximize,
+        close: prefs.window_show_close,
+    }
+}
+
 /// The window buttons the header shows, of those the window manager can work: no Close
 /// while the tab strip shows, which takes it.
 fn window_buttons(app: &App) -> WindowButtons {
+    let buttons = configured_window_buttons(app);
     WindowButtons {
-        close: !strip_shows(app),
-        ..WindowButtons::default()
+        close: buttons.close && !strip_shows(app),
+        ..buttons
     }
 }
 
@@ -995,7 +1005,7 @@ fn strip_shows(app: &App) -> bool {
 
 /// The window's Close for the strip while it shows, named as the header names it.
 fn strip_close(app: &App, chrome: &WindowChrome) -> Option<El> {
-    let shown = Shown::new(WindowButtons::default(), chrome);
+    let shown = Shown::new(configured_window_buttons(app), chrome);
     if !(shown.close && strip_shows(app)) {
         return None;
     }

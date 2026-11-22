@@ -3,19 +3,23 @@
 //! [`DocumentState`]: what the host keeps per document preview, and what the drawer's header
 //! and find bar ask of it.
 
-use std::cell::{Cell, OnceCell};
+use std::borrow::Cow;
+use std::cell::{Cell, OnceCell, RefCell};
 use std::collections::HashMap;
 use std::ops::Range;
 use std::rc::Rc;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
 use rune::{Pixels, TextSelection, Tx};
+use rune_kit::SortDir;
 
 use super::copy;
 use super::find::{Index, Match};
 use super::model::{Document, Unit, UnitKind};
 use super::shown::{Insert, Shown, math_inserts};
+use super::table::{self, TableFonts, TableState};
 use crate::preview_drawer::{DocumentView, FindStatus, HostedPreview};
 use crate::scroll::Bar;
 
@@ -50,16 +54,24 @@ pub(crate) enum Request {
     Reveal(String),
 }
 
-/// What doesn't change between [`DocumentState::set_document`]s: the document and its shown
-/// texts. The view's copy handler holds it, since Rune gives that handler no app state.
+/// Process-unique monotonic counter so each document's embedded table scroll viewports receive
+/// distinct Rune keys and never inherit horizontal scroll offsets from a previous document.
+static NEXT_CONTENT_GEN: AtomicU64 = AtomicU64::new(1);
+
+/// What doesn't change between [`DocumentState::set_document`]s: the document, its shown
+/// texts, and per-table interactive state. The view's copy handler holds it, since Rune gives
+/// that handler no app state.
 #[derive(Debug)]
 pub(crate) struct Content {
     pub key: String,
+    pub scroll_gen: u64,
     pub doc: Arc<Document>,
     /// What each unit's text element shows, for the units where that isn't the model's text.
     shown: Vec<Option<Shown>>,
     /// Ctrl+A selected the whole document, and nothing has changed the selection since.
     pub all: Cell<bool>,
+    /// Interactive state for each table unit, keyed by unit index; cleared on `set_document`.
+    pub tables: RefCell<HashMap<usize, TableState>>,
 }
 
 impl Content {
@@ -67,8 +79,16 @@ impl Content {
         Content {
             shown: doc.units.iter().map(shown_for).collect(),
             key,
+            scroll_gen: NEXT_CONTENT_GEN.fetch_add(1, Ordering::Relaxed),
             doc,
             all: Cell::new(false),
+            tables: RefCell::new(HashMap::new()),
+        }
+    }
+
+    fn release_tables(&self) {
+        for table in self.tables.borrow().values() {
+            table.bar.release();
         }
     }
 
@@ -84,13 +104,36 @@ impl Content {
         self.shown.get(i).and_then(Option::as_ref)
     }
 
+    /// Copy text for unit `i`, respecting any active sort order on an embedded table.
+    pub fn unit_copy_text(&self, i: usize) -> Cow<'_, str> {
+        let unit = &self.doc.units[i];
+        if let UnitKind::Table { rows, .. } = &unit.kind
+            && let Some(table) = self.tables.borrow().get(&i)
+            && table.is_sorted()
+        {
+            return Cow::Owned(table.copy_text(rows));
+        }
+        Cow::Borrowed(unit.copy_text.as_str())
+    }
+
+    /// Source row indices of displayed body rows for table unit `i`.
+    pub fn table_body_rows(&self, i: usize) -> Vec<usize> {
+        let Some(UnitKind::Table { rows, .. }) = self.doc.units.get(i).map(|u| &u.kind) else {
+            return Vec::new();
+        };
+        if let Some(table) = self.tables.borrow().get(&i) {
+            return table.body_source_rows();
+        }
+        (usize::from(table::has_header(rows))..rows.len()).collect()
+    }
+
     /// Every unit's copy text: the whole document as Ctrl+A then Ctrl+C copies it.
     pub fn copy_all(&self) -> String {
-        self.doc
-            .units
-            .iter()
-            .map(|u| u.copy_text.as_str())
-            .collect()
+        let mut out = String::new();
+        for i in 0..self.doc.units.len() {
+            out.push_str(&self.unit_copy_text(i));
+        }
+        out
     }
 
     /// What copying `sel` takes (Strata's rule): units wholly inside it copy their copy text,
@@ -207,6 +250,7 @@ impl DocumentState {
                     )
             })
             .collect();
+        self.content.release_tables();
         self.content = Rc::new(Content::new(self.content.key.clone(), doc));
         self.all_pending = false;
         self.index = OnceCell::new();
@@ -448,6 +492,141 @@ impl DocumentState {
     pub fn copy_selection(&self, sel: &TextSelection) -> String {
         self.content.copy(sel)
     }
+
+    /// Active sort specification for table unit `unit` (empty when unsorted or not a table).
+    pub fn table_sort(&self, unit: usize) -> Vec<(usize, SortDir)> {
+        self.content
+            .tables
+            .borrow()
+            .get(&unit)
+            .map(|t| t.sort().to_vec())
+            .unwrap_or_default()
+    }
+
+    /// Active column widths for table unit `unit`, once laid out or resized.
+    pub fn table_column_widths(&self, unit: usize) -> Option<Vec<f32>> {
+        self.content
+            .tables
+            .borrow()
+            .get(&unit)
+            .and_then(TableState::column_widths)
+    }
+
+    /// Displayed body row source indices for table unit `unit`.
+    pub fn table_row_order(&self, unit: usize) -> Option<Vec<usize>> {
+        let UnitKind::Table { .. } = &self.content.doc.units.get(unit)?.kind else {
+            return None;
+        };
+        Some(self.content.table_body_rows(unit))
+    }
+
+    pub(crate) fn prepare_table(
+        &self,
+        unit: usize,
+        fonts: TableFonts,
+        room: Option<f32>,
+    ) -> Option<TableSnapshot> {
+        let UnitKind::Table { rows, .. } = &self.content.doc.units.get(unit)?.kind else {
+            return None;
+        };
+        let mut tables = self.content.tables.borrow_mut();
+        let table = tables.entry(unit).or_insert_with(|| TableState::new(rows));
+        let widths = table.resolve_widths(rows, fonts, room);
+        Some(TableSnapshot {
+            scroll_gen: self.content.scroll_gen,
+            header: table.header,
+            widths,
+            sort: table.sort().to_vec(),
+            order: table.order().to_vec(),
+            bar: table.bar.clone(),
+        })
+    }
+
+    pub(crate) fn click_table_header(&mut self, unit: usize, column: usize, tx: &mut Tx) {
+        let Some(UnitKind::Table { rows, .. }) = self.content.doc.units.get(unit).map(|u| &u.kind)
+        else {
+            return;
+        };
+        let shift = tx.mods().shift;
+        {
+            let mut tables = self.content.tables.borrow_mut();
+            let table = tables.entry(unit).or_insert_with(|| TableState::new(rows));
+            table.click_header(rows, column, shift);
+        }
+        tx.clear_text_selection();
+        self.content.all.set(false);
+        self.all_pending = false;
+    }
+
+    pub(crate) fn begin_table_resize(&mut self, unit: usize, column: usize) -> f32 {
+        let Some(UnitKind::Table { rows, .. }) = self.content.doc.units.get(unit).map(|u| &u.kind)
+        else {
+            return table::MIN_WIDTH;
+        };
+        let mut tables = self.content.tables.borrow_mut();
+        let table = tables.entry(unit).or_insert_with(|| TableState::new(rows));
+        table.begin_resize(column)
+    }
+
+    pub(crate) fn cancel_table_resize(&mut self, unit: usize) {
+        if let Some(table) = self.content.tables.borrow_mut().get_mut(&unit) {
+            table.cancel_resize();
+        }
+    }
+
+    pub(crate) fn finish_table_resize(&mut self, unit: usize, column: usize, width: f32) {
+        let Some(UnitKind::Table { rows, .. }) = self.content.doc.units.get(unit).map(|u| &u.kind)
+        else {
+            return;
+        };
+        let mut tables = self.content.tables.borrow_mut();
+        let table = tables.entry(unit).or_insert_with(|| TableState::new(rows));
+        table.finish_resize(column, width);
+    }
+
+    pub(crate) fn set_table_column_width(&mut self, unit: usize, column: usize, width: f32) {
+        let Some(UnitKind::Table { rows, .. }) = self.content.doc.units.get(unit).map(|u| &u.kind)
+        else {
+            return;
+        };
+        let mut tables = self.content.tables.borrow_mut();
+        let table = tables.entry(unit).or_insert_with(|| TableState::new(rows));
+        table.set_column_width(column, width);
+    }
+
+    pub(crate) fn fit_table_column(&mut self, unit: usize, column: usize) {
+        if let Some(table) = self.content.tables.borrow_mut().get_mut(&unit) {
+            table.fit_column(column);
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn table_bar(&self, unit: usize) -> Option<Bar> {
+        self.content
+            .tables
+            .borrow()
+            .get(&unit)
+            .map(|t| t.bar.clone())
+    }
+
+    #[cfg(test)]
+    pub(crate) fn table_is_manually_sized(&self, unit: usize) -> bool {
+        self.content
+            .tables
+            .borrow()
+            .get(&unit)
+            .is_some_and(TableState::is_manually_sized)
+    }
+}
+
+/// Resolved per-frame table layout and sort snapshot handed to `table::render`.
+pub(crate) struct TableSnapshot {
+    pub(crate) scroll_gen: u64,
+    pub(crate) header: bool,
+    pub(crate) widths: Vec<f32>,
+    pub(crate) sort: Vec<(usize, SortDir)>,
+    pub(crate) order: Vec<u32>,
+    pub(crate) bar: Bar,
 }
 
 /// Whether find searches a unit of this kind.
