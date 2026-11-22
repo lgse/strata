@@ -98,6 +98,7 @@ mod sort;
 // A11 10xer mode
 mod peek;
 mod tenxer;
+mod tenxer_fx;
 // A12 Clipboard and conflicts
 mod clipboard;
 mod conflict_dialog;
@@ -199,6 +200,9 @@ slots::parts! {
     // A20 Portal chooser
     chooser: chooser::Chooser,
     chooser_dialog: chooser::ChooserDialog,
+    // 10x mode activation visual FX overlay: paints above dialogs (including Settings live previews)
+    // while staying completely inert and pointer-transparent.
+    tenxer_fx: tenxer_fx::TenxerFxOverlay,
     // A21 Window and launch: `new_window` is listed before `menu`.
 }
 

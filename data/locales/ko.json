@@ -1598,5 +1598,14 @@
   "PDF document": "PDF 문서",
   "Page %{page} of %{pages}": "%{pages}페이지 중 %{page}페이지",
   "Page %{page} of %{pages}, %{zoom}%": "%{pages}페이지 중 %{page}페이지, %{zoom}%",
-  "Loading page": "페이지 불러오는 중"
+  "Loading page": "페이지 불러오는 중",
+  "10x mode effect": "10x 모드 효과",
+  "Visual effect played when entering 10xer mode.": "10xer 모드로 전환할 때 재생되는 시각 효과입니다.",
+  "Preview effect": "효과 미리보기",
+  "Horizon Scan": "호라이즌 스캔",
+  "Velocity Warp": "벨로시티 워프",
+  "Shockwave Ring": "쇼크웨이브 링",
+  "Perimeter Ignite": "페리미터 이그나이트",
+  "Tactical HUD": "택티컬 HUD",
+  "Off": "끄기"
 }
