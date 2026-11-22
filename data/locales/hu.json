@@ -1608,5 +1608,16 @@
   "Perimeter Ignite": "Keret-gyújtás",
   "Tactical HUD": "Taktikai HUD",
   "Interface on fire": "Lángoló felület",
-  "Off": "Ki"
+  "Off": "Ki",
+  "TRANSPARENCY": "ÁTLÁTSZÓSÁG",
+  "Transparency effects": "Átlátszósági effektusok",
+  "Make window surfaces translucent while keeping text, icons, and previews opaque.": "Az ablakfelületek áttetszővé tétele, miközben a szöveg, az ikonok és az előnézetek átlátszatlanok maradnak.",
+  "Background transparency": "Háttér átlátszósága",
+  "Transparency of the main file panes and preview background (0% is solid).": "A fő fájlpanelok és az előnézeti háttér átlátszósága (0% teljesen fedett).",
+  "Raised surface transparency": "Kiemelt felületek átlátszósága",
+  "Independent transparency for raised chrome such as the sidebar, header, tab bar, and footer.": "Független átlátszóság a kiemelt elemekhez, például az oldalsávhoz, fejléchez, lapsávhoz és lábléchez.",
+  "Frosted glass": "Mattüveg",
+  "Apply backdrop blur and a subtle frosted sheen to translucent dialogs, menus, and popovers.": "Háttérelmosás és finom mattüveg fény alkalmazása az áttetsző párbeszédablakokra, menükre és felugró panelekre.",
+  "Unfocused window multiplier": "Inaktív ablak szorzója",
+  "Multiply transparency when the window is unfocused (higher is more see-through; 1.00× keeps it unchanged).": "Az átlátszóság megszorzása, ha az ablak nincs fókuszban (nagyobb érték jobban átlátszó; az 1,00× változatlanul hagyja)."
 }

@@ -52,8 +52,12 @@ impl Paint {
     pub fn from_look(look: &Look) -> Paint {
         let k = &look.kit;
         Paint {
-            pane: k.c.bg_base,
-            paper: k.c.layer_01,
+            pane: if look.transparency.enabled {
+                Color::TRANSPARENT
+            } else {
+                k.c.bg_base
+            },
+            paper: look.transparency.opaque(k.c.layer_01),
             edge: k.c.border_muted,
             selection: k.selection(),
             hit: look.fill.highlight,

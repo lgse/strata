@@ -759,16 +759,17 @@ fn sidebar_place_chip(app: &App, idx: usize, place: PlaceToggle) -> El {
     let look = &app.look;
     let kit = &look.kit;
     let c = &kit.c;
+    let chip_bg = look.transparency.overlay_color(c.bg_base);
     let (fill, border, ink, icon_color) = if on {
         (
-            mix_srgb(c.bg_base, c.text_base, 0.12),
+            mix_srgb(chip_bg, c.text_base, 0.12),
             kit.alpha(c.text_base, 0.40),
             c.text_base,
             c.icon_accent,
         )
     } else {
         (
-            c.bg_base,
+            chip_bg,
             panel_border(look),
             c.text_muted,
             kit.alpha(c.icon_accent, 0.65),

@@ -1608,5 +1608,16 @@
   "Perimeter Ignite": "Đốt sáng viền khung",
   "Tactical HUD": "HUD chiến thuật",
   "Interface on fire": "Giao diện rực lửa",
-  "Off": "Tắt"
+  "Off": "Tắt",
+  "TRANSPARENCY": "ĐỘ TRONG SUỐT",
+  "Transparency effects": "Hiệu ứng trong suốt",
+  "Make window surfaces translucent while keeping text, icons, and previews opaque.": "Làm mờ xuyên thấu bề mặt cửa sổ trong khi giữ chữ, biểu tượng và bản xem trước rõ nét.",
+  "Background transparency": "Độ trong suốt nền",
+  "Transparency of the main file panes and preview background (0% is solid).": "Độ trong suốt của khung tệp chính và nền xem trước (0% là đặc hoàn toàn).",
+  "Raised surface transparency": "Độ trong suốt bề mặt nổi",
+  "Independent transparency for raised chrome such as the sidebar, header, tab bar, and footer.": "Độ trong suốt độc lập cho các thành phần nổi như thanh bên, thanh tiêu đề, thanh thẻ và chân trang.",
+  "Frosted glass": "Kính mờ",
+  "Apply backdrop blur and a subtle frosted sheen to translucent dialogs, menus, and popovers.": "Áp dụng làm mờ nền và ánh kính mờ nhẹ cho hộp thoại, trình đơn và khung bật lên trong suốt.",
+  "Unfocused window multiplier": "Hệ số khi cửa sổ mất tiêu điểm",
+  "Multiply transparency when the window is unfocused (higher is more see-through; 1.00× keeps it unchanged).": "Nhân độ trong suốt khi cửa sổ không được chọn (cao hơn sẽ trong suốt hơn; 1,00× giữ nguyên)."
 }

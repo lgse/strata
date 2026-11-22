@@ -306,6 +306,9 @@ pub(crate) fn reopened(app: &mut App) {
     app.window.on_screen = true;
     app.window.active = false;
     presence::follow(app);
+    if transparency(app).enabled {
+        follow_look(app);
+    }
     window_later(app).then(|app, tx| {
         retitle_now(app, tx);
         true
@@ -521,6 +524,11 @@ pub(crate) fn tenxer_fx(app: &App) -> strata_desktop::settings::TenxerFx {
     app.window.settings.tenxer_fx()
 }
 
+/// The saved surface transparency and frosted glass settings.
+pub(crate) fn transparency(app: &App) -> strata_desktop::settings::TransparencyPreferences {
+    app.window.settings.transparency()
+}
+
 /// The window's saved item colours and icons, indexed by [`EntryId`].
 pub(crate) fn worn(app: &App) -> &Rc<Worn> {
     &app.window.worn
@@ -643,7 +651,14 @@ impl Window {
         let keys = Live::registered(saved, first_window_reports().as_deref());
         let thumbnail_share = thumbnail_budget::Share::join(&events.later());
         let thumbnails = thumbnail_store(saved);
-        let look = services.themes.build_look(saved, true);
+        let look = services.themes.build_look(
+            saved,
+            crate::theme::LookContext {
+                transparency: settings.transparency(),
+                animations_allowed: true,
+                window_active: true,
+            },
+        );
         let window = Self {
             id: siblings::next_id(),
             settings,
@@ -1199,7 +1214,6 @@ fn body(app: &App, sidebar: Option<El>, files: Option<El>) -> El {
         .w_full()
         .grow(1.0)
         .min_h(0.0)
-        .fill(app.look.kit.c.bg_base)
         .on_pointer_move_local(|app: &mut App, pointer, tx: &mut Tx| {
             if let Some(pointer_at) = shown_view(app).and_then(|view| view.pointer_at) {
                 pointer_at(app, (pointer.window_x, pointer.window_y));
@@ -1209,13 +1223,18 @@ fn body(app: &App, sidebar: Option<El>, files: Option<El>) -> El {
     // The same keyed wrappers with a sidebar or without one, so the view keeps its place in
     // the tree when the sidebar comes or goes: a view whose path changed would be mounted
     // anew, and lose its scroll and focus. Beside the sidebar the files take what it leaves.
-    let files = col()
+    // The sidebar paints its own `bg_deep`, and each file view (`columns-host`, `single::body`,
+    // `preview-drawer`) paints its own `bg_base` once so translucent surfaces never double-blend.
+    let mut files_col = col()
         .key("body-files")
         .grow(1.0)
         .h_full()
         .min_w(0.0)
-        .min_h(0.0)
-        .children(files);
+        .min_h(0.0);
+    if files.is_none() {
+        files_col = files_col.fill(app.look.kit.c.bg_base);
+    }
+    let files = files_col.children(files);
     let beside = row()
         .key("body-beside")
         .w_full()
@@ -1271,12 +1290,16 @@ pub(crate) fn view(app: &App, cx: &mut Cx<App>) -> El {
         // The window's zoom wheel, for what no scroll view holds (`appearance::wheel`).
         .on_wheel(crate::appearance::wheel::heard)
         .on_window_focus(|app: &mut App, focused, tx: &mut Tx| {
+            let focus_changed = app.window.active != focused;
             app.window.active = focused;
             presence::follow(app);
             if !focused && app.window.held != rune::Mods::default() {
                 modifiers(app, rune::Mods::default(), tx);
             }
             location::window_focused(app, focused, tx);
+            if focus_changed && transparency(app).enabled {
+                follow_look_tx(app, tx);
+            }
         })
 }
 
