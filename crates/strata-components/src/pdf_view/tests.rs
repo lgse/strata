@@ -648,3 +648,63 @@ fn a_zoom_asked_before_an_open_is_dropped() {
     assert!(!st.apply_level_request(&mut Tx::default()));
     assert_eq!(st.level(), 1.0);
 }
+
+// PageReply::Text populates a page's text layer for find without storing an image or altering
+// page dimensions, marks scans known so they are not re-requested, and upgrades cleanly when a
+// full RenderKind::Page reply arrives later.
+#[test]
+fn text_only_reply_feeds_find_without_storing_image_and_upgrades_on_page_render() {
+    let mut st = state(4);
+    st.set_searchable(true);
+    // Page 0 (visible) and page 1 (margin) render as pages.
+    for page in 0..2 {
+        let req = st.pop().expect("page render");
+        assert_eq!((req.page, req.kind), (page, RenderKind::Page));
+        st.complete(req.ticket, reply(500, Some("no match here")));
+    }
+
+    st.find("needle");
+    assert_eq!(st.find_status().map(|s| s.total), Some(0));
+
+    // Page 2 arrives via TextOnly with a match; page 3 arrives as a scan (None).
+    let r2 = st.pop().expect("text-only request for page 2");
+    assert_eq!((r2.page, r2.kind), (2, RenderKind::TextOnly));
+    assert_eq!(
+        st.complete(
+            r2.ticket,
+            PageReply::Text(Some(layer_of(&["found NEEDLE"])))
+        ),
+        Landed::Shown
+    );
+    assert_eq!(st.held(2), None, "TextOnly must not store a rendered image");
+    assert_eq!(
+        st.find_status(),
+        Some(crate::preview_drawer::FindStatus {
+            current: Some(1),
+            total: 1,
+        })
+    );
+    assert_eq!(st.selected_text(), "NEEDLE");
+
+    let r3 = st.pop().expect("text-only request for page 3");
+    assert_eq!((r3.page, r3.kind), (3, RenderKind::TextOnly));
+    assert_eq!(
+        st.complete(r3.ticket, PageReply::Text(None)),
+        Landed::Dropped
+    );
+    assert!(
+        st.pop().is_none(),
+        "scan is marked text_known and not re-asked"
+    );
+
+    // Scrolling to page 2 triggers a full Page render that upgrades the layer and keeps selection.
+    st.set_visible(2..3);
+    let full = st.pop().expect("full render for page 2");
+    assert_eq!((full.page, full.kind), (2, RenderKind::Page));
+    assert_eq!(
+        st.complete(full.ticket, reply(500, Some("found NEEDLE"))),
+        Landed::Shown
+    );
+    assert!(st.held(2).is_some());
+    assert_eq!(st.selected_text(), "NEEDLE");
+}

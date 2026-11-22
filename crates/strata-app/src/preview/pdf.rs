@@ -9,7 +9,9 @@
 //! - **Every other page** is asked of the same [`PreviewProvider`] with its page number and the
 //!   width the view wants, one render at a time across the preview, as GTK's page loader asks on
 //!   bind. The PNG is decoded off the UI thread (`gio::spawn_blocking`) before the view takes it.
-//!   A reply for a viewer that has gone, or a request the view cancelled, is dropped.
+//!   Background [`RenderKind::TextOnly`] requests for find use a minimal box and pass the text
+//!   layer directly to the view without decoding the PNG. A reply for a viewer that has gone, or
+//!   a request the view cancelled, is dropped.
 //! - **Zoom:** Ctrl+wheel over the pages is the view's own, and the window's zoom wheel leaves
 //!   it to the view (`appearance::wheel`), as GTK's `claims_zoom` leaves the PDF's scroll.
 //!   The reset is the key map's `pdf_zoom_reset` ([`RESET`]), read at the dispatcher's
@@ -25,8 +27,8 @@ use std::{cell::Cell, rc::Rc, sync::Arc};
 
 use rune::{Cx, El, Tx};
 use strata_components::pdf_view::{
-    PageReply, PdfDocument, PdfIntent, PdfLabels, PdfState, PdfView, RenderCaps, RenderRequest,
-    TextLayer, Ticket,
+    PageReply, PdfDocument, PdfIntent, PdfLabels, PdfState, PdfView, RenderCaps, RenderKind,
+    RenderRequest, TextLayer, Ticket,
 };
 use strata_core::{i18n::tr, model::FileEntry};
 use strata_desktop::keys::{Modifiers, bindings::PDF_ZOOM_RESET};
@@ -53,6 +55,22 @@ const CAPS: RenderCaps = RenderCaps {
     max_width: MediaPreviewSize::MAX_EDGE as u32,
     max_height: 1_800,
     max_pixels: 2_500_000,
+};
+
+/// Minimal render box for [`RenderKind::TextOnly`] background find requests: `MediaPreviewSize`
+/// clamps to 16 px, avoiding full-page rasterization while keeping glyph boxes normalized to
+/// `layer.width` × `layer.height`.
+const TEXT_ONLY_SIZE: MediaPreviewSize = MediaPreviewSize {
+    width: 16,
+    height: 16,
+};
+
+/// Render box if a [`RenderKind::TextOnly`] request ever re-fetches page 0 (after text-budget
+/// eviction), so `LocalPreviewProvider` never overwrites page 0's cached thumbnail with a 16 px
+/// PNG.
+const TEXT_ONLY_FIRST_PAGE_SIZE: MediaPreviewSize = MediaPreviewSize {
+    width: 256,
+    height: 256,
 };
 
 thread_local! {
@@ -88,6 +106,7 @@ impl PdfViewer {
         let pages = usize::try_from(pages.max(1)).unwrap_or(1);
         let mut state = PdfState::new(PDF_KEY);
         state.set_caps(CAPS);
+        state.set_searchable(true);
         let first = usize::try_from(page.max(0)).unwrap_or(0);
         state.open_with(PdfDocument::new(pages, size), first, reply);
         Ok(Self {
@@ -124,6 +143,17 @@ pub(super) fn viewer(
     }
 }
 
+fn text_layer(text: Option<&PdfTextLayer>) -> Option<TextLayer> {
+    text.map(|layer| {
+        TextLayer::new(
+            layer.width,
+            layer.height,
+            layer.text.clone(),
+            layer.glyphs.clone(),
+        )
+    })
+}
+
 /// Decodes a page's PNG into the view's RGBA, with its text layer.
 fn decode(png: &[u8], text: Option<&PdfTextLayer>) -> Result<PageReply, String> {
     let rgba = image::load_from_memory(png)
@@ -134,14 +164,7 @@ fn decode(png: &[u8], text: Option<&PdfTextLayer>) -> Result<PageReply, String> 
         width,
         height,
         rgba: rgba.into_raw(),
-        text: text.map(|layer| {
-            TextLayer::new(
-                layer.width,
-                layer.height,
-                layer.text.clone(),
-                layer.glyphs.clone(),
-            )
-        }),
+        text: text_layer(text),
     })
 }
 
@@ -280,7 +303,7 @@ fn pump(app: &mut App) {
     });
     let request = page_request(pdf, &asked);
     let emit = Rc::new(move |event: PreviewEvent| {
-        later.then(move |app: &mut App, _: &mut Tx| on_page(app, (id, ticket), event));
+        later.then(move |app: &mut App, tx: &mut Tx| on_page(app, (id, ticket), event, tx));
     });
     let load = provider.load(request, emit);
     if let Some(busy) = viewer_mut(app, id)
@@ -294,9 +317,16 @@ fn pump(app: &mut App) {
 fn page_request(pdf: &mut PdfViewer, asked: &RenderRequest) -> PreviewRequest {
     let serial = pdf.next_request;
     pdf.next_request = serial.wrapping_add(1);
-    let [width, height] = asked
-        .box_px
-        .map(|edge| i32::try_from(edge).unwrap_or(i32::MAX));
+    let media_size = match asked.kind {
+        RenderKind::TextOnly if asked.page == 0 => TEXT_ONLY_FIRST_PAGE_SIZE,
+        RenderKind::TextOnly => TEXT_ONLY_SIZE,
+        RenderKind::Page => {
+            let [width, height] = asked
+                .box_px
+                .map(|edge| i32::try_from(edge).unwrap_or(i32::MAX));
+            MediaPreviewSize::new(width, height)
+        }
+    };
     PreviewRequest {
         // Apart from the preview's own requests: each reply is routed by its closure.
         id: PreviewRequestId(u64::MAX / 2 + serial),
@@ -304,15 +334,16 @@ fn page_request(pdf: &mut PdfViewer, asked: &RenderRequest) -> PreviewRequest {
         text_byte_limit: TEXT_BYTE_LIMIT,
         render_document: false,
         pdf_page: i32::try_from(asked.page).unwrap_or(i32::MAX),
-        media_size: MediaPreviewSize::new(width, height),
+        media_size,
         model_palette: Default::default(),
         model_view: Default::default(),
         archive_password: None,
     }
 }
 
-/// A page render's answer: decoded off the UI thread, then handed to the view.
-fn on_page(app: &mut App, (id, ticket): (u64, Ticket), event: PreviewEvent) -> bool {
+/// A page render's answer: `TextOnly` replies skip PNG decoding and land directly on the UI
+/// thread; full page renders decode off the UI thread, then land.
+fn on_page(app: &mut App, (id, ticket): (u64, Ticket), event: PreviewEvent, tx: &mut Tx) -> bool {
     if viewer_mut(app, id).is_none_or(|pdf| !is_busy_with(pdf, ticket)) {
         return false;
     }
@@ -324,8 +355,16 @@ fn on_page(app: &mut App, (id, ticket): (u64, Ticket), event: PreviewEvent) -> b
             ..
         }) => (png, text_layer),
         PreviewEvent::Progress { .. } => return false,
-        _ => return land(app, (id, ticket), PageReply::Failed),
+        _ => return land(app, (id, ticket), PageReply::Failed, tx),
     };
+    if ticket.kind() == RenderKind::TextOnly {
+        return land(
+            app,
+            (id, ticket),
+            PageReply::Text(text_layer(text.as_deref())),
+            tx,
+        );
+    }
     let later = app.preview.loader.later.clone();
     glib::MainContext::default().spawn_local(async move {
         let decoded = gio::spawn_blocking(move || decode(&png, text.as_deref())).await;
@@ -333,7 +372,7 @@ fn on_page(app: &mut App, (id, ticket): (u64, Ticket), event: PreviewEvent) -> b
             Ok(Ok(reply)) => reply,
             _ => PageReply::Failed,
         };
-        later.then(move |app: &mut App, _: &mut Tx| land(app, (id, ticket), reply));
+        later.then(move |app: &mut App, tx: &mut Tx| land(app, (id, ticket), reply, tx));
     });
     false
 }
@@ -342,7 +381,7 @@ fn is_busy_with(pdf: &PdfViewer, ticket: Ticket) -> bool {
     pdf.busy.as_ref().is_some_and(|busy| busy.ticket == ticket)
 }
 
-fn land(app: &mut App, (id, ticket): (u64, Ticket), reply: PageReply) -> bool {
+fn land(app: &mut App, (id, ticket): (u64, Ticket), reply: PageReply, tx: &mut Tx) -> bool {
     let Some(pdf) = viewer_mut(app, id) else {
         return false;
     };
@@ -350,6 +389,7 @@ fn land(app: &mut App, (id, ticket): (u64, Ticket), reply: PageReply) -> bool {
         pdf.busy = None;
     }
     let commits = pdf.state.complete(ticket, reply).commits();
+    let flushed = pdf.state.flush(tx);
     pump(app);
-    commits
+    commits | flushed
 }

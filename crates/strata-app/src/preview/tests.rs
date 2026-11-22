@@ -22,6 +22,7 @@ mod follow;
 mod media;
 mod model;
 mod pdf;
+mod pdf_find;
 mod provider;
 mod route;
 mod spare;

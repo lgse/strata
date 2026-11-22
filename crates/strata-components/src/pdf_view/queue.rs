@@ -16,7 +16,9 @@ use std::rc::Rc;
 use rune::Pixels;
 
 use super::layer::Layer;
-use super::model::{PageReply, PdfDocument, RenderCaps, RenderKind, RenderRequest, Shared, Ticket};
+use super::model::{
+    PageReply, PdfDocument, RenderCaps, RenderKind, RenderRequest, Shared, TextLayer, Ticket,
+};
 
 /// Default image budget: 192 MiB of RGBA.
 pub const IMAGE_BUDGET: usize = 192 << 20;
@@ -357,6 +359,19 @@ impl Queue {
                 slot.failed = true;
                 Landed::Shown
             }
+            PageReply::Text(text) => {
+                let shown = if slot.layer.is_none() {
+                    self.set_layer(page, text, false)
+                } else {
+                    false
+                };
+                self.slots[page].text_known = true;
+                if shown {
+                    Landed::Shown
+                } else {
+                    Landed::Dropped
+                }
+            }
             PageReply::Rendered {
                 width,
                 height,
@@ -389,20 +404,10 @@ impl Queue {
                 }
                 // A layer comes with the image it was rendered with; a text-only render's,
                 // or an older render's, only fills a page that has none.
-                if take_image || slot.layer.is_none() {
-                    let new: Option<Shared> = text.map(|t| Rc::new(Layer::new(t)));
-                    let same = match (&slot.layer, &new) {
-                        (Some(a), Some(b)) => a.text == b.text,
-                        (None, None) => true,
-                        _ => false,
-                    };
-                    self.text_bytes -= slot.layer.as_ref().map_or(0, |l| l.bytes());
-                    self.text_bytes += new.as_ref().map_or(0, |l| l.bytes());
-                    shown |= !same || slot.layer_from_image != take_image;
-                    slot.layer = new;
-                    slot.layer_from_image = take_image;
+                if take_image || self.slots[page].layer.is_none() {
+                    shown |= self.set_layer(page, text, take_image);
                 }
-                slot.text_known = true;
+                self.slots[page].text_known = true;
                 if shown {
                     Landed::Shown
                 } else if take_image {
@@ -412,6 +417,22 @@ impl Queue {
                 }
             }
         }
+    }
+
+    fn set_layer(&mut self, page: usize, text: Option<TextLayer>, from_image: bool) -> bool {
+        let slot = &mut self.slots[page];
+        let new: Option<Shared> = text.map(|t| Rc::new(Layer::new(t)));
+        let same = match (&slot.layer, &new) {
+            (Some(a), Some(b)) => a.text == b.text,
+            (None, None) => true,
+            _ => false,
+        };
+        self.text_bytes -= slot.layer.as_ref().map_or(0, |l| l.bytes());
+        self.text_bytes += new.as_ref().map_or(0, |l| l.bytes());
+        let changed = !same || slot.layer_from_image != from_image;
+        slot.layer = new;
+        slot.layer_from_image = from_image;
+        changed
     }
 
     /// Drops what's over budget, farthest from the centre first, never the visible pages or
