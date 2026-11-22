@@ -146,7 +146,20 @@ fn run_populates_rows_copies_report_and_replaces_results_on_rerun() {
             assert!(!has_state(copy, "disabled"), "Copy report is enabled");
             assert_eq!(view::text(copy, "name"), tr("Copy report"));
 
-            click(&mut host, "settings-diagnostics-copy");
+            // Simulate >1.5s idle before activating Copy via keyboard (before poll runs) so a
+            // stale cached poll clock would expire immediately on the very next turn.
+            host.runtime()
+                .update(|_, tx| tx.focus("settings-diagnostics-copy", true));
+            idle(&mut host);
+            let tree = host.tree();
+            let copy = find_by_key(&tree, "settings-diagnostics-copy").expect("copy button");
+            assert!(
+                has_state(copy, "focused"),
+                "Copy report is focused before pressing Space; tree focused={:?}",
+                view::all(&tree, &|n| has_state(n, "focused"))
+            );
+            host.runtime().clock += 5.0;
+            press(&mut host, Key::Text(" ".into()), Mods::default());
             let report = clipboard::fallback_text(host.app())
                 .expect("report copied to clipboard")
                 .to_owned();
@@ -164,6 +177,16 @@ fn run_populates_rows_copies_report_and_replaces_results_on_rerun() {
             let tree = host.tree();
             let copy = find_by_key(&tree, "settings-diagnostics-copy").expect("copy button");
             assert_eq!(view::text(copy, "name"), tr("Copied"));
+
+            host.runtime().frame(0.5);
+            idle(&mut host);
+            let tree = host.tree();
+            let copy = find_by_key(&tree, "settings-diagnostics-copy").expect("copy button");
+            assert_eq!(
+                view::text(copy, "name"),
+                tr("Copied"),
+                "Copied feedback persists while within 1.5s after an idle gap"
+            );
 
             host.runtime().frame(2.0);
             idle(&mut host);

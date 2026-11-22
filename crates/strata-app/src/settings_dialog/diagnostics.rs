@@ -54,7 +54,6 @@ pub(super) struct DiagnosticsState {
     copied_until: Option<f64>,
     copied_command: Option<(CheckId, f64)>,
     terminal_status: HashMap<CheckId, Result<String, String>>,
-    clock: f64,
     #[cfg(test)]
     spawner: Option<TestSpawner>,
 }
@@ -75,7 +74,6 @@ impl DiagnosticsState {
             copied_until: None,
             copied_command: None,
             terminal_status: HashMap::new(),
-            clock: 0.0,
             #[cfg(test)]
             spawner: None,
         }
@@ -148,7 +146,6 @@ impl DiagnosticsState {
 
 pub(super) fn poll(app: &mut App, clock: f64, tx: &mut Tx) -> bool {
     let state = &mut app.settings_dialog.diagnostics;
-    state.clock = clock;
     let mut changed = false;
     if let Some(until) = state.copied_until {
         if clock >= until {
@@ -322,14 +319,14 @@ pub(super) fn copy_report(app: &mut App, tx: &mut Tx) {
         return;
     }
     let text = format::report(&state.environment, &state.results, state.manager);
-    state.copied_until = Some(state.clock + COPY_FEEDBACK_SECS);
+    state.copied_until = Some(tx.clock() + COPY_FEEDBACK_SECS);
     app.clipboard.write_text(&text);
     tx.wake_after(Duration::from_secs_f64(COPY_FEEDBACK_SECS));
 }
 
 fn copy_command(app: &mut App, id: CheckId, command: &str, tx: &mut Tx) {
     let state = &mut app.settings_dialog.diagnostics;
-    state.copied_command = Some((id, state.clock + COMMAND_COPY_FEEDBACK_SECS));
+    state.copied_command = Some((id, tx.clock() + COMMAND_COPY_FEEDBACK_SECS));
     app.clipboard.write_text(command);
     tx.wake_after(Duration::from_secs_f64(COMMAND_COPY_FEEDBACK_SECS));
 }

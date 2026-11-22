@@ -10,7 +10,7 @@ use strata_kit::{icons::IconName, look::Look};
 
 use super::{
     DiagnosticsState,
-    checks::{Check, CheckId, GROUPS, InstallHint, Status, install_hint},
+    checks::{CheckId, GROUPS, InstallHint, Status, install_hint},
     copy_command, copy_report, format, run_install_command, start,
 };
 use crate::{
@@ -246,14 +246,14 @@ fn system_card(look: &Look, environment: &[(String, String)]) -> El {
 fn check_row(look: &Look, state: &DiagnosticsState, id: CheckId) -> El {
     let kit = &look.kit;
     let c = &kit.c;
-    let check = state.results.get(&id);
+    let status = state.results.get(&id).map(|check| check.status);
     let mut copy = col().grow(1.0).min_w(0.0).gap(3.0).child(
         text(tr(format::title(id)))
             .font(kit.ty.ui_medium)
             .color(c.text_base)
             .wrap(),
     );
-    copy = append_check_body(look, state, id, check, copy);
+    copy = append_check_body(look, state, id, copy);
     row()
         .key(format!("settings-diagnostics-row-{}", id.key()))
         .w_full()
@@ -261,7 +261,7 @@ fn check_row(look: &Look, state: &DiagnosticsState, id: CheckId) -> El {
         .padding(18.0)
         .gap(14.0)
         .items_start()
-        .child(status_badge(look, check.map(|c| c.status)))
+        .child(status_badge(look, status))
         .child(copy)
 }
 
@@ -276,8 +276,8 @@ fn status_badge(look: &Look, status: Option<Status>) -> El {
         Some(status) => {
             let (glyph, tint) = match status {
                 Status::Passed => (IconName::Success, c.icon_accent),
-                Status::Warning => (IconName::Warning, c.warning.icon),
-                Status::Problem => (IconName::Error, c.danger.icon),
+                Status::Warning => (IconName::Warning, c.icon_base),
+                Status::Problem => (IconName::CircleX, c.danger.icon),
             };
             el().role("image")
                 .label(tr(format::status_label(status)))
@@ -287,16 +287,10 @@ fn status_badge(look: &Look, status: Option<Status>) -> El {
     el().size(18.0, 18.0).pt(1.0).center().child(inner)
 }
 
-fn append_check_body(
-    look: &Look,
-    state: &DiagnosticsState,
-    id: CheckId,
-    check: Option<&Check>,
-    mut copy: El,
-) -> El {
+fn append_check_body(look: &Look, state: &DiagnosticsState, id: CheckId, mut copy: El) -> El {
     let kit = &look.kit;
     let c = &kit.c;
-    let Some(check) = check else {
+    let Some(check) = state.results.get(&id) else {
         return copy.child(
             text(tr("Checking…"))
                 .font(kit.ty.small)
