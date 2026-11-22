@@ -228,6 +228,7 @@ use std::sync::Arc;
 use rune::{Cx, El, KeyEvent, Tx};
 use strata_kit::look::Look;
 
+use crate::contract::Point;
 pub use find::Hit;
 pub use model::{
     Content, MAX_PAGES, PageReply, PdfDocument, RenderCaps, RenderKind, RenderRequest, TextLayer,
@@ -239,7 +240,7 @@ pub use state::{PdfState, page_row_identity};
 use render::{Ctx, IntentFn, Paint};
 
 /// What the view tells the host.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum PdfIntent {
     /// The Open button under a password-protected PDF's message: open it in the default
@@ -250,6 +251,8 @@ pub enum PdfIntent {
     Leave,
     /// Ctrl+C copied this (the clipboard already has it).
     Copied(Arc<str>),
+    /// Secondary press (or Menu key) inside the PDF viewer, in window points.
+    ContextMenu(Point),
 }
 
 /// The words the view shows and assistive technology reads. Strata passes translated text;

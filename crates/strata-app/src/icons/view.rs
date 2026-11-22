@@ -25,7 +25,7 @@ pub(crate) fn grid() -> IconsGrid<App> {
             collection: app.icons.single.pane.collection(),
             grid: &app.icons.grid,
             size: app.icons.size,
-            listing: app.icons.single.pane.version(),
+            listing: app.icons.single.pane.thumb_version(),
             look: &app.look,
             thumbs: app.icons.thumbs.id().map(|id| (shell::thumbnails(app), id)),
         },
@@ -51,7 +51,7 @@ pub(crate) fn grid() -> IconsGrid<App> {
 }
 
 fn row<'a>(app: &'a App, rcx: &RowCx<'_>) -> Option<&'a Row> {
-    app.icons.single.pane.listing()?.row_of(rcx.entry.id)
+    app.icons.single.pane.listing()?.row_at(rcx.index)
 }
 
 /// Moves with what a tile's details line reads, so only the tiles whose facts changed build

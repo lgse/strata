@@ -241,6 +241,9 @@ fn on_document_intent(app: &mut App, intent: DocumentIntent, tx: &mut Tx) {
             super::return_to_files(app);
             tx.wake_after(std::time::Duration::ZERO);
         }
+        DocumentIntent::ContextMenu(at) => {
+            super::open_text_context_menu(app, at, tx);
+        }
         DocumentIntent::OpenLink(uri) => {
             if has_web_scheme(&uri)
                 && let Err(error) =

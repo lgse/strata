@@ -142,7 +142,7 @@ impl Part for Columns {
 
     fn poll(app: &mut App, clock: f64, tx: &mut Tx) -> bool {
         let said = app.columns.watch_surface(clock, tx);
-        let pruned = thumbs::poll(app, clock);
+        let pruned = thumbs::poll(app, clock, tx);
         fills::poll(app, clock, tx);
         view(app).tick(app, clock, tx) | said | pruned
     }

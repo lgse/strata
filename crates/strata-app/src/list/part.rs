@@ -2,7 +2,10 @@
 
 //! The List view as a part of the window: the third of the view slot.
 
-use std::hash::{DefaultHasher, Hash, Hasher};
+use std::{
+    hash::{DefaultHasher, Hash, Hasher},
+    time::Duration,
+};
 
 use rune::Tx;
 use strata_components::contract::EntrySource;
@@ -19,12 +22,21 @@ use crate::{
     slots::{Listener, Part, Place, Setup, View},
 };
 
-/// Asks for the fills the rows near the viewport lack, once a poll, as the Icons view does.
-fn fill(app: &mut App) {
+/// Asks for the fills the rows near the viewport lack, once a poll after scrolling settles
+/// (or immediately when a scrollbar thumb drag releases).
+fn fill(app: &mut App, clock: f64, tx: &mut Tx) {
     let list = &mut app.list;
+    let dragging = list.table.is_dragging();
     let pane = &list.single.pane;
-    if let (Some(depth), Some(listing)) = (pane.depth(), pane.listing()) {
-        list.fills.request(&app.browser, depth, listing);
+    if let (Some(depth), Some(listing)) = (pane.depth(), pane.listing())
+        && let Some(left) = list.fills.request_settled(
+            &app.browser,
+            depth,
+            listing,
+            crate::fills::ScrollPoll { clock, dragging },
+        )
+    {
+        tx.wake_after(Duration::from_secs_f64(left));
     }
 }
 
@@ -146,8 +158,8 @@ impl Part for List {
         let said = single::poll::<Self>(app, clock, tx);
         // A filter's results tick in the table's place, and the table waits under them.
         let ticked = tick_active(app, tx);
-        fill(app);
-        let pruned = super::thumbs::poll(app, clock);
+        fill(app, clock, tx);
+        let pruned = super::thumbs::poll(app, clock, tx);
         ticked | said | pruned | redate(app, clock, tx)
     }
 }

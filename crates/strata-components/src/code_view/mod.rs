@@ -204,11 +204,15 @@ mod tests;
 
 use std::rc::Rc;
 
-use rune::{Cx, El, GrowthSpec, Key, KeyEvent, PointerButton, ScrollSpec, Tx, col, row, text};
+use rune::{
+    Cx, El, GrowthSpec, Key, KeyEvent, PointerButton, PointerPress, ScrollSpec, Tx, col, el, row,
+    text,
+};
 use strata_kit::look::Look;
 
+use crate::contract::Point;
 use crate::dialog::FOCUS_RING_WIDTH;
-use crate::scroll::{BarLook, overlay};
+use crate::scroll::{BarLook, anchor, overlay};
 
 pub use editor::{CodeEditor, EditorState};
 pub use rows::{CHUNK, TAB};
@@ -217,12 +221,14 @@ pub use state::CodeState;
 use render::{Ctx, Paint, build_row, gutter_width};
 
 /// What the view tells the host.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CodeIntent {
     /// Plain Left with focus in the document: Strata's default key map returns focus to the
     /// listing.
     Leave,
+    /// Secondary press (or Menu key) inside the code view, in window points.
+    ContextMenu(Point),
 }
 
 /// The view's words, for assistive technology.
@@ -260,6 +266,7 @@ pub struct CodeView<S> {
     get_mut: fn(&mut S) -> &mut CodeState,
     labels: CodeLabels,
     intent: Option<IntentFn<S>>,
+    document_home_end: bool,
 }
 
 impl<S: 'static> CodeView<S> {
@@ -270,6 +277,7 @@ impl<S: 'static> CodeView<S> {
             get_mut,
             labels: CodeLabels::default(),
             intent: None,
+            document_home_end: false,
         }
     }
 
@@ -283,12 +291,20 @@ impl<S: 'static> CodeView<S> {
         self
     }
 
+    /// When enabled (10xer mode), plain `Home` and `End` scroll to the start or end of the
+    /// document instead of moving the line caret.
+    pub fn document_home_end(mut self, on: bool) -> Self {
+        self.document_home_end = on;
+        self
+    }
+
     pub fn build(self, s: &S, look: &Look, cx: &mut Cx<S>) -> El {
         let CodeView {
             get,
             get_mut,
             labels,
             intent,
+            document_home_end,
         } = self;
         let st = get(s);
         let paint = Paint::from_look(look);
@@ -362,16 +378,18 @@ impl<S: 'static> CodeView<S> {
             });
         let viewport = if wrap { viewport } else { viewport.scroll_xy() };
         let viewport = viewport.child(list);
-        let body = if wrap {
-            overlay(viewport, [])
-        } else {
-            let bar = st.sideways.build::<S>(
-                &format!("{key}-sideways"),
-                &scroll_key,
-                BarLook::app(look).horizontal(),
-            );
-            st.sideways.area(overlay(viewport, [bar]))
-        };
+        let body = build_viewport_body::<S>(
+            st,
+            viewport,
+            &ViewportBody {
+                key: &key,
+                scroll_key: &scroll_key,
+                wrap,
+                gutter,
+                paint: &paint,
+                look,
+            },
+        );
         let mut body = row()
             .w_full()
             .grow(1.0)
@@ -380,6 +398,7 @@ impl<S: 'static> CodeView<S> {
         if st.overflow {
             body = body.child(position_bar(st, &key, &labels, bar_look, &paint, get_mut));
         }
+        let menu_intent = intent.clone();
         let mut root = col()
             .key(key)
             .role("document")
@@ -391,8 +410,13 @@ impl<S: 'static> CodeView<S> {
             // Keyboard focus shows inside the edge: the drawer's slot clips anything outside.
             .focus_ring(FOCUS_RING_WIDTH, -FOCUS_RING_WIDTH, paint.focus)
             .on_key(move |s: &mut S, ev: &KeyEvent, tx: &mut Tx| {
-                key_in(s, ev, tx, get_mut, &intent)
+                key_in(s, ev, tx, get_mut, &intent, document_home_end)
             });
+        if let Some(emit) = menu_intent {
+            root = root.on_secondary_press(move |s: &mut S, p: PointerPress, tx: &mut Tx| {
+                emit(s, CodeIntent::ContextMenu(Point::new(p.x, p.y)), tx);
+            });
+        }
         for notice in st.notices() {
             root = root.child(
                 text(notice.clone())
@@ -408,6 +432,40 @@ impl<S: 'static> CodeView<S> {
         }
         root.child(body)
     }
+}
+
+struct ViewportBody<'a> {
+    key: &'a str,
+    scroll_key: &'a str,
+    wrap: bool,
+    gutter: Option<f32>,
+    paint: &'a Paint,
+    look: &'a Look,
+}
+
+fn build_viewport_body<S: 'static>(st: &CodeState, viewport: El, spec: &ViewportBody<'_>) -> El {
+    let mut area = overlay(viewport, []);
+    if let Some(w) = spec.gutter {
+        area = area.child(gutter_divider(spec.key, w, spec.paint));
+    }
+    if spec.wrap {
+        return area;
+    }
+    let bar = st.sideways.build::<S>(
+        &format!("{}-sideways", spec.key),
+        spec.scroll_key,
+        BarLook::app(spec.look).horizontal(),
+    );
+    st.sideways.area(area.child(anchor(0.0, 0.0, bar)))
+}
+
+fn gutter_divider(key: &str, x: f32, paint: &Paint) -> El {
+    el().key(format!("{key}-gutter-divider"))
+        .pin(Some(x), Some(0.0), None, Some(0.0))
+        .w(1.0)
+        .fill(paint.divider)
+        .a11y_hidden()
+        .inert()
 }
 
 fn configure_position_bar<S: 'static>(
@@ -526,6 +584,7 @@ fn position_bar<S: 'static>(
         })
         .keeps_text_selection()
         .pointer_buttons([PointerButton::Primary])
+        .on_secondary_press(|_: &mut S, _, tx: &mut Tx| tx.live_only())
         .on_layout_tx(move |_: &mut S, rect, tx: &mut Tx| {
             tx.live_only();
             track.track(rect[3]);
@@ -541,22 +600,25 @@ fn position_bar<S: 'static>(
         .child(trough)
 }
 
-/// The document's keys, with focus in it: Ctrl+A and Ctrl+C over the whole text, Ctrl+Home
-/// and Ctrl+End to its ends, plain Left back to the listing.
+/// Vertical line-scroll step in points for arrow-key scrolling.
+const SCROLL_STEP: f32 = 40.0;
+
+/// The document's keys, with focus in it: Ctrl+A and Ctrl+C over the whole text, Up/Down/
+/// PageUp/PageDown scrolling, Ctrl+Home and Ctrl+End to its ends, plain Left back to the listing.
 fn key_in<S: 'static>(
     s: &mut S,
     ev: &KeyEvent,
     tx: &mut Tx,
     get_mut: fn(&mut S) -> &mut CodeState,
     intent: &Option<IntentFn<S>>,
+    document_home_end: bool,
 ) -> bool {
     let m = ev.mods;
     // Rune's plain chord: with Shift or Alt added, Ctrl+A and Ctrl+C are the app's.
     let plain = !m.shift && !m.alt;
     let st = get_mut(s);
     if ev.is_command('a') && plain {
-        st.select_all(tx.text_selection());
-        tx.select_all_text(st.list_key());
+        st.select_all_text(tx);
         return true;
     }
     // Without this Ctrl+C still copies the whole text (`selection_copy` answers from the
@@ -573,10 +635,40 @@ fn key_in<S: 'static>(
         f(s, CodeIntent::Leave, tx);
         return true;
     }
+    if scroll_key_in(st, ev, document_home_end, tx) {
+        return true;
+    }
     if let Some(handled) = caret::on_key(st, ev, tx) {
         return handled;
     }
     false
+}
+
+fn scroll_key_in(st: &CodeState, ev: &KeyEvent, document_home_end: bool, tx: &mut Tx) -> bool {
+    let m = ev.mods;
+    if m.ctrl || m.cmd || m.shift || m.alt {
+        return false;
+    }
+    match ev.key {
+        Key::Up | Key::Down => {
+            let delta = if ev.key == Key::Up {
+                -SCROLL_STEP
+            } else {
+                SCROLL_STEP
+            };
+            tx.scroll_to_y(st.scroll_key(), (st.scroll_offset() + delta).max(0.0));
+            true
+        }
+        Key::PageUp | Key::PageDown => {
+            tx.scroll_page(st.scroll_key(), if ev.key == Key::PageUp { -1 } else { 1 });
+            true
+        }
+        Key::Home | Key::End if document_home_end => {
+            st.scroll_to_edge(ev.key == Key::End, tx);
+            true
+        }
+        _ => false,
+    }
 }
 
 fn copy_shortcut(st: &CodeState, ev: &KeyEvent, plain: bool, tx: &mut Tx) -> bool {

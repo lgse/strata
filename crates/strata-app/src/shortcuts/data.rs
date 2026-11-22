@@ -19,6 +19,7 @@ use strata_desktop::keys::{
 };
 
 use super::contents::{self, Mention, Mode, Shortcut};
+use crate::tenxer::PromptKind;
 
 /// What the reference shows: the sections of `mode`, labelled through the keymap in force.
 pub(super) fn rows(mode: Mode, tenxer: bool, revision: u64) -> ShortcutData {
@@ -74,11 +75,21 @@ fn mentioned(mention: Mention, locale: &str) -> String {
 }
 
 /// The words a context template puts before and after its keys: "%{keys} at first pane"
-/// reads "", " at first pane". GTK fills the template whole (`key_text`), so the words are
-/// those of the filled template on either side of the keys.
+/// reads "", " at first pane". GTK fills the template whole (`key_text`), including 10xer's
+/// prompt labels (`%{go}`, `%{move_to}`, `%{copy_to}`, `%{jump}`, `%{recent}`), so the words
+/// are those of the filled template on either side of the keys.
 fn around_keys(template: &str) -> (String, String) {
     const MARK: &str = "\u{1}";
-    let filled = rust_i18n::t!(template, keys = MARK).into_owned();
+    let filled = rust_i18n::t!(
+        template,
+        keys = MARK,
+        go = PromptKind::Go.label(),
+        move_to = PromptKind::MoveTo.label(),
+        copy_to = PromptKind::CopyTo.label(),
+        jump = PromptKind::Jump.label(),
+        recent = PromptKind::Recent.label()
+    )
+    .into_owned();
     match filled.split_once(MARK) {
         Some((before, after)) => (before.to_owned(), after.to_owned()),
         None => (String::new(), filled),

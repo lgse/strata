@@ -135,6 +135,11 @@ impl ListTableState {
         &self.sideways_feed
     }
 
+    /// Whether the rows' vertical scrollbar thumb is currently dragged.
+    pub fn is_dragging(&self) -> bool {
+        self.bar.is_dragging()
+    }
+
     /// When both scroll bars show: overlay (Strata's, the default) or always.
     pub fn set_bar_mode(&mut self, mode: BarMode) {
         self.bar.set_mode(mode);

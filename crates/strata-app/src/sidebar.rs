@@ -516,6 +516,8 @@ fn heard(app: &mut App, intent: SidebarIntent, tx: &mut Tx) {
             item: Some(item),
             point,
         } => menu::open(app, &item, point, tx),
+        SidebarIntent::Unlock(id) => devices::unlock(app, &id),
+        SidebarIntent::Lock(id) => devices::lock(app, &id),
         SidebarIntent::Eject(id) => devices::release(app, &id, tx),
         SidebarIntent::LeaveToFiles => {
             if let Some(view) = shell::view_focus(app) {

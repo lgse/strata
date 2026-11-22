@@ -60,6 +60,7 @@ mod icons;
 // A2 List view
 mod list;
 // A3 Sidebar
+mod mount_prompts;
 mod sidebar;
 // A4 Tabs
 mod tab_strip;
@@ -144,6 +145,7 @@ slots::parts! {
     // A2 List view
     list: list::List,
     // A3 Sidebar
+    mount_prompts: mount_prompts::MountPromptsPart,
     sidebar: sidebar::Sidebar,
     // A4 Tabs
     tab_strip: tab_strip::TabStrip,
