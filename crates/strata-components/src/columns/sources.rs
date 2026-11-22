@@ -47,6 +47,14 @@ pub trait ColumnSources {
         false
     }
 
+    /// Whether the column's header spinner shows now. Defaults to [`Self::loading`]; hosts
+    /// that hold the spinner back for a short grace period (so fast folder opens neither
+    /// flash a spinner nor run loop animation frames while waiting on background reads)
+    /// override this without changing [`Self::loading`]'s selection-handover semantics.
+    fn spinner(&self, depth: usize) -> bool {
+        self.loading(depth)
+    }
+
     /// The entry in column `depth` whose folder column `depth + 1` shows: the open path. `None`
     /// for the last column, or when the next column shows something else (a search).
     fn open_child(&self, depth: usize) -> Option<EntryId>;

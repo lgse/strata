@@ -551,11 +551,26 @@ impl Columns {
 }
 
 impl Columns {
-    /// One poll of what each column says while it shows no entry: a read is announced once
-    /// it outlasts GTK's grace period. True when the view has to run.
+    /// One poll of what each column says while it shows no entry and its header spinner grace
+    /// period: a read is announced once it outlasts GTK's grace period, and its header spinner
+    /// shows once it outlasts `COLUMN_SPINNER_DELAY`. True when the view has to run.
     pub(crate) fn watch_surface(&mut self, clock: f64, tx: &mut rune::Tx) -> bool {
-        let listings = self.listings.columns.iter().map(Some);
-        self.surface.watch(listings, clock, tx)
+        let surface = self
+            .surface
+            .watch(self.listings.columns.iter().map(Some), clock, tx);
+        let spinner = self.listings.watch_spinners(clock, tx);
+        surface | spinner
+    }
+
+    /// Appends every [`EntryId`] referenced by open columns, active filter hits, or kept
+    /// selection neighbours into `out`.
+    pub(crate) fn collect_ids(&self, out: &mut impl Extend<EntryId>) {
+        self.listings.collect_ids(out);
+        for kept in &self.kept {
+            if let Some(id) = kept.id() {
+                out.extend(std::iter::once(id));
+            }
+        }
     }
 }
 

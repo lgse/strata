@@ -168,6 +168,7 @@ fn edge_line(key: &str, look: &Look) -> El {
             look.kit.c.std_border,
             tokens::edge_opacity(look),
         ))
+        .transition(Transition::none())
         .a11y_hidden()
         .inert()
 }
@@ -245,6 +246,7 @@ fn edge<S: 'static>(sh: &Rc<Shared<S>>, st: &ColumnsState, spec: EdgeSpec<'_>, l
                 .fill(look.kit.c.bg_accent)
                 .group_opacity(rest, 1.0)
                 .opacity_motion(Anim::INSTANT)
+                .transition(Transition::none())
                 .a11y_hidden()
                 .inert(),
         );
@@ -379,6 +381,7 @@ pub(super) fn header<S: 'static>(sh: &Rc<Shared<S>>, s: &S, depth: usize, serial
     let header_active = active && (sh.active_header)(s);
     let targeted = depth == st.targeted();
     let loading = depth < p.sources.len() && p.sources.loading(depth);
+    let spinner = depth < p.sources.len() && p.sources.spinner(depth);
     let title = if depth < p.sources.len() {
         p.sources.title(depth).to_owned()
     } else {
@@ -416,18 +419,8 @@ pub(super) fn header<S: 'static>(sh: &Rc<Shared<S>>, s: &S, depth: usize, serial
                 .inert(),
         );
     }
-    if loading {
-        bar = bar.child(
-            el().key(keys::spinner(&key))
-                .role("progressbar")
-                .label(sh.labels.loading.clone())
-                .child(
-                    Spinner::new()
-                        .size(look.icon_size.md)
-                        .build(k)
-                        .a11y_hidden(),
-                ),
-        );
+    if spinner {
+        bar = bar.child(header_spinner(sh, look, &key));
     }
     let cx = HeaderCx {
         depth,
@@ -441,6 +434,18 @@ pub(super) fn header<S: 'static>(sh: &Rc<Shared<S>>, s: &S, depth: usize, serial
     }
     let bar = with_header_menu(bar, sh.clone(), serial);
     with_band(sh, s, bar, cx)
+}
+
+fn header_spinner<S: 'static>(sh: &Rc<Shared<S>>, look: &Look, key: &str) -> El {
+    el().key(keys::spinner(key))
+        .role("progressbar")
+        .label(sh.labels.loading.clone())
+        .child(
+            Spinner::new()
+                .size(look.icon_size.md)
+                .build(&look.kit)
+                .a11y_hidden(),
+        )
 }
 
 fn header_controls<S: 'static>(sh: &Rc<Shared<S>>, s: &S, cx: HeaderCx, serial: u64) -> Option<El> {

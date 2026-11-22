@@ -106,7 +106,6 @@ pub(crate) struct Kept(Option<EntryId>);
 
 impl Kept {
     /// The neighbour kept, if any.
-    #[cfg(feature = "qa")]
     pub(crate) fn id(self) -> Option<EntryId> {
         self.0
     }
