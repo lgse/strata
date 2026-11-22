@@ -413,6 +413,8 @@ fn default_sort_key_menu(app: &App, menu_layer: &mut Vec<El>) -> El {
         ("Type", SortKey::Type),
         ("Extension", SortKey::Extension),
         ("Created", SortKey::Created),
+        ("Duration", SortKey::Duration),
+        ("Dimensions", SortKey::Dimensions),
         ("Unsorted", SortKey::Unsorted),
     ];
     let current = choices

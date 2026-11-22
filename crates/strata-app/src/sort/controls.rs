@@ -11,7 +11,7 @@ use strata_core::{
     i18n::tr,
     model::{SortDirection, SortKey, ViewPreferences},
 };
-use strata_desktop::settings::ListColumnId;
+use strata_desktop::settings::{ListColumnId, Preferences};
 use strata_kit::icons::IconName;
 
 use super::{Opener, open_at, toggle};
@@ -147,8 +147,8 @@ fn reverse(app: &mut App, depth: usize) {
 /// order spelled out; none while the sorted heading shows the sort itself.
 fn labelled(app: &App, depth: usize) -> Option<String> {
     let prefs = app.browser.column_preferences(depth).unwrap_or_default();
-    let hidden = &shell::preferences(app).list_hidden_columns;
-    if !needs_label(prefs, hidden) {
+    let settings = shell::preferences(app);
+    if !needs_label(prefs, settings) {
         return None;
     }
     let mut field = app.sort.labels.field(prefs.sort_key).to_owned();
@@ -185,14 +185,11 @@ fn special_names(prefs: ViewPreferences) -> bool {
 
 /// GTK's `needs_sort_label`: a sort with no visible heading of its own, or Name in a special
 /// name order.
-fn needs_label(prefs: ViewPreferences, hidden: &[ListColumnId]) -> bool {
-    let heading = match prefs.sort_key {
-        SortKey::Name => Some(ListColumnId::Name),
-        SortKey::Size => Some(ListColumnId::Size),
-        SortKey::Type => Some(ListColumnId::Type),
-        SortKey::Modified => Some(ListColumnId::Modified),
-        _ => None,
-    };
+fn needs_label(prefs: ViewPreferences, settings: &Preferences) -> bool {
     !matches!(prefs.sort_key, SortKey::Unsorted | SortKey::DeviceOrder)
-        && (heading.is_none_or(|column| hidden.contains(&column)) || special_names(prefs))
+        && (special_names(prefs)
+            || !ListColumnId::ALL.into_iter().any(|column| {
+                column.definition().sort_key == Some(prefs.sort_key)
+                    && crate::list::is_column_visible(settings, column)
+            }))
 }

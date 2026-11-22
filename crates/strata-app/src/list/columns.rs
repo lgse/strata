@@ -1,32 +1,34 @@
 // SPDX-License-Identifier: MIT
 
-//! The List table's five columns, as GTK's List view has them
+//! The List table's eight columns, as GTK's List view has them
 //! (`src/ui/browser_modes/list_columns.rs` and `list_headings.rs`): Name, Mode, Size, Type and
-//! Modified, with GTK's default widths and minimums, the order and visibility saved as
-//! `list_column_order` and `list_hidden_columns`, and the widths as `browser_list_columns`.
-//! GTK's optional Duration, Dimensions and Created columns (`main`'s #2603) are not built
-//! here yet, so they are neither shown nor sized: [`SHOWN`] holds the five. What GTK saved for
-//! them, their widths, places and hidden state, is kept as it was when this table saves.
+//! Modified shown by default, and optional Duration, Dimensions and Created hidden by default,
+//! with GTK's default widths and minimums, the order and visibility saved as
+//! `list_column_order`, `list_hidden_columns` and `list_shown_columns`, and the widths as
+//! `browser_list_columns` / `chooser_list_columns`.
 //! Cells read the row's facts ([`crate::details`]), as GTK's `list_metadata_label` shows
 //! them: left-aligned, in the text colour. The Type cell is read only for the rows drawn, as
 //! GTK binds it.
 
-use std::hash::{DefaultHasher, Hash, Hasher};
+use std::{
+    collections::HashSet,
+    hash::{DefaultHasher, Hash, Hasher},
+};
 
 use strata_components::{
     collection::element::RowCx,
     list_table::{
-        Cell, Column as TableColumn, ColumnId, ColumnLayout, ColumnWidths, LayoutChange,
+        Cell, Column as TableColumn, ColumnId, ColumnLayout, ColumnWidths, LayoutChange, LayoutWhy,
         ListTableLabels,
     },
 };
-use strata_core::i18n::tr;
+use strata_core::{i18n::tr, model::SortKey};
 use strata_desktop::settings::{
-    ListColumnId, ListColumns, Preferences, sanitize_list_column_order,
+    ListColumnId, ListColumns, Preferences, default_list_column_order, sanitize_list_column_order,
     sanitize_list_hidden_columns,
 };
 
-use crate::{App, details, listing::Row, shell};
+use crate::{App, details, fills::Details, listing::Row, shell};
 
 /// The id a column is saved by (`ListColumnId`'s serde name).
 fn id(column: ListColumnId) -> ColumnId {
@@ -42,32 +44,47 @@ fn id(column: ListColumnId) -> ColumnId {
     })
 }
 
-/// The columns this table builds, in `ListColumnId`'s order.
-const SHOWN: [ListColumnId; 5] = [
-    ListColumnId::Name,
-    ListColumnId::Mode,
-    ListColumnId::Size,
-    ListColumnId::Type,
-    ListColumnId::Modified,
-];
-
-fn is_shown(column: ListColumnId) -> bool {
-    SHOWN.contains(&column)
-}
-
 fn saved(id: &ColumnId) -> Option<ListColumnId> {
     ListColumnId::ALL
         .into_iter()
         .find(|column| self::id(*column) == *id)
 }
 
-/// GTK's default widths and minimums, in the order of [`SHOWN`]
-/// (`LIST_COLUMN_WIDTHS` and `LIST_COLUMN_MIN_WIDTHS`).
-const WIDTHS: [f32; 5] = [160.0, 160.0, 90.0, 120.0, 150.0];
-const MINIMUMS: [f32; 5] = [160.0, 80.0, 70.0, 80.0, 110.0];
+/// Whether `column` is visible under `settings` (`is_list_column_visible` in
+/// `src/ui/preferences/layout_settings.rs`): Name is always visible, optional columns require
+/// an opt-in in `list_shown_columns`, and standard columns stay visible unless listed in
+/// `list_hidden_columns`.
+pub(crate) fn is_visible(settings: &Preferences, column: ListColumnId) -> bool {
+    if column == ListColumnId::Name {
+        return true;
+    }
+    if column.definition().optional {
+        settings.list_shown_columns.contains(&column)
+    } else {
+        !settings.list_hidden_columns.contains(&column)
+    }
+}
+
+/// The metadata detail level the List view asks for: media details for all rows while Duration
+/// or Dimensions is visible (`ListRow::has_media_column` in `list_factory.rs`), otherwise
+/// folder item counts only.
+pub(super) fn fill_details(layout: &ColumnLayout) -> Details {
+    let media = ListColumnId::ALL.into_iter().any(|column| {
+        column
+            .definition()
+            .sort_key
+            .is_some_and(SortKey::uses_media_metadata)
+            && layout.is_visible(&id(column))
+    });
+    if media {
+        Details::All
+    } else {
+        Details::Folders
+    }
+}
 
 /// The headings, translated once: the language changes only on restart.
-pub(super) struct Headings([String; 5]);
+pub(super) struct Headings([String; ListColumnId::ALL.len()]);
 
 /// The columns menu's and its button's words, translated (`column_options.rs` and
 /// `append_columns_menu` in `src/ui/browser_modes`).
@@ -82,7 +99,7 @@ pub(super) fn menu_labels() -> ListTableLabels {
 
 impl Headings {
     pub(super) fn translated() -> Self {
-        Self(SHOWN.map(|column| tr(column.title())))
+        Self(ListColumnId::ALL.map(|column| tr(column.title())))
     }
 }
 
@@ -118,6 +135,21 @@ fn modified(app: &App, rcx: &RowCx<'_>) -> Cell {
     Cell::text(text.unwrap_or_default())
 }
 
+fn duration(app: &App, rcx: &RowCx<'_>) -> Cell {
+    let text = row(app, rcx).map(|row| details::duration_cell(row.is_folder(), row.facts()));
+    Cell::text(text.unwrap_or_default())
+}
+
+fn dimensions(app: &App, rcx: &RowCx<'_>) -> Cell {
+    let text = row(app, rcx).map(|row| details::dimensions_cell(row.is_folder(), row.facts()));
+    Cell::text(text.unwrap_or_default())
+}
+
+fn created(app: &App, rcx: &RowCx<'_>) -> Cell {
+    let text = row(app, rcx).map(|row| details::created_cell(row.facts()));
+    Cell::text(text.unwrap_or_default())
+}
+
 /// Moves with what a row's cells read beyond its entry, so only the rows whose facts or date
 /// format changed build again; and, while dates are relative, every 30 s, when they read the
 /// clock again.
@@ -131,44 +163,77 @@ pub(super) fn cells_version(app: &App, rcx: &RowCx<'_>) -> u64 {
     hasher.finish()
 }
 
-/// The five columns in their default order. Name, Size, Type and Modified sort, as GTK's,
-/// through A10's `sort::headings`; Mode never.
-pub(super) fn columns(headings: &Headings) -> Vec<TableColumn<App>> {
-    let [name, mode_title, size_title, kind_title, modified_title] = &headings.0;
-    let sized = |column: TableColumn<App>, at: usize| {
-        let column = column.width(WIDTHS[at]).min(MINIMUMS[at]);
-        if crate::sort::headings::sortable(column.id().as_str()) {
-            column.sortable()
-        } else {
-            column
-        }
+fn build_column(column: ListColumnId, title: String) -> TableColumn<App> {
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "column widths are small point counts"
+    )]
+    let (width, min_width) = {
+        let def = column.definition();
+        (def.width as f32, def.min_width as f32)
     };
-    vec![
-        sized(TableColumn::primary("name", name.clone()), 0),
-        sized(TableColumn::new("mode", mode_title.clone(), mode), 1),
-        sized(TableColumn::new("size", size_title.clone(), size), 2),
-        sized(TableColumn::new("type", kind_title.clone(), kind), 3),
-        sized(
-            TableColumn::new("modified", modified_title.clone(), modified),
-            4,
-        ),
-    ]
+    let table_column = match column {
+        ListColumnId::Name => TableColumn::primary("name", title),
+        ListColumnId::Mode => TableColumn::new("mode", title, mode),
+        ListColumnId::Size => TableColumn::new("size", title, size),
+        ListColumnId::Type => TableColumn::new("type", title, kind),
+        ListColumnId::Modified => TableColumn::new("modified", title, modified),
+        ListColumnId::Duration => TableColumn::new("duration", title, duration),
+        ListColumnId::Dimensions => TableColumn::new("dimensions", title, dimensions),
+        ListColumnId::Created => TableColumn::new("created", title, created),
+    }
+    .width(width)
+    .min(min_width);
+    if crate::sort::headings::sortable(table_column.id().as_str()) {
+        table_column.sortable()
+    } else {
+        table_column
+    }
+}
+
+/// All eight columns in their default order. Every column except Mode sorts through
+/// `sort::headings`.
+pub(super) fn columns(headings: &Headings) -> Vec<TableColumn<App>> {
+    ListColumnId::ALL
+        .into_iter()
+        .zip(headings.0.iter())
+        .map(|(column, title)| build_column(column, title.clone()))
+        .collect()
 }
 
 /// The saved order and visibility, made whole as GTK loads them (`ColumnLayout::normalize`).
 pub(super) fn layout(settings: &Preferences) -> ColumnLayout {
-    layout_of(&settings.list_column_order, &settings.list_hidden_columns)
+    layout_of(
+        &settings.list_column_order,
+        &settings.list_hidden_columns,
+        &settings.list_shown_columns,
+    )
 }
 
-fn layout_of(order: &[ListColumnId], hidden: &[ListColumnId]) -> ColumnLayout {
-    let defaults: Vec<ColumnId> = SHOWN.into_iter().map(id).collect();
+fn layout_of(
+    order: &[ListColumnId],
+    hidden: &[ListColumnId],
+    shown: &[ListColumnId],
+) -> ColumnLayout {
+    let defaults: Vec<ColumnId> = ListColumnId::ALL.into_iter().map(id).collect();
     let order: Vec<ColumnId> = order.iter().map(|column| id(*column)).collect();
-    let hidden: Vec<ColumnId> = hidden.iter().map(|column| id(*column)).collect();
+    let hidden_ids: Vec<ColumnId> = ListColumnId::ALL
+        .into_iter()
+        .filter(|&column| {
+            column != ListColumnId::Name
+                && if column.definition().optional {
+                    !shown.contains(&column)
+                } else {
+                    hidden.contains(&column)
+                }
+        })
+        .map(id)
+        .collect();
     ColumnLayout::normalize(
         &defaults,
         Some(&id(ListColumnId::Name)),
         order.iter().map(ColumnId::as_str),
-        hidden.iter().map(ColumnId::as_str),
+        hidden_ids.iter().map(ColumnId::as_str),
     )
 }
 
@@ -194,7 +259,7 @@ pub(super) fn chooser_widths(settings: &Preferences) -> ColumnWidths {
 fn widths_of(saved: &ListColumns) -> ColumnWidths {
     #[expect(clippy::cast_precision_loss, reason = "a width in points")]
     let points = |width: i32| width as f32;
-    SHOWN
+    ListColumnId::ALL
         .into_iter()
         .filter_map(|column| Some((column, saved.width(column)?)))
         .fold(ColumnWidths::new(), |widths, (column, width)| {
@@ -202,83 +267,86 @@ fn widths_of(saved: &ListColumns) -> ColumnWidths {
         })
 }
 
-/// The widths as GTK's `remember` saves them: all four others, in whole points, and Name only
-/// once resized by hand.
-fn saved_widths(widths: &ColumnWidths) -> Vec<(ListColumnId, i32)> {
-    #[expect(clippy::cast_possible_truncation, reason = "a width in points")]
-    let width = |column: ListColumnId, at: usize| {
-        widths.get(&id(column)).unwrap_or(WIDTHS[at]).round() as i32
+/// The widths as GTK's `remember` saves them: every metadata column in whole points, and Name
+/// only once resized by hand.
+fn saved_widths(widths: &ColumnWidths) -> ListColumns {
+    #[expect(
+        clippy::cast_possible_truncation,
+        clippy::cast_precision_loss,
+        reason = "column widths are small point counts"
+    )]
+    let width = |column: ListColumnId| {
+        widths
+            .get(&id(column))
+            .unwrap_or(column.definition().width as f32)
+            .round() as i32
     };
-    SHOWN
+    ListColumnId::ALL
         .into_iter()
-        .enumerate()
-        .filter(|(_, column)| {
-            *column != ListColumnId::Name || widths.get(&id(ListColumnId::Name)).is_some()
+        .filter(|&column| {
+            column != ListColumnId::Name || widths.get(&id(ListColumnId::Name)).is_some()
         })
-        .map(|(at, column)| (column, width(column, at)))
+        .map(|column| (column, width(column)))
         .collect()
 }
 
-/// This table's widths, with the widths `saved` has for the columns it does not build.
-fn merged_widths(saved: Option<&ListColumns>, widths: &ColumnWidths) -> ListColumns {
-    let kept = ListColumnId::ALL
-        .into_iter()
-        .filter(|column| !is_shown(*column))
-        .filter_map(|column| Some((column, saved?.width(column)?)));
-    saved_widths(widths).into_iter().chain(kept).collect()
-}
-
-/// `order`'s columns in the places this table's columns had in `saved`, and the columns it does
-/// not build left where they were.
-fn merged_order(saved: &[ListColumnId], order: &[ListColumnId]) -> Vec<ListColumnId> {
-    let mut ours = order.iter().copied().filter(|column| is_shown(*column));
-    let merged: Vec<ListColumnId> = sanitize_list_column_order(saved)
-        .into_iter()
-        .map(|column| {
-            if is_shown(column) {
-                ours.next().unwrap_or(column)
-            } else {
-                column
-            }
-        })
-        .collect();
-    sanitize_list_column_order(&merged)
-}
-
-/// `hidden`, with the columns this table does not build hidden as `saved` has them.
-fn merged_hidden(saved: &[ListColumnId], hidden: &[ListColumnId]) -> Vec<ListColumnId> {
-    let kept = saved.iter().copied().filter(|column| !is_shown(*column));
-    sanitize_list_hidden_columns(&hidden.iter().copied().chain(kept).collect::<Vec<_>>())
+/// Updates a saved column-visibility list (`list_hidden_columns` or `list_shown_columns`),
+/// preserving the saved order of retained entries and appending newly added ones.
+fn updated_set(
+    saved: &[ListColumnId],
+    belongs: impl Fn(ListColumnId) -> bool,
+) -> Vec<ListColumnId> {
+    let mut seen = HashSet::new();
+    saved
+        .iter()
+        .copied()
+        .chain(ListColumnId::ALL)
+        .filter(|&column| belongs(column) && seen.insert(column))
+        .collect()
 }
 
 /// The person reordered, showed, hid or reset the columns: the settings save it through the
-/// rules GTK's setters apply (`set_list_column_order`, `set_list_hidden_columns`), which
-/// `strata_desktop::settings` holds, and the window keeps what a restart would read back.
+/// rules GTK's setters apply (`set_list_column_order`, `set_list_column_visible`,
+/// `reset_list_columns`), and the window keeps what a restart would read back.
 pub(super) fn keep_layout(app: &mut App, change: LayoutChange) {
-    let order: Vec<ListColumnId> = change.layout.order().iter().filter_map(saved).collect();
-    let hidden: Vec<ListColumnId> = change.layout.hidden().filter_map(saved).collect();
-    let settings = shell::preferences(app);
-    let order = merged_order(&settings.list_column_order, &order);
-    let hidden = merged_hidden(&settings.list_hidden_columns, &hidden);
-    app.list.layout = layout_of(&order, &hidden);
+    let (order, hidden, shown) = if change.why == LayoutWhy::Reset {
+        (default_list_column_order(), Vec::new(), Vec::new())
+    } else {
+        let settings = shell::preferences(app);
+        let order = sanitize_list_column_order(
+            &change
+                .layout
+                .order()
+                .iter()
+                .filter_map(saved)
+                .collect::<Vec<_>>(),
+        );
+        let hidden =
+            sanitize_list_hidden_columns(&updated_set(&settings.list_hidden_columns, |column| {
+                column != ListColumnId::Name
+                    && !column.definition().optional
+                    && !change.layout.is_visible(&id(column))
+            }));
+        let shown = updated_set(&settings.list_shown_columns, |column| {
+            column.definition().optional && change.layout.is_visible(&id(column))
+        });
+        (order, hidden, shown)
+    };
+    app.list.layout = layout_of(&order, &hidden, &shown);
+    app.list.fills.set_details(fill_details(&app.list.layout));
     shell::saved(app).change(|settings| {
         settings.list_column_order = order;
         settings.list_hidden_columns = hidden;
+        settings.list_shown_columns = shown;
     });
 }
 
 /// The person resized a column: the settings save every width, as GTK saves
-/// `browser_list_columns`, keeping only valid ones (`set_browser_list_columns`), and the
-/// window keeps what a restart would read back.
+/// `browser_list_columns` / `chooser_list_columns`, keeping only valid ones, and the window
+/// keeps what a restart would read back.
 pub(super) fn keep_widths(app: &mut App, widths: ColumnWidths) {
     let chooser = app.browser.is_chooser_mode();
-    let settings = shell::preferences(app);
-    let before = if chooser {
-        settings.chooser_list_columns.as_ref()
-    } else {
-        settings.browser_list_columns.as_ref()
-    };
-    let saved = Some(merged_widths(before, &widths)).filter(ListColumns::is_valid);
+    let saved = Some(saved_widths(&widths)).filter(ListColumns::is_valid);
     app.list.widths = saved.as_ref().map_or_else(ColumnWidths::new, widths_of);
     shell::saved(app).change(|settings| {
         if chooser {

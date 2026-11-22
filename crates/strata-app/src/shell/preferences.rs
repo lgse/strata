@@ -137,7 +137,9 @@ pub(crate) fn follow_another_window(app: &mut App, tx: &mut Tx) -> bool {
     );
     follow_look_tx(app, tx);
     sync_live_preferences(app, tx);
-    let sort = strata_desktop::settings::sort_preferences(preferences(app));
+    let saved = preferences(app).clone();
+    app.list.sync_columns(&saved, app.browser.is_chooser_mode());
+    let sort = strata_desktop::settings::sort_preferences(&saved);
     sync_default_preferences(app, sort);
     sync_freshness(app);
     super::refresh_worn(app);
