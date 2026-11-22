@@ -529,3 +529,18 @@ fn gutter_divider_renders_only_when_line_numbers_are_shown() {
         "gutter divider is omitted when line numbers are hidden"
     );
 }
+
+#[test]
+fn restore_selection_range_ignores_invalid_utf8_and_out_of_bounds_offsets() {
+    let mut code = CodeState::new("héllo\nworld\n");
+    let mut tx = Tx::default();
+    // Byte 2 lies inside the two-byte UTF-8 character 'é' (bytes 1..3).
+    code.restore_selection_range(0, 2, &mut tx);
+    assert_eq!(code.copy_keyboard(), None);
+    // Out-of-bounds offset past text length is ignored.
+    code.restore_selection_range(0, 999, &mut tx);
+    assert_eq!(code.copy_keyboard(), None);
+    // Valid char-boundary range succeeds.
+    code.restore_selection_range(0, "héllo".len(), &mut tx);
+    assert_eq!(code.copy_keyboard().as_deref(), Some("héllo"));
+}

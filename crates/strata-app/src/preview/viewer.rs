@@ -283,8 +283,17 @@ impl Viewer {
         }
     }
 
-    /// Context-menu snapshot for read-only preview text viewers: `(focus_key, selected_text,
-    /// saved_selection, can_select_all)`.
+    /// Current monotonic identity of the active text viewer, if one is shown.
+    pub(super) fn text_viewer_stamp(&self) -> Option<crate::menus::TextViewerStamp> {
+        match self {
+            Self::Code(code) => Some(crate::menus::TextViewerStamp::Code(code.revision())),
+            Self::Document(doc) => doc.text_viewer_stamp(),
+            Self::Pdf(pdf) => Some(crate::menus::TextViewerStamp::Pdf(pdf.id())),
+            _ => None,
+        }
+    }
+
+    /// Context-menu snapshot for read-only preview text viewers.
     pub(super) fn text_menu_info(
         &self,
         sel: Option<&rune::TextSelection>,
@@ -295,6 +304,7 @@ impl Viewer {
             Self::Pdf(pdf) => {
                 let selected = pdf.state.selected_text();
                 Some(TextMenuSnapshot {
+                    stamp: crate::menus::TextViewerStamp::Pdf(pdf.id()),
                     focus_key: pdf::PDF_KEY,
                     selected: (!selected.is_empty()).then_some(selected),
                     restore: None,
@@ -502,6 +512,7 @@ impl ScrollTarget {
 
 /// Captured selection metadata for opening a preview text viewer's context menu.
 pub(super) struct TextMenuSnapshot {
+    pub(super) stamp: crate::menus::TextViewerStamp,
     pub(super) focus_key: &'static str,
     pub(super) selected: Option<String>,
     pub(super) restore: Option<crate::menus::SavedPreviewSelection>,
@@ -533,6 +544,11 @@ fn code_menu_snapshot(code: &CodeState, sel: Option<&rune::TextSelection>) -> Te
         None
     } else if code.selects_whole(sel) {
         Some(crate::menus::SavedPreviewSelection::All)
+    } else if let Some((lo, hi)) = code.keyboard_selection() {
+        // Multi-line keyboard and gutter selections only highlight their first row in Rune's
+        // single-text selection; check `keyboard_selection()` before `single_node_selection` so
+        // lines 2+ are preserved across menu open/dismiss/copy.
+        Some(crate::menus::SavedPreviewSelection::CodeRange(lo, hi))
     } else if let Some(node) = single_node_selection(sel) {
         Some(node)
     } else {
@@ -540,6 +556,7 @@ fn code_menu_snapshot(code: &CodeState, sel: Option<&rune::TextSelection>) -> Te
             .map(|(lo, hi)| crate::menus::SavedPreviewSelection::CodeRange(lo, hi))
     };
     TextMenuSnapshot {
+        stamp: crate::menus::TextViewerStamp::Code(code.revision()),
         focus_key: CODE_KEY,
         selected,
         restore,
@@ -560,6 +577,7 @@ fn document_menu_snapshot(
         single_node_selection(sel)
     };
     TextMenuSnapshot {
+        stamp: crate::menus::TextViewerStamp::Document(doc.content_id()),
         focus_key: document::DOCUMENT_KEY,
         selected,
         restore,
@@ -568,6 +586,20 @@ fn document_menu_snapshot(
 }
 
 impl DocumentViewer {
+    fn text_viewer_stamp(&self) -> Option<crate::menus::TextViewerStamp> {
+        match self.active {
+            DocumentView::Rendered => match self.rendered.as_ref()? {
+                RenderedBody::Document(doc) => Some(crate::menus::TextViewerStamp::Document(
+                    doc.state.content_id(),
+                )),
+                RenderedBody::Sheet(_) => None,
+            },
+            DocumentView::Source => self
+                .source
+                .as_deref()
+                .map(|code| crate::menus::TextViewerStamp::Code(code.revision())),
+        }
+    }
     #[cfg(test)]
     pub(super) fn is_rendered_document_for_test(&self) -> bool {
         self.active == DocumentView::Rendered

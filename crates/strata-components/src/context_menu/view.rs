@@ -166,7 +166,10 @@ impl<S: 'static> Render<'_, S> {
         let scrim_dismiss = self.on_dismiss.clone();
         layer.push(
             el().key(format!("{}-scrim", self.key))
-                .pin(Some(0.0), Some(0.0), Some(0.0), Some(0.0))
+                .role("none")
+                .absolute(0.0, 0.0)
+                .w_full()
+                .h_full()
                 .keeps_text_selection()
                 .on_press_tx(move |s: &mut S, tx: &mut Tx| scrim_dismiss(s, tx)),
         );

@@ -381,9 +381,14 @@ impl<S: 'static> CodeView<S> {
         let body = build_viewport_body::<S>(
             st,
             viewport,
-            (&key, &scroll_key),
-            (wrap, gutter, &paint),
-            look,
+            &ViewportBody {
+                key: &key,
+                scroll_key: &scroll_key,
+                wrap,
+                gutter,
+                paint: &paint,
+                look,
+            },
         );
         let mut body = row()
             .w_full()
@@ -429,24 +434,27 @@ impl<S: 'static> CodeView<S> {
     }
 }
 
-fn build_viewport_body<S: 'static>(
-    st: &CodeState,
-    viewport: El,
-    (key, scroll_key): (&str, &str),
-    (wrap, gutter, paint): (bool, Option<f32>, &Paint),
-    look: &Look,
-) -> El {
+struct ViewportBody<'a> {
+    key: &'a str,
+    scroll_key: &'a str,
+    wrap: bool,
+    gutter: Option<f32>,
+    paint: &'a Paint,
+    look: &'a Look,
+}
+
+fn build_viewport_body<S: 'static>(st: &CodeState, viewport: El, spec: &ViewportBody<'_>) -> El {
     let mut area = overlay(viewport, []);
-    if let Some(w) = gutter {
-        area = area.child(gutter_divider(key, w, paint));
+    if let Some(w) = spec.gutter {
+        area = area.child(gutter_divider(spec.key, w, spec.paint));
     }
-    if wrap {
+    if spec.wrap {
         return area;
     }
     let bar = st.sideways.build::<S>(
-        &format!("{key}-sideways"),
-        scroll_key,
-        BarLook::app(look).horizontal(),
+        &format!("{}-sideways", spec.key),
+        spec.scroll_key,
+        BarLook::app(spec.look).horizontal(),
     );
     st.sideways.area(area.child(anchor(0.0, 0.0, bar)))
 }

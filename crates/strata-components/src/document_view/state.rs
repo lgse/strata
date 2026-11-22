@@ -272,6 +272,11 @@ impl DocumentState {
         self.revision
     }
 
+    /// Process-unique monotonic identifier of the current document content.
+    pub fn content_id(&self) -> u64 {
+        self.content.scroll_gen
+    }
+
     /// Whether the file has a Source view (Markdown, HTML, RTF, CSV, TSV): the header then
     /// offers View source. DOCX, ODT and workbooks have none. Off by default.
     pub fn set_source_available(&mut self, on: bool) {

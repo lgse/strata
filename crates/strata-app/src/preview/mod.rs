@@ -502,36 +502,35 @@ pub(crate) fn scroll_document(app: &mut App, motion: DocumentScroll, tx: &mut Tx
     match motion {
         DocumentScroll::Line(dir) => {
             let step = line_scroll_step(app, target.kind, page);
-            let y = (target.pos.offset[1] + dir as f32 * step).max(0.0);
-            tx.scroll_to_y(target.key, y);
+            tx.scroll_to_y(
+                target.key,
+                (target.pos.offset[1] + dir as f32 * step).max(0.0),
+            );
         }
         DocumentScroll::HalfPage(dir) => {
             let y = (target.pos.offset[1] + dir as f32 * (page * 0.5)).max(0.0);
             tx.scroll_to_y(target.key, y);
         }
-        DocumentScroll::Page(dir) => {
-            tx.scroll_page(target.key, dir);
-        }
-        DocumentScroll::Start => {
-            if target.kind == viewer::ScrollTargetKind::Code {
-                app.preview.viewer.scroll_code_edge(false, tx);
-            } else {
-                tx.scroll_to_y(target.key, 0.0);
-            }
-        }
-        DocumentScroll::End => match target.kind {
-            viewer::ScrollTargetKind::Code => {
-                app.preview.viewer.scroll_code_edge(true, tx);
-            }
-            viewer::ScrollTargetKind::Document => {
-                tx.scroll_to_bottom_instant(target.key);
-            }
-            viewer::ScrollTargetKind::Pdf => {
-                tx.scroll_to_y(target.key, f32::MAX);
-            }
-        },
+        DocumentScroll::Page(dir) => tx.scroll_page(target.key, dir),
+        DocumentScroll::Start => scroll_target_edge(app, &target, false, tx),
+        DocumentScroll::End => scroll_target_edge(app, &target, true, tx),
     }
     true
+}
+
+fn scroll_target_edge(app: &App, target: &viewer::ScrollTarget, end: bool, tx: &mut Tx) {
+    match target.kind {
+        viewer::ScrollTargetKind::Code => {
+            let _ = app.preview.viewer.scroll_code_edge(end, tx);
+        }
+        viewer::ScrollTargetKind::Document if end => {
+            tx.scroll_to_bottom_instant(target.key.clone());
+        }
+        viewer::ScrollTargetKind::Document => tx.scroll_to_y(target.key.clone(), 0.0),
+        viewer::ScrollTargetKind::Pdf => {
+            tx.scroll_to_y(target.key.clone(), if end { f32::MAX } else { 0.0 });
+        }
+    }
 }
 
 fn line_scroll_step(app: &App, kind: viewer::ScrollTargetKind, page: f32) -> f32 {
@@ -560,23 +559,29 @@ pub(crate) fn scroll_lines(app: &mut App, lines: i32, tx: &mut Tx) -> bool {
 /// body (excluding the find field, archive password prompt, resize grip, header buttons, archive
 /// tree, and media player).
 pub(crate) fn in_document_body(app: &App, at: &Situation) -> bool {
-    if !app.preview.enabled
-        || app.preview.drawer.is_find_focused()
-        || app.preview.viewer.is_prompt_focused()
-        || at.within("preview-grip")
-    {
-        return false;
-    }
-    let has_document = matches!(
-        app.preview.viewer,
+    let available = app.preview.enabled
+        && !app.preview.drawer.is_find_focused()
+        && !app.preview.viewer.is_prompt_focused()
+        && !at.within("preview-grip");
+    available && is_document_viewer(&app.preview.viewer) && focused_in_document_body(at)
+}
+
+fn is_document_viewer(viewer: &Viewer) -> bool {
+    matches!(
+        viewer,
         Viewer::Code(_) | Viewer::Document(_) | Viewer::Pdf(_)
-    );
-    has_document
-        && (at.within(viewer::CODE_KEY)
-            || at.within(document::DOCUMENT_KEY)
-            || at.within(pdf::PDF_KEY)
-            || at.within(sheet::SHEET_KEY)
-            || at.focused() == Some(strata_components::preview_drawer::BODY_KEY))
+    )
+}
+
+fn focused_in_document_body(at: &Situation) -> bool {
+    const KEYS: [&str; 4] = [
+        viewer::CODE_KEY,
+        document::DOCUMENT_KEY,
+        pdf::PDF_KEY,
+        sheet::SHEET_KEY,
+    ];
+    KEYS.iter().any(|key| at.within(key))
+        || at.focused() == Some(strata_components::preview_drawer::BODY_KEY)
 }
 
 /// Whether the open preview is showing a media player (whose own transport owns `J`/`K`).
@@ -623,6 +628,7 @@ pub(super) fn open_text_context_menu(
     crate::menus::open_preview_text(
         app,
         crate::menus::PreviewTextRequest {
+            stamp: snapshot.stamp,
             anchor: at,
             focus_key: snapshot.focus_key,
             selected: snapshot.selected,
@@ -633,40 +639,53 @@ pub(super) fn open_text_context_menu(
     );
 }
 
-/// Runs a chosen item from a preview text viewer's context menu.
+fn is_current_text_viewer(app: &App, stamp: crate::menus::TextViewerStamp) -> bool {
+    app.preview.enabled
+        && app.preview.drawer.is_open()
+        && app.preview.viewer.text_viewer_stamp() == Some(stamp)
+}
+
+/// Runs a chosen item from a preview text viewer's context menu. Ignores viewer mutations and
+/// focus handoffs when the preview closed, reloaded, or switched files while the menu was open.
 pub(crate) fn run_text_menu_action(
     app: &mut App,
     action: &str,
-    (selected, restore): (Option<&str>, Option<&crate::menus::SavedPreviewSelection>),
+    outcome: &crate::menus::PreviewTextMenuOutcome<'_>,
     tx: &mut Tx,
 ) {
+    let current = is_current_text_viewer(app, outcome.stamp);
     match action {
         "copy" => {
-            if let Some(text) = selected
+            if let Some(text) = outcome.selected
                 && !text.is_empty()
             {
                 tx.copy(text.to_owned());
             }
-            if let Some(saved) = restore {
+            if current && let Some(saved) = outcome.restore {
                 app.preview.viewer.restore_text_selection(saved, tx);
             }
         }
-        "select-all" => {
+        "select-all" if current => {
             let _ = app.preview.viewer.select_all_text(tx);
         }
         _ => {}
     }
-    arm_focus_handoff(app, tx);
+    if current {
+        arm_focus_handoff(app, tx);
+    }
 }
 
 /// Restores preview focus and any active text selection when the preview text menu dismisses via
-/// Escape or click-away.
+/// Escape or click-away, unless the preview closed or switched while the menu was open.
 pub(crate) fn dismiss_text_menu(
     app: &mut App,
-    restore: Option<&crate::menus::SavedPreviewSelection>,
+    outcome: &crate::menus::PreviewTextMenuOutcome<'_>,
     tx: &mut Tx,
 ) {
-    if let Some(saved) = restore {
+    if !is_current_text_viewer(app, outcome.stamp) {
+        return;
+    }
+    if let Some(saved) = outcome.restore {
         app.preview.viewer.restore_text_selection(saved, tx);
     }
     arm_focus_handoff(app, tx);

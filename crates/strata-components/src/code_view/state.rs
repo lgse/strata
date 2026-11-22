@@ -323,9 +323,13 @@ impl CodeState {
             .filter(|(a, b)| a < b)
     }
 
-    /// Restores a byte-range selection `(lo, hi)` in this view.
+    /// Restores a byte-range selection `(lo, hi)` in this view when both offsets lie on valid
+    /// UTF-8 character boundaries of the current text.
     pub fn restore_selection_range(&mut self, lo: usize, hi: usize, tx: &mut Tx) {
-        self.apply_caret(lo, hi, tx);
+        let text = &self.content.rows.text;
+        if lo < hi && hi <= text.len() && text.is_char_boundary(lo) && text.is_char_boundary(hi) {
+            self.apply_caret(lo, hi, tx);
+        }
     }
 
     /// Selects the entire document text in Rune and arms model-backed whole-text copying.
@@ -444,7 +448,7 @@ impl CodeState {
         self.caret
     }
 
-    pub(crate) fn keyboard_selection(&self) -> Option<(usize, usize)> {
+    pub fn keyboard_selection(&self) -> Option<(usize, usize)> {
         self.content.keyboard_range.get()
     }
 
@@ -496,8 +500,9 @@ impl CodeState {
 
     pub(crate) fn copy_keyboard(&self) -> Option<String> {
         let (a, b) = self.content.keyboard_range.get()?;
-        (a < b && b <= self.content.rows.text.len())
-            .then(|| self.content.rows.text[a..b].to_owned())
+        let text = &self.content.rows.text;
+        (a < b && b <= text.len() && text.is_char_boundary(a) && text.is_char_boundary(b))
+            .then(|| text[a..b].to_owned())
     }
 
     fn matches_expected_select(&self, sel: Option<&TextSelection>) -> bool {

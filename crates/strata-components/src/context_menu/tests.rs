@@ -1603,10 +1603,14 @@ fn items_with_icons_and_danger_invoke_actions_and_keep_clean_accessibility() {
     ]));
     let mut rt = opened_with(m);
 
-    // Collect menu-item nodes from the AccessKit tree: icons stay hidden from assistive tech.
+    // Collect menu-item nodes from the AccessKit tree: icons and the scrim stay hidden.
     let mut items = Vec::new();
+    let mut scrim_exposed = false;
     let mut stack = vec![rt.accessibility_json()];
     while let Some(node) = stack.pop() {
+        if node["key"] == "m-scrim" {
+            scrim_exposed = true;
+        }
         if node["role"] == "menu-item" {
             items.push(node.clone());
         }
@@ -1614,6 +1618,10 @@ fn items_with_icons_and_danger_invoke_actions_and_keep_clean_accessibility() {
             stack.extend(children.iter().cloned());
         }
     }
+    assert!(
+        !scrim_exposed,
+        "menu scrim must keep role(\"none\") out of the AccessKit tree"
+    );
     assert_eq!(items.len(), 3, "three menu-item nodes in a11y tree");
     let by_key = |k: &str| {
         items

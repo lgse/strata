@@ -208,6 +208,146 @@ fn code_preview_context_menu_copies_selects_and_dismisses_cleanly() {
 }
 
 #[test]
+fn code_preview_multiline_keyboard_selection_survives_context_menu() {
+    hosted(
+        MODULE,
+        "text_polish::code_preview_multiline_keyboard_selection_survives_context_menu",
+        |mut host| {
+            let mem = attach_clipboard(&mut host);
+            let body = "alpha\nbeta\ngamma\ndelta\n";
+            let folder = open_folder_with_files(&mut host, &[("multi.txt", body)]);
+            select(&mut host, &Location::local(folder.path().join("multi.txt")));
+            wait_for_code_preview(&mut host);
+
+            host.runtime().update(|_: &mut App, tx: &mut Tx| {
+                tx.focus(CODE_KEY, true);
+            });
+            while host.turn() {}
+
+            let ctrl = Mods {
+                ctrl: true,
+                ..Mods::default()
+            };
+            let shift = Mods {
+                shift: true,
+                ..Mods::default()
+            };
+            // Select across two lines via keyboard (Ctrl+Home, Shift+Down, Shift+End).
+            press(&mut host, Key::Home, ctrl);
+            press(&mut host, Key::Down, shift);
+            press(&mut host, Key::End, shift);
+            let code_keyboard_text = |app: &App| {
+                app.preview.viewer.code_state().and_then(|c| {
+                    let (lo, hi) = c.keyboard_selection()?;
+                    c.text().get(lo..hi).map(str::to_owned)
+                })
+            };
+
+            let expected = "alpha\nbeta";
+            assert_eq!(code_keyboard_text(host.app()).as_deref(), Some(expected));
+
+            // Right-click -> Escape must preserve the full two-line keyboard selection.
+            let (cx, cy) = element_center(&mut host, CODE_KEY);
+            secondary_click_at(&mut host, cx, cy);
+            assert_eq!(
+                menu_items(&host),
+                vec![("copy".into(), true), ("select-all".into(), true)]
+            );
+            press(&mut host, Key::Escape, Mods::default());
+            assert!(!host.app().menu.state.is_open());
+            assert_eq!(
+                code_keyboard_text(host.app()).as_deref(),
+                Some(expected),
+                "multi-line keyboard selection must not truncate to row 0 after Escape"
+            );
+
+            // Right-click -> Copy copies the full two-line selection and preserves it.
+            secondary_click_at(&mut host, cx, cy);
+            click_key(&mut host, "menu-item0");
+            assert_eq!(clipboard_text(&mem).as_deref(), Some(expected));
+            assert_eq!(code_keyboard_text(host.app()).as_deref(), Some(expected));
+        },
+    );
+}
+
+#[test]
+fn stale_preview_context_menu_ignores_switched_or_closed_preview() {
+    hosted(
+        MODULE,
+        "text_polish::stale_preview_context_menu_ignores_switched_or_closed_preview",
+        |mut host| {
+            // Long ASCII file -> short multi-byte UTF-8 file to catch any stale byte-offset panic.
+            let long_body = "0123456789abcdef\nsecond line\nthird line\n";
+            let short_utf8 = "é\n";
+            let folder = open_folder_with_files(
+                &mut host,
+                &[("a_long.txt", long_body), ("b_short.txt", short_utf8)],
+            );
+            select(
+                &mut host,
+                &Location::local(folder.path().join("a_long.txt")),
+            );
+            wait_for_code_preview(&mut host);
+
+            host.runtime().update(|_: &mut App, tx: &mut Tx| {
+                tx.focus(CODE_KEY, true);
+            });
+            while host.turn() {}
+            let ctrl = Mods {
+                ctrl: true,
+                ..Mods::default()
+            };
+            let shift = Mods {
+                shift: true,
+                ..Mods::default()
+            };
+            // Select bytes 0..23 (inside multi-byte UTF-8 or past end of `b_short.txt`).
+            press(&mut host, Key::Home, ctrl);
+            press(&mut host, Key::Down, shift);
+            press(&mut host, Key::Right, shift);
+            press(&mut host, Key::Right, shift);
+
+            let (cx, cy) = element_center(&mut host, CODE_KEY);
+            secondary_click_at(&mut host, cx, cy);
+            assert!(host.app().menu.state.is_open());
+
+            // Simulate async reload/switch onto a shorter UTF-8 text while the menu stays open.
+            host.runtime().update(|app: &mut App, _: &mut Tx| {
+                if let Viewer::Code(code) = &mut app.preview.viewer {
+                    code.set_text(short_utf8);
+                }
+            });
+            while host.turn() {}
+
+            // Dismissing via Escape must not panic or apply stale selection bytes to the new text.
+            press(&mut host, Key::Escape, Mods::default());
+            assert!(!host.app().menu.state.is_open());
+            assert_eq!(
+                host.app()
+                    .preview
+                    .viewer
+                    .code_state()
+                    .and_then(|c| c.keyboard_selection()),
+                None
+            );
+
+            // Re-open menu, then close preview while menu is open: clicking Select All must not
+            // re-arm owns_focus on the closed drawer.
+            secondary_click_at(&mut host, cx, cy);
+            assert!(host.app().menu.state.is_open());
+            host.runtime().update(|app: &mut App, tx: &mut Tx| {
+                super::super::session::close(app, tx);
+            });
+            while host.turn() {}
+            click_key(&mut host, "menu-item1");
+            assert!(!host.app().menu.state.is_open());
+            assert!(!host.app().preview.enabled);
+            assert!(!super::super::owns_focus(host.app()));
+        },
+    );
+}
+
+#[test]
 fn document_preview_context_menu_works_in_prose_and_tables() {
     hosted(
         MODULE,

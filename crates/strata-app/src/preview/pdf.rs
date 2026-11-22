@@ -99,6 +99,10 @@ impl PdfViewer {
         })
     }
 
+    pub(super) fn id(&self) -> u64 {
+        self.id
+    }
+
     pub(super) fn stop(&mut self) {
         self.busy = None;
     }

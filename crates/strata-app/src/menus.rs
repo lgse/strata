@@ -306,6 +306,16 @@ fn fill_custom_slot(app: &mut App, opening: &mut Opening, depth: usize, entry: O
     }
 }
 
+/// Monotonic identity of the active preview text viewer when a preview context menu opens, so
+/// stale callbacks after an async preview switch, reload, or close never mutate a different file
+/// or arm focus on a closed drawer.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum TextViewerStamp {
+    Code(u64),
+    Document(u64),
+    Pdf(u64),
+}
+
 /// Snapshot of a preview text selection so opening the modal context menu (which causes Rune's
 /// `prune_text_selection` to clear selections behind the modal) still copies accurately and
 /// restores the visual selection when the menu closes.
@@ -320,17 +330,26 @@ pub(crate) enum SavedPreviewSelection {
 /// `PdfView`).
 #[derive(Clone, Debug)]
 struct PreviewTextTarget {
+    stamp: TextViewerStamp,
     selected: Option<String>,
     restore: Option<SavedPreviewSelection>,
 }
 
 /// Inputs for opening a preview text viewer's context menu.
 pub(crate) struct PreviewTextRequest {
+    pub(crate) stamp: TextViewerStamp,
     pub(crate) anchor: Point,
     pub(crate) focus_key: &'static str,
     pub(crate) selected: Option<String>,
     pub(crate) restore: Option<SavedPreviewSelection>,
     pub(crate) can_select_all: bool,
+}
+
+/// Context carried from a preview text menu action or dismissal back into `preview`.
+pub(crate) struct PreviewTextMenuOutcome<'a> {
+    pub(crate) stamp: TextViewerStamp,
+    pub(crate) selected: Option<&'a str>,
+    pub(crate) restore: Option<&'a SavedPreviewSelection>,
 }
 
 /// Opens Strata's styled context menu for read-only preview text (`Copy`, `Select All`).
@@ -344,6 +363,7 @@ pub(crate) fn open_preview_text(app: &mut App, request: PreviewTextRequest, tx: 
     app.menu.show_other(
         name,
         MenuTarget::Other(Rc::new(PreviewTextTarget {
+            stamp: request.stamp,
             selected: request.selected,
             restore: request.restore,
         })),
@@ -385,10 +405,11 @@ fn chosen(app: &mut App, intent: MenuIntent, tx: &mut Tx) {
         crate::preview::run_text_menu_action(
             app,
             &action,
-            (
-                preview_target.selected.as_deref(),
-                preview_target.restore.as_ref(),
-            ),
+            &PreviewTextMenuOutcome {
+                stamp: preview_target.stamp,
+                selected: preview_target.selected.as_deref(),
+                restore: preview_target.restore.as_ref(),
+            },
             tx,
         );
         return;
@@ -423,7 +444,15 @@ fn dismissed(app: &mut App, target: MenuTarget, tx: &mut Tx) {
     if let MenuTarget::Other(other) = target
         && let Some(preview_target) = other.downcast_ref::<PreviewTextTarget>()
     {
-        crate::preview::dismiss_text_menu(app, preview_target.restore.as_ref(), tx);
+        crate::preview::dismiss_text_menu(
+            app,
+            &PreviewTextMenuOutcome {
+                stamp: preview_target.stamp,
+                selected: preview_target.selected.as_deref(),
+                restore: preview_target.restore.as_ref(),
+            },
+            tx,
+        );
     }
 }
 
