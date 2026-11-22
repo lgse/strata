@@ -68,6 +68,11 @@ pub(super) fn tabbed_form() -> TabbedForm<App> {
         },
     )
     .mounting(Mounting::Rebuilt)
+    .on_select(|app: &mut App, _, _| {
+        if let Some(editor) = app.settings_dialog.actions.editor.as_ref() {
+            editor.release_bars();
+        }
+    })
 }
 
 pub(super) fn build_dialog(app: &App, layer: &mut Vec<El>) {

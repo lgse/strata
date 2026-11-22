@@ -296,6 +296,9 @@ pub(super) fn confirm_editor(app: &mut App, tx: &mut Tx) {
                 (editor.mode, editor.generation, result)
             }
             Err(err) => {
+                if editor.tabs.selected() != err.tab {
+                    editor.release_bars();
+                }
                 editor.show_error(err.message, Some(err.tab));
                 editor.tabs.show_error(err.tab, err.field_key, tx);
                 return;

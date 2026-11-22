@@ -253,6 +253,8 @@ impl EditorSession {
         if self.runtime == runtime {
             return;
         }
+        self.python_editor.release_bars();
+        self.bash_editor.release_bars();
         self.runtime = runtime;
         if runtime != ActionRuntime::Command {
             replace_default_entrypoint(&mut self.entrypoint, runtime);
@@ -311,7 +313,7 @@ impl EditorSession {
         self.error = None;
         self.error_tab = None;
         self.examples_open = false;
-        self.examples_bar.release();
+        self.release_bars();
         self.examples_query.focused = false;
         self.pending_example = None;
         self.tabs.select(SCRIPT_TAB);
