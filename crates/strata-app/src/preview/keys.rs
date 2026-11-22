@@ -157,8 +157,9 @@ fn in_tenxer_preview(app: &App, at: &Situation) -> bool {
 }
 
 /// `return_from_preview`: the listing takes the keys, the drawer stays open.
-fn return_to_files(app: &mut App, _: &Call<'_>, _: &mut Tx) -> Outcome {
-    app.preview.drawer.focus_files();
+fn return_to_files(app: &mut App, _: &Call<'_>, tx: &mut Tx) -> Outcome {
+    super::return_to_files(app);
+    tx.wake_after(std::time::Duration::ZERO);
     Outcome::Ran
 }
 
@@ -358,20 +359,26 @@ pub(super) fn enter_entry(app: &mut App, entry: FileEntry, depth: Option<usize>,
 
 fn focus_loaded_or_pending(app: &mut App, tx: &mut Tx) -> bool {
     if app.preview.viewer.focus_into(tx) {
+        app.preview.owns_focus = true;
+        tx.wake_after(std::time::Duration::ZERO);
         return true;
     }
     if app.preview.viewer.can_focus() {
+        app.preview.owns_focus = true;
         app.preview.drawer.focus_content();
+        tx.wake_after(std::time::Duration::ZERO);
         return true;
     }
     if app.preview.viewer.needs_body_focus_owner() {
         app.preview.content_focus = ContentFocus::Pending;
         app.preview.drawer.focus_content_when_shown(tx);
+        tx.wake_after(std::time::Duration::ZERO);
         return true;
     }
     if let Some(request_id) = app.preview.loader.current_request {
         app.preview.loader.focus_archive_request = Some(request_id);
         app.preview.drawer.focus_content_when_shown(tx);
+        tx.wake_after(std::time::Duration::ZERO);
         return true;
     }
     false
@@ -390,18 +397,22 @@ fn enter_preview(app: &mut App, call: &Call<'_>, tx: &mut Tx) -> Outcome {
     }
 }
 
-fn focus_divider(app: &mut App, _: &Call<'_>, _: &mut Tx) -> Outcome {
+fn focus_divider(app: &mut App, _: &Call<'_>, tx: &mut Tx) -> Outcome {
+    app.preview.owns_focus = false;
+    app.preview.focus_pending = false;
     app.preview.drawer.focus_divider();
+    tx.wake_after(std::time::Duration::ZERO);
     Outcome::Ran
 }
 
-fn leave_preview(app: &mut App, call: &Call<'_>, _: &mut Tx) -> Outcome {
+fn leave_preview(app: &mut App, call: &Call<'_>, tx: &mut Tx) -> Outcome {
     if let Some(press) = call.press
         && is_plain_letter_with_type_to_search(app, press)
     {
         return Outcome::Declined;
     }
-    app.preview.drawer.focus_files();
+    super::return_to_files(app);
+    tx.wake_after(std::time::Duration::ZERO);
     Outcome::Ran
 }
 

@@ -586,6 +586,7 @@ pub fn columns_view() -> ColumnsView<Gallery> {
                 })
                 .build(kit)
                 .focusable(false)
+                .no_focus_ring()
                 .key(format!("c2-refresh-{}", cx.depth)),
         )
     })

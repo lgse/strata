@@ -718,9 +718,10 @@ fn code_view(
 ) -> El {
     CodeView::new(get, get_mut)
         .labels(labels::code())
-        .on_intent(|app: &mut App, intent, _| {
+        .on_intent(|app: &mut App, intent, tx| {
             if intent == CodeIntent::Leave {
-                app.preview.drawer.focus_files();
+                super::return_to_files(app);
+                tx.wake_after(std::time::Duration::ZERO);
             }
         })
         .build(app, &app.look, cx)
