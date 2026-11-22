@@ -58,6 +58,10 @@ pub(super) fn shell<S: 'static>(sh: &Rc<Shared<S>>, s: &S, depth: usize) -> El {
     } else {
         String::new()
     };
+    // Earlier columns paint after later ones so each column's right resize edge (which reaches
+    // `EDGE_REACH` onto the next column) paints and hit-tests above its right neighbour without
+    // calling `.raise()`, keeping Rune's window-wide `PaintKeep` active.
+    let order = n.saturating_sub(depth).min(i16::MAX as usize) as i16;
     let mut shell = col()
         .key(keys::slot(&st.key, c.slot))
         .role("group")
@@ -66,12 +70,18 @@ pub(super) fn shell<S: 'static>(sh: &Rc<Shared<S>>, s: &S, depth: usize) -> El {
         .w(w)
         .h_full()
         .min_h(0.0)
+        .paint_order(order)
         .drawn_rect_into(&c.drawn)
         .transition(shell_motion)
         .child(body);
     if draws_line {
         shell = shell.child(edge_line(&key, look));
     }
+    let right = st.spans(look).get(depth).map_or(w, |&(_, r)| r) - st.strip_feed.get().offset[0];
+    let overlaps_window_edge = depth + 1 == n
+        && draws_line
+        && st.strip.w > 0.0
+        && (st.strip.w - right).abs() <= EDGE_REACH;
     shell = shell.child(edge(
         sh,
         st,
@@ -81,6 +91,7 @@ pub(super) fn shell<S: 'static>(sh: &Rc<Shared<S>>, s: &S, depth: usize) -> El {
             key: &key,
             scale,
             draws_line,
+            overlaps_window_edge,
         },
         look,
     ));
@@ -107,7 +118,7 @@ pub(super) fn shell<S: 'static>(sh: &Rc<Shared<S>>, s: &S, depth: usize) -> El {
                     Some(EDGE_REACH + look.space.xs),
                     None,
                 )
-                .raise(),
+                .paint_order(2),
         );
     }
     if st.drop_column() == Some(depth) {
@@ -157,6 +168,7 @@ struct EdgeSpec<'a> {
     key: &'a str,
     scale: f32,
     draws_line: bool,
+    overlaps_window_edge: bool,
 }
 
 fn edge_line(key: &str, look: &Look) -> El {
@@ -173,7 +185,8 @@ fn edge_line(key: &str, look: &Look) -> El {
 }
 
 /// The resize edge over the line on a column's right: it reaches [`EDGE_REACH`] either side,
-/// over the next column too (raised, so it takes the press first), and resizes this column.
+/// over the next column too (ordered above later columns via `paint_order`, and raised only
+/// when overlapping the window's east CSD resize band), and resizes this column.
 ///
 /// Under the pointer, and while it resizes, the line turns the accent at once (Strata's
 /// `.column-resize-handle.resize-hover`): a line of its own over the column's, shown by the
@@ -189,6 +202,7 @@ fn edge<S: 'static>(sh: &Rc<Shared<S>>, st: &ColumnsState, spec: EdgeSpec<'_>, l
         key,
         scale,
         draws_line,
+        overlaps_window_edge,
     } = spec;
     let line = tokens::edge_width(look);
     let resizing = st.resize.as_ref().is_some_and(|r| r.depth == depth);
@@ -214,7 +228,15 @@ fn edge<S: 'static>(sh: &Rc<Shared<S>>, st: &ColumnsState, spec: EdgeSpec<'_>, l
         .w(2.0 * EDGE_REACH)
         .cursor(Cursor::ResizeColumn)
         .a11y_hidden()
-        .raise()
+        .paint_order(1);
+    if overlaps_window_edge {
+        // When the trailing column fills the browser area with no preview beside it, its
+        // right resize handle shares the window's east CSD resize band; raise only then so
+        // dragging the column edge inward stays reachable while keeping `PaintKeep` active
+        // everywhere else.
+        handle = handle.raise();
+    }
+    handle = handle
         .hover_group()
         .hover_motion(Anim::INSTANT, Anim::INSTANT)
         .on_hover_change(move |s: &mut S, inside: bool, tx: &mut Tx| {

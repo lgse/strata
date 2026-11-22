@@ -417,6 +417,7 @@ pub(crate) fn styled_text<S: 'static>(
     {
         let get_mut = ctx.get_mut;
         t = t.on_link(move |s: &mut S, id: &str, tx| {
+            get_mut(s).clear_all_selected();
             // Strata opens a link on a plain single click only: a Shift-click extends the
             // selection, and a double-click's second click doesn't open it again.
             if tx.mods().shift {

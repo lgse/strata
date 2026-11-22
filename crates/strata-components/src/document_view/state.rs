@@ -139,7 +139,7 @@ impl Content {
     /// What copying `sel` takes (Strata's rule): units wholly inside it copy their copy text,
     /// and its end units the part selected, with the block's newline where it goes on.
     pub fn copy(&self, sel: &TextSelection) -> String {
-        if self.all.get() {
+        if self.all.get() && copy::reads_whole(self, sel) {
             return self.copy_all();
         }
         copy::copy(self, sel)
@@ -166,9 +166,6 @@ pub struct DocumentState {
     pub(crate) copied: Option<(usize, f64)>,
     pub(crate) bar: Bar,
     colourable: Vec<bool>,
-    /// Ctrl+A asked Rune to select everything from a selection that didn't hold it, and the
-    /// selection change that makes hasn't come yet.
-    all_pending: bool,
     /// The host's clock at its last poll ([`DocumentState::tick`]).
     now: f64,
     /// The last link opened (its text and number) and when, and the double-click time.
@@ -202,7 +199,6 @@ impl DocumentState {
             copied: None,
             bar: Bar::new(),
             colourable: Vec::new(),
-            all_pending: false,
             now: 0.0,
             last_link: None,
             double_click: DOUBLE_CLICK,
@@ -252,7 +248,6 @@ impl DocumentState {
             .collect();
         self.content.release_tables();
         self.content = Rc::new(Content::new(self.content.key.clone(), doc));
-        self.all_pending = false;
         self.index = OnceCell::new();
         self.revision += 1;
         self.media.clear();
@@ -339,35 +334,22 @@ impl DocumentState {
         })
     }
 
-    /// Ctrl+A, with the selection as it stood at the key. Over a selection that already
-    /// reads as the whole document, Rune's select-all changes nothing: copy-everything starts
-    /// now, and the next change (a Shift-click narrowing it, say) ends it. Otherwise it waits
-    /// for the one change select-all makes, and takes it only if that reads as the whole
-    /// document too.
-    pub(crate) fn select_all(&mut self, before: Option<&TextSelection>) {
-        let already = before.is_some_and(|sel| copy::reads_whole(&self.content, sel));
-        self.content.all.set(already);
-        self.all_pending = !already;
-    }
-
     pub(crate) fn all_selected(&self) -> bool {
         self.content.all.get()
+    }
+
+    pub(crate) fn clear_all_selected(&mut self) {
+        self.content.all.set(false);
+    }
+
+    pub(crate) fn reads_whole(&self, sel: &TextSelection) -> bool {
+        copy::reads_whole(&self.content, sel)
     }
 
     /// Lets a test copy a Ctrl+A selection through Rune's own collection.
     #[cfg(test)]
     pub(crate) fn select_all_off_for_test(&mut self) {
         self.content.all.set(false);
-    }
-
-    /// The selection changed: the change Ctrl+A's select-all makes starts copy-everything, if
-    /// it reads as the whole document; any other ends it. Where Rune's report can't tell
-    /// (a selection cut at its 10,000-row cap that didn't come from Ctrl+A), Ctrl+C copies
-    /// what Rune reports, cut short (R4), rather than more than was selected.
-    pub(crate) fn selection_changed(&mut self, sel: Option<&TextSelection>) {
-        let pending = std::mem::take(&mut self.all_pending);
-        let all = pending && sel.is_some_and(|sel| copy::reads_whole(&self.content, sel));
-        self.content.all.set(all);
     }
 
     /// Runs the host's clock: Copy code goes back to its icon [`COPIED_FOR`] after a press.
@@ -408,6 +390,7 @@ impl DocumentState {
 
     /// A Copy button on `unit` was pressed: it shows its check from the host's last poll.
     pub(crate) fn mark_copied(&mut self, unit: usize) {
+        self.content.all.set(false);
         self.copied = Some((unit, self.now));
     }
 
@@ -470,12 +453,12 @@ impl DocumentState {
 
     /// Whether `sel` currently selects the whole document.
     pub fn selects_whole(&self, sel: Option<&TextSelection>) -> bool {
-        self.all_selected() || sel.is_some_and(|s| copy::reads_whole(&self.content, s))
+        sel.is_some_and(|s| copy::reads_whole(&self.content, s))
     }
 
     /// Selects the entire document in Rune and arms model-backed whole-document copying.
     pub fn select_all_text(&mut self, tx: &mut Tx) {
-        self.select_all(tx.text_selection());
+        self.content.all.set(self.has_text());
         tx.select_all_text(self.list_key());
     }
 
@@ -610,10 +593,10 @@ impl DocumentState {
         }
         tx.clear_text_selection();
         self.content.all.set(false);
-        self.all_pending = false;
     }
 
     pub(crate) fn begin_table_resize(&mut self, unit: usize, column: usize) -> f32 {
+        self.content.all.set(false);
         let Some(UnitKind::Table { rows, .. }) = self.content.doc.units.get(unit).map(|u| &u.kind)
         else {
             return table::MIN_WIDTH;
@@ -735,7 +718,6 @@ impl HostedPreview for DocumentState {
         // Each edit to the query clears the selection; the first match then takes it.
         self.pending.push(Request::Clear);
         self.content.all.set(false);
-        self.all_pending = false;
         self.select_current();
     }
 
@@ -749,6 +731,7 @@ impl HostedPreview for DocumentState {
             Some(c) => (c + n - 1) % n,
             None => 0,
         });
+        self.content.all.set(false);
         self.select_current();
     }
 

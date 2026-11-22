@@ -30,11 +30,14 @@ pub(crate) enum Part {
 
 /// The unit and part of a selected text, from its path (`…/{key}-u{unit}/…/t`).
 pub(crate) fn locate(key: &str, path: &str) -> Option<(usize, Part)> {
-    let prefix = format!("{key}-u");
     let mut unit = None;
     let mut last = "";
     for seg in path.split('/') {
-        if let Some(n) = seg.strip_prefix(&prefix).and_then(|n| n.parse().ok()) {
+        if let Some(n) = seg
+            .strip_prefix(key)
+            .and_then(|rest| rest.strip_prefix("-u"))
+            .and_then(|n| n.parse().ok())
+        {
             unit = Some(n);
         }
         last = seg;
@@ -197,25 +200,34 @@ fn ends(state: &Content) -> Option<((usize, Part), (usize, Part))> {
 /// first text to its last, or to where Rune's collection stops (R4).
 pub(crate) fn reads_whole(state: &Content, sel: &TextSelection) -> bool {
     let key = state.key.as_str();
-    let selected: Vec<&SelectedText> = sel.texts().iter().filter(|t| t.is_selected()).collect();
-    let (Some(first), Some(last)) = (selected.first(), selected.last()) else {
-        return false;
-    };
-    if !selected.iter().all(|t| t.is_whole()) {
-        return false;
-    }
     let Some((doc_first, doc_last)) = ends(state) else {
         return false;
     };
-    if locate(key, first.path()) != Some(doc_first) {
+    let mut first = None;
+    let mut last = None;
+    let mut unit_count = 0usize;
+    let mut prev_unit = None;
+    let mut bytes = 0usize;
+    for t in sel.texts().iter().filter(|t| t.is_selected()) {
+        if !t.is_whole() {
+            return false;
+        }
+        let loc = locate(key, t.path());
+        if first.is_none() {
+            first = Some(loc);
+        }
+        last = Some(loc);
+        if let Some((u, _)) = loc
+            && prev_unit != Some(u)
+        {
+            prev_unit = Some(u);
+            unit_count += 1;
+        }
+        bytes += t.len();
+    }
+    if first != Some(Some(doc_first)) {
         return false;
     }
-    let mut units: Vec<usize> = selected
-        .iter()
-        .filter_map(|t| locate(key, t.path()).map(|(u, _)| u))
-        .collect();
-    units.dedup();
-    let bytes: usize = selected.iter().map(|t| t.len()).sum();
-    let cut = units.len() >= RUNE_ROWS || bytes >= RUNE_BYTES;
-    locate(key, last.path()) == Some(doc_last) || cut
+    let cut = unit_count >= RUNE_ROWS || bytes >= RUNE_BYTES;
+    last == Some(Some(doc_last)) || cut
 }

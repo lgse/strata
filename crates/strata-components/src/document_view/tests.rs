@@ -4,6 +4,7 @@
 //! find, and, on Rune's headless runtime, selection, copy, links, Copy code and code colours.
 
 mod perf;
+mod selection_perf;
 mod table;
 
 use std::sync::Arc;

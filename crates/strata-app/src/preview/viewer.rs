@@ -552,10 +552,10 @@ fn code_menu_snapshot(code: &CodeState, sel: Option<&rune::TextSelection>) -> Te
         None
     } else if code.selects_whole(sel) {
         Some(crate::menus::SavedPreviewSelection::All)
-    } else if let Some((lo, hi)) = code.keyboard_selection() {
+    } else if let Some((lo, hi)) = code.keyboard_selection_for(sel) {
         // Multi-line keyboard and gutter selections only highlight their first row in Rune's
-        // single-text selection; check `keyboard_selection()` before `single_node_selection` so
-        // lines 2+ are preserved across menu open/dismiss/copy.
+        // single-text selection; check `keyboard_selection_for(sel)` before
+        // `single_node_selection` so lines 2+ are preserved across menu open/dismiss/copy.
         Some(crate::menus::SavedPreviewSelection::CodeRange(lo, hi))
     } else if let Some(node) = single_node_selection(sel) {
         Some(node)
