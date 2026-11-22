@@ -125,7 +125,7 @@ pub(crate) fn row_marks(app: &App, depth: usize, id: EntryId) -> RowMarks {
 fn column_collection(app: &App, depth: usize, collection: Collection<App>) -> Collection<App> {
     let collection = collection
         .empty(move |app: &App| shown_status(app, depth))
-        .icon(app.columns.thumbs.icon(&app.look))
+        .icon(app.columns.thumbs.icon(&app.look, depth))
         .on_drag_phase(|app: &mut App, d, key, tx| crate::dnd::drag_phase(app, d, key, tx))
         .on_visible(move |app: &mut App, range| {
             // Recorded only: the part syncs the store and asks for fills once a poll.

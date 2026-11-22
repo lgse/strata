@@ -67,6 +67,9 @@ pub(crate) struct List {
     menu_labels: ListTableLabels,
     /// The metadata fills of the rows near the viewport, with a folder's item count.
     fills: Fills,
+    /// The active date format, synced with preferences so `cells_version` avoids reparsing it
+    /// per row.
+    date_format: DateFormat,
     /// Whether the saved date format is relative ("5m ago"), whose text moves with the clock.
     relative_dates: bool,
     /// When the relative dates read again.
@@ -100,6 +103,7 @@ impl List {
                 table.sideways_feed().clone(),
             )),
         ));
+        let date_format = DateFormat::parse(&settings.date_format);
         Self {
             single,
             table,
@@ -109,7 +113,8 @@ impl List {
             headings: columns::Headings::translated(),
             menu_labels: columns::menu_labels(),
             fills: Fills::new(Details::Folders),
-            relative_dates: DateFormat::parse(&settings.date_format) == DateFormat::Relative,
+            date_format,
+            relative_dates: date_format == DateFormat::Relative,
             dates: dates::Dates::default(),
             thumbs: thumbs::Thumbs::new(setup.later.clone()),
         }
@@ -120,6 +125,7 @@ impl List {
     }
 
     pub(crate) fn sync_date_format(&mut self, format: DateFormat) {
+        self.date_format = format;
         self.relative_dates = format == DateFormat::Relative;
     }
 

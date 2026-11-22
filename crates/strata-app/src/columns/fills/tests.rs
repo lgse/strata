@@ -2,10 +2,11 @@
 
 use strata_core::model::Location;
 
-use super::{Column, ColumnFills, SETTLE};
+use super::ColumnFills;
+use crate::fills::{SCROLL_SETTLE as SETTLE, ScrollSettle};
 
-fn first(fills: &mut ColumnFills) -> &mut Column {
-    &mut fills.columns[0]
+fn first(fills: &mut ColumnFills) -> &mut ScrollSettle {
+    fills.columns[0].settle_mut()
 }
 
 /// A column's fills wait while its range moves, as GTK's Columns rows ask for none while their
@@ -17,19 +18,29 @@ fn a_scrolling_column_is_asked_for_once_it_settles() {
     fills.fit(1);
 
     fills.see(0, 0..10);
-    assert_eq!(first(&mut fills).settled(0.0), Ok(()), "a first range");
+    assert_eq!(
+        first(&mut fills).settled(0.0, false),
+        Ok(()),
+        "a first range"
+    );
     fills.see(0, 0..20);
-    assert_eq!(first(&mut fills).settled(0.01), Ok(()), "rows arriving");
+    assert_eq!(
+        first(&mut fills).settled(0.01, false),
+        Ok(()),
+        "rows arriving"
+    );
 
     fills.see(0, 5..25);
-    let waiting = first(&mut fills).settled(1.0);
+    let waiting = first(&mut fills).settled(1.0, false);
     assert!(waiting.is_err(), "scrolled just now: {waiting:?}");
     assert!(
-        first(&mut fills).settled(1.0 + SETTLE / 2.0).is_err(),
+        first(&mut fills)
+            .settled(1.0 + SETTLE / 2.0, false)
+            .is_err(),
         "still settling"
     );
     assert_eq!(
-        first(&mut fills).settled(1.0 + SETTLE + 0.001),
+        first(&mut fills).settled(1.0 + SETTLE + 0.001, false),
         Ok(()),
         "settled"
     );
@@ -46,19 +57,26 @@ fn another_folder_in_a_column_is_asked_for_at_once() {
         first(fills).visit(&Location::local(folder));
         fills.see(0, 0..10);
         fills.see(0, 40..50);
-        assert!(first(fills).settled(clock).is_err(), "scrolled in {folder}");
+        assert!(
+            first(fills).settled(clock, false).is_err(),
+            "scrolled in {folder}"
+        );
     };
 
     scrolled_in(&mut fills, "/a", 1.0);
     fills.see(0, 0..10);
     first(&mut fills).visit(&Location::local("/b"));
-    assert_eq!(first(&mut fills).settled(1.01), Ok(()), "range, then /b");
+    assert_eq!(
+        first(&mut fills).settled(1.01, false),
+        Ok(()),
+        "range, then /b"
+    );
 
     scrolled_in(&mut fills, "/c", 2.0);
     first(&mut fills).visit(&Location::local("/d"));
     fills.see(0, 0..10);
     assert_eq!(
-        first(&mut fills).settled(2.01),
+        first(&mut fills).settled(2.01, false),
         Ok(()),
         "/d, then its range"
     );

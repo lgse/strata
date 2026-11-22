@@ -360,3 +360,76 @@ fn a_row_that_has_no_key_keeps_none() {
 
     assert_eq!(column.entry(0).thumbnail, None);
 }
+
+#[test]
+fn pure_metadata_refill_keeps_key_and_thumb_versions_stable() {
+    let ids = Ids::default();
+    let mut column = Column::new(Location::local(FOLDER), false, None);
+    column.apply(Edit::Replace(vec![Row::of(&photo(None, None), &ids)]));
+    let before = (
+        column.version(),
+        column.key_version(),
+        column.thumb_version(),
+    );
+
+    // Metadata fill learning size/mtime keeps the same thumbnail key and row order.
+    column.apply(Edit::Refill(vec![(
+        0,
+        Row::of(&photo(Some(10), Some(100)), &ids),
+    )]));
+    assert_ne!(
+        column.version(),
+        before.0,
+        "version tracks metadata refills"
+    );
+    assert_eq!(
+        column.key_version(),
+        before.1,
+        "pure metadata refill must not invalidate virtual_rows_version"
+    );
+    assert_eq!(
+        column.thumb_version(),
+        before.2,
+        "refill keeping the same thumbnail key must not force a thumbnail resync"
+    );
+
+    // Changing a known file size produces a new thumbnail key and bumps thumb_version only.
+    column.apply(Edit::Refill(vec![(
+        0,
+        Row::of(&photo(Some(10), Some(200)), &ids),
+    )]));
+    assert_eq!(column.key_version(), before.1, "row keys still unchanged");
+    assert_ne!(
+        column.thumb_version(),
+        before.2,
+        "new thumbnail key bumps thumb_version"
+    );
+
+    // Hiding the row changes shown keys and bumps key_version.
+    let mut hidden = photo(Some(10), Some(200));
+    hidden.is_hidden = true;
+    column.apply(Edit::Refill(vec![(0, Row::of(&hidden, &ids))]));
+    assert_ne!(
+        column.key_version(),
+        before.1,
+        "hidden change bumps key_version"
+    );
+}
+
+#[test]
+fn row_at_matches_row_of_id_at() {
+    let ids = Ids::default();
+    let mut column = Column::new(Location::local(FOLDER), false, None);
+    let mut hidden = entry(".hidden");
+    hidden.is_hidden = true;
+    column.apply(Edit::Replace(vec![
+        Row::of(&entry("a.txt"), &ids),
+        Row::of(&hidden, &ids),
+        Row::of(&entry("b.png"), &ids),
+    ]));
+    assert_eq!(column.len(), 2);
+    for index in 0..column.len() {
+        assert_eq!(column.row_at(index), column.row_of(column.id_at(index)));
+    }
+    assert!(column.row_at(column.len()).is_none());
+}

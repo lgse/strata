@@ -275,7 +275,7 @@ pub(crate) fn collection<V: SinglePane>(app: &App) -> Collection<App> {
             source::<V>,
             |app: &mut App| V::single_mut(app).pane.parts_mut(),
             |app: &App| &app.look,
-            |app: &App| pane::<V>(app).version(),
+            |app: &App| pane::<V>(app).key_version(),
         ),
         interrupted::<V>,
     )

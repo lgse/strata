@@ -20,7 +20,7 @@ use strata_components::{
         ListTableLabels,
     },
 };
-use strata_core::{i18n::tr, util::DateFormat};
+use strata_core::i18n::tr;
 use strata_desktop::settings::{
     ListColumnId, ListColumns, Preferences, sanitize_list_column_order,
     sanitize_list_hidden_columns,
@@ -87,7 +87,7 @@ impl Headings {
 }
 
 fn row<'a>(app: &'a App, rcx: &RowCx<'_>) -> Option<&'a Row> {
-    app.list.single.pane.listing()?.row_of(rcx.entry.id)
+    app.list.single.pane.listing()?.row_at(rcx.index)
 }
 
 fn mode(app: &App, rcx: &RowCx<'_>) -> Cell {
@@ -103,7 +103,7 @@ fn size(app: &App, rcx: &RowCx<'_>) -> Cell {
 fn kind(app: &App, rcx: &RowCx<'_>) -> Cell {
     let listing = app.list.single.pane.listing();
     let text = listing.and_then(|listing| {
-        let row = listing.row_of(rcx.entry.id)?;
+        let row = listing.row_at(rcx.index)?;
         Some(details::type_cell(
             listing.location(),
             row.entry_kind(),
@@ -124,9 +124,7 @@ fn modified(app: &App, rcx: &RowCx<'_>) -> Cell {
 pub(super) fn cells_version(app: &App, rcx: &RowCx<'_>) -> u64 {
     let mut hasher = DefaultHasher::new();
     row(app, rcx).map(Row::facts).hash(&mut hasher);
-    DateFormat::parse(&shell::preferences(app).date_format)
-        .as_str()
-        .hash(&mut hasher);
+    app.list.date_format.as_str().hash(&mut hasher);
     if app.list.relative_dates {
         app.list.dates.epoch().hash(&mut hasher);
     }
