@@ -215,6 +215,17 @@ impl ViewportState {
         self.set_mode(self.default_mode)
     }
 
+    /// Changes the default mode (which [`ViewportState::reset`] and a new
+    /// [`ViewportState::set_content`] return to) and switches to it, centred. [`Mode::Free`] isn't
+    /// a default: it means Fit here.
+    pub fn set_default_mode(&mut self, default_mode: Mode) -> Option<ZoomReport> {
+        self.default_mode = match default_mode {
+            Mode::Free => Mode::Fit,
+            m => m,
+        };
+        self.reset()
+    }
+
     /// The lowest and highest levels the zoom reaches now: the limits, widened to take in fit,
     /// so a content far larger or smaller than the limits allow can still be fitted and zoomed
     /// back to fit.

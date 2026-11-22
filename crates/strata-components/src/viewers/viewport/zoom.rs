@@ -144,7 +144,7 @@ pub enum Mode {
     /// The whole content, as large as fits, letterboxed.
     #[default]
     Fit,
-    /// As [`Mode::Fit`], but never larger than 1:1 (G-code thumbnails).
+    /// As [`Mode::Fit`], but never larger than 1:1 (still images, animations, G-code thumbnails).
     ScaleDown,
     /// Covers the frame; the overflow is cropped and can be panned.
     Fill,
