@@ -30,7 +30,7 @@ use rune::{Cx, El, Pixels, Tx};
 use strata_components::{
     media_player::{
         Clip, Details, Labels, MediaCommand, MediaError, MediaIntent, MediaKeys, MediaKind,
-        MediaPlayer, MediaState,
+        MediaPlayer, MediaState, audio::spectrum as spectrum_bars,
     },
     viewers::{layout::Position, viewport::ViewportState},
 };
@@ -50,14 +50,21 @@ use super::{
 };
 use crate::{App, location::labels::with_keys, shell, slots::Later};
 
+mod audio_details;
 mod cache;
 mod details;
+mod history;
 mod peaks;
 mod positions;
 pub(super) mod sequence;
+mod spectrum;
 mod storyboard;
 mod stream;
 
+#[cfg(test)]
+pub(in crate::preview) use audio_details::{
+    PARSE as PARSE_AUDIO_DETAILS, clear_cache as clear_audio_details_cache,
+};
 #[cfg(test)]
 pub(in crate::preview) use peaks::{
     MockPeaks, START as START_PEAKS, clear_cache as clear_peaks_cache,
@@ -93,7 +100,9 @@ pub(super) struct MediaViewer {
     entry: FileEntry,
     family: Option<Family>,
     id: u64,
-    _details: Option<details::DetailsLoad>,
+    details: Option<details::DetailsLoad>,
+    audio_details: Option<audio_details::AudioDetailsLoad>,
+    spectrum: Option<spectrum::SpectrumFeed>,
     peaks: Option<peaks::PeaksLoad>,
     peaks_started: bool,
     storyboard: Option<storyboard::StoryboardLoad>,
@@ -156,11 +165,14 @@ pub(super) fn ready(app: &mut App, arrived: Arrived, tx: &mut Tx) -> Viewer {
     let details = (family == Some(Family::Video))
         .then(|| details::load(&entry, &media, (later.clone(), id), detailed));
     let inlet = Inlet {
-        later,
+        later: later.clone(),
         viewer: id,
         deliver: received,
     };
     let mut stream = Stream::new(media, inlet, opening.start_percent, tx.clock());
+    if family == Some(Family::Audio) {
+        stream.retain_played_audio();
+    }
     stream.set_loop(content_type == GIF);
     stream.set_audio(opening.volume, opening.muted);
     let stepped = app
@@ -182,7 +194,9 @@ pub(super) fn ready(app: &mut App, arrived: Arrived, tx: &mut Tx) -> Viewer {
         entry,
         family,
         id,
-        _details: details,
+        details,
+        audio_details: None,
+        spectrum: (family == Some(Family::Audio)).then(spectrum::SpectrumFeed::new),
         peaks: None,
         peaks_started: false,
         storyboard: None,
@@ -190,6 +204,7 @@ pub(super) fn ready(app: &mut App, arrived: Arrived, tx: &mut Tx) -> Viewer {
         storyboard_done: false,
     };
     viewer.restore_cached_background(tx);
+    viewer.load_audio_details(later, tx);
     let (position, previous, next) = place(app, family, &viewer.entry.location);
     viewer.state.set_listing(position, previous, next);
     Viewer::Media(Box::new(viewer))
@@ -288,6 +303,21 @@ fn detailed(app: &mut App, viewer: u64, details: Details) -> bool {
     true
 }
 
+/// Audio tags or cover art for the player `viewer`, dropped when it has gone.
+fn audio_detailed(app: &mut App, viewer: u64, update: audio_details::Update, tx: &mut Tx) -> bool {
+    let Some(media) = shown(app, viewer) else {
+        return false;
+    };
+    match update {
+        audio_details::Update::Tags(tags) => media.state.set_tags(tags),
+        audio_details::Update::Cover(art) => {
+            media.state.set_art(art);
+            tx.wake_after(Duration::ZERO);
+        }
+    }
+    true
+}
+
 /// Waveform peak batches for the player `viewer`, dropped when it has gone.
 fn peaks_received(app: &mut App, viewer: u64, batch: peaks::Batch, tx: &mut Tx) -> bool {
     let Some(media) = shown(app, viewer) else {
@@ -368,6 +398,44 @@ impl MediaViewer {
         }
     }
 
+    fn load_audio_details(&mut self, later: Later<App>, tx: &mut Tx) {
+        if self.family != Some(Family::Audio) {
+            return;
+        }
+        if let Some(cached) = audio_details::cached(&self.entry) {
+            self.state.set_tags(cached.tags);
+            self.state.set_art(cached.art);
+            tx.wake_after(Duration::ZERO);
+            return;
+        }
+        let inlet = audio_details::Inlet {
+            later,
+            viewer: self.id,
+            deliver: audio_detailed,
+        };
+        self.audio_details = Some(audio_details::load(
+            &self.entry,
+            self.stream.source(),
+            inlet,
+        ));
+    }
+
+    fn feed_spectrum(&mut self) {
+        let Some(feed) = &mut self.spectrum else {
+            return;
+        };
+        if !self.stream.played_samples(feed.window_mut()) {
+            return;
+        }
+        let bands = self
+            .state
+            .spectrum()
+            .count()
+            .clamp(spectrum_bars::MIN_BARS, spectrum_bars::MAX_BARS);
+        let levels = feed.analyze(bands);
+        self.state.feed_bands(levels);
+    }
+
     fn show(&mut self, frame: Option<stream::Shown>) {
         if let Some(frame) = frame {
             let [width, height] = frame.size;
@@ -436,6 +504,8 @@ impl MediaViewer {
         if self.stream.playing() {
             self.stream.pause();
         }
+        self.details = None;
+        self.audio_details = None;
         self.peaks = None;
         self.storyboard = None;
     }
@@ -459,6 +529,7 @@ pub(super) fn poll(app: &mut App, clock: f64, tx: &mut Tx) -> bool {
     let frame = media.stream.advance(clock, tx);
     media.show(frame);
     media.sync_error();
+    media.feed_spectrum();
     let changed = media.state.tick(&media.stream, clock, tx);
     let intents = media.state.drain_intents();
     intents
