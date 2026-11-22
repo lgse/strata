@@ -12,11 +12,12 @@ use strata_components::{
     icons_grid::{IconsGridState, autoscroll_background},
     scroll::{Autoscroll, AutoscrollPointer},
 };
-use strata_core::{i18n::tr, model::Location};
+use strata_core::{i18n::tr, model::Location, util::DateFormat};
 use strata_desktop::settings::Preferences;
 
 use crate::{
     fills::{Details, Fills},
+    list::dates::Dates,
     single::{Made, Single},
     slots::Setup,
     thumbnails::Viewer,
@@ -64,6 +65,10 @@ pub(crate) struct Icons {
     thumbs: Viewer,
     /// The metadata fills of the rows near the viewport, with the icon details the tiles show.
     fills: Fills,
+    /// The active date format, synced with preferences for hover tooltip versioning.
+    date_format: DateFormat,
+    /// When relative modified dates in hover tooltips read the clock again.
+    dates: Dates,
 }
 
 impl Icons {
@@ -98,7 +103,13 @@ impl Icons {
             resolved: size::tile_size(settings.icons_thumbnail_size),
             thumbs: Viewer::new(setup.later.clone(), part::locate),
             fills: Fills::new(Details::All),
+            date_format: DateFormat::parse(&settings.date_format),
+            dates: Dates::default(),
         }
+    }
+
+    pub(crate) fn sync_date_format(&mut self, format: DateFormat) {
+        self.date_format = format;
     }
 
     pub(crate) fn autoscroll(&self) -> &Autoscroll {

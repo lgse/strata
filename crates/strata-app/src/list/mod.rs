@@ -29,7 +29,7 @@ use crate::{
 };
 
 mod columns;
-mod dates;
+pub(crate) mod dates;
 mod part;
 mod thumbs;
 pub(crate) mod view;

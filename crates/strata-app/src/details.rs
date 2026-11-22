@@ -111,6 +111,50 @@ pub(crate) fn modified_cell(facts: &Facts) -> String {
     }
 }
 
+/// Formatted modified date for a hover tooltip (absent when unknown), matching GTK's
+/// `set_modified_date(..., "")` in `src/ui/browser/columns/rows/bind.rs` and
+/// `src/ui/browser_modes/metadata.rs`.
+pub(crate) fn modified_tooltip_date(facts: &Facts) -> Option<String> {
+    facts
+        .modified
+        .map(|seconds| modified_date_for_seconds(seconds, DateDisplay::Preferred))
+}
+
+/// Hover tooltip text for an entry row or tile, matching GTK's
+/// `src/ui/entry_tooltip.rs::name_text`:
+/// - `"{name}\n{date}"` when a non-empty modified date is included for the view,
+/// - `"{name}"` when no date is included and the displayed filename is truncated,
+/// - `None` when no date is included and the full filename fits.
+pub(crate) fn entry_tooltip_text(
+    name: &str,
+    truncated: bool,
+    date: Option<&str>,
+) -> Option<String> {
+    if name.is_empty() {
+        return None;
+    }
+    match date.filter(|date| !date.is_empty()) {
+        Some(date) => Some(format!("{name}\n{date}")),
+        None if truncated => Some(name.to_owned()),
+        None => None,
+    }
+}
+
+/// Hover tooltip for an entry with `facts`: formats the modified date when `include_date`
+/// holds; otherwise only allocates `name` when `truncated()` reports elision.
+pub(crate) fn entry_tooltip(
+    name: &str,
+    facts: Option<&Facts>,
+    include_date: bool,
+    truncated: impl FnOnce() -> bool,
+) -> Option<String> {
+    let date = include_date
+        .then(|| facts.and_then(modified_tooltip_date))
+        .flatten();
+    let is_truncated = date.as_deref().is_none_or(str::is_empty) && truncated();
+    entry_tooltip_text(name, is_truncated, date.as_deref())
+}
+
 /// The Created cell: the creation date in the saved format, or nothing when unknown
 /// (`update_list_date` in `src/ui/browser_modes/metadata.rs`).
 pub(crate) fn created_cell(facts: &Facts) -> String {

@@ -6,6 +6,7 @@
 
 mod perf;
 mod runtime;
+mod tooltip;
 
 use std::sync::Arc;
 

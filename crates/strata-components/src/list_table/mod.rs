@@ -373,6 +373,7 @@ pub struct ListParts<'a> {
 type PartsFn<S> = Rc<dyn for<'a> Fn(&'a S) -> ListParts<'a>>;
 type TableMutFn<S> = Rc<dyn Fn(&mut S) -> &mut ListTableState>;
 type VersionFn<S> = Rc<dyn Fn(&S, &RowCx<'_>) -> u64>;
+type TooltipFn<S> = Rc<dyn Fn(&S, &RowCx<'_>, &dyn Fn() -> bool) -> Option<String>>;
 type SortFn<S> = Rc<dyn Fn(&mut S, SortIntent, &mut Tx)>;
 type LayoutFn<S> = Rc<dyn Fn(&mut S, LayoutChange, &mut Tx)>;
 type WidthsFn<S> = Rc<dyn Fn(&mut S, ColumnWidths, &mut Tx)>;
@@ -385,6 +386,7 @@ pub(crate) struct Shared<S> {
     parts: PartsFn<S>,
     table_mut: TableMutFn<S>,
     cells_version: Option<VersionFn<S>>,
+    tooltip: Option<TooltipFn<S>>,
     label: Option<Slot<S>>,
     on_sort: Option<SortFn<S>>,
     on_layout: Option<LayoutFn<S>>,
@@ -401,6 +403,7 @@ impl<S> Clone for Shared<S> {
             parts: self.parts.clone(),
             table_mut: self.table_mut.clone(),
             cells_version: self.cells_version.clone(),
+            tooltip: self.tooltip.clone(),
             label: self.label.clone(),
             on_sort: self.on_sort.clone(),
             on_layout: self.on_layout.clone(),
@@ -444,6 +447,7 @@ impl<S: 'static> ListTable<S> {
                 parts: Rc::new(parts),
                 table_mut: Rc::new(table_mut),
                 cells_version: None,
+                tooltip: None,
                 label: None,
                 on_sort: None,
                 on_layout: None,
@@ -459,6 +463,18 @@ impl<S: 'static> ListTable<S> {
     /// entry, its state or the layout.
     pub fn cells_version(mut self, f: impl Fn(&S, &RowCx<'_>) -> u64 + 'static) -> Self {
         self.shared.cells_version = Some(Rc::new(f));
+        self
+    }
+
+    /// Hover tooltip text for a row's primary (Name) cell, given a lazy predicate reporting
+    /// whether the entry's displayed name is truncated at the primary column's resolved width.
+    /// Rebuilt whenever [`Self::cells_version`], the entry, its state, or the resolved column
+    /// layout changes; omitted while renaming, dragging, or anchored by a folder peek.
+    pub fn tooltip(
+        mut self,
+        f: impl Fn(&S, &RowCx<'_>, &dyn Fn() -> bool) -> Option<String> + 'static,
+    ) -> Self {
+        self.shared.tooltip = Some(Rc::new(f));
         self
     }
 

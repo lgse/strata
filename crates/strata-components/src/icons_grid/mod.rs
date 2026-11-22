@@ -359,6 +359,7 @@ type ThumbsMutFn<S> = Rc<
 type BaseFn<S> = Rc<dyn Fn(&S) -> Collection<S>>;
 type VersionFn<S> = Rc<dyn Fn(&S, &RowCx<'_>) -> u64>;
 type DetailsFn<S> = Rc<dyn Fn(&S, &RowCx<'_>) -> Option<Arc<str>>>;
+type TooltipFn<S> = Rc<dyn Fn(&S, &RowCx<'_>, bool) -> Option<String>>;
 type BadgeFn<S> = (
     Rc<dyn Fn(&S, EntryId) -> u64>,
     Rc<dyn Fn(&S, EntryId) -> Option<rune::Pixels>>,
@@ -375,6 +376,7 @@ pub(crate) struct Shared<S> {
     grid_mut: GridMutFn<S>,
     thumbs_mut: Option<ThumbsMutFn<S>>,
     details: Option<(VersionFn<S>, DetailsFn<S>)>,
+    tooltip: Option<(VersionFn<S>, TooltipFn<S>)>,
     badge: Option<BadgeFn<S>>,
     lines: usize,
     on_size: Option<SizeFn<S>>,
@@ -392,6 +394,7 @@ impl<S> Clone for Shared<S> {
             grid_mut: self.grid_mut.clone(),
             thumbs_mut: self.thumbs_mut.clone(),
             details: self.details.clone(),
+            tooltip: self.tooltip.clone(),
             badge: self.badge.clone(),
             lines: self.lines,
             on_size: self.on_size.clone(),
@@ -458,6 +461,7 @@ impl<S: 'static> IconsGrid<S> {
                 grid_mut: Rc::new(grid_mut),
                 thumbs_mut: None,
                 details: None,
+                tooltip: None,
                 badge: None,
                 lines: 2,
                 on_size: None,
@@ -502,6 +506,19 @@ impl<S: 'static> IconsGrid<S> {
         text: impl Fn(&S, &RowCx<'_>) -> Option<Arc<str>> + 'static,
     ) -> Self {
         self.shared.details = Some((Rc::new(version), Rc::new(text)));
+        self
+    }
+
+    /// Hover tooltip text for each tile, given whether its caption was truncated. `version`
+    /// changes with what `text` reads beyond the tile's [`RowCx`] and caption cut, so a tile
+    /// builds again only when its own tooltip changes. Without it, a truncated caption carries
+    /// the entry's full name as its tooltip.
+    pub fn tooltip(
+        mut self,
+        version: impl Fn(&S, &RowCx<'_>) -> u64 + 'static,
+        text: impl Fn(&S, &RowCx<'_>, bool) -> Option<String> + 'static,
+    ) -> Self {
+        self.shared.tooltip = Some((Rc::new(version), Rc::new(text)));
         self
     }
 

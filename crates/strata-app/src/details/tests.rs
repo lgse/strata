@@ -8,8 +8,8 @@ use strata_core::{
 use strata_fs::services::{EntryType, entry_type};
 
 use super::{
-    created_cell, dimensions_cell, duration, duration_cell, icons_line, mode_cell, modified_cell,
-    permissions, size_cell, type_cell,
+    created_cell, dimensions_cell, duration, duration_cell, entry_tooltip, entry_tooltip_text,
+    icons_line, mode_cell, modified_cell, permissions, size_cell, type_cell,
 };
 use crate::listing::Facts;
 
@@ -226,6 +226,78 @@ fn the_type_cell_names_a_kind_from_the_catalogs_and_a_file_by_its_mime_type() {
     assert_eq!(
         type_cell(&folder, EntryKind::File, "notes.txt"),
         description
+    );
+}
+
+/// GTK's `src/ui/entry_tooltip/tests.rs::name_text_shows_truncated_names_and_dates`:
+/// shows `"{name}\n{date}"` when a non-empty date is included, `"{name}"` when truncated
+/// without a date, and `None` when not truncated without a date or when the name is empty.
+#[test]
+fn entry_tooltip_text_shows_truncated_names_and_dates() {
+    for (name, truncated, date, expected) in [
+        (
+            "a.txt",
+            true,
+            Some("12 Nov 2026"),
+            Some("a.txt\n12 Nov 2026"),
+        ),
+        (
+            "a.txt",
+            false,
+            Some("12 Nov 2026"),
+            Some("a.txt\n12 Nov 2026"),
+        ),
+        ("a.txt", true, None, Some("a.txt")),
+        ("a.txt", true, Some(""), Some("a.txt")),
+        ("a.txt", false, None, None),
+        ("a.txt", false, Some(""), None),
+        ("", true, Some("12 Nov 2026"), None),
+        ("", true, None, None),
+    ] {
+        assert_eq!(
+            entry_tooltip_text(name, truncated, date).as_deref(),
+            expected,
+            "name={name:?} truncated={truncated} date={date:?}"
+        );
+    }
+}
+
+/// `entry_tooltip` omits truncation measurement whenever a modified date is included and
+/// known, and follows the active `DateFormat`.
+#[test]
+fn entry_tooltip_evaluates_truncation_lazily_and_follows_date_format() {
+    set_date_format(DateFormat::Iso8601);
+    let known = Facts {
+        modified: Some(1_000_000_000),
+        ..Facts::default()
+    };
+    let expected_iso = format!("report.pdf\n{}", modified_cell(&known));
+    assert_eq!(
+        entry_tooltip("report.pdf", Some(&known), true, || {
+            panic!("truncation must not be checked when a modified date is shown")
+        }),
+        Some(expected_iso.clone())
+    );
+    assert_eq!(
+        entry_tooltip("report.pdf", Some(&known), false, || false),
+        None
+    );
+    assert_eq!(
+        entry_tooltip("report.pdf", Some(&known), false, || true),
+        Some("report.pdf".to_owned())
+    );
+    assert_eq!(entry_tooltip("report.pdf", None, true, || false), None);
+    assert_eq!(
+        entry_tooltip("report.pdf", None, true, || true),
+        Some("report.pdf".to_owned())
+    );
+
+    set_date_format(DateFormat::Long);
+    let expected_long = format!("report.pdf\n{}", modified_cell(&known));
+    assert_ne!(expected_long, expected_iso);
+    assert_eq!(
+        entry_tooltip("report.pdf", Some(&known), true, || false),
+        Some(expected_long)
     );
 }
 

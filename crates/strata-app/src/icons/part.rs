@@ -5,9 +5,14 @@
 use std::time::Duration;
 
 use rune::Tx;
+use strata_core::util::DateFormat;
 use strata_fs::app::VisibleDepths;
 
-use strata_components::{contract::EntryId, icons_grid::IconsGrid, thumbnails::ThumbnailStore};
+use strata_components::{
+    contract::{EntryId, EntrySource},
+    icons_grid::IconsGrid,
+    thumbnails::ThumbnailStore,
+};
 
 use super::{Icons, VIEW, size, view};
 #[cfg(feature = "qa")]
@@ -134,6 +139,8 @@ impl Part for Icons {
     }
 
     fn tab_shown(app: &mut App, _: &mut Tx) {
+        let format = DateFormat::parse(&crate::shell::preferences(app).date_format);
+        app.icons.sync_date_format(format);
         sync_worn(app);
     }
 
@@ -169,8 +176,27 @@ impl Part for Icons {
             Viewer::pump(app, thumbnail_parts, clock);
         }
         fill(app, clock, tx);
-        ticked | said
+        ticked | said | redate(app, clock, tx)
     }
+}
+
+/// Refreshes relative modified dates in Icons hover tooltips every 30 s while rows show.
+fn redate(app: &mut App, clock: f64, tx: &mut Tx) -> bool {
+    let filter_rows =
+        app.filter.pane.shows() && app.filter.pane.hits().is_some_and(|hits| !hits.is_empty());
+    let icons = &mut app.icons;
+    let rows = filter_rows
+        || icons
+            .single
+            .pane
+            .listing()
+            .is_some_and(|listing| !listing.is_empty());
+    let live = icons.date_format == DateFormat::Relative && rows;
+    let tick = icons.dates.tick(live, clock);
+    if let Some(wake) = tick.wake {
+        tx.wake_after(wake);
+    }
+    tick.moved
 }
 
 pub(crate) fn tick_active(app: &mut App, tx: &mut Tx) -> bool {

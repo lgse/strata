@@ -163,6 +163,19 @@ pub(super) fn cells_version(app: &App, rcx: &RowCx<'_>) -> u64 {
     hasher.finish()
 }
 
+/// Hover tooltip for a List row's primary (Name) cell: omits the modified date while the
+/// Modified column is visible (showing `"{name}"` only when truncated), and includes
+/// `"{name}\n{date}"` when the Modified column is hidden.
+pub(super) fn row_tooltip(
+    app: &App,
+    rcx: &RowCx<'_>,
+    truncated: &dyn Fn() -> bool,
+) -> Option<String> {
+    let include_date = !app.list.layout.is_visible(&id(ListColumnId::Modified));
+    let facts = row(app, rcx).map(Row::facts);
+    details::entry_tooltip(rcx.entry.name, facts, include_date, truncated)
+}
+
 fn build_column(column: ListColumnId, title: String) -> TableColumn<App> {
     #[expect(
         clippy::cast_precision_loss,
