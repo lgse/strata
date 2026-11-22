@@ -266,7 +266,7 @@ fn settings_fx_choice_triggers_live_preview_and_persists_selection() {
 
             // Step preview to completion, then click the Preview effect replay button.
             let mut stepped = 0.0;
-            while is_active(host.app()) && stepped < 1.2 {
+            while is_active(host.app()) && stepped < 2.2 {
                 host.runtime().frame(0.05);
                 stepped += 0.05;
             }
@@ -281,6 +281,76 @@ fn settings_fx_choice_triggers_live_preview_and_persists_selection() {
             assert_eq!(shell::tenxer_fx(host.app()), TenxerFx::Off);
             assert!(!is_active(host.app()));
             assert!(!overlay_mounted(&host));
+        },
+    );
+}
+
+fn active_fx_slots(host: &mut Offscreen) -> Vec<crate::fx::DecodedSlot> {
+    let rt = host.runtime();
+    crate::fx::collect_slots(&rt.instances, &rt.marks)
+}
+
+#[test]
+fn interface_on_fire_emits_effect_slots_during_playback_and_unmounts_to_zero() {
+    hosted(
+        MODULE,
+        "interface_on_fire_emits_effect_slots_during_playback_and_unmounts_to_zero",
+        |mut host| {
+            let _folder = open_and_focus(&mut host);
+
+            // At rest: zero KIND_EFFECT slots -> FxCompositor stays idle.
+            assert!(
+                active_fx_slots(&mut host).is_empty(),
+                "idle frame must emit no effect slots"
+            );
+
+            // Trigger Interface on fire and step into the peak blaze window.
+            host.runtime().update(|app, tx| {
+                trigger(app, TenxerFx::InterfaceOnFire, tx);
+            });
+            for _ in 0..20 {
+                host.runtime().frame(0.02);
+            }
+            assert!(is_active(host.app()));
+            assert!(overlay_mounted(&host));
+
+            let peak_slots = active_fx_slots(&mut host);
+            assert_eq!(
+                peak_slots.len(),
+                5,
+                "peak InterfaceOnFire frame must emit all 5 rune-fx slots (haze, border, bottom, badge flame, badge haze)"
+            );
+            assert!(
+                peak_slots.iter().all(|s| s.layer.is_animating()),
+                "all active fire slots must animate"
+            );
+
+            // Step to completion: overlay unmounts cleanly and returns to 0 effect slots.
+            let mut stepped = 0.4;
+            while is_active(host.app()) && stepped < 2.2 {
+                host.runtime().frame(0.04);
+                stepped += 0.04;
+            }
+            assert!(
+                !is_active(host.app()),
+                "InterfaceOnFire must finish within 2.2 s"
+            );
+            assert!(!overlay_mounted(&host));
+            assert!(
+                active_fx_slots(&mut host).is_empty(),
+                "completed InterfaceOnFire must emit zero effect slots"
+            );
+
+            // Reduced motion / disabled animations emits zero effect slots.
+            host.runtime().update(|app, tx| {
+                shell::disable_animations(app);
+                trigger(app, TenxerFx::InterfaceOnFire, tx);
+            });
+            idle(&mut host);
+            assert!(
+                active_fx_slots(&mut host).is_empty(),
+                "disabled animations must emit no effect slots"
+            );
         },
     );
 }
