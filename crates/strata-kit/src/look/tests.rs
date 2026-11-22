@@ -189,3 +189,64 @@ fn accent_icon_kit_routes_icon_button_roles_to_accent() {
     assert_eq!(ik.c.pressed, look.kit.c.pressed);
     assert_eq!(ik.c.border_focus, look.kit.c.border_focus);
 }
+
+#[test]
+fn help_look_matches_gtk_tokens_across_themes_roundness_and_text_size() {
+    let dark = crate::theme::bundled_theme(crate::theme::DEFAULT_ID).expect("bundled dark theme");
+    let light = crate::theme::bundled()
+        .iter()
+        .find(|theme| !theme.dark_background())
+        .expect("bundled light theme");
+
+    for (label, base) in [
+        ("dark theme", dark.look()),
+        ("light theme", light.look()),
+        ("dark fallback", Look::fallback(true)),
+        ("light fallback", Look::fallback(false)),
+    ] {
+        for (roundness, expected_radius) in [(0, 0.0), (60, 3.0), (100, 5.0), (200, 10.0)] {
+            let look = base.clone().with_params(&LookParams {
+                roundness,
+                ..LookParams::default()
+            });
+            assert_eq!(
+                look.kit.radius.sm, expected_radius,
+                "{label} at {roundness}%"
+            );
+            let kit = &look.kit;
+            let expected = HelpLook::system(true)
+                .fill(kit.alpha(kit.c.black, 0.8))
+                .ink(kit.c.white)
+                .ring(1.0, kit.light_on(0.1, kit.c.black))
+                .radius(expected_radius)
+                .padding(10.0, 6.0)
+                .font(kit.ty.ui_compact);
+            assert_eq!(look.help_look(), expected, "{label} at {roundness}%");
+        }
+    }
+
+    let larger = dark.look().with_params(&LookParams {
+        text_size: 18,
+        ..LookParams::default()
+    });
+    assert_ne!(
+        larger.help_look(),
+        dark.look().with_params(&LookParams::default()).help_look(),
+        "tooltip type follows the interface text size"
+    );
+
+    let mut overridden = dark.look().with_params(&LookParams::default());
+    overridden.kit.radius.sm = 7.0;
+    let kit = &overridden.kit;
+    assert_eq!(
+        overridden.help_look(),
+        HelpLook::system(true)
+            .fill(kit.alpha(kit.c.black, 0.8))
+            .ink(kit.c.white)
+            .ring(1.0, kit.light_on(0.1, kit.c.black))
+            .radius(7.0)
+            .padding(10.0, 6.0)
+            .font(kit.ty.ui_compact),
+        "tooltip radius follows kit.radius.sm overrides"
+    );
+}
