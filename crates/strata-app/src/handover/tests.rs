@@ -430,3 +430,159 @@ fn an_undone_move_out_leaves_the_keyboard_on_the_neighbour() {
         assert!(seen.selected.is_empty(), "nothing selected: {seen:#?}");
     });
 }
+
+fn image_entry(path: &Path, modified: MetadataValue<i64>, size: MetadataValue<u64>) -> FileEntry {
+    FileEntry {
+        modified_unix_seconds: modified,
+        size,
+        ..file_entry(path)
+    }
+}
+
+/// Renaming an image whose thumbnail already loaded — even when its initial key was hashed
+/// before metadata fill learned mtime and size — relocates the loaded thumbnail to the new
+/// key so resyncing the store after the splice submits zero new render requests.
+#[test]
+fn moving_relocates_thumbnail_across_rename_and_avoids_re_request() {
+    use strata_components::{
+        contract::EntrySource,
+        thumbnails::{Outcome, State, Step, ThumbnailStore, Viewport},
+    };
+
+    let ids = Ids::default();
+    let root = Location::local(Path::new("/tmp/photos"));
+    let old_path = Path::new("/tmp/photos/photo-0.png");
+    let new_path = Path::new("/tmp/photos/photo-0-renamed.png");
+
+    // Initial native listing arrives with unknown mtime and size.
+    let initial = image_entry(old_path, MetadataValue::Unknown, MetadataValue::Unknown);
+    let from = ids.of(&initial.location);
+    let mut column = Column::new(root, false, None);
+    column.apply(Edit::Replace(vec![Row::of(&initial, &ids)]));
+    let old_key = column.entry(0).thumbnail.expect("image thumbnail key");
+
+    // Load and complete the thumbnail in the window's store.
+    let mut store = ThumbnailStore::default();
+    let viewer = store.viewer();
+    let step = Step::new(128);
+    let _ = store.sync(
+        viewer,
+        &column,
+        Viewport::new(0..1, step).listing(column.thumb_version()),
+    );
+    let request = store.pop(0.0).expect("initial thumbnail request");
+    assert_eq!(request.key, old_key);
+    let _ = store.complete(
+        request.ticket,
+        Outcome::Ready {
+            width: 4,
+            height: 4,
+            rgba: vec![255; 4 * 4 * 4],
+        },
+        0.1,
+    );
+    assert!(matches!(store.state(old_key), State::Ready { .. }));
+
+    // Metadata fill learns mtime and size while keeping `old_key` on the row.
+    let filled = image_entry(
+        old_path,
+        MetadataValue::Known(100),
+        MetadataValue::Known(512),
+    );
+    column.apply(Edit::Refill(vec![(0, Row::of(&filled, &ids))]));
+    assert_eq!(column.entry(0).thumbnail, Some(old_key));
+
+    // Rename arrives: `Change::Moved` before `Edit::Splice` carrying known mtime and size.
+    let renamed = image_entry(
+        new_path,
+        MetadataValue::Known(100),
+        MetadataValue::Known(512),
+    );
+    let to = ids.of(&renamed.location);
+    let mut moving = Moving::default();
+    moving.moved_in(from, to, std::slice::from_ref(&column));
+    column.apply(Edit::Splice(vec![(0, 1, vec![Row::of(&renamed, &ids)])]));
+    let new_key = column.entry(0).thumbnail.expect("renamed thumbnail key");
+    assert_ne!(old_key, new_key);
+
+    assert_eq!(moving.arriving(&column), vec![(from, to)]);
+    let relocated = moving.take_thumbnails();
+    assert_eq!(relocated, vec![(old_key, new_key)]);
+    for (src, dst) in relocated {
+        assert!(store.relocate(src, dst));
+    }
+
+    // Resyncing the store on the bumped listing version must reuse the loaded thumbnail
+    // without queueing another render job.
+    let _ = store.resync(viewer, &column, column.thumb_version());
+    assert!(
+        store.pop(0.2).is_none(),
+        "renamed image must not request a new thumbnail render"
+    );
+    assert!(
+        matches!(store.state(new_key), State::Ready { .. }),
+        "renamed image retains its loaded thumbnail"
+    );
+}
+
+#[test]
+fn moving_skips_thumbnail_reuse_when_extension_or_facts_change() {
+    let cases = [
+        (
+            "extension changed",
+            "/tmp/photos/photo.png",
+            MetadataValue::Known(100),
+            MetadataValue::Known(512),
+            "/tmp/photos/photo.jpg",
+            MetadataValue::Known(100),
+            MetadataValue::Known(512),
+        ),
+        (
+            "mtime changed",
+            "/tmp/photos/photo.png",
+            MetadataValue::Known(100),
+            MetadataValue::Known(512),
+            "/tmp/photos/photo-2.png",
+            MetadataValue::Known(200),
+            MetadataValue::Known(512),
+        ),
+        (
+            "size changed",
+            "/tmp/photos/photo.png",
+            MetadataValue::Known(100),
+            MetadataValue::Known(512),
+            "/tmp/photos/photo-2.png",
+            MetadataValue::Known(100),
+            MetadataValue::Known(1024),
+        ),
+        (
+            "non-thumbnail file",
+            "/tmp/photos/note.txt",
+            MetadataValue::Known(100),
+            MetadataValue::Known(12),
+            "/tmp/photos/note-2.txt",
+            MetadataValue::Known(100),
+            MetadataValue::Known(12),
+        ),
+    ];
+
+    for (case, old_path, old_mtime, old_size, new_path, new_mtime, new_size) in cases {
+        let ids = Ids::default();
+        let old_entry = image_entry(Path::new(old_path), old_mtime, old_size);
+        let new_entry = image_entry(Path::new(new_path), new_mtime, new_size);
+        let from = ids.of(&old_entry.location);
+        let to = ids.of(&new_entry.location);
+
+        let mut column = Column::new(Location::local(Path::new("/tmp/photos")), false, None);
+        column.apply(Edit::Replace(vec![Row::of(&old_entry, &ids)]));
+
+        let mut moving = Moving::default();
+        moving.moved_in(from, to, std::slice::from_ref(&column));
+        column.apply(Edit::Splice(vec![(0, 1, vec![Row::of(&new_entry, &ids)])]));
+        assert_eq!(moving.arriving(&column), vec![(from, to)], "{case}");
+        assert!(
+            moving.take_thumbnails().is_empty(),
+            "{case}: must not reuse thumbnail"
+        );
+    }
+}

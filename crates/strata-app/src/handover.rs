@@ -31,13 +31,13 @@ use strata_components::{
         element::CollectionState,
         selection::{CursorGone, Position, SyncRule},
     },
-    contract::{EntryId, EntrySource},
+    contract::{EntryId, EntrySource, ThumbKey},
 };
 use strata_fs::app::Browser;
 
 use crate::{
     events::Marks,
-    listing::{Column, Load},
+    listing::{Column, Load, ThumbOrigin},
 };
 
 /// The revision of one collection's selection that the browser holds.
@@ -292,20 +292,54 @@ fn give(shown: &Shown<'_>, browser: &Browser, held: &mut Held, handed: Handed) {
     }
 }
 
+#[derive(Debug)]
+struct PendingMove {
+    from: EntryId,
+    to: EntryId,
+    thumb: Option<ThumbOrigin>,
+}
+
 /// Entries one of the browser's operations gave another id (a rename gives an entry another
 /// location), each as its old id and its new one, until the listing shows the change. The
 /// change comes before the listing shows it, and a selection may only be told once its listing
-/// has changed.
+/// has changed. Also carries each renamed row's thumbnail identity so the window's thumbnail
+/// store can relocate the loaded image to the new key instead of re-rendering it.
 #[derive(Debug, Default)]
-pub(crate) struct Moving(Vec<(EntryId, EntryId)>);
+pub(crate) struct Moving {
+    pending: Vec<PendingMove>,
+    thumbnails: Vec<(ThumbKey, ThumbKey)>,
+}
 
 impl Moving {
     /// The entry `from` has the id `to` now. `lists` says whether the view lists an id. A
     /// listing that changed first, as when the folder's monitor reported the rename before the
     /// operation did, has let go of the old id already: nothing waits then.
+    #[cfg(test)]
     pub(crate) fn moved(&mut self, from: EntryId, to: EntryId, lists: impl Fn(EntryId) -> bool) {
         if lists(from) && !lists(to) {
-            self.0.push((from, to));
+            self.pending.push(PendingMove {
+                from,
+                to,
+                thumb: None,
+            });
+        }
+    }
+
+    /// Records `from` -> `to` from `columns`, keeping `from`'s thumbnail identity so an
+    /// arrived rename reuses its thumbnail in the window's store.
+    pub(crate) fn moved_in(&mut self, from: EntryId, to: EntryId, columns: &[Column]) {
+        if columns
+            .iter()
+            .any(|column| column.position_of(to).is_some())
+        {
+            return;
+        }
+        if let Some(row) = columns.iter().find_map(|column| column.row_of(from)) {
+            self.pending.push(PendingMove {
+                from,
+                to,
+                thumb: row.thumb_origin(),
+            });
         }
     }
 
@@ -328,22 +362,35 @@ impl Moving {
     }
 
     /// Takes the pairs whose entry `column` now shows under its new id, and no longer under
-    /// its old, so each arrival is applied at most once.
+    /// its old, so each arrival is applied at most once, queueing any reusable thumbnail
+    /// relocations for [`Self::take_thumbnails`].
     pub(crate) fn arriving(&mut self, column: &Column) -> Vec<(EntryId, EntryId)> {
         let mut arrived = Vec::new();
-        self.0.retain(|(from, to)| {
-            let here = column.position_of(*to).is_some() && column.position_of(*from).is_none();
+        let thumbnails = &mut self.thumbnails;
+        self.pending.retain(|entry| {
+            let here =
+                column.position_of(entry.to).is_some() && column.position_of(entry.from).is_none();
             if here {
-                arrived.push((*from, *to));
+                arrived.push((entry.from, entry.to));
+                if let (Some(origin), Some(row)) = (&entry.thumb, column.row_of(entry.to))
+                    && let Some(relocated) = row.relocated_thumbnail(origin)
+                {
+                    thumbnails.push(relocated);
+                }
             }
             !here
         });
         arrived
     }
 
+    /// Thumbnail `(from, to)` key pairs produced by arrived renames since the last call.
+    pub(crate) fn take_thumbnails(&mut self) -> Vec<(ThumbKey, ThumbKey)> {
+        std::mem::take(&mut self.thumbnails)
+    }
+
     /// Drops the pairs whose old id `listed` no longer finds: they have nothing left to move.
     pub(crate) fn forget(&mut self, listed: impl Fn(EntryId) -> bool) {
-        self.0.retain(|(from, _)| listed(*from));
+        self.pending.retain(|entry| listed(entry.from));
     }
 }
 

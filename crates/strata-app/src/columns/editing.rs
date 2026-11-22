@@ -8,7 +8,7 @@ use std::rc::Rc;
 
 use rune::Tx;
 use strata_components::{
-    contract::{EntryId, EntrySource},
+    contract::{EntryId, EntrySource, ThumbKey},
     rename::{By, Initial, Polled, RenameState},
 };
 use strata_fs::app::Browser;
@@ -118,13 +118,12 @@ impl Columns {
     /// One of the browser's operations gave the entry `from` the id `to`: a rename gives an
     /// entry another location ([`Moving`](crate::handover::Moving)).
     pub(super) fn moved(&mut self, from: EntryId, to: EntryId) {
-        let columns = &self.listings.columns;
-        let lists = |id: EntryId| {
-            columns
-                .iter()
-                .any(|column| column.position_of(id).is_some())
-        };
-        self.moving.moved(from, to, lists);
+        self.moving.moved_in(from, to, &self.listings.columns);
+    }
+
+    /// Thumbnail `(from, to)` keys to relocate in the window's store after an arrived rename.
+    pub(super) fn take_relocated_thumbnails(&mut self) -> Vec<(ThumbKey, ThumbKey)> {
+        self.moving.take_thumbnails()
     }
 
     /// Column `depth`'s rows changed, and its selection has not been brought in step with
