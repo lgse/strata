@@ -446,6 +446,7 @@ impl Viewer {
         match self {
             Self::Code(code) => Some(&mut **code),
             Self::Document(doc) => doc.active_hosted_mut(),
+            Self::Pdf(pdf) => Some(&mut pdf.state),
             _ => None,
         }
     }
@@ -811,6 +812,7 @@ impl HostedPreview for Viewer {
         match self {
             Self::Code(code) => code.searchable(),
             Self::Document(doc) => doc.active_hosted().is_some_and(HostedPreview::searchable),
+            Self::Pdf(pdf) => pdf.state.searchable(),
             _ => false,
         }
     }
@@ -831,6 +833,7 @@ impl HostedPreview for Viewer {
         match self {
             Self::Code(code) => code.find_status(),
             Self::Document(doc) => doc.active_hosted()?.find_status(),
+            Self::Pdf(pdf) => pdf.state.find_status(),
             _ => None,
         }
     }

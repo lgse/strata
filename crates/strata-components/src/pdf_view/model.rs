@@ -122,6 +122,11 @@ impl Ticket {
     pub fn page(&self) -> usize {
         self.page as usize
     }
+
+    /// What kind of render it asks for.
+    pub fn kind(&self) -> RenderKind {
+        self.kind
+    }
 }
 
 /// A page to render: Strata's `page:WxH` request, with the box the image should fit.
@@ -147,6 +152,9 @@ pub enum PageReply {
         rgba: Vec<u8>,
         text: Option<TextLayer>,
     },
+    /// Text layer only (for [`RenderKind::TextOnly`] background find): fills the page's text
+    /// layer when it has none without storing an image or changing the page's known size.
+    Text(Option<TextLayer>),
     /// The page didn't render: it shows "Unable to render this PDF page".
     Failed,
 }

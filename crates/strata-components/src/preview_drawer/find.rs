@@ -166,6 +166,7 @@ pub(super) fn close<S: 'static>(shared: &Shared<S>, s: &mut S, tx: &mut Tx) {
     if let Some((selector, range)) = kept {
         tx.select_text(selector, range);
     }
+    tx.wake_after(std::time::Duration::ZERO);
 }
 
 /// Opens the find bar, and runs the query it kept on the view, as Strata's find refreshes
