@@ -141,11 +141,10 @@ impl Part for List {
     /// The columns another tab reordered, hid or resized while this one was hidden, and saved
     /// item customizations.
     fn tab_shown(app: &mut App, _: &mut Tx) {
-        let saved = shell::preferences(app);
-        let (layout, widths) = (super::columns::layout(saved), super::columns::widths(saved));
+        let saved = shell::preferences(app).clone();
+        let chooser = app.browser.is_chooser_mode();
         let format = strata_core::util::DateFormat::parse(&saved.date_format);
-        app.list.layout = layout;
-        app.list.widths = widths;
+        app.list.sync_columns(&saved, chooser);
         app.list.sync_date_format(format);
         single::sync_worn::<Self>(app);
     }

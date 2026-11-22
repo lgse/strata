@@ -111,6 +111,33 @@ pub(crate) fn modified_cell(facts: &Facts) -> String {
     }
 }
 
+/// The Created cell: the creation date in the saved format, or nothing when unknown
+/// (`update_list_date` in `src/ui/browser_modes/metadata.rs`).
+pub(crate) fn created_cell(facts: &Facts) -> String {
+    facts
+        .created
+        .map(|seconds| modified_date_for_seconds(seconds, DateDisplay::Preferred))
+        .unwrap_or_default()
+}
+
+/// The Duration cell: a file's media length, or nothing for a folder or unknown value
+/// (`list_cell_text` in `src/ui/browser_modes/metadata.rs`).
+pub(crate) fn duration_cell(folder: bool, facts: &Facts) -> String {
+    if folder {
+        return String::new();
+    }
+    facts.duration_seconds.map(duration).unwrap_or_default()
+}
+
+/// The Dimensions cell: a file's width and height (`320×180`), or nothing for a folder or
+/// unknown value (`list_cell_text` in `src/ui/browser_modes/metadata.rs`).
+pub(crate) fn dimensions_cell(folder: bool, facts: &Facts) -> String {
+    if folder {
+        return String::new();
+    }
+    facts.dimensions.map(dimensions).unwrap_or_default()
+}
+
 /// The Type cell: the MIME type's description, or the kind's in the catalogs (`entry_type`).
 /// Read for the rows drawn only: it is a MIME lookup.
 pub(crate) fn type_cell(folder: &Location, kind: EntryKind, name: &str) -> String {
