@@ -116,6 +116,15 @@ pub(crate) struct WeakLater<S> {
     tab: Option<TabKey>,
 }
 
+impl<S> Clone for WeakLater<S> {
+    fn clone(&self) -> Self {
+        Self {
+            inbox: self.inbox.clone(),
+            tab: self.tab,
+        }
+    }
+}
+
 impl<S> WeakLater<S> {
     /// The way in again, while the window's queue is there.
     pub(crate) fn upgrade(&self) -> Option<Later<S>> {
