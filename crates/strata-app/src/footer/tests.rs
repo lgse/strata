@@ -459,3 +459,97 @@ fn active_filter_shows_result_count_and_escape_restores_selection_summary() {
         },
     );
 }
+
+#[test]
+fn columns_filter_blur_close_restores_selection_summary_immediately() {
+    hosted(
+        MODULE,
+        "columns_filter_blur_close_restores_selection_summary_immediately",
+        |mut host| {
+            let _dir = fixture_with_folder_and_two_files(&mut host);
+            let one = position_of(&host, "one.txt");
+            host.app().browser().set_selection(0, &[one], Some(one));
+            wait_count_with_date(&mut host, "one.txt (3 B) — ");
+
+            run_cmd(&mut host, "filter", crate::commands::On::Focus);
+            for ch in "one".chars() {
+                send_key(
+                    &mut host,
+                    KeyEvent {
+                        key: Key::Text(ch.to_string()),
+                        mods: Mods::default(),
+                    },
+                );
+            }
+            wait_count(&mut host, "1 item");
+
+            // Leaving the filtered column closes the filter in `Filter::poll` (after `Footer::poll`).
+            // Frame 1 commits the focus move; frame 2 runs `blur::follow` in `Filter::poll` and
+            // must already render the restored selection summary on that frame, not stale "1 item".
+            host.runtime().update(|_, tx| {
+                tx.focus("footer-shortcuts", true);
+            });
+            host.runtime().frame(0.0);
+            assert!(
+                crate::filter::footer_counts(host.app()).is_some(),
+                "focus committed on frame 1 before blur::follow runs"
+            );
+            host.runtime().frame(0.0);
+            assert!(
+                crate::filter::footer_counts(host.app()).is_none(),
+                "blur::follow closed the filter on frame 2"
+            );
+            let text = drawn(&host).expect("footer count");
+            assert!(
+                text.starts_with("one.txt (3 B) — "),
+                "blur-close frame should restore selection summary immediately, got {text:?}"
+            );
+        },
+    );
+}
+
+#[test]
+fn closing_filter_after_reload_still_fills_selected_sizes() {
+    hosted(
+        MODULE,
+        "closing_filter_after_reload_still_fills_selected_sizes",
+        |mut host| {
+            let _folder = short_listing(&mut host);
+            press(&mut host, Key::End, shift());
+            assert!(host.run_until(PATIENCE, counts_every_size));
+
+            run_cmd(&mut host, "filter", crate::commands::On::Focus);
+            for ch in "f00".chars() {
+                send_key(
+                    &mut host,
+                    KeyEvent {
+                        key: Key::Text(ch.to_string()),
+                        mods: Mods::default(),
+                    },
+                );
+            }
+            wait_count(&mut host, "1 item");
+
+            // Reload while filtered: `replaced` and `heard` arrive while `ask_metadata` is
+            // suppressed, leaving offscreen selected rows without sizes until the filter closes.
+            let before = host.app().browser().column_request_id(0);
+            host.runtime()
+                .update(|app: &mut App, _: &mut Tx| app.browser().reload_active());
+            assert!(
+                host.run_until(PATIENCE, |h| {
+                    h.app().browser().column_request_id(0) != before
+                        && h.app().browser().column_entry_counts(0).map(|c| c.total) == Some(65)
+                }),
+                "reloaded listing while filtered"
+            );
+            while host.turn() {}
+
+            press(&mut host, Key::Escape, Mods::default());
+            assert!(
+                host.run_until(PATIENCE, counts_every_size),
+                "closing the filter must request missing metadata for selected rows: {:?}",
+                drawn(&host)
+            );
+        },
+    );
+}

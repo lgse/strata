@@ -113,7 +113,15 @@ pub(super) fn poll(app: &mut App) -> bool {
         counted.selected = selected.clone();
         (selected, replaced, reselected, heard)
     };
-    if !filter_counts.is_some_and(|f| f.displayed) && (heard || replaced || reselected) {
+    let filtering = filter_counts.is_some_and(|f| f.displayed);
+    let was_filtering = app
+        .footer
+        .counted
+        .listing
+        .as_ref()
+        .and_then(|l| l.filter)
+        .is_some_and(|f| f.displayed);
+    if !filtering && (heard || replaced || reselected || was_filtering) {
         ask_metadata(&browser, depth, &selected, &app.footer.counted.unreadable);
     }
     let listing = Some(read(app, depth, &selected, filter_counts));
@@ -125,10 +133,15 @@ pub(super) fn poll(app: &mut App) -> bool {
     true
 }
 
-/// The count the footer shows, in the language now.
+/// The count the footer shows, in the language now. Reads the filter's counts live because
+/// `Filter` polls after `Footer` (so a Columns blur-close runs between `poll` and `build`).
 pub(super) fn shown(app: &App) -> Option<Count> {
     let listing = app.footer.counted.listing.as_ref()?;
-    Some(summary(listing, &words()))
+    let live = Listing {
+        filter: filter::footer_counts(app),
+        ..listing.clone()
+    };
+    Some(summary(&live, &words()))
 }
 
 fn read(app: &App, depth: usize, selected: &[usize], filter: Option<FilterCounts>) -> Listing {
