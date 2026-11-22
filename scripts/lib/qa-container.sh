@@ -46,6 +46,23 @@ qa_container_options() {
   # /tmp is a tmpfs; artifacts and the Cargo cache must live under /workspace.
   options=("$@" --platform=linux/amd64 --user "$user_id:$group_id" --shm-size=512m
     --tmpfs /tmp:rw,exec,mode=1777)
+  if [[ -z "${CI:-}" || -n "${STRATA_CONTAINER_CPU_SHARES:-}" ]]; then
+    local cpu_shares="${STRATA_CONTAINER_CPU_SHARES:-128}"
+    if [[ "$cpu_shares" != 0 ]]; then
+      options+=(--cpu-shares="$cpu_shares")
+    fi
+  fi
+  local cpus="${STRATA_CONTAINER_CPUS:-}"
+  if [[ -z "$cpus" && -z "${CI:-}" ]]; then
+    local host_cpus
+    host_cpus="$(nproc 2>/dev/null || echo 0)"
+    if ((host_cpus >= 6)); then
+      cpus="$((host_cpus * 2 / 3))"
+    fi
+  fi
+  if [[ -n "$cpus" && "$cpus" != 0 ]]; then
+    options+=(--cpus="$cpus")
+  fi
   if [[ "$(basename "$engine")" == podman ]]; then
     options+=(--userns=keep-id --passwd=false --security-opt 'unmask=/proc/*')
   else

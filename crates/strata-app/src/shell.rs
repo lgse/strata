@@ -516,6 +516,11 @@ pub(crate) fn preferences(app: &App) -> &strata_desktop::settings::Preferences {
     app.window.settings.preferences()
 }
 
+/// The saved 10xer-mode activation visual effect.
+pub(crate) fn tenxer_fx(app: &App) -> strata_desktop::settings::TenxerFx {
+    app.window.settings.tenxer_fx()
+}
+
 /// The window's saved item colours and icons, indexed by [`EntryId`].
 pub(crate) fn worn(app: &App) -> &Rc<Worn> {
     &app.window.worn

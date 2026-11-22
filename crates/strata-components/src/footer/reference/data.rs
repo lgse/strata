@@ -82,7 +82,7 @@ pub struct Context {
 
 /// A row's keys: alternatives, each a sequence of chord labels as the interface writes them.
 /// `[["Ctrl+C"], ["Ctrl+Insert"]]` reads "Ctrl+C / Ctrl+Insert"; `[["g", "h"]]` is the chord
-/// `g` then `h`. Each step draws as one keycap.
+/// `g` then `h`. The row's keys (with any context) draw together inside one keycap chip.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Keys(pub Vec<Vec<String>>);
 

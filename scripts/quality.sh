@@ -52,6 +52,22 @@ fi
 # then fail to spawn threads with EAGAIN.
 options=(--rm --platform=linux/amd64 --user "$user_id:$group_id" --shm-size=512m --pids-limit=-1
   --tmpfs /tmp:rw,exec,nosuid,nodev,size=2g,mode=1777)
+if [[ -z "${CI:-}" || -n "${STRATA_CONTAINER_CPU_SHARES:-}" ]]; then
+  cpu_shares="${STRATA_CONTAINER_CPU_SHARES:-128}"
+  if [[ "$cpu_shares" != 0 ]]; then
+    options+=(--cpu-shares="$cpu_shares")
+  fi
+fi
+cpus="${STRATA_CONTAINER_CPUS:-}"
+if [[ -z "$cpus" && -z "${CI:-}" ]]; then
+  host_cpus="$(nproc 2>/dev/null || echo 0)"
+  if ((host_cpus >= 6)); then
+    cpus="$((host_cpus * 2 / 3))"
+  fi
+fi
+if [[ -n "$cpus" && "$cpus" != 0 ]]; then
+  options+=(--cpus="$cpus")
+fi
 if [[ "$(basename "$engine")" == podman ]]; then
   options+=(--userns=keep-id --passwd=false)
 fi

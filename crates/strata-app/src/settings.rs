@@ -17,7 +17,7 @@ use std::{cell::RefCell, io, path::Path, rc::Rc};
 use strata_core::model::ViewPreferences;
 use strata_desktop::settings::{
     ADOPTED_DEFAULT_KEYS, Commit, FinishedSave, Preferences, SaveOutcome, SaveProblem, Saving,
-    ThemeAvailability,
+    TenxerFx, ThemeAvailability,
     save_notice::{NoticeProblem, SaveSubject, save_notice_summary, save_notice_text},
     store_sort,
 };
@@ -85,6 +85,7 @@ impl NoticeStreaks {
 /// GTK application keeps one `PreferenceManager` for all its windows.
 struct Store {
     preferences: Preferences,
+    tenxer_fx: TenxerFx,
     saving: Saving,
     /// Moves with every change any window makes.
     version: u64,
@@ -120,6 +121,7 @@ pub(crate) struct Saved {
     id: u64,
     /// The values as of `version`.
     preferences: Preferences,
+    tenxer_fx: TenxerFx,
     version: u64,
     /// The window's queue, where a finished save tells the bookkeeping its result. Without
     /// it a save is still written, and its keys are written again with the next.
@@ -139,10 +141,11 @@ impl Saved {
     /// Reads the file, salvaged entry by entry and brought within range, and makes its
     /// language the process's.
     pub(crate) fn load() -> Self {
-        let (preferences, saving) = strata_desktop::settings::load();
+        let (preferences, tenxer_fx, saving) = strata_desktop::settings::load_with_tenxer_fx();
         rust_i18n::set_locale(saving.startup_locale());
         let store = Store {
             preferences: preferences.clone(),
+            tenxer_fx,
             saving,
             version: 0,
             windows: Vec::new(),
@@ -152,6 +155,7 @@ impl Saved {
             store: Rc::new(RefCell::new(store)),
             id: 0,
             preferences,
+            tenxer_fx,
             version: 0,
             later: None,
             notices: NoticeStreaks::default(),
@@ -167,6 +171,7 @@ impl Saved {
             store: Rc::clone(&self.store),
             id,
             preferences: store.preferences.clone(),
+            tenxer_fx: store.tenxer_fx,
             version: store.version,
             later: None,
             notices: NoticeStreaks::default(),
@@ -184,6 +189,16 @@ impl Saved {
 
     pub(crate) fn preferences(&self) -> &Preferences {
         &self.preferences
+    }
+
+    pub(crate) fn tenxer_fx(&self) -> TenxerFx {
+        self.tenxer_fx
+    }
+
+    pub(crate) fn set_tenxer_fx(&mut self, fx: TenxerFx) {
+        self.follow();
+        self.tenxer_fx = fx;
+        self.commit();
     }
 
     /// How many windows the store would tell of a change, this one among them.
@@ -205,6 +220,7 @@ impl Saved {
             return false;
         }
         self.preferences = store.preferences.clone();
+        self.tenxer_fx = store.tenxer_fx;
         self.version = store.version;
         true
     }
@@ -212,13 +228,14 @@ impl Saved {
     /// Puts this window's values into the store, as the process's from now on.
     fn publish(&mut self, store: &mut Store) {
         store.preferences = self.preferences.clone();
+        store.tenxer_fx = self.tenxer_fx;
         store.version += 1;
         self.version = store.version;
     }
 
     /// Puts this window's values into the store when they differ from the process's.
     fn publish_changed(&mut self, store: &mut Store) {
-        if store.preferences != self.preferences {
+        if store.preferences != self.preferences || store.tenxer_fx != self.tenxer_fx {
             self.publish(store);
         }
     }
@@ -338,7 +355,9 @@ impl Saved {
         let store = &mut *shared.borrow_mut();
         self.publish_changed(store);
         store.tell_others(self.id);
-        let Commit { save, problem, .. } = store.saving.commit(&self.preferences);
+        let Commit { save, problem, .. } = store
+            .saving
+            .commit_with_tenxer_fx(&self.preferences, self.tenxer_fx);
         match problem {
             Some(SaveProblem::UnreadableAtStartup { path }) => {
                 if let Some(error) = store.saving.load_failure() {
