@@ -767,6 +767,61 @@ fn gif_skips_audio_peaks_and_storyboard() {
 }
 
 #[test]
+fn animated_webp_plays_in_the_plain_bar_loops_and_skips_media_probes() {
+    hosted(
+        MODULE,
+        "media::animated_webp_plays_in_the_plain_bar_loops_and_skips_media_probes",
+        |mut host| {
+            let _hooks = BackgroundHooks::install(true, false);
+            decode_with(half_a_second_of_pictures);
+            let (_provider, _folder) =
+                open(&mut host, &[("spin.webp", MP4)], "spin.webp", "image/webp");
+            shows(
+                &mut host,
+                MediaState::has_frame,
+                "first animated webp frame",
+            );
+            assert_eq!(
+                state(&host).map(|s| s.clip().kind),
+                Some(MediaKind::Animation)
+            );
+            let keys: Vec<String> = host
+                .runtime()
+                .elements()
+                .into_iter()
+                .filter_map(|el| el.key)
+                .filter(|key| key.starts_with(MEDIA_KEY))
+                .collect();
+            assert!(keys.iter().any(|key| key.ends_with("-play")), "{keys:?}");
+            for part in ["-time", "-timeline", "-mute", "-volume", "-title"] {
+                assert!(
+                    !keys.iter().any(|key| key.ends_with(part)),
+                    "{part} in {keys:?}"
+                );
+            }
+            dwell(&mut host, Duration::from_millis(160));
+            assert_eq!(peaks_started(), 0, "animated WebP skips audio-peaks");
+            assert_eq!(
+                storyboard_started(),
+                0,
+                "animated WebP skips video-storyboard"
+            );
+            play_pause(&mut host);
+            shows(&mut host, MediaState::playing, "animated webp playing");
+            let late = host.run_until(PATIENCE, |host| {
+                state(host).is_some_and(|s| s.position() >= Duration::from_millis(300))
+            });
+            assert!(late, "past the middle");
+            let looped = host.run_until(PATIENCE, |host| {
+                state(host)
+                    .is_some_and(|s| s.playing() && s.position() < Duration::from_millis(200))
+            });
+            assert!(looped, "animated WebP loops back to start while playing");
+        },
+    );
+}
+
+#[test]
 fn silent_video_skips_audio_peaks() {
     hosted(
         MODULE,

@@ -353,3 +353,84 @@ fn a_remote_text_stream_answered_as_the_preview_lets_go_closes_on_a_worker() {
         });
     assert!(!closed_on_the_ui_thread);
 }
+
+#[test]
+fn remote_animated_webp_stages_as_sandboxed_media_while_static_webp_rasterizes() {
+    crate::test_support::isolated_test(
+        "adapters::local_preview::tests::remote_preview::remote_animated_webp_stages_as_sandboxed_media_while_static_webp_rasterizes",
+        || {
+            let fixture = tempfile::tempdir().expect("webp fixture");
+            let context = glib::MainContext::default();
+            let _owner = context.acquire().expect("context");
+            let provider = LocalPreviewProvider::new(Rc::new(|| MediaPreviewBackend::Software));
+
+            let animated_bytes = b"RIFF\x16\0\0\0WEBPVP8X\x0a\0\0\0\x12\0\0\0\x01\0\0\x01\0\0";
+            let animated_path = fixture.path().join("loop.webp");
+            fs::write(&animated_path, animated_bytes).expect("animated fixture");
+            let (send, receive) = oneshot::channel();
+            let send = RefCell::new(Some(send));
+            let _handle = provider.load_with_renderer(
+                request(&animated_path, "loop.webp"),
+                Rc::new(move |event| {
+                    send.borrow_mut()
+                        .take()
+                        .expect("single event")
+                        .send(event)
+                        .ok();
+                }),
+                |_, _, _, _, _| panic!("animated remote webp must not rasterize as still image"),
+            );
+            let event = context.block_on(receive).expect("animated event");
+            let PreviewEvent::Ready(preview) = event else {
+                panic!("remote animated webp failed: {event:?}");
+            };
+            assert_eq!(preview.content_type, "image/webp");
+            let PreviewContent::SandboxedMedia { media } = preview.content else {
+                panic!("expected sandboxed media for animated webp");
+            };
+            let staged = media.path.clone();
+            assert_ne!(staged, animated_path);
+            assert!(media.input_owner.is_some());
+            assert!(staged.exists());
+            drop(media);
+            assert!(
+                !staged.exists(),
+                "dropping media releases staged animated webp"
+            );
+
+            let static_bytes = b"RIFF\x16\0\0\0WEBPVP8X\x0a\0\0\0\x10\0\0\0\x01\0\0\x01\0\0";
+            let static_path = fixture.path().join("still.webp");
+            fs::write(&static_path, static_bytes).expect("static fixture");
+            let (send, receive) = oneshot::channel();
+            let send = RefCell::new(Some(send));
+            let _handle = provider.load_with_renderer(
+                request(&static_path, "still.webp"),
+                Rc::new(move |event| {
+                    send.borrow_mut()
+                        .take()
+                        .expect("single event")
+                        .send(event)
+                        .ok();
+                }),
+                |_, operation, _, _, _| {
+                    assert!(matches!(operation, ParseOperation::PreviewImage));
+                    Ok(crate::sandbox::ParseOutput {
+                        data: b"png-bytes".to_vec(),
+                        page: 0,
+                        pages: 0,
+                        model_mesh: None,
+                        text_layer: None,
+                    })
+                },
+            );
+            let event = context.block_on(receive).expect("static event");
+            let PreviewEvent::Ready(preview) = event else {
+                panic!("remote static webp failed: {event:?}");
+            };
+            assert!(
+                matches!(preview.content, PreviewContent::Rasterized { .. }),
+                "static remote webp must stay a still image"
+            );
+        },
+    );
+}

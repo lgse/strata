@@ -491,6 +491,30 @@ impl PreviewLoad {
             .map_err(|message| self.staging_failure(message))
     }
 
+    fn sandboxed_media(&self, path: PathBuf, staged: Option<StagedPreview>) -> SandboxedMedia {
+        let mut media = SandboxedMedia {
+            path,
+            size: self.request.media_size,
+            backend: self.backend,
+            input_owner: None,
+            audio_only: false,
+        };
+        if let Some(staged) = staged {
+            media = media.retain_input(staged);
+        }
+        media
+    }
+
+    async fn is_staged_animated_webp(path: PathBuf) -> bool {
+        gio::spawn_blocking(move || {
+            read_head_sample(&path)
+                .map(|sample| crate::services::is_animated_webp_sample(&sample))
+                .unwrap_or(false)
+        })
+        .await
+        .unwrap_or(false)
+    }
+
     async fn load_media(&mut self) -> Step<()> {
         let staged = if self.entry.location.native_path().is_none() {
             Some(self.stage_video().await?)
@@ -503,16 +527,7 @@ impl PreviewLoad {
             .or_else(|| self.entry.location.native_path())
             .expect("native or staged media")
             .to_path_buf();
-        let mut media = SandboxedMedia {
-            path,
-            size: self.request.media_size,
-            backend: self.backend,
-            input_owner: None,
-            audio_only: false,
-        };
-        if let Some(staged) = staged {
-            media = media.retain_input(staged);
-        }
+        let media = self.sandboxed_media(path, staged);
         self.check_cancelled()?;
         self.content = PreviewContent::SandboxedMedia { media };
         Ok(())
@@ -682,6 +697,16 @@ impl PreviewLoad {
             .or_else(|| self.entry.location.native_path())
             .expect("native or staged preview input")
             .to_path_buf();
+        if staged.is_some()
+            && matches!(plan.operation, ParseOperation::PreviewImage)
+            && Self::is_staged_animated_webp(path.clone()).await
+        {
+            self.check_cancelled()?;
+            self.content_type = "image/webp".to_owned();
+            let media = self.sandboxed_media(path, staged);
+            self.content = PreviewContent::SandboxedMedia { media };
+            return Ok(());
+        }
         let modified = self.cache_modified(staged.is_some());
         let cache_key = modified.map(|modified| PreviewCacheKey {
             path: path.clone(),

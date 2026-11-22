@@ -5,7 +5,7 @@
 //! audio views host them:
 //!
 //! - **The view** is by the file's type: video, audio, or the plain media bar for media that
-//!   is neither, as an animated GIF, which loops.
+//!   is neither, such as an animated GIF or animated WebP, which loops.
 //! - **Playback** ([`stream`]): decoded frames come from the shared sandboxed decoder off the UI
 //!   thread and reach Rune through `Later`, while decoded PCM plays through `strata_platform::media`
 //!   (PipeWire/PulseAudio, ALSA, or a silent real-time clock fallback when headless) and drives A/V
@@ -17,7 +17,7 @@
 //! - **The timeline waveform & storyboard** ([`peaks`], [`storyboard`]): videos of at least 4 s
 //!   stream keyframe storyboard cells on the shared background decode slot, then hand the slot to
 //!   `audio-peaks` (which audio files start directly) so timeline bars grow in from decoded RMS
-//!   levels; GIFs and silent videos skip `audio-peaks`.
+//!   levels; animated images and silent videos skip `audio-peaks`.
 //! - **The media keys** reach the player where [`super::keys::media_keys_reach`] holds
 //!   ([`super::transport`]).
 //! - **The volume** is Settings' `preview_volume` and `preview_muted`, saved as it changes.
@@ -124,15 +124,17 @@ struct Opening {
     volume: f32,
     muted: bool,
     tenxer: bool,
-    /// A GIF: the frame and its play toggle alone (`MediaKind::Animation`).
+    /// An animated image (GIF or animated WebP): the frame and its play toggle alone
+    /// (`MediaKind::Animation`).
     animation: bool,
 }
 
 impl Opening {
     fn of(app: &App, content_type: &str) -> Self {
         let prefs = shell::preferences(app);
-        // A GIF and a raw stream start at their first frame (`render_sandboxed_media`).
-        let from_start = content_type == GIF || is_raw_video_stream(content_type);
+        let animation = is_animation(content_type);
+        // Animated images and raw streams start at their first frame (`render_sandboxed_media`).
+        let from_start = animation || is_raw_video_stream(content_type);
         Self {
             start_percent: if from_start {
                 0
@@ -143,12 +145,14 @@ impl Opening {
             volume: prefs.preview_volume as f32,
             muted: prefs.preview_muted,
             tenxer: prefs.tenxer_mode,
-            animation: content_type == GIF,
+            animation,
         }
     }
 }
 
-const GIF: &str = "image/gif";
+fn is_animation(content_type: &str) -> bool {
+    matches!(content_type, "image/gif" | "image/webp")
+}
 
 /// A sandboxed media preview arrived: the player for its kind, decoding from the start.
 pub(super) fn ready(app: &mut App, arrived: Arrived, tx: &mut Tx) -> Viewer {
@@ -173,7 +177,7 @@ pub(super) fn ready(app: &mut App, arrived: Arrived, tx: &mut Tx) -> Viewer {
     if family == Some(Family::Audio) {
         stream.retain_played_audio();
     }
-    stream.set_loop(content_type == GIF);
+    stream.set_loop(opening.animation);
     stream.set_audio(opening.volume, opening.muted);
     let stepped = app
         .preview
