@@ -246,3 +246,25 @@ fn the_enter_target_frame_is_outlined_in_the_accent() {
         "the cursor ring wins"
     );
 }
+
+#[test]
+fn caption_cache_with_hint_matches_unseeded_cut() {
+    let look = Look::fallback(false);
+    let font = look.kit.ty.ui_compact;
+    let width = 88.0;
+    let cache = super::caption::CaptionCache::default();
+    let names = [
+        "short.txt",
+        "img_000c1kfnxj_031226.jpeg",
+        "img_0020s0d7fp6v_079870.jpg",
+        "very_long_filename_with_many_segments_0123456789_archive.tar.gz",
+        "WWWWWWWWWWWWWWWWWWWWWWWWWW.png",
+        "iiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiii.png",
+        "🚀🌟🔥🎉_photoshoot_final_version_2026_11_22.webp",
+    ];
+    for name in names {
+        let cached = cache.get(name, font, width, 2);
+        let exact = super::caption::cut(name, font, width, 2);
+        assert_eq!(cached, exact, "hinted cut differed for {name:?}");
+    }
+}

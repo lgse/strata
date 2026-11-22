@@ -184,6 +184,11 @@ impl Position {
         false
     }
 
+    /// The viewport's latest [`ScrollPos`].
+    pub fn scroll_pos(&self) -> ScrollPos {
+        self.0.pos.get()
+    }
+
     /// The viewport's vertical offset, as last reported.
     pub fn offset(&self) -> f32 {
         self.0.pos.get().offset[1]

@@ -389,7 +389,7 @@ impl<S: 'static, F: Copy + PartialEq + 'static> FieldMenu<S, F> {
             }),
             on_submenu: Rc::new(|_: &mut S, _| {}),
             close_to: Rc::new(|_: &mut S, _| {}),
-            on_dismiss: Rc::new(move |s: &mut S| dismiss.finish(s, field)),
+            on_dismiss: Rc::new(move |s: &mut S, _: &mut Tx| dismiss.finish(s, field)),
         }
         .build(layer)
     }

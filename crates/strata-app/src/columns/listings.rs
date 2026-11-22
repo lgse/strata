@@ -127,7 +127,7 @@ impl ColumnSources for Listings {
     }
 
     fn version(&self, depth: usize) -> u64 {
-        let version = self.shown(depth).map_or(0, Column::version);
+        let version = self.shown(depth).map_or(0, Column::key_version);
         version.wrapping_add(self.swaps << 40)
     }
 
@@ -156,7 +156,7 @@ impl ColumnSources for Listings {
     /// folder's item count, a file's size, or none while the browser does not know it.
     fn badge(&self, depth: usize, index: usize) -> Option<Cow<'_, str>> {
         let column = self.shown(depth)?;
-        let row = column.row_of(column.id_at(index))?;
+        let row = column.row_at(index)?;
         let text = details::size_cell(row.is_folder(), row.facts());
         (!text.is_empty()).then_some(Cow::Owned(text))
     }

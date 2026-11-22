@@ -2,7 +2,7 @@
 
 //! The store: one handle per thumbnail key, held under a byte budget, with each key's state.
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::hash::{Hash, Hasher};
 
@@ -235,6 +235,10 @@ pub struct Stats {
 /// Used by: C3, C4, C2, hosts.
 pub struct ThumbnailStore {
     pub(super) inner: RefCell<Inner>,
+    /// Set whenever a view probes an absent key via [`Self::existing_thumb`] or
+    /// [`Self::existing_version`] while thumbnails are enabled, so the next non-deferred
+    /// poll guarantees one rebuild to attach handles once ensured.
+    skipped: Cell<bool>,
 }
 
 impl std::fmt::Debug for ThumbnailStore {
@@ -349,6 +353,7 @@ impl ThumbnailStore {
                 #[cfg(test)]
                 scans: 0,
             }),
+            skipped: Cell::new(false),
         }
     }
 
@@ -380,6 +385,22 @@ impl ThumbnailStore {
         inner.entries[&key].thumb.clone()
     }
 
+    /// The key's handles only if the store already holds an entry for it, without allocating
+    /// a new entry (`Pixels` + `Live`). Used while actively dragging a scrollbar thumb so
+    /// transient rows scrolled past never churn store entries or live bindings.
+    pub fn existing_thumb(&self, key: ThumbKey) -> Option<Thumb> {
+        let inner = self.inner.borrow();
+        match inner.entries.get(&key) {
+            Some(entry) => Some(entry.thumb.clone()),
+            None => {
+                if inner.enabled {
+                    self.skipped.set(true);
+                }
+                None
+            }
+        }
+    }
+
     /// A memo version for a part that draws `key`'s handles: it changes when the key's
     /// handles are replaced (after a prune) or thumbnails are turned on or off, and never when
     /// a thumbnail lands, changes size or is evicted.
@@ -390,6 +411,32 @@ impl ThumbnailStore {
         inner.entries[&key].thumb.epoch.hash(&mut h);
         inner.enabled.hash(&mut h);
         h.finish()
+    }
+
+    /// Like [`ThumbnailStore::version`], without allocating an entry for keys not yet in the
+    /// store: absent keys hash epoch `0` (distinct from every ensured entry's `epoch >= 1`).
+    pub fn existing_version(&self, key: ThumbKey) -> u64 {
+        let inner = self.inner.borrow();
+        let epoch = match inner.entries.get(&key) {
+            Some(entry) => entry.thumb.epoch,
+            None => {
+                if inner.enabled {
+                    self.skipped.set(true);
+                }
+                0
+            }
+        };
+        let mut h = std::hash::DefaultHasher::new();
+        epoch.hash(&mut h);
+        inner.enabled.hash(&mut h);
+        h.finish()
+    }
+
+    /// Whether any view built since the last check skipped allocating a handle for an absent
+    /// key via [`Self::existing_thumb`] or [`Self::existing_version`]. Calling this clears the
+    /// flag so a non-deferred poll can trigger one rebuild to attach handles once synced.
+    pub fn take_skipped(&self) -> bool {
+        self.skipped.replace(false)
     }
 
     /// The key's state; [`State::Empty`] for a key the store has never seen.

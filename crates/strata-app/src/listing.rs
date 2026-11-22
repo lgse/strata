@@ -280,7 +280,13 @@ pub(crate) struct Column {
     back: Vec<usize>,
     positions: HashMap<EntryId, usize>,
     show_hidden: bool,
+    /// Moves on every edit to the column's rows (including metadata refills).
     version: u64,
+    /// Moves only when the shown row keys or their order change: passed to Rune's
+    /// `virtual_rows_version` so metadata refills never trigger an O(N) row-key rescan.
+    key_version: u64,
+    /// Moves when row keys, order, or any row's thumbnail key/model kind changes.
+    thumb_version: u64,
     load: Load,
     /// A sort or a refresh is running over a listing that stays up.
     busy: bool,
@@ -305,6 +311,8 @@ impl Column {
             positions: HashMap::new(),
             show_hidden,
             version: 0,
+            key_version: 0,
+            thumb_version: 0,
             load: Load::Loading,
             busy: false,
             from,
@@ -421,6 +429,8 @@ impl Column {
             self.rows.push(row);
         }
         self.version += 1;
+        self.key_version += 1;
+        self.thumb_version += 1;
     }
 
     /// A refill never moves a row; one that changes whether it is hidden still changes which
@@ -433,6 +443,8 @@ impl Column {
         let retyped = current.name != row.name || current.entry_kind != row.entry_kind;
         let regroup = self.grouping.is_some() && retyped;
         let moved = current.id != row.id || current.hidden != row.hidden || regroup;
+        let old_thumb = current.thumbnail;
+        let old_model = current.rendered_model;
         // A row read again carries no type (`Row::of` reads none): one whose type did not
         // change keeps the one its group was found by, which `group_at` reads.
         let group = current.group.filter(|_| !retyped);
@@ -442,6 +454,8 @@ impl Column {
         current.group = group;
         if moved {
             self.index();
+        } else if current.thumbnail != old_thumb || current.rendered_model != old_model {
+            self.thumb_version += 1;
         }
     }
 
@@ -465,6 +479,8 @@ impl Column {
         }
         self.group();
         self.version += 1;
+        self.key_version += 1;
+        self.thumb_version += 1;
     }
 
     /// Puts the rows shown in file-type groups, as GTK's grouped List shows them: by
@@ -530,9 +546,24 @@ impl Column {
             .and_then(|position| self.rows.get(position))
     }
 
+    /// The row shown at view index `index`, in O(1) without a hash lookup.
+    pub(crate) fn row_at(&self, index: usize) -> Option<&Row> {
+        self.rows.get(*self.shown.get(index)?)
+    }
+
     /// Moves with every change to what the column shows.
     pub(crate) fn version(&self) -> u64 {
         self.version ^ self.worn.version().wrapping_shl(24)
+    }
+
+    /// Moves only when the shown row keys or their order change (`virtual_rows_version`).
+    pub(crate) fn key_version(&self) -> u64 {
+        self.key_version
+    }
+
+    /// Moves when row keys, order, thumbnail keys, or worn customizations change.
+    pub(crate) fn thumb_version(&self) -> u64 {
+        self.thumb_version ^ self.worn.version().wrapping_shl(24)
     }
 
     /// The folder is being read, or a sort or a refresh runs over its listing.

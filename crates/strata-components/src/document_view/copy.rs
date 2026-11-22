@@ -145,6 +145,21 @@ fn table_part(out: &mut String, pieces: &[Piece<'_>]) {
 const RUNE_ROWS: usize = 10_000;
 const RUNE_BYTES: usize = 4 << 20;
 
+/// Whether the document has any selectable prose or table text.
+pub(crate) fn has_selectable_text(state: &Content) -> bool {
+    ends(state).is_some()
+}
+
+/// Whether `sel` selects any text belonging to this document.
+pub(crate) fn has_selection_in(state: &Content, sel: &TextSelection) -> bool {
+    let key = state.key.as_str();
+    let len = state.doc.units.len();
+    sel.texts()
+        .iter()
+        .filter(|t| t.is_selected())
+        .any(|t| locate(key, t.path()).is_some_and(|(unit, _)| unit < len))
+}
+
 /// The first and last texts a selection of the whole document holds: the first and last
 /// unit drawing selectable text, and in a table its first and last cell with text.
 fn ends(state: &Content) -> Option<((usize, Part), (usize, Part))> {

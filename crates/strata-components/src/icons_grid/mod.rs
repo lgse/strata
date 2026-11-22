@@ -626,21 +626,30 @@ impl<S: 'static> IconsGrid<S> {
         size_changed(&Rc::new(self.shared.clone()), s, tx)
     }
 
-    /// From the host's poll: catches a size or display scale the host changed without
-    /// [`IconsGrid::size_changed`], so the thumbnail step and the cursor reveal follow within
-    /// a frame. Returns false: nothing the view reads changed.
+    /// From the host's poll: catches a size, display scale or thumbnail-listing version change
+    /// the host made without [`IconsGrid::size_changed`], so the thumbnail store and cursor
+    /// reveal follow within a frame, and flushes thumbnail syncs deferred while dragging the
+    /// scrollbar thumb once the thumb releases or pauses. Returns true when a flush, resync or
+    /// previously skipped mid-drag handle needs one rebuild to bind handles for visible tiles.
     pub fn poll(&self, s: &mut S, tx: &mut Tx) -> bool {
         let shared = Rc::new(self.shared.clone());
         let (size, last) = {
             let p = (shared.parts)(s);
             (p.size, p.grid.size.get())
         };
+        let mut rebuild = false;
         if last != Some(size) {
             size_changed(&shared, s, tx);
         } else {
-            sync_step(&shared, s);
+            rebuild |= flush_thumbs(&shared, s, tx);
         }
-        false
+        if !(shared.parts)(s).grid.thumbs_deferred() {
+            rebuild |= sync_stale(&shared, s);
+            if let Some((store, _)) = (shared.parts)(s).thumbs {
+                rebuild |= store.take_skipped();
+            }
+        }
+        rebuild
     }
 }
 
@@ -727,10 +736,71 @@ fn row_cx<'a>(
     }
 }
 
+/// How long a held scrollbar thumb stays still before deferred thumbnail syncs flush.
+const THUMB_DRAG_SETTLE: f64 = 0.150;
+
 fn on_visible<S: 'static>(shared: &Rc<Shared<S>>, s: &mut S, range: Range<usize>) -> bool {
-    let synced = sync_thumbs(shared, s, Some(range.clone()));
+    let synced = if (shared.parts)(s).grid.bar.is_dragging() {
+        let grid = (shared.grid_mut)(s);
+        grid.pending_thumbs = Some(range.clone());
+        grid.thumb_moved = true;
+        grid.thumb_settled.set(false);
+        false
+    } else {
+        let grid = (shared.grid_mut)(s);
+        grid.pending_thumbs = None;
+        grid.thumb_moved = false;
+        grid.thumb_moved_at = None;
+        grid.thumb_settled.set(false);
+        sync_thumbs(shared, s, Some(range.clone()))
+    };
     let host = shared.on_visible.as_ref().is_some_and(|f| f(s, range));
     synced || host
+}
+
+/// Flushes a thumbnail sync deferred during a scrollbar thumb drag once the thumb releases or
+/// pauses for [`THUMB_DRAG_SETTLE`].
+fn flush_thumbs<S: 'static>(shared: &Rc<Shared<S>>, s: &mut S, tx: &mut Tx) -> bool {
+    let dragging = (shared.parts)(s).grid.bar.is_dragging();
+    let clock = tx.clock();
+    let ready = {
+        let grid = (shared.grid_mut)(s);
+        if !dragging {
+            grid.thumb_moved = false;
+            grid.thumb_moved_at = None;
+            grid.thumb_settled.set(false);
+            grid.pending_thumbs.take()
+        } else if grid.pending_thumbs.is_none() {
+            if grid.thumb_moved_at.is_none() {
+                grid.thumb_settled.set(true);
+            }
+            return false;
+        } else {
+            if std::mem::take(&mut grid.thumb_moved) {
+                grid.thumb_moved_at = Some(clock);
+            }
+            match grid.thumb_moved_at {
+                Some(at) if clock - at < THUMB_DRAG_SETTLE => {
+                    tx.wake_after(std::time::Duration::from_secs_f64(
+                        THUMB_DRAG_SETTLE - (clock - at),
+                    ));
+                    None
+                }
+                _ => {
+                    grid.thumb_moved_at = None;
+                    grid.thumb_settled.set(true);
+                    grid.pending_thumbs.take()
+                }
+            }
+        }
+    };
+    let Some(range) = ready else {
+        return false;
+    };
+    let _ = sync_thumbs(shared, s, Some(range));
+    // Rows mounted mid-drag skipped allocating empty thumbnail handles (`existing_thumb`), so
+    // rebuild once on release/pause to attach the newly ensured handles for the visible tiles.
+    true
 }
 
 /// Tells the store what the grid shows at the step it draws at: `range` (as Rune reports it)
@@ -745,7 +815,13 @@ fn sync_thumbs<S: 'static>(shared: &Rc<Shared<S>>, s: &mut S, range: Option<Rang
         let p = (shared.parts)(s);
         (p.collection.per_line().max(1), p.listing)
     };
-    (shared.parts)(s).grid.synced.set(Some(step));
+    {
+        let grid = (shared.parts)(s).grid;
+        grid.synced.set(Some(step));
+        if range.is_some() {
+            grid.synced_listing.set(Some(listing));
+        }
+    }
     let Some((store, viewer, src)) = thumbs_mut(s) else {
         return false;
     };
@@ -757,6 +833,41 @@ fn sync_thumbs<S: 'static>(shared: &Rc<Shared<S>>, s: &mut S, range: Option<Rang
         ),
         None => store.set_step(viewer, src, step),
     }
+}
+
+/// Resyncs the store when the host's thumbnail-listing version moved without a viewport change
+/// (e.g., an `Edit::Refill` replacing a file's thumbnail key while row keys stayed unchanged).
+fn resync_thumbs<S: 'static>(shared: &Rc<Shared<S>>, s: &mut S) -> bool {
+    let Some(thumbs_mut) = shared.thumbs_mut.clone() else {
+        return false;
+    };
+    let listing = (shared.parts)(s).listing;
+    (shared.parts)(s).grid.synced_listing.set(Some(listing));
+    let Some((store, viewer, src)) = thumbs_mut(s) else {
+        return false;
+    };
+    store.resync(viewer, src, listing)
+}
+
+/// Syncs the store when the thumbnail step or listing version changed since the last sync.
+fn sync_stale<S: 'static>(shared: &Rc<Shared<S>>, s: &mut S) -> bool {
+    if shared.thumbs_mut.is_none() {
+        return false;
+    }
+    let m = shared.metrics(s);
+    let step = shared.step(s, &m);
+    let (synced_step, synced_listing, listing) = {
+        let p = (shared.parts)(s);
+        (p.grid.synced.get(), p.grid.synced_listing.get(), p.listing)
+    };
+    let mut pruned = false;
+    if synced_step != Some(step) {
+        pruned |= sync_thumbs(shared, s, None);
+    }
+    if synced_listing.is_some_and(|prev| prev != listing) {
+        pruned |= resync_thumbs(shared, s);
+    }
+    pruned
 }
 
 /// Asks the store for the step the grid draws at now, if it isn't the one it last asked for.

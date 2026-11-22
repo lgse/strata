@@ -155,10 +155,11 @@ mod tests;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use rune::{Cx, El, GrowthSpec, Key, KeyEvent, ScrollSpec, Tx, col, text};
+use rune::{Cx, El, GrowthSpec, Key, KeyEvent, PointerPress, ScrollSpec, Tx, col, text};
 use strata_kit::look::Look;
 
 use crate::code_view::highlight::CodeBlocks;
+use crate::contract::Point as ScreenPoint;
 use crate::scroll::{BarLook, overlay};
 
 /// The case folding find runs on, shared with C10b's CodeView.
@@ -179,7 +180,7 @@ use render::{Ctx, IntentFn, Paint, build_row};
 const ESTIMATED_ROW: f32 = 28.0;
 
 /// What the view tells the host.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum DocumentIntent {
     /// A link was clicked: Strata opens `http` and `https` links externally.
@@ -187,6 +188,8 @@ pub enum DocumentIntent {
     /// Plain Left with focus in the document: Strata's default key map returns focus to the
     /// listing.
     Leave,
+    /// Secondary press (or Menu key) inside the document view, in window points.
+    ContextMenu(ScreenPoint),
 }
 
 /// The document view: `DocumentView::new(get, get_mut) … .build(s, look, cx)`.
@@ -283,6 +286,7 @@ impl<S: 'static> DocumentView<S> {
             .bar
             .build::<S>(&format!("{key}-bar"), &scroll_key, BarLook::app(look));
         let body = st.bar.area(overlay(viewport, [bar]));
+        let menu_intent = intent.clone();
         let mut root = col()
             .key(key)
             .role("document")
@@ -297,6 +301,15 @@ impl<S: 'static> DocumentView<S> {
             .on_key(move |s: &mut S, ev: &KeyEvent, tx: &mut Tx| {
                 key_in(s, ev, tx, get_mut, &intent)
             });
+        if let Some(emit) = menu_intent {
+            root = root.on_secondary_press(move |s: &mut S, p: PointerPress, tx: &mut Tx| {
+                emit(
+                    s,
+                    DocumentIntent::ContextMenu(ScreenPoint::new(p.x, p.y)),
+                    tx,
+                );
+            });
+        }
         for notice in &st.document().notices {
             root = root.child(
                 col().w_full().px(look.space.lg).pt(look.space.md).child(
@@ -323,8 +336,11 @@ impl<S: 'static> DocumentView<S> {
     }
 }
 
+/// Vertical line-scroll step in points for arrow-key scrolling.
+const SCROLL_STEP: f32 = 40.0;
+
 /// The document's keys, with focus in it: Ctrl+A and Ctrl+C over the whole document, plain
-/// Left back to the listing, Ctrl+Home and Ctrl+End to its ends.
+/// Left back to the listing, Up/Down/PageUp/PageDown/Home/End and Ctrl+Home/Ctrl+End scrolling.
 fn key_in<S: 'static>(
     s: &mut S,
     ev: &KeyEvent,
@@ -337,8 +353,7 @@ fn key_in<S: 'static>(
     let plain = !m.shift && !m.alt;
     let st = get_mut(s);
     if ev.is_command('a') && plain {
-        st.select_all(tx.text_selection());
-        tx.select_all_text(st.list_key());
+        st.select_all_text(tx);
         return true;
     }
     if ev.is_command('c') && plain && st.all_selected() {
@@ -346,19 +361,47 @@ fn key_in<S: 'static>(
         return true;
     }
     let ctrl = m.ctrl || m.cmd;
-    match ev.key {
-        Key::Left if !ctrl && !m.shift && !m.alt => match intent.clone() {
+    if ev.key == Key::Left && !ctrl && !m.shift && !m.alt {
+        return match intent.clone() {
             Some(f) => {
                 f(s, DocumentIntent::Leave, tx);
                 true
             }
             None => false,
-        },
-        Key::Home | Key::End if ctrl && !m.shift => {
-            let n = st.document().units.len();
-            if n > 0 {
-                let i = if ev.key == Key::Home { 0 } else { n - 1 };
-                tx.scroll_into_view(st.row_key(i));
+        };
+    }
+    scroll_key_in(st, ev, tx)
+}
+
+fn scroll_key_in(st: &DocumentState, ev: &KeyEvent, tx: &mut Tx) -> bool {
+    let m = ev.mods;
+    let ctrl = m.ctrl || m.cmd;
+    if m.alt || m.shift {
+        return false;
+    }
+    match ev.key {
+        Key::Up | Key::Down if !ctrl => {
+            let delta = if ev.key == Key::Up {
+                -SCROLL_STEP
+            } else {
+                SCROLL_STEP
+            };
+            tx.scroll_to_y(st.scroll_key(), (st.scroll_offset() + delta).max(0.0));
+            true
+        }
+        Key::PageUp | Key::PageDown if !ctrl => {
+            tx.scroll_page(st.scroll_key(), if ev.key == Key::PageUp { -1 } else { 1 });
+            true
+        }
+        Key::Home | Key::End => {
+            if ctrl {
+                let n = st.document().units.len();
+                if n > 0 {
+                    let i = if ev.key == Key::Home { 0 } else { n - 1 };
+                    tx.scroll_into_view(st.row_key(i));
+                }
+            } else {
+                st.scroll_to_edge(ev.key == Key::End, tx);
             }
             true
         }

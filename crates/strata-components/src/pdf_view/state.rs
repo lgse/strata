@@ -258,6 +258,29 @@ impl PdfState {
         self.selection.text(|p| self.layer(p))
     }
 
+    /// The viewport's latest [`rune::ScrollPos`].
+    pub fn scroll_pos(&self) -> rune::ScrollPos {
+        self.feed.get()
+    }
+
+    /// The viewport's vertical scroll offset, as Rune last reported it.
+    pub fn scroll_offset(&self) -> f32 {
+        self.feed.get().offset[1]
+    }
+
+    /// Drops any cached zoom anchor before an external scroll jump.
+    pub fn clear_anchor(&mut self) {
+        self.anchor = None;
+    }
+
+    /// Whether any loaded page currently holds selectable text.
+    pub fn has_selectable_text(&self) -> bool {
+        self.queue
+            .slots
+            .iter()
+            .any(|slot| slot.layer.as_ref().is_some_and(|layer| layer.has_text()))
+    }
+
     pub fn has_selection(&self) -> bool {
         !self.selection.is_empty()
     }
@@ -279,7 +302,7 @@ impl PdfState {
         &self.key
     }
 
-    pub(crate) fn scroll_key(&self) -> String {
+    pub fn scroll_key(&self) -> String {
         format!("{}-scroll", self.key)
     }
 
@@ -765,7 +788,7 @@ impl PdfState {
 
     /// Ctrl+A: the text of every page whose layer the view holds. False when none has text,
     /// so the key goes on (Strata's `select_all`).
-    pub(crate) fn select_all(&mut self) -> bool {
+    pub fn select_all(&mut self) -> bool {
         let q = &self.queue;
         let layers = q
             .slots

@@ -290,11 +290,21 @@ impl Bar {
         self.0.shows()
     }
 
+    /// Whether the user is actively dragging this bar's thumb.
+    pub fn is_dragging(&self) -> bool {
+        self.0.dragging.get()
+    }
+
     /// Reveals an overlay bar (when its viewport overflows), holding it for [`HOLD`] before it
     /// fades. Used by containers that manage their own height rather than [`Bar::area`]'s
     /// full-height wrapper.
     pub(crate) fn reveal(&self) {
         self.0.reveal();
+    }
+
+    /// The viewport's latest [`ScrollPos`].
+    pub fn pos(&self) -> ScrollPos {
+        self.0.pos.get()
     }
 
     #[cfg(test)]
@@ -568,9 +578,14 @@ impl Inner {
         let a = look.along();
         let (_, track, shows) = self.track();
         if d.phase == Phase::Up {
-            self.dragging.set(false);
+            let was_dragging = self.dragging.replace(false);
             self.tint();
             self.reveal();
+            if was_dragging {
+                // Wake the next frame's poll so views deferring thumbnails/fills during a thumb
+                // drag flush immediately on release.
+                tx.wake_after(Duration::ZERO);
+            }
             return;
         }
         if !shows {
@@ -598,6 +613,10 @@ impl Inner {
             track,
             look.min_length,
         );
+        let at_end = to == 0.0 || to == p.max[a];
+        if to == p.offset[a] || (!at_end && (to - p.offset[a]).abs() < 0.5) {
+            return;
+        }
         let target = self.target.borrow().clone();
         if look.horizontal {
             tx.scroll_to_instant(target, to, p.offset[1]);

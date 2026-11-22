@@ -11,8 +11,9 @@
 //!   does not sync every frame, as [`crate::fills`] asks the browser.
 //! - **Search results** draw their own way on GTK (a result's local path); they are A10's.
 
-use std::{cell::Cell, ops::Range};
+use std::{cell::Cell, ops::Range, time::Duration};
 
+use rune::Tx;
 use strata_components::{
     collection::element::Slot,
     contract::{EntryId, EntrySource},
@@ -21,7 +22,7 @@ use strata_components::{
 use strata_core::model::Location;
 use strata_kit::look::Look;
 
-use crate::{App, listing::Column, shell, slots::Later, thumbnails::Viewer};
+use crate::{App, fills::ScrollSettle, listing::Column, shell, slots::Later, thumbnails::Viewer};
 
 /// A row's thumbnail, in points: GTK's 17 × 17 (`set_thumbnail_or_icon(…, 17, 17)`).
 const ROW_THUMBNAIL: f32 = 17.0;
@@ -36,6 +37,12 @@ pub(crate) struct Synced {
     /// depth is another folder, whose listing's version may equal the last one's.
     location: Option<Location>,
     version: Option<u64>,
+    /// Defers thumbnail syncs while the scrollbar thumb is actively dragged.
+    settle: ScrollSettle,
+    /// Set while a drag deferred syncs, so the flush triggers one rebuild to bind handles.
+    was_deferred: bool,
+    /// True once a held thumb has settled past the drag debounce and flushed thumbnails.
+    settled_while_held: bool,
 }
 
 /// What a poll tells the store of one column.
@@ -60,7 +67,7 @@ impl Sync {
         listing: &Column,
         step: Step,
     ) -> bool {
-        let version = listing.version();
+        let version = listing.thumb_version();
         match self {
             Self::View(range) => {
                 store.sync(id, listing, Viewport::new(range, step).listing(version))
@@ -73,6 +80,41 @@ impl Sync {
 }
 
 impl Synced {
+    /// Records the visible range reported by the view.
+    pub(crate) fn see(&mut self, range: Range<usize>) {
+        if self.settle.see(&range) {
+            self.settled_while_held = false;
+        }
+        self.range = Some(range);
+    }
+
+    /// Whether thumbnail handle allocation should defer for this column while `dragging`.
+    pub(crate) fn is_deferring(&self, dragging: bool) -> bool {
+        dragging && !self.settled_while_held
+    }
+
+    /// Whether syncing this column should wait while the scrollbar thumb is actively dragged.
+    /// Returns `Ok(rebind)` when ready (`rebind` is true when flushing after a deferred drag),
+    /// or `Err(left)` with the remaining settle time.
+    pub(crate) fn settled_for_drag(
+        &mut self,
+        location: &Location,
+        clock: f64,
+        dragging: bool,
+    ) -> Result<bool, f64> {
+        self.settle.visit(location);
+        match self.settle.settled_for_drag(clock, dragging) {
+            Ok(()) => {
+                self.settled_while_held = dragging;
+                Ok(std::mem::take(&mut self.was_deferred))
+            }
+            Err(left) => {
+                self.settled_while_held = false;
+                self.was_deferred = true;
+                Err(left)
+            }
+        }
+    }
     /// What to tell the store of the column now showing `location` at `version`, and the
     /// column recorded as told.
     ///
@@ -126,7 +168,7 @@ impl Thumbs {
     /// Column `depth`'s view shows `range` now. Nothing syncs until the next poll.
     pub(super) fn see(&mut self, depth: usize, range: Range<usize>) {
         if let Some(column) = self.columns.get_mut(depth) {
-            column.range = Some(range);
+            column.see(range);
         }
     }
 
@@ -141,12 +183,27 @@ impl Thumbs {
         Step::for_tile(look, ROW_THUMBNAIL, self.scale.get())
     }
 
+    /// Whether column `depth` is currently deferring thumbnail handles mid-thumb-drag.
+    pub(super) fn is_deferring(&self, depth: usize, dragging: bool) -> bool {
+        self.columns
+            .get(depth)
+            .map_or(dragging, |column| column.is_deferring(dragging))
+    }
+
     /// The rows' icon: the entry's thumbnail from the window's store, else its icon, a file's
     /// fainter than a folder's, as GTK's Columns rows draw it (`set_base_opacity` in
     /// `src/ui/browser/columns/rows/bind.rs`).
-    pub(super) fn icon(&self, look: &Look) -> Slot<App> {
+    pub(super) fn icon(&self, look: &Look, depth: usize) -> Slot<App> {
         icon_slot(shell::thumbnails, self.step(look), ROW_THUMBNAIL)
             .dim_files()
+            .dragging(move |app: &App| {
+                let dragging = app
+                    .columns
+                    .state
+                    .column(depth)
+                    .is_some_and(|column| column.is_dragging());
+                app.columns.thumbs.is_deferring(depth, dragging)
+            })
             .badge(
                 crate::file_providers::badge_version,
                 crate::file_providers::badge_pixels,
@@ -176,17 +233,21 @@ fn parts(app: &mut App) -> (&mut Viewer, &mut ThumbnailStore) {
 }
 
 /// Fits the viewers to the open columns, syncs each column whose range, listing or step
-/// changed, and asks the pool for what the store wants. True when the store pruned handles
-/// a row may still draw, so the view builds again.
-pub(super) fn poll(app: &mut App, clock: f64) -> bool {
+/// changed, and asks the pool for what the store wants. Defers syncing while a column's
+/// scrollbar thumb is actively dragged until release or a brief pause. True when the store
+/// pruned handles a row may still draw, so the view builds again.
+pub(super) fn poll(app: &mut App, clock: f64, tx: &mut Tx) -> bool {
     let open = app.columns.open();
     let step = app.columns.thumbs.step(&app.look);
     let store = app.window.thumbnails_mut();
+    let state = &app.columns.state;
     let thumbs = &mut app.columns.thumbs;
     thumbs.viewer.fit(store, open);
     thumbs.columns.resize(open, Synced::default());
     let restep = thumbs.step.replace(step) != Some(step);
     let mut pruned = false;
+    let mut wake: Option<f64> = None;
+    let mut deferred = false;
     let listings = &app.columns.listings;
     for (depth, listing) in listings.columns.iter().enumerate().take(open) {
         // A filter's results draw their icons: the store finds a thumbnail's file through the
@@ -198,11 +259,32 @@ pub(super) fn poll(app: &mut App, clock: f64) -> bool {
         else {
             continue;
         };
-        pruned |= column
-            .next(listing.location(), listing.version(), listing.len(), restep)
-            .tell(store, id, listing, step);
+        let dragging = state.column(depth).is_some_and(|c| c.is_dragging());
+        let rebind = match column.settled_for_drag(listing.location(), clock, dragging) {
+            Ok(rebind) => rebind,
+            Err(left) => {
+                wake = Some(wake.map_or(left, |at| at.min(left)));
+                deferred = true;
+                continue;
+            }
+        };
+        pruned |= rebind
+            | column
+                .next(
+                    listing.location(),
+                    listing.thumb_version(),
+                    listing.len(),
+                    restep,
+                )
+                .tell(store, id, listing, step);
     }
-    Viewer::pump(app, parts, clock);
+    if let Some(left) = wake {
+        tx.wake_after(Duration::from_secs_f64(left));
+    }
+    if !deferred {
+        pruned |= store.take_skipped();
+        Viewer::pump(app, parts, clock);
+    }
     pruned
 }
 

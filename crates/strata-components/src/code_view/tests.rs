@@ -486,3 +486,61 @@ fn line_break_and_blank_line_shift_selection_survive_frames_and_hosted_left_leav
     send(&mut rt, Key::Left, Mods::default());
     assert_eq!(left_seen.get(), 1);
 }
+
+#[test]
+fn gutter_divider_renders_only_when_line_numbers_are_shown() {
+    use rune::{Env, Runtime};
+    use strata_kit::look::Look;
+
+    use super::CodeView;
+
+    struct Host {
+        code: CodeState,
+        look: Look,
+    }
+
+    let host = Host {
+        code: CodeState::new("alpha\nbeta\ngamma\n").key("code"),
+        look: Look::fallback(true),
+    };
+    let mut rt = Runtime::new(
+        host,
+        |s: &Host, cx| {
+            CodeView::new(|s: &Host| &s.code, |s: &mut Host| &mut s.code).build(s, &s.look, cx)
+        },
+        (480.0, 240.0),
+        Env::default(),
+    );
+    rt.frame(0.0);
+    let has_divider = |rt: &Runtime<Host>| {
+        rt.elements()
+            .into_iter()
+            .any(|el| el.key.as_deref() == Some("code-gutter-divider") && !el.exiting)
+    };
+    assert!(
+        has_divider(&rt),
+        "gutter divider renders when line numbers are enabled"
+    );
+
+    rt.update(|s: &mut Host, _| s.code.set_line_numbers(false));
+    rt.frame(1.0 / 60.0);
+    assert!(
+        !has_divider(&rt),
+        "gutter divider is omitted when line numbers are hidden"
+    );
+}
+
+#[test]
+fn restore_selection_range_ignores_invalid_utf8_and_out_of_bounds_offsets() {
+    let mut code = CodeState::new("héllo\nworld\n");
+    let mut tx = Tx::default();
+    // Byte 2 lies inside the two-byte UTF-8 character 'é' (bytes 1..3).
+    code.restore_selection_range(0, 2, &mut tx);
+    assert_eq!(code.copy_keyboard(), None);
+    // Out-of-bounds offset past text length is ignored.
+    code.restore_selection_range(0, 999, &mut tx);
+    assert_eq!(code.copy_keyboard(), None);
+    // Valid char-boundary range succeeds.
+    code.restore_selection_range(0, "héllo".len(), &mut tx);
+    assert_eq!(code.copy_keyboard().as_deref(), Some("héllo"));
+}
