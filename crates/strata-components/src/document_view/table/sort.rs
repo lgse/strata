@@ -32,7 +32,7 @@ impl SortKey {
         }
     }
 
-    fn compare(&self, other: &Self) -> Ordering {
+    pub(crate) fn compare(&self, other: &Self) -> Ordering {
         match (self, other) {
             (Self::Number(a), Self::Number(b)) => a.total_cmp(b),
             (Self::Text(a), Self::Text(b)) => a.cmp(b),

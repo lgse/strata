@@ -9,6 +9,7 @@ use std::collections::HashMap;
 use std::ops::Range;
 use std::rc::Rc;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
 use rune::{Pixels, TextSelection, Tx};
@@ -53,12 +54,17 @@ pub(crate) enum Request {
     Reveal(String),
 }
 
+/// Process-unique monotonic counter so each document's embedded table scroll viewports receive
+/// distinct Rune keys and never inherit horizontal scroll offsets from a previous document.
+static NEXT_CONTENT_GEN: AtomicU64 = AtomicU64::new(1);
+
 /// What doesn't change between [`DocumentState::set_document`]s: the document, its shown
 /// texts, and per-table interactive state. The view's copy handler holds it, since Rune gives
 /// that handler no app state.
 #[derive(Debug)]
 pub(crate) struct Content {
     pub key: String,
+    pub scroll_gen: u64,
     pub doc: Arc<Document>,
     /// What each unit's text element shows, for the units where that isn't the model's text.
     shown: Vec<Option<Shown>>,
@@ -73,6 +79,7 @@ impl Content {
         Content {
             shown: doc.units.iter().map(shown_for).collect(),
             key,
+            scroll_gen: NEXT_CONTENT_GEN.fetch_add(1, Ordering::Relaxed),
             doc,
             all: Cell::new(false),
             tables: RefCell::new(HashMap::new()),
@@ -526,6 +533,7 @@ impl DocumentState {
         let table = tables.entry(unit).or_insert_with(|| TableState::new(rows));
         let widths = table.resolve_widths(rows, fonts, room);
         Some(TableSnapshot {
+            scroll_gen: self.content.scroll_gen,
             header: table.header,
             widths,
             sort: table.sort().to_vec(),
@@ -550,12 +558,30 @@ impl DocumentState {
         self.all_pending = false;
     }
 
-    pub(crate) fn table_column_width(&self, unit: usize, column: usize) -> Option<f32> {
-        self.content
-            .tables
-            .borrow()
-            .get(&unit)
-            .and_then(|t| t.column_width(column))
+    pub(crate) fn begin_table_resize(&mut self, unit: usize, column: usize) -> f32 {
+        let Some(UnitKind::Table { rows, .. }) = self.content.doc.units.get(unit).map(|u| &u.kind)
+        else {
+            return table::MIN_WIDTH;
+        };
+        let mut tables = self.content.tables.borrow_mut();
+        let table = tables.entry(unit).or_insert_with(|| TableState::new(rows));
+        table.begin_resize(column)
+    }
+
+    pub(crate) fn cancel_table_resize(&mut self, unit: usize) {
+        if let Some(table) = self.content.tables.borrow_mut().get_mut(&unit) {
+            table.cancel_resize();
+        }
+    }
+
+    pub(crate) fn finish_table_resize(&mut self, unit: usize, column: usize, width: f32) {
+        let Some(UnitKind::Table { rows, .. }) = self.content.doc.units.get(unit).map(|u| &u.kind)
+        else {
+            return;
+        };
+        let mut tables = self.content.tables.borrow_mut();
+        let table = tables.entry(unit).or_insert_with(|| TableState::new(rows));
+        table.finish_resize(column, width);
     }
 
     pub(crate) fn set_table_column_width(&mut self, unit: usize, column: usize, width: f32) {
@@ -582,10 +608,20 @@ impl DocumentState {
             .get(&unit)
             .map(|t| t.bar.clone())
     }
+
+    #[cfg(test)]
+    pub(crate) fn table_is_manually_sized(&self, unit: usize) -> bool {
+        self.content
+            .tables
+            .borrow()
+            .get(&unit)
+            .is_some_and(TableState::is_manually_sized)
+    }
 }
 
 /// Resolved per-frame table layout and sort snapshot handed to `table::render`.
 pub(crate) struct TableSnapshot {
+    pub(crate) scroll_gen: u64,
     pub(crate) header: bool,
     pub(crate) widths: Vec<f32>,
     pub(crate) sort: Vec<(usize, SortDir)>,

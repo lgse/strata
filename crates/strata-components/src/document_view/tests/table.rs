@@ -5,14 +5,64 @@
 //! spans & links), display-order copy, column resizing & auto-fit, per-table state reset on
 //! `set_document`, horizontal overflow scrolling, and ragged/empty/find edge cases.
 
+use std::cmp::Ordering;
 use std::sync::Arc;
 
-use rune::{Cursor, Mods, PhysicalInput, Runtime, clipboard};
+use rune::{Cursor, Key, KeyEvent, Mods, PhysicalInput, Runtime, clipboard};
 
+use super::super::table::sort::SortKey;
 use super::*;
 
 fn mid(r: [f32; 4]) -> (f32, f32) {
     (r[0] + r[2] / 2.0, r[1] + r[3] / 2.0)
+}
+
+fn table_scroll_rect(rt: &Runtime<Host>, unit: usize) -> [f32; 4] {
+    let row = format!("doc-u{unit}");
+    let prefix = format!("{row}-tscroll-");
+    rt.elements()
+        .into_iter()
+        .find(|e| {
+            e.path.split('/').any(|s| s == row)
+                && e.path
+                    .rsplit('/')
+                    .next()
+                    .is_some_and(|leaf| leaf.starts_with(&prefix))
+        })
+        .unwrap_or_else(|| panic!("no table scroll viewport for unit {unit}"))
+        .rect
+}
+
+fn wide_table(tag: &str) -> Unit {
+    let row_a = [
+        format!("{tag} zeta alpha"),
+        format!("{tag} value beta"),
+        format!("{tag} value gamma"),
+        format!("{tag} value delta"),
+        format!("{tag} value epsilon"),
+        format!("{tag} value zeta"),
+        format!("{tag} value eta"),
+        format!("{tag} value theta"),
+    ];
+    let row_b = [
+        format!("{tag} alpha one"),
+        format!("{tag} second two"),
+        format!("{tag} third three"),
+        format!("{tag} fourth four"),
+        format!("{tag} fifth five"),
+        format!("{tag} sixth six"),
+        format!("{tag} seventh seven"),
+        format!("{tag} eighth eight"),
+    ];
+    let refs_a: Vec<&str> = row_a.iter().map(String::as_str).collect();
+    let refs_b: Vec<&str> = row_b.iter().map(String::as_str).collect();
+    table(&[
+        &[
+            "Col1", "Col2", "Col3", "Col4", "Col5", "Col6", "Col7", "Col8",
+        ],
+        &refs_a,
+        &refs_b,
+    ])
 }
 
 fn header_click(rt: &mut Runtime<Host>, unit: usize, col: usize) {
@@ -275,6 +325,33 @@ fn dragging_resize_handle_clamps_persists_across_sort_and_double_click_autofits(
     settle(&mut rt);
     assert_eq!(rt.cursor(), Cursor::ResizeColumn);
 
+    // Zero-delta tap on the divider must not freeze responsive auto-fitting.
+    click(&mut rt, handle0);
+    settle(&mut rt);
+    assert!(
+        !rt.state.doc.table_is_manually_sized(0),
+        "zero-delta tap on divider keeps responsive auto-fitting"
+    );
+    assert_eq!(rt.state.doc.table_column_widths(0).unwrap(), initial);
+
+    // Dragging and cancelling with Escape restores auto-fitting without writing manual widths.
+    rt.pointer_move(handle0.0, handle0.1);
+    rt.pointer_down(handle0.0, handle0.1);
+    rt.frame(1.0 / 60.0);
+    rt.pointer_move(handle0.0 + 45.0, handle0.1);
+    rt.frame(1.0 / 60.0);
+    rt.key(KeyEvent {
+        key: Key::Escape,
+        mods: Mods::default(),
+    });
+    rt.pointer_up(handle0.0 + 45.0, handle0.1);
+    settle(&mut rt);
+    assert!(
+        !rt.state.doc.table_is_manually_sized(0),
+        "Escape-cancelled drag keeps responsive auto-fitting"
+    );
+    assert_eq!(rt.state.doc.table_column_widths(0).unwrap(), initial);
+
     // Drag the last column narrower past the floor -> clamps to TABLE_MIN_WIDTH.
     let handle_last = mid(rect(&rt, "doc-u0/doc-u0-th2-resize"));
     drag(&mut rt, handle_last, (handle_last.0 - 500.0, handle_last.1));
@@ -324,47 +401,71 @@ fn dragging_resize_handle_clamps_persists_across_sort_and_double_click_autofits(
 
 #[test]
 fn set_document_resets_per_table_sort_widths_and_scroll_state() {
-    let first = table(&[&["Key", "Value"], &["b", "2"], &["a", "1"]]);
-    let mut rt = runtime(vec![first]);
+    let mut rt = runtime(vec![wide_table("first")]);
 
+    // Mutate sort, manual width, and horizontal scroll on Document A's wide table.
     header_click(&mut rt, 0, 0);
     let handle = mid(rect(&rt, "doc-u0/doc-u0-th0-resize"));
     drag(&mut rt, handle, (handle.0 + 80.0, handle.1));
     assert_eq!(rt.state.doc.table_sort(0), [(0, SortDir::Ascending)]);
     let manual = rt.state.doc.table_column_widths(0).unwrap();
 
-    // Load a brand-new document with another table at unit 0.
-    let second = table(&[&["Key", "Value"], &["z", "9"], &["c", "3"]]);
-    rt.update(|h, _| h.doc.set_document(Arc::new(Document::new(vec![second]))));
+    let scroll_at = mid(table_scroll_rect(&rt, 0));
+    rt.pointer_move(scroll_at.0, scroll_at.1);
+    rt.wheel_xy(scroll_at.0, scroll_at.1, -180.0, 0.0);
+    settle(&mut rt);
+    assert!(
+        rt.state.doc.table_bar(0).expect("first bar").offset()[0] > 0.0,
+        "first table scrolled horizontally before swap"
+    );
+
+    // Swap document via set_document: sort, manual widths, and horizontal scroll must reset.
+    rt.update(|h, _| {
+        h.doc
+            .set_document(Arc::new(Document::new(vec![wide_table("second")])))
+    });
     settle(&mut rt);
 
     assert_eq!(rt.state.doc.table_sort(0), []);
     assert_eq!(rt.state.doc.table_row_order(0), Some(vec![1, 2]));
+    assert!(!rt.state.doc.table_is_manually_sized(0));
     let reset = rt.state.doc.table_column_widths(0).unwrap();
     assert_ne!(
         reset[0], manual[0],
         "manual width from previous document must not carry over"
+    );
+    assert_eq!(
+        rt.state.doc.table_bar(0).expect("second bar").offset()[0],
+        0.0,
+        "horizontal scroll offset must reset after set_document"
+    );
+
+    // Scroll Document B horizontally, then replace with a fresh DocumentState using the same key
+    // (mirroring RenderedDocument::new): horizontal scroll offset must still start at 0.
+    let scroll_at = mid(table_scroll_rect(&rt, 0));
+    rt.pointer_move(scroll_at.0, scroll_at.1);
+    rt.wheel_xy(scroll_at.0, scroll_at.1, -180.0, 0.0);
+    settle(&mut rt);
+    assert!(
+        rt.state.doc.table_bar(0).expect("second bar").offset()[0] > 0.0,
+        "second table scrolled horizontally before fresh DocumentState swap"
+    );
+
+    rt.update(|h, _| {
+        h.doc = DocumentState::new(Arc::new(Document::new(vec![wide_table("third")]))).key("doc");
+    });
+    settle(&mut rt);
+    assert_eq!(
+        rt.state.doc.table_bar(0).expect("third bar").offset()[0],
+        0.0,
+        "horizontal scroll offset must not leak across same-key DocumentState instances"
     );
 }
 
 #[test]
 fn wide_table_overflows_horizontally_while_narrow_table_hides_scrollbar() {
     let narrow = table(&[&["A", "B"], &["1", "2"]]);
-    let wide = table(&[
-        &[
-            "Col1", "Col2", "Col3", "Col4", "Col5", "Col6", "Col7", "Col8",
-        ],
-        &[
-            "long value alpha one",
-            "long value beta two",
-            "long value gamma three",
-            "long value delta four",
-            "long value epsilon five",
-            "long value zeta six",
-            "long value eta seven",
-            "long value theta eight",
-        ],
-    ]);
+    let wide = wide_table("wide");
     let mut units = vec![narrow, wide];
     units.extend((0..30).map(|i| Unit::new(UnitKind::Paragraph, format!("Line {i}"))));
     let mut rt = runtime(units);
@@ -379,7 +480,7 @@ fn wide_table_overflows_horizontally_while_narrow_table_hides_scrollbar() {
     );
 
     // Horizontal wheel over the wide table scrolls its viewport sideways.
-    let wide_scroll = rect(&rt, "doc-u1/doc-u1-tscroll");
+    let wide_scroll = table_scroll_rect(&rt, 1);
     let at = mid(wide_scroll);
     rt.pointer_move(at.0, at.1);
     rt.wheel_xy(at.0, at.1, -120.0, 0.0);
@@ -398,6 +499,66 @@ fn wide_table_overflows_horizontally_while_narrow_table_hides_scrollbar() {
         doc_y > 0.0,
         "outer document still scrolls vertically over wide table: {doc_y}"
     );
+}
+
+#[test]
+fn mixed_sort_keys_form_a_total_order() {
+    let samples = [
+        "-10", "-0", "0", "1", "10", "-inf", "inf", "NaN", "alpha", "é", "É", "", "   ",
+    ];
+    let keys: Vec<SortKey> = samples.iter().map(|s| SortKey::new(s)).collect();
+
+    // Non-finite floats fall back to text; accented letters fold case-insensitively.
+    assert!(matches!(SortKey::new("NaN"), SortKey::Text(_)));
+    assert!(matches!(SortKey::new("inf"), SortKey::Text(_)));
+    assert!(matches!(SortKey::new("-inf"), SortKey::Text(_)));
+    assert_eq!(
+        SortKey::new("é").compare(&SortKey::new("É")),
+        Ordering::Equal
+    );
+    assert_eq!(
+        SortKey::new("").compare(&SortKey::new("   ")),
+        Ordering::Equal
+    );
+
+    // Reflexivity, antisymmetry, and transitivity across every triple.
+    for (i, a) in keys.iter().enumerate() {
+        assert_eq!(a.compare(a), Ordering::Equal, "reflexive: {}", samples[i]);
+        for (j, b) in keys.iter().enumerate() {
+            let ab = a.compare(b);
+            let ba = b.compare(a);
+            assert_eq!(
+                ab,
+                ba.reverse(),
+                "antisymmetric: {} vs {}",
+                samples[i],
+                samples[j]
+            );
+            for (k, c) in keys.iter().enumerate() {
+                if ab != Ordering::Greater && b.compare(c) != Ordering::Greater {
+                    assert_ne!(
+                        a.compare(c),
+                        Ordering::Greater,
+                        "transitive: {} <= {} <= {}",
+                        samples[i],
+                        samples[j],
+                        samples[k]
+                    );
+                }
+            }
+        }
+    }
+
+    // Finite numbers sort strictly before non-finite/text, which sort strictly before empty.
+    assert_eq!(
+        SortKey::new("10").compare(&SortKey::new("-inf")),
+        Ordering::Less
+    );
+    assert_eq!(
+        SortKey::new("10").compare(&SortKey::new("NaN")),
+        Ordering::Less
+    );
+    assert_eq!(SortKey::new("é").compare(&SortKey::new("")), Ordering::Less);
 }
 
 #[test]

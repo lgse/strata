@@ -20,6 +20,7 @@ use crate::scroll::{Bar, anchor};
 struct TableBuild<'a, S> {
     ctx: &'a Rc<Ctx<S>>,
     unit: usize,
+    scroll_gen: u64,
     row_key: String,
     rows: &'a [Vec<Cell>],
     header: bool,
@@ -83,6 +84,7 @@ pub(crate) fn build<S: 'static>(
     let tb = TableBuild {
         ctx,
         unit,
+        scroll_gen: snap.scroll_gen,
         row_key: st.row_key(unit),
         rows,
         header: snap.header,
@@ -216,11 +218,11 @@ fn divider<S: 'static>(tb: &TableBuild<'_, S>, c: usize, w: f32, name: &str) -> 
         .on_drag(move |s: &mut S, d: &mut Drag, _tx: &mut Tx| {
             let st = get_mut(s);
             match d.phase {
-                Phase::Down => d.data = st.table_column_width(unit, c).unwrap_or(MIN_WIDTH),
-                Phase::Move | Phase::Up => {
-                    let to = if d.cancelled() { d.data } else { d.data + d.dx };
-                    st.set_table_column_width(unit, c, to);
-                }
+                Phase::Down => d.data = st.begin_table_resize(unit, c),
+                Phase::Move if d.dx != 0.0 => st.set_table_column_width(unit, c, d.data + d.dx),
+                Phase::Move => {}
+                Phase::Up if d.cancelled() || d.dx == 0.0 => st.cancel_table_resize(unit),
+                Phase::Up => st.finish_table_resize(unit, c, d.data + d.dx),
             }
         })
         .on_double_press(move |s: &mut S| get_mut(s).fit_table_column(unit, c))
@@ -265,8 +267,8 @@ fn body_row<S: 'static>(tb: &TableBuild<'_, S>, dr: usize, src: usize, cells: &[
 
 fn wrap_scrollable<S: 'static>(tb: &TableBuild<'_, S>, grid: El) -> El {
     let p = &tb.ctx.paint;
-    let scroll_key = format!("{}-tscroll", tb.row_key);
-    let bar_key = format!("{}-thbar", tb.row_key);
+    let scroll_key = format!("{}-tscroll-{}", tb.row_key, tb.scroll_gen);
+    let bar_key = format!("{}-thbar-{}", tb.row_key, tb.scroll_gen);
     let bar_el = tb.bar.build::<S>(&bar_key, &scroll_key, p.bar_look);
     let reveal_bar = tb.bar.clone();
     let viewport = col()

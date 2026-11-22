@@ -51,6 +51,7 @@ pub(crate) struct TableState {
     fitted: Vec<f32>,
     drawn: Vec<f32>,
     manual: Option<Vec<f32>>,
+    resize_undo: Option<Option<Vec<f32>>>,
     pub(crate) bar: Bar,
 }
 
@@ -72,6 +73,7 @@ impl TableState {
             fitted: Vec::new(),
             drawn: Vec::new(),
             manual: None,
+            resize_undo: None,
             bar: Bar::new(),
         }
     }
@@ -175,6 +177,32 @@ impl TableState {
             return Some(m.clone());
         }
         (!self.drawn.is_empty()).then(|| self.drawn.clone())
+    }
+
+    pub(crate) fn begin_resize(&mut self, column: usize) -> f32 {
+        self.resize_undo = Some(self.manual.clone());
+        self.column_width(column).unwrap_or(MIN_WIDTH)
+    }
+
+    pub(crate) fn cancel_resize(&mut self) {
+        if let Some(prev) = self.resize_undo.take() {
+            self.manual = prev;
+            if let Some(m) = &self.manual {
+                self.drawn = m.clone();
+            } else if !self.fitted.is_empty() {
+                self.drawn = self.fitted.clone();
+            }
+        }
+    }
+
+    pub(crate) fn finish_resize(&mut self, column: usize, width: f32) {
+        self.resize_undo = None;
+        self.set_column_width(column, width);
+    }
+
+    #[cfg(test)]
+    pub(crate) fn is_manually_sized(&self) -> bool {
+        self.manual.is_some()
     }
 
     pub(crate) fn set_column_width(&mut self, column: usize, width: f32) {
