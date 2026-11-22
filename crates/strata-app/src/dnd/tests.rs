@@ -261,3 +261,44 @@ fn dragging_folder_across_inactive_tab_onto_tabs_new_does_not_spring_tab() {
         },
     );
 }
+
+#[test]
+fn dragging_folder_back_over_itself_does_not_spring_open_while_other_folder_does() {
+    hosted(
+        MODULE,
+        "dragging_folder_back_over_itself_does_not_spring_open_while_other_folder_does",
+        |mut host| {
+            let dir = fixture();
+            let root = dir.path();
+            open_listed(&mut host, root);
+
+            let docs = label_centre(&mut host, "documents");
+            let archive = label_centre(&mut host, "archive");
+            drag_steps(&mut host, docs, archive, false);
+            // Return the held drag back over its own folder and dwell past the 750 ms spring delay.
+            host.runtime().pointer_move(docs.0, docs.1);
+            host.turn();
+            host.runtime().frame(0.9);
+            host.turn();
+            idle(&mut host);
+            assert_eq!(
+                host.app().browser().active_location(),
+                Some(Location::local(root)),
+                "returning a dragged folder over itself must not spring-open it"
+            );
+
+            // Moving over a different folder still spring-opens it.
+            host.runtime().pointer_move(archive.0, archive.1);
+            host.turn();
+            host.runtime().frame(0.9);
+            host.turn();
+            idle(&mut host);
+            assert_eq!(
+                host.app().browser().active_location(),
+                Some(Location::local(root.join("archive"))),
+                "hovering a different folder must still spring-open it"
+            );
+            escape_and_release(&mut host, archive);
+        },
+    );
+}

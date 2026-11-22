@@ -207,7 +207,7 @@
 //! | column-layout: Hiding, showing, reordering, or resetting columns never changes the sort key, direction, or file order | `toggle-hide`, `reorder`, `reset-columns` (no sort sent; the gallery's host sorts only on a sort) |
 //! | column-layout: A hidden sort column stays the active sort… | `hidden-sort-column`, *partial*: the table sends no sort while its column is hidden; folder sorts and view switches are the host's |
 //! | column-layout: Showing the hidden sort column again restores its arrow; clicking it then reverses the existing direction | `hidden-sort-column` |
-//! | pointer-intent: In List, unused Name-column space and its row padding are blank, even when Name is not the first column; other column cells count as item content | `name-gutter-and-cells` (with Name last: a band from blank Name space, a drag from a cell that carries the selection, then a band from the row's padding); unit `the_name_columns_blank_space…` |
+//! | pointer-intent: In List, only the icon and rendered filename are item hit targets; unused Name space, row padding, and metadata columns stay selection space even when Name is reordered | unit `only_the_name_columns_icon_and_drawn_name_are_content_and_metadata_stays_gutter` |
 //! | marquee: A drag from blank space in a pane header, List's heading strip… starts a marquee | `heading-strip-marquee`, *partial*: List's heading strip (C1e's header rule) |
 //! | marquee: A press on a button… keeps that control's own behavior and starts no marquee | `reorder-outside`, *partial*: List's headings |
 //! | view-modes: Click the first of five entries and Ctrl+click the third. Shift+Down in List… selects only the third and fourth | gallery `a_ctrl_click_then_shift_down…`, *partial*: List |
@@ -316,6 +316,7 @@ pub use sort::{SortDir, SortIntent, SortShown, next_direction};
 pub use state::{ListTableState, MenuAt};
 
 use crate::collection::element::{Collection, CollectionState, Roles, RowCx, Slot, viewport_path};
+use crate::collection::pointer::PointerSettings;
 use crate::contract::EntrySource;
 use crate::scroll::{BarLook, Target, overlay};
 use resolve::{Inputs, Resolved, resolve};
@@ -593,7 +594,13 @@ impl<S: 'static> ListTable<S> {
             viewport_path(base.scope()),
         );
         let edge_shared = shared.clone();
+        let pointer = base
+            .setting::<PointerSettings>()
+            .copied()
+            .unwrap_or_default()
+            .drag_selected_rows(false);
         base.roles(Roles::LIST)
+            .settings(pointer)
             .on_scroll(move |p| {
                 feed.set(p);
                 bar.follow(p);

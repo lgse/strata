@@ -290,10 +290,11 @@ fn a_click_asks_for_the_other_way_on_the_sorted_column_and_ascending_elsewhere()
 
 // Hit regions.
 
-/// pointer-intent: "In List, unused Name-column space and its row padding are blank, even when
-/// Name is not the first column; other column cells count as item content".
+/// pointer-intent: "List file drags start only on the icon or rendered filename, before and after
+/// selection. Unused Name space, row padding, and metadata columns remain marquee origins, even
+/// when Name is reordered."
 #[test]
-fn the_name_columns_blank_space_and_the_padding_are_blank_and_other_cells_are_content() {
+fn only_the_name_columns_icon_and_drawn_name_are_content_and_metadata_stays_gutter() {
     let look = Look::fallback(false);
     let mut layout = ColumnLayout::new(defaults());
     layout = layout
@@ -308,7 +309,8 @@ fn the_name_columns_blank_space_and_the_padding_are_blank_and_other_cells_are_co
     let mut r = resolved(&layout, &ColumnWidths::new(), 1200.0, 1.0);
     r.lead = 10.0;
     let name = r.cols.iter().find(|p| p.primary).unwrap().clone();
-    let at = |x: f32| rows::region(&r, &look, "a.txt", Point::new(r.lead + x, 5.0));
+    let mid_y = (strata_kit::slots::list::row_height(&look) - 2.0) * 0.5;
+    let at = |x: f32| rows::region(&r, &look, "a.txt", Point::new(r.lead + x, mid_y));
     let icon = look.icon_size.md + look.space.sm;
     assert_eq!(at(name.x + 2.0), Region::Content, "the icon");
     assert_eq!(at(name.x + icon + 2.0), Region::Name, "the drawn name");
@@ -317,11 +319,20 @@ fn the_name_columns_blank_space_and_the_padding_are_blank_and_other_cells_are_co
         Region::Gutter,
         "the rest of Name"
     );
-    assert_eq!(at(r.cols[0].x + 30.0), Region::Content, "Mode's cell");
     assert_eq!(
-        rows::region(&r, &look, "a.txt", Point::new(4.0, 5.0)),
+        at(r.cols[0].x + 30.0),
         Region::Gutter,
-        "the row's padding"
+        "metadata stays selection space on either side of Name"
+    );
+    assert_eq!(
+        rows::region(&r, &look, "a.txt", Point::new(4.0, mid_y)),
+        Region::Gutter,
+        "the row's horizontal padding"
+    );
+    assert_eq!(
+        rows::region(&r, &look, "a.txt", Point::new(r.lead + name.x + 2.0, 0.5)),
+        Region::Gutter,
+        "top row padding above the icon stays selection space"
     );
 }
 

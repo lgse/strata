@@ -400,6 +400,10 @@ impl Sidebar {
         self.state.drop_over()
     }
 
+    pub(crate) fn item_location(&self, item: &ItemId) -> Option<&Location> {
+        self.location_of(item).map(|row| &row.location)
+    }
+
     pub(crate) fn set_local_pin_verdict(&mut self, verdict: PinVerdict) {
         self.state.pin_check.local = verdict;
     }

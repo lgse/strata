@@ -55,6 +55,7 @@ pub(crate) use registry::PointZone;
 struct ActiveDrag {
     tab: TabKey,
     ids: HashSet<EntryId>,
+    sources: Vec<Location>,
     folders: Option<Vec<(Location, String)>>,
     sidebar_row: bool,
 }
@@ -119,6 +120,10 @@ pub(crate) fn is_sidebar_drag(app: &App) -> bool {
 
 pub(crate) fn local_pin_folders(app: &App) -> Option<&[(Location, String)]> {
     app.dnd.out.as_ref()?.folders.as_deref()
+}
+
+pub(super) fn drag_sources(app: &App) -> Option<&[Location]> {
+    app.dnd.out.as_ref().map(|out| out.sources.as_slice())
 }
 
 pub(crate) fn binder(app: &App) -> Binder<App> {
@@ -229,6 +234,7 @@ fn build_entries_payload(
     let active = ActiveDrag {
         tab: shell::tabs::shown_tab(app),
         ids: ids.into_iter().collect(),
+        sources: entries.iter().map(|entry| entry.location.clone()).collect(),
         folders,
         sidebar_row: false,
     };
@@ -278,6 +284,7 @@ pub(crate) fn sidebar_drag_start(app: &mut App, location: Location) {
     let active = ActiveDrag {
         tab: shell::tabs::shown_tab(app),
         ids: HashSet::from([id]),
+        sources: vec![location],
         folders: None,
         sidebar_row: true,
     };
