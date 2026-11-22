@@ -544,3 +544,84 @@ fn restore_selection_range_ignores_invalid_utf8_and_out_of_bounds_offsets() {
     code.restore_selection_range(0, "héllo".len(), &mut tx);
     assert_eq!(code.copy_keyboard().as_deref(), Some("héllo"));
 }
+
+#[test]
+fn code_editor_mounts_scrollbars_and_tracks_scroll_without_breaking_editing() {
+    use std::{sync::Arc, time::Duration};
+
+    use rune::{Env, Key, KeyEvent, Mods, Runtime};
+    use strata_kit::{look::Look, theme::syntax::syntect_theme};
+
+    use super::{CodeEditor, EditorState, highlight::Highlighter};
+
+    struct Host {
+        editor: EditorState,
+        look: Look,
+    }
+
+    let look = Look::fallback(true);
+    let hl = Highlighter::new(Arc::new(syntect_theme(&look)));
+    let long_line = format!("echo \"{}\"", "x".repeat(120));
+    let mut script = String::from("#!/usr/bin/env bash\n");
+    script.push_str(&long_line);
+    for i in 0..40 {
+        script.push_str(&format!("\necho line_{i}"));
+    }
+    let mut editor = EditorState::new(script, &hl, Some("run.sh"), Some("bash")).key("script");
+    editor.settle(Duration::from_secs(2));
+    let host = Host { editor, look };
+    let mut rt = Runtime::new(
+        host,
+        |s: &Host, _| {
+            CodeEditor::new(|s: &Host| &s.editor, |s: &mut Host| &mut s.editor)
+                .rows(6)
+                .build(s, &s.look)
+        },
+        (260.0, 140.0),
+        Env::default(),
+    );
+    for _ in 0..3 {
+        rt.frame(1.0 / 60.0);
+    }
+    let mounted = |rt: &Runtime<Host>, key: &str| {
+        rt.elements()
+            .into_iter()
+            .any(|el| !el.exiting && el.key.as_deref() == Some(key))
+    };
+    assert!(mounted(&rt, "script-bar"), "vertical scrollbar mounts");
+    assert!(
+        mounted(&rt, "script-sideways"),
+        "horizontal scrollbar mounts"
+    );
+    assert_eq!(
+        rt.state.editor.bars_overflow(),
+        (true, true),
+        "both bars detect overflow on a long multi-line script"
+    );
+
+    let before_top = rt.state.editor.shown_lines().start;
+    rt.wheel(120.0, 70.0, -240.0);
+    rt.frame(1.0 / 60.0);
+    assert!(
+        rt.state.editor.shown_lines().start > before_top,
+        "wheel scrolling advances visible lines"
+    );
+
+    // Focus the field and verify Tab indent and undo keep working.
+    rt.update(|_, tx| tx.focus("field", true));
+    rt.frame(1.0 / 60.0);
+    assert!(rt.state.editor.edit.focused);
+    let before_text = rt.state.editor.text().to_owned();
+    rt.key(KeyEvent {
+        key: Key::Tab,
+        mods: Mods::default(),
+    });
+    rt.frame(1.0 / 60.0);
+    assert_ne!(rt.state.editor.text(), before_text);
+    rt.update(|s: &mut Host, _| {
+        s.editor.edit.undo();
+        s.editor.edited();
+    });
+    rt.frame(1.0 / 60.0);
+    assert_eq!(rt.state.editor.text(), before_text);
+}
