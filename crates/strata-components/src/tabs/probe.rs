@@ -3,11 +3,9 @@
 //! Where the strip's parts drew, read back from hidden markers, for what Rune can't do from
 //! the outside: read a viewport's scroll offset, or reveal with a margin (U-C7-2, U-C7-7).
 //!
-//! It leans on rune-kit's layout at the pinned rev, so it is fragile: the strip's root starts
-//! its scroll viewport at its left edge, with nothing before it, and lists the tabs from the
-//! viewport's start, tab 0 first (`TabStrip` keeps tab 0 and the active tab built when
-//! virtualizing past `BAND_PAST`, sizing unbuilt spacers identically). While a tab dragged in
-//! from elsewhere holds the gap before tab 0, an offset read is off by that gap.
+//! The strip's root starts its horizontal scroll viewport at its left edge, with nothing before
+//! it, and lists the tabs from the viewport's start, tab 0 first. While an incoming drag places an
+//! insertion mark before tab 0, an offset read is off by that 2 px mark.
 
 use std::cell::Cell;
 use std::rc::Rc;

@@ -5,12 +5,11 @@
 
 use std::{cell::RefCell, sync::Arc};
 
-use rune::{Cx, El, Mods, PointerEvent, Tx, col, text};
+use rune::{Mods, PointerEvent, Tx};
 use strata_components::contract::dnd::{
     DragPayload, DropAction, DropActions, DropData, DropHover, DropItem, DropOffer, DropZone,
     Dropped, ReadFailure, URI_LIST, parse_uri_list,
 };
-use strata_kit::{icons::IconName, look::Look};
 use strata_platform::{
     dnd::{
         Actions, DragAction, DragIcon, DragItem, DropData as P1Data, DropOffer as P1Offer,
@@ -73,37 +72,6 @@ pub(crate) fn drag_item(payload: &DragPayload, icon: Option<DragIcon>) -> DragIt
         item = item.icon(icon);
     }
     item
-}
-
-pub(crate) fn drag_icon(count: usize, folders: bool, scale: f32) -> DragIcon {
-    #[derive(Clone)]
-    struct Badge {
-        count: usize,
-        folders: bool,
-    }
-    fn build(badge: &Badge, _: &mut Cx<Badge>) -> El {
-        let look = Look::fallback(false);
-        let name = if badge.folders {
-            IconName::Folder
-        } else {
-            IconName::File
-        };
-        let glyph = rune::icon(look.icon(name), 32.0).color(look.kit.c.icon_accent);
-        let mut el = col().size(48.0, 48.0).center().child(glyph);
-        if badge.count > 1 {
-            el = el.child(
-                text(badge.count.to_string())
-                    .font(look.kit.ty.small)
-                    .color(look.kit.c.submit_fg)
-                    .fill(look.kit.c.bg_accent)
-                    .radius(8.0)
-                    .px(4.0)
-                    .pin(None, Some(0.0), Some(0.0), None),
-            );
-        }
-        el
-    }
-    DragIcon::snapshot(Badge { count, folders }, build, (48.0, 48.0), scale, false)
 }
 
 /// Each action as W1 and P1 name it: as a set's member on both sides, and as P1's one action.

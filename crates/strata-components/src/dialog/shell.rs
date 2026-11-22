@@ -32,6 +32,8 @@ pub struct DialogShell<S> {
     blocking: bool,
     stacked: bool,
     width: f32,
+    height: Option<f32>,
+    margin: Option<f32>,
     fill: Option<Color>,
     panel_radius: Option<f32>,
     fade_only: bool,
@@ -61,6 +63,8 @@ impl<S: 'static> DialogShell<S> {
             blocking: false,
             stacked: false,
             width: WIDTH,
+            height: None,
+            margin: None,
             fill: None,
             panel_radius: None,
             fade_only: false,
@@ -118,6 +122,20 @@ impl<S: 'static> DialogShell<S> {
         self
     }
 
+    /// The panel's height in points, when the window has room: a shorter window fills its
+    /// height less the shell's margin.
+    pub fn height(mut self, height: f32) -> Self {
+        self.height = Some(height);
+        self
+    }
+
+    /// Overrides the margin kept around the panel inside the window (`look.space.lg` unless
+    /// set; Settings uses `look.space.xxl` as GTK's `DIALOG_MARGIN` does).
+    pub fn margin(mut self, margin: f32) -> Self {
+        self.margin = Some(margin);
+        self
+    }
+
     /// Overrides the panel's background surface (`kit.c.layer_01` unless set; Settings uses
     /// `kit.c.bg_base` as GTK's `.settings-dialog` does).
     pub fn fill(mut self, color: Color) -> Self {
@@ -170,18 +188,32 @@ impl<S: 'static> DialogShell<S> {
         let animate = look.animations && !self.reduced_motion;
         let (panel_motion, backdrop_motion) = motion(animate, self.fade_only);
         if !self.stacked {
-            layer.push(
-                el().key(BACKDROP_KEY)
-                    .absolute(0.0, 0.0)
-                    .w_full()
-                    .h_full()
-                    .fill(kit.c.scrim)
-                    .backdrop_blur(BACKDROP_BLUR)
-                    .transition(backdrop_motion)
-                    .a11y_hidden(),
-            );
+            layer.push(backdrop(kit, backdrop_motion));
         }
 
+        let layer_key = format!("{}-layer", self.key);
+        let padding = self.margin.unwrap_or(look.space.lg);
+        let panel = self.build_panel(look);
+
+        layer.push(
+            col()
+                .key(layer_key)
+                // A layout box: assistive technology sees the dialog, not the full-window
+                // layer around it. The key stays, for the layer's own presence motion.
+                .role("none")
+                .absolute(0.0, 0.0)
+                .w_full()
+                .h_full()
+                // A narrow window: the panel fills its width less this margin.
+                .padding(padding)
+                .center()
+                .transition(panel_motion)
+                .child(panel),
+        );
+    }
+
+    fn build_panel(self, look: &Look) -> El {
+        let kit = &look.kit;
         let panel_key = format!("{}-dialog", self.key);
         let mut panel = col()
             .key(panel_key.clone())
@@ -199,19 +231,13 @@ impl<S: 'static> DialogShell<S> {
             .fill(self.fill.unwrap_or(kit.c.layer_01))
             .border(1.0, kit.c.border_base)
             .children(self.children);
+        if let Some(height) = self.height {
+            panel = panel.h_full().max_h(height);
+        }
         if let Some(d) = self.description {
             panel = panel.description(d);
         }
-        panel = if look.glow.on {
-            panel.shadow(
-                0.0,
-                look.glow.radius,
-                look.glow.color.alpha(look.glow.opacity),
-            )
-        } else {
-            kit.shadow_layers(&kit.elevation.overlay)
-                .fold(panel, |p, s| p.box_shadow(s))
-        };
+        panel = apply_elevation(look, panel);
         let footer = self.footer;
         panel = panel.on_key(move |_s: &mut S, ev: &KeyEvent, tx: &mut Tx| {
             let route = keys::route(ev, tx.key_repeat(), tx.focused(), &panel_key, &footer);
@@ -229,23 +255,32 @@ impl<S: 'static> DialogShell<S> {
             panel = panel.focus_return(key);
         }
         let dismiss = self.dismiss;
-        panel = panel.modal_tx(!self.blocking, move |s: &mut S, tx: &mut Tx| dismiss(s, tx));
+        panel.modal_tx(!self.blocking, move |s: &mut S, tx: &mut Tx| dismiss(s, tx))
+    }
+}
 
-        layer.push(
-            col()
-                .key(format!("{}-layer", self.key))
-                // A layout box: assistive technology sees the dialog, not the full-window
-                // layer around it. The key stays, for the layer's own presence motion.
-                .role("none")
-                .absolute(0.0, 0.0)
-                .w_full()
-                .h_full()
-                // A narrow window: the panel fills its width less this margin.
-                .padding(look.space.lg)
-                .center()
-                .transition(panel_motion)
-                .child(panel),
-        );
+fn backdrop(kit: &rune_kit::Kit, motion: Transition) -> El {
+    el().key(BACKDROP_KEY)
+        .absolute(0.0, 0.0)
+        .w_full()
+        .h_full()
+        .fill(kit.c.scrim)
+        .backdrop_blur(BACKDROP_BLUR)
+        .transition(motion)
+        .a11y_hidden()
+}
+
+fn apply_elevation(look: &Look, panel: El) -> El {
+    if look.glow.on {
+        panel.shadow(
+            0.0,
+            look.glow.radius,
+            look.glow.color.alpha(look.glow.opacity),
+        )
+    } else {
+        look.kit
+            .shadow_layers(&look.kit.elevation.overlay)
+            .fold(panel, |p, s| p.box_shadow(s))
     }
 }
 

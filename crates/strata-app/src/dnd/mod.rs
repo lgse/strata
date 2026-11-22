@@ -10,7 +10,7 @@
 //! - Shares volume-lookup caching, `Copy`/`Move`/`Ask` transfer dispatch, Trash drops, and 750 ms
 //!   spring-loaded opening across views, tabs, location crumbs, and sidebar rows.
 
-use std::collections::HashSet;
+use std::{cell::Cell, collections::HashSet};
 
 use gio::prelude::*;
 use rune::{AppHandle, Drag, El, Mods, Tx, WindowHandle};
@@ -38,6 +38,7 @@ use crate::{
 pub(crate) mod adapter;
 mod content;
 mod drag;
+mod icon;
 pub(crate) mod policy;
 mod registry;
 mod router;
@@ -64,14 +65,16 @@ pub(crate) struct Dnd {
     volumes: policy::VolumeCache,
     spring: policy::Spring,
     out: Option<ActiveDrag>,
+    scale: Cell<f32>,
 }
 
-fn nothing(_: &App, _: &mut Frame<'_, App>) -> Option<El> {
+fn track_scale(app: &App, frame: &mut Frame<'_, App>) -> Option<El> {
+    app.dnd.scale.set(frame.cx.env().scale);
     None
 }
 
 impl Part for Dnd {
-    const PLACE: Place<App> = Place::Overlays(nothing);
+    const PLACE: Place<App> = Place::Overlays(track_scale);
     const SCOPE: Scope = Scope::Window;
 
     fn new(setup: &Setup<'_>) -> Self {
@@ -81,6 +84,7 @@ impl Part for Dnd {
             volumes: policy::VolumeCache::default(),
             spring: policy::Spring::default(),
             out: None,
+            scale: Cell::new(1.0),
         }
     }
 
@@ -237,7 +241,7 @@ pub(crate) fn begin_entries(app: &mut App, entries: Vec<FileEntry>, scale: f32, 
         return;
     };
     let all_folders = entries.iter().all(FileEntry::is_directory);
-    let icon = adapter::drag_icon(entries.len(), all_folders, scale);
+    let icon = icon::drag_icon(&app.look, &entries, scale);
     let wiring = app.dnd.wiring.clone();
     install_active_drag(app, active, all_folders.then_some(TabOpen::AtEnd));
     let launch = drag::Launch::new(payload, |app, _, tx| on_drag_ended(app, tx)).icon(icon);

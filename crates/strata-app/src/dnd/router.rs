@@ -139,7 +139,14 @@ impl Wiring {
             let p1_source = strata_platform::dnd::DragSource::new(move |app: &App, _| {
                 s1.payload(app).map(|payload| {
                     set_running(Some(payload.clone()));
-                    drag_item(&payload, None)
+                    let icon = crate::preview::current_entry(app).map(|entry| {
+                        super::icon::drag_icon(
+                            &app.look,
+                            std::slice::from_ref(entry),
+                            app.dnd.scale.get(),
+                        )
+                    });
+                    drag_item(&payload, icon)
                 })
             })
             .on_start(super::on_preview_drag_start)
