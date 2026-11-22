@@ -28,6 +28,7 @@ use crate::{
 
 mod appearance_page;
 mod controls;
+mod diagnostics;
 mod general;
 mod general_more;
 mod keyboard;
@@ -198,10 +199,11 @@ pub(crate) struct SettingsDialog {
     theme_filter: appearance_page::ThemeFilter,
     notice: notice::NoticeState,
     keyboard: keyboard::KeyboardState,
+    diagnostics: diagnostics::DiagnosticsState,
 }
 
 impl SettingsDialog {
-    fn from_preferences(prefs: &Preferences) -> Self {
+    fn from_preferences(prefs: &Preferences, later: crate::slots::Later<App>) -> Self {
         let locale = rust_i18n::locale().to_string();
         let avail = search_index::Availability {
             system: true,
@@ -242,6 +244,7 @@ impl SettingsDialog {
             theme_filter: appearance_page::ThemeFilter::All,
             notice: notice::NoticeState::default(),
             keyboard: keyboard::KeyboardState::default(),
+            diagnostics: diagnostics::DiagnosticsState::new(later),
         }
     }
 
@@ -332,6 +335,7 @@ pub(super) fn close_settings(app: &mut App) {
     // GTK hides its Settings layer and keeps it: the keybind search and the table shown stay as
     // they were, and only a capture or a confirmation ends with it.
     state.keyboard.closed();
+    state.diagnostics.closed();
 }
 
 fn dismiss_settings_or_notice(app: &mut App, tx: &mut Tx) {
@@ -352,7 +356,7 @@ impl Part for SettingsDialog {
     const COMMANDS: &'static [Action<App>] = &[OPEN_SETTINGS];
 
     fn new(setup: &Setup<'_>) -> Self {
-        Self::from_preferences(setup.settings)
+        Self::from_preferences(setup.settings, setup.later.clone())
     }
 
     fn keyboard(app: &App) -> Option<Holds> {
@@ -393,6 +397,7 @@ impl Part for SettingsDialog {
         changed |= appearance_page::text_size_field().poll(app, tx);
         changed |= appearance_page::roundness_field().poll(app, tx);
         changed |= keyboard::poll(app, tx);
+        changed |= diagnostics::poll(app, clock, tx);
         let prefs = shell::preferences(app).clone();
         let state = &mut app.settings_dialog;
         general::sync_general_fields(&mut state.workers, &mut state.video_start, &prefs);
@@ -685,7 +690,7 @@ fn build_page_content(
         PageId::Keyboard => keyboard::build(app, search),
         PageId::Integrations => pages::integrations_page(app, search),
         PageId::Updates => pages::updates_page(app, search, menu_layer),
-        PageId::Diagnostics => pages::diagnostics_page(app, search),
+        PageId::Diagnostics => diagnostics::build(app, search),
         PageId::About => pages::about_page(app, search),
     }
 }
