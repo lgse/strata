@@ -53,12 +53,26 @@ fn state(host: &Offscreen) -> Option<&MediaState> {
     }
 }
 
+fn audio_levels(host: &Offscreen) -> Option<(f32, bool)> {
+    match &host.app().preview.viewer {
+        Viewer::Media(media) => media.audio_levels(),
+        _ => None,
+    }
+}
+
 fn shows(host: &mut Offscreen, done: impl Fn(&MediaState) -> bool, what: &str) {
     let shown = host.run_until(PATIENCE, |host| state(host).is_some_and(&done));
     assert!(
         shown,
         "the media player: {what}: {:?}",
-        state(host).map(|s| (s.clip().position, s.clip().has_next))
+        state(host).map(|s| (
+            s.clip().position,
+            s.clip().has_next,
+            s.playing(),
+            s.position(),
+            s.duration(),
+            s.error().map(|e| e.detail.clone()),
+        ))
     );
 }
 
@@ -399,6 +413,92 @@ fn a_gif_gives_left_to_its_play_toggle_then_back() {
                 !in_player(&mut host),
                 "a second Left goes back to the listing"
             );
+        },
+    );
+}
+
+/// Half a second of audio-only PCM.
+fn half_a_second_of_sound(_: SandboxedMedia, start_tick: u32) -> Result<Session, String> {
+    fixtures::stream(Header {
+        width: 0,
+        height: 0,
+        audio: true,
+        duration_us: 500_000,
+        start_tick,
+    })
+}
+
+/// One and a half seconds of 16 by 16 video frames with interleaved audio PCM.
+fn video_with_sound(_: SandboxedMedia, start_tick: u32) -> Result<Session, String> {
+    fixtures::stream(Header {
+        width: 16,
+        height: 16,
+        audio: true,
+        duration_us: 1_500_000,
+        start_tick,
+    })
+}
+
+#[test]
+fn audio_preview_advances_on_pcm_clock_applies_mute_and_reaches_eof() {
+    hosted(
+        MODULE,
+        "media::audio_preview_advances_on_pcm_clock_applies_mute_and_reaches_eof",
+        |mut host| {
+            decode_with(half_a_second_of_sound);
+            let files = [("tone.wav", MP4)];
+            let (_provider, _folder) = open(&mut host, &files, "tone.wav", "audio/vnd.wave");
+            let ready = |s: &MediaState| s.duration() == Some(Duration::from_millis(500));
+            shows(&mut host, ready, "the audio duration");
+
+            // Mute shortcut reaches the live PCM sink immediately.
+            press(&mut host, Key::Text("m".to_owned()), ctrl_alt());
+            let muted = host.run_until(PATIENCE, |host| {
+                audio_levels(host).is_some_and(|(_, muted)| muted)
+            });
+            assert!(muted, "mute state propagates to PcmOutput");
+
+            play_pause(&mut host);
+            shows(&mut host, MediaState::playing, "audio playing on PCM clock");
+            let moved = |s: &MediaState| s.position() >= Duration::from_millis(120);
+            shows(&mut host, moved, "audio clock advancing");
+
+            // Pause freezes playback; play resumes and drains cleanly to EOF.
+            play_pause(&mut host);
+            shows(&mut host, |s| !s.playing(), "audio paused");
+            play_pause(&mut host);
+            shows(&mut host, MediaState::playing, "audio resumed");
+            let ended = |s: &MediaState| !s.playing() && s.position() >= Duration::from_millis(450);
+            shows(&mut host, ended, "audio drains to EOF");
+        },
+    );
+}
+
+#[test]
+fn video_with_audio_paces_frames_to_pcm_clock_and_reaches_eof() {
+    hosted(
+        MODULE,
+        "media::video_with_audio_paces_frames_to_pcm_clock_and_reaches_eof",
+        |mut host| {
+            decode_with(video_with_sound);
+            let (_provider, _folder) =
+                open(&mut host, &[("clip.mp4", MP4)], "clip.mp4", "video/mp4");
+            let ready = |s: &MediaState| {
+                s.has_frame() && s.duration() == Some(Duration::from_millis(1_500))
+            };
+            shows(&mut host, ready, "first frame and duration with audio");
+            assert!(
+                audio_levels(&host).is_some(),
+                "video with audio opens PcmOutput"
+            );
+
+            play_pause(&mut host);
+            shows(&mut host, MediaState::playing, "video+audio playing");
+            let moved = |s: &MediaState| s.position() >= Duration::from_millis(300);
+            shows(&mut host, moved, "video+audio clock advancing");
+            let ended =
+                |s: &MediaState| !s.playing() && s.position() >= Duration::from_millis(1_450);
+            shows(&mut host, ended, "video+audio reaches EOF");
         },
     );
 }

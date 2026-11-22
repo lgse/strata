@@ -130,6 +130,8 @@ pub(super) struct Shared<S> {
     escape_closes: FlagFn<S>,
     pub(super) close_buttons: FlagFn<S>,
     pub(super) show_sizes: FlagFn<S>,
+    pub(super) trailing_edge: FlagFn<S>,
+    pub(super) active_header: FlagFn<S>,
     pub(super) dnd: Dnd<S>,
     content: &'static [&'static str],
     drop_action: Option<DropActionFn<S>>,
@@ -150,6 +152,8 @@ impl<S> Clone for Shared<S> {
             escape_closes: self.escape_closes.clone(),
             close_buttons: self.close_buttons.clone(),
             show_sizes: self.show_sizes.clone(),
+            trailing_edge: self.trailing_edge.clone(),
+            active_header: self.active_header.clone(),
             dnd: self.dnd.clone(),
             content: self.content,
             drop_action: self.drop_action.clone(),
@@ -228,6 +232,8 @@ impl<S: 'static> ColumnsView<S> {
                 escape_closes: Rc::new(|_| true),
                 close_buttons: Rc::new(|_| true),
                 show_sizes: Rc::new(|_| true),
+                trailing_edge: Rc::new(|_| true),
+                active_header: Rc::new(|_| true),
                 dnd: Dnd::rune(),
                 content: &[],
                 drop_action: None,
@@ -272,9 +278,10 @@ impl<S: 'static> ColumnsView<S> {
     /// A column header's actions (Refresh, Sort by, the filter field, Empty Trash): the host's,
     /// placed after the title. The view adds the close button to the targeted column after the
     /// first. A secondary press on these is theirs, not the folder menu's. Build them
-    /// `.focusable(false)`, as the close button is: the strip is the view's one focus stop, and a
-    /// press on a focusable button would take the keyboard from it (Strata's header buttons
-    /// don't take focus on a click).
+    /// `.focusable(false).no_focus_ring()`, as the close button is: the strip is the view's one
+    /// focus stop, a press on a focusable button would take the keyboard from it (Strata's header
+    /// buttons don't take focus on a click), and clearing the kit's focus ring stops Rune from
+    /// painting it for the focused strip.
     pub fn header_actions(self, f: impl Fn(&S, HeaderCx) -> Option<El> + 'static) -> Self {
         self.with(|sh| sh.actions = Some(Rc::new(f)))
     }
@@ -311,6 +318,20 @@ impl<S: 'static> ColumnsView<S> {
     /// size; a count that arrives while it is off stays hidden.
     pub fn show_sizes(self, f: impl Fn(&S) -> bool + 'static) -> Self {
         self.with(|sh| sh.show_sizes = Rc::new(f))
+    }
+
+    /// Whether the rightmost column draws its trailing vertical divider line: on by default; off
+    /// when a neighbouring pane (such as C9's preview drawer) already draws a 1-point divider
+    /// flush against the strip's right edge.
+    pub fn trailing_edge(self, f: impl Fn(&S) -> bool + 'static) -> Self {
+        self.with(|sh| sh.trailing_edge = Rc::new(f))
+    }
+
+    /// Whether the active column's header draws its destination bar, raised fill, and active title
+    /// colour: on by default; off while another pane (such as C9's preview drawer) owns keyboard
+    /// focus.
+    pub fn active_header(self, f: impl Fn(&S) -> bool + 'static) -> Self {
+        self.with(|sh| sh.active_header = Rc::new(f))
     }
 
     /// The drag-and-drop binder: Rune's own by default; X2 passes the system shim's.

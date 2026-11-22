@@ -8,7 +8,7 @@
 //! [`PlacesSidebar`](strata_components::sidebar::PlacesSidebar).
 
 use rune::Tx;
-use strata_components::preview_drawer::{Arrangement, DrawerRules};
+use strata_components::preview_drawer::{Arrangement, DrawerRules, solve};
 
 use super::session;
 use crate::{App, shell};
@@ -24,6 +24,28 @@ pub(super) fn arrangement(app: &App) -> Arrangement {
     } else {
         Arrangement::List
     }
+}
+
+/// Whether C9's preview slot currently paints its leading 1-point divider line beside the
+/// listing (`preview-divider-line` when open, or `preview-empty-line` when the reserved slot
+/// stays visible in Columns).
+pub(crate) fn draws_divider(app: &App) -> bool {
+    let Some(available) = app.preview.last_split_width else {
+        return false;
+    };
+    let arrangement = arrangement(app);
+    let solved = solve(
+        &DrawerRules::STRATA,
+        &arrangement,
+        available,
+        app.preview.drawer.manual_width(),
+    );
+    let has_body = app.preview.current.is_some() || app.preview.reserves_empty_preview(app);
+    if app.preview.drawer.is_open() && has_body && solved.fits {
+        return true;
+    }
+    let keeps_slot = app.preview.drawer.is_reserved() || app.preview.drawer.is_open();
+    matches!(arrangement, Arrangement::Columns(_)) && keeps_slot && solved.empty_slot > 0.0
 }
 
 /// Runs whenever C9's `preview-split` is laid out: updates Columns' width cap to include the

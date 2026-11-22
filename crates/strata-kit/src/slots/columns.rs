@@ -12,8 +12,9 @@
 //! `.active-column .column-header`, `.column-resize-handle`, `.columns > .drop-destination
 //! .column-drop-veil` and `.file-size`. The colours come from the Kit, as K1 maps Strata's:
 //! `@strata_accent` is `bg_accent`, `@strata_border` `std_border`, `@strata_surface`
-//! `surface_raised`. No token
-//! here inherits from a core length, so overriding one moves only the columns.
+//! `surface_raised`. `columns.header.height` follows `frame.bar` and `frame.inset` by default
+//! (as `tabs.tab.height` does) so column, pane and preview headers stay aligned; every other
+//! token here keeps its own default.
 
 use rune::{Color, TextStyle};
 
@@ -40,10 +41,13 @@ pub struct Columns {
     pub badge_inset: Option<f32>,
 }
 
-/// A column header's height: `columns.header.height`, else 41 (Strata's 31 pt minimum, its
-/// 2 and 4 pt padding, the 3 pt indicator above and the 1 pt line below).
+/// A column header's height: `columns.header.height`, else a bar's height plus the frame inset
+/// above and below, matching the window, pane and preview headers.
 pub fn header_height(look: &Look) -> f32 {
-    look.slots.columns.header_height.unwrap_or(41.0)
+    look.slots
+        .columns
+        .header_height
+        .unwrap_or(look.frame.bar + 2.0 * look.frame.inset)
 }
 
 /// The title's inset from the header's leading edge: `columns.header.inset`, else 12.
