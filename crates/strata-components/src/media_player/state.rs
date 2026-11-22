@@ -312,6 +312,10 @@ impl MediaState {
         self.levels.clear();
     }
 
+    pub fn levels(&self) -> &Levels {
+        &self.levels
+    }
+
     pub fn set_storyboard(&mut self, board: Option<Storyboard>) {
         self.storyboard = board;
     }
