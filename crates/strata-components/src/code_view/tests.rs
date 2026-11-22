@@ -17,6 +17,7 @@ use super::state::{CodeState, Request};
 use crate::document_view::Folded;
 use crate::scroll::BarLook;
 
+mod gutter;
 mod perf;
 mod selection_perf;
 
@@ -369,8 +370,6 @@ fn gutter_drag_selects_into_line() {
     use strata_kit::look::Look;
 
     use super::CodeView;
-    use super::caret::byte_at_x;
-    use super::render::Paint;
 
     struct Host {
         code: CodeState,
@@ -393,10 +392,6 @@ fn gutter_drag_selects_into_line() {
         rt.frame(1.0 / 60.0);
     }
 
-    let mono = Paint::from_look(&rt.state.look).mono;
-    let w9 = rune::text::advance("the quick", mono);
-    assert_eq!(byte_at_x("the quick brown fox", w9, mono), 9);
-
     rt.pointer_move(34.0, 14.0);
     rt.pointer_down(34.0, 14.0);
     rt.frame(1.0 / 60.0);
@@ -408,8 +403,8 @@ fn gutter_drag_selects_into_line() {
         .state
         .code
         .copy_keyboard()
-        .expect("gutter drag selects into line");
-    assert!(copied.contains("quick"), "copied {copied:?}");
+        .expect("gutter drag selects whole line");
+    assert_eq!(copied, "the quick brown fox\n");
 }
 
 #[test]

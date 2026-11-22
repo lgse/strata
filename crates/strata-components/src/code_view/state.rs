@@ -13,6 +13,7 @@ use rune::{TextSelection, Tx};
 
 use super::copy;
 use super::find::Found;
+use super::gutter::{self, GutterDrag, RowHighlights};
 use super::position::Position;
 use super::rows::Rows;
 use crate::code_view::highlight::{CodeDoc, Highlighter, Source};
@@ -37,6 +38,17 @@ pub(crate) enum Request {
     Reveal(String),
 }
 
+/// Rune text selection most recently requested by [`CodeState`], used to detect when an
+/// external click or drag replaces or clears our selection.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum ExpectedSelect {
+    /// Single-row Rune selection `(row, start, end)` on `{key}-l{row}/t`.
+    Row(usize, usize, usize),
+    /// Transparent 0×0 sentinel selection `0..1` on `{key}-gutter-sel`, so gutter line
+    /// selections paint once via live row fills without double-compositing the first row's text.
+    GutterSentinel,
+}
+
 /// What doesn't change between [`CodeState::set_text`]s. The view's copy handler holds it,
 /// since Rune gives that handler no app state.
 #[derive(Debug)]
@@ -52,9 +64,10 @@ pub(crate) struct Content {
     pub all: Cell<bool>,
     /// Active keyboard or gutter-drag byte range `(lo, hi)` when `lo < hi`.
     pub keyboard_range: Cell<Option<(usize, usize)>>,
-    /// Single-row Rune selection `(row, start, end)` most recently requested by
-    /// [`CodeState::apply_caret`], or `None` when `keyboard_range` covers no non-empty row.
-    pub expected_select: Cell<Option<(usize, usize, usize)>>,
+    /// Rune selection most recently requested by [`CodeState::apply_caret`] or
+    /// [`CodeState::apply_gutter_lines`], or `None` when `keyboard_range` covers no non-empty
+    /// row in keyboard mode.
+    pub expected_select: Cell<Option<ExpectedSelect>>,
 }
 
 impl Content {
@@ -109,6 +122,12 @@ pub struct CodeState {
     pub(crate) visible: Range<usize>,
     /// Read-only keyboard caret `(anchor, head)` byte offsets in `rows.text`.
     caret: Option<(usize, usize)>,
+    /// Logical line anchored by the most recent gutter click (preserved for Shift+click).
+    gutter_anchor: Option<usize>,
+    /// Active gutter drag gesture, if the primary button is currently held on the gutter.
+    gutter_drag: Cell<Option<GutterDrag>>,
+    /// Live-only row fills for whole-line gutter selections.
+    pub(crate) highlights: RowHighlights,
     pub(crate) position: Position,
     /// The sideways bar while wrap is off (C24's).
     pub(crate) sideways: Bar,
@@ -162,6 +181,9 @@ impl CodeState {
             pending: Vec::new(),
             visible: 0..0,
             caret: None,
+            gutter_anchor: None,
+            gutter_drag: Cell::new(None),
+            highlights: RowHighlights::default(),
             position: Position::default(),
             sideways: Bar::new(),
             overflow: false,
@@ -225,6 +247,9 @@ impl CodeState {
         self.content = Rc::new(Content::new(self.content.key.clone(), text.into()));
         self.revision = serial();
         self.caret = None;
+        self.gutter_anchor = None;
+        self.gutter_drag.set(None);
+        self.highlights.reset();
         self.folded = OnceCell::new();
         self.found = self.run_find();
         self.current = None;
@@ -254,6 +279,9 @@ impl CodeState {
     /// Line numbers in the gutter: on by default.
     pub fn set_line_numbers(&mut self, on: bool) {
         self.line_numbers = on;
+        if !on {
+            self.stop_gutter_drag();
+        }
     }
 
     pub(crate) fn line_numbers(&self) -> bool {
@@ -336,7 +364,14 @@ impl CodeState {
     pub fn restore_selection_range(&mut self, lo: usize, hi: usize, tx: &mut Tx) {
         let text = &self.content.rows.text;
         if lo < hi && hi <= text.len() && text.is_char_boundary(lo) && text.is_char_boundary(hi) {
-            self.apply_caret(lo, hi, tx);
+            if self.line_numbers
+                && let Some((lo_line, hi_line)) = self.content.rows.line_bounds_if_whole(lo, hi)
+            {
+                self.apply_gutter_lines(lo_line, hi_line, tx);
+            } else {
+                self.highlights.clear();
+                self.apply_caret_inner(lo, hi, tx);
+            }
         }
     }
 
@@ -345,6 +380,9 @@ impl CodeState {
         self.content.all.set(self.has_text());
         self.content.keyboard_range.set(None);
         self.content.expected_select.set(None);
+        self.gutter_anchor = None;
+        self.gutter_drag.set(None);
+        self.highlights.clear();
         self.caret = Some((0, self.content.rows.text.len()));
         tx.select_all_text(self.list_key());
     }
@@ -383,10 +421,17 @@ impl CodeState {
         format!("{}-scroll", self.content.key)
     }
 
+    pub(crate) fn gutter_sentinel_key(&self) -> String {
+        format!("{}-gutter-sel", self.content.key)
+    }
+
     /// Rune's visible rows: asks for the colours of the lines they show.
     pub(crate) fn set_visible(&mut self, rows: Range<usize>) {
         self.visible = rows.clone();
         self.position.set_visible(rows.clone());
+        let n = rows.len().max(1);
+        let keep = rows.start.saturating_sub(3 * n)..rows.end + 3 * n;
+        self.highlights.retain(keep);
         let lines = self.content.rows.lines_of(rows);
         if let Some(doc) = &mut self.doc {
             doc.show(lines);
@@ -397,6 +442,13 @@ impl CodeState {
     /// host's poll, which has a `Tx` ([`HostedPreview::find`] gets none). True when the view
     /// changed.
     pub fn poll(&mut self, tx: &mut Tx) -> bool {
+        if self.gutter_drag.get().is_none()
+            && self.highlights.lines().is_some()
+            && !copy::matches_expected(&self.content, tx.text_selection())
+        {
+            self.clear_stale_keyboard_selection(tx.text_selection());
+        }
+        gutter::poll_gutter_drag(self, tx);
         let mut changed = self.doc.as_mut().is_some_and(CodeDoc::poll);
         if let Some(row) = self.reveal_again.take() {
             tx.scroll_center_in(self.list_key(), format!("{row}/current"));
@@ -448,7 +500,7 @@ impl CodeState {
             return false;
         }
         let now = tx.clock();
-        let active = moved || self.position.dragging();
+        let active = moved || self.position.dragging() || self.gutter_auto_scrolling();
         if !active && self.scroll_settled_at.is_some_and(|d| now >= d - 1e-3) {
             self.said = said;
             self.scroll_settled_at = None;
@@ -495,6 +547,50 @@ impl CodeState {
         self.content.keyboard_range.set(None);
         self.content.expected_select.set(None);
         self.caret = None;
+        self.gutter_anchor = None;
+        self.gutter_drag.set(None);
+        self.highlights.clear();
+    }
+
+    pub(crate) fn gutter_anchor(&self) -> Option<usize> {
+        self.gutter_anchor
+    }
+
+    pub(crate) fn set_gutter_anchor(&mut self, line: Option<usize>) {
+        self.gutter_anchor = line;
+    }
+
+    pub(crate) fn gutter_drag(&self) -> Option<GutterDrag> {
+        self.gutter_drag.get()
+    }
+
+    pub(crate) fn set_gutter_drag(&self, drag: Option<GutterDrag>) {
+        self.gutter_drag.set(drag);
+    }
+
+    /// Stops any active gutter drag and its edge auto-scroll timer while keeping the selection.
+    pub(crate) fn stop_gutter_drag(&self) {
+        self.gutter_drag.set(None);
+    }
+
+    fn gutter_auto_scrolling(&self) -> bool {
+        self.gutter_drag
+            .get()
+            .is_some_and(|d| d.last_tick.is_some())
+    }
+
+    /// Inclusive logical-line range currently highlighted by a gutter selection, if any.
+    #[cfg(test)]
+    pub(crate) fn gutter_highlighted_lines(&self) -> Option<(usize, usize)> {
+        self.highlights.lines()
+    }
+
+    fn clear_stale_keyboard_selection(&mut self, sel: Option<&TextSelection>) {
+        self.content.keyboard_range.set(None);
+        self.content.expected_select.set(None);
+        self.gutter_anchor = None;
+        self.highlights.clear();
+        self.caret = sel.and_then(|s| copy::span(&self.content, s));
     }
 
     /// Reconciles `all`, `keyboard_range`, and `caret` against Rune's current `sel`, clearing
@@ -507,6 +603,8 @@ impl CodeState {
                 return;
             }
             self.content.all.set(false);
+            self.gutter_anchor = None;
+            self.highlights.clear();
             self.caret = sel.and_then(|s| copy::span(&self.content, s));
             return;
         }
@@ -514,9 +612,7 @@ impl CodeState {
             if copy::matches_expected(&self.content, sel) {
                 return;
             }
-            self.content.keyboard_range.set(None);
-            self.content.expected_select.set(None);
-            self.caret = sel.and_then(|s| copy::span(&self.content, s));
+            self.clear_stale_keyboard_selection(sel);
             return;
         }
         if let Some(span) = sel.and_then(|s| copy::span(&self.content, s)) {
@@ -549,6 +645,61 @@ impl CodeState {
     }
 
     pub(crate) fn apply_caret(&mut self, anchor: usize, head: usize, tx: &mut Tx) {
+        self.gutter_anchor = None;
+        self.highlights.clear();
+        self.apply_caret_inner(anchor, head, tx);
+    }
+
+    /// Selects whole logical lines between `anchor_line` and `target_line` (inclusive) without
+    /// redundant Rune selection commands when the span is unchanged.
+    ///
+    /// Uses the transparent `{key}-gutter-sel` sentinel instead of selecting a code row's text
+    /// node so every selected row paints once via `RowHighlights` with uniform selection alpha.
+    pub(crate) fn apply_gutter_lines(
+        &mut self,
+        anchor_line: usize,
+        target_line: usize,
+        tx: &mut Tx,
+    ) {
+        let last = self.content.rows.lines().saturating_sub(1);
+        let anchor_line = anchor_line.min(last);
+        let target_line = target_line.min(last);
+        let (lo, hi) = self.content.rows.line_range_bytes(anchor_line, target_line);
+        let (anchor, head) = if target_line >= anchor_line {
+            (lo, hi)
+        } else {
+            (hi, lo)
+        };
+        let range = (lo < hi).then_some((lo, hi));
+        let lines = (lo < hi).then(|| (anchor_line.min(target_line), anchor_line.max(target_line)));
+        let sentinel_synced = self.content.expected_select.get()
+            == Some(ExpectedSelect::GutterSentinel)
+            && copy::matches_expected(&self.content, tx.text_selection());
+        if self.caret == Some((anchor, head))
+            && self.content.keyboard_range.get() == range
+            && self.highlights.lines() == lines
+            && (range.is_none() || sentinel_synced)
+        {
+            return;
+        }
+        self.caret = Some((anchor, head));
+        self.content.all.set(false);
+        self.content.keyboard_range.set(range);
+        if range.is_some() {
+            self.content
+                .expected_select
+                .set(Some(ExpectedSelect::GutterSentinel));
+            if !sentinel_synced {
+                tx.select_text(self.gutter_sentinel_key(), 0..1);
+            }
+        } else {
+            self.content.expected_select.set(None);
+            tx.clear_text_selection();
+        }
+        self.highlights.set_lines(lines, &self.content.rows);
+    }
+
+    fn apply_caret_inner(&mut self, anchor: usize, head: usize, tx: &mut Tx) {
         let len = self.content.rows.text.len();
         let anchor = anchor.min(len);
         let head = head.min(len);
@@ -556,15 +707,20 @@ impl CodeState {
         self.content.all.set(false);
         let (lo, hi) = (anchor.min(head), anchor.max(head));
         if lo < hi {
+            let prev_expected = self.content.expected_select.get();
+            let already_synced = copy::matches_expected(&self.content, tx.text_selection());
             self.content.keyboard_range.set(Some((lo, hi)));
             if let Some((r, range)) = self.first_nonempty_row_slice(lo, hi) {
-                self.content
-                    .expected_select
-                    .set(Some((r, range.start, range.end)));
-                tx.select_text(format!("{}/t", self.row_key(r)), range);
+                let next = ExpectedSelect::Row(r, range.start, range.end);
+                self.content.expected_select.set(Some(next));
+                if !(already_synced && prev_expected == Some(next)) {
+                    tx.select_text(format!("{}/t", self.row_key(r)), range);
+                }
             } else {
                 self.content.expected_select.set(None);
-                tx.clear_text_selection();
+                if !(already_synced && prev_expected.is_none()) {
+                    tx.clear_text_selection();
+                }
             }
         } else {
             self.content.keyboard_range.set(None);
@@ -601,9 +757,7 @@ impl CodeState {
         if copy::matches_expected(&self.content, sel) {
             return self.copy_keyboard();
         }
-        self.content.keyboard_range.set(None);
-        self.content.expected_select.set(None);
-        self.caret = sel.and_then(|s| copy::span(&self.content, s));
+        self.clear_stale_keyboard_selection(sel);
         None
     }
 

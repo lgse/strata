@@ -55,18 +55,16 @@ fn items(host: &Offscreen) -> Vec<(String, String, bool, bool)> {
         .collect()
 }
 
-fn saved_hidden() -> Option<toml::Value> {
+fn saved_pref(key: &str) -> Option<toml::Value> {
     let path = strata_core::storage::config_directory().join("settings.toml");
     let text = std::fs::read_to_string(path).ok()?;
-    text.parse::<toml::Table>()
-        .ok()?
-        .get("list_hidden_columns")
-        .cloned()
+    text.parse::<toml::Table>().ok()?.get(key).cloned()
 }
 
 /// Return on the header's Columns button opens the columns menu with the keyboard in it:
-/// COLUMNS' check items, Name disabled with GTK's reason, and "Reset to default columns".
-/// Return on Size hides the column, which is saved, and the menu stays open.
+/// COLUMNS' check items (standard columns checked, optional columns unchecked), Name disabled
+/// with GTK's reason, and "Reset to default columns". Return on Size hides it, Return on
+/// Duration opts it in (`list_shown_columns`), and Reset restores defaults.
 #[test]
 fn return_on_the_columns_button_opens_the_columns_menu() {
     hosted_in(
@@ -94,6 +92,9 @@ fn return_on_the_columns_button_opens_the_columns_menu() {
                     shown("Size", "", true, true),
                     shown("Type", "", true, true),
                     shown("Modified", "", true, true),
+                    shown("Duration", "", false, true),
+                    shown("Dimensions", "", false, true),
+                    shown("Created", "", false, true),
                     shown("Reset to default columns", "", false, true),
                 ]
             );
@@ -101,15 +102,51 @@ fn return_on_the_columns_button_opens_the_columns_menu() {
             press(&mut host, Key::Down);
             press(&mut host, Key::Enter);
             let saved = host.run_until(PATIENCE, |_| {
-                saved_hidden().is_some_and(|hidden| hidden.to_string().contains("size"))
+                saved_pref("list_hidden_columns")
+                    .is_some_and(|hidden| hidden.to_string().contains("size"))
             });
-            assert!(saved, "Size hidden and saved: {:?}", saved_hidden());
+            assert!(
+                saved,
+                "Size hidden and saved: {:?}",
+                saved_pref("list_hidden_columns")
+            );
             let size = items(&host).into_iter().find(|item| item.0 == "Size");
             assert_eq!(
                 size,
                 Some(shown("Size", "", false, true)),
                 "the menu stays open"
             );
+
+            // Step past Type and Modified to Duration and toggle it on.
+            for _ in 0..3 {
+                press(&mut host, Key::Down);
+            }
+            press(&mut host, Key::Enter);
+            let shown_saved = host.run_until(PATIENCE, |_| {
+                saved_pref("list_shown_columns")
+                    .is_some_and(|value| value.to_string().contains("duration"))
+            });
+            assert!(
+                shown_saved,
+                "Duration shown and saved: {:?}",
+                saved_pref("list_shown_columns")
+            );
+            let duration = items(&host).into_iter().find(|item| item.0 == "Duration");
+            assert_eq!(duration, Some(shown("Duration", "", true, true)));
+
+            // Step past Dimensions and Created to Reset to default columns.
+            for _ in 0..3 {
+                press(&mut host, Key::Down);
+            }
+            press(&mut host, Key::Enter);
+            let reset = host.run_until(PATIENCE, |_| {
+                saved_pref("list_hidden_columns").is_none()
+                    && saved_pref("list_shown_columns").is_none()
+            });
+            assert!(reset, "Reset clears hidden and shown column overrides");
+            let after = items(&host);
+            assert!(after.contains(&shown("Size", "", true, true)));
+            assert!(after.contains(&shown("Duration", "", false, true)));
         },
     );
 }

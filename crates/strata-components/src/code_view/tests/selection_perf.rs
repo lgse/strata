@@ -1,69 +1,16 @@
 // SPDX-License-Identifier: MIT
 
-//! Regression tests for CodeView selection drag performance, O(log L) gutter-drag hit mapping,
-//! lazy caret/all-selected tracking without `on_selection_change`, and deferred position-bar
-//! `a11y_value` commits during active scroll.
+//! Regression tests for CodeView selection drag performance, whole-line gutter selection and
+//! edge auto-scroll, lazy caret/all-selected tracking without `on_selection_change`, and deferred
+//! position-bar `a11y_value` commits during active scroll.
 
 use std::cell::Cell;
 use std::rc::Rc;
 
-use rune::{Cx, El, Env, Key, KeyEvent, Mods, PhysicalInput, Runtime, TextStyle, clipboard};
+use rune::{Cx, El, Env, Key, KeyEvent, Mods, PhysicalInput, Runtime, clipboard};
 use strata_kit::look::Look;
 
-use super::super::caret::byte_at_x;
-use super::super::render::Paint;
 use super::super::*;
-
-fn linear_byte_at_x(line: &str, x: f32, mono: TextStyle) -> usize {
-    if x <= 0.0 || line.is_empty() {
-        return 0;
-    }
-    let mut prev_end = 0;
-    let mut prev_w = 0.0_f32;
-    for (idx, ch) in line.char_indices() {
-        let end = idx + ch.len_utf8();
-        let w = rune::text::advance(&line[..end], mono);
-        if x < (prev_w + w) * 0.5 {
-            return prev_end;
-        }
-        prev_end = end;
-        prev_w = w;
-    }
-    line.len()
-}
-
-#[test]
-fn byte_at_x_binary_search_matches_linear_reference() {
-    let look = Look::fallback(false);
-    let mono = Paint::from_look(&look).mono;
-    let samples = [
-        "",
-        "a",
-        "the quick brown fox jumps over the lazy dog",
-        "\tindented\twith\ttabs",
-        "café naïve résumé — €100",
-        "e\u{301} combine a\u{300}b",
-        "日本語とASCIIと😀🎉混在ライン",
-    ];
-    for line in samples {
-        let total = rune::text::advance(line, mono);
-        let mut xs = vec![-5.0, 0.0, total, total + 25.0];
-        let mut prev = 0.0_f32;
-        for (idx, ch) in line.char_indices() {
-            let w = rune::text::advance(&line[..idx + ch.len_utf8()], mono);
-            let mid = (prev + w) * 0.5;
-            xs.extend([prev, mid - 0.05, mid, mid + 0.05, w]);
-            prev = w;
-        }
-        for x in xs {
-            assert_eq!(
-                byte_at_x(line, x, mono),
-                linear_byte_at_x(line, x, mono),
-                "line={line:?} x={x}"
-            );
-        }
-    }
-}
 
 struct Host {
     code: CodeState,
