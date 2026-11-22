@@ -472,3 +472,149 @@ fn closing_settings_discards_in_flight_scan_results() {
         },
     );
 }
+
+#[test]
+fn stale_mutation_keeps_new_busy_lock_and_refresh_mid_mutation_rescans() {
+    hosted(
+        MODULE,
+        "stale_mutation_keeps_new_busy_lock_and_refresh_mid_mutation_rescans",
+        |mut host| {
+            let config = tempfile::tempdir().expect("config");
+            let root = config.path().join("strata/providers");
+            let entry_data = example(b"#!/bin/sh\ncat\n");
+            let reloads = Rc::new(Cell::new(0usize));
+
+            host.app_mut().settings_dialog.integrations.source = Source {
+                catalog: Arc::new({
+                    let entry_data = entry_data.clone();
+                    move || vec![entry_data.clone()]
+                }),
+                root: Some(root.clone()),
+                check: Arc::new(|_| Vec::new()),
+                detect_manager: Arc::new(|| None),
+                reload: Some(Rc::new({
+                    let reloads = Rc::clone(&reloads);
+                    move |_| reloads.set(reloads.get() + 1)
+                })),
+                open_folder: None,
+            };
+
+            open_integrations(&mut host);
+            assert!(host.run_until(PATIENCE, |h| {
+                find_by_key(&h.tree(), "integration-example-install").is_some()
+            }));
+
+            // 1. Start a mutation in session 1, close Settings, reopen, and start a newer
+            //    mutation for the same id. The stale first mutation must not clear the new lock
+            //    or inject its error into the reopened session.
+            let (stale_tx, stale_rx) = mpsc::channel::<()>();
+            super::probe::run_mutation(host.app_mut(), "example".to_owned(), move || {
+                let _ = stale_rx.recv();
+                Err("stale failure".to_owned())
+            });
+            let stale_token = host
+                .app()
+                .settings_dialog
+                .integrations
+                .busy
+                .get("example")
+                .copied()
+                .expect("stale busy token");
+
+            press(&mut host, Key::Escape, Mods::default());
+            assert!(!host.app().settings_dialog.is_open());
+            assert!(host.app().settings_dialog.integrations.busy.is_empty());
+
+            click(&mut host, "header-settings");
+            assert!(host.run_until(PATIENCE, |h| {
+                find_by_key(&h.tree(), "integration-example-install").is_some()
+            }));
+            let (fresh_tx, fresh_rx) = mpsc::channel::<()>();
+            super::probe::run_mutation(host.app_mut(), "example".to_owned(), move || {
+                let _ = fresh_rx.recv();
+                Ok(())
+            });
+            let fresh_token = host
+                .app()
+                .settings_dialog
+                .integrations
+                .busy
+                .get("example")
+                .copied()
+                .expect("fresh busy token");
+            assert_ne!(fresh_token, stale_token);
+
+            stale_tx.send(()).expect("release stale mutation");
+            host.wait(Duration::from_millis(120));
+            idle(&mut host);
+
+            let state = &host.app().settings_dialog.integrations;
+            assert_eq!(
+                state.busy.get("example").copied(),
+                Some(fresh_token),
+                "stale mutation must not unlock a newer mutation on the same id"
+            );
+            assert!(
+                !state.row_messages.contains_key("example"),
+                "stale mutation error must not surface in the newer session"
+            );
+
+            fresh_tx.send(()).expect("release fresh mutation");
+            assert!(host.run_until(PATIENCE, |h| {
+                !h.app()
+                    .settings_dialog
+                    .integrations
+                    .busy
+                    .contains_key("example")
+            }));
+
+            // 2. Clicking Refresh while a mutation is in flight must still rescan once the
+            //    mutation finishes writing to disk, so the UI never stays stale.
+            let (install_tx, install_rx) = mpsc::channel::<()>();
+            let install_entry = entry_data.clone();
+            let install_root = root.clone();
+            super::probe::run_mutation(host.app_mut(), "example".to_owned(), move || {
+                let _ = install_rx.recv();
+                strata_desktop::services::integration_catalog::install(
+                    &install_entry,
+                    &install_root,
+                )
+                .map(|_| ())
+            });
+            let inflight_token = host
+                .app()
+                .settings_dialog
+                .integrations
+                .busy
+                .get("example")
+                .copied()
+                .expect("in-flight busy token");
+
+            click(&mut host, "integrations-refresh");
+            assert_eq!(
+                host.app()
+                    .settings_dialog
+                    .integrations
+                    .busy
+                    .get("example")
+                    .copied(),
+                Some(inflight_token),
+                "refresh preserves in-flight mutation busy lock"
+            );
+
+            install_tx.send(()).expect("finish in-flight install");
+            assert!(
+                host.run_until(PATIENCE, |h| {
+                    find_by_key(&h.tree(), "integration-example").is_some()
+                        && !h
+                            .app()
+                            .settings_dialog
+                            .integrations
+                            .busy
+                            .contains_key("example")
+                }),
+                "completing a mutation after mid-flight refresh rescans and unlocks the row"
+            );
+        },
+    );
+}

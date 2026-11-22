@@ -106,6 +106,7 @@ fn category_filters(look: &Look, state: &IntegrationsState) -> Option<El> {
         row()
             .key("integrations-filters")
             .w_full()
+            .min_w(0.0)
             .pb(12.0)
             .gap(6.0)
             .flex_wrap()
@@ -231,7 +232,7 @@ fn card_trailing(look: &Look, state: &IntegrationsState, row_data: &CatalogRow, 
                 icon: IconName::Downloads,
                 label: tr("Install"),
                 accessible: rust_i18n::t!("Install %{name}", name = name).into_owned(),
-                disabled: state.busy.contains(&entry.id),
+                disabled: state.busy.contains_key(&entry.id),
                 on_press: Rc::new(move |app, _| install_entry(app, entry_clone.clone())),
             },
         );

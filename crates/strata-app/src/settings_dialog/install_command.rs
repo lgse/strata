@@ -87,7 +87,7 @@ pub(super) fn command_box(look: &Look, spec: CommandBoxSpec) -> El {
 pub(super) fn run_in_terminal(
     weak: WeakLater<App>,
     command: &str,
-    on_done: impl FnOnce(&mut App, Result<(), String>) + 'static,
+    on_done: impl FnOnce(&mut App, Result<(), String>) -> bool + 'static,
 ) {
     let arguments = terminal_install_arguments(command);
     spawn_reaped(
@@ -106,7 +106,7 @@ pub(super) fn run_in_terminal(
 fn spawn_reaped(
     weak: WeakLater<App>,
     start: impl FnOnce() -> Result<std::process::Child, String> + Send + 'static,
-    on_done: impl FnOnce(&mut App, Result<(), String>) + 'static,
+    on_done: impl FnOnce(&mut App, Result<(), String>) -> bool + 'static,
 ) {
     let (answer, answered) = mpsc::channel();
     let reaper = std::thread::Builder::new()
@@ -134,10 +134,7 @@ fn spawn_reaped(
         let Some(later) = weak.upgrade() else {
             return;
         };
-        later.then(move |app, _| {
-            on_done(app, outcome);
-            true
-        });
+        later.then(move |app, _| on_done(app, outcome));
     });
 }
 

@@ -100,6 +100,7 @@ pub(in crate::settings_dialog) struct IntegrationsState {
     pub(super) scan_generation: u64,
     pub(super) active_scan: Arc<AtomicU64>,
     pub(super) session_generation: u64,
+    next_mutation: u64,
     needs_scan: bool,
     pub(super) loaded: bool,
     pub(super) rows: Vec<CatalogRow>,
@@ -108,7 +109,7 @@ pub(in crate::settings_dialog) struct IntegrationsState {
     pub(super) category: Option<Category>,
     pub(super) expanded: HashSet<String>,
     pub(super) requirements: HashMap<String, Vec<RequirementResult>>,
-    pub(super) busy: HashSet<String>,
+    pub(super) busy: HashMap<String, u64>,
     pub(super) confirmations: HashMap<String, PendingConfirm>,
     pub(super) row_messages: HashMap<String, String>,
     pub(super) copied_command: Option<(CommandKey, f64)>,
@@ -123,6 +124,7 @@ impl IntegrationsState {
             scan_generation: 0,
             active_scan: Arc::new(AtomicU64::new(0)),
             session_generation: 0,
+            next_mutation: 0,
             needs_scan: false,
             loaded: false,
             rows: Vec::new(),
@@ -131,7 +133,7 @@ impl IntegrationsState {
             category: None,
             expanded: HashSet::new(),
             requirements: HashMap::new(),
-            busy: HashSet::new(),
+            busy: HashMap::new(),
             confirmations: HashMap::new(),
             row_messages: HashMap::new(),
             copied_command: None,
@@ -162,6 +164,11 @@ impl IntegrationsState {
         self.active_scan
             .store(self.scan_generation, Ordering::Release);
         self.scan_generation
+    }
+
+    pub(super) fn next_mutation_token(&mut self) -> u64 {
+        self.next_mutation = self.next_mutation.saturating_add(1);
+        self.next_mutation
     }
 }
 
@@ -234,15 +241,16 @@ pub(super) fn run_command(app: &mut App, key: CommandKey, command: &str) {
     let finished = tr("The command opened in your terminal. Select Refresh when it finishes.");
     install_command::run_in_terminal(weak, command, move |app, outcome| {
         if !app.settings_dialog.is_open() {
-            return;
+            return false;
         }
         let state = &mut app.settings_dialog.integrations;
         if state.session_generation != session {
-            return;
+            return false;
         }
         state
             .terminal_status
             .insert(key, outcome.map(|()| finished));
+        true
     });
 }
 

@@ -240,10 +240,10 @@ pub(super) fn run_mutation(
     work: impl FnOnce() -> Result<(), String> + Send + 'static,
 ) {
     let state = &mut app.settings_dialog.integrations;
-    state.busy.insert(id.clone());
+    let token = state.next_mutation_token();
+    state.busy.insert(id.clone(), token);
     state.row_messages.remove(&id);
     state.confirmations.remove(&id);
-    let session = state.session_generation;
     let weak = state.later.downgrade();
 
     glib::MainContext::default().spawn_local(async move {
@@ -251,29 +251,32 @@ pub(super) fn run_mutation(
         let Some(later) = weak.upgrade() else {
             return;
         };
-        later.then(move |app, _| finish_mutation(app, id, session, outcome));
+        later.then(move |app, _| finish_mutation(app, id, token, outcome));
     });
 }
 
 fn finish_mutation(
     app: &mut App,
     id: String,
-    session: u64,
+    token: u64,
     outcome: Option<Result<(), String>>,
 ) -> bool {
-    let same_session = app.settings_dialog.is_open()
-        && app.settings_dialog.integrations.session_generation == session;
-    app.settings_dialog.integrations.busy.remove(&id);
+    let owned = app.settings_dialog.integrations.busy.get(&id).copied() == Some(token);
+    if owned {
+        app.settings_dialog.integrations.busy.remove(&id);
+    }
+    let show_in_page =
+        app.settings_dialog.is_open() && app.settings_dialog.page == PageId::Integrations;
     match outcome {
         Some(Ok(())) => {
             reload_providers(app);
-            if same_session && app.settings_dialog.page == PageId::Integrations {
+            if show_in_page {
                 start_scan(app);
             }
-            same_session
+            owned || show_in_page
         }
         Some(Err(error)) => {
-            if !same_session {
+            if !app.settings_dialog.is_open() || !owned {
                 return false;
             }
             app.settings_dialog.integrations.row_messages.insert(
@@ -283,7 +286,7 @@ fn finish_mutation(
             true
         }
         None => {
-            if !same_session {
+            if !app.settings_dialog.is_open() || !owned {
                 return false;
             }
             app.settings_dialog

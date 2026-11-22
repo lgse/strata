@@ -340,9 +340,10 @@ fn run_install_command(app: &mut App, id: CheckId, command: &str) {
     install_command::run_in_terminal(weak, command, move |app, outcome| {
         let diag = &mut app.settings_dialog.diagnostics;
         if diag.generation != generation {
-            return;
+            return false;
         }
         let status = outcome.map(|()| finished);
         diag.terminal_status.insert(id, status);
+        true
     });
 }

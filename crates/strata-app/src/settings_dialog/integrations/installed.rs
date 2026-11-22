@@ -123,7 +123,7 @@ fn build_installed_row(look: &Look, state: &IntegrationsState, data: InstalledRo
     let c = &kit.c;
     let id = data.id;
     let confirm = state.confirmations.get(id);
-    let locked = state.busy.contains(id) || confirm.is_some();
+    let locked = state.busy.contains_key(id) || confirm.is_some();
     let copy = col()
         .grow(1.0)
         .min_w(0.0)
