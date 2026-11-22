@@ -123,20 +123,23 @@ impl ScrollSettle {
     /// Records the folder currently shown: a new folder starts unscrolled.
     pub(crate) fn visit(&mut self, folder: &Location) {
         if self.folder.as_ref() != Some(folder) {
-            self.folder = Some(folder.clone());
+            let switched = self.folder.replace(folder.clone()).is_some();
             self.moved = false;
             self.moved_at = None;
             self.was_dragging = false;
-            self.last = 0..0;
+            if switched {
+                self.last = 0..0;
+            }
         }
     }
 
     /// Records the visible range: a first range, or one that only grows as rows arrive, is
-    /// not a scroll.
-    pub(crate) fn see(&mut self, range: &Range<usize>) {
+    /// not a scroll. Returns true when the viewport's start moved.
+    pub(crate) fn see(&mut self, range: &Range<usize>) -> bool {
         let scrolled = !self.last.is_empty() && self.last.start != range.start;
         self.moved |= scrolled;
         self.last = range.clone();
+        scrolled
     }
 
     /// Whether the viewport is settled for metadata fills: defers while scrolling, flushes

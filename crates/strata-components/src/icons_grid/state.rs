@@ -23,6 +23,9 @@ pub struct IconsGridState {
     pub(super) scale: Cell<f32>,
     /// The step last given to the thumbnail store, with the size it was for.
     pub(super) synced: Cell<Option<Step>>,
+    /// The listing version last synced with the thumbnail store, so metadata refills that
+    /// change thumbnail keys without changing row keys still resync the store.
+    pub(super) synced_listing: Cell<Option<u64>>,
     /// The size the grid last reflowed for.
     pub(super) size: Cell<Option<f32>>,
     /// The grid's width as last laid out: a new width builds again, so captions cut to it.
@@ -35,6 +38,8 @@ pub struct IconsGridState {
     pub(super) pending_thumbs: Option<Range<usize>>,
     pub(super) thumb_moved: bool,
     pub(super) thumb_moved_at: Option<f64>,
+    /// True once a held thumb has settled past the drag debounce and flushed thumbnails.
+    pub(super) thumb_settled: Cell<bool>,
 }
 
 impl IconsGridState {
@@ -59,9 +64,9 @@ impl IconsGridState {
         self.bar.is_dragging()
     }
 
-    /// Whether thumbnail syncs are currently deferred mid-thumb-drag.
+    /// Whether thumbnail syncs and handle allocations are currently deferred mid-thumb-drag.
     pub fn thumbs_deferred(&self) -> bool {
-        self.bar.is_dragging() && self.pending_thumbs.is_some()
+        self.bar.is_dragging() && !self.thumb_settled.get()
     }
 
     /// When the scroll bar shows: overlay (Strata's, the default) or always.
@@ -76,6 +81,7 @@ impl IconsGridState {
         self.pending_thumbs = None;
         self.thumb_moved = false;
         self.thumb_moved_at = None;
+        self.thumb_settled.set(false);
     }
 
     /// The display scale the view last built at, 1 before it has.

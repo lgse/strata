@@ -3,6 +3,7 @@
 //! The drawn part: a thumbnail over its placeholder icon, and the C1e icon slot that draws it.
 
 use std::hash::{Hash, Hasher};
+use std::rc::Rc;
 
 use rune::{El, Pixels, SurfaceFit, TextStyle, el, icon, row, text};
 use strata_kit::{icons::IconName, look::Look};
@@ -47,6 +48,7 @@ pub(crate) fn overlay_badge(el: El, badge: Option<Pixels>, (inset, slot_points):
 }
 
 type BadgeAccess<S> = (fn(&S, EntryId) -> u64, fn(&S, EntryId) -> Option<Pixels>);
+type DragPredicate<S> = Rc<dyn Fn(&S) -> bool>;
 
 /// `thumb` over `icon` in a `w × h` box: the icon centred underneath, faded out through the
 /// handle's opacity while an image is held, and the image fitted (letterboxed, centred) over
@@ -109,7 +111,7 @@ pub struct IconSlot<S> {
     points: f32,
     dim_files: bool,
     badge: Option<BadgeAccess<S>>,
-    dragging: Option<fn(&S) -> bool>,
+    dragging: Option<DragPredicate<S>>,
 }
 
 impl<S: 'static> IconSlot<S> {
@@ -132,10 +134,11 @@ impl<S: 'static> IconSlot<S> {
         self
     }
 
-    /// While `is_dragging` returns true (a scrollbar thumb drag is active), transient uncached
-    /// rows draw their placeholder icon without allocating new `Pixels`/`Live` store handles.
-    pub fn dragging(mut self, is_dragging: fn(&S) -> bool) -> Self {
-        self.dragging = Some(is_dragging);
+    /// While `is_dragging` returns true (a scrollbar thumb drag is actively deferring
+    /// thumbnails), transient uncached rows draw their placeholder icon without allocating new
+    /// `Pixels`/`Live` store handles.
+    pub fn dragging(mut self, is_dragging: impl Fn(&S) -> bool + 'static) -> Self {
+        self.dragging = Some(Rc::new(is_dragging));
         self
     }
 }
@@ -150,6 +153,7 @@ impl<S: 'static> From<IconSlot<S>> for Slot<S> {
             badge,
             dragging,
         } = slot;
+        let version_dragging = dragging.clone();
         Slot::new(
             move |s: &S, rcx: &RowCx<'_>| {
                 let mut h = std::hash::DefaultHasher::new();
@@ -162,7 +166,7 @@ impl<S: 'static> From<IconSlot<S>> for Slot<S> {
                     && let Some(key) = shown_thumbnail(rcx.entry)
                 {
                     let st = store(s);
-                    let ver = if dragging.is_some_and(|f| f(s)) {
+                    let ver = if version_dragging.as_ref().is_some_and(|f| f(s)) {
                         st.existing_version(key)
                     } else {
                         st.version(key)
@@ -180,7 +184,7 @@ impl<S: 'static> From<IconSlot<S>> for Slot<S> {
                 let thumb = shown_thumbnail(rcx.entry)
                     .filter(|_| st.enabled() && mark_icon(rcx.state.marks).is_none())
                     .and_then(|key| {
-                        if dragging.is_some_and(|f| f(s)) {
+                        if dragging.as_ref().is_some_and(|f| f(s)) {
                             st.existing_thumb(key)
                         } else {
                             Some(st.thumb(key))

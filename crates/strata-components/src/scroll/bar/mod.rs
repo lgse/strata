@@ -608,7 +608,8 @@ impl Inner {
             track,
             look.min_length,
         );
-        if (to - p.offset[a]).abs() < 0.5 {
+        let at_end = to == 0.0 || to == p.max[a];
+        if to == p.offset[a] || (!at_end && (to - p.offset[a]).abs() < 0.5) {
             return;
         }
         let target = self.target.borrow().clone();

@@ -41,6 +41,8 @@ pub(crate) struct Synced {
     settle: ScrollSettle,
     /// Set while a drag deferred syncs, so the flush triggers one rebuild to bind handles.
     was_deferred: bool,
+    /// True once a held thumb has settled past the drag debounce and flushed thumbnails.
+    settled_while_held: bool,
 }
 
 /// What a poll tells the store of one column.
@@ -80,8 +82,15 @@ impl Sync {
 impl Synced {
     /// Records the visible range reported by the view.
     pub(crate) fn see(&mut self, range: Range<usize>) {
-        self.settle.see(&range);
+        if self.settle.see(&range) {
+            self.settled_while_held = false;
+        }
         self.range = Some(range);
+    }
+
+    /// Whether thumbnail handle allocation should defer for this column while `dragging`.
+    pub(crate) fn is_deferring(&self, dragging: bool) -> bool {
+        dragging && !self.settled_while_held
     }
 
     /// Whether syncing this column should wait while the scrollbar thumb is actively dragged.
@@ -95,8 +104,12 @@ impl Synced {
     ) -> Result<bool, f64> {
         self.settle.visit(location);
         match self.settle.settled_for_drag(clock, dragging) {
-            Ok(()) => Ok(std::mem::take(&mut self.was_deferred)),
+            Ok(()) => {
+                self.settled_while_held = dragging;
+                Ok(std::mem::take(&mut self.was_deferred))
+            }
             Err(left) => {
+                self.settled_while_held = false;
                 self.was_deferred = true;
                 Err(left)
             }
@@ -170,13 +183,27 @@ impl Thumbs {
         Step::for_tile(look, ROW_THUMBNAIL, self.scale.get())
     }
 
+    /// Whether column `depth` is currently deferring thumbnail handles mid-thumb-drag.
+    pub(super) fn is_deferring(&self, depth: usize, dragging: bool) -> bool {
+        self.columns
+            .get(depth)
+            .map_or(dragging, |column| column.is_deferring(dragging))
+    }
+
     /// The rows' icon: the entry's thumbnail from the window's store, else its icon, a file's
     /// fainter than a folder's, as GTK's Columns rows draw it (`set_base_opacity` in
     /// `src/ui/browser/columns/rows/bind.rs`).
-    pub(super) fn icon(&self, look: &Look) -> Slot<App> {
+    pub(super) fn icon(&self, look: &Look, depth: usize) -> Slot<App> {
         icon_slot(shell::thumbnails, self.step(look), ROW_THUMBNAIL)
             .dim_files()
-            .dragging(|app: &App| app.columns.state.is_dragging())
+            .dragging(move |app: &App| {
+                let dragging = app
+                    .columns
+                    .state
+                    .column(depth)
+                    .is_some_and(|column| column.is_dragging());
+                app.columns.thumbs.is_deferring(depth, dragging)
+            })
             .badge(
                 crate::file_providers::badge_version,
                 crate::file_providers::badge_pixels,
@@ -255,6 +282,7 @@ pub(super) fn poll(app: &mut App, clock: f64, tx: &mut Tx) -> bool {
         tx.wake_after(Duration::from_secs_f64(left));
     }
     if !deferred {
+        pruned |= store.take_skipped();
         Viewer::pump(app, parts, clock);
     }
     pruned

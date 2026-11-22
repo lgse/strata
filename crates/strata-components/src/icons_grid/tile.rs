@@ -152,7 +152,7 @@ fn tile_icon_version<S>(shared: &Shared<S>, key: u64, s: &S, rcx: &RowCx<'_>) ->
     if mark.is_none()
         && let (Some(k), Some((store, _))) = (thumb, parts.thumbs)
     {
-        let ver = if parts.grid.is_dragging() {
+        let ver = if parts.grid.thumbs_deferred() {
             store.existing_version(k)
         } else {
             store.version(k)
@@ -189,7 +189,7 @@ pub(super) fn icon_slot<S: 'static>(shared: &Rc<Shared<S>>, b: Built) -> Slot<S>
             let thumb = rcx.entry.thumbnail.filter(|_| rcx.entry.glyph.is_none());
             let resolved = match (thumb, parts.thumbs) {
                 (Some(key), Some((store, _))) if store.enabled() && !marked => {
-                    if parts.grid.is_dragging() {
+                    if parts.grid.thumbs_deferred() {
                         store.existing_thumb(key)
                     } else {
                         Some(store.thumb(key))

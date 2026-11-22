@@ -1470,20 +1470,38 @@ fn existing_lookup_does_not_allocate_until_synced() {
     let mut store = ThumbnailStore::default();
     let viewer = store.viewer();
     let k = key(0);
+    assert!(!store.take_skipped());
     let absent_version = store.existing_version(k);
+    assert!(
+        store.take_skipped(),
+        "absent existing_version records a skipped handle when thumbnails are enabled"
+    );
+    assert!(!store.take_skipped(), "take_skipped clears the flag");
 
     assert!(store.existing_thumb(k).is_none());
+    assert!(
+        store.take_skipped(),
+        "absent existing_thumb records a skipped handle when thumbnails are enabled"
+    );
     assert_eq!(
         store.stats().entries,
         0,
         "existing lookup allocates nothing"
     );
 
+    // Disabled store never flags skipped handles.
+    assert!(store.set_enabled(false));
+    let _ = store.existing_version(k);
+    assert!(store.existing_thumb(k).is_none());
+    assert!(!store.take_skipped());
+    assert!(store.set_enabled(true));
+
     let src = source(1, &[]);
     let _ = store.sync(viewer, &src, Viewport::new(0..1, Step::new(64)));
 
     assert!(store.existing_thumb(k).is_some());
     assert_eq!(store.existing_version(k), store.version(k));
+    assert!(!store.take_skipped(), "ensured entry leaves skipped unset");
     assert_ne!(
         store.existing_version(k),
         absent_version,

@@ -28,6 +28,7 @@ struct Host {
     look: Look,
     store: ThumbnailStore,
     viewer: ViewerId,
+    thumb_version: u64,
     size: f32,
     details: HashMap<EntryId, Arc<str>>,
     /// Details read while building tiles.
@@ -69,6 +70,7 @@ fn host(n: usize, w: f32, h: f32) -> Host {
         look: Look::fallback(false),
         store,
         viewer,
+        thumb_version: 1,
         size: 64.0,
         details: HashMap::new(),
         detail_reads: Rc::default(),
@@ -101,7 +103,7 @@ fn grid(s: &Host) -> IconsGrid<Host> {
             collection: &s.coll,
             grid: &s.grid,
             size: s.size,
-            listing: 1,
+            listing: s.thumb_version,
             look: &s.look,
             thumbs: Some((&s.store, s.viewer)),
         },
@@ -411,4 +413,107 @@ fn the_hosts_wheel_hook_hears_each_wheel_before_the_size_wheel() {
         );
         assert_eq!(rt.state.size != 64.0, resizes, "{case}: resized");
     }
+}
+
+/// A metadata refill that replaces an entry's thumbnail key bumps `IconsParts::listing`
+/// (`thumb_version`) while leaving the collection's row-key version unchanged; `IconsGrid::poll`
+/// must resync the thumbnail store so the new key is requested and painted without scrolling.
+#[test]
+fn poll_resyncs_thumbnails_when_listing_version_changes_without_scroll() {
+    let mut rt = runtime(host(40, 900.0, 600.0), 1.0);
+    rt.poll = Some(|s: &mut Host, _dt: f64, tx: &mut Tx| grid(s).poll(s, tx));
+    serve(&mut rt.state);
+    rt.frame(DT);
+
+    let new_key = ThumbKey::new(999_999);
+    rt.update(|s: &mut Host, _: &mut Tx| {
+        let mut entries: Vec<ListEntry> = (0..40)
+            .map(|i| {
+                let mut e = ListEntry::new(
+                    EntryId::new(i as u64 + 1),
+                    format!("img-{i}.jpg"),
+                    EntryKind::File,
+                    "file_image",
+                );
+                e.thumbnail = Some(if i == 0 {
+                    new_key
+                } else {
+                    ThumbKey::new(10_000 + i as u64)
+                });
+                e
+            })
+            .collect();
+        s.src = ListSource::new(std::mem::take(&mut entries));
+        s.thumb_version += 1;
+    });
+    rt.frame(DT);
+
+    let served = serve(&mut rt.state);
+    assert!(served >= 1, "store must request the replaced thumbnail key");
+    assert!(
+        matches!(
+            rt.state.store.state(new_key),
+            crate::thumbnails::State::Ready { .. }
+        ),
+        "replaced thumbnail key reached Ready without scrolling"
+    );
+}
+
+/// A fast trough click (`pointer_down` + `pointer_up` before `poll`) mounts destination rows
+/// while `bar.is_dragging()` is temporarily true; the next non-deferred poll must consume the
+/// store's skipped-handle flag and rebuild once so destination tiles bind `THUMB` elements.
+#[test]
+fn fast_trough_click_rebinds_skipped_thumbnails_on_next_poll() {
+    let mut h = host(1_000, 900.0, 600.0);
+    h.grid.set_bar_mode(crate::scroll::BarMode::Always);
+    let mut rt = runtime(h, 1.0);
+    rt.poll = Some(|s: &mut Host, _dt: f64, tx: &mut Tx| grid(s).poll(s, tx));
+    serve(&mut rt.state);
+    rt.frame(DT);
+
+    let trough = rt
+        .elements()
+        .into_iter()
+        .find(|e| !e.exiting && e.key.as_deref() == Some("trough"))
+        .expect("always-on scrollbar trough");
+    let click_x = trough.rect[0] + trough.rect[2] / 2.0;
+    let click_y = trough.rect[1] + trough.rect[3] * 0.85;
+
+    // Press and release before any poll runs: Commit::Instant mounts destination rows mid-drag.
+    rt.pointer_move(click_x, click_y);
+    rt.pointer_down(click_x, click_y);
+    rt.pointer_up(click_x, click_y);
+
+    for _ in 0..4 {
+        rt.frame(DT);
+        serve(&mut rt.state);
+    }
+
+    let shown = rt.state.coll.visible_range();
+    assert!(
+        shown.start > 50,
+        "trough click jumped into uncached rows: {shown:?}"
+    );
+    let elems = rt.elements();
+    let first_id = rt.state.src.id_at(shown.start);
+    let thumb_suffix = format!(
+        "/row-{}/{}/{}",
+        first_id.get(),
+        crate::collection::element::ICON,
+        crate::thumbnails::THUMB
+    );
+    assert!(
+        elems
+            .iter()
+            .any(|e| !e.exiting && e.path.ends_with(&thumb_suffix)),
+        "destination tile must rebind its THUMB element after fast trough click"
+    );
+    let first_key = rt.state.src.entry(shown.start).thumbnail.expect("key");
+    assert!(
+        matches!(
+            rt.state.store.state(first_key),
+            crate::thumbnails::State::Ready { .. }
+        ),
+        "destination tile thumbnail reached Ready"
+    );
 }

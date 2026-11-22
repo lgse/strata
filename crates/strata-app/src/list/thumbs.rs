@@ -57,11 +57,16 @@ impl Thumbs {
         Step::for_tile(look, ROW_THUMBNAIL, self.scale.get())
     }
 
+    /// Whether List is currently deferring thumbnail handles mid-thumb-drag.
+    pub(super) fn is_deferring(&self, dragging: bool) -> bool {
+        self.synced.is_deferring(dragging)
+    }
+
     /// The rows' icon: the entry's thumbnail from the window's store, else its icon, at full
     /// opacity, as GTK's List rows draw it.
     pub(super) fn icon(&self, look: &Look) -> Slot<App> {
         icon_slot(shell::thumbnails, self.step(look), ROW_THUMBNAIL)
-            .dragging(|app: &App| app.list.table.is_dragging())
+            .dragging(|app: &App| app.list.thumbs.is_deferring(app.list.table.is_dragging()))
             .badge(
                 crate::file_providers::badge_version,
                 crate::file_providers::badge_pixels,
@@ -94,7 +99,7 @@ pub(super) fn poll(app: &mut App, clock: f64, tx: &mut Tx) -> bool {
     thumbs.viewer.fit(store, 1);
     let restep = thumbs.step.replace(step) != Some(step);
     let mut deferred = false;
-    let pruned = match (thumbs.viewer.id(), list.single.pane.listing()) {
+    let mut pruned = match (thumbs.viewer.id(), list.single.pane.listing()) {
         (Some(id), Some(listing)) => {
             match thumbs
                 .synced
@@ -122,6 +127,7 @@ pub(super) fn poll(app: &mut App, clock: f64, tx: &mut Tx) -> bool {
         _ => false,
     };
     if !deferred {
+        pruned |= store.take_skipped();
         Viewer::pump(app, parts, clock);
     }
     pruned
