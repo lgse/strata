@@ -8,6 +8,7 @@ use std::time::Duration;
 
 use rune::{Live, Pixels, Tx};
 
+use super::ambient::{self, AmbientGlow, EdgeGrid};
 use super::audio::layout::Plan;
 use super::audio::spectrum::Spectrum;
 use super::audio::{DISC_SLID_OUT, DISC_SLIDE_RATE, DISC_TUCK_RATE, DISC_TUCKED};
@@ -60,6 +61,8 @@ pub(crate) struct Lives {
     pub(crate) bubble: Live<[f32; 2]>,
     /// The stand-in's opacity.
     pub(crate) stand_in: Live<f32>,
+    /// The video ambient glow's opacity.
+    pub(crate) ambient: Live<f32>,
     /// The peeking vinyl disc's offset behind the album cover.
     pub(crate) disc: Live<[f32; 2]>,
 }
@@ -74,6 +77,7 @@ impl Default for Lives {
             pointer_shown: Live::new(0.0),
             bubble: Live::new([0.0; 2]),
             stand_in: Live::new(1.0),
+            ambient: Live::new(0.0),
             disc: Live::new([0.0; 2]),
         }
     }
@@ -92,6 +96,7 @@ pub(crate) struct Shown {
     playback: PlaybackState,
     seekable: bool,
     stand_in: bool,
+    ambient: bool,
     cover: Option<u32>,
     bubble: Option<(Option<u32>, u64, Option<usize>)>,
     levels: u64,
@@ -138,6 +143,7 @@ pub struct MediaState {
     poster: Option<Pixels>,
     aspect: Option<f32>,
     frame: Option<[u32; 2]>,
+    ambient: AmbientGlow,
     art: Option<Art>,
     /// The peeking vinyl disc's horizontal offset behind the album cover, as a share of side.
     disc_offset: f32,
@@ -163,6 +169,7 @@ pub struct MediaState {
     outbox: Vec<MediaIntent>,
     built: RefCell<Option<Shown>>,
     pub(crate) motion: Cell<bool>,
+    pub(crate) glow: Cell<bool>,
     pub(crate) bar_pitch: Cell<f32>,
     pub(crate) wave_h: Cell<f32>,
 }
@@ -199,6 +206,7 @@ impl MediaState {
             poster: None,
             aspect: None,
             frame: None,
+            ambient: AmbientGlow::new(),
             art: None,
             disc_offset: DISC_TUCKED,
             tags: AudioTags::default(),
@@ -219,6 +227,7 @@ impl MediaState {
             outbox: Vec::new(),
             built: RefCell::new(None),
             motion: Cell::new(true),
+            glow: Cell::new(true),
             bar_pitch: Cell::new(3.0),
             wave_h: Cell::new(40.0),
         }
@@ -244,12 +253,14 @@ impl MediaState {
         self.poster = None;
         self.aspect = None;
         self.frame = None;
+        self.ambient.clear();
         self.viewport.set_content(None);
         self.tags = AudioTags::default();
         self.hover = None;
         self.drag = None;
         self.stand_in = StandIn::Shown;
         self.live.stand_in.set(1.0);
+        self.live.ambient.set(0.0);
         self.asked_storyboard = false;
         self.decode_loaded = None;
         self.wheel = 0.0;
@@ -287,6 +298,9 @@ impl MediaState {
     }
 
     pub fn set_error(&mut self, error: Option<MediaError>) {
+        if error.is_some() {
+            self.clear_ambient();
+        }
         self.error = error;
     }
 
@@ -355,6 +369,9 @@ impl MediaState {
     /// The decoder's frames are `size` pixels: the first frame shows (the stand-in fades),
     /// or the size changed. `None` before any frame.
     pub fn set_frame(&mut self, size: Option<[u32; 2]>) {
+        if size.is_none() {
+            self.clear_ambient();
+        }
         if self.frame == size {
             return;
         }
@@ -368,6 +385,41 @@ impl MediaState {
 
     pub fn has_frame(&self) -> bool {
         self.frame.is_some()
+    }
+
+    /// Samples an RGBA8 video frame into the 6×4 ambient glow grid, updating the persistent
+    /// texture in place on the 100 ms cadence. Ignored for non-video clips.
+    pub fn feed_ambient(&mut self, pixels: &[u8], size: [u32; 2], now: f64) -> bool {
+        if self.clip.kind != MediaKind::Video {
+            return false;
+        }
+        let Some(grid) = EdgeGrid::sample(pixels, size[0], size[1]) else {
+            return false;
+        };
+        let updated = self.ambient.update(&grid, now);
+        if updated && (self.stand_in == StandIn::Gone || !self.motion.get()) {
+            self.live.ambient.set(ambient::OPACITY);
+        }
+        updated
+    }
+
+    /// Clears the ambient glow (for file switches, errors, or preview close).
+    pub fn clear_ambient(&mut self) {
+        self.ambient.clear();
+        self.live.ambient.set(0.0);
+    }
+
+    pub fn ambient(&self) -> &AmbientGlow {
+        &self.ambient
+    }
+
+    /// Whether the ambient glow layer should be mounted behind the video frame.
+    pub fn ambient_shown(&self) -> bool {
+        self.clip.kind == MediaKind::Video
+            && self.has_frame()
+            && self.ambient.is_lit()
+            && self.glow.get()
+            && self.motion.get()
     }
 
     pub fn set_art(&mut self, art: Option<Art>) {
@@ -489,6 +541,7 @@ impl MediaState {
                 self.live.stand_in.set((1.0 - t).clamp(0.0, 1.0) as f32);
             }
         }
+        self.sync_ambient_opacity(now);
 
         self.levels.step(elapsed, motion);
         let generation = self.levels.generation();
@@ -509,6 +562,30 @@ impl MediaState {
             tx.wake_after(FRAME);
         }
         self.stale()
+    }
+
+    /// Syncs the ambient glow's live opacity with the stand-in fade so the halo reveals cleanly
+    /// as the first video frame fades in, and rests at `ambient::OPACITY` with zero extra wakes.
+    fn sync_ambient_opacity(&self, now: f64) {
+        if !self.ambient.is_lit() {
+            self.live.ambient.set(0.0);
+            return;
+        }
+        let opacity = match self.stand_in {
+            StandIn::Gone => ambient::OPACITY,
+            StandIn::Shown => {
+                if self.motion.get() {
+                    0.0
+                } else {
+                    ambient::OPACITY
+                }
+            }
+            StandIn::Fading(since) => {
+                let t = ((now - since) / STAND_IN_FADE).clamp(0.0, 1.0) as f32;
+                ambient::OPACITY * t
+            }
+        };
+        self.live.ambient.set(opacity);
     }
 
     /// Advances the peeking vinyl disc offset behind the album sleeve. True while still moving.
@@ -955,6 +1032,7 @@ impl MediaState {
             playback: self.playback,
             seekable: self.seekable(),
             stand_in: self.stand_in_shown(),
+            ambient: self.ambient_shown(),
             cover: self.cover().map(|(i, _)| i),
             bubble: self.bubble().map(|(c, t, ch)| {
                 (

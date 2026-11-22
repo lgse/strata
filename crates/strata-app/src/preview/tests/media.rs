@@ -1169,3 +1169,102 @@ fn audio_preview_loads_tags_and_cover_caches_and_cancels_on_close() {
         },
     );
 }
+
+#[test]
+fn video_ambient_glow_lights_on_frames_skips_non_video_and_clears_on_switch_or_close() {
+    hosted(
+        MODULE,
+        "media::video_ambient_glow_lights_on_frames_skips_non_video_and_clears_on_switch_or_close",
+        |mut host| {
+            decode_with(ten_seconds);
+            let files = [("alpha.mp4", MP4), ("anim.gif", MP4), ("track.mp3", MP4)];
+            let (provider, folder) = open(&mut host, &files, "alpha.mp4", "video/mp4");
+            shows(
+                &mut host,
+                |s| s.has_frame() && s.ambient().is_lit(),
+                "video frame lights ambient glow",
+            );
+            let ambient = state(&host).expect("video state").ambient();
+            assert_eq!(ambient.pixels().size(), (6, 4));
+            assert!(
+                state(&host).is_some_and(MediaState::ambient_shown),
+                "ambient halo is active with element_glow and animations enabled"
+            );
+
+            // Disabling element_glow or enabling reduce_motion turns the halo off live.
+            host.runtime().update(|app: &mut App, tx: &mut Tx| {
+                crate::shell::saved(app).change(|prefs| prefs.element_glow = false);
+                crate::shell::follow_look_tx(app, tx);
+            });
+            while host.turn() {}
+            assert!(
+                state(&host).is_some_and(|s| !s.ambient_shown()),
+                "element_glow = false hides the ambient halo"
+            );
+            host.runtime().update(|app: &mut App, tx: &mut Tx| {
+                crate::shell::saved(app).change(|prefs| {
+                    prefs.element_glow = true;
+                    prefs.reduce_motion = true;
+                });
+                crate::shell::follow_look_tx(app, tx);
+            });
+            while host.turn() {}
+            assert!(
+                state(&host).is_some_and(|s| !s.ambient_shown()),
+                "reduce_motion = true hides the ambient halo"
+            );
+            host.runtime().update(|app: &mut App, tx: &mut Tx| {
+                crate::shell::saved(app).change(|prefs| prefs.reduce_motion = false);
+                crate::shell::follow_look_tx(app, tx);
+            });
+            while host.turn() {}
+            assert!(
+                state(&host).is_some_and(MediaState::ambient_shown),
+                "restoring preferences re-enables the ambient halo"
+            );
+
+            // Switching to an animated GIF clears the previous video's glow and never lights it.
+            select(&mut host, &Location::local(folder.path().join("anim.gif")));
+            provider.wait_for(&mut host, 1);
+            provider.answer_as(1, "image/gif", sandboxed(folder.path().join("anim.gif")));
+            shows(
+                &mut host,
+                |s| s.clip().kind == MediaKind::Animation && s.has_frame(),
+                "GIF frame arrived",
+            );
+            assert!(
+                state(&host).is_some_and(|s| !s.ambient().is_lit() && !s.ambient_shown()),
+                "animated GIF never lights video ambient glow"
+            );
+
+            // Switching to audio leaves the glow unlit as well.
+            select(&mut host, &Location::local(folder.path().join("track.mp3")));
+            provider.wait_for(&mut host, 2);
+            provider.answer_as(2, "audio/mpeg", sandboxed(folder.path().join("track.mp3")));
+            shows(
+                &mut host,
+                |s| s.clip().kind == MediaKind::Audio,
+                "audio viewer mounted",
+            );
+            assert!(
+                state(&host).is_some_and(|s| !s.ambient().is_lit() && !s.ambient_shown()),
+                "audio preview never lights video ambient glow"
+            );
+
+            // Reopen video then close preview: viewer drops cleanly.
+            select(&mut host, &Location::local(folder.path().join("alpha.mp4")));
+            provider.wait_for(&mut host, 3);
+            provider.answer_as(3, "video/mp4", sandboxed(folder.path().join("alpha.mp4")));
+            shows(
+                &mut host,
+                |s| s.clip().kind == MediaKind::Video && s.ambient().is_lit(),
+                "video re-lit",
+            );
+            space(&mut host);
+            assert!(
+                host.run_until(PATIENCE, |host| state(host).is_none()),
+                "closing preview clears the media viewer"
+            );
+        },
+    );
+}

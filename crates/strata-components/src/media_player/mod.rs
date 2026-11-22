@@ -112,7 +112,8 @@
 //! - **D5** (OWNER ruling): C13 owns its seek and volume sliders; C20a adopts or replaces
 //!   them later.
 //! - **D6**: the time labels are committed text (U-C1f-6).
-//! - **D7** (OWNER ruling): no Element glow.
+//! - **D7**: ambient video glow renders behind the video frame via a smoothed 6×4 [`AmbientGlow`]
+//!   texture and GPU Gaussian blur when `look.glow.on && look.animations`.
 //! - **D8**: [`MediaKeys`] is a table of its own, separate from C1c's `KeyMap`.
 //! - **D9** (OWNER ruling): the video frame is a button named "Video frame", since a press
 //!   plays or pauses and Rune names a pressable element so; Strata's is a focusable group.
@@ -231,6 +232,7 @@
 //!   cap as a height instead ([`crate::viewers::layout`]).
 //! - Reused: U-C16-3 (accessibility values don't follow `Live`), U-C1f-6, anomalyco/rune#149.
 
+pub mod ambient;
 pub mod audio;
 pub mod badges;
 pub mod clock;
@@ -253,6 +255,7 @@ use std::rc::Rc;
 use rune::{Cx, El, Pixels, Tx, col, text};
 use strata_kit::look::Look;
 
+pub use ambient::{AmbientGlow, EdgeGrid};
 pub use clock::{FakeClock, PlaybackClock, PlaybackState};
 pub use data::{Art, AudioTags, Chapter, Clip, Details, MediaError, MediaKind};
 pub use intent::MediaIntent;
@@ -358,13 +361,14 @@ impl<'a, S: 'static> MediaPlayer<'a, S> {
         }
     }
 
-    /// The view's key ("media" unless set). Its parts are `<key>-frame`, `<key>-picture`,
-    /// `<key>-stand-in`, `<key>-cover-<cell>`, `<key>-bubble`, `<key>-bubble-time`,
-    /// `<key>-timeline`, `<key>-played`, `<key>-head`, `<key>-chapters`, `<key>-play`,
-    /// `<key>-previous`, `<key>-next`, `<key>-elapsed`, `<key>-total`, `<key>-time` (the plain
-    /// bar's), `<key>-mute`, `<key>-volume`, `<key>-title`, `<key>-eyebrow`, `<key>-byline`,
-    /// `<key>-badges`, `<key>-badge-<n>`, `<key>-error`, `<key>-art-<id>`, `<key>-record`,
-    /// `<key>-record-mark`, `<key>-spectrum` and `<key>-bar-<n>`.
+    /// The view's key ("media" unless set). Its parts are `<key>-frame`, `<key>-ambient`,
+    /// `<key>-picture`, `<key>-stand-in`, `<key>-cover-<cell>`, `<key>-bubble`,
+    /// `<key>-bubble-time`, `<key>-timeline`, `<key>-played`, `<key>-head`, `<key>-chapters`,
+    /// `<key>-play`, `<key>-previous`, `<key>-next`, `<key>-elapsed`, `<key>-total`,
+    /// `<key>-time` (the plain bar's), `<key>-mute`, `<key>-volume`, `<key>-title`,
+    /// `<key>-eyebrow`, `<key>-byline`, `<key>-badges`, `<key>-badge-<n>`, `<key>-error`,
+    /// `<key>-art-<id>`, `<key>-record`, `<key>-record-mark`, `<key>-spectrum` and
+    /// `<key>-bar-<n>`.
     pub fn key(mut self, key: impl Into<String>) -> Self {
         self.key = key.into();
         self
@@ -394,6 +398,7 @@ impl<'a, S: 'static> MediaPlayer<'a, S> {
             emit,
         } = self;
         st.motion.set(look.animations);
+        st.glow.set(look.glow.on);
         let e = match st.clip().kind {
             MediaKind::Video => {
                 video::video(st, access, viewport, emit, &key, pixels, false, look, cx)

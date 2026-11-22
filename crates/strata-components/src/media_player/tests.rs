@@ -897,3 +897,121 @@ fn narrow_audio_pane_drops_art_without_panicking() {
     assert!(narrow.art.is_none());
     assert!(narrow.spectrum.is_some());
 }
+
+#[test]
+fn video_ambient_glow_lights_on_frames_respects_switches_and_clears_on_reset() {
+    let mut rt = host::mount();
+    rt.state.media.set_clip(Clip {
+        kind: MediaKind::Video,
+        name: "clip.mp4".into(),
+        ..Clip::default()
+    });
+    rt.invalidate();
+    rt.frame(host::DT);
+    assert!(!rt.state.media.ambient().is_lit());
+    assert!(!rt.state.media.ambient_shown());
+    assert!(
+        !rt.elements()
+            .iter()
+            .any(|e| e.key.as_deref() == Some("media-ambient")),
+        "unlit before first video frame"
+    );
+
+    let red_frame: Vec<u8> = [220u8, 40, 20, 255].repeat(16 * 16);
+    assert!(rt.state.media.feed_ambient(&red_frame, [16, 16], 1.0));
+    rt.state.media.set_frame(Some([16, 16]));
+    for _ in 0..20 {
+        rt.frame(host::DT);
+    }
+    assert!(rt.state.media.ambient().is_lit());
+    assert!(rt.state.media.ambient_shown());
+    assert!(
+        rt.elements()
+            .iter()
+            .any(|e| e.key.as_deref() == Some("media-ambient")),
+        "ambient element mounts behind video frame once lit"
+    );
+    assert!(
+        !rt.accessibility_tree()
+            .nodes
+            .iter()
+            .any(|(_, n)| n.author_id() == Some("media-ambient")),
+        "ambient element is hidden from accessibility"
+    );
+    assert_eq!(
+        rt.wake_deadline(),
+        None,
+        "paused video stops waking once stand-in fade settles"
+    );
+
+    // Turning off element glow or animations hides the ambient element immediately.
+    rt.state.look.glow.on = false;
+    rt.invalidate();
+    rt.frame(host::DT);
+    assert!(!rt.state.media.ambient_shown());
+    assert!(
+        !rt.elements()
+            .iter()
+            .any(|e| e.key.as_deref() == Some("media-ambient")),
+        "element glow off hides the ambient halo"
+    );
+
+    rt.state.look.glow.on = true;
+    rt.state.look.animations = false;
+    rt.invalidate();
+    rt.frame(host::DT);
+    assert!(!rt.state.media.ambient_shown());
+    assert!(
+        !rt.elements()
+            .iter()
+            .any(|e| e.key.as_deref() == Some("media-ambient")),
+        "reduced motion hides the ambient halo"
+    );
+
+    rt.state.look.animations = true;
+    rt.invalidate();
+    rt.frame(host::DT);
+    assert!(
+        rt.elements()
+            .iter()
+            .any(|e| e.key.as_deref() == Some("media-ambient")),
+        "re-enabling motion restores the halo for the paused frame"
+    );
+
+    // An error clears the ambient glow.
+    rt.state.media.set_error(Some(MediaError {
+        title: "Err".into(),
+        detail: "Broken".into(),
+    }));
+    rt.invalidate();
+    rt.frame(host::DT);
+    assert!(!rt.state.media.ambient().is_lit());
+    assert!(
+        !rt.elements()
+            .iter()
+            .any(|e| e.key.as_deref() == Some("media-ambient"))
+    );
+
+    // Audio, Plain, and Animation clips never light the video ambient glow.
+    for kind in [MediaKind::Audio, MediaKind::Plain, MediaKind::Animation] {
+        rt.state.media.set_clip(Clip {
+            kind,
+            name: "other".into(),
+            ..Clip::default()
+        });
+        assert!(!rt.state.media.feed_ambient(&red_frame, [16, 16], 2.0));
+        rt.state.media.set_frame(Some([16, 16]));
+        rt.invalidate();
+        rt.frame(host::DT);
+        assert!(
+            !rt.state.media.ambient().is_lit(),
+            "{kind:?} must not light ambient glow"
+        );
+        assert!(
+            !rt.elements()
+                .iter()
+                .any(|e| e.key.as_deref() == Some("media-ambient")),
+            "{kind:?} must not mount ambient halo"
+        );
+    }
+}

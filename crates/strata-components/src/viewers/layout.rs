@@ -69,6 +69,12 @@ pub struct Areas {
 
 /// The block, filling its parent. Key it with `key`.
 pub fn section(key: impl Into<String>, areas: Areas, look: &Look) -> El {
+    section_with_inset(key, areas, 0.0, look)
+}
+
+/// Like [`section`], reserving `inset` points of extra room around `areas.content` (for example,
+/// the video player's ambient glow band).
+pub fn section_with_inset(key: impl Into<String>, areas: Areas, inset: f32, look: &Look) -> El {
     let rows_w = |e: El| e.w_full().max_w(MAX_CONTENT_WIDTH).min_w(PANEL_MIN);
     let mut lower = col()
         .w_full()
@@ -82,6 +88,17 @@ pub fn section(key: impl Into<String>, areas: Areas, look: &Look) -> El {
         lower = lower.child(rows_w(timeline));
     }
     lower = lower.child(rows_w(areas.controls));
+    // The width cap is put as the height it gives at the aspect: an `aspect_fit` box with a
+    // `max_w` takes the cap for the cross room, so a box bound by the height overflows a
+    // column narrower than the cap (C13's Rune draft U-C13-4).
+    let mut content = areas
+        .content
+        .aspect_fit(areas.aspect)
+        .max_h(MAX_CONTENT_WIDTH / areas.aspect.max(f32::EPSILON))
+        .min_h(0.0);
+    if inset > 0.0 {
+        content = content.mx(inset).my(inset);
+    }
     col()
         .key(key.into())
         .w_full()
@@ -90,16 +107,7 @@ pub fn section(key: impl Into<String>, areas: Areas, look: &Look) -> El {
         .padding(look.space.xl)
         .gap(look.space.lg)
         .center()
-        // The width cap is put as the height it gives at the aspect: an `aspect_fit` box with a
-        // `max_w` takes the cap for the cross room, so a box bound by the height overflows a
-        // column narrower than the cap (C13's Rune draft U-C13-4).
-        .child(
-            areas
-                .content
-                .aspect_fit(areas.aspect)
-                .max_h(MAX_CONTENT_WIDTH / areas.aspect.max(f32::EPSILON))
-                .min_h(0.0),
-        )
+        .child(content)
         .child(lower)
 }
 
