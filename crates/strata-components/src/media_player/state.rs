@@ -10,6 +10,7 @@ use rune::{Live, Pixels, Tx};
 
 use super::audio::layout::Plan;
 use super::audio::spectrum::Spectrum;
+use super::audio::{DISC_SLID_OUT, DISC_SLIDE_RATE, DISC_TUCK_RATE, DISC_TUCKED};
 use super::clock::{PlaybackClock, PlaybackState};
 use super::data::{Art, AudioTags, Chapter, Clip, Details, MediaError, MediaKind};
 use super::intent::MediaIntent;
@@ -59,6 +60,8 @@ pub(crate) struct Lives {
     pub(crate) bubble: Live<[f32; 2]>,
     /// The stand-in's opacity.
     pub(crate) stand_in: Live<f32>,
+    /// The peeking vinyl disc's offset behind the album cover.
+    pub(crate) disc: Live<[f32; 2]>,
 }
 
 impl Default for Lives {
@@ -71,6 +74,7 @@ impl Default for Lives {
             pointer_shown: Live::new(0.0),
             bubble: Live::new([0.0; 2]),
             stand_in: Live::new(1.0),
+            disc: Live::new([0.0; 2]),
         }
     }
 }
@@ -95,6 +99,7 @@ pub(crate) struct Shown {
     spectrum: usize,
     plan: Plan,
     volume: (u32, bool),
+    art: Option<u64>,
 }
 
 /// The player's state, held by the host and reached by accessor.
@@ -134,6 +139,8 @@ pub struct MediaState {
     aspect: Option<f32>,
     frame: Option<[u32; 2]>,
     art: Option<Art>,
+    /// The peeking vinyl disc's horizontal offset behind the album cover, as a share of side.
+    disc_offset: f32,
     tags: AudioTags,
     pub(crate) spectrum: Spectrum,
 
@@ -193,6 +200,7 @@ impl MediaState {
             aspect: None,
             frame: None,
             art: None,
+            disc_offset: DISC_TUCKED,
             tags: AudioTags::default(),
             spectrum: Spectrum::default(),
             hover: None,
@@ -363,7 +371,20 @@ impl MediaState {
     }
 
     pub fn set_art(&mut self, art: Option<Art>) {
+        if art.is_none() {
+            self.disc_offset = DISC_TUCKED;
+        }
         self.art = art;
+        self.place();
+    }
+
+    pub fn art(&self) -> Option<&Art> {
+        self.art.as_ref()
+    }
+
+    /// The peeking vinyl disc's current offset behind the album cover, as a fraction of cover side.
+    pub fn disc_offset(&self) -> f32 {
+        self.disc_offset
     }
 
     pub fn set_tags(&mut self, tags: AudioTags) {
@@ -479,14 +500,49 @@ impl MediaState {
         }
 
         let spectrum = self.clip.kind == MediaKind::Audio && self.spectrum.tick(elapsed);
+        let disc_moving = self.step_disc(elapsed, motion);
         self.check_decode();
         self.place();
 
         let fading = matches!(self.stand_in, StandIn::Fading(_));
-        if self.playing() || spectrum || self.levels.moving() || fading {
+        if self.playing() || spectrum || self.levels.moving() || fading || disc_moving {
             tx.wake_after(FRAME);
         }
         self.stale()
+    }
+
+    /// Advances the peeking vinyl disc offset behind the album sleeve. True while still moving.
+    fn step_disc(&mut self, elapsed: f32, motion: bool) -> bool {
+        if self.clip.kind != MediaKind::Audio || self.art.is_none() {
+            self.disc_offset = DISC_TUCKED;
+            return false;
+        }
+        let target = if self.playing() {
+            DISC_SLID_OUT
+        } else {
+            DISC_TUCKED
+        };
+        if !motion {
+            self.disc_offset = target;
+            return false;
+        }
+        if (self.disc_offset - target).abs() == 0.0 {
+            return false;
+        }
+        let rate = if target > self.disc_offset {
+            DISC_SLIDE_RATE
+        } else {
+            DISC_TUCK_RATE
+        };
+        let dt = elapsed.clamp(0.0, 0.1);
+        let moved = self.disc_offset + (target - self.disc_offset) * (1.0 - (-rate * dt).exp());
+        let side = self.plan.art.unwrap_or(160.0).max(1.0);
+        self.disc_offset = if (target - moved).abs() * side < 0.5 {
+            target
+        } else {
+            moved
+        };
+        (self.disc_offset - target).abs() > 0.0
     }
 
     /// Reads the clock. A seek the host hasn't applied yet (its poll drains intents after the
@@ -781,6 +837,9 @@ impl MediaState {
     pub(crate) fn set_audio_box(&mut self, plan: Plan) -> bool {
         let changed = self.plan != plan;
         self.plan = plan;
+        if changed {
+            self.place();
+        }
         changed
     }
 
@@ -821,6 +880,8 @@ impl MediaState {
             let x = (f * fw - bw / 2.0).clamp(0.0, (fw - bw).max(0.0));
             self.live.bubble.set([x, 0.0]);
         }
+        let side = self.plan.art.unwrap_or(0.0);
+        self.live.disc.set([self.disc_offset * side, 0.0]);
     }
 
     fn played_fraction(&self) -> f32 {
@@ -840,10 +901,6 @@ impl MediaState {
 
     pub(crate) fn aspect(&self) -> Option<f32> {
         self.aspect
-    }
-
-    pub(crate) fn art(&self) -> Option<&Art> {
-        self.art.as_ref()
     }
 
     pub(crate) fn stand_in_shown(&self) -> bool {
@@ -911,6 +968,7 @@ impl MediaState {
             spectrum: self.spectrum.count(),
             plan: self.plan,
             volume: ((self.volume * 1000.0).round() as u32, self.muted),
+            art: self.art.as_ref().map(|a| a.id),
         }
     }
 
