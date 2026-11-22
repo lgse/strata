@@ -45,6 +45,7 @@ struct ActiveFx {
     started_at: f64,
     elapsed: f64,
     duration: f64,
+    seed: u32,
 }
 
 impl ActiveFx {
@@ -61,6 +62,7 @@ impl ActiveFx {
 pub(crate) struct TenxerFxOverlay {
     active: Option<ActiveFx>,
     was_tenxer: bool,
+    next_seed: u32,
 }
 
 impl Part for TenxerFxOverlay {
@@ -71,6 +73,7 @@ impl Part for TenxerFxOverlay {
         Self {
             active: None,
             was_tenxer: setup.settings.tenxer_mode,
+            next_seed: 1,
         }
     }
 
@@ -101,7 +104,7 @@ fn duration_secs(effect: TenxerFx) -> f64 {
         TenxerFx::ShockwaveRing => 0.80,
         TenxerFx::PerimeterIgnite => 0.84,
         TenxerFx::TacticalHud => 0.82,
-        TenxerFx::InterfaceOnFire => 0.98,
+        TenxerFx::InterfaceOnFire => 1.72,
         TenxerFx::Off => 0.0,
     }
 }
@@ -120,11 +123,14 @@ pub(crate) fn trigger(app: &mut App, effect: TenxerFx, tx: &mut Tx) {
         return;
     }
     let duration = duration_secs(effect);
+    let seed = app.tenxer_fx.next_seed;
+    app.tenxer_fx.next_seed = (seed % 65_535) + 1;
     app.tenxer_fx.active = Some(ActiveFx {
         effect,
         started_at: tx.clock(),
         elapsed: 0.0,
         duration,
+        seed,
     });
     tx.wake_after(Duration::from_secs_f64(FRAME_STEP_SECS));
 }
@@ -172,7 +178,12 @@ fn build(app: &App, frame: &mut Frame<'_, App>) -> Option<El> {
         .window_size()
         .map(|(w, h)| (w as f32, h as f32))
         .unwrap_or(FALLBACK_WINDOW_SIZE);
-    let fx = FxFrame::new(&app.look, width, height, active.progress());
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "animation elapsed seconds fit f32"
+    )]
+    let fx = FxFrame::new(&app.look, width, height, active.progress())
+        .with_timing(active.elapsed as f32, active.seed);
     let scene = render_effect(active.effect, &fx)?;
     let overlay = el()
         .key(OVERLAY_KEY)

@@ -61,18 +61,31 @@ pub(super) struct FxFrame<'a> {
     pub(super) height: f32,
     /// Normalized animation progress in `0.0..=1.0`.
     pub(super) t: f32,
+    /// Monotonic elapsed playback time in seconds (for real-time GPU shader simulation).
+    pub(super) elapsed: f32,
+    /// Per-trigger deterministic seed so repeated plays produce distinct flame choreography.
+    pub(super) seed: u32,
     pub(super) palette: FxPalette,
 }
 
 impl<'a> FxFrame<'a> {
     pub(super) fn new(look: &'a Look, width: f32, height: f32, t: f32) -> Self {
+        let t = clamp01(t);
         Self {
             look,
             width: width.max(1.0),
             height: height.max(1.0),
-            t: clamp01(t),
+            t,
+            elapsed: t,
+            seed: 1,
             palette: FxPalette::from_look(look),
         }
+    }
+
+    pub(super) fn with_timing(mut self, elapsed: f32, seed: u32) -> Self {
+        self.elapsed = elapsed.max(0.0);
+        self.seed = seed.max(1);
+        self
     }
 
     /// Window corner radius scaled by the active `CornerRoundness`.
