@@ -782,3 +782,75 @@ fn menu_min_width_scales_with_interface_text_size() {
         assert_eq!(super::min_width(&look), expected, "text_size={text_size}");
     }
 }
+
+#[test]
+fn every_entry_and_folder_menu_row_carries_its_gtk_icon() {
+    use strata_kit::icons::IconName;
+
+    let archive = file("bundle.tar.gz");
+    let docs = directory("documents");
+    let pair = [file("a.txt"), directory("sub")];
+    let models = [
+        entry(&one(&archive, false)),
+        entry(&one(&docs, false)),
+        entry(&of(&pair[0], &pair, false)),
+        folder(&FolderTarget {
+            has_entries: true,
+            can_paste: true,
+            can_open_terminal: true,
+            hidden_shown: false,
+            typing: Hints::default_map(false),
+        }),
+    ];
+    for menu in &models {
+        for item in items(menu) {
+            assert!(item.icon.is_some(), "row {:?} missing icon", item.label);
+            if let Some(sub) = &item.submenu {
+                for child in sub.iter().flat_map(|s| s.items.iter()) {
+                    assert!(
+                        child.icon.is_some(),
+                        "submenu row {:?} missing icon",
+                        child.label
+                    );
+                }
+            }
+        }
+    }
+
+    let file_menu = &models[0];
+    let icon_of = |label: &str| {
+        items(file_menu)
+            .find(|item| item.label == label)
+            .unwrap_or_else(|| panic!("missing row {label}"))
+            .icon
+    };
+    for (label, expected) in [
+        ("New Folder", IconName::FolderPlus),
+        ("New File", IconName::FilePlus),
+        ("New Folder with Selection", IconName::FolderPlus),
+        ("Open", IconName::Open),
+        ("Open With…", IconName::AppWindow),
+        ("Quick preview", IconName::Eye),
+        ("Extract here", IconName::Extract),
+        ("Extract to…", IconName::FolderArchive),
+        ("Cut", IconName::Cut),
+        ("Copy", IconName::Copy),
+        ("Duplicate", IconName::CopyPlus),
+        ("Rename", IconName::Rename),
+        ("Move to…", IconName::FolderInput),
+        ("Copy to…", IconName::FolderOutput),
+        ("Compress…", IconName::PackagePlus),
+        ("Customize…", IconName::Palette),
+        ("Copy path", IconName::Route),
+        ("Copy name", IconName::FileType),
+        ("Properties", IconName::Properties),
+        ("Move to Trash", IconName::Trash),
+        ("Permanently delete", IconName::CircleX),
+    ] {
+        assert_eq!(icon_of(label), Some(expected), "{label}");
+    }
+    let delete = items(file_menu)
+        .find(|item| item.label == "Permanently delete")
+        .expect("Permanently delete");
+    assert!(delete.danger, "Permanently delete is marked destructive");
+}

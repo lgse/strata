@@ -17,8 +17,7 @@
 //!   rules: the sidebar and the location bar, which reach those places;
 //! - "Send to…", custom actions and file-provider rows: devices, the custom-action catalog
 //!   and the providers;
-//! - the 10xer hints;
-//! - each row's icon.
+//! - the 10xer hints.
 //!
 //! A row runs the command registered under the row's id ([`crate::commands`]). A row whose
 //! command belongs to a part this interface does not have yet is shown as the GTK menu shows
@@ -36,6 +35,7 @@ use strata_core::{
     model::{ArchiveFormat, EntryKind, FileEntry, Location},
 };
 use strata_desktop::keys::{self, Command, Keys, Map, Shown, bindings as key};
+use strata_kit::icons::IconName;
 
 use crate::{
     App,
@@ -439,12 +439,13 @@ enum TenxerHint {
     Hidden,
 }
 
-/// One row of a menu: its id, its label in the catalogs, and the catalog's keys its hint
-/// shows.
+/// One row of a menu: its id, its label in the catalogs, its leading icon, and the catalog's
+/// keys its hint shows.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct Row {
     pub(crate) id: &'static str,
     pub(crate) label: &'static str,
+    pub(crate) icon: IconName,
     /// What `default_hint` shows for the row, labelled from the keymap in force when the menu
     /// opens.
     hint: Option<Shown>,
@@ -454,10 +455,11 @@ pub(crate) struct Row {
     tenxer: TenxerHint,
 }
 
-const fn row(id: &'static str, label: &'static str) -> Row {
+const fn row(id: &'static str, label: &'static str, icon: IconName) -> Row {
     Row {
         id,
         label,
+        icon,
         hint: None,
         typed: None,
         tenxer: TenxerHint::Same,
@@ -519,7 +521,7 @@ impl Row {
     }
 
     fn item(&self, typing: Hints) -> Item {
-        let item = Item::new(self.id, tr(self.label));
+        let item = Item::new(self.id, tr(self.label)).icon(self.icon);
         match self.hint_label(typing) {
             Some(label) => item.shortcut(label),
             None => item,
@@ -527,62 +529,72 @@ impl Row {
     }
 }
 
-pub(crate) const NEW_FOLDER: Row = row("new-folder", "New Folder").hint(key::NEW_FOLDER.shown());
-pub(crate) const NEW_FILE: Row = row("new-file", "New File");
-pub(crate) const GROUP: Row = row("group", "New Folder with Selection");
-pub(crate) const OPEN: Row = row("open", "Open").hint(key::ENTER.shown());
-pub(crate) const OPEN_WITH: Row = row("open-with", "Open With…");
-pub(crate) const PREVIEW: Row = row("preview", "Quick preview").hint(key::PREVIEW.shown());
-pub(crate) const RUN: Row = row("run", "Run");
-pub(crate) const TERMINAL: Row = row("terminal", "Open in Terminal")
+pub(crate) const NEW_FOLDER: Row =
+    row("new-folder", "New Folder", IconName::FolderPlus).hint(key::NEW_FOLDER.shown());
+pub(crate) const NEW_FILE: Row = row("new-file", "New File", IconName::FilePlus);
+pub(crate) const GROUP: Row = row("group", "New Folder with Selection", IconName::FolderPlus);
+pub(crate) const OPEN: Row = row("open", "Open", IconName::Open).hint(key::ENTER.shown());
+pub(crate) const OPEN_WITH: Row = row("open-with", "Open With…", IconName::AppWindow);
+pub(crate) const PREVIEW: Row =
+    row("preview", "Quick preview", IconName::Eye).hint(key::PREVIEW.shown());
+pub(crate) const RUN: Row = row("run", "Run", IconName::Play);
+pub(crate) const TERMINAL: Row = row("terminal", "Open in Terminal", IconName::Terminal)
     .hint(key::TERMINAL.shown())
     .no_tenxer_hint();
-pub(crate) const OPEN_IN: Row = row("open-in", "Open in…");
-pub(crate) const NEW_TAB: Row = row("open-in-tab", "New Tab").hint(key::OPEN_IN_NEW_TAB.shown());
+pub(crate) const OPEN_IN: Row = row("open-in", "Open in…", IconName::Open);
+pub(crate) const NEW_TAB: Row =
+    row("open-in-tab", "New Tab", IconName::Plus).hint(key::OPEN_IN_NEW_TAB.shown());
 pub(crate) const NEW_WINDOW: Row =
-    row("open-in-window", "New Window").hint(key::OPEN_IN_NEW_WINDOW.shown());
-pub(crate) const EXTRACT: Row = row("extract", "Extract here");
-pub(crate) const EXTRACT_TO: Row = row("extract-to", "Extract to…");
-pub(crate) const CUT: Row = row("cut", "Cut")
+    row("open-in-window", "New Window", IconName::AppWindow).hint(key::OPEN_IN_NEW_WINDOW.shown());
+pub(crate) const EXTRACT: Row = row("extract", "Extract here", IconName::Extract);
+pub(crate) const EXTRACT_TO: Row = row("extract-to", "Extract to…", IconName::FolderArchive);
+pub(crate) const CUT: Row = row("cut", "Cut", IconName::Cut)
     .hint(key::CUT.shown())
     .tenxer_hint(key::YANK_CUT.shown());
-pub(crate) const COPY: Row = row("copy", "Copy")
+pub(crate) const COPY: Row = row("copy", "Copy", IconName::Copy)
     .hint(key::COPY.shown())
     .tenxer_hint(key::YANK.shown());
-pub(crate) const DUPLICATE: Row = row("duplicate", "Duplicate")
+pub(crate) const DUPLICATE: Row = row("duplicate", "Duplicate", IconName::CopyPlus)
     .hint(key::DUPLICATE.shown())
     .no_tenxer_hint();
-pub(crate) const RENAME: Row = row("rename", "Rename")
+pub(crate) const RENAME: Row = row("rename", "Rename", IconName::Rename)
     .hint(key::RENAME.shown())
     .tenxer_hint(key::RENAME.alternate(0).shown());
-pub(crate) const MOVE_TO: Row = row("move-to", "Move to…").tenxer_hint(key::MOVE_TO.shown());
-pub(crate) const COPY_TO: Row = row("copy-to", "Copy to…").tenxer_hint(key::COPY_TO.shown());
-pub(crate) const COMPRESS: Row = row("compress", "Compress…");
-pub(crate) const PIN: Row = row("pin", "Pin to sidebar").typed_hint(key::PIN);
-pub(crate) const CUSTOMIZE: Row = row("customize", "Customize…");
-pub(crate) const COPY_PATH: Row = row("copy-path", "Copy path").typed_hint(key::COPY_PATH);
-pub(crate) const COPY_NAME: Row = row("copy-name", "Copy name");
-pub(crate) const COPY_PATHS: Row = row("copy-paths", "Copy paths").typed_hint(key::COPY_PATH);
-pub(crate) const COPY_NAMES: Row = row("copy-names", "Copy names");
-pub(crate) const PROPERTIES: Row = row("properties", "Properties").hint(key::PROPERTIES.shown());
+pub(crate) const MOVE_TO: Row =
+    row("move-to", "Move to…", IconName::FolderInput).tenxer_hint(key::MOVE_TO.shown());
+pub(crate) const COPY_TO: Row =
+    row("copy-to", "Copy to…", IconName::FolderOutput).tenxer_hint(key::COPY_TO.shown());
+pub(crate) const COMPRESS: Row = row("compress", "Compress…", IconName::PackagePlus);
+pub(crate) const PIN: Row = row("pin", "Pin to sidebar", IconName::Pin).typed_hint(key::PIN);
+pub(crate) const CUSTOMIZE: Row = row("customize", "Customize…", IconName::Palette);
+pub(crate) const COPY_PATH: Row =
+    row("copy-path", "Copy path", IconName::Route).typed_hint(key::COPY_PATH);
+pub(crate) const COPY_NAME: Row = row("copy-name", "Copy name", IconName::FileType);
+pub(crate) const COPY_PATHS: Row =
+    row("copy-paths", "Copy paths", IconName::Route).typed_hint(key::COPY_PATH);
+pub(crate) const COPY_NAMES: Row = row("copy-names", "Copy names", IconName::FileType);
+pub(crate) const PROPERTIES: Row =
+    row("properties", "Properties", IconName::Properties).hint(key::PROPERTIES.shown());
 /// The background menu's Properties shows no hint (`ContextHint::None` in `folder_menu.rs`).
-pub(crate) const FOLDER_PROPERTIES: Row = row("properties", "Properties");
-pub(crate) const TRASH: Row = row("trash", "Move to Trash")
+pub(crate) const FOLDER_PROPERTIES: Row = row("properties", "Properties", IconName::Properties);
+pub(crate) const TRASH: Row = row("trash", "Move to Trash", IconName::Trash)
     .hint(key::MOVE_TO_TRASH.shown())
     .tenxer_hint(key::MOVE_TO_TRASH.alternate(0).shown());
-pub(crate) const DELETE: Row = row("delete", "Permanently delete")
+pub(crate) const DELETE: Row = row("delete", "Permanently delete", IconName::CircleX)
     .hint(key::DELETE_PERMANENTLY.shown())
     .tenxer_hint(key::DELETE_PERMANENTLY.alternate(0).shown());
-pub(crate) const PASTE: Row = row("paste", "Paste")
+pub(crate) const PASTE: Row = row("paste", "Paste", IconName::Paste)
     .hint(key::PASTE.shown())
     .tenxer_hint(key::PASTE_KEEP_BOTH.shown());
-pub(crate) const SELECT_ALL: Row = row("select-all", "Select All").hint(key::SELECT_ALL.shown());
-pub(crate) const REFRESH: Row = row("refresh", "Refresh").hint(key::REFRESH.shown());
+pub(crate) const SELECT_ALL: Row =
+    row("select-all", "Select All", IconName::ListChecks).hint(key::SELECT_ALL.shown());
+pub(crate) const REFRESH: Row =
+    row("refresh", "Refresh", IconName::Refresh).hint(key::REFRESH.shown());
 /// The hidden-files rows show the primary key alone: `HIDDEN_FILES.alternate(0)`.
-pub(crate) const SHOW_HIDDEN: Row =
-    row("hidden", "Show Hidden Files").hint(key::HIDDEN_FILES.alternate(0).shown());
+pub(crate) const SHOW_HIDDEN: Row = row("hidden", "Show Hidden Files", IconName::EyeOff)
+    .hint(key::HIDDEN_FILES.alternate(0).shown());
 pub(crate) const HIDE_HIDDEN: Row =
-    row("hidden", "Hide Hidden Files").hint(key::HIDDEN_FILES.alternate(0).shown());
+    row("hidden", "Hide Hidden Files", IconName::Eye).hint(key::HIDDEN_FILES.alternate(0).shown());
 
 /// Every row either menu can show, for the tests of their words and of which have a
 /// command. The two hidden-files rows share an id, as the two Properties rows do.
@@ -687,7 +699,7 @@ fn section(rows: &[(Row, bool)], typing: Hints) -> Section {
 
 fn open_in(typing: Hints) -> Item {
     let children = Section::new([NEW_TAB.item(typing), NEW_WINDOW.item(typing)]);
-    Item::submenu(OPEN_IN.id, tr(OPEN_IN.label), [children])
+    Item::submenu(OPEN_IN.id, tr(OPEN_IN.label), [children]).icon(OPEN_IN.icon)
 }
 
 fn delete_rows(target: &EntryTarget<'_>) -> Section {

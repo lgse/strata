@@ -36,6 +36,7 @@ use strata_components::{
 use strata_core::{i18n::tr, model::Location};
 use strata_desktop::settings::Preferences;
 use strata_fs::adapters::bookmarks;
+use strata_kit::icons::IconName;
 
 use super::{
     places::Row,
@@ -59,37 +60,45 @@ fn min_width(look: &strata_kit::look::Look) -> f32 {
     (MIN_WIDTH * scale).round()
 }
 
-/// One row: its id, its label in the catalogs, and whether it destroys something.
+/// One row: its id, its label in the catalogs, its leading icon, and whether it destroys
+/// something.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) struct MenuRow {
     pub(super) id: &'static str,
     label: &'static str,
+    icon: IconName,
     danger: bool,
 }
 
 impl MenuRow {
-    const fn new(id: &'static str, label: &'static str) -> Self {
+    const fn new(id: &'static str, label: &'static str, icon: IconName) -> Self {
         Self {
             id,
             label,
+            icon,
             danger: false,
         }
     }
 
     fn item(self) -> Item {
-        Item::new(self.id, tr(self.label)).danger(self.danger)
+        Item::new(self.id, tr(self.label))
+            .icon(self.icon)
+            .danger(self.danger)
     }
 }
 
-pub(super) const OPEN_IN_TAB: MenuRow = MenuRow::new("open-in-tab", "Open in New Tab");
-pub(super) const CONNECT: MenuRow = MenuRow::new("connect-to-server", "Connect to server…");
-pub(super) const UNPIN: MenuRow = MenuRow::new("unpin", "Unpin");
-pub(super) const CUSTOMIZE: MenuRow = MenuRow::new("customize", "Customize…");
-pub(super) const PROPERTIES: MenuRow = MenuRow::new("properties", "Properties");
+pub(super) const OPEN_IN_TAB: MenuRow =
+    MenuRow::new("open-in-tab", "Open in New Tab", IconName::Plus);
+pub(super) const CONNECT: MenuRow =
+    MenuRow::new("connect-to-server", "Connect to server…", IconName::Plus);
+pub(super) const UNPIN: MenuRow = MenuRow::new("unpin", "Unpin", IconName::Pin);
+pub(super) const CUSTOMIZE: MenuRow = MenuRow::new("customize", "Customize…", IconName::Palette);
+pub(super) const PROPERTIES: MenuRow =
+    MenuRow::new("properties", "Properties", IconName::Properties);
 /// The trash part's command (`crate::trash::empty`).
 pub(super) const EMPTY_TRASH: MenuRow = MenuRow {
     danger: true,
-    ..MenuRow::new("empty-trash", "Empty Trash…")
+    ..MenuRow::new("empty-trash", "Empty Trash…", IconName::Trash)
 };
 
 fn is_trash(item: &ItemId) -> bool {
@@ -118,7 +127,7 @@ pub(super) fn rows(row: &Row, trash: Contents) -> Vec<Vec<MenuRow>> {
     vec![vec![OPEN_IN_TAB], actions]
 }
 
-fn model(row: &Row, trash: Contents) -> MenuModel {
+pub(super) fn model(row: &Row, trash: Contents) -> MenuModel {
     rows(row, trash)
         .into_iter()
         .fold(MenuModel::new(), |model, section| {

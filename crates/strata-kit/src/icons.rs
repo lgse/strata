@@ -258,8 +258,34 @@ icon_names! {
     Paste = "paste" => line!(r#"<rect x="3.5" y="3" width="9" height="11" rx="1"/><path d="M6 3V2h4v1"/><path d="M8 6v5M6 9l2 2 2-2"/>"#),
     /// A new folder (C21).
     FolderPlus = "folder_plus" => line!(r#"<path d="M2.5 12.5v-9h4l1.5 1.5h5.5v7.5z"/><path d="M8 7v4M6 9h4"/>"#),
+    /// A new file (C21).
+    FilePlus = "file_plus" => line!(r#"<path d="M4 2.5h5.5l2.5 2.5v8.5H4z"/><path d="M8 7v4M6 9h4"/>"#),
+    /// Open With / New Window (C21).
+    AppWindow = "app_window" => line!(r#"<rect x="2" y="3" width="12" height="10" rx="1"/><path d="M2 6h12"/>"#),
+    /// Duplicate an entry (C21).
+    CopyPlus = "copy_plus" => line!(r#"<rect x="5" y="5" width="8" height="8" rx="1"/><path d="M3 11V3h8"/><path d="M9 7v4M7 9h4"/>"#),
+    /// Move to another folder (C21).
+    FolderInput = "folder_input" => line!(r#"<path d="M2.5 12.5v-9h4l1.5 1.5h5.5v7.5z"/><path d="M5.5 9h5M8.5 7l2 2-2 2"/>"#),
+    /// Copy to another folder (C21).
+    FolderOutput = "folder_output" => line!(r#"<path d="M2.5 12.5v-9h4l1.5 1.5h5.5v7.5z"/><path d="M10.5 9h-5M7.5 7l-2 2 2 2"/>"#),
+    /// Send to a device or provider (C21).
+    Send = "send" => line!(r#"<path d="M2.5 3.5L13.5 8l-11 4.5 2-4.5z"/><path d="M4.5 8h4"/>"#),
+    /// Compress entries into an archive (C21).
+    PackagePlus = "package_plus" => line!(r#"<rect x="2.5" y="3" width="11" height="3" rx="0.5"/><path d="M3.5 6v7h9V6"/><path d="M8 7.5v4M6 9.5h4"/>"#),
     /// Extract an archive here (C21, C14b).
     Extract = "extract" => line!(r#"<rect x="2.5" y="3" width="11" height="3" rx="0.5"/><path d="M3.5 6v7h9V6"/><path d="M8 7.5v4M6.3 9.8L8 11.5l1.7-1.7"/>"#),
+    /// Extract an archive to a chosen folder (C21).
+    FolderArchive = "folder_archive" => line!(r#"<path d="M2.5 12.5v-9h4l1.5 1.5h5.5v7.5z"/><path d="M8 6.5v5M6.5 8.5h3"/>"#),
+    /// Customize folder icon or color (C21).
+    Palette = "palette" => line!(r#"<circle cx="8" cy="8" r="5.5"/><circle cx="6" cy="6.5" r="0.8" fill="currentColor" stroke="none"/><circle cx="10" cy="6.5" r="0.8" fill="currentColor" stroke="none"/><circle cx="6.5" cy="10" r="0.8" fill="currentColor" stroke="none"/>"#),
+    /// Copy path (C21).
+    Route = "route" => line!(r#"<circle cx="4.5" cy="11.5" r="1.5"/><circle cx="11.5" cy="4.5" r="1.5"/><path d="M6 11.5h2.5a2 2 0 0 0 0-4H7.5a2 2 0 0 1 0-4H10"/>"#),
+    /// Copy file name (C21).
+    FileType = "file_type" => line!(r#"<path d="M4 2.5h5.5l2.5 2.5v8.5H4z"/><path d="M6 8h4M8 8v3.5"/>"#),
+    /// Permanently delete (C21).
+    CircleX = "circle_x" => kit!(CIRCLE_X),
+    /// Restore from Trash / undo (C21).
+    Undo = "undo" => line!(r#"<path d="M5.5 6.5L3 9l2.5 2.5"/><path d="M3 9h7a3 3 0 0 1 0 6H7"/>"#),
     /// Open a terminal here (C21).
     Terminal = "terminal" => line!(r#"<rect x="2" y="3" width="12" height="10" rx="1"/><path d="M4.5 6.5L6.5 8l-2 1.5M8 10.5h3.5"/>"#),
     /// Properties (C21, C15).

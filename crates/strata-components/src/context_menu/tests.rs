@@ -1522,3 +1522,117 @@ fn width_with_min_enforces_the_floor_and_handles_scaled_floors() {
     let scaled_floor = 620.0;
     assert_eq!(compact.width_with_min(&look, scaled_floor), scaled_floor);
 }
+
+fn scroll_y(rt: &Runtime<Host>, key: &str) -> f64 {
+    let mut stack = vec![rt.accessibility_json()];
+    while let Some(node) = stack.pop() {
+        if node["key"] == key
+            && let Some(arr) = node["scroll"].as_array()
+            && let Some(y) = arr.get(1).and_then(|v| v.as_f64())
+        {
+            return y;
+        }
+        if let Some(children) = node["children"].as_array() {
+            stack.extend(children.iter().cloned());
+        }
+    }
+    0.0
+}
+
+#[test]
+fn a_scrolling_menu_shows_its_c24_scrollbar_and_scrolls_on_trough_press() {
+    let items: Vec<Item> = (0..24)
+        .map(|i| Item::new(format!("act-{i}"), format!("Action {i}")).shortcut("Ctrl+K"))
+        .collect();
+    let mut rt = opened_with(MenuModel::new().section(Section::new(items)));
+    let bar = live(&rt, "m-scrollbar").expect("C24 scrollbar mounted");
+    assert!(
+        bar.opacity > 0.5,
+        "overflowing menu shows its C24 scrollbar: opacity={}",
+        bar.opacity
+    );
+    let scroll_before = scroll_y(&rt, "m-scroll");
+
+    // Press the lower half of the trough to warp-scroll the menu without dismissing it.
+    let [x, y, w, h] = bar.rect;
+    let (cx, cy) = (x + w / 2.0, y + h * 0.85);
+    rt.pointer_move(cx, cy);
+    rt.pointer_down(cx, cy);
+    step(&mut rt);
+    rt.pointer_up(cx, cy);
+    step(&mut rt);
+
+    assert!(rt.state.menu.is_open(), "scrollbar press keeps menu open");
+    let scroll_after = scroll_y(&rt, "m-scroll");
+    assert!(
+        scroll_after > scroll_before + 10.0,
+        "trough press scrolls viewport: before={scroll_before} after={scroll_after}"
+    );
+    tap(&mut rt, "m-item23");
+    assert!(!rt.state.menu.is_open());
+    assert_eq!(rt.state.heard, ["act-23 Some(4)"]);
+}
+
+#[test]
+fn a_short_menu_keeps_its_c24_scrollbar_hidden() {
+    let m = MenuModel::new().section(Section::new([
+        Item::new("open", "Open").shortcut("Enter"),
+        Item::new("copy", "Copy").shortcut("Ctrl+C"),
+    ]));
+    let rt = opened_with(m);
+    let bar = live(&rt, "m-scrollbar").expect("C24 scrollbar mounted");
+    assert_eq!(bar.opacity, 0.0, "non-overflowing menu hides its scrollbar");
+}
+
+#[test]
+fn items_with_icons_and_danger_invoke_actions_and_keep_clean_accessibility() {
+    use strata_kit::icons::IconName;
+
+    let m = MenuModel::new().section(Section::new([
+        Item::new("open", "Open")
+            .icon(IconName::Open)
+            .shortcut("Enter"),
+        Item::new("with", "Open With…")
+            .icon(IconName::AppWindow)
+            .description("Looking for apps…")
+            .enabled(false),
+        Item::new("delete", "Permanently delete")
+            .icon(IconName::CircleX)
+            .shortcut("Shift+Delete")
+            .danger(true),
+    ]));
+    let mut rt = opened_with(m);
+
+    // Collect menu-item nodes from the AccessKit tree: icons stay hidden from assistive tech.
+    let mut items = Vec::new();
+    let mut stack = vec![rt.accessibility_json()];
+    while let Some(node) = stack.pop() {
+        if node["role"] == "menu-item" {
+            items.push(node.clone());
+        }
+        if let Some(children) = node["children"].as_array() {
+            stack.extend(children.iter().cloned());
+        }
+    }
+    assert_eq!(items.len(), 3, "three menu-item nodes in a11y tree");
+    let by_key = |k: &str| {
+        items
+            .iter()
+            .find(|n| n["key"] == k)
+            .unwrap_or_else(|| panic!("missing a11y node {k}"))
+    };
+    assert_eq!(by_key("m-item0")["name"], "Open");
+    assert_eq!(by_key("m-item0")["shortcut"], "Enter");
+    assert!(
+        by_key("m-item0")["children"]
+            .as_array()
+            .is_none_or(Vec::is_empty)
+    );
+    assert_eq!(by_key("m-item1")["description"], "Looking for apps…");
+    assert_eq!(by_key("m-item2")["name"], "Permanently delete");
+    assert_eq!(by_key("m-item2")["shortcut"], "Shift+Delete");
+
+    tap(&mut rt, "m-item2");
+    assert!(!rt.state.menu.is_open());
+    assert_eq!(rt.state.heard, ["delete Some(4)"]);
+}
