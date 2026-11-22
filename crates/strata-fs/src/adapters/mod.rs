@@ -52,7 +52,7 @@ pub use local_preview::LocalPreviewProvider;
 pub use volume::set_mountinfo_for_isolated_test;
 pub use volume::{DropVolumeQuery, DropVolumes, lookup_drop_volumes};
 pub use volume::{
-    MountTable, RemovableRoot, invalidate_mount_snapshot, mount_can_unplug, mount_is_removable,
-    volume_can_unplug, with_mount_snapshot,
+    MountTable, RemovableRoot, block_device_is_exclusively_held, invalidate_mount_snapshot,
+    mount_can_unplug, mount_is_removable, volume_can_unplug, with_mount_snapshot,
 };
 pub use volume::{mount_lanes, mount_watch};

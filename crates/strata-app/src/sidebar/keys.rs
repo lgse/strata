@@ -40,6 +40,9 @@ pub(super) const TOGGLE: &str = "header-sidebar-toggle";
 /// The pinned section's heading, the first element when no place is shown.
 pub(super) const PINNED_HEADING: &str = "sidebar-heading-pinned";
 
+/// The devices section's heading, the first element when no place or pin is shown.
+pub(super) const DEVICES_HEADING: &str = "sidebar-heading-devices";
+
 /// One arrow's keys at the stage: the arrow, and its other key as pressed.
 macro_rules! arrow {
     ($id:literal, $command:expr, $run:expr) => {
@@ -115,16 +118,19 @@ fn plain(press: &KeyPress, arrow: Command) -> bool {
 
 impl super::Sidebar {
     /// The key of the sidebar's first element: the first place's row, else the pinned
-    /// section's heading.
+    /// section's heading, else the devices section's heading.
     pub(super) fn first_key(&self) -> Option<String> {
         let place = self
             .listed
             .rows
             .iter()
             .find(|row| matches!(row.item, ItemId::Place(_)));
-        match place {
-            Some(row) => Some(row.item.key(KEY)),
-            None => (!self.listed.pins.is_empty()).then(|| PINNED_HEADING.to_owned()),
+        if let Some(row) = place {
+            return Some(row.item.key(KEY));
         }
+        if !self.listed.pins.is_empty() {
+            return Some(PINNED_HEADING.to_owned());
+        }
+        (!self.devices.groups().is_empty()).then(|| DEVICES_HEADING.to_owned())
     }
 }

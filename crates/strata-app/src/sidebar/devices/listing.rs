@@ -2,24 +2,38 @@
 
 //! What DEVICES lists, read from GIO's volume monitor as GTK's `append_devices` reads it
 //! (`src/ui/window/sidebar_devices.rs`, with `gio_devices.rs` and `devices.rs`): the volumes,
-//! then the mounts no listed volume stands for, each placed under its drive.
+//! orphaned password-start drives, and the mounts no listed volume stands for, each placed under
+//! its drive.
 //!
 //! On the interface thread, whose GLib context is the default one the hosts iterate.
 
 use std::collections::HashSet;
 
 use gio::prelude::*;
+use strata_components::sidebar::LockState;
 use strata_core::model::Location;
 use strata_fs::adapters::location_for_file;
 
-use super::order::{DeviceHome, DevicePlacement, DriveRank, group_by_drive};
-use super::{MediaRelease, release_action};
+use super::{
+    MediaRelease,
+    crypto::{
+        gio_mount_is_encrypted, gio_volume_is_encrypted, gio_volume_is_locked,
+        orphaned_password_drives,
+    },
+    order::{DeviceHome, DevicePlacement, DriveRank, group_by_drive},
+    probes::is_exclusively_held,
+    release::{DeviceIds, ids_for_drive, ids_for_mount, ids_for_volume},
+    release_action,
+};
 
 /// The GIO object a row stands for.
 #[derive(Clone, Debug)]
 pub(super) enum Source {
     Volume(gio::Volume),
+    PasswordDrive(gio::Drive),
     Mount(gio::Mount),
+    #[cfg(test)]
+    Synthetic,
 }
 
 /// One row of DEVICES as the monitor shows it.
@@ -34,7 +48,10 @@ pub(super) struct Seen {
     pub(super) root: Option<Location>,
     pub(super) description: String,
     pub(super) release: Option<MediaRelease>,
+    pub(super) lock: Option<LockState>,
+    pub(super) can_mount: bool,
     pub(super) network: bool,
+    pub(super) ids: DeviceIds,
     pub(super) source: Source,
 }
 
@@ -43,11 +60,17 @@ pub(super) struct Seen {
 pub(super) fn read(local_only: bool) -> Vec<Vec<Seen>> {
     let monitor = gio::VolumeMonitor::get();
     let volumes = monitor.volumes();
+    let password_drives = orphaned_password_drives(&volumes, &monitor.connected_drives());
     let mut rows: Vec<(DevicePlacement, Seen)> = volumes
         .iter()
         .filter(|volume| !hides_volume(volume, local_only))
         .map(|volume| (volume_placement(volume), volume_row(volume)))
         .collect();
+    rows.extend(
+        password_drives
+            .into_iter()
+            .map(|drive| (password_drive_placement(&drive), password_drive_row(drive))),
+    );
     rows.extend(
         mounts_without_volumes(&monitor, &volumes, local_only)
             .into_iter()
@@ -79,15 +102,40 @@ fn volume_row(volume: &gio::Volume) -> Seen {
         .map(Location::display_path)
         .or_else(|| unix_device(volume).map(String::from))
         .unwrap_or_default();
+    let lock = gio_volume_is_encrypted(volume).then_some(if gio_volume_is_locked(volume) {
+        LockState::Locked
+    } else {
+        LockState::Unlocked
+    });
     Seen {
         id: volume_identity(volume).unwrap_or_else(|| format!("volume:{}", volume.name())),
         name: volume.name().to_string(),
         label_id: label_identity(uuid.as_deref(), uri.as_deref()),
+        can_mount: root.is_none() && volume.can_mount(),
         root,
         description,
         release: release_action(volume.can_eject(), mount_can_eject, mount_can_unmount),
+        lock,
         network: false,
+        ids: ids_for_volume(volume),
         source: Source::Volume(volume.clone()),
+    }
+}
+
+fn password_drive_row(drive: gio::Drive) -> Seen {
+    let name = drive.name().to_string();
+    Seen {
+        id: drive_identity(&drive).unwrap_or_else(|| format!("drive:{name}")),
+        description: name.clone(),
+        name,
+        label_id: None,
+        root: None,
+        release: release_action(drive.can_eject(), false, false),
+        lock: Some(LockState::Locked),
+        can_mount: false,
+        network: false,
+        ids: ids_for_drive(&drive),
+        source: Source::PasswordDrive(drive),
     }
 }
 
@@ -97,6 +145,7 @@ fn mount_row(location: Location, mount: gio::Mount, network: bool) -> Seen {
     let release = (!network)
         .then(|| release_action(false, mount.can_eject(), mount.can_unmount()))
         .flatten();
+    let lock = (!network && gio_mount_is_encrypted(&mount)).then_some(LockState::Unlocked);
     Seen {
         id: uri.to_string(),
         name: mount.name().to_string(),
@@ -104,7 +153,10 @@ fn mount_row(location: Location, mount: gio::Mount, network: bool) -> Seen {
         description: location.display_path(),
         root: Some(location),
         release,
+        lock,
+        can_mount: false,
         network,
+        ids: ids_for_mount(&mount),
         source: Source::Mount(mount),
     }
 }
@@ -134,13 +186,15 @@ fn mounts_without_volumes(
         .collect()
 }
 
-/// GTK's `hides_volume`, less its probe for a block device another holder has claimed
-/// (`is_exclusively_held`), which A3's notes leave for later.
+/// GTK's `hides_volume`: system loops, exclusively held unmounted block devices, and non-local
+/// volumes when the chooser requests local-only destinations.
 fn hides_volume(volume: &gio::Volume, local_only: bool) -> bool {
     let mount = volume.get_mount();
     if mount.is_none() {
         let class = volume.identifier(gio::VOLUME_IDENTIFIER_KIND_CLASS.as_str());
-        if is_system_loop(class.as_deref(), volume.should_automount()) {
+        if is_system_loop(class.as_deref(), volume.should_automount())
+            || unix_device(volume).is_some_and(|device| is_exclusively_held(&device))
+        {
             return true;
         }
     }
@@ -164,11 +218,11 @@ pub(super) fn is_system_loop(class: Option<&str>, should_automount: bool) -> boo
     class == Some("loop") && !should_automount
 }
 
-fn unix_device(volume: &gio::Volume) -> Option<glib::GString> {
+pub(super) fn unix_device(volume: &gio::Volume) -> Option<glib::GString> {
     volume.identifier(gio::VOLUME_IDENTIFIER_KIND_UNIX_DEVICE.as_str())
 }
 
-fn volume_identity(volume: &gio::Volume) -> Option<String> {
+pub(super) fn volume_identity(volume: &gio::Volume) -> Option<String> {
     device_identity(
         unix_device(volume).as_deref(),
         volume.uuid().as_deref(),
@@ -179,7 +233,7 @@ fn volume_identity(volume: &gio::Volume) -> Option<String> {
     )
 }
 
-fn drive_identity(drive: &gio::Drive) -> Option<String> {
+pub(super) fn drive_identity(drive: &gio::Drive) -> Option<String> {
     device_identity(
         drive
             .identifier(gio::VOLUME_IDENTIFIER_KIND_UNIX_DEVICE.as_str())
@@ -209,6 +263,14 @@ fn volume_placement(volume: &gio::Volume) -> DevicePlacement {
         home: drive_home(volume.drive()),
         name: volume.name().to_string(),
         identity: volume_identity(volume),
+    }
+}
+
+fn password_drive_placement(drive: &gio::Drive) -> DevicePlacement {
+    DevicePlacement {
+        home: drive_home(Some(drive.clone())),
+        name: drive.name().to_string(),
+        identity: drive_identity(drive),
     }
 }
 
