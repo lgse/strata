@@ -325,13 +325,6 @@ pub(crate) fn activate_menu_action(app: &mut App, action: &str, tx: &mut Tx) {
 }
 
 /// Stops running providers and rediscovers registrations under the providers config directory.
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "wired when A18 lands the Settings integrations pane"
-    )
-)]
 pub(crate) fn reload(app: &mut App) {
     app.file_providers.ensure_started();
     app.file_providers.hub.reload(spawn_discovery());
