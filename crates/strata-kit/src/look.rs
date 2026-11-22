@@ -50,7 +50,7 @@
 
 use std::hash::{Hash, Hasher};
 
-use rune::{Color, Icon, TextStyle};
+use rune::{Color, HelpLook, Icon, TextStyle};
 use rune_kit::Kit;
 use rune_kit::syntax::{Syntax, SyntaxTheme};
 
@@ -242,6 +242,21 @@ impl Look {
         kit.c.icon_base = accent;
         kit.c.icon_muted = accent;
         kit
+    }
+
+    /// Hover tooltip look for [`rune::Cx::help_look`], matching GTK4's built-in Default theme
+    /// (`tooltip.background`: `rgba(0, 0, 0, 0.8)`, white text, `1px solid rgba(255, 255, 255, 0.1)`,
+    /// `padding: 6px 10px`, no shadow) and Strata's `tooltip { border-radius: 5px; }` scaled by
+    /// Corner roundness (`kit.radius.sm`), at the active interface text size.
+    pub fn help_look(&self) -> HelpLook {
+        let kit = &self.kit;
+        HelpLook::system(true)
+            .fill(kit.alpha(kit.c.black, 0.8))
+            .ink(kit.c.white)
+            .ring(1.0, kit.light_on(0.1, kit.c.black))
+            .radius(kit.radius.sm)
+            .padding(10.0, 6.0)
+            .font(kit.ty.ui_compact)
     }
 }
 
