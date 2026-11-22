@@ -29,6 +29,9 @@ fn apply(app: &mut App, change: Change, tx: &mut Tx) -> bool {
         tx,
     };
     app.columns.apply(change, hands);
+    for (from, to) in app.columns.take_relocated_thumbnails() {
+        app.window.thumbnails_mut().relocate(from, to);
+    }
     true
 }
 
