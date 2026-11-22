@@ -6,6 +6,7 @@ mod drawn;
 mod header;
 mod perf;
 mod reveal;
+mod scrollbar;
 
 use strata_kit::look::Look;
 

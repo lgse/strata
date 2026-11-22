@@ -395,6 +395,7 @@ impl<S: 'static> ColumnsView<S> {
             p.state.tick_reveal(now, p.look, tx);
             changed |= p.state.tick_widths(p.look, tx);
             changed |= p.state.sync_clipped(p.look);
+            changed |= p.state.sync_strip_overflow(p.look);
         }
         changed | drive(&self.sh, s, now, tx)
     }
@@ -1147,7 +1148,13 @@ fn drive<S: 'static>(sh: &Rc<Shared<S>>, s: &mut S, now: f64, tx: &mut Tx) -> bo
 pub(super) fn columns_row<S: 'static>(sh: &Rc<Shared<S>>, s: &S) -> El {
     let p = (sh.parts)(s);
     let n = p.state.columns.len().min(p.sources.len());
-    let mut content = row().key("columns").h_full();
+    let mut content = row().key("columns").h_full().min_h(0.0);
+    let overflows = p.state.strip_overflows_now(p.look);
+    p.state.strip_overflows.set(overflows);
+    if overflows {
+        let bar = BarLook::strip(p.look);
+        content = content.pb(bar.edge + bar.band());
+    }
     for depth in 0..n {
         content = content.child(column::shell(sh, s, depth));
     }

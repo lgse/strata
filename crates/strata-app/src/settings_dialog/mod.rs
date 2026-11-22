@@ -10,6 +10,7 @@ use strata_components::{
         settings_search::{SearchIndex, SettingsSearchState},
     },
     dialog::DialogShell,
+    scroll::{Bar, overlay},
 };
 use strata_core::i18n::tr;
 use strata_desktop::{
@@ -52,8 +53,11 @@ const RAIL_WIDTH: f32 = 240.0;
 const COMPACT_CONTENT_WINDOW_WIDTH: i32 = 1000;
 const CONTENT_PAD_X: f32 = 48.0;
 const CONTENT_PAD_Y: f32 = 24.0;
+const CONTENT_BOTTOM_PAD: f32 = 40.0;
 const COMPACT_CONTENT_PAD_X: f32 = 20.0;
 const COMPACT_CONTENT_PAD_Y: f32 = 18.0;
+const COMPACT_CONTENT_BOTTOM_PAD: f32 = 32.0;
+const RAIL_SCROLL: &str = "settings-rail-scroll";
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(super) enum PageId {
@@ -200,6 +204,10 @@ pub(crate) struct SettingsDialog {
     roundness: NumberFieldState,
     theme_query: TextEdit,
     theme_filter: appearance_page::ThemeFilter,
+    page_bar: Bar,
+    rail_bar: Bar,
+    theme_bar: Bar,
+    choice_bar: Bar,
     notice: notice::NoticeState,
     actions: actions::ActionsState,
     keyboard: keyboard::KeyboardState,
@@ -247,6 +255,10 @@ impl SettingsDialog {
             roundness,
             theme_query: TextEdit::default(),
             theme_filter: appearance_page::ThemeFilter::All,
+            page_bar: controls::settings_bar(),
+            rail_bar: controls::settings_bar(),
+            theme_bar: controls::settings_bar(),
+            choice_bar: controls::settings_bar(),
             notice: notice::NoticeState::default(),
             actions: actions::ActionsState::new(later.clone()),
             keyboard: keyboard::KeyboardState::default(),
@@ -265,7 +277,8 @@ impl SettingsDialog {
 
     /// Shows `page`. The Keyboard page is made the first time it shows, as GTK builds it on its
     /// first selection (`src/ui/settings.rs`), so it opens on the table of the mode in force then.
-    pub(super) fn select_page(&mut self, page: PageId, tenxer_mode: bool) {
+    /// Returns `true` when the active page changed.
+    pub(super) fn select_page(&mut self, page: PageId, tenxer_mode: bool) -> bool {
         let changed = self.page != page;
         self.set_page(page);
         if page == PageId::Keyboard {
@@ -274,14 +287,25 @@ impl SettingsDialog {
         if changed && page == PageId::Integrations {
             self.integrations.mark_needs_scan();
         }
+        changed
     }
 
     pub(super) fn set_page(&mut self, page: PageId) {
         if self.page != page {
             self.page = page;
             self.open_choice = None;
+            self.page_bar.release();
+            self.theme_bar.release();
+            self.choice_bar.release();
             self.keyboard.end_capture();
         }
+    }
+
+    fn release_bars(&self) {
+        self.page_bar.release();
+        self.rail_bar.release();
+        self.theme_bar.release();
+        self.choice_bar.release();
     }
 
     fn text_field_focused(&self) -> bool {
@@ -357,6 +381,7 @@ pub(super) fn close_settings(app: &mut App) {
     let state = &mut app.settings_dialog;
     state.open = false;
     state.open_choice = None;
+    state.release_bars();
     state.search = SettingsSearchState::new();
     state.theme_query.replace_text("");
     state.theme_filter = appearance_page::ThemeFilter::All;
@@ -508,32 +533,62 @@ fn build_rail(
         .filter(|entry| entry_shown(entry) && search.shows_page(app, entry.key))
         .map(|entry| nav_button(app, entry))
         .collect();
+    let rail_bar = &app.settings_dialog.rail_bar;
+    let inner = col()
+        .w_full()
+        .min_w(0.0)
+        .px(look.space.lg)
+        .pb(look.space.xl)
+        .gap(look.space.xs)
+        .children(nav_items);
+    let viewport = col()
+        .key(RAIL_SCROLL)
+        .w_full()
+        .h_full()
+        .min_h(0.0)
+        .scroll(ScrollSpec {
+            stick_bottom: false,
+        })
+        .on_scroll_offset(rail_bar.watch())
+        .child(inner);
+    let bar_el = rail_bar
+        .build::<App>(
+            "settings-rail-scrollbar",
+            RAIL_SCROLL,
+            controls::settings_bar_look(
+                look,
+                controls::SCROLLBAR_EDGE_INSET,
+                controls::SCROLLBAR_END_INSET,
+            ),
+        )
+        .wheel_scrolls(RAIL_SCROLL);
     let nav_list = col()
         .w_full()
         .grow(1.0)
         .min_h(0.0)
-        .gap(look.space.xs)
-        .scroll(ScrollSpec {
-            stick_bottom: false,
-        })
-        .children(nav_items);
+        .child(rail_bar.area(overlay(viewport, [bar_el])));
     col()
         .key("settings-rail")
         .w(RAIL_WIDTH)
         .h_full()
         .min_h(0.0)
-        .px(look.space.lg)
-        .py(look.space.xl)
+        .pt(look.space.xl)
         .gap(look.space.lg)
         .border_sides([0.0, 1.0, 0.0, 0.0], controls::panel_border(look))
         .child(
             text(tr("SETTINGS"))
                 .font(look.ty.heading)
                 .color(c.text_muted)
-                .px(10.0)
+                .px(look.space.lg + 10.0)
                 .pt(2.0),
         )
-        .child(col().w_full().pb(2.0).child(search.field(app, look)))
+        .child(
+            col()
+                .w_full()
+                .px(look.space.lg)
+                .pb(2.0)
+                .child(search.field(app, look)),
+        )
         .child(nav_list)
 }
 
@@ -613,9 +668,11 @@ fn nav_button(app: &App, entry: &NavEntry) -> El {
                         .a11y_hidden(),
                 ),
         )
-        .on_press_tx(move |app: &mut App, _: &mut Tx| {
+        .on_press_tx(move |app: &mut App, tx: &mut Tx| {
             let tenxer_mode = shell::preferences(app).tenxer_mode;
-            app.settings_dialog.select_page(page, tenxer_mode);
+            if app.settings_dialog.select_page(page, tenxer_mode) {
+                tx.scroll_to_instant(controls::PAGE_SCROLL, 0.0, 0.0);
+            }
             if page == PageId::Actions {
                 actions::ensure_observing(app);
             }
@@ -682,27 +739,18 @@ fn build_main_column(
                 .grow(1.0),
         )
         .child(close_button(look));
-    let (pad_x, pad_y) = content_padding(app);
+    let (pad_x, pad_y, bottom_pad) = content_padding(app);
     let body = if app.settings_dialog.search.no_results() {
         col()
             .w_full()
             .grow(1.0)
             .px(pad_x)
-            .py(pad_y)
+            .pt(pad_y)
+            .pb(bottom_pad)
             .child(search.empty(look))
     } else {
         let content = build_page_content(app, page, search, menu_layer);
-        col()
-            .key(controls::PAGE_SCROLL)
-            .w_full()
-            .grow(1.0)
-            .min_h(0.0)
-            .px(pad_x)
-            .py(pad_y)
-            .scroll(ScrollSpec {
-                stick_bottom: false,
-            })
-            .children(content)
+        build_page_scroll(app, content, (pad_x, pad_y, bottom_pad))
     };
     col()
         .w_full()
@@ -714,14 +762,60 @@ fn build_main_column(
         .child(body)
 }
 
-fn content_padding(app: &App) -> (f32, f32) {
+fn build_page_scroll(
+    app: &App,
+    content: Vec<El>,
+    (pad_x, pad_y, bottom_pad): (f32, f32, f32),
+) -> El {
+    let look = &app.look;
+    let page_bar = &app.settings_dialog.page_bar;
+    let inner = col()
+        .w_full()
+        .min_w(0.0)
+        .px(pad_x)
+        .pt(pad_y)
+        .pb(bottom_pad)
+        .children(content);
+    let viewport = col()
+        .key(controls::PAGE_SCROLL)
+        .w_full()
+        .h_full()
+        .min_h(0.0)
+        .scroll(ScrollSpec {
+            stick_bottom: false,
+        })
+        .on_scroll_offset(page_bar.watch())
+        .child(inner);
+    let bar_el = page_bar
+        .build::<App>(
+            "settings-page-scrollbar",
+            controls::PAGE_SCROLL,
+            controls::settings_bar_look(
+                look,
+                controls::SCROLLBAR_EDGE_INSET,
+                controls::SCROLLBAR_END_INSET,
+            ),
+        )
+        .wheel_scrolls(controls::PAGE_SCROLL);
+    col()
+        .w_full()
+        .grow(1.0)
+        .min_h(0.0)
+        .child(page_bar.area(overlay(viewport, [bar_el])))
+}
+
+fn content_padding(app: &App) -> (f32, f32, f32) {
     if app
         .window_size()
         .is_some_and(|(w, _)| w < COMPACT_CONTENT_WINDOW_WIDTH)
     {
-        (COMPACT_CONTENT_PAD_X, COMPACT_CONTENT_PAD_Y)
+        (
+            COMPACT_CONTENT_PAD_X,
+            COMPACT_CONTENT_PAD_Y,
+            COMPACT_CONTENT_BOTTOM_PAD,
+        )
     } else {
-        (CONTENT_PAD_X, CONTENT_PAD_Y)
+        (CONTENT_PAD_X, CONTENT_PAD_Y, CONTENT_BOTTOM_PAD)
     }
 }
 

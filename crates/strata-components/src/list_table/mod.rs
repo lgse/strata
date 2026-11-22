@@ -643,16 +643,23 @@ impl<S: 'static> ListTable<S> {
         let width = parts.table.width;
         let (bar, sideways_bar) = (parts.table.bar.clone(), parts.table.sideways_bar.clone());
         let sideways_feed = parts.table.sideways_feed.clone();
+        let sideways_look = BarLook::app(parts.look).horizontal();
+        let sideways_overflows =
+            width >= sideways_look.min_length && resolved.row_width() - width > 0.5;
         let sideways = sideways_bar.build::<S>(
             &format!("{}-sideways-bar", self.shared.key),
             &self.scroll_key(),
-            BarLook::app(parts.look).horizontal(),
+            sideways_look,
         );
         // The one handler on the sideways scroll (Rune's `on_scroll_offset` replaces, U-C24b-1):
         // the table's bars, then every host follower.
         let followers: Vec<Box<dyn Fn(ScrollPos)>> = shared.sideways.iter().map(|f| f(s)).collect();
         let (follow_bar, follow_sideways) = (bar.clone(), sideways_bar.clone());
         let layout_shared = shared.clone();
+        let mut inner = col().w(resolved.row_width().max(width)).h_full().min_h(0.0);
+        if sideways_overflows {
+            inner = inner.pb(sideways_look.edge + sideways_look.band());
+        }
         let scroll = col()
             .key(self.scroll_key())
             .w_full()
@@ -678,12 +685,7 @@ impl<S: 'static> ListTable<S> {
                     st.width = r[2];
                 }
             })
-            .child(
-                col()
-                    .w(resolved.row_width().max(width))
-                    .h_full()
-                    .child(list),
-            );
+            .child(inner.child(list));
         // The sideways bar over the scroll, along its bottom; the pointer over the table shows
         // both.
         bar.area(sideways_bar.area(overlay(scroll, [sideways])))

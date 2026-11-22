@@ -691,3 +691,61 @@ fn a_sideways_scroll_reaches_both_bars_and_every_follower_and_the_rows_bar_stays
         "and selected nothing"
     );
 }
+
+/// Clicking the bottom edge of the last row in a horizontally overflowing List view selects that
+/// row without hitting the sideways scrollbar underneath it.
+#[test]
+fn bottom_row_stays_interactive_when_sideways_bar_overflows() {
+    let mut host = Host::new(3, Look::fallback(false));
+    host.panes[0]
+        .table
+        .set_bar_mode(crate::scroll::BarMode::Always);
+    let mut rt = runtime(host);
+    assert!(
+        rt.state.panes[0].table.sideways_overflows(),
+        "three panes in 900 pt overflow sideways"
+    );
+
+    let vp_key = crate::collection::element::viewport_path("list0");
+    let max_y = rt.state.panes[0].table.feed().get().max[1];
+    assert!(max_y > 0.0, "rows must overflow vertically");
+    rt.update(|_, tx| {
+        tx.scroll_to_instant(vp_key.clone(), 0.0, max_y);
+    });
+    settle(&mut rt);
+
+    let last_index = rt.state.panes[0].listing.len() - 1;
+    let last_id = rt.state.panes[0].listing.id_at(last_index);
+    let last_key = crate::collection::element::row_key(last_id);
+    let last_rect = rt
+        .elements()
+        .into_iter()
+        .find(|e| {
+            !e.exiting && e.key.as_deref() == Some(last_key.as_str()) && e.path.contains("pane0")
+        })
+        .expect("last row")
+        .rect;
+
+    let before_x = rt.state.panes[0].table.sideways_feed().get().offset[0];
+    // Click the Mode cell near the bottom edge of the last row (past the sideways thumb): must
+    // select the last row without hitting the horizontal trough underneath.
+    let click_x = last_rect[0] + 200.0;
+    let click_y = last_rect[1] + last_rect[3] - 1.5;
+    rt.pointer_down(click_x, click_y);
+    rt.frame(1.0 / 60.0);
+    rt.pointer_up(click_x, click_y);
+    settle(&mut rt);
+
+    assert!(
+        rt.state.panes[0]
+            .coll
+            .selection
+            .contains(&rt.state.panes[0].listing, last_id),
+        "clicking the bottom edge of the last row selects it"
+    );
+    assert_eq!(
+        rt.state.panes[0].table.sideways_feed().get().offset[0],
+        before_x,
+        "clicking the last row must not hit the horizontal scrollbar"
+    );
+}

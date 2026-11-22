@@ -5,6 +5,7 @@
 
 use rune::{Color, Cursor, El, Key, KeyEvent, ScrollSpec, TextEdit, Tx, col, icon, row, text};
 use rune_kit::{IconButton, IconButtonVariant, Placement, TextInput, popover};
+use strata_components::scroll::Bar;
 use strata_core::{
     i18n::tr,
     model::action::examples::{ACTION_EXAMPLES, ActionExample},
@@ -12,7 +13,12 @@ use strata_core::{
 use strata_kit::{icons::IconName, look::Look};
 
 use super::editor::EditorSession;
-use crate::{App, buttons};
+use crate::{
+    App, buttons,
+    settings_dialog::controls::{
+        SCROLLBAR_EDGE_INSET, SCROLLBAR_END_INSET, bounded_scroll_with_bar, settings_bar_look,
+    },
+};
 
 pub(super) const EXAMPLES_BTN_KEY: &str = "settings-action-editor-library";
 pub(super) const EXAMPLES_SEARCH_KEY: &str = "settings-action-library-search";
@@ -67,12 +73,15 @@ fn toggle_popover(app: &mut App, tx: &mut Tx) {
         let len = editor.examples_query.text.len();
         editor.examples_query.set_selection(0, len);
         tx.focus_when_shown(EXAMPLES_SEARCH_KEY, tx.focus_visible() || tx.by_keys());
+    } else {
+        editor.examples_bar.release();
     }
 }
 
 pub(super) fn close_popover(app: &mut App, tx: &mut Tx) {
     if let Some(editor) = app.settings_dialog.actions.editor.as_mut() {
         editor.examples_open = false;
+        editor.examples_bar.release();
         editor.pending_example = None;
         editor.examples_query.focused = false;
     }
@@ -104,7 +113,7 @@ pub(super) fn build_popover(look: &Look, session: &EditorSession, layer: &mut Ve
         .modal_tx(true, close_popover)
         .child(search_bar(look, &session.examples_query, divider))
         .child(category_bar(look, session.examples_category, divider))
-        .child(template_list(look, &visible));
+        .child(template_list(look, &session.examples_bar, &visible));
     if let Some(pending) = session.pending_example {
         body = body.child(replace_confirmation(look, pending, divider));
     }
@@ -251,18 +260,17 @@ fn category_chip(look: &Look, name: &'static str, active: bool) -> El {
     buttons::on_return(format!("settings-action-library-cat-{name}"), chip)
 }
 
-fn template_list(look: &Look, visible: &[&'static ActionExample]) -> El {
-    let mut list = col()
-        .key("settings-action-library-list")
+fn template_list(look: &Look, bar: &Bar, visible: &[&'static ActionExample]) -> El {
+    let mut inner = col()
         .w_full()
-        .max_h(270.0)
-        .padding(6.0)
-        .gap(4.0)
-        .scroll(ScrollSpec {
-            stick_bottom: false,
-        });
+        .min_w(0.0)
+        .pl(6.0)
+        .pr(12.0)
+        .pt(6.0)
+        .pb(10.0)
+        .gap(4.0);
     if visible.is_empty() {
-        list = list.child(
+        inner = inner.child(
             text(tr("No templates match your search."))
                 .font(look.kit.ty.small)
                 .color(look.kit.c.text_muted)
@@ -271,10 +279,29 @@ fn template_list(look: &Look, visible: &[&'static ActionExample]) -> El {
         );
     } else {
         for &example in visible {
-            list = list.child(template_row(look, example));
+            inner = inner.child(template_row(look, example));
         }
     }
-    list
+    let viewport = col()
+        .key("settings-action-library-list")
+        .w_full()
+        .max_h(270.0)
+        .shrink()
+        .min_h(0.0)
+        .scroll(ScrollSpec {
+            stick_bottom: false,
+        })
+        .on_scroll_offset(bar.watch())
+        .child(inner);
+    bounded_scroll_with_bar(
+        viewport,
+        bar,
+        (
+            "settings-action-library-scrollbar",
+            "settings-action-library-list",
+        ),
+        settings_bar_look(look, SCROLLBAR_EDGE_INSET, SCROLLBAR_END_INSET),
+    )
 }
 
 fn template_row(look: &Look, example: &'static ActionExample) -> El {
