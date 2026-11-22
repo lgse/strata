@@ -77,6 +77,11 @@ pub(super) fn shell<S: 'static>(sh: &Rc<Shared<S>>, s: &S, depth: usize) -> El {
     if draws_line {
         shell = shell.child(edge_line(&key, look));
     }
+    let right = st.spans(look).get(depth).map_or(w, |&(_, r)| r) - st.strip_feed.get().offset[0];
+    let overlaps_window_edge = depth + 1 == n
+        && draws_line
+        && st.strip.w > 0.0
+        && (st.strip.w - right).abs() <= EDGE_REACH;
     shell = shell.child(edge(
         sh,
         st,
@@ -86,6 +91,7 @@ pub(super) fn shell<S: 'static>(sh: &Rc<Shared<S>>, s: &S, depth: usize) -> El {
             key: &key,
             scale,
             draws_line,
+            overlaps_window_edge,
         },
         look,
     ));
@@ -162,6 +168,7 @@ struct EdgeSpec<'a> {
     key: &'a str,
     scale: f32,
     draws_line: bool,
+    overlaps_window_edge: bool,
 }
 
 fn edge_line(key: &str, look: &Look) -> El {
@@ -194,6 +201,7 @@ fn edge<S: 'static>(sh: &Rc<Shared<S>>, st: &ColumnsState, spec: EdgeSpec<'_>, l
         key,
         scale,
         draws_line,
+        overlaps_window_edge,
     } = spec;
     let line = tokens::edge_width(look);
     let resizing = st.resize.as_ref().is_some_and(|r| r.depth == depth);
@@ -219,7 +227,15 @@ fn edge<S: 'static>(sh: &Rc<Shared<S>>, st: &ColumnsState, spec: EdgeSpec<'_>, l
         .w(2.0 * EDGE_REACH)
         .cursor(Cursor::ResizeColumn)
         .a11y_hidden()
-        .paint_order(1)
+        .paint_order(1);
+    if overlaps_window_edge {
+        // When the trailing column fills the browser area with no preview beside it, its
+        // right resize handle shares the window's east CSD resize band; raise only then so
+        // dragging the column edge inward stays reachable while keeping `PaintKeep` active
+        // everywhere else.
+        handle = handle.raise();
+    }
+    handle = handle
         .hover_group()
         .hover_motion(Anim::INSTANT, Anim::INSTANT)
         .on_hover_change(move |s: &mut S, inside: bool, tx: &mut Tx| {
