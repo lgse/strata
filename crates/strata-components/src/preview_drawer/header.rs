@@ -87,7 +87,7 @@ pub(super) fn header<S: 'static>(
 
     // Sized like the window's header bar, as Strata's `.preview-header` is: the bar's height
     // and its Frame-density inset, no vertical padding, 8 points before and 6 after.
-    row()
+    let mut bar = row()
         .key("preview-header")
         .w_full()
         .h(look.frame.bar + 2.0 * look.frame.inset)
@@ -97,7 +97,20 @@ pub(super) fn header<S: 'static>(
         .items_center()
         .border_sides([0.0, 0.0, 1.0, 0.0], k.c.border_base)
         .child(handle)
-        .children(controls)
+        .children(controls);
+    if parts.focused {
+        bar = bar
+            .fill(strata_kit::slots::columns::header_fill(look))
+            .child(
+                el().key("preview-header-indicator")
+                    .pin(Some(0.0), Some(0.0), Some(0.0), None)
+                    .h(strata_kit::slots::columns::header_indicator(look))
+                    .fill(k.c.bg_accent)
+                    .a11y_hidden()
+                    .inert(),
+            );
+    }
+    bar
 }
 
 fn header_controls<S: 'static>(

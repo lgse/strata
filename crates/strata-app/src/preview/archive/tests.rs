@@ -402,3 +402,82 @@ fn tenxer_shift_tab_leaves_the_password_field_for_the_listing() {
         },
     );
 }
+
+#[test]
+fn async_archive_and_prompt_focus_entry_clears_active_column_indicator() {
+    hosted(
+        MODULE,
+        "async_archive_and_prompt_focus_entry_clears_active_column_indicator",
+        |mut host| {
+            let (_folder, entry) = setup_folder_with_archive(&mut host, "bundle.zip");
+            let col0 = host.app().columns.list_keys()[0].clone();
+            let indicator = strata_components::columns::keys::indicator(&col0);
+            let has_indicator = |host: &mut Offscreen| {
+                host.runtime()
+                    .elements()
+                    .iter()
+                    .any(|el| !el.exiting && el.key.as_deref() == Some(indicator.as_str()))
+            };
+            assert!(
+                has_indicator(&mut host),
+                "active column shows its top bar before entering preview"
+            );
+
+            // Async password prompt arrival clears the active column's indicator without waiting
+            // for any further user input.
+            press_without_draining(&mut host, Key::Right);
+            let entry_needs = entry.clone();
+            host.runtime().update(move |app: &mut App, tx: &mut Tx| {
+                let req = app.preview.loader.current_request.expect("active request");
+                load::on_event(
+                    app,
+                    req,
+                    PreviewEvent::NeedsPassword {
+                        request_id: req,
+                        entry: entry_needs,
+                    },
+                    tx,
+                );
+            });
+            host.runtime().frame(0.0);
+            assert!(crate::preview::owns_focus(host.app()));
+            assert!(
+                !has_indicator(&mut host),
+                "async password prompt suppresses the active column indicator immediately"
+            );
+
+            // Async ready archive tree (when armed to focus) likewise clears the active column
+            // indicator immediately.
+            let entry_ready = entry.clone();
+            host.runtime().update(move |app: &mut App, tx: &mut Tx| {
+                app.preview.owns_focus = false;
+                let req = strata_fs::services::PreviewRequestId(101);
+                app.preview.loader.current_request = Some(req);
+                app.preview.loader.focus_archive_request = Some(req);
+                load::on_event(
+                    app,
+                    req,
+                    PreviewEvent::Ready(Preview {
+                        request_id: req,
+                        entry: entry_ready,
+                        content_type: "application/zip".to_owned(),
+                        content: PreviewContent::Archive {
+                            tree: sample_tree(),
+                        },
+                    }),
+                    tx,
+                );
+            });
+            assert!(
+                host.runtime().wake_deadline().is_some(),
+                "async archive focus schedules an immediate poll wake"
+            );
+            host.runtime().frame(0.0);
+            assert!(crate::preview::owns_focus(host.app()));
+            assert!(
+                !has_indicator(&mut host),
+                "async archive focus suppresses the active column indicator immediately"
+            );
+        },
+    );
+}

@@ -42,9 +42,19 @@ pub fn close(column: &str) -> String {
     format!("{column}-close")
 }
 
+/// The key of an active column header's top focus bar.
+pub fn indicator(column: &str) -> String {
+    format!("{column}-indicator")
+}
+
 /// The key of a column header's loading spinner.
 pub fn spinner(column: &str) -> String {
     format!("{column}-spinner")
+}
+
+/// The key of the static vertical divider line along a column's right edge.
+pub fn edge_line(column: &str) -> String {
+    format!("{column}-edge-line")
 }
 
 /// The key of the resize edge on a column's right.

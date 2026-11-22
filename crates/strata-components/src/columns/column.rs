@@ -51,16 +51,8 @@ pub(super) fn shell<S: 'static>(sh: &Rc<Shared<S>>, s: &S, depth: usize) -> El {
         .min_h(0.0)
         .transition(body_motion)
         .child(c.bar.area(list));
-    let line = el()
-        .pin(None, Some(0.0), Some(0.0), Some(0.0))
-        .w(tokens::edge_width(look))
-        .fill(tokens::fade(
-            look,
-            look.kit.c.std_border,
-            tokens::edge_opacity(look),
-        ))
-        .a11y_hidden()
-        .inert();
+    let n = st.columns.len().min(p.sources.len());
+    let draws_line = depth + 1 < n || (sh.trailing_edge)(s);
     let title = if depth < p.sources.len() {
         p.sources.title(depth).to_owned()
     } else {
@@ -76,9 +68,22 @@ pub(super) fn shell<S: 'static>(sh: &Rc<Shared<S>>, s: &S, depth: usize) -> El {
         .min_h(0.0)
         .drawn_rect_into(&c.drawn)
         .transition(shell_motion)
-        .child(body)
-        .child(line)
-        .child(edge(sh, st, depth, c.serial, &key, scale, look));
+        .child(body);
+    if draws_line {
+        shell = shell.child(edge_line(&key, look));
+    }
+    shell = shell.child(edge(
+        sh,
+        st,
+        EdgeSpec {
+            depth,
+            serial: c.serial,
+            key: &key,
+            scale,
+            draws_line,
+        },
+        look,
+    ));
     if let Some(slice) = st.clipped_slice(depth, look) {
         shell = shell.child(reveal_target(sh, &title, &key, slice));
     }
@@ -146,6 +151,27 @@ fn shell_motions(animated: bool, entrance: Entrance) -> (Transition, Transition)
     (shell_motion, body_motion)
 }
 
+struct EdgeSpec<'a> {
+    depth: usize,
+    serial: u64,
+    key: &'a str,
+    scale: f32,
+    draws_line: bool,
+}
+
+fn edge_line(key: &str, look: &Look) -> El {
+    el().key(keys::edge_line(key))
+        .pin(None, Some(0.0), Some(0.0), Some(0.0))
+        .w(tokens::edge_width(look))
+        .fill(tokens::fade(
+            look,
+            look.kit.c.std_border,
+            tokens::edge_opacity(look),
+        ))
+        .a11y_hidden()
+        .inert()
+}
+
 /// The resize edge over the line on a column's right: it reaches [`EDGE_REACH`] either side,
 /// over the next column too (raised, so it takes the press first), and resizes this column.
 ///
@@ -155,16 +181,15 @@ fn shell_motions(animated: bool, entrance: Entrance) -> (Transition, Transition)
 /// own press doesn't hold its hover once the pointer leaves it, so a resize holds the line
 /// lit by its rest. The edge lights C9's divider line at once too, while the "Column width"
 /// caption waits [`CAPTION_DELAY`] on a child of the same size.
-fn edge<S: 'static>(
-    sh: &Rc<Shared<S>>,
-    st: &ColumnsState,
-    depth: usize,
-    serial: u64,
-    key: &str,
-    scale: f32,
-    look: &Look,
-) -> El {
+fn edge<S: 'static>(sh: &Rc<Shared<S>>, st: &ColumnsState, spec: EdgeSpec<'_>, look: &Look) -> El {
     let (drag, lit, hover) = (sh.clone(), sh.clone(), sh.clone());
+    let EdgeSpec {
+        depth,
+        serial,
+        key,
+        scale,
+        draws_line,
+    } = spec;
     let line = tokens::edge_width(look);
     let resizing = st.resize.as_ref().is_some_and(|r| r.depth == depth);
     let rest = if resizing { 1.0 } else { 0.0 };
@@ -183,7 +208,8 @@ fn edge<S: 'static>(
                 st.edge_hover = None;
             }
         });
-    el().key(keys::edge(key))
+    let mut handle = el()
+        .key(keys::edge(key))
         .pin(None, Some(0.0), Some(-EDGE_REACH), Some(0.0))
         .w(2.0 * EDGE_REACH)
         .cursor(Cursor::ResizeColumn)
@@ -210,8 +236,9 @@ fn edge<S: 'static>(
         .on_drag(move |s: &mut S, d: &mut Drag, tx: &mut Tx| {
             resize(&drag, s, serial, d, scale, tx);
         })
-        .child(caption_hover)
-        .child(
+        .child(caption_hover);
+    if draws_line {
+        handle = handle.child(
             el().key(keys::edge_accent(key))
                 .pin(Some(EDGE_REACH - line), Some(0.0), None, Some(0.0))
                 .w(line)
@@ -220,7 +247,9 @@ fn edge<S: 'static>(
                 .opacity_motion(Anim::INSTANT)
                 .a11y_hidden()
                 .inert(),
-        )
+        );
+    }
+    handle
 }
 
 /// A drag of a column's edge: only this column follows the pointer, between one standard
@@ -347,6 +376,7 @@ pub(super) fn header<S: 'static>(sh: &Rc<Shared<S>>, s: &S, depth: usize, serial
     let k = &look.kit;
     let key = keys::column(&st.key, serial);
     let active = depth == st.active;
+    let header_active = active && (sh.active_header)(s);
     let targeted = depth == st.targeted();
     let loading = depth < p.sources.len() && p.sources.loading(depth);
     let title = if depth < p.sources.len() {
@@ -358,7 +388,7 @@ pub(super) fn header<S: 'static>(sh: &Rc<Shared<S>>, s: &S, depth: usize, serial
         .then(|| p.sources.title_description(depth))
         .flatten()
         .map(Cow::into_owned);
-    let color = if active {
+    let color = if header_active {
         k.c.text_base
     } else {
         tokens::fade(look, k.c.bg_accent, tokens::header_title_opacity(look))
@@ -376,9 +406,10 @@ pub(super) fn header<S: 'static>(sh: &Rc<Shared<S>>, s: &S, depth: usize, serial
             tokens::fade(look, k.c.std_border, tokens::edge_opacity(look)),
         )
         .child(title_label(title, described, &key, look, color));
-    if active {
+    if header_active {
         bar = bar.fill(tokens::header_fill(look)).child(
-            el().pin(Some(0.0), Some(0.0), Some(0.0), None)
+            el().key(keys::indicator(&key))
+                .pin(Some(0.0), Some(0.0), Some(0.0), None)
                 .h(tokens::header_indicator(look))
                 .fill(k.c.bg_accent)
                 .a11y_hidden()
@@ -439,8 +470,10 @@ fn header_controls<S: 'static>(sh: &Rc<Shared<S>>, s: &S, cx: HeaderCx, serial: 
                 })
                 .build(&look.accent_icon_kit())
                 // Not a focus stop: a press on it focuses the strip, which keeps the
-                // keyboard when the button goes with its column.
+                // keyboard when the button goes with its column. `no_focus_ring()` clears
+                // `IconButton`'s own ring so Rune does not paint it for the focused strip.
                 .focusable(false)
+                .no_focus_ring()
                 .key(keys::close(&key)),
         );
         any = true;

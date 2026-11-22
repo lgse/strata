@@ -46,6 +46,7 @@ pub(super) fn build<S: 'static>(sh: &Rc<Shared<S>>, s: &S) -> El {
         .role("group")
         .label(sh.labels.strip.clone())
         .focusable(true)
+        .no_focus_ring()
         .w_full()
         .h_full()
         .min_w(0.0)

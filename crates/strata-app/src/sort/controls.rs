@@ -22,7 +22,10 @@ pub(crate) fn column(app: &App, depth: usize) -> [El; 2] {
     let direction = direction_button(app, depth).key(format!("columns-sort-direction-{depth}"));
     let anchor = format!("columns-sort-{depth}");
     let menu = menu_button(app, depth, &anchor, false, true).key(anchor);
-    [direction.focusable(false), menu.focusable(false)]
+    [
+        direction.focusable(false).no_focus_ring(),
+        menu.focusable(false).no_focus_ring(),
+    ]
 }
 
 /// Icons' direction button and Sort by, after the thumbnail size, over the view keyed `view`.

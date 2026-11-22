@@ -78,6 +78,8 @@ pub(crate) fn view(app: &App) -> ColumnsView<App> {
     .drop_action(intents::drop_action)
     // "Show sizes in Columns view", read at each build: the popover's row changes it live.
     .show_sizes(|app: &App| shell::preferences(app).columns_show_sizes)
+    .trailing_edge(|app: &App| !crate::preview::draws_divider(app))
+    .active_header(|app: &App| !crate::preview::owns_focus(app))
     .escape_closes(|app: &App| {
         !shell::preferences(app).tenxer_mode && !app.browser.is_chooser_mode()
     })

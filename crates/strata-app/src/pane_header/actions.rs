@@ -104,19 +104,19 @@ pub(crate) fn column(app: &App, cx: &HeaderCx) -> Option<El> {
     let mut any = false;
     if let Some(button) = empty_trash::built(app, depth) {
         let key = format!("columns-empty-trash-{depth}");
-        actions = actions.child(button.key(key).focusable(false));
+        actions = actions.child(button.key(key).focusable(false).no_focus_ring());
         any = true;
     }
     if !tenxer && let Some(button) = chooser_new_folder(app, depth) {
         let key = format!("columns-new-folder-{depth}");
-        actions = actions.child(button.key(key).focusable(false));
+        actions = actions.child(button.key(key).focusable(false).no_focus_ring());
         any = true;
     }
     if tenxer {
         return any.then_some(actions);
     }
     let refresh = refresh::built(app, depth).key(format!("columns-refresh-{depth}"));
-    actions = actions.child(refresh.focusable(false));
+    actions = actions.child(refresh.focusable(false).no_focus_ring());
     actions = actions.children(crate::sort::column(app, depth));
     Some(actions.children(crate::filter::column_actions(app, depth)))
 }
