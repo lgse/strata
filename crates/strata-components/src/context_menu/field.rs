@@ -17,8 +17,10 @@ use rune::{El, PointerPress, TextEdit, Tx, el};
 use strata_kit::look::Look;
 
 use super::model::{Item, Section};
+use super::state::menu_bar;
 use super::view::{Render, width};
 use crate::contract::Point;
+use crate::scroll::Bar;
 
 /// The field menu's words, in the interface language. English by default.
 #[derive(Clone, Debug, PartialEq)]
@@ -115,6 +117,7 @@ struct Open<F> {
     /// Whether the field had a step to undo and one to redo when the menu opened. Nothing
     /// edits it while the menu holds the keyboard.
     history: (bool, bool),
+    scroll_bar: Bar,
 }
 
 impl<F> Default for FieldMenuState<F> {
@@ -151,7 +154,9 @@ impl<F: Copy + PartialEq> FieldMenuState<F> {
 
     /// Closes the menu. The field keeps its text and selection.
     pub fn close(&mut self) -> Option<F> {
-        self.open.take().map(|o| o.field)
+        let open = self.open.take()?;
+        open.scroll_bar.release();
+        Some(open.field)
     }
 
     /// Opens field `field`'s menu at window point `at` without reading the clipboard or the
@@ -162,12 +167,16 @@ impl<F: Copy + PartialEq> FieldMenuState<F> {
     }
 
     fn open_serial(&mut self, field: F, at: Point, history: (bool, bool)) -> u64 {
+        if let Some(prev) = self.open.take() {
+            prev.scroll_bar.release();
+        }
         self.serial += 1;
         self.open = Some(Open {
             field,
             at,
             clipboard: Clipboard::Unknown,
             history,
+            scroll_bar: menu_bar(),
         });
         self.serial
     }
@@ -361,6 +370,7 @@ impl<S: 'static, F: Copy + PartialEq + 'static> FieldMenu<S, F> {
         let me = Rc::new(self);
         let (select, dismiss) = (me.clone(), me.clone());
         let field = open.field;
+        let scroll_bar = open.scroll_bar.clone();
         Render {
             key: &me.key,
             at: open.at,
@@ -369,6 +379,7 @@ impl<S: 'static, F: Copy + PartialEq + 'static> FieldMenu<S, F> {
             sections: &sections,
             open: &[],
             top_width: width(look, &[], &sections),
+            scroll_bars: vec![scroll_bar],
             look,
             on_select: Rc::new(move |s: &mut S, path: &[usize], tx: &mut Tx| {
                 let command = path.first().and_then(|&i| commands.get(i)).map(|c| c.0);

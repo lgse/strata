@@ -589,3 +589,91 @@ fn a_view_shown_later_is_rebuilt_from_the_browser_and_hears_it_from_then_on() {
         },
     );
 }
+
+fn tooltip_card(host: &mut Offscreen) -> rune::render::Instance {
+    let rt = host.runtime();
+    let (_, [x, y, w, h]) = rt.help_tooltip().expect("hover tooltip visible");
+    let expected = [x.round(), y.round(), w.round(), h.round()];
+    *rt.instances
+        .iter()
+        .rev()
+        .find(|inst| inst.params[1] == rune::render::KIND_RECT && inst.rect == expected)
+        .expect("drawn tooltip surface instance")
+}
+
+fn assert_tooltip_card(host: &mut Offscreen, expected_radius: f32, ctx: &str) {
+    let card = tooltip_card(host);
+    assert_eq!(card.radii, [expected_radius; 4], "{ctx}: corner radius");
+    assert_eq!(&card.fill[..3], &[0.0, 0.0, 0.0], "{ctx}: black fill RGB");
+    assert!(
+        card.fill[3] > 0.5,
+        "{ctx}: dark fill opacity {:?}",
+        card.fill
+    );
+    assert!(card.params[0] >= 1.0, "{ctx}: 1px border width");
+    assert!(card.border[3] > 0.0, "{ctx}: faint visible border");
+}
+
+/// Hovering a tooltipped control renders with GTK's dark surface, faint border, and
+/// updates its corner radii live when Corner roundness changes, in both dark and light themes.
+#[test]
+fn hover_tooltip_applies_gtk_styling_and_live_corner_roundness() {
+    let light_id = strata_kit::theme::bundled()
+        .iter()
+        .find(|theme| !theme.dark_background())
+        .expect("bundled light theme")
+        .id
+        .clone();
+
+    crate::test_support::view::hosted_with(
+        MODULE,
+        "columns",
+        "corner_roundness = 0\n".to_owned(),
+        "hover_tooltip_applies_gtk_styling_and_live_corner_roundness",
+        move |mut host| {
+            while host.turn() {}
+            let rect = host
+                .runtime()
+                .elements()
+                .into_iter()
+                .find(|el| el.key.as_deref() == Some("header-appearance"))
+                .expect("header-appearance button")
+                .rect;
+            host.runtime()
+                .pointer_move(rect[0] + rect[2] * 0.5, rect[1] + rect[3] * 0.5);
+            host.runtime().frame(0.0);
+            host.runtime().frame(0.6);
+
+            assert_tooltip_card(&mut host, 0.0, "dark theme at 0% roundness");
+
+            for (percent, expected_radius) in [(100, 5.0), (60, 3.0), (0, 0.0)] {
+                act(&mut host, |app, tx| {
+                    shell::saved(app).change(|saved| {
+                        saved.corner_roundness =
+                            strata_desktop::settings::CornerRoundness::new(percent);
+                    });
+                    shell::follow_look_tx(app, tx);
+                });
+                while host.turn() {}
+                host.runtime().frame(0.0);
+                assert_tooltip_card(
+                    &mut host,
+                    expected_radius,
+                    &format!("dark theme at {percent}%"),
+                );
+            }
+
+            act(&mut host, |app, tx| {
+                shell::saved(app).change(|saved| {
+                    saved.mode = "manual".to_owned();
+                    saved.theme = light_id.clone();
+                    saved.corner_roundness = strata_desktop::settings::CornerRoundness::new(100);
+                });
+                shell::follow_look_tx(app, tx);
+            });
+            while host.turn() {}
+            host.runtime().frame(0.0);
+            assert_tooltip_card(&mut host, 5.0, "light theme at 100% roundness");
+        },
+    );
+}

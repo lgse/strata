@@ -3,12 +3,20 @@
 //! What is open: the menu's target, where it opened, its model and its open submenus.
 
 use std::any::Any;
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::fmt;
 use std::rc::Rc;
 
 use super::model::{ActionId, MenuModel};
 use crate::contract::{EntryId, Point};
+use crate::scroll::{Bar, BarMode};
+
+/// A menu scroll bar: shown whenever the menu overflows, hidden when it fits.
+pub(super) fn menu_bar() -> Bar {
+    let bar = Bar::new();
+    bar.set_mode(BarMode::Always);
+    bar
+}
 
 /// What a menu is for. Which actions apply to it is the host's policy.
 #[derive(Clone)]
@@ -90,6 +98,20 @@ struct Open {
     /// The top-level width captured on the first render of this open menu so async
     /// [`ContextMenuState::update_model`] refreshes never snap its width.
     locked_width: Cell<Option<LockedWidth>>,
+    /// One C24 scroll bar per open surface depth (0 = top-level menu, 1.. = open submenus).
+    scroll_bars: RefCell<Vec<Bar>>,
+}
+
+impl Open {
+    /// Releases and drops every submenu scroll bar deeper than `keep_submenus` (depth 0 is the
+    /// top-level menu bar, so `keep_submenus + 1` entries stay).
+    fn drain_bars_past(&self, keep_submenus: usize) {
+        let mut bars = self.scroll_bars.borrow_mut();
+        let keep = (keep_submenus + 1).min(bars.len());
+        for bar in bars.drain(keep..) {
+            bar.release();
+        }
+    }
 }
 
 impl ContextMenuState {
@@ -101,12 +123,18 @@ impl ContextMenuState {
     /// Opens `model` for `target` at window point `at` (where a secondary press landed, or
     /// the keyboard anchor), closing any menu that was open.
     pub fn open(&mut self, target: MenuTarget, at: Point, model: MenuModel) {
+        if let Some(prev) = self.open.take() {
+            for bar in prev.scroll_bars.borrow().iter() {
+                bar.release();
+            }
+        }
         self.open = Some(Open {
             target,
             at,
             model,
             submenu: Vec::new(),
             locked_width: Cell::new(None),
+            scroll_bars: RefCell::new(Vec::new()),
         });
     }
 
@@ -128,13 +156,18 @@ impl ContextMenuState {
                 })
                 .count();
             open.submenu.truncate(keep);
+            open.drain_bars_past(keep);
             open.model = model;
         }
     }
 
     /// Closes the menu, handing back what it was for.
     pub fn close(&mut self) -> Option<MenuTarget> {
-        self.open.take().map(|o| o.target)
+        let open = self.open.take()?;
+        for bar in open.scroll_bars.borrow().iter() {
+            bar.release();
+        }
+        Some(open.target)
     }
 
     /// Whether a menu is open.
@@ -171,6 +204,13 @@ impl ContextMenuState {
         if open.submenu == path || open.model.item_at(path).is_none_or(|i| i.submenu.is_none()) {
             return false;
         }
+        let common = open
+            .submenu
+            .iter()
+            .zip(path)
+            .take_while(|(a, b)| a == b)
+            .count();
+        open.drain_bars_past(common);
         open.submenu = path.to_vec();
         true
     }
@@ -181,10 +221,30 @@ impl ContextMenuState {
         match &mut self.open {
             Some(open) if open.submenu.len() > depth => {
                 open.submenu.truncate(depth);
+                open.drain_bars_past(depth);
                 true
             }
             _ => false,
         }
+    }
+
+    #[cfg(test)]
+    pub(super) fn scroll_bar_count(&self) -> usize {
+        self.open
+            .as_ref()
+            .map_or(0, |open| open.scroll_bars.borrow().len())
+    }
+
+    /// The C24 scroll bar for the surface `depth` levels in, created on first render.
+    pub(super) fn scroll_bar(&self, depth: usize) -> Bar {
+        let Some(open) = &self.open else {
+            return menu_bar();
+        };
+        let mut bars = open.scroll_bars.borrow_mut();
+        while bars.len() <= depth {
+            bars.push(menu_bar());
+        }
+        bars[depth].clone()
     }
 
     /// The top-level width locked when this open menu first rendered at `font_px` with floor

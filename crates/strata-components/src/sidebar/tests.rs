@@ -696,3 +696,54 @@ fn overlay_above_sidebar_wins_pointer_hits_over_wide_grip() {
     assert_eq!(rt.state.overlay_presses, 1);
     assert_eq!(rt.state.sidebar.width.full_width(), edge);
 }
+
+#[test]
+fn device_eject_button_heading_toggle_and_pending_row_behave_cleanly() {
+    let look = strata_kit::look::Look::default();
+    let host = MountedHost {
+        sidebar: SidebarState::new(&look),
+        look,
+        places: vec![Place::folder("home", "Home", IconName::Home)],
+        pins: vec![Pin::new("docs", "Docs")],
+        groups: vec![DeviceGroup::new(vec![
+            dev("usb").mounted(true).release(Release::Eject),
+            dev("busy").mounted(true).pending(true),
+        ])],
+        intents: Vec::new(),
+    };
+    let mut rt = rune::Runtime::new(host, mounted_view, (260.0, 500.0), rune::Env::default());
+    rt.frame(0.0);
+    rt.frame(1.0 / 60.0);
+
+    // Clicking the eject button emits Eject without opening the row or triggering resize.
+    let (ex, ey) = element_center(&rt, "places-device-usb-eject");
+    rt.pointer_move(ex, ey);
+    rt.pointer_down(ex, ey);
+    rt.pointer_up(ex, ey);
+    rt.frame(1.0 / 60.0);
+
+    // Clicking a pending-release row emits nothing because it is disabled.
+    let (bx, by) = element_center(&rt, "places-device-busy");
+    rt.pointer_move(bx, by);
+    rt.pointer_down(bx, by);
+    rt.pointer_up(bx, by);
+    rt.frame(1.0 / 60.0);
+
+    // Clicking the DEVICES heading toggles the section cleanly.
+    let (dx, dy) = element_center(&rt, "places-heading-devices");
+    rt.pointer_move(dx, dy);
+    rt.pointer_down(dx, dy);
+    rt.pointer_up(dx, dy);
+    rt.frame(1.0 / 60.0);
+
+    assert_eq!(
+        rt.state.intents,
+        [
+            SidebarIntent::Eject("usb".into()),
+            SidebarIntent::SectionToggled {
+                section: Section::Devices,
+                collapsed: true,
+            },
+        ]
+    );
+}
