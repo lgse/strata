@@ -848,7 +848,24 @@ fn each_rows_menu_lists_gtks_rows_in_its_order() {
             "{:?}",
             row.item
         );
+        let built = menu::model(&row, Contents::NonEmpty);
+        for item in built.sections.iter().flat_map(|s| &s.items) {
+            assert!(
+                item.icon.is_some(),
+                "sidebar row {:?} missing icon",
+                item.label
+            );
+        }
     }
+    let trash = row(place("trash"), Location::uri("trash:///"));
+    let empty = menu::model(&trash, Contents::NonEmpty)
+        .sections
+        .into_iter()
+        .flat_map(|s| s.items)
+        .find(|i| &*i.action == "empty-trash")
+        .expect("Empty Trash row");
+    assert_eq!(empty.icon, Some(strata_kit::icons::IconName::Trash));
+    assert!(empty.danger);
 }
 
 /// The open sidebar menu's rows, as assistive technology hears them: their names and keys.

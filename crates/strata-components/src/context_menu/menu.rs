@@ -91,14 +91,17 @@ impl<S: 'static> ContextMenu<S> {
         let top_width = st.resolve_width(look.kit.ty.ui_compact.size, self.min_width, || {
             width_with_min(look, &model.header, &model.sections, self.min_width)
         });
+        let open = st.submenu();
+        let scroll_bars = (0..=open.len()).map(|depth| st.scroll_bar(depth)).collect();
         Render {
             key: &self.key,
             at,
             name: &self.name,
             header: &model.header,
             sections: &model.sections,
-            open: st.submenu(),
+            open,
             top_width,
+            scroll_bars,
             look,
             on_select: Rc::new(move |s: &mut S, path: &[usize], tx: &mut Tx| {
                 let st = get_mut(s);
