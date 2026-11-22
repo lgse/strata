@@ -96,6 +96,14 @@ fn metadata_changed<T: PartialEq>(old: &MetadataValue<T>, new: &MetadataValue<T>
     matches!((old, new), (MetadataValue::Known(a), MetadataValue::Known(b)) if a != b)
 }
 
+fn refresh_entry_metadata(app: &mut App, entry: FileEntry) {
+    app.preview.current = Some(entry.clone());
+    if let Some((source, _)) = &mut app.preview.header_source {
+        *source = entry;
+        super::refresh_header(app);
+    }
+}
+
 pub(super) fn show(app: &mut App, entry: FileEntry, depth: Option<usize>, tx: &mut Tx) {
     let other_file = app
         .preview
@@ -130,6 +138,8 @@ pub(super) fn show(app: &mut App, entry: FileEntry, depth: Option<usize>, tx: &m
     }
     if !was_open || !already_showing {
         load::start(app, entry);
+    } else {
+        refresh_entry_metadata(app, entry);
     }
 }
 
@@ -147,6 +157,7 @@ pub(super) fn show_after_focus_change(
         .is_some_and(|current| same_preview_version(current, &entry))
         && (app.preview.loader.is_active() || !app.preview.viewer.is_empty());
     if already_showing {
+        refresh_entry_metadata(app, entry);
         return;
     }
     if !app.preview.drawer.is_open() {

@@ -347,11 +347,9 @@ pub(super) fn wake_if_focus_handoff(app: &App, tx: &mut Tx) {
 
 fn awaiting_viewer_mount(app: &App) -> bool {
     app.preview.drawer.is_open()
+        && !app.preview.drawer.is_suspended()
         && (app.preview.loader.is_active()
-            || matches!(
-                app.preview.viewer,
-                Viewer::Empty | Viewer::Loading | Viewer::Decoding(_)
-            )
+            || matches!(app.preview.viewer, Viewer::Decoding(_))
             || app.preview.content_focus == ContentFocus::Pending)
 }
 
@@ -369,12 +367,12 @@ fn sync_preview_focus(app: &mut App, tx: &mut Tx) -> bool {
 
 fn should_hold_focus_handoff(app: &mut App, tx: &mut Tx) -> bool {
     let awaiting = awaiting_viewer_mount(app);
-    let drawer_open = app.preview.drawer.is_open();
+    let active_drawer = app.preview.drawer.is_open() && !app.preview.drawer.is_suspended();
     let Some(handoff) = app.preview.focus_handoff.as_mut() else {
         return false;
     };
     let moved_elsewhere = tx.focused() != handoff.from.as_deref();
-    if !drawer_open || moved_elsewhere {
+    if !active_drawer || moved_elsewhere {
         app.preview.focus_handoff = None;
         return false;
     }
@@ -505,6 +503,7 @@ fn show_document_view(app: &mut App, view: DocumentView, tx: &mut Tx) {
 
 fn on_suspend(app: &mut App, suspended: bool, tx: &mut Tx) {
     if suspended {
+        clear_focus_handoff(app);
         if app.preview.loader.is_active() {
             app.preview.loader.cancel();
             app.preview.loader.defer_on_resume = true;
@@ -736,6 +735,12 @@ fn needs_selection_restore(
     }
 }
 
+fn reconcile_stale_text_menu(app: &mut App, tx: &mut Tx) {
+    app.preview.focus_handoff = None;
+    app.preview.owns_focus = preview_owns_focus(app, tx);
+    tx.wake_after(std::time::Duration::ZERO);
+}
+
 /// Runs a chosen item from a preview text viewer's context menu. Ignores viewer mutations and
 /// focus handoffs when the preview closed, reloaded, or switched files while the menu was open.
 pub(crate) fn run_text_menu_action(
@@ -767,6 +772,8 @@ pub(crate) fn run_text_menu_action(
     if current {
         tx.focus(outcome.focus_key, false);
         arm_focus_handoff(app, tx);
+    } else {
+        reconcile_stale_text_menu(app, tx);
     }
 }
 
@@ -778,6 +785,7 @@ pub(crate) fn dismiss_text_menu(
     tx: &mut Tx,
 ) {
     if !is_current_text_viewer(app, outcome.stamp) {
+        reconcile_stale_text_menu(app, tx);
         return;
     }
     if let Some(saved) = outcome.restore

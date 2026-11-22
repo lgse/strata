@@ -704,6 +704,12 @@ fn menu_key<S>(
     rows: &[Row],
     hands: &Hands<S>,
 ) -> bool {
+    let focused = tx.focused().and_then(|k| rows.iter().find(|r| r.key == k));
+    if let Some(dismiss) = &hands.dismiss
+        && non_modal_key(s, ev, tx, focused.is_some(), dismiss)
+    {
+        return true;
+    }
     let m = ev.mods;
     let plain = !(m.ctrl || m.cmd || m.alt || m.logo || m.shift);
     if ev.is_command('a') {
@@ -720,14 +726,7 @@ fn menu_key<S>(
     if !plain {
         return false;
     }
-    let focused = tx.focused().and_then(|k| rows.iter().find(|r| r.key == k));
     match &ev.key {
-        Key::Escape if hands.dismiss.is_some() => {
-            if let Some(dismiss) = &hands.dismiss {
-                dismiss(s, tx);
-            }
-            return true;
-        }
         Key::Right | Key::Enter => {}
         Key::Text(t) if t == " " => {}
         Key::Left if depth > 0 => {
@@ -748,6 +747,33 @@ fn menu_key<S>(
             }
             true
         }
+        _ => false,
+    }
+}
+
+/// Keys a non-modal (`keeps_text_selection`) menu keeps from leaking to Rune's landmark cycle
+/// (`F6` / `Shift+F6`), background `page_scroll` (when all items are disabled and the menu
+/// surface holds focus directly), or `Escape` / `Shift+Escape` dismissal.
+fn non_modal_key<S>(
+    s: &mut S,
+    ev: &KeyEvent,
+    tx: &mut Tx,
+    focused_row: bool,
+    dismiss: &Dismiss<S>,
+) -> bool {
+    let m = ev.mods;
+    if m.ctrl || m.cmd || m.alt || m.logo {
+        return false;
+    }
+    match ev.key {
+        Key::Escape => {
+            if !tx.key_repeat() {
+                dismiss(s, tx);
+            }
+            true
+        }
+        Key::Function(6) => true,
+        Key::PageUp | Key::PageDown | Key::Home | Key::End if !focused_row => true,
         _ => false,
     }
 }
