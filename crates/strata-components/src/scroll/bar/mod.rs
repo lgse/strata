@@ -159,7 +159,8 @@ impl BarLook {
         trough - 2.0 * self.ends
     }
 
-    fn band(&self) -> f32 {
+    /// The bar's cross-axis band thickness (`thickness + 2 * margin`).
+    pub fn band(&self) -> f32 {
         self.thickness + 2.0 * self.margin
     }
 

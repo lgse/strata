@@ -6,10 +6,13 @@ use std::rc::Rc;
 
 use rune::{Color, Cursor, El, Key, KeyEvent, ScrollSpec, TextEdit, Tx, col, el, icon, row, text};
 use rune_kit::{IconButton, IconButtonVariant, Placement, TextInput, popover};
-use strata_components::controls::{
-    number_field::{NumberField, NumberFieldState},
-    settings_search::{Navigate, SearchIndex, SearchLabels, SettingsSearch},
-    switch::Switch,
+use strata_components::{
+    controls::{
+        number_field::{NumberField, NumberFieldState},
+        settings_search::{Navigate, SearchIndex, SearchLabels, SettingsSearch},
+        switch::Switch,
+    },
+    scroll::{Bar, BarLook, BarMode, anchor},
 };
 use strata_core::i18n::{count, tr};
 use strata_desktop::settings::Preferences;
@@ -19,6 +22,42 @@ use super::{PageId, search_index::translated};
 use crate::{App, buttons, shell};
 
 pub(super) const PAGE_SCROLL: &str = "settings-page";
+pub(super) const SCROLLBAR_EDGE_INSET: f32 = 2.0;
+pub(super) const SCROLLBAR_END_INSET: f32 = 4.0;
+
+/// A Settings scroll bar: shown whenever its viewport overflows, hidden when it fits.
+pub(super) fn settings_bar() -> Bar {
+    let bar = Bar::new();
+    bar.set_mode(BarMode::Always);
+    bar
+}
+
+/// Standard Strata C24 accent bar look for Settings viewports, inset from borders and corners.
+pub(super) fn settings_bar_look(look: &Look, edge: f32, ends: f32) -> BarLook {
+    let mut bar_look = BarLook::app(look);
+    bar_look.edge = edge;
+    bar_look.ends = ends;
+    bar_look
+}
+
+/// Wraps a `max_h`-bounded scroll viewport with its C24 accent scrollbar without forcing full
+/// height, so short lists shrink to their content while overflowing lists show the bar.
+pub(super) fn bounded_scroll_with_bar(
+    viewport: El,
+    bar: &Bar,
+    (bar_key, scroll_key): (&str, &str),
+    bar_look: BarLook,
+) -> El {
+    let bar_el = bar
+        .build::<App>(bar_key, scroll_key, bar_look)
+        .wheel_scrolls(scroll_key.to_owned());
+    col()
+        .w_full()
+        .shrink()
+        .min_h(0.0)
+        .child(viewport)
+        .child(anchor(0.0, 0.0, bar_el))
+}
 
 #[derive(Clone, Copy)]
 pub(super) struct PageCtx<'a> {
@@ -41,10 +80,16 @@ pub(super) fn search_handle() -> SettingsSearch<App> {
         count: Rc::new(|n| count("results", n)),
     })
     .page_scroll(PAGE_SCROLL)
-    .on_navigate(|app: &mut App, to: Navigate, _| {
+    .on_navigate(|app: &mut App, to: Navigate, tx: &mut Tx| {
         if let Some(page) = PageId::from_key(&to.page) {
             let tenxer_mode = shell::preferences(app).tenxer_mode;
-            app.settings_dialog.select_page(page, tenxer_mode);
+            let changed = app.settings_dialog.select_page(page, tenxer_mode);
+            if changed && to.row.is_none() {
+                tx.scroll_to_instant(PAGE_SCROLL, 0.0, 0.0);
+            }
+            if page == PageId::Actions {
+                super::actions::ensure_observing(app);
+            }
             if page == PageId::Integrations {
                 super::integrations::ensure_scanned(app);
             }
@@ -406,7 +451,7 @@ pub(super) fn choice_menu(app: &App, spec: ChoiceSpec<'_>, menu_layer: &mut Vec<
             anchor_key: &toggle_key,
             options: spec.options,
         };
-        build_choice_popup(look, popup, menu_layer);
+        build_choice_popup(look, &app.settings_dialog.choice_bar, popup, menu_layer);
     }
     el().key(format!("settings-choice-{id}"))
         .role("button")
@@ -416,10 +461,16 @@ pub(super) fn choice_menu(app: &App, spec: ChoiceSpec<'_>, menu_layer: &mut Vec<
         .child(inner)
 }
 
+fn close_choice(app: &mut App) {
+    app.settings_dialog.open_choice = None;
+    app.settings_dialog.choice_bar.release();
+}
+
 fn toggle_choice_popup(app: &mut App, id: &'static str, first_opt_key: &str, tx: &mut Tx) {
     if app.settings_dialog.open_choice == Some(id) {
-        app.settings_dialog.open_choice = None;
+        close_choice(app);
     } else {
+        app.settings_dialog.choice_bar.release();
         app.settings_dialog.open_choice = Some(id);
         if !first_opt_key.is_empty() {
             tx.focus_when_shown(first_opt_key.to_owned(), tx.focus_visible() || tx.by_keys());
@@ -427,7 +478,12 @@ fn toggle_choice_popup(app: &mut App, id: &'static str, first_opt_key: &str, tx:
     }
 }
 
-fn build_choice_popup(look: &Look, spec: PopupSpec<'_>, menu_layer: &mut Vec<El>) {
+fn build_choice_popup(
+    look: &Look,
+    choice_bar: &Bar,
+    spec: PopupSpec<'_>,
+    menu_layer: &mut Vec<El>,
+) {
     let kit = &look.kit;
     let id = spec.id;
     let stops: Vec<String> = (0..spec.options.len())
@@ -439,29 +495,23 @@ fn build_choice_popup(look: &Look, spec: PopupSpec<'_>, menu_layer: &mut Vec<El>
         .enumerate()
         .map(|(idx, opt)| build_choice_option(look, &stops[idx], opt, spec.anchor_key))
         .collect();
-    let list = col()
-        .min_w(196.0)
-        .max_h(320.0)
-        .padding(look.space.xs)
-        .gap(look.space.xxs)
-        .scroll(ScrollSpec {
-            stick_bottom: false,
-        })
-        .children(rows);
+    let scrolled = choice_scroll_list(look, choice_bar, id, rows);
     let anchor_for_dismiss = spec.anchor_key.to_owned();
     let anchor_for_keys = spec.anchor_key.to_owned();
-    let body = list
+    let body = col()
         .key(format!("settings-choice-{id}-menu"))
         .role("menu")
         .label(spec.title.to_owned())
+        .min_w(196.0)
         .focus_return(spec.anchor_key.to_owned())
         .on_key(move |app: &mut App, ev: &KeyEvent, tx: &mut Tx| {
             choice_menu_key(app, ev, tx, (&stops, &anchor_for_keys))
         })
         .modal_tx(true, move |app: &mut App, tx: &mut Tx| {
-            app.settings_dialog.open_choice = None;
+            close_choice(app);
             tx.focus(anchor_for_dismiss.clone(), true);
-        });
+        })
+        .child(scrolled);
     let surface = popover::raised(kit, body, kit.radius.md);
     menu_layer.push(popover::anchored(
         kit,
@@ -470,6 +520,37 @@ fn build_choice_popup(look: &Look, spec: PopupSpec<'_>, menu_layer: &mut Vec<El>
         Placement::Bottom,
         look.space.xs,
     ));
+}
+
+fn choice_scroll_list(look: &Look, choice_bar: &Bar, id: &'static str, rows: Vec<El>) -> El {
+    let inner = col()
+        .w_full()
+        .min_w(0.0)
+        .pl(look.space.xs)
+        .pr(look.space.lg)
+        .pt(look.space.xs)
+        .pb(look.space.md)
+        .gap(look.space.xxs)
+        .children(rows);
+    let scroll_key = format!("settings-choice-{id}-scroll");
+    let bar_key = format!("settings-choice-{id}-scrollbar");
+    let viewport = col()
+        .key(scroll_key.clone())
+        .w_full()
+        .max_h(320.0)
+        .shrink()
+        .min_h(0.0)
+        .scroll(ScrollSpec {
+            stick_bottom: false,
+        })
+        .on_scroll_offset(choice_bar.watch())
+        .child(inner);
+    bounded_scroll_with_bar(
+        viewport,
+        choice_bar,
+        (&bar_key, &scroll_key),
+        settings_bar_look(look, SCROLLBAR_EDGE_INSET, SCROLLBAR_END_INSET),
+    )
 }
 
 fn build_choice_option(look: &Look, key: &str, opt: ChoiceOption, anchor_key: &str) -> El {
@@ -510,7 +591,7 @@ fn build_choice_option(look: &Look, key: &str, opt: ChoiceOption, anchor_key: &s
         .label(opt.label)
         .checked(selected)
         .on_press_tx(move |app: &mut App, tx: &mut Tx| {
-            app.settings_dialog.open_choice = None;
+            close_choice(app);
             on_pick(app, tx);
             tx.focus(anchor.clone(), true);
         })
@@ -529,7 +610,7 @@ fn choice_menu_key(
     (stops, anchor): (&[String], &str),
 ) -> bool {
     if ev.key == Key::Escape {
-        app.settings_dialog.open_choice = None;
+        close_choice(app);
         tx.focus(anchor.to_owned(), true);
         return true;
     }

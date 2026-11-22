@@ -55,12 +55,19 @@ use strata_kit::look::Look;
 use super::highlight::{CodeDoc, Highlighter, LineEdit, Mode, OVERSCAN, Source};
 use super::render::{Paint, gutter_width};
 use super::rows::{TAB, columns_of};
+use crate::scroll::{Bar, BarLook, BarMode, overlay};
 
-/// The focus ring's width: rune-kit's text fields draw theirs 1 pt wide, just inside.
-const FIELD_RING: f32 = 1.0;
+/// Gap keeping the C24 scroll bars inside the editor's rounded corners and border.
+const BAR_INSET: f32 = 2.0;
 
 /// The field draws the spans of lines in windows this many lines long.
 const SPAN_PAGE: usize = 128;
+
+fn editor_bar() -> Bar {
+    let bar = Bar::new();
+    bar.set_mode(BarMode::Always);
+    bar
+}
 
 /// The script editor's state: the text being edited and its colours. The host keeps one per
 /// editor (one per runtime draft, as Strata keeps a buffer per runtime).
@@ -73,6 +80,9 @@ pub struct EditorState {
     height: Rc<Cell<f32>>,
     /// The line height the last build drew with.
     line: Rc<Cell<f32>>,
+    /// Vertical and horizontal C24 scroll bars for the editor viewport.
+    bar: Bar,
+    sideways: Bar,
     /// The lines whose colours the field draws.
     window: Range<usize>,
     /// Ctrl+Tab sent a Tab to move focus on: the editor lets that one Tab pass.
@@ -112,9 +122,28 @@ impl EditorState {
             offset: Rc::default(),
             height: Rc::default(),
             line: Rc::new(Cell::new(1.0)),
+            bar: editor_bar(),
+            sideways: editor_bar(),
             window,
             tab_out: false,
         }
+    }
+
+    /// Sets when the editor's scroll bars show.
+    pub fn set_bar_mode(&self, mode: BarMode) {
+        self.bar.set_mode(mode);
+        self.sideways.set_mode(mode);
+    }
+
+    /// Releases hover and drag state held on the editor's scroll bars when the editor closes.
+    pub fn release_bars(&self) {
+        self.bar.release();
+        self.sideways.release();
+    }
+
+    #[cfg(test)]
+    pub(crate) fn bars_overflow(&self) -> (bool, bool) {
+        (self.bar.overflows(), self.sideways.overflows())
     }
 
     /// The editor's key, `script` unless set: its field is keyed `field`, its viewport
@@ -367,6 +396,7 @@ impl<S: 'static> CodeEditor<S> {
             .color(paint.text)
             .caret(paint.text, paint.selection)
             .selection_color(paint.selection)
+            .no_focus_ring()
             .min_w(width)
             .on_edit(move |s: &mut S| &mut get_mut(s).edit)
             .on_input_key(move |s: &mut S, ev: &KeyEvent, tx: &mut Tx| key_in(get_mut(s), ev, tx))
@@ -382,31 +412,21 @@ impl<S: 'static> CodeEditor<S> {
             .key(format!("{}-numbers", st.key))
             .w(gutter_w)
             .pr(paint.pad)
-            .py(paint.pad / 2.0)
+            .pt(paint.pad / 2.0)
+            .pb(paint.pad)
             .fill(paint.surface)
             .sticky_left(0.0)
             .a11y_hidden();
         let content = row().items_start().child(gutter).child(
             col()
                 .grow(1.0)
-                .px(paint.pad)
-                .py(paint.pad / 2.0)
+                .pl(paint.pad)
+                .pr(paint.pad + 6.0)
+                .pt(paint.pad / 2.0)
+                .pb(paint.pad)
                 .child(field),
         );
-        let (offset, height) = (st.offset.clone(), st.height.clone());
-        let viewport = col()
-            .key(format!("{}-scroll", st.key))
-            .w_full()
-            .h_full()
-            .scroll(ScrollSpec {
-                stick_bottom: false,
-            })
-            .scroll_xy()
-            .on_scroll_offset(move |p| {
-                offset.set(p.offset[1]);
-                height.set(p.viewport[1]);
-            })
-            .child(content);
+        let body = build_editor_body::<S>(st, content, look);
         let k = &look.kit;
         let mut frame = col()
             .key(st.key.clone())
@@ -416,18 +436,61 @@ impl<S: 'static> CodeEditor<S> {
             .fill(paint.surface)
             .radius(look.round(k.radius.sm))
             .clip_soft(look.round(k.radius.sm))
-            .child(viewport);
-        // rune-kit's text field frame (`TextArea`'s shell): its input elevation (the ring the
-        // theme gives fields) at rest, and its focus ring while the field has focus.
-        if st.edit.focused {
-            frame = frame.outline(FIELD_RING, -FIELD_RING, k.c.border_focus);
-        } else {
-            for s in k.shadow_layers(k.elevation.input()) {
-                frame = frame.box_shadow(s);
-            }
+            .child(body);
+        for s in k.shadow_layers(k.elevation.input()) {
+            frame = frame.box_shadow(s);
         }
         frame
     }
+}
+
+fn build_editor_body<S: 'static>(st: &EditorState, content: El, look: &Look) -> El {
+    let scroll_key = format!("{}-scroll", st.key);
+    let (offset, height) = (st.offset.clone(), st.height.clone());
+    let (bar, sideways) = (st.bar.clone(), st.sideways.clone());
+    let viewport = col()
+        .key(scroll_key.clone())
+        .w_full()
+        .h_full()
+        .scroll(ScrollSpec {
+            stick_bottom: false,
+        })
+        .scroll_xy()
+        .on_scroll_offset(move |p| {
+            offset.set(p.offset[1]);
+            height.set(p.viewport[1]);
+            bar.follow(p);
+            sideways.follow(p);
+        })
+        .child(content);
+    let vbar = st
+        .bar
+        .build::<S>(
+            &format!("{}-bar", st.key),
+            &scroll_key,
+            editor_bar_look(look, false),
+        )
+        .wheel_scrolls(scroll_key.clone());
+    let hbar = st
+        .sideways
+        .build::<S>(
+            &format!("{}-sideways", st.key),
+            &scroll_key,
+            editor_bar_look(look, true),
+        )
+        .wheel_scrolls(scroll_key);
+    st.bar
+        .area(st.sideways.area(overlay(viewport, [vbar, hbar])))
+}
+
+fn editor_bar_look(look: &Look, horizontal: bool) -> BarLook {
+    let mut bar_look = BarLook::app(look);
+    if horizontal {
+        bar_look = bar_look.horizontal();
+    }
+    bar_look.edge = BAR_INSET;
+    bar_look.ends = BAR_INSET;
+    bar_look
 }
 
 /// The editor's own keys, before the field's.
