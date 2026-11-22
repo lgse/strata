@@ -635,3 +635,61 @@ fn unsorted_preserves_discovery_within_groups_across_batches_and_monitoring() {
         assert_eq!(names(&inserted_one_by_one(&entries, prefs)), expected);
     }
 }
+
+#[test]
+fn parallel_sort_matches_reference_comparator_and_preserves_stability() {
+    let prefixes = [
+        "IMG_", "img_", "DSC", "photo", "a", "0", "00", "café_", "ß_", "README",
+    ];
+    let exts = ["jpg", "JPG", "png", "webp", "txt"];
+    let mut entries = Vec::with_capacity(10_000);
+    for i in 0..10_000_usize {
+        let prefix = prefixes[(i * 7 + 3) % prefixes.len()];
+        let num = (i * 997) % 1_500;
+        let ext = exts[(i * 13) % exts.len()];
+        let name = if i % 17 == 0 {
+            format!("{prefix}0{num}.{ext}")
+        } else {
+            format!("{prefix}{num}.{ext}")
+        };
+        let mut entry = file_entry(&format!("/fixture/{i:05}/{name}"), &name);
+        if i % 11 == 0 {
+            entry.kind = EntryKind::Directory;
+        }
+        entry.size = MetadataValue::Known(((i * 31) % 500) as u64);
+        entries.push(entry);
+    }
+
+    for (sort_key, sort_direction, natural, case_sensitive, folders_first) in [
+        (SortKey::Name, SortDirection::Ascending, true, false, true),
+        (SortKey::Name, SortDirection::Descending, true, true, false),
+        (SortKey::Name, SortDirection::Ascending, false, false, true),
+        (SortKey::Size, SortDirection::Ascending, true, false, true),
+        (SortKey::Type, SortDirection::Ascending, true, false, true),
+    ] {
+        let prefs = ViewPreferences {
+            sort_key,
+            sort_direction,
+            folders_first,
+            show_hidden: false,
+            name_comparison: crate::model::NameComparison {
+                natural,
+                case_sensitive,
+            },
+        };
+        let mut expected = entries.clone();
+        expected.sort_by(|left, right| compare_entries(left, right, prefs));
+        let actual = super::super::sort_entries(entries.clone(), prefs);
+        assert_eq!(
+            actual.len(),
+            expected.len(),
+            "{sort_key:?}/{sort_direction:?}"
+        );
+        for (idx, (a, b)) in actual.iter().zip(&expected).enumerate() {
+            assert_eq!(
+                a.location, b.location,
+                "mismatch at {idx} for {sort_key:?}/{sort_direction:?}/nat={natural}/cs={case_sensitive}"
+            );
+        }
+    }
+}

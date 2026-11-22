@@ -1,10 +1,15 @@
 // SPDX-License-Identifier: MIT
 
-use std::cmp::Ordering;
+use std::{cmp::Ordering, collections::HashMap, rc::Rc};
 
-use crate::model::{FileEntry, MetadataValue, SortDirection, SortKey, ViewPreferences};
+use crate::{
+    model::{FileEntry, MetadataValue, NameComparison, SortDirection, SortKey, ViewPreferences},
+    services::{OTHER_TYPE_NAME, entry_type_description_for_name},
+};
 
 use super::EntryInsertion;
+
+mod parallel;
 
 pub(super) fn merge_entries(
     mut existing: Vec<FileEntry>,
@@ -19,15 +24,8 @@ pub(super) fn merge_entries(
         existing.extend(incoming);
         return (existing, vec![insertion]);
     }
-    let precompute_type = preferences.sort_key == SortKey::Type;
-    let mut incoming_items: Vec<SortItem> = incoming
-        .into_iter()
-        .map(|entry| SortItem::new(entry, precompute_type))
-        .collect();
-    incoming_items.sort_by(|left, right| compare_sort_items(left, right, preferences));
+    let incoming_entries = sort_entries(incoming, preferences);
     if existing.is_empty() {
-        let incoming_entries: Vec<FileEntry> =
-            incoming_items.into_iter().map(|item| item.entry).collect();
         let insertion = EntryInsertion {
             position: 0,
             entries: incoming_entries.clone(),
@@ -35,21 +33,24 @@ pub(super) fn merge_entries(
         return (incoming_entries, vec![insertion]);
     }
 
-    merge_sorted(existing, incoming_items, preferences)
+    merge_sorted(existing, incoming_entries, preferences)
 }
 
 fn merge_sorted(
     existing: Vec<FileEntry>,
-    incoming_items: Vec<SortItem>,
+    incoming: Vec<FileEntry>,
     preferences: ViewPreferences,
 ) -> (Vec<FileEntry>, Vec<EntryInsertion>) {
     let precompute_type = preferences.sort_key == SortKey::Type;
-    let mut merged = Vec::with_capacity(existing.len() + incoming_items.len());
+    let mut merged = Vec::with_capacity(existing.len() + incoming.len());
     let mut existing_items = existing
         .into_iter()
         .map(|entry| SortItem::new(entry, precompute_type))
         .peekable();
-    let mut incoming_items = incoming_items.into_iter().peekable();
+    let mut incoming_items = incoming
+        .into_iter()
+        .map(|entry| SortItem::new(entry, precompute_type))
+        .peekable();
     let mut insertions = Vec::<EntryInsertion>::new();
 
     while existing_items.peek().is_some() || incoming_items.peek().is_some() {
@@ -103,20 +104,258 @@ pub fn sort_entries(entries: Vec<FileEntry>, preferences: ViewPreferences) -> Ve
     if preferences.sort_key == SortKey::DeviceOrder || entries.len() <= 1 {
         return entries;
     }
-    let precompute_type = preferences.sort_key == SortKey::Type;
-    let mut items: Vec<SortItem> = entries
-        .into_iter()
-        .map(|entry| SortItem::new(entry, precompute_type))
+    if preferences.sort_key == SortKey::Unsorted {
+        return partition_unsorted(entries, preferences.folders_first);
+    }
+
+    let type_ranks = if preferences.sort_key == SortKey::Type {
+        precompute_type_ranks(&entries)
+    } else {
+        Vec::new()
+    };
+    let folded: Vec<FoldedName> = entries
+        .iter()
+        .map(|entry| FoldedName::new(&entry.display_name))
+        .collect();
+    let mut proxies: Vec<SortProxy> = entries
+        .iter()
+        .enumerate()
+        .map(|(index, entry)| SortProxy {
+            index,
+            is_dir: entry.is_directory(),
+            prefix: NamePrefix::new(&entry.display_name, preferences.name_comparison),
+        })
         .collect();
 
-    items.sort_by(|left, right| compare_sort_items(left, right, preferences));
+    let ctx = SortContext {
+        entries: &entries,
+        folded: &folded,
+        type_ranks: &type_ranks,
+        preferences,
+    };
+    parallel::par_sort_by(&mut proxies, |left, right| ctx.compare(*left, *right));
 
-    items.into_iter().map(|item| item.entry).collect()
+    let mut slots: Vec<Option<FileEntry>> = entries.into_iter().map(Some).collect();
+    proxies
+        .into_iter()
+        .map(|proxy| slots[proxy.index].take().expect("unique sort index"))
+        .collect()
+}
+
+fn partition_unsorted(entries: Vec<FileEntry>, folders_first: bool) -> Vec<FileEntry> {
+    if !folders_first {
+        return entries;
+    }
+    let mut dirs = Vec::new();
+    let mut files = Vec::new();
+    for entry in entries {
+        if entry.is_directory() {
+            dirs.push(entry);
+        } else {
+            files.push(entry);
+        }
+    }
+    dirs.extend(files);
+    dirs
+}
+
+/// Assigns each entry an integer rank matching `compare_entry_type_values`, computing MIME
+/// descriptions once per entry and sorting only the distinct type labels.
+fn precompute_type_ranks(entries: &[FileEntry]) -> Vec<u32> {
+    let mut distinct: Vec<Rc<str>> = Vec::new();
+    let mut lookup: HashMap<Rc<str>, usize> = HashMap::new();
+    let mut raw_ids: Vec<usize> = Vec::with_capacity(entries.len());
+    for entry in entries {
+        let desc = entry_type_description_for_name(entry.kind, &entry.display_name);
+        let id = match lookup.get(&desc) {
+            Some(&id) => id,
+            None => {
+                let id = distinct.len();
+                distinct.push(desc.clone());
+                lookup.insert(desc, id);
+                id
+            }
+        };
+        raw_ids.push(id);
+    }
+    let mut order: Vec<usize> = (0..distinct.len()).collect();
+    order.sort_by(|&a, &b| compare_type_descriptions(&distinct[a], &distinct[b]));
+    let mut rank_of = vec![0_u32; distinct.len()];
+    for (rank, raw_id) in order.into_iter().enumerate() {
+        rank_of[raw_id] = u32::try_from(rank).unwrap_or(u32::MAX);
+    }
+    raw_ids.into_iter().map(|id| rank_of[id]).collect()
+}
+
+fn compare_type_descriptions(left: &str, right: &str) -> Ordering {
+    match (left == OTHER_TYPE_NAME, right == OTHER_TYPE_NAME) {
+        (true, true) => Ordering::Equal,
+        (true, false) => Ordering::Greater,
+        (false, true) => Ordering::Less,
+        (false, false) => compare_display_names(left, right),
+    }
+}
+
+/// Sentinel for `NamePrefix::safe_len` indicating the prefix fast path cannot be used
+/// (non-ASCII name or NUL byte in the leading 8 bytes).
+const PREFIX_INVALID: u8 = u8::MAX;
+
+/// Compact 8-byte mapped ASCII prefix for fast-path name comparisons without chasing pointers.
+#[derive(Clone, Copy)]
+struct NamePrefix {
+    prefix: u64,
+    /// Number of leading bytes guaranteed free of ASCII digits (or 8 for non-natural sort);
+    /// `PREFIX_INVALID` when the name is non-ASCII or contains a NUL byte in its first 8 bytes.
+    safe_len: u8,
+}
+
+impl NamePrefix {
+    fn new(name: &str, comparison: NameComparison) -> Self {
+        if !name.is_ascii() {
+            return Self {
+                prefix: 0,
+                safe_len: PREFIX_INVALID,
+            };
+        }
+        let bytes = name.as_bytes();
+        let len = bytes.len().min(8);
+        let mut prefix = 0_u64;
+        let mut safe_len = 8_u8;
+        for (i, &byte) in bytes[..len].iter().enumerate() {
+            if byte == 0 {
+                return Self {
+                    prefix: 0,
+                    safe_len: PREFIX_INVALID,
+                };
+            }
+            let natural_digit = comparison.natural && byte.is_ascii_digit();
+            if safe_len == 8 && natural_digit {
+                safe_len = i as u8;
+            }
+            let mapped = name_byte(byte, comparison.case_sensitive);
+            prefix |= u64::from(mapped) << (56 - 8 * i);
+        }
+        Self { prefix, safe_len }
+    }
+
+    fn is_valid(self) -> bool {
+        self.safe_len != PREFIX_INVALID
+    }
+
+    /// Resolves `compare_names` directly when both prefixes are valid and differ strictly
+    /// before at least one side's first ASCII digit.
+    fn fast_cmp(self, other: Self) -> Option<Ordering> {
+        if !self.is_valid() || !other.is_valid() {
+            return None;
+        }
+        if self.prefix == other.prefix {
+            return None;
+        }
+        let diff_pos = ((self.prefix ^ other.prefix).leading_zeros() / 8) as u8;
+        (diff_pos < self.safe_len || diff_pos < other.safe_len)
+            .then(|| self.prefix.cmp(&other.prefix))
+    }
+}
+
+#[derive(Clone, Copy)]
+struct SortProxy {
+    index: usize,
+    is_dir: bool,
+    prefix: NamePrefix,
+}
+
+struct SortContext<'a> {
+    entries: &'a [FileEntry],
+    folded: &'a [FoldedName],
+    type_ranks: &'a [u32],
+    preferences: ViewPreferences,
+}
+
+impl SortContext<'_> {
+    fn compare(&self, left: SortProxy, right: SortProxy) -> Ordering {
+        if self.preferences.folders_first {
+            let directory_order = right.is_dir.cmp(&left.is_dir);
+            if directory_order != Ordering::Equal {
+                return directory_order;
+            }
+        }
+        let left_entry = &self.entries[left.index];
+        let right_entry = &self.entries[right.index];
+        if let Some(order) = compare_optional_column(left_entry, right_entry, self.preferences) {
+            return order
+                .then_with(|| self.compare_proxy_names(left, right))
+                .then_with(|| left_entry.location.compare(&right_entry.location));
+        }
+        self.compare_directed(left, right)
+            .then_with(|| self.compare_tie_name(left, right))
+            .then_with(|| left_entry.location.compare(&right_entry.location))
+    }
+
+    fn compare_directed(&self, left: SortProxy, right: SortProxy) -> Ordering {
+        let primary = self.compare_primary(left, right);
+        match self.preferences.sort_direction {
+            SortDirection::Ascending => primary,
+            SortDirection::Descending => primary.reverse(),
+        }
+    }
+
+    fn compare_tie_name(&self, left: SortProxy, right: SortProxy) -> Ordering {
+        if self.preferences.sort_key == SortKey::Name {
+            Ordering::Equal
+        } else {
+            self.compare_proxy_names(left, right)
+        }
+    }
+
+    fn compare_primary(&self, left: SortProxy, right: SortProxy) -> Ordering {
+        let left_entry = &self.entries[left.index];
+        let right_entry = &self.entries[right.index];
+        match self.preferences.sort_key {
+            SortKey::DeviceOrder
+            | SortKey::Unsorted
+            | SortKey::Created
+            | SortKey::Duration
+            | SortKey::Dimensions => Ordering::Equal,
+            SortKey::Recency => compare_metadata(
+                &left_entry.recent_unix_seconds,
+                &right_entry.recent_unix_seconds,
+            ),
+            SortKey::Name => self.compare_proxy_names(left, right),
+            SortKey::Extension => compare_extensions(
+                &left_entry.display_name,
+                &right_entry.display_name,
+                self.preferences.name_comparison,
+            ),
+            SortKey::Type => self.type_ranks[left.index].cmp(&self.type_ranks[right.index]),
+            SortKey::Size => compare_metadata(&left_entry.size, &right_entry.size),
+            SortKey::Modified => compare_metadata(
+                &left_entry.modified_unix_seconds,
+                &right_entry.modified_unix_seconds,
+            ),
+        }
+    }
+
+    fn compare_proxy_names(&self, left: SortProxy, right: SortProxy) -> Ordering {
+        if let Some(order) = left.prefix.fast_cmp(right.prefix) {
+            return order;
+        }
+        compare_names(
+            (
+                &self.folded[left.index],
+                &self.entries[left.index].display_name,
+            ),
+            (
+                &self.folded[right.index],
+                &self.entries[right.index].display_name,
+            ),
+            self.preferences.name_comparison,
+        )
+    }
 }
 
 enum FoldedName {
     Ascii,
-    Folded(glib::GString),
+    Folded(Box<str>),
 }
 
 impl FoldedName {
@@ -124,7 +363,7 @@ impl FoldedName {
         if name.is_ascii() {
             Self::Ascii
         } else {
-            Self::Folded(glib::casefold(name))
+            Self::Folded(glib::casefold(name).as_str().into())
         }
     }
 
@@ -145,20 +384,21 @@ fn compare_with_folded(
     compare_names(
         (left_folded, left_raw),
         (right_folded, right_raw),
-        crate::model::NameComparison::default(),
+        NameComparison::default(),
     )
 }
 
 struct SortItem {
     entry: FileEntry,
     folded_name: FoldedName,
-    entry_type: Option<crate::services::EntryType>,
+    entry_type: Option<Rc<str>>,
 }
 
 impl SortItem {
     fn new(entry: FileEntry, precompute_type: bool) -> Self {
         let folded_name = FoldedName::new(&entry.display_name);
-        let entry_type = precompute_type.then(|| crate::services::entry_type(&entry));
+        let entry_type = precompute_type
+            .then(|| entry_type_description_for_name(entry.kind, &entry.display_name));
         Self {
             entry,
             folded_name,
@@ -184,9 +424,9 @@ fn compare_sort_items(left: &SortItem, right: &SortItem, preferences: ViewPrefer
     if let Some(order) = compare_optional_column(&left.entry, &right.entry, preferences) {
         return order
             .then_with(|| {
-                compare_configured_names(
-                    &left.entry.display_name,
-                    &right.entry.display_name,
+                compare_names(
+                    (&left.folded_name, &left.entry.display_name),
+                    (&right.folded_name, &right.entry.display_name),
                     preferences.name_comparison,
                 )
             })
@@ -216,13 +456,13 @@ fn compare_sort_items(left: &SortItem, right: &SortItem, preferences: ViewPrefer
         SortKey::Type => {
             let left_type = left
                 .entry_type
-                .as_ref()
+                .as_deref()
                 .expect("Type sorting precomputes entry types");
             let right_type = right
                 .entry_type
-                .as_ref()
+                .as_deref()
                 .expect("Type sorting precomputes entry types");
-            compare_entry_type_values(left_type, right_type)
+            compare_type_descriptions(left_type, right_type)
         }
         SortKey::Size => compare_metadata(&left.entry.size, &right.entry.size),
         SortKey::Modified => compare_metadata(
@@ -317,22 +557,9 @@ pub(super) fn compare_entries(
 }
 
 fn compare_entry_types(left: &FileEntry, right: &FileEntry) -> Ordering {
-    let left_type = crate::services::entry_type(left);
-    let right_type = crate::services::entry_type(right);
-    compare_entry_type_values(&left_type, &right_type)
-}
-
-fn compare_entry_type_values(
-    left_type: &crate::services::EntryType,
-    right_type: &crate::services::EntryType,
-) -> Ordering {
-    use crate::services::EntryType;
-    match (left_type, right_type) {
-        (EntryType::Other, EntryType::Other) => Ordering::Equal,
-        (EntryType::Other, _) => Ordering::Greater,
-        (_, EntryType::Other) => Ordering::Less,
-        _ => compare_display_names(left_type.description(), right_type.description()),
-    }
+    let left_type = entry_type_description_for_name(left.kind, &left.display_name);
+    let right_type = entry_type_description_for_name(right.kind, &right.display_name);
+    compare_type_descriptions(&left_type, &right_type)
 }
 
 pub fn compare_display_names(left: &str, right: &str) -> Ordering {
@@ -396,7 +623,7 @@ fn compare_metadata<T: Ord>(left: &MetadataValue<T>, right: &MetadataValue<T>) -
 fn compare_names(
     left: (&FoldedName, &str),
     right: (&FoldedName, &str),
-    comparison: crate::model::NameComparison,
+    comparison: NameComparison,
 ) -> Ordering {
     let (left_bytes, right_bytes) = if comparison.case_sensitive {
         (left.1.as_bytes(), right.1.as_bytes())
@@ -416,11 +643,7 @@ fn compare_names(
     ordering.then_with(|| left.1.cmp(right.1))
 }
 
-fn compare_configured_names(
-    left: &str,
-    right: &str,
-    comparison: crate::model::NameComparison,
-) -> Ordering {
+fn compare_configured_names(left: &str, right: &str, comparison: NameComparison) -> Ordering {
     compare_names(
         (&FoldedName::new(left), left),
         (&FoldedName::new(right), right),
@@ -428,11 +651,7 @@ fn compare_configured_names(
     )
 }
 
-fn compare_extensions(
-    left: &str,
-    right: &str,
-    comparison: crate::model::NameComparison,
-) -> Ordering {
+fn compare_extensions(left: &str, right: &str, comparison: NameComparison) -> Ordering {
     fn extension(name: &str) -> &str {
         std::path::Path::new(name)
             .extension()

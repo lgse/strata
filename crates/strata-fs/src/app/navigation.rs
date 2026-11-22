@@ -450,10 +450,11 @@ impl ColumnState {
     }
 
     fn selected_positions(&self) -> &[usize] {
-        self.selected_locations
-            .positions(&self.entries, self.selected, || {
-                lists_each_location_once(&self.entries, &self.each_location_once)
-            })
+        self.selected_locations.positions(
+            &self.entries,
+            self.selected,
+            self.each_location_once.get().copied(),
+        )
     }
 }
 

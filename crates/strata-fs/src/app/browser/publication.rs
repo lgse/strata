@@ -15,6 +15,7 @@ const STAGE_INLINE_LIMIT: usize = 512;
 const INITIAL_PUBLISH_CHUNK: usize = 512;
 const MIN_PUBLISH_CHUNK: usize = 128;
 const MAX_PUBLISH_CHUNK: usize = 2048;
+pub(super) const DEFAULT_CHUNKS: (usize, usize) = (INITIAL_PUBLISH_CHUNK, MAX_PUBLISH_CHUNK);
 const PUBLISH_CHUNK_BUDGET: Duration = Duration::from_millis(12);
 const PUBLISH_SLICE_BUDGET: Duration = Duration::from_millis(8);
 
@@ -56,17 +57,27 @@ impl StagedPublish {
     }
 }
 
-fn adjusted_chunk_size(current: usize, elapsed: Duration) -> usize {
+fn adjusted_chunk_size(current: usize, elapsed: Duration, max_chunk: usize) -> usize {
     if elapsed > PUBLISH_CHUNK_BUDGET {
         (current / 2).max(MIN_PUBLISH_CHUNK)
     } else if elapsed < PUBLISH_CHUNK_BUDGET / 2 {
-        current.saturating_mul(2).min(MAX_PUBLISH_CHUNK)
+        current.saturating_mul(2).min(max_chunk)
     } else {
         current
     }
 }
 
 impl Browser {
+    /// Configures the `(initial, max)` tail chunk sizes used by staged directory publication.
+    /// First paint still publishes `FIRST_PUBLISH_COUNT` rows immediately; larger tail chunks
+    /// let interfaces whose virtual lists re-scan keys on length changes (Rune #203) converge
+    /// in fewer commits.
+    pub fn set_publication_chunks(&self, initial: usize, max: usize) {
+        let initial = initial.max(MIN_PUBLISH_CHUNK);
+        let max = max.max(initial);
+        self.publication_chunks.set((initial, max));
+    }
+
     pub(super) fn publish_staged(self: &Rc<Self>, depth: usize, plan: PublicationPlan) {
         self.drain_publish(depth);
         if self.preserving_refreshes.borrow_mut().remove(&depth) {
@@ -101,12 +112,13 @@ impl Browser {
             depth,
             count: published,
         });
+        let (initial_chunk, _) = self.publication_chunks.get();
         self.staged_publishes.borrow_mut().insert(
             depth,
             StagedPublish {
                 plan,
                 published,
-                chunk_size: INITIAL_PUBLISH_CHUNK,
+                chunk_size: initial_chunk,
                 measured_chunks: 0,
             },
         );
@@ -275,10 +287,12 @@ impl Browser {
                     count,
                 });
                 let elapsed = started.elapsed();
+                let (_, max_chunk) = self.publication_chunks.get();
                 if let Some(staged) = self.staged_publishes.borrow_mut().get_mut(&depth) {
                     staged.published += count;
                     if staged.measured_chunks > 0 {
-                        staged.chunk_size = adjusted_chunk_size(staged.chunk_size, elapsed);
+                        staged.chunk_size =
+                            adjusted_chunk_size(staged.chunk_size, elapsed, max_chunk);
                     }
                     staged.measured_chunks += 1;
                 }
