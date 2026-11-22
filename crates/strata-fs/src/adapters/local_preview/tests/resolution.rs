@@ -14,6 +14,8 @@ enum Resolved<'a> {
 
 const BINARY_DATA: &[u8] = &[0, 159, 146, 150, 0, 255, 0, 1];
 const PNG_HEADER: &[u8] = b"\x89PNG\r\n\x1a\n\0\0\0\rIHDR\0\0\0\x01\0\0\0\x01";
+const STATIC_WEBP_HEADER: &[u8] = b"RIFF\x16\0\0\0WEBPVP8X\x0a\0\0\0\x10\0\0\0\x01\0\0\x01\0\0";
+const ANIMATED_WEBP_HEADER: &[u8] = b"RIFF\x16\0\0\0WEBPVP8X\x0a\0\0\0\x12\0\0\0\x01\0\0\x01\0\0";
 
 const PREVIEW_FAMILY_CASES: &[(&str, &[u8], Resolved<'static>)] = &[
     (
@@ -82,6 +84,13 @@ const PREVIEW_FAMILY_CASES: &[(&str, &[u8], Resolved<'static>)] = &[
         Resolved::Image,
     ),
     ("GOPR0001.GPR", &[0, 1, 2, 3, 255, 254], Resolved::Image),
+    ("still.webp", STATIC_WEBP_HEADER, Resolved::Image),
+    ("loop.webp", ANIMATED_WEBP_HEADER, Resolved::Media),
+    (
+        "notes.webp",
+        b"not a webp\n",
+        Resolved::Text("not a webp\n"),
+    ),
 ];
 
 fn write_fixture(directory: &tempfile::TempDir, name: &str, bytes: &[u8]) -> PathBuf {

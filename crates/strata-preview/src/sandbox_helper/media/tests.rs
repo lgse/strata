@@ -8,6 +8,7 @@ mod audio;
 mod commands;
 mod playback;
 mod runtime;
+mod webp;
 
 fn probe(path: &Path, size: MediaPreviewSize, start_tick: u32) -> io::Result<Input> {
     super::probe(path, size, start_tick, ProbeMode::Playback)

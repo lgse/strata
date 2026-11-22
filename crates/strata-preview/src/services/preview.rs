@@ -320,6 +320,21 @@ pub fn looks_like_text(sample: &[u8]) -> bool {
     control * 32 < sample.len()
 }
 
+/// Whether a leading file sample begins with a WebP RIFF header whose `VP8X`
+/// feature flags mark it as animated (RFC 9649 §2.7).
+pub fn is_animated_webp_sample(sample: &[u8]) -> bool {
+    const VP8X_ANIMATION_FLAG: u8 = 0x02;
+    const MIN_VP8X_CHUNK_SIZE: u32 = 10;
+    const MIN_VP8X_HEADER_BYTES: usize = 30;
+    sample.len() >= MIN_VP8X_HEADER_BYTES
+        && &sample[0..4] == b"RIFF"
+        && &sample[8..12] == b"WEBP"
+        && &sample[12..16] == b"VP8X"
+        && u32::from_le_bytes([sample[16], sample[17], sample[18], sample[19]])
+            >= MIN_VP8X_CHUNK_SIZE
+        && (sample[20] & VP8X_ANIMATION_FLAG) != 0
+}
+
 fn content_type_from_bytes(sample: &[u8]) -> (String, bool) {
     let (content_type, uncertain) = gio::content_type_guess(None::<&Path>, Some(sample));
     (content_type.to_string(), uncertain)
@@ -378,6 +393,10 @@ pub fn reconcile_with_sample(
             PreviewContent::Text { .. } => PreviewContent::Unsupported,
             family => family,
         };
+    }
+    if matches!(content, PreviewContent::Image) && is_animated_webp_sample(sample) {
+        *content_type = "image/webp".to_owned();
+        *content = PreviewContent::Media;
     }
 }
 

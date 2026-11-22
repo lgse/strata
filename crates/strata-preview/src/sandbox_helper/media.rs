@@ -19,6 +19,8 @@ use super::{
     read_limited, stop_child,
 };
 
+mod webp;
+
 const PROBE_TIMEOUT: Duration = Duration::from_secs(4);
 const ATTEMPT_TIMEOUT: Duration = Duration::from_secs(4);
 const HARDWARE_TIMEOUT: Duration = Duration::from_secs(8);
@@ -61,6 +63,9 @@ fn stream(
     writer: &mut impl Write,
 ) -> Result<(), String> {
     let size = media_preview_size(size)?;
+    if webp::is_animated_webp_file(input) {
+        return webp::stream(input, size, start_tick, writer).map_err(|error| error.to_string());
+    }
     let mode = if audio_only {
         ProbeMode::SkipArtwork
     } else {
@@ -359,6 +364,9 @@ pub(super) fn run_storyboard(input: &Path, output: &Path, cell_edge: u32) -> Res
     use media::storyboard::{self, Sheet};
 
     let mut writer = std::fs::File::create(output).map_err(|error| error.to_string())?;
+    if webp::is_animated_webp_file(input) {
+        return Err("Animations have no storyboard".into());
+    }
     let edge = cell_edge.clamp(storyboard::MIN_CELL_EDGE, storyboard::MAX_CELL_EDGE) as i32;
     let info = probe(
         input,
