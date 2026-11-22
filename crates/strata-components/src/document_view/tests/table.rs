@@ -525,17 +525,17 @@ fn mixed_sort_keys_form_a_total_order() {
     for (i, a) in keys.iter().enumerate() {
         assert_eq!(a.compare(a), Ordering::Equal, "reflexive: {}", samples[i]);
         for (j, b) in keys.iter().enumerate() {
-            let ab = a.compare(b);
-            let ba = b.compare(a);
+            let forward = a.compare(b);
+            let backward = b.compare(a);
             assert_eq!(
-                ab,
-                ba.reverse(),
+                forward,
+                backward.reverse(),
                 "antisymmetric: {} vs {}",
                 samples[i],
                 samples[j]
             );
             for (k, c) in keys.iter().enumerate() {
-                if ab != Ordering::Greater && b.compare(c) != Ordering::Greater {
+                if forward != Ordering::Greater && b.compare(c) != Ordering::Greater {
                     assert_ne!(
                         a.compare(c),
                         Ordering::Greater,
