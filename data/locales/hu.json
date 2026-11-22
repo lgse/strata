@@ -1599,15 +1599,6 @@
   "Page %{page} of %{pages}": "%{page}. oldal / %{pages}",
   "Page %{page} of %{pages}, %{zoom}%": "%{page}. oldal / %{pages}, %{zoom}%",
   "Loading page": "Oldal betöltése",
-  "10x mode effect": "10x mód effektus",
-  "Visual effect played when entering 10xer mode.": "A 10xer módba lépéskor lejátszott vizuális effektus.",
-  "Preview effect": "Effektus előnézete",
-  "Horizon Scan": "Horizont-pásztázás",
-  "Velocity Warp": "Sebesség-torzítás",
-  "Shockwave Ring": "Lökéshullám-gyűrű",
-  "Perimeter Ignite": "Keret-gyújtás",
-  "Tactical HUD": "Taktikai HUD",
-  "Interface on fire": "Lángoló felület",
   "Off": "Ki",
   "TRANSPARENCY": "ÁTLÁTSZÓSÁG",
   "Transparency effects": "Átlátszósági effektusok",
@@ -1619,6 +1610,5 @@
   "Frosted glass": "Mattüveg",
   "Apply backdrop blur and a subtle frosted sheen to translucent dialogs, menus, and popovers.": "Háttérelmosás és finom mattüveg fény alkalmazása az áttetsző párbeszédablakokra, menükre és felugró panelekre.",
   "Unfocused window multiplier": "Inaktív ablak szorzója",
-  "Multiply transparency when the window is unfocused (higher is more see-through; 1.00× keeps it unchanged).": "Az átlátszóság megszorzása, ha az ablak nincs fókuszban (nagyobb érték jobban átlátszó; az 1,00× változatlanul hagyja).",
-  "Plasma splash": "Plazma felvillanás"
+  "Multiply transparency when the window is unfocused (higher is more see-through; 1.00× keeps it unchanged).": "Az átlátszóság megszorzása, ha az ablak nincs fókuszban (nagyobb érték jobban átlátszó; az 1,00× változatlanul hagyja)."
 }

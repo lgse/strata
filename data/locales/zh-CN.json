@@ -1599,15 +1599,6 @@
   "Page %{page} of %{pages}": "第 %{page} 页，共 %{pages} 页",
   "Page %{page} of %{pages}, %{zoom}%": "第 %{page} 页，共 %{pages} 页，%{zoom}%",
   "Loading page": "正在加载页面",
-  "10x mode effect": "10x 模式特效",
-  "Visual effect played when entering 10xer mode.": "进入 10xer 模式时播放的视觉特效。",
-  "Preview effect": "预览特效",
-  "Horizon Scan": "地平线扫描",
-  "Velocity Warp": "极速跃迁",
-  "Shockwave Ring": "冲击波环",
-  "Perimeter Ignite": "边框点燃",
-  "Tactical HUD": "战术 HUD",
-  "Interface on fire": "燃烧界面",
   "Off": "关闭",
   "TRANSPARENCY": "透明度",
   "Transparency effects": "透明效果",
@@ -1619,6 +1610,5 @@
   "Frosted glass": "毛玻璃",
   "Apply backdrop blur and a subtle frosted sheen to translucent dialogs, menus, and popovers.": "为半透明对话框、菜单和弹出面板应用背景模糊与细腻的磨砂光泽。",
   "Unfocused window multiplier": "失焦窗口倍率",
-  "Multiply transparency when the window is unfocused (higher is more see-through; 1.00× keeps it unchanged).": "窗口失去焦点时对透明度应用的倍率（越高越通透，1.00× 保持不变）。",
-  "Plasma splash": "等离子闪屏"
+  "Multiply transparency when the window is unfocused (higher is more see-through; 1.00× keeps it unchanged).": "窗口失去焦点时对透明度应用的倍率（越高越通透，1.00× 保持不变）。"
 }

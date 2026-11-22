@@ -17,7 +17,7 @@ use std::{cell::RefCell, io, path::Path, rc::Rc};
 use strata_core::model::ViewPreferences;
 use strata_desktop::settings::{
     ADOPTED_DEFAULT_KEYS, Commit, FinishedSave, Preferences, RunePreferences, SaveOutcome,
-    SaveProblem, Saving, TenxerFx, ThemeAvailability, TransparencyPreferences,
+    SaveProblem, Saving, ThemeAvailability, TransparencyPreferences,
     save_notice::{NoticeProblem, SaveSubject, save_notice_summary, save_notice_text},
     store_sort,
 };
@@ -85,7 +85,6 @@ impl NoticeStreaks {
 /// GTK application keeps one `PreferenceManager` for all its windows.
 struct Store {
     preferences: Preferences,
-    tenxer_fx: TenxerFx,
     transparency: TransparencyPreferences,
     saving: Saving,
     /// Moves with every change any window makes.
@@ -122,7 +121,6 @@ pub(crate) struct Saved {
     id: u64,
     /// The values as of `version`.
     preferences: Preferences,
-    tenxer_fx: TenxerFx,
     transparency: TransparencyPreferences,
     version: u64,
     /// The window's queue, where a finished save tells the bookkeeping its result. Without
@@ -147,7 +145,6 @@ impl Saved {
         rust_i18n::set_locale(saving.startup_locale());
         let store = Store {
             preferences: preferences.clone(),
-            tenxer_fx: rune.tenxer_fx,
             transparency: rune.transparency,
             saving,
             version: 0,
@@ -158,7 +155,6 @@ impl Saved {
             store: Rc::new(RefCell::new(store)),
             id: 0,
             preferences,
-            tenxer_fx: rune.tenxer_fx,
             transparency: rune.transparency,
             version: 0,
             later: None,
@@ -175,7 +171,6 @@ impl Saved {
             store: Rc::clone(&self.store),
             id,
             preferences: store.preferences.clone(),
-            tenxer_fx: store.tenxer_fx,
             transparency: store.transparency,
             version: store.version,
             later: None,
@@ -194,16 +189,6 @@ impl Saved {
 
     pub(crate) fn preferences(&self) -> &Preferences {
         &self.preferences
-    }
-
-    pub(crate) fn tenxer_fx(&self) -> TenxerFx {
-        self.tenxer_fx
-    }
-
-    pub(crate) fn set_tenxer_fx(&mut self, fx: TenxerFx) {
-        self.follow();
-        self.tenxer_fx = fx;
-        self.commit();
     }
 
     pub(crate) fn transparency(&self) -> TransparencyPreferences {
@@ -239,7 +224,6 @@ impl Saved {
             return false;
         }
         self.preferences = store.preferences.clone();
-        self.tenxer_fx = store.tenxer_fx;
         self.transparency = store.transparency;
         self.version = store.version;
         true
@@ -248,7 +232,6 @@ impl Saved {
     /// Puts this window's values into the store, as the process's from now on.
     fn publish(&mut self, store: &mut Store) {
         store.preferences = self.preferences.clone();
-        store.tenxer_fx = self.tenxer_fx;
         store.transparency = self.transparency;
         store.version += 1;
         self.version = store.version;
@@ -256,10 +239,7 @@ impl Saved {
 
     /// Puts this window's values into the store when they differ from the process's.
     fn publish_changed(&mut self, store: &mut Store) {
-        if store.preferences != self.preferences
-            || store.tenxer_fx != self.tenxer_fx
-            || store.transparency != self.transparency
-        {
+        if store.preferences != self.preferences || store.transparency != self.transparency {
             self.publish(store);
         }
     }
@@ -382,7 +362,6 @@ impl Saved {
         let Commit { save, problem, .. } = store.saving.commit_rune(
             &self.preferences,
             RunePreferences {
-                tenxer_fx: self.tenxer_fx,
                 transparency: self.transparency,
             },
         );

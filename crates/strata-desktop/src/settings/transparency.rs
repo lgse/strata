@@ -2,8 +2,8 @@
 
 //! Persisted variable surface transparency & frosted glass preferences (`settings.toml`).
 //!
-//! Stored beside `Preferences` (like [`super::TenxerFx`]) so Rune's transparency settings
-//! persist and merge through [`super::Saving`] without altering GTK's `Preferences` schema.
+//! Stored beside `Preferences` so Rune's transparency settings persist and merge through
+//! [`super::Saving`] without altering GTK's `Preferences` schema.
 
 use serde::{Deserialize, Serialize};
 
