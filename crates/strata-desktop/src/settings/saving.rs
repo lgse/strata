@@ -12,9 +12,9 @@
 use std::{collections::BTreeSet, future::Future, io, path::PathBuf, pin::Pin};
 
 use super::{
-    InterfaceRenderer, Preferences, RETIRED_SETTINGS, SettingKey, TenxerFx,
-    TransparencyPreferences, merged_settings, read_loaded_preferences, record_changes,
-    settings_path, tenxer_fx::read_saved_tenxer_fx, transparency::read_saved_transparency,
+    InterfaceRenderer, Preferences, RETIRED_SETTINGS, SettingKey, TransparencyPreferences,
+    merged_settings, read_loaded_preferences, record_changes, settings_path,
+    transparency::read_saved_transparency,
 };
 use crate::storage::{
     file_stamp,
@@ -24,19 +24,16 @@ use crate::storage::{
 /// Rune-only visual preferences persisted alongside [`Preferences`] in `settings.toml`.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct RunePreferences {
-    pub tenxer_fx: TenxerFx,
     pub transparency: TransparencyPreferences,
 }
 
 #[derive(Clone, Copy, Default)]
 struct RuneTracking {
-    tenxer_fx: bool,
     transparency: bool,
 }
 
 #[derive(Clone, Copy, Default)]
 struct RuneCommit {
-    tenxer_fx: Option<TenxerFx>,
     transparency: Option<TransparencyPreferences>,
 }
 
@@ -52,33 +49,15 @@ pub fn load() -> (Preferences, Saving) {
     (preferences, saving)
 }
 
-/// Like [`load`], also reading Rune's `tenxer_fx` setting from `settings.toml` so changes to
-/// it merge and save through the same writer without altering [`Preferences`] for GTK.
-pub fn load_with_tenxer_fx() -> (Preferences, TenxerFx, Saving) {
-    let (preferences, rune, saving) = load_internal(RuneTracking {
-        tenxer_fx: true,
-        transparency: false,
-    });
-    (preferences, rune.tenxer_fx, saving)
-}
-
-/// Like [`load`], also reading Rune's persisted visual preferences (`tenxer_fx` and
-/// surface transparency) from `settings.toml` without altering [`Preferences`] for GTK.
+/// Like [`load`], also reading Rune's persisted visual preferences (surface transparency) from
+/// `settings.toml` without altering [`Preferences`] for GTK.
 pub fn load_rune() -> (Preferences, RunePreferences, Saving) {
-    load_internal(RuneTracking {
-        tenxer_fx: true,
-        transparency: true,
-    })
+    load_internal(RuneTracking { transparency: true })
 }
 
 fn load_internal(track: RuneTracking) -> (Preferences, RunePreferences, Saving) {
     writer::note(&settings_path(), file_stamp(&settings_path()));
     let (mut preferences, load_failure, salvaged) = read_loaded_preferences();
-    let (tenxer_fx, repaired_fx) = if track.tenxer_fx {
-        read_saved_tenxer_fx()
-    } else {
-        (TenxerFx::default(), false)
-    };
     let (transparency, repaired_transparency) = if track.transparency {
         read_saved_transparency()
     } else {
@@ -93,12 +72,6 @@ fn load_internal(track: RuneTracking) -> (Preferences, RunePreferences, Saving) 
         &toml::Table::try_from(&parsed).unwrap_or_default(),
         &saved_base,
     );
-    if track.tenxer_fx {
-        saved_base.insert(TenxerFx::KEY.to_owned(), tenxer_fx.to_toml_value());
-        if repaired_fx {
-            repaired.insert((TenxerFx::KEY.to_owned(), None));
-        }
-    }
     if track.transparency {
         transparency.insert_into_table(&mut saved_base);
         for key in repaired_transparency {
@@ -110,7 +83,6 @@ fn load_internal(track: RuneTracking) -> (Preferences, RunePreferences, Saving) 
         startup_locale: preferences.language.locale(),
         load_failure,
         baseline: preferences.clone(),
-        baseline_tenxer_fx: track.tenxer_fx.then_some(tenxer_fx),
         baseline_transparency: track.transparency.then_some(transparency),
         revision: 0,
         unsaved: false,
@@ -118,14 +90,7 @@ fn load_internal(track: RuneTracking) -> (Preferences, RunePreferences, Saving) 
         last_queued: saved_base,
         dirty_keys: repaired,
     };
-    (
-        preferences,
-        RunePreferences {
-            tenxer_fx,
-            transparency,
-        },
-        saving,
-    )
+    (preferences, RunePreferences { transparency }, saving)
 }
 
 /// The bookkeeping of one process's saves of `settings.toml`.
@@ -140,8 +105,6 @@ pub struct Saving {
     load_failure: Option<io::Error>,
     /// The values as of the last commit, to see whether the next one changes anything.
     baseline: Preferences,
-    /// Tracked `tenxer_fx` value for Rune processes; `None` in GTK processes.
-    baseline_tenxer_fx: Option<TenxerFx>,
     /// Tracked transparency values for Rune processes; `None` in GTK processes.
     baseline_transparency: Option<TransparencyPreferences>,
     revision: u64,
@@ -217,28 +180,12 @@ impl Saving {
         self.commit_internal(preferences, RuneCommit::default())
     }
 
-    /// Like [`Self::commit`], also persisting Rune's `tenxer_fx` preference into `settings.toml`.
-    pub fn commit_with_tenxer_fx(
-        &mut self,
-        preferences: &Preferences,
-        tenxer_fx: TenxerFx,
-    ) -> Commit {
-        self.commit_internal(
-            preferences,
-            RuneCommit {
-                tenxer_fx: Some(tenxer_fx),
-                transparency: None,
-            },
-        )
-    }
-
-    /// Like [`Self::commit`], also persisting Rune's `tenxer_fx` and surface transparency
-    /// preferences into `settings.toml`.
+    /// Like [`Self::commit`], also persisting Rune's surface transparency preferences into
+    /// `settings.toml`.
     pub fn commit_rune(&mut self, preferences: &Preferences, rune: RunePreferences) -> Commit {
         self.commit_internal(
             preferences,
             RuneCommit {
-                tenxer_fx: Some(rune.tenxer_fx),
                 transparency: Some(rune.transparency.normalized()),
             },
         )
@@ -246,15 +193,6 @@ impl Saving {
 
     fn record_rune(&mut self, rune: RuneCommit, already_changed: bool) -> bool {
         let mut changed = already_changed;
-        if let Some(fx) = rune.tenxer_fx
-            && self.baseline_tenxer_fx != Some(fx)
-        {
-            self.baseline_tenxer_fx = Some(fx);
-            if !changed {
-                self.revision = self.revision.wrapping_add(1);
-            }
-            changed = true;
-        }
         if let Some(transparency) = rune.transparency
             && self.baseline_transparency != Some(transparency)
         {
@@ -288,9 +226,6 @@ impl Saving {
         self.unsaved = true;
         match toml::Table::try_from(preferences).map_err(io::Error::other) {
             Ok(mut snapshot) => {
-                if let Some(fx) = rune.tenxer_fx {
-                    snapshot.insert(TenxerFx::KEY.to_owned(), fx.to_toml_value());
-                }
                 if let Some(transparency) = rune.transparency {
                     transparency.insert_into_table(&mut snapshot);
                 }
@@ -386,9 +321,6 @@ impl Saving {
     /// the value changed again.
     pub fn rebase(&mut self, preferences: &Preferences) {
         if let Ok(mut normalized) = toml::Table::try_from(preferences) {
-            if let Some(fx) = self.baseline_tenxer_fx {
-                normalized.insert(TenxerFx::KEY.to_owned(), fx.to_toml_value());
-            }
             if let Some(transparency) = self.baseline_transparency {
                 transparency.insert_into_table(&mut normalized);
             }

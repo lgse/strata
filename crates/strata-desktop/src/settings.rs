@@ -52,7 +52,6 @@ mod persistence;
 pub mod save_notice;
 mod saving;
 mod stored;
-mod tenxer_fx;
 mod text_size;
 mod transparency;
 pub mod trashed;
@@ -95,7 +94,7 @@ pub use persistence::{
 };
 pub use saving::{
     Commit, FinishedSave, PendingSave, RunePreferences, SaveOutcome, SaveProblem, Saving, load,
-    load_rune, load_with_tenxer_fx,
+    load_rune,
 };
 pub use stored::{
     MAX_PREVIEW_VIDEO_START, SEARCH_ENTRY_LIMIT_CHOICES, SEARCH_TIME_LIMIT_CHOICES,
@@ -103,7 +102,6 @@ pub use stored::{
     normalized_search_limit, normalized_video_start, normalized_volume, sort_preferences,
     store_sort,
 };
-pub use tenxer_fx::{TenxerFx, parse_tenxer_fx};
 pub use text_size::TextSize;
 pub use transparency::{
     DEFAULT_BACKGROUND_TRANSPARENCY, DEFAULT_RAISED_SURFACE_TRANSPARENCY,

@@ -526,6 +526,15 @@ fn appearance_transparency_controls_update_look_persist_and_follow_window_focus(
             ];
             let _ = reveal_and_center(&mut host, "settings-switch-transparency");
             let tree = host.tree();
+            let frosted_note = view::all(&tree, &|node| {
+                view::text(node, "name")
+                    == "Requires a compositor that supports backdrop blur and has it enabled."
+            });
+            assert_eq!(
+                frosted_note.len(),
+                1,
+                "Frosted glass displays the compositor requirement note"
+            );
             assert!(!node_disabled(&tree, "settings-switch-transparency"));
             for key in sub_controls {
                 assert!(
@@ -589,6 +598,16 @@ fn appearance_transparency_controls_update_look_persist_and_follow_window_focus(
             idle(&mut host);
             assert!((host.app().look.kit.c.bg_base.a - 0.75).abs() < 1e-4);
             assert!((host.app().look.kit.c.bg_deep.a - 0.80).abs() < 1e-4);
+
+            // Searching "compositor" matches the Frosted glass row and filters out unrelated rows.
+            click(&mut host, "settings-search-field");
+            for ch in "compositor".chars() {
+                press(&mut host, Key::Text(ch.to_string()), Mods::default());
+            }
+            host.runtime().frame(0.2);
+            idle(&mut host);
+            assert!(is_mounted(&host, "settings-switch-frosted-glass"));
+            assert!(!is_mounted(&host, "settings-switch-transparency"));
         },
     );
 }

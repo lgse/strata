@@ -10,7 +10,7 @@ use std::{
 use super::*;
 use crate::{
     settings::{
-        FinishedSave, PendingSave, Preferences, RunePreferences, SaveOutcome, TenxerFx, load_rune,
+        FinishedSave, PendingSave, Preferences, RunePreferences, SaveOutcome, load_rune,
         parse_preferences, settings_path,
     },
     storage::writer,
@@ -162,19 +162,19 @@ fn load_and_commit_rune_persists_transparency_without_clobbering_other_keys() {
         || {
             let path = settings_path();
             fs::create_dir_all(path.parent().expect("settings parent")).expect("config dir");
+            // Legacy removed keys like `tenxer_fx` load cleanly without error or clobbering.
             fs::write(
                 &path,
-                "mode = \"theme\"\ntheme = \"nord\"\ntenxer_fx = \"velocity_warp\"\n",
+                "mode = \"theme\"\ntheme = \"nord\"\ntenxer_fx = \"plasma_splash\"\n",
             )
             .expect("seed settings");
 
             let (prefs, rune, mut saving) = load_rune();
+            assert!(saving.load_failure().is_none());
             assert_eq!(prefs.theme, "nord");
-            assert_eq!(rune.tenxer_fx, TenxerFx::VelocityWarp);
             assert_eq!(rune.transparency, TransparencyPreferences::default());
 
             let next = RunePreferences {
-                tenxer_fx: rune.tenxer_fx,
                 transparency: TransparencyPreferences {
                     enabled: true,
                     background_transparency: 28,

@@ -118,13 +118,6 @@ const TARGETS: &[TargetDef] = &[
         "browsing keyboard modal prompts footer commands experimental",
     ),
     row!(
-        "tenxer-fx",
-        "general",
-        "browsing",
-        "10x mode effect",
-        "browsing 10xer 10x animation visual effect fx horizon scan velocity warp shockwave ring perimeter ignite tactical hud off",
-    ),
-    row!(
         "hints",
         "general",
         "browsing",
@@ -402,7 +395,7 @@ const TARGETS: &[TargetDef] = &[
         "theme",
         "transparency",
         "Frosted glass",
-        "appearance frosted glass blur backdrop sheen translucent menus dialogs popovers",
+        "appearance frosted glass blur backdrop sheen translucent menus dialogs popovers compositor",
     ),
     row!(
         "unfocused-transparency",
