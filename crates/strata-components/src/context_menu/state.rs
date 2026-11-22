@@ -102,6 +102,18 @@ struct Open {
     scroll_bars: RefCell<Vec<Bar>>,
 }
 
+impl Open {
+    /// Releases and drops every submenu scroll bar deeper than `keep_submenus` (depth 0 is the
+    /// top-level menu bar, so `keep_submenus + 1` entries stay).
+    fn drain_bars_past(&self, keep_submenus: usize) {
+        let mut bars = self.scroll_bars.borrow_mut();
+        let keep = (keep_submenus + 1).min(bars.len());
+        for bar in bars.drain(keep..) {
+            bar.release();
+        }
+    }
+}
+
 impl ContextMenuState {
     /// No menu open.
     pub fn new() -> Self {
@@ -144,6 +156,7 @@ impl ContextMenuState {
                 })
                 .count();
             open.submenu.truncate(keep);
+            open.drain_bars_past(keep);
             open.model = model;
         }
     }
@@ -191,6 +204,13 @@ impl ContextMenuState {
         if open.submenu == path || open.model.item_at(path).is_none_or(|i| i.submenu.is_none()) {
             return false;
         }
+        let common = open
+            .submenu
+            .iter()
+            .zip(path)
+            .take_while(|(a, b)| a == b)
+            .count();
+        open.drain_bars_past(common);
         open.submenu = path.to_vec();
         true
     }
@@ -201,15 +221,18 @@ impl ContextMenuState {
         match &mut self.open {
             Some(open) if open.submenu.len() > depth => {
                 open.submenu.truncate(depth);
-                let mut bars = open.scroll_bars.borrow_mut();
-                let keep = (depth + 1).min(bars.len());
-                for bar in bars.drain(keep..) {
-                    bar.release();
-                }
+                open.drain_bars_past(depth);
                 true
             }
             _ => false,
         }
+    }
+
+    #[cfg(test)]
+    pub(super) fn scroll_bar_count(&self) -> usize {
+        self.open
+            .as_ref()
+            .map_or(0, |open| open.scroll_bars.borrow().len())
     }
 
     /// The C24 scroll bar for the surface `depth` levels in, created on first render.

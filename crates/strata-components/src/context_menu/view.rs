@@ -8,7 +8,7 @@ use std::borrow::Cow;
 use std::rc::Rc;
 
 use rune::{El, Key, KeyEvent, Mods, TextStyle, Tx, col, el, icon, row, text};
-use rune_kit::{Placement, popover, scrim};
+use rune_kit::{Palette, Placement, popover, scrim};
 use strata_kit::icons::IconName;
 use strata_kit::look::Look;
 
@@ -113,6 +113,39 @@ struct SurfaceSpec<'a> {
     width: f32,
 }
 
+/// Per-row parameters passed while building a single menu item and its press handler.
+struct RowSpec<'a> {
+    item: &'a Item,
+    key: &'a str,
+    path: &'a [usize],
+    is_open: bool,
+    has_icons: bool,
+}
+
+/// Visual state flags for styling a menu row's highlight and ink.
+#[derive(Clone, Copy)]
+struct RowTone {
+    is_open: bool,
+    danger: bool,
+    disabled: bool,
+}
+
+/// Parameters for walking one menu level while collecting [`Row`] metadata.
+struct CollectScope<'a> {
+    header: &'a [String],
+    sections: &'a [Section],
+    path: &'a [usize],
+    prefix: &'a str,
+    open: &'a [usize],
+}
+
+/// Parameters for mounting an open submenu surface beside its owning row.
+struct SubmenuMount<'a> {
+    parent: &'a SurfaceSpec<'a>,
+    row: &'a RowSpec<'a>,
+    rows: &'a Rc<Vec<Row>>,
+}
+
 impl<S: 'static> Render<'_, S> {
     /// The menu's anchor element (zero size, out of the layout), with its surfaces pushed into
     /// `layer`.
@@ -136,14 +169,14 @@ impl<S: 'static> Render<'_, S> {
         }));
 
         let mut rows = Vec::new();
-        collect_rows(
-            self.header,
-            self.sections,
-            &[],
-            self.key,
-            self.open,
-            &mut rows,
-        );
+        let scope = CollectScope {
+            header: self.header,
+            sections: self.sections,
+            path: &[],
+            prefix: self.key,
+            open: self.open,
+        };
+        collect_rows(&scope, &mut rows);
         let rows = Rc::new(rows);
 
         let mut subs = Vec::new();
@@ -230,28 +263,26 @@ impl<S: 'static> Render<'_, S> {
 
     /// Builds the rows, labels, and separators of one menu surface.
     fn build_list(&self, spec: &SurfaceSpec<'_>, rows: &Rc<Vec<Row>>, subs: &mut Vec<El>) -> El {
-        let mut list = col().key("rows").items_stretch().padding(LIST_PAD);
-        let mut entry_index = 0usize;
         let has_body = spec.sections.iter().any(|s| !s.items.is_empty());
         let has_icons = super::model::items(spec.sections).any(|i| i.icon.is_some());
-
-        for line in spec.header {
-            list = list.child(label_row(self.look, entry_index, shown(line).into_owned()));
-            entry_index += 1;
-        }
-        if !spec.header.is_empty() && has_body {
-            list = list.child(separator_row(self.look, entry_index));
-            entry_index += 1;
-        }
-
+        let (header_els, mut entry_index) = header_entries(self.look, spec.header, has_body);
+        let mut list = col()
+            .key("rows")
+            .items_stretch()
+            .padding(LIST_PAD)
+            .children(header_els);
         let mut item_index = 0usize;
-        let mut first_section = true;
-        for section in spec.sections.iter().filter(|s| !s.items.is_empty()) {
-            if !first_section {
+
+        for (sec_i, section) in spec
+            .sections
+            .iter()
+            .filter(|s| !s.items.is_empty())
+            .enumerate()
+        {
+            if sec_i > 0 {
                 list = list.child(separator_row(self.look, entry_index));
                 entry_index += 1;
             }
-            first_section = false;
             if let Some(label) = &section.label {
                 list = list.child(label_row(self.look, entry_index, label.clone()));
                 entry_index += 1;
@@ -261,30 +292,21 @@ impl<S: 'static> Render<'_, S> {
                 let mut here = spec.path.to_vec();
                 here.push(item_index);
                 let is_open = item.submenu.is_some() && spec.open.first() == Some(&item_index);
-                let row_el = self.build_item(item, &item_key, &here, is_open, has_icons);
-                list = list.child(row_el);
-                if is_open && let Some(sub) = item.submenu.as_deref() {
-                    let sub_prefix = format!("{item_key}-sub");
-                    let sub_spec = SurfaceSpec {
-                        prefix: &sub_prefix,
-                        depth: spec.depth + 1,
-                        name: &item.label,
-                        header: &[],
-                        sections: sub,
-                        path: &here,
-                        open: &spec.open[1..],
-                        width: width(self.look, &[], sub),
+                let row_spec = RowSpec {
+                    item,
+                    key: &item_key,
+                    path: &here,
+                    is_open,
+                    has_icons,
+                };
+                list = list.child(self.build_item(&row_spec));
+                if is_open {
+                    let mount = SubmenuMount {
+                        parent: spec,
+                        row: &row_spec,
+                        rows,
                     };
-                    let mut deeper = Vec::new();
-                    let sub_surface = self.build_surface(&sub_spec, rows, &mut deeper);
-                    subs.push(popover::anchored(
-                        &self.look.kit,
-                        sub_surface,
-                        &item_key,
-                        Placement::RightStart,
-                        0.0,
-                    ));
-                    subs.extend(deeper);
+                    self.mount_submenu(&mount, subs);
                 }
                 entry_index += 1;
                 item_index += 1;
@@ -293,77 +315,70 @@ impl<S: 'static> Render<'_, S> {
         list
     }
 
-    /// Builds one menu item row, matching GTK's accent/danger icon tinting and thin chevron.
-    fn build_item(
-        &self,
-        item: &Item,
-        key: &str,
-        path: &[usize],
-        is_open: bool,
-        has_icons: bool,
-    ) -> El {
-        let look = self.look;
-        let kit = &look.kit;
-        let c = &kit.c;
-        let disabled = !item.enabled;
-        let danger = item.danger && !disabled;
-        let ink = if danger { c.danger.fg } else { c.text_base };
+    /// Mounts an open submenu surface anchored to its owning row and appends deeper submenus.
+    fn mount_submenu(&self, mount: &SubmenuMount<'_>, subs: &mut Vec<El>) {
+        let Some(sub) = mount.row.item.submenu.as_deref() else {
+            return;
+        };
+        let sub_prefix = format!("{}-sub", mount.row.key);
+        let sub_spec = SurfaceSpec {
+            prefix: &sub_prefix,
+            depth: mount.parent.depth + 1,
+            name: &mount.row.item.label,
+            header: &[],
+            sections: sub,
+            path: mount.row.path,
+            open: &mount.parent.open[1..],
+            width: width(self.look, &[], sub),
+        };
+        let mut deeper = Vec::new();
+        let sub_surface = self.build_surface(&sub_spec, mount.rows, &mut deeper);
+        subs.push(popover::anchored(
+            &self.look.kit,
+            sub_surface,
+            mount.row.key,
+            Placement::RightStart,
+            0.0,
+        ));
+        subs.extend(deeper);
+    }
 
-        let content = item_content(look, item, danger, ink, has_icons);
+    /// Builds one menu item row, matching GTK's accent/danger icon tinting and thin chevron.
+    fn build_item(&self, row_spec: &RowSpec<'_>) -> El {
+        let look = self.look;
+        let item = row_spec.item;
+        let disabled = !item.enabled;
+        let tone = RowTone {
+            is_open: row_spec.is_open,
+            danger: item.danger && !disabled,
+            disabled,
+        };
         let mut e = row()
-            .key(key.to_owned())
-            .role(if item.checked.is_some() {
-                "menuitemcheckbox"
-            } else {
-                "menuitem"
-            })
+            .key(row_spec.key.to_owned())
+            .role(item_role(item))
             .label(item.label.clone())
             .radius(look.round(ROW_RADIUS))
             .gap(ROW_GAP)
             .center_y();
-        e = match item.description.is_some() {
-            false => e.h(ROW).pl(ROW_PL).pr(ROW_PR),
-            true => e.min_h(ROW).py(6.0).pl(ROW_PL).pr(ROW_PR),
-        };
-        if let Some(on) = item.checked {
-            e = e.checked(on);
-        }
-        if let Some(s) = &item.shortcut {
-            e = e.shortcut_hint(s.clone());
-        }
-        if let Some(d) = &item.description {
-            e = e.description(d.clone());
-        }
-        if item.submenu.is_some() {
-            e = e.expanded(is_open);
-        }
-        if is_open {
-            e = e.fill(c.hover);
-        } else if !disabled {
-            // One highlight for pointer and keys, landing at once like NSMenu's.
-            e = e.focus_highlight(c.hover);
-        }
-        e = e.child(content);
+        e = item_padding(e, item.description.is_some());
+        e = item_a11y(e, item, row_spec.is_open);
+        e = item_highlight(e, &look.kit.c, tone);
+        e = e.child(item_content(look, item, tone.danger, row_spec.has_icons));
         e = append_trailing(e, look, item);
-        if disabled {
-            e = e.layer_opacity(0.5);
-        }
-        e = e
-            .focusable(!disabled)
-            .focus_selected(item.checked == Some(true))
-            .disabled(disabled);
+        e = apply_sensitivity(e, item, disabled);
         if disabled {
             return e;
         }
-        self.attach_press(e, item, key, path, is_open)
+        self.attach_press(e, row_spec)
     }
 
-    fn attach_press(&self, e: El, item: &Item, key: &str, path: &[usize], is_open: bool) -> El {
-        let at = path.to_vec();
-        match item.submenu.as_deref() {
+    fn attach_press(&self, e: El, row_spec: &RowSpec<'_>) -> El {
+        let at = row_spec.path.to_vec();
+        let is_open = row_spec.is_open;
+        match row_spec.item.submenu.as_deref() {
             Some(sub) => {
                 let enterable = super::model::items(sub).any(|i| i.enabled);
-                let sub_menu = format!("{key}-sub-menu");
+                let sub_menu = format!("{}-sub-menu", row_spec.key);
                 let (toggle, close_to) = (self.on_submenu.clone(), self.close_to.clone());
                 e.on_press_tx(move |s: &mut S, tx: &mut Tx| {
                     if is_open && !tx.by_keys() {
@@ -384,10 +399,76 @@ impl<S: 'static> Render<'_, S> {
     }
 }
 
+fn header_entries(look: &Look, header: &[String], has_body: bool) -> (Vec<El>, usize) {
+    let mut out = Vec::with_capacity(header.len() + 1);
+    for (index, line) in header.iter().enumerate() {
+        out.push(label_row(look, index, shown(line).into_owned()));
+    }
+    if !header.is_empty() && has_body {
+        out.push(separator_row(look, out.len()));
+    }
+    let next = out.len();
+    (out, next)
+}
+
+fn item_role(item: &Item) -> &'static str {
+    if item.checked.is_some() {
+        "menuitemcheckbox"
+    } else {
+        "menuitem"
+    }
+}
+
+fn item_padding(e: El, described: bool) -> El {
+    if described {
+        e.min_h(ROW).py(6.0).pl(ROW_PL).pr(ROW_PR)
+    } else {
+        e.h(ROW).pl(ROW_PL).pr(ROW_PR)
+    }
+}
+
+fn item_a11y(mut e: El, item: &Item, is_open: bool) -> El {
+    if let Some(on) = item.checked {
+        e = e.checked(on);
+    }
+    if let Some(s) = &item.shortcut {
+        e = e.shortcut_hint(s.clone());
+    }
+    if let Some(d) = &item.description {
+        e = e.description(d.clone());
+    }
+    if item.submenu.is_some() {
+        e = e.expanded(is_open);
+    }
+    e
+}
+
+fn item_highlight(e: El, c: &Palette, tone: RowTone) -> El {
+    let hover = if tone.danger { c.danger.bg } else { c.hover };
+    if tone.is_open {
+        e.fill(hover)
+    } else if !tone.disabled {
+        // One highlight for pointer and keys, landing at once like NSMenu's.
+        e.focus_highlight(hover)
+    } else {
+        e
+    }
+}
+
+fn apply_sensitivity(mut e: El, item: &Item, disabled: bool) -> El {
+    if disabled {
+        e = e.layer_opacity(0.5);
+    }
+    e.focusable(!disabled)
+        .focus_selected(item.checked == Some(true))
+        .disabled(disabled)
+}
+
 /// Leading icon (or alignment spacer), label, and optional description inside a menu row.
-fn item_content(look: &Look, item: &Item, danger: bool, ink: rune::Color, has_icons: bool) -> El {
+fn item_content(look: &Look, item: &Item, danger: bool, has_icons: bool) -> El {
     let kit = &look.kit;
     let c = &kit.c;
+    let ink = if danger { c.danger.fg } else { c.text_base };
     let mut content = row()
         .key("content")
         .grow(1.0)
@@ -396,13 +477,7 @@ fn item_content(look: &Look, item: &Item, danger: bool, ink: rune::Color, has_ic
         .center_y()
         .a11y_hidden();
     if has_icons {
-        content = match item.icon {
-            Some(name) => {
-                let color = if danger { c.danger.fg } else { c.icon_accent };
-                content.child(icon(look.icon(name), ICON_SIZE).key("icon").color(color))
-            }
-            None => content.child(el().key("icon-spacer").size(ICON_SIZE, ICON_SIZE)),
-        };
+        content = content.child(leading_icon(look, item, danger));
     }
     let label = text(item.label.clone())
         .key("label")
@@ -426,6 +501,17 @@ fn item_content(look: &Look, item: &Item, danger: bool, ink: rune::Color, has_ic
                 ),
         ),
         None => content.child(label),
+    }
+}
+
+fn leading_icon(look: &Look, item: &Item, danger: bool) -> El {
+    let c = &look.kit.c;
+    match item.icon {
+        Some(name) => {
+            let color = if danger { c.danger.fg } else { c.icon_accent };
+            icon(look.icon(name), ICON_SIZE).key("icon").color(color)
+        }
+        None => el().key("icon-spacer").size(ICON_SIZE, ICON_SIZE),
     }
 }
 
@@ -521,40 +607,38 @@ fn scroll_body<S: 'static>(prefix: &str, bar: &Bar, look: &Look, list: El) -> El
 
 /// Collects every mounted item row's key and submenu metadata across top-level and open
 /// submenus, matching the exact entry indices assigned by [`Render::build_list`].
-fn collect_rows(
-    header: &[String],
-    sections: &[Section],
-    path: &[usize],
-    prefix: &str,
-    open: &[usize],
-    rows: &mut Vec<Row>,
-) {
-    let has_body = sections.iter().any(|s| !s.items.is_empty());
-    let mut entry_index = header.len() + usize::from(!header.is_empty() && has_body);
+fn collect_rows(scope: &CollectScope<'_>, rows: &mut Vec<Row>) {
+    let has_body = scope.sections.iter().any(|s| !s.items.is_empty());
+    let mut entry_index = scope.header.len() + usize::from(!scope.header.is_empty() && has_body);
     let mut item_index = 0usize;
-    let mut first_section = true;
 
-    for section in sections.iter().filter(|s| !s.items.is_empty()) {
-        if !first_section {
-            entry_index += 1;
-        }
-        first_section = false;
-        if section.label.is_some() {
-            entry_index += 1;
-        }
+    for (sec_i, section) in scope
+        .sections
+        .iter()
+        .filter(|s| !s.items.is_empty())
+        .enumerate()
+    {
+        entry_index += usize::from(sec_i > 0) + usize::from(section.label.is_some());
         for item in &section.items {
-            let key = format!("{prefix}-item{entry_index}");
-            let mut here = path.to_vec();
+            let key = format!("{}-item{entry_index}", scope.prefix);
+            let mut here = scope.path.to_vec();
             here.push(item_index);
             let enterable = item
                 .submenu
                 .as_deref()
                 .is_some_and(|sub| super::model::items(sub).any(|i| i.enabled));
             if let Some(sub) = item.submenu.as_deref()
-                && open.first() == Some(&item_index)
+                && scope.open.first() == Some(&item_index)
             {
                 let sub_prefix = format!("{key}-sub");
-                collect_rows(&[], sub, &here, &sub_prefix, &open[1..], rows);
+                let child_scope = CollectScope {
+                    header: &[],
+                    sections: sub,
+                    path: &here,
+                    prefix: &sub_prefix,
+                    open: &scope.open[1..],
+                };
+                collect_rows(&child_scope, rows);
             }
             rows.push(Row {
                 key,

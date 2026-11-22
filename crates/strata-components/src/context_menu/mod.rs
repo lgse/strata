@@ -1,15 +1,16 @@
 // SPDX-License-Identifier: MIT
 
 //! Context menus (C21): where Strata's menus open, how the keyboard moves through them, and
-//! the text-field menu, on rune-kit's `Menu`.
+//! the text-field menu, on `rune_kit::popover`, `rune_kit::scrim`, and Strata's C24 scroll bar.
 //!
 //! Work package: C21, `docs/rune/work/phase-1-leaves/C21-context-menus.md`.
 //!
-//! **Rune dev 631e8a67: partly.** rune-kit's `Menu` gives pointer menus, placement inside the
-//! window (flip, slide, shrink and scroll), Up, Down, Home, End and type-select, Escape and a
-//! press outside, check items, submenus and an open menu holding the keyboard. It leaves out a
-//! field menu on Linux, a way to give rune-kit's text inputs one, submenus from the keyboard,
-//! a menu's name, and popup surfaces. C21 fills what it can (below) and drafts the rest.
+//! **Rune dev 631e8a67: partly.** `rune_kit::popover` (`anchored`, `fit_scroll`), `scrim`, and
+//! Rune's focus groups give pointer menus, placement inside the window (flip, slide, shrink and
+//! scroll), Up, Down, Home, End and type-select, Escape and a press outside, and an open menu
+//! holding the keyboard. C21 builds its menu surfaces directly on those primitives (with C24's
+//! accent scroll bar, GTK-matching icon tinting, thin chevrons, and right-edge spacing) and
+//! fills what Rune leaves out (below), drafting the rest.
 //!
 //! # What the host does
 //!
@@ -101,12 +102,12 @@
 //!
 //! # Look
 //!
-//! rune-kit's compact menu, with Strata's corners (9 pt, at the look's roundness) and, with the
-//! element glow on, the look's glow. The 1 pt edge that shows is rune-kit's floating
-//! elevation's ring, in `border_base`; C21's own 1 pt `border_base` border lies under it and
-//! adds nothing visible. The elevation's shadow stays under the glow: an El's shadows can't be
-//! cleared. Field menus are the same
-//! surface. Rows hover and highlight in `kit.c.hover`, as `Kit::interactive` paints.
+//! Compact menu surfaces with Strata's corners (9 pt, at the look's roundness), C24's accent
+//! scroll bar when overflowing, and, with the element glow on, the look's glow. The 1 pt edge
+//! that shows is rune-kit's floating elevation's ring, in `border_base`; C21's own 1 pt
+//! `border_base` border lies under it and adds nothing visible. The elevation's shadow stays
+//! under the glow: an El's shadows can't be cleared. Field menus are the same surface. Standard
+//! rows hover and highlight in `kit.c.hover`, and destructive rows in `kit.c.danger.bg`.
 //!
 //! # Coverage
 //!
@@ -223,9 +224,6 @@
 //!   old target, and the entry under the scrim can't open its menu in the same click. Ask: let
 //!   the scrim pass a secondary press through, or dismiss and replay it.
 //! - **U14** (S5, not filed): popup surfaces for menus. Cited for the placement bullets.
-//! - rune-kit's layer order. C21 finds the surfaces it adjusts by the order `Menu::build` pushes
-//!   them (`[scrim, point, surface, submenus…]`), since an El's key can't be read once built;
-//!   unit `layer_order_is_runekits` fails if a Rune bump moves them.
 
 mod anchor;
 mod field;

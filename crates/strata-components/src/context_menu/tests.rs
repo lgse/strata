@@ -1636,3 +1636,38 @@ fn items_with_icons_and_danger_invoke_actions_and_keep_clean_accessibility() {
     assert!(!rt.state.menu.is_open());
     assert_eq!(rt.state.heard, ["delete Some(4)"]);
 }
+
+#[test]
+fn stale_submenu_scroll_bars_are_drained_on_sibling_switch_and_model_truncation() {
+    let sub_a = Section::new([Item::submenu(
+        "nested",
+        "Nested",
+        [Section::new([Item::new("leaf", "Leaf")])],
+    )]);
+    let sub_b = Section::new([Item::new("other", "Other")]);
+    let initial = MenuModel::new().section(Section::new([
+        Item::submenu("a", "Sub A", [sub_a]),
+        Item::submenu("b", "Sub B", [sub_b]),
+    ]));
+    let mut st = ContextMenuState::new();
+    st.open(MenuTarget::Background, Point::default(), initial);
+    assert!(st.open_submenu(&[0, 0]));
+    let top_bar = st.scroll_bar(0);
+    let _sub1_bar = st.scroll_bar(1);
+    let _sub2_bar = st.scroll_bar(2);
+    assert_eq!(st.scroll_bar_count(), 3);
+
+    // Switching to sibling submenu `[1]` shares common prefix 0, so submenu bars past depth 0
+    // are drained and released while the top-level bar stays intact.
+    assert!(st.open_submenu(&[1]));
+    assert_eq!(st.scroll_bar_count(), 1);
+    let _sibling_bar = st.scroll_bar(1);
+    assert_eq!(st.scroll_bar_count(), 2);
+
+    // Replacing the model without the open submenu truncates `submenu` to 0 and drains its bar.
+    st.update_model(MenuModel::new().section(Section::new([Item::new("plain", "Plain")])));
+    assert!(st.submenu().is_empty());
+    assert_eq!(st.scroll_bar_count(), 1);
+    // Top-level bar stays the same instance until the menu closes.
+    assert_eq!(format!("{:?}", st.scroll_bar(0)), format!("{:?}", top_bar));
+}
