@@ -76,8 +76,14 @@ pub struct PointerSettings {
     pub modes: ClickModes,
     /// Whether a slow second click on a name renames. Off in file choosers and in Trash.
     pub rename: bool,
-    /// Whether a press on an entry can start a file drag. Off for a read-only collection.
+    /// Whether a press on an entry can start a file drag. Off for a read-only collection and
+    /// file choosers.
     pub drags: bool,
+    /// Whether blank row or card space on an already-selected entry starts a file drag when
+    /// [`drags`](Self::drags) is also enabled. True by default (Columns and Icons); false in
+    /// List, where unused Name space, row padding, and metadata columns remain marquee origins
+    /// before and after selection.
+    pub drag_selected_rows: bool,
     /// Whether more than one entry may be selected (Ctrl/Shift clicks and marquee bands).
     /// True by default; false in single-selection file choosers.
     pub multiple: bool,
@@ -104,6 +110,7 @@ impl Default for PointerSettings {
             modes: ClickModes::default(),
             rename: true,
             drags: true,
+            drag_selected_rows: true,
             multiple: true,
             ctrl_shift: Extend::Replace,
             already_open: None,
@@ -128,6 +135,19 @@ impl PointerSettings {
     /// The same settings with slow-click rename on or off.
     pub const fn rename(mut self, rename: bool) -> Self {
         self.rename = rename;
+        self
+    }
+
+    /// The same settings with outgoing file drags on or off.
+    pub const fn drags(mut self, drags: bool) -> Self {
+        self.drags = drags;
+        self
+    }
+
+    /// The same settings with selected-row blank space reserved for file drags, or kept as
+    /// marquee selection space.
+    pub const fn drag_selected_rows(mut self, drag: bool) -> Self {
+        self.drag_selected_rows = drag;
         self
     }
 

@@ -261,6 +261,8 @@ fn live_pointer<V: SinglePane>(app: &App) -> PointerSettings {
     PointerSettings::default()
         .modes(modes)
         .rename(!chooser)
+        .drags(!chooser)
+        .drag_selected_rows(V::KEY != crate::list::VIEW)
         .multiple(app.chooser.allows_multiple())
 }
 

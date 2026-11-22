@@ -1155,3 +1155,73 @@ fn with_one_entry_allowed_no_drag_draws_a_band_but_an_entry_still_drags() {
     r.to(0.0, 30.0);
     assert!(r.take().iter().any(drag(&[7])), "the entry drags alone");
 }
+
+#[test]
+fn content_only_selected_rows_keep_gutter_as_marquee_without_losing_activation() {
+    // List view (`drag_selected_rows: false`): selected row whitespace still starts a marquee,
+    // while icon/name drags carry the selection and clicks/double-clicks on gutter still activate.
+    let mut r = Rig::new(PointerSettings::default().drag_selected_rows(false));
+    r.select(&[2, 4]);
+    r.down(4, Spot::Gutter, PLAIN);
+    r.to(0.0, -30.0);
+    r.up_at(Point::new(0.0, -30.0), PLAIN, false);
+    let out = r.take();
+    assert!(out.iter().any(is_marquee), "selected gutter starts marquee");
+    assert!(
+        !out.iter().any(drag(&[2, 4])),
+        "selected gutter never drags"
+    );
+
+    // Dragging icon or name on a selected group still carries the whole selection.
+    r.wait(1.0);
+    r.select(&[2, 4]);
+    r.down(4, Spot::Content, PLAIN);
+    r.to(0.0, -30.0);
+    r.up_at(Point::new(0.0, -30.0), PLAIN, false);
+    assert!(r.take().iter().any(drag(&[2, 4])));
+
+    // Double-clicking selected gutter still activates.
+    r.wait(1.0);
+    r.select(&[4]);
+    r.click(4, Spot::Gutter, PLAIN);
+    r.wait(0.1).click(4, Spot::Gutter, PLAIN);
+    assert!(r.take().iter().any(|o| matches!(
+        o,
+        Outcome::Activate {
+            id: got,
+            how: ActivateBy::DoubleClick
+        } if *got == id(4)
+    )));
+}
+
+#[test]
+fn chooser_without_drag_sources_keeps_selected_gutter_for_marquee_and_double_click() {
+    // Portal multiple-selection chooser (`drags: false`, `multiple: true`): selected row gutter
+    // remains a marquee origin for both single-press and tap-drag in either direction, while a
+    // double-click that stays put activates the entry.
+    let mut r = Rig::new(PointerSettings::default().drags(false).rename(false));
+    r.click(4, Spot::Gutter, PLAIN);
+    r.take();
+    // Held second tap dragged upward starts a marquee without activating.
+    r.wait(0.1).down(4, Spot::Gutter, PLAIN);
+    r.to(0.0, -20.0);
+    r.up_at(Point::new(0.0, -20.0), PLAIN, false);
+    let out = r.take();
+    assert!(out.iter().any(is_marquee), "tap-drag starts marquee");
+    assert!(
+        !out.iter().any(|o| matches!(o, Outcome::Activate { .. })),
+        "tap-drag must not activate"
+    );
+
+    // Ordinary double-click on gutter activates.
+    r.wait(1.0);
+    r.click(4, Spot::Gutter, PLAIN);
+    r.wait(0.1).click(4, Spot::Gutter, PLAIN);
+    assert!(r.take().iter().any(|o| matches!(
+        o,
+        Outcome::Activate {
+            id: got,
+            how: ActivateBy::DoubleClick
+        } if *got == id(4)
+    )));
+}

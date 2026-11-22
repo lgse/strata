@@ -92,6 +92,7 @@ pub(crate) fn view(app: &App) -> ColumnsView<App> {
         PointerSettings::default()
             .modes(modes)
             .rename(!chooser)
+            .drags(!chooser)
             .multiple(app.chooser.allows_multiple())
     })
     // GTK's column header actions, in its order (`pane_header::actions`).

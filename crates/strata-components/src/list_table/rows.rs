@@ -171,28 +171,39 @@ fn justify(e: El, a: Align) -> El {
 }
 
 /// Which part of a row a point (in the row's own points) is on, as Strata's List counts it
-/// (`browser/selection/pointer-intent`): the primary column's icon is content and its drawn
-/// name is the name, the rest of that column and the row's padding are blank, and every other
-/// column's cell is content, wherever the primary column sits.
+/// (`hits_list_item_content` in `src/ui/pointer.rs`): only the primary column's icon and drawn
+/// filename are item hit content; unused Name space, row padding, and every metadata column
+/// remain selection space, wherever the primary column sits.
 pub(super) fn region(resolved: &Resolved, look: &Look, name: &str, local: Point) -> Region {
     let x = local.x - resolved.lead;
     let Some(p) = resolved.column_at(x) else {
         return Region::Gutter;
     };
     if !p.primary {
-        return Region::Content;
+        return Region::Gutter;
     }
+    let inner_h = (tokens::row_height(look) - 2.0).max(0.0);
     let icon = look.icon_size.md + look.space.sm;
     let at = x - p.x;
     if at < icon {
-        return Region::Content;
+        return if in_centered_band(local.y, inner_h, look.icon_size.md) {
+            Region::Content
+        } else {
+            Region::Gutter
+        };
     }
     let pad = tokens::cell_pad(look);
-    let (drawn, _) = rune::text::measure(name, &[], look.kit.ty.ui_compact, None);
+    let (drawn, text_h) = rune::text::measure(name, &[], look.kit.ty.ui_compact, None);
     let room = (p.w - icon - pad).max(0.0);
-    if at < icon + drawn.min(room) {
+    let label_h = text_h.max(look.kit.ty.ui_compact.line_height);
+    if at < icon + drawn.min(room) && in_centered_band(local.y, inner_h, label_h) {
         Region::Name
     } else {
         Region::Gutter
     }
+}
+
+fn in_centered_band(y: f32, container: f32, band: f32) -> bool {
+    let margin = ((container - band) * 0.5).max(0.0);
+    y >= margin && y < container - margin
 }
