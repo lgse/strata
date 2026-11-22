@@ -12,6 +12,7 @@ use strata_components::{
     collection::element::RowCx,
     icons_grid::{IconsGrid, IconsParts},
 };
+use strata_core::util::DateFormat;
 
 use super::{Icons, VIEW, size};
 use crate::{App, details, listing::Row, shell, single, slots::Frame};
@@ -37,6 +38,7 @@ pub(crate) fn grid() -> IconsGrid<App> {
         Some((app.window.thumbnails_mut(), id, source))
     })
     .details(details_version, details_text)
+    .tooltip(tooltip_version, tooltip_text)
     .badge(
         crate::file_providers::badge_version,
         crate::file_providers::badge_pixels,
@@ -67,6 +69,40 @@ fn details_text(app: &App, rcx: &RowCx<'_>) -> Option<Arc<str>> {
     details::icons_line(row.is_folder(), row.facts()).map(Arc::from)
 }
 
+fn tooltip_version_for(app: &App, row: Option<&Row>) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    row.and_then(|row| row.facts().modified).hash(&mut hasher);
+    app.icons.date_format.as_str().hash(&mut hasher);
+    if app.icons.date_format == DateFormat::Relative {
+        app.icons.dates.epoch().hash(&mut hasher);
+    }
+    hasher.finish()
+}
+
+fn tooltip_text_for(row: Option<&Row>, rcx: &RowCx<'_>, truncated: bool) -> Option<String> {
+    details::entry_tooltip(rcx.entry.name, row.map(Row::facts), true, || truncated)
+}
+
+fn tooltip_version(app: &App, rcx: &RowCx<'_>) -> u64 {
+    tooltip_version_for(app, row(app, rcx))
+}
+
+fn tooltip_text(app: &App, rcx: &RowCx<'_>, truncated: bool) -> Option<String> {
+    tooltip_text_for(row(app, rcx), rcx, truncated)
+}
+
+fn hit_row<'a>(app: &'a App, rcx: &RowCx<'_>) -> Option<&'a Row> {
+    app.filter.pane.hits()?.row_at(rcx.index)
+}
+
+fn results_tooltip_version(app: &App, rcx: &RowCx<'_>) -> u64 {
+    tooltip_version_for(app, hit_row(app, rcx))
+}
+
+fn results_tooltip_text(app: &App, rcx: &RowCx<'_>, truncated: bool) -> Option<String> {
+    tooltip_text_for(hit_row(app, rcx), rcx, truncated)
+}
+
 /// A filter's results in the grid's place (A10's [`crate::filter::pane`]): tiles as the
 /// grid's, at its size, each with its path under the folder as its details line while the
 /// filter searches the subfolders (GTK's `ResultKind::Icons`).
@@ -93,6 +129,7 @@ pub(crate) fn results() -> IconsGrid<App> {
         },
         |app: &App, rcx: &RowCx<'_>| crate::filter::pane::path_of(app, rcx.entry.id).map(Arc::from),
     )
+    .tooltip(results_tooltip_version, results_tooltip_text)
     .badge(
         crate::file_providers::badge_version,
         crate::file_providers::badge_pixels,

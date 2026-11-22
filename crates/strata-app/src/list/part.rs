@@ -43,12 +43,15 @@ fn fill(app: &mut App, clock: f64, tx: &mut Tx) {
 /// Has the rows drawn read their relative dates again every 30 s, as GTK's labels do. True
 /// when they do now.
 fn redate(app: &mut App, clock: f64, tx: &mut Tx) -> bool {
+    let filter_rows =
+        app.filter.pane.shows() && app.filter.pane.hits().is_some_and(|hits| !hits.is_empty());
     let list = &mut app.list;
-    let rows = list
-        .single
-        .pane
-        .listing()
-        .is_some_and(|listing| !listing.is_empty());
+    let rows = filter_rows
+        || list
+            .single
+            .pane
+            .listing()
+            .is_some_and(|listing| !listing.is_empty());
     let tick = list.dates.tick(list.relative_dates && rows, clock);
     if let Some(wake) = tick.wake {
         tx.wake_after(wake);

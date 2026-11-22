@@ -4,6 +4,7 @@
 //! example of [`crate::slots`].
 
 use rune::Tx;
+use strata_core::util::DateFormat;
 use strata_fs::app::VisibleDepths;
 
 #[cfg(feature = "qa")]
@@ -148,8 +149,10 @@ impl Part for Columns {
     fn tab_shown(app: &mut App, _: &mut Tx) {
         let saved = shell::preferences(app);
         app.columns.refresh_mirror_preferences(saved);
+        let format = DateFormat::parse(&saved.date_format);
         let (sizes, width) = (saved.columns_show_sizes, super::width::saved(saved));
         let worn = shell::worn(app).clone();
+        app.columns.sync_date_format(format);
         app.columns.show_sizes(sizes);
         app.columns.state.set_default_width(width);
         app.columns.set_worn(&worn);
@@ -159,6 +162,21 @@ impl Part for Columns {
         let said = app.columns.watch_surface(clock, tx);
         let pruned = thumbs::poll(app, clock, tx);
         fills::poll(app, clock, tx);
-        view(app).tick(app, clock, tx) | said | pruned
+        view(app).tick(app, clock, tx) | said | pruned | redate(app, clock, tx)
     }
+}
+
+/// Refreshes relative modified dates in Columns hover tooltips every 30 s while rows show.
+fn redate(app: &mut App, clock: f64, tx: &mut Tx) -> bool {
+    let columns = &mut app.columns;
+    let live =
+        columns.listings.date_format() == DateFormat::Relative && columns.listings.has_rows();
+    let tick = columns.dates.tick(live, clock);
+    if let Some(wake) = tick.wake {
+        tx.wake_after(wake);
+    }
+    if tick.moved {
+        columns.listings.set_relative_epoch(columns.dates.epoch());
+    }
+    tick.moved
 }

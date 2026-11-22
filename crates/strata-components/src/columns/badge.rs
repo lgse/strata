@@ -123,6 +123,44 @@ fn with_detail(label: El, detail: Option<&str>, look: &Look) -> El {
         .child(col().key(DETAIL).w_full().min_w(0.0).child(line))
 }
 
+/// Whether a row may carry a hover tooltip: omitted while renaming, dragging, or anchored by
+/// a folder peek, or for empty names.
+fn shows_tooltip(rcx: &RowCx<'_>) -> bool {
+    !rcx.state.renaming
+        && !rcx.state.marks.dragging
+        && !rcx.state.marks.peek_anchor
+        && !rcx.entry.name.is_empty()
+}
+
+/// Version of column `serial`'s hover tooltip for `rcx`.
+fn tooltip_version<S: 'static>(sh: &Shared<S>, s: &S, serial: u64, rcx: &RowCx<'_>) -> u64 {
+    if !shows_tooltip(rcx) {
+        return 0;
+    }
+    let p = (sh.parts)(s);
+    let Some(depth) = p.state.depth_of(serial).filter(|d| *d < p.sources.len()) else {
+        return 0;
+    };
+    p.sources.tooltip_version(depth, rcx.index)
+}
+
+/// Column `serial`'s unconditional hover tooltip text for `rcx` (for example `"{name}\n{date}"`).
+fn row_tooltip<'s, S: 'static>(
+    sh: &Shared<S>,
+    s: &'s S,
+    serial: u64,
+    rcx: &RowCx<'_>,
+) -> Option<Cow<'s, str>> {
+    if !shows_tooltip(rcx) {
+        return None;
+    }
+    let p = (sh.parts)(s);
+    let depth = p.state.depth_of(serial).filter(|d| *d < p.sources.len())?;
+    p.sources
+        .tooltip(depth, rcx.index)
+        .filter(|t| !t.is_empty())
+}
+
 /// The row's content: C1e's icon and label, the host's detail line under the label when the
 /// column has them, and the badge over the label's end when there is one to show.
 pub(super) fn content<S: 'static>(sh: &Rc<Shared<S>>, serial: u64) -> ContentSlot<S> {
@@ -131,10 +169,17 @@ pub(super) fn content<S: 'static>(sh: &Rc<Shared<S>>, serial: u64) -> ContentSlo
         move |s: &S, rcx: &RowCx<'_>| {
             let mut h = std::hash::DefaultHasher::new();
             detail_text(&v, s, serial, rcx).hash(&mut h);
+            tooltip_version(&v, s, serial, rcx).hash(&mut h);
             h.finish() ^ version_of(shown_text(&v, s, serial, rcx).as_deref(), rcx.look)
         },
         move |s: &S, rcx: &RowCx<'_>, row_icon: El, label: El| {
             let look = rcx.look;
+            let tooltip = row_tooltip(&b, s, serial, rcx);
+            let label = if tooltip.is_none() && shows_tooltip(rcx) {
+                label.help_when_truncated(rcx.entry.name.to_owned())
+            } else {
+                label
+            };
             let label = with_detail(label, detail_text(&b, s, serial, rcx).as_deref(), look);
             let mut middle = row().grow(1.0).h_full().min_w(0.0).center_y().child(label);
             let shown = shown_text(&b, s, serial, rcx);
@@ -156,6 +201,9 @@ pub(super) fn content<S: 'static>(sh: &Rc<Shared<S>>, serial: u64) -> ContentSlo
                 .child(middle);
             if rcx.entry.kind.is_folder_like() {
                 content = content.child(folder_chevron(look, rcx));
+            }
+            if let Some(tip) = tooltip {
+                content = content.help(tip.into_owned());
             }
             if shown.is_some() {
                 // The hover lives on the hover group's track, which the row's own

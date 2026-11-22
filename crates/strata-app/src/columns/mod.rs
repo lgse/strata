@@ -25,6 +25,7 @@ use strata_components::{
     contract::{EntryId, EntrySource},
     scroll::Autoscroll,
 };
+use strata_core::util::DateFormat;
 use strata_desktop::settings::Preferences;
 use strata_fs::app::Browser;
 use strata_kit::look::Look;
@@ -33,6 +34,7 @@ use crate::{
     commands,
     events::{Added, Change, Marks, Moved},
     handover::{self, Held, Kept, Moving},
+    list::dates::Dates,
     listing::{Column, Edit, Load, Row},
     slots::{Ids, Setup, Worn},
     surface::Surface,
@@ -101,6 +103,8 @@ pub(crate) struct Columns {
     pub(super) scale: Cell<f32>,
     /// Whether the drag over `columns-host` is refused (`Some(has_uris)`), or accepted (`None`).
     pub(super) strip_refused: Option<bool>,
+    /// When relative modified dates in hover tooltips read the clock again.
+    dates: Dates,
 }
 
 /// With 10xer mode on, C1c's 10xer map moves the cursor without changing the selection; with
@@ -129,8 +133,10 @@ pub(crate) fn use_chooser_widths(app: &mut crate::App) {
 impl Columns {
     fn with_setup(setup: &Setup<'_>) -> Self {
         let settings: &Preferences = setup.settings;
+        let mut listings = Listings::translated(setup.worn.clone());
+        listings.sync_date_format(DateFormat::parse(&settings.date_format));
         Self {
-            listings: Listings::translated(setup.worn.clone()),
+            listings,
             state: {
                 let mut state = ColumnsState::new(VIEW, Autoscroll::new());
                 state.set_default_width(width::saved(settings));
@@ -154,7 +160,12 @@ impl Columns {
             rebuilding: Cell::new(true),
             scale: Cell::new(1.0),
             strip_refused: None,
+            dates: Dates::default(),
         }
+    }
+
+    pub(crate) fn sync_date_format(&mut self, format: DateFormat) {
+        self.listings.sync_date_format(format);
     }
 
     pub(crate) fn set_worn(&mut self, worn: &Rc<Worn>) {

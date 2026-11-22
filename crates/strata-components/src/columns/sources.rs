@@ -93,4 +93,18 @@ pub trait ColumnSources {
     fn detail(&self, _depth: usize, _index: usize) -> Option<Cow<'_, str>> {
         None
     }
+
+    /// Version of what [`Self::tooltip`] reads for column `depth`'s entry at `index` beyond
+    /// its entry and row state (for example, its modified timestamp and active date format).
+    /// Defaults to `0`.
+    fn tooltip_version(&self, _depth: usize, _index: usize) -> u64 {
+        0
+    }
+
+    /// Hover tooltip text for column `depth`'s entry at `index` when shown unconditionally
+    /// (for example `"{name}\n{date}"`). `None` (the default) falls back to showing the
+    /// entry's full name only while its label is truncated.
+    fn tooltip(&self, _depth: usize, _index: usize) -> Option<Cow<'_, str>> {
+        None
+    }
 }

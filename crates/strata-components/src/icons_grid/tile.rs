@@ -277,27 +277,46 @@ pub(super) fn details_of<S>(shared: &Shared<S>, s: &S, rcx: &RowCx<'_>) -> Optio
     f(s, rcx).map(|d| d.to_string())
 }
 
+/// The hover tooltip text for a tile, none while it renames, drags, or anchors a folder peek.
+fn tile_help<S>(shared: &Shared<S>, b: &Built, s: &S, rcx: &RowCx<'_>) -> Option<String> {
+    // A tile a folder peek is open from (C22) shows no tooltip: the card beside it holds
+    // the folder's name, and a tooltip would cover one or the other.
+    if rcx.state.renaming
+        || rcx.state.marks.peek_anchor
+        || rcx.state.marks.dragging
+        || rcx.entry.name.is_empty()
+    {
+        return None;
+    }
+    let truncated = b.cut(shared, s, rcx.entry.name).cut;
+    match &shared.tooltip {
+        Some((_, text)) => text(s, rcx, truncated).filter(|t| !t.is_empty()),
+        None => truncated.then(|| rcx.entry.name.to_owned()),
+    }
+}
+
 /// The content slot: the card, its frame, name and details stacked and centred, inside the
-/// tile's margin and the card's padding. A tile whose name is cut carries the whole name as a
-/// tooltip over its frame, its name and its details, none while it renames or a folder peek is
-/// open from it (C22).
+/// tile's margin and the card's padding. A tile with tooltip text carries it over its frame,
+/// its name and its details, none while it renames, drags, or a folder peek is open from it
+/// (C22).
 pub(super) fn content_slot<S: 'static>(shared: &Rc<Shared<S>>, b: Built) -> ContentSlot<S> {
     let (version_shared, build_shared) = (shared.clone(), shared.clone());
     let key = b.key();
     ContentSlot::new(
-        move |s: &S, rcx: &RowCx<'_>| match &version_shared.details {
-            Some((version, _)) => key ^ version(s, rcx).rotate_left(17),
-            None => key,
+        move |s: &S, rcx: &RowCx<'_>| {
+            let mut version = key;
+            if let Some((details_version, _)) = &version_shared.details {
+                version ^= details_version(s, rcx).rotate_left(17);
+            }
+            if let Some((tooltip_version, _)) = &version_shared.tooltip {
+                version ^= tooltip_version(s, rcx).rotate_left(31);
+            }
+            version
         },
         move |s: &S, rcx: &RowCx<'_>, frame: El, label: El| {
             let m = &b.m;
             let look = rcx.look;
-            // A tile a folder peek is open from (C22) shows no tooltip: the card beside it holds
-            // the folder's name, and a tooltip would cover one or the other.
-            let help = (b.cut(&build_shared, s, rcx.entry.name).cut
-                && !rcx.state.renaming
-                && !rcx.state.marks.peek_anchor)
-                .then(|| rcx.entry.name.to_owned());
+            let help = tile_help(&build_shared, &b, s, rcx);
             let (frame, label) = match &help {
                 Some(name) => (frame.help(name.clone()), label.help(name.clone())),
                 None => (frame, label),

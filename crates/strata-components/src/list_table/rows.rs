@@ -80,6 +80,7 @@ pub(super) fn content<S: 'static>(
             let mut h = std::hash::DefaultHasher::new();
             version_resolved.fingerprint.hash(&mut h);
             pad_bits.hash(&mut h);
+            rune::text::font_epoch().hash(&mut h);
             if let Some(f) = &version_shared.cells_version {
                 f(s, rcx).hash(&mut h);
             }
@@ -89,6 +90,27 @@ pub(super) fn content<S: 'static>(
             cells(&build_shared, &build_resolved, &fonts, s, rcx, icon, label)
         },
     )
+}
+
+impl Fonts {
+    fn primary_tooltip<S>(
+        &self,
+        shared: &Shared<S>,
+        width: f32,
+        (s, rcx): (&S, &RowCx<'_>),
+    ) -> Option<String> {
+        let provide = shared.tooltip.as_ref()?;
+        if rcx.state.renaming
+            || rcx.state.marks.dragging
+            || rcx.state.marks.peek_anchor
+            || rcx.entry.name.is_empty()
+        {
+            return None;
+        }
+        let room = (width - rcx.look.icon_size.md - self.gap - self.pad).max(0.0);
+        let truncated = || rune::text::advance(rcx.entry.name, self.text) > room + 0.5;
+        provide(s, rcx, &truncated).filter(|tip| !tip.is_empty())
+    }
 }
 
 fn cells<S: 'static>(
@@ -111,7 +133,7 @@ fn cells<S: 'static>(
             None => {
                 let (icon, label) = parts.take().unwrap_or_else(|| (rune::el(), rune::el()));
                 // No role and so no node of its own: the item is named by the entry already.
-                row()
+                let mut cell = row()
                     .key(key)
                     .role("none")
                     .label(rcx.entry.name)
@@ -121,7 +143,11 @@ fn cells<S: 'static>(
                     .gap(fonts.gap)
                     .pr(pad)
                     .child(icon)
-                    .child(label)
+                    .child(label);
+                if let Some(tip) = fonts.primary_tooltip(shared, p.w, (s, rcx)) {
+                    cell = cell.help(tip);
+                }
+                cell
             }
             Some(f) => {
                 let cell = f(s, rcx);
