@@ -15,7 +15,7 @@ use strata_components::{
     },
     contract::{Direction, EntryId},
     filter_bar::filter::Polled,
-    footer::FilterMark,
+    footer::{FilterCounts, FilterMark},
 };
 use strata_core::model::Location;
 use strata_desktop::keys::{
@@ -57,6 +57,29 @@ pub(crate) fn mark(app: &App) -> Option<FilterMark> {
     } else {
         None
     }
+}
+
+/// The footer's active filter or search result counts (`FilterStatus` in
+/// `src/ui/browser/listing_filter.rs`). While a typed query is still debouncing or awaiting its
+/// first batch with no hits yet, `displayed` is false so the footer keeps the directory count.
+pub(crate) fn footer_counts(app: &App) -> Option<FilterCounts> {
+    let open = app.filter.open_in.as_ref()?;
+    if !app.filter.state.is_open()
+        || app.filter.state.text().trim().is_empty()
+        || !open_shown(app, open)
+    {
+        return None;
+    }
+    let items = &app.filter.items;
+    let folders = items.iter().filter(|item| item.is_directory).count();
+    let files = items.len() - folders;
+    let pending = app.filter.debounce.borrow().is_some() || app.filter.session.awaiting();
+    let displayed = open.place.shows_hits(app, open.depth) && !(items.is_empty() && pending);
+    Some(FilterCounts {
+        files,
+        folders,
+        displayed,
+    })
 }
 
 /// The subfolder search hit under the cursor, as a path below the searched folder.
