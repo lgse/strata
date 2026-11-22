@@ -331,6 +331,7 @@ pub(crate) enum SavedPreviewSelection {
 #[derive(Clone, Debug)]
 struct PreviewTextTarget {
     stamp: TextViewerStamp,
+    focus_key: &'static str,
     selected: Option<String>,
     restore: Option<SavedPreviewSelection>,
 }
@@ -348,6 +349,7 @@ pub(crate) struct PreviewTextRequest {
 /// Context carried from a preview text menu action or dismissal back into `preview`.
 pub(crate) struct PreviewTextMenuOutcome<'a> {
     pub(crate) stamp: TextViewerStamp,
+    pub(crate) focus_key: &'static str,
     pub(crate) selected: Option<&'a str>,
     pub(crate) restore: Option<&'a SavedPreviewSelection>,
 }
@@ -358,18 +360,21 @@ pub(crate) fn open_preview_text(app: &mut App, request: PreviewTextRequest, tx: 
     let name = crate::preview::current_entry(app)
         .map(|entry| entry.display_name.clone())
         .unwrap_or_else(|| tr("Preview"));
-    tx.focus(request.focus_key, tx.by_keys());
     crate::preview::arm_focus_handoff(app, tx);
     app.menu.show_other(
         name,
         MenuTarget::Other(Rc::new(PreviewTextTarget {
             stamp: request.stamp,
+            focus_key: request.focus_key,
             selected: request.selected,
             restore: request.restore,
         })),
         request.anchor,
         model,
     );
+    // Focus the non-modal menu without `keyboard = true` so Rune keeps the underlying text
+    // selection highlighted while still letting Escape/arrows/Enter reach the menu.
+    tx.focus("menu-menu", false);
 }
 
 fn preview_text_model(has_selection: bool, can_select_all: bool) -> MenuModel {
@@ -386,7 +391,7 @@ fn preview_text_model(has_selection: bool, can_select_all: bool) -> MenuModel {
     MenuModel::new().section(Section::new([copy, select_all]))
 }
 
-fn is_preview_text_menu(app: &App) -> bool {
+pub(crate) fn is_preview_text_menu(app: &App) -> bool {
     matches!(
         app.menu.state.target(),
         Some(MenuTarget::Other(other)) if other.downcast_ref::<PreviewTextTarget>().is_some()
@@ -407,6 +412,7 @@ fn chosen(app: &mut App, intent: MenuIntent, tx: &mut Tx) {
             &action,
             &PreviewTextMenuOutcome {
                 stamp: preview_target.stamp,
+                focus_key: preview_target.focus_key,
                 selected: preview_target.selected.as_deref(),
                 restore: preview_target.restore.as_ref(),
             },
@@ -448,6 +454,7 @@ fn dismissed(app: &mut App, target: MenuTarget, tx: &mut Tx) {
             app,
             &PreviewTextMenuOutcome {
                 stamp: preview_target.stamp,
+                focus_key: preview_target.focus_key,
                 selected: preview_target.selected.as_deref(),
                 restore: preview_target.restore.as_ref(),
             },
@@ -458,15 +465,17 @@ fn dismissed(app: &mut App, target: MenuTarget, tx: &mut Tx) {
 
 /// The menu's element, with its surfaces in the layer while it is open.
 fn build(app: &App, frame: &mut Frame<'_, App>) -> Option<El> {
+    let preview_text = is_preview_text_menu(app);
     let mut menu = ContextMenu::new(
         "menu",
         |app: &App| &app.menu.state,
         |app: &mut App| &mut app.menu.state,
     )
     .name(app.menu.name())
+    .keeps_text_selection(preview_text)
     .on_intent(chosen)
     .on_dismiss_tx(dismissed);
-    if !app.browser.is_chooser_mode() && !is_preview_text_menu(app) {
+    if !app.browser.is_chooser_mode() && !preview_text {
         menu = menu.min_width(min_width(&app.look));
     }
     Some(menu.build(app, &app.look, frame.layer))

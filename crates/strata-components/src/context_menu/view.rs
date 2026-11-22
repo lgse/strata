@@ -78,6 +78,8 @@ pub(super) struct Render<'a, S> {
     pub open: &'a [usize],
     /// The top-level menu's width, in window points.
     pub top_width: f32,
+    /// Keeps underlying selectable text non-inert while open (omits Rune's modal trap).
+    pub keeps_text_selection: bool,
     /// One C24 scroll bar per open surface depth (`0` = top-level, `1..` = open submenus).
     pub scroll_bars: Vec<Bar>,
     pub look: &'a Look,
@@ -164,15 +166,20 @@ impl<S: 'static> Render<'_, S> {
                 .size(0.0, 0.0),
         );
         let scrim_dismiss = self.on_dismiss.clone();
-        layer.push(
-            el().key(format!("{}-scrim", self.key))
-                .role("none")
-                .absolute(0.0, 0.0)
-                .w_full()
-                .h_full()
-                .keeps_text_selection()
-                .on_press_tx(move |s: &mut S, tx: &mut Tx| scrim_dismiss(s, tx)),
-        );
+        let mut scrim = el()
+            .key(format!("{}-scrim", self.key))
+            .role("none")
+            .absolute(0.0, 0.0)
+            .w_full()
+            .h_full()
+            .keeps_text_selection()
+            .on_press_tx(move |s: &mut S, tx: &mut Tx| scrim_dismiss(s, tx));
+        if self.keeps_text_selection {
+            let scrim_secondary = self.on_dismiss.clone();
+            scrim =
+                scrim.on_secondary_press(move |s: &mut S, _, tx: &mut Tx| scrim_secondary(s, tx));
+        }
+        layer.push(scrim);
 
         let mut rows = Vec::new();
         let scope = CollectScope {
@@ -196,11 +203,14 @@ impl<S: 'static> Render<'_, S> {
             open: self.open,
             width: self.top_width,
         };
-        let modal_dismiss = self.on_dismiss.clone();
-        let top = self
-            .build_surface(&top_spec, &rows, &mut subs)
-            .focus_return(anchor_key)
-            .modal_tx(true, move |s: &mut S, tx: &mut Tx| modal_dismiss(s, tx));
+        let top = self.build_surface(&top_spec, &rows, &mut subs);
+        let top = if self.keeps_text_selection {
+            top
+        } else {
+            let modal_dismiss = self.on_dismiss.clone();
+            top.focus_return(anchor_key)
+                .modal_tx(true, move |s: &mut S, tx: &mut Tx| modal_dismiss(s, tx))
+        };
         layer.push(popover::anchored(
             kit,
             top,
@@ -257,11 +267,18 @@ impl<S: 'static> Render<'_, S> {
             // Left (or a click on its row) closes it: the keyboard goes back to its row.
             surface = surface.focus_return(owner.key.clone());
         }
+        if self.keeps_text_selection
+            && spec.depth == 0
+            && !super::model::items(spec.sections).any(|i| i.enabled)
+        {
+            surface = surface.focusable(true).no_focus_ring();
+        }
         let depth = spec.depth;
         let rows = rows.clone();
         let hands = Hands {
             open: self.on_submenu.clone(),
             close_to: self.close_to.clone(),
+            dismiss: self.keeps_text_selection.then(|| self.on_dismiss.clone()),
         };
         surface.on_key(move |s: &mut S, ev: &KeyEvent, tx: &mut Tx| {
             menu_key(s, ev, tx, depth, &rows, &hands)
@@ -663,6 +680,8 @@ fn collect_rows(scope: &CollectScope<'_>, rows: &mut Vec<Row>) {
 struct Hands<S> {
     open: Submenu<S>,
     close_to: CloseTo<S>,
+    /// Present for non-modal (`keeps_text_selection`) menus so Escape closes the menu.
+    dismiss: Option<Dismiss<S>>,
 }
 
 /// The surface `depth` levels in heard `ev`:
@@ -685,6 +704,12 @@ fn menu_key<S>(
     rows: &[Row],
     hands: &Hands<S>,
 ) -> bool {
+    let focused = tx.focused().and_then(|k| rows.iter().find(|r| r.key == k));
+    if let Some(dismiss) = &hands.dismiss
+        && non_modal_key(s, ev, tx, focused.is_some(), dismiss)
+    {
+        return true;
+    }
     let m = ev.mods;
     let plain = !(m.ctrl || m.cmd || m.alt || m.logo || m.shift);
     if ev.is_command('a') {
@@ -701,7 +726,6 @@ fn menu_key<S>(
     if !plain {
         return false;
     }
-    let focused = tx.focused().and_then(|k| rows.iter().find(|r| r.key == k));
     match &ev.key {
         Key::Right | Key::Enter => {}
         Key::Text(t) if t == " " => {}
@@ -709,7 +733,7 @@ fn menu_key<S>(
             (hands.close_to)(s, depth - 1);
             return true;
         }
-        // Escape in a submenu needs no arm: the top menu's modal takes it and closes the
+        // Escape in a modal menu needs no arm: the top menu's modal takes it and closes the
         // whole menu.
         _ => return false,
     }
@@ -723,6 +747,33 @@ fn menu_key<S>(
             }
             true
         }
+        _ => false,
+    }
+}
+
+/// Keys a non-modal (`keeps_text_selection`) menu keeps from leaking to Rune's landmark cycle
+/// (`F6` / `Shift+F6`), background `page_scroll` (when all items are disabled and the menu
+/// surface holds focus directly), or `Escape` / `Shift+Escape` dismissal.
+fn non_modal_key<S>(
+    s: &mut S,
+    ev: &KeyEvent,
+    tx: &mut Tx,
+    focused_row: bool,
+    dismiss: &Dismiss<S>,
+) -> bool {
+    let m = ev.mods;
+    if m.ctrl || m.cmd || m.alt || m.logo {
+        return false;
+    }
+    match ev.key {
+        Key::Escape => {
+            if !tx.key_repeat() {
+                dismiss(s, tx);
+            }
+            true
+        }
+        Key::Function(6) => true,
+        Key::PageUp | Key::PageDown | Key::Home | Key::End if !focused_row => true,
         _ => false,
     }
 }

@@ -31,6 +31,7 @@ pub struct ContextMenu<S> {
     get_mut: fn(&mut S) -> &mut ContextMenuState,
     name: String,
     min_width: f32,
+    keeps_text_selection: bool,
     emit: Option<Emit<S>>,
     dismissed: Option<Dismissed<S>>,
 }
@@ -50,6 +51,7 @@ impl<S: 'static> ContextMenu<S> {
             get_mut,
             name: "Context menu".to_owned(),
             min_width: MIN_WIDTH,
+            keeps_text_selection: false,
             emit: None,
             dismissed: None,
         }
@@ -65,6 +67,15 @@ impl<S: 'static> ContextMenu<S> {
     /// The least width the top-level menu opens at, in window points (floored at 160 pt).
     pub fn min_width(mut self, width: f32) -> Self {
         self.min_width = width;
+        self
+    }
+
+    /// Keeps selectable text behind the menu live and highlighted while open: omits Rune's
+    /// modal trap (which marks background virtual lists inert and prunes text selections),
+    /// dismisses on primary or secondary clicks on the scrim, and handles `Escape` in the
+    /// menu's own key handler. Off by default.
+    pub fn keeps_text_selection(mut self, on: bool) -> Self {
+        self.keeps_text_selection = on;
         self
     }
 
@@ -107,6 +118,7 @@ impl<S: 'static> ContextMenu<S> {
             sections: &model.sections,
             open,
             top_width,
+            keeps_text_selection: self.keeps_text_selection,
             scroll_bars,
             look,
             on_select: Rc::new(move |s: &mut S, path: &[usize], tx: &mut Tx| {

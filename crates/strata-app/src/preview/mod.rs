@@ -86,9 +86,10 @@ pub(crate) struct Preview {
     /// Whether keyboard focus is currently inside `preview-drawer` (excluding its resize grip):
     /// drives the Miller column header's active-destination bar (`UI-30`).
     owns_focus: bool,
-    /// A focus-into-preview handoff was just queued and has not committed yet; keep `owns_focus`
-    /// armed until the poll after that commit reconciles against `tx.focused()`.
-    focus_pending: bool,
+    /// An in-flight focus-into-preview handoff (waiting for a focus stub commit or an async
+    /// preview load to mount its viewer); keeps `owns_focus` armed without bouncing `true ->
+    /// false -> true` until focus lands or moves elsewhere (`UI-49`).
+    focus_handoff: Option<FocusHandoff>,
     tab_shown: bool,
     click_opening: Option<ClickOpening>,
     focus_timer: Rc<RefCell<Option<glib::SourceId>>>,
@@ -118,6 +119,19 @@ pub(super) enum ContentFocus {
     Pending,
     Owned,
 }
+
+/// An in-flight focus-into-preview handoff armed by `arm_focus_handoff`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct FocusHandoff {
+    /// Focus key when the handoff was armed; if focus moves to a different non-preview control
+    /// while waiting, the handoff cancels immediately.
+    from: Option<String>,
+    /// Remaining post-load reconciliation polls before giving up if focus never lands.
+    polls_left: u8,
+}
+
+/// Post-load poll budget for a focus handoff to land once a viewer is mounted.
+const FOCUS_HANDOFF_POLLS: u8 = 2;
 
 impl Preview {
     pub(super) fn reserves_column_space(&self, app: &App) -> bool {
@@ -207,7 +221,7 @@ impl Part for Preview {
             header_source: None,
             content_focus: ContentFocus::None,
             owns_focus: false,
-            focus_pending: false,
+            focus_handoff: None,
             tab_shown: false,
             click_opening: None,
             focus_timer: Rc::default(),
@@ -269,8 +283,7 @@ impl Part for Preview {
 
     fn switched(app: &mut App, tx: &mut Tx) {
         let tab_shown = std::mem::take(&mut app.preview.tab_shown);
-        app.preview.owns_focus = false;
-        app.preview.focus_pending = false;
+        clear_focus_handoff(app);
         session::sync_reservation(app);
         if !app.preview.enabled && !app.preview.reserves_column_space(app) {
             app.preview.drawer.close(&app.look, tx);
@@ -283,8 +296,7 @@ impl Part for Preview {
 
     fn tab_shown(app: &mut App, _tx: &mut Tx) {
         app.preview.tab_shown = true;
-        app.preview.owns_focus = false;
-        app.preview.focus_pending = false;
+        clear_focus_handoff(app);
         ensure_operations_watch(app);
         sync_preferences(app);
         let prefs = shell::preferences(app);
@@ -302,7 +314,8 @@ pub(crate) fn owns_focus(app: &App) -> bool {
     app.preview.drawer.is_open()
         && (app.preview.owns_focus
             || app.preview.drawer.is_find_focused()
-            || app.preview.viewer.is_prompt_focused())
+            || app.preview.viewer.is_prompt_focused()
+            || crate::menus::is_preview_text_menu(app))
 }
 
 /// Whether the preview drawer is currently open.
@@ -310,31 +323,79 @@ pub(crate) fn is_open(app: &App) -> bool {
     app.preview.drawer.is_open()
 }
 
-/// Marks a focus-into-preview handoff that commits on this or the next frame so `Preview::poll`
-/// does not clear `owns_focus` before the target mounts, then schedules a zero-delay poll to
-/// reconcile against `tx.focused()`.
+/// Marks a focus-into-preview handoff that commits on this frame or when an async preview load
+/// mounts its viewer so `Preview::poll` does not drop `owns_focus` before focus lands.
 pub(crate) fn arm_focus_handoff(app: &mut App, tx: &mut Tx) {
     app.preview.owns_focus = true;
-    app.preview.focus_pending = true;
+    app.preview.focus_handoff = Some(FocusHandoff {
+        from: tx.focused().map(str::to_owned),
+        polls_left: FOCUS_HANDOFF_POLLS,
+    });
     tx.wake_after(std::time::Duration::ZERO);
 }
 
-fn sync_preview_focus(app: &mut App, tx: &mut Tx) -> bool {
-    if std::mem::take(&mut app.preview.focus_pending) {
+pub(super) fn clear_focus_handoff(app: &mut App) {
+    app.preview.owns_focus = false;
+    app.preview.focus_handoff = None;
+}
+
+pub(super) fn wake_if_focus_handoff(app: &App, tx: &mut Tx) {
+    if app.preview.focus_handoff.is_some() {
         tx.wake_after(std::time::Duration::ZERO);
+    }
+}
+
+fn awaiting_viewer_mount(app: &App) -> bool {
+    app.preview.drawer.is_open()
+        && !app.preview.drawer.is_suspended()
+        && (app.preview.loader.is_active()
+            || matches!(app.preview.viewer, Viewer::Decoding(_))
+            || app.preview.content_focus == ContentFocus::Pending)
+}
+
+fn sync_preview_focus(app: &mut App, tx: &mut Tx) -> bool {
+    let actual = preview_owns_focus(app, tx);
+    if actual {
+        app.preview.focus_handoff = None;
+    } else if should_hold_focus_handoff(app, tx) {
         return false;
     }
-    let owns_focus = preview_owns_focus(app, tx);
-    let changed = app.preview.owns_focus != owns_focus;
-    app.preview.owns_focus = owns_focus;
+    let changed = app.preview.owns_focus != actual;
+    app.preview.owns_focus = actual;
     changed
+}
+
+fn should_hold_focus_handoff(app: &mut App, tx: &mut Tx) -> bool {
+    let awaiting = awaiting_viewer_mount(app);
+    let active_drawer = app.preview.drawer.is_open() && !app.preview.drawer.is_suspended();
+    let Some(handoff) = app.preview.focus_handoff.as_mut() else {
+        return false;
+    };
+    let moved_elsewhere = tx.focused() != handoff.from.as_deref();
+    if !active_drawer || moved_elsewhere {
+        app.preview.focus_handoff = None;
+        return false;
+    }
+    if awaiting {
+        return true;
+    }
+    if handoff.polls_left > 0 {
+        handoff.polls_left -= 1;
+        tx.wake_after(std::time::Duration::ZERO);
+        return true;
+    }
+    app.preview.focus_handoff = None;
+    false
 }
 
 fn preview_owns_focus(app: &App, tx: &Tx) -> bool {
     if !app.preview.drawer.is_open() {
         return false;
     }
-    if app.preview.drawer.is_find_focused() || app.preview.viewer.is_prompt_focused() {
+    if app.preview.drawer.is_find_focused()
+        || app.preview.viewer.is_prompt_focused()
+        || crate::menus::is_preview_text_menu(app)
+    {
         return true;
     }
     tx.focused().is_some_and(is_drawer_focus_key)
@@ -442,6 +503,7 @@ fn show_document_view(app: &mut App, view: DocumentView, tx: &mut Tx) {
 
 fn on_suspend(app: &mut App, suspended: bool, tx: &mut Tx) {
     if suspended {
+        clear_focus_handoff(app);
         if app.preview.loader.is_active() {
             app.preview.loader.cancel();
             app.preview.loader.defer_on_resume = true;
@@ -657,6 +719,28 @@ fn is_current_text_viewer(app: &App, stamp: crate::menus::TextViewerStamp) -> bo
         && app.preview.viewer.text_viewer_stamp() == Some(stamp)
 }
 
+fn needs_selection_restore(
+    app: &App,
+    saved: &crate::menus::SavedPreviewSelection,
+    tx: &Tx,
+) -> bool {
+    match saved {
+        crate::menus::SavedPreviewSelection::CodeRange(..) => app
+            .preview
+            .viewer
+            .code_state()
+            .is_some_and(|code| code.keyboard_selection().is_none()),
+        crate::menus::SavedPreviewSelection::All
+        | crate::menus::SavedPreviewSelection::Node(..) => tx.text_selection().is_none(),
+    }
+}
+
+fn reconcile_stale_text_menu(app: &mut App, tx: &mut Tx) {
+    app.preview.focus_handoff = None;
+    app.preview.owns_focus = preview_owns_focus(app, tx);
+    tx.wake_after(std::time::Duration::ZERO);
+}
+
 /// Runs a chosen item from a preview text viewer's context menu. Ignores viewer mutations and
 /// focus handoffs when the preview closed, reloaded, or switched files while the menu was open.
 pub(crate) fn run_text_menu_action(
@@ -673,7 +757,10 @@ pub(crate) fn run_text_menu_action(
             {
                 tx.copy(text.to_owned());
             }
-            if current && let Some(saved) = outcome.restore {
+            if current
+                && let Some(saved) = outcome.restore
+                && needs_selection_restore(app, saved, tx)
+            {
                 app.preview.viewer.restore_text_selection(saved, tx);
             }
         }
@@ -683,7 +770,10 @@ pub(crate) fn run_text_menu_action(
         _ => {}
     }
     if current {
+        tx.focus(outcome.focus_key, false);
         arm_focus_handoff(app, tx);
+    } else {
+        reconcile_stale_text_menu(app, tx);
     }
 }
 
@@ -695,18 +785,21 @@ pub(crate) fn dismiss_text_menu(
     tx: &mut Tx,
 ) {
     if !is_current_text_viewer(app, outcome.stamp) {
+        reconcile_stale_text_menu(app, tx);
         return;
     }
-    if let Some(saved) = outcome.restore {
+    if let Some(saved) = outcome.restore
+        && needs_selection_restore(app, saved, tx)
+    {
         app.preview.viewer.restore_text_selection(saved, tx);
     }
+    tx.focus(outcome.focus_key, false);
     arm_focus_handoff(app, tx);
 }
 
 /// The listing takes the keys back; the drawer stays open (`return_from_preview`).
 pub(crate) fn return_to_files(app: &mut App) {
-    app.preview.owns_focus = false;
-    app.preview.focus_pending = false;
+    clear_focus_handoff(app);
     app.preview.drawer.focus_files();
 }
 
