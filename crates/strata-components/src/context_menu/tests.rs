@@ -1679,3 +1679,289 @@ fn stale_submenu_scroll_bars_are_drained_on_sibling_switch_and_model_truncation(
     // Top-level bar stays the same instance until the menu closes.
     assert_eq!(format!("{:?}", st.scroll_bar(0)), format!("{:?}", top_bar));
 }
+
+#[test]
+fn keeps_text_selection_menu_preserves_selection_and_handles_keys_and_scrim() {
+    struct SelectHost {
+        look: Look,
+        menu: ContextMenuState,
+        heard: Vec<String>,
+        dismissed: u32,
+    }
+
+    fn select_view(s: &SelectHost, _: &mut Cx<SelectHost>) -> El {
+        let mut layer = Vec::new();
+        let prose = rune::text("selectable preview text")
+            .key("prose")
+            .font(s.look.kit.ty.body)
+            .selectable(true);
+        let menu = ContextMenu::new(
+            "m",
+            |s: &SelectHost| &s.menu,
+            |s: &mut SelectHost| &mut s.menu,
+        )
+        .keeps_text_selection(true)
+        .on_intent(|s: &mut SelectHost, intent, _| match intent {
+            MenuIntent::Activate { action, .. } => s.heard.push(action.to_string()),
+        })
+        .on_dismiss(|s: &mut SelectHost, _| s.dismissed += 1)
+        .build(s, &s.look, &mut layer);
+        rune_kit::root(col().size(W, H).child(prose).child(menu), layer)
+    }
+
+    let mut rt = Runtime::new(
+        SelectHost {
+            look: Look::fallback(false),
+            menu: ContextMenuState::new(),
+            heard: Vec::new(),
+            dismissed: 0,
+        },
+        select_view,
+        (W, H),
+        Env::new(false, 1.0),
+    );
+    rt.frame(0.0);
+    rt.frame(1.0 / 60.0);
+
+    let text_model = || {
+        MenuModel::new().section(Section::new([
+            Item::new("copy", "Copy"),
+            Item::new("select-all", "Select All"),
+        ]))
+    };
+
+    // Select a range inside `prose`, then open the non-modal `keeps_text_selection` menu.
+    rt.update(|s, tx| {
+        tx.select_text("prose", 0..10);
+        s.menu
+            .open(MenuTarget::Background, Point::new(40.0, 40.0), text_model());
+        tx.focus("m-menu", false);
+    });
+    for _ in 0..4 {
+        rt.frame(1.0 / 60.0);
+    }
+    assert!(rt.state.menu.is_open());
+    assert_eq!(rt.selected_text().as_deref(), Some("selectable"));
+
+    // Escape closes the non-modal menu while keeping the underlying selection intact.
+    rt.key(KeyEvent {
+        key: Key::Escape,
+        mods: Mods::default(),
+    });
+    for _ in 0..4 {
+        rt.frame(1.0 / 60.0);
+    }
+    assert!(!rt.state.menu.is_open());
+    assert_eq!(rt.state.dismissed, 1);
+    assert_eq!(rt.selected_text().as_deref(), Some("selectable"));
+
+    // Reopen, then secondary-click outside on the scrim: dismisses while keeping selection.
+    rt.update(|s, tx| {
+        s.menu
+            .open(MenuTarget::Background, Point::new(40.0, 40.0), text_model());
+        tx.focus("m-menu", false);
+    });
+    for _ in 0..4 {
+        rt.frame(1.0 / 60.0);
+    }
+    rt.secondary_down(W - 10.0, H - 10.0);
+    for _ in 0..4 {
+        rt.frame(1.0 / 60.0);
+    }
+    rt.secondary_up(W - 10.0, H - 10.0);
+    for _ in 0..4 {
+        rt.frame(1.0 / 60.0);
+    }
+    assert!(!rt.state.menu.is_open());
+    assert_eq!(rt.state.dismissed, 2);
+    assert_eq!(rt.selected_text().as_deref(), Some("selectable"));
+
+    // Reopen, navigate with Down and activate Select All with Enter.
+    rt.update(|s, tx| {
+        s.menu
+            .open(MenuTarget::Background, Point::new(40.0, 40.0), text_model());
+        tx.focus("m-menu", false);
+    });
+    for _ in 0..4 {
+        rt.frame(1.0 / 60.0);
+    }
+    rt.key(KeyEvent {
+        key: Key::Down,
+        mods: Mods::default(),
+    });
+    for _ in 0..4 {
+        rt.frame(1.0 / 60.0);
+    }
+    rt.key(KeyEvent {
+        key: Key::Down,
+        mods: Mods::default(),
+    });
+    for _ in 0..4 {
+        rt.frame(1.0 / 60.0);
+    }
+    rt.key(KeyEvent {
+        key: Key::Enter,
+        mods: Mods::default(),
+    });
+    for _ in 0..4 {
+        rt.frame(1.0 / 60.0);
+    }
+    assert!(!rt.state.menu.is_open());
+    assert_eq!(rt.state.heard, ["select-all"]);
+}
+
+#[test]
+fn keeps_text_selection_menu_traps_f6_shift_escape_and_disabled_page_scroll() {
+    use std::{cell::Cell, rc::Rc};
+
+    struct TrapHost {
+        look: Look,
+        menu: ContextMenuState,
+        scroll_y: Rc<Cell<f32>>,
+        dismissed: u32,
+    }
+
+    fn trap_view(s: &TrapHost, _: &mut Cx<TrapHost>) -> El {
+        let mut layer = Vec::new();
+        let scroll_y = s.scroll_y.clone();
+        let scroller = col()
+            .key("bg-scroll")
+            .role("main")
+            .size(W, H)
+            .scroll(rune::ScrollSpec {
+                stick_bottom: false,
+            })
+            .on_scroll_offset(move |pos| scroll_y.set(pos.offset[1]))
+            .child(
+                col().w_full().h(H * 4.0).child(
+                    row()
+                        .key("other-control")
+                        .role("button")
+                        .label("Other")
+                        .size(80.0, 30.0)
+                        .focusable(true)
+                        .on_press(|_: &mut TrapHost| {}),
+                ),
+            );
+        let side = col()
+            .key("side-landmark")
+            .role("navigation")
+            .label("Nav")
+            .child(
+                row()
+                    .key("nav-button")
+                    .role("button")
+                    .label("Nav")
+                    .size(80.0, 30.0)
+                    .focusable(true)
+                    .on_press(|_: &mut TrapHost| {}),
+            );
+        let menu = ContextMenu::new("m", |s: &TrapHost| &s.menu, |s: &mut TrapHost| &mut s.menu)
+            .keeps_text_selection(true)
+            .on_dismiss(|s: &mut TrapHost, _| s.dismissed += 1)
+            .build(s, &s.look, &mut layer);
+        rune_kit::root(
+            col().size(W, H).child(side).child(scroller).child(menu),
+            layer,
+        )
+    }
+
+    let scroll_y = Rc::new(Cell::new(0.0));
+    let mut rt = Runtime::new(
+        TrapHost {
+            look: Look::fallback(false),
+            menu: ContextMenuState::new(),
+            scroll_y: scroll_y.clone(),
+            dismissed: 0,
+        },
+        trap_view,
+        (W, H),
+        Env::new(false, 1.0),
+    );
+    let tick = |rt: &mut Runtime<TrapHost>| {
+        for _ in 0..4 {
+            rt.frame(1.0 / 60.0);
+        }
+    };
+    rt.frame(0.0);
+    tick(&mut rt);
+
+    // 1. F6 / Shift+F6 must not cycle focus out of an enabled non-modal menu; Shift+Escape closes
+    //    it while repeated Escape does not.
+    let enabled_model = MenuModel::new().section(Section::new([Item::new("copy", "Copy")]));
+    rt.update(|s, tx| {
+        s.menu.open(
+            MenuTarget::Background,
+            Point::new(40.0, 40.0),
+            enabled_model,
+        );
+        tx.focus("m-menu", false);
+    });
+    tick(&mut rt);
+
+    let shift = Mods {
+        shift: true,
+        ..Mods::default()
+    };
+    for mods in [Mods::default(), shift] {
+        rt.key(KeyEvent {
+            key: Key::Function(6),
+            mods,
+        });
+        tick(&mut rt);
+        let focused_key = rt
+            .elements()
+            .into_iter()
+            .find(|e| e.focused && !e.exiting)
+            .and_then(|e| e.key);
+        assert_eq!(focused_key.as_deref(), Some("m-item0"));
+        assert!(rt.state.menu.is_open());
+    }
+
+    rt.repeat_key(KeyEvent {
+        key: Key::Escape,
+        mods: Mods::default(),
+    });
+    tick(&mut rt);
+    assert!(
+        rt.state.menu.is_open(),
+        "key-repeat Escape must not dismiss"
+    );
+
+    rt.key(KeyEvent {
+        key: Key::Escape,
+        mods: shift,
+    });
+    tick(&mut rt);
+    assert!(!rt.state.menu.is_open(), "Shift+Escape dismisses menu");
+    assert_eq!(rt.state.dismissed, 1);
+
+    // 2. All-disabled non-modal menu: surface takes focus directly and swallows PageDown/End so
+    //    the background scroller does not scroll behind the open menu.
+    let disabled_model = MenuModel::new().section(Section::new([
+        Item::new("copy", "Copy").enabled(false),
+        Item::new("select-all", "Select All").enabled(false),
+    ]));
+    rt.update(|s, tx| {
+        s.menu.open(
+            MenuTarget::Background,
+            Point::new(40.0, 40.0),
+            disabled_model,
+        );
+        tx.focus("m-menu", false);
+    });
+    tick(&mut rt);
+    for k in [Key::PageDown, Key::End, Key::PageUp, Key::Home] {
+        rt.key(KeyEvent {
+            key: k,
+            mods: Mods::default(),
+        });
+        tick(&mut rt);
+    }
+    assert_eq!(
+        scroll_y.get(),
+        0.0,
+        "all-disabled non-modal menu must swallow PageDown/End/PageUp/Home"
+    );
+    assert!(rt.state.menu.is_open());
+}

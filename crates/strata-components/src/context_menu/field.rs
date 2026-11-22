@@ -379,6 +379,7 @@ impl<S: 'static, F: Copy + PartialEq + 'static> FieldMenu<S, F> {
             sections: &sections,
             open: &[],
             top_width: width(look, &[], &sections),
+            keeps_text_selection: false,
             scroll_bars: vec![scroll_bar],
             look,
             on_select: Rc::new(move |s: &mut S, path: &[usize], tx: &mut Tx| {
