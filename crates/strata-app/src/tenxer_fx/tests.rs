@@ -246,11 +246,11 @@ fn settings_fx_choice_triggers_live_preview_and_persists_selection() {
                 "10x mode effect dropdown should mount on General page"
             );
 
-            // Open the dropdown and select "Perimeter Ignite" (option 3).
+            // Open the dropdown and select "Interface on fire" (option 5).
             click_settings_control(&mut host, toggle_key);
-            click_settings_control(&mut host, "settings-choice-tenxer-fx-opt-3");
+            click_settings_control(&mut host, "settings-choice-tenxer-fx-opt-5");
 
-            assert_eq!(shell::tenxer_fx(host.app()), TenxerFx::PerimeterIgnite);
+            assert_eq!(shell::tenxer_fx(host.app()), TenxerFx::InterfaceOnFire);
             assert!(is_active(host.app()), "picking a concept previews it live");
             assert!(overlay_mounted(&host));
 
@@ -259,24 +259,25 @@ fn settings_fx_choice_triggers_live_preview_and_persists_selection() {
                 host.run_until(PATIENCE, |_| {
                     fs::read_to_string(settings_path())
                         .ok()
-                        .is_some_and(|s| parse_tenxer_fx(&s) == (TenxerFx::PerimeterIgnite, false))
+                        .is_some_and(|s| parse_tenxer_fx(&s) == (TenxerFx::InterfaceOnFire, false))
                 }),
                 "tenxer_fx persisted to settings.toml"
             );
 
             // Step preview to completion, then click the Preview effect replay button.
             let mut stepped = 0.0;
-            while is_active(host.app()) && stepped < 1.0 {
+            while is_active(host.app()) && stepped < 1.2 {
                 host.runtime().frame(0.05);
                 stepped += 0.05;
             }
             assert!(!is_active(host.app()));
+            assert!(!overlay_mounted(&host));
             click_settings_control(&mut host, "settings-tenxer-fx-preview");
             assert!(is_active(host.app()), "replay button triggers live preview");
 
             // Switching to Off cancels active preview immediately.
             click_settings_control(&mut host, toggle_key);
-            click_settings_control(&mut host, "settings-choice-tenxer-fx-opt-5");
+            click_settings_control(&mut host, "settings-choice-tenxer-fx-opt-6");
             assert_eq!(shell::tenxer_fx(host.app()), TenxerFx::Off);
             assert!(!is_active(host.app()));
             assert!(!overlay_mounted(&host));
@@ -294,7 +295,7 @@ fn every_concept_renders_cleanly_in_dark_and_light_looks_and_roundness_extremes(
             };
             let look = Look::fallback(dark).with_params(&params);
             for effect in TenxerFx::ALL {
-                for t in [0.0_f32, 0.25, 0.55, 0.75, 0.95] {
+                for t in [0.0_f32, 0.25, 0.5, 0.8, 1.0] {
                     let frame = FxFrame::new(&look, 1280.0, 800.0, t);
                     let built = render_effect(effect, &frame);
                     assert_eq!(built.is_some(), effect.is_enabled());

@@ -17,6 +17,7 @@ use crate::{
     slots::{Frame, Part, Place, Scope, Setup},
 };
 
+mod fire;
 mod horizon;
 mod hud;
 mod palette;
@@ -100,6 +101,7 @@ fn duration_secs(effect: TenxerFx) -> f64 {
         TenxerFx::ShockwaveRing => 0.80,
         TenxerFx::PerimeterIgnite => 0.84,
         TenxerFx::TacticalHud => 0.82,
+        TenxerFx::InterfaceOnFire => 0.98,
         TenxerFx::Off => 0.0,
     }
 }
@@ -192,6 +194,7 @@ fn render_effect(effect: TenxerFx, frame: &FxFrame<'_>) -> Option<El> {
         TenxerFx::ShockwaveRing => Some(shockwave::build(frame)),
         TenxerFx::PerimeterIgnite => Some(perimeter::build(frame)),
         TenxerFx::TacticalHud => Some(hud::build(frame)),
+        TenxerFx::InterfaceOnFire => Some(fire::build(frame)),
         TenxerFx::Off => None,
     }
 }
