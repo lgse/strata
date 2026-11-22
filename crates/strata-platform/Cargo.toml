@@ -53,6 +53,9 @@ settings = [
 # P6 icon theme lookup: src/icon_theme/. Decodes through Rune's ImageCache; SVG needs rune/svg.
 icon-theme = ["rune/svg"]
 
+# P7 media PCM audio output: src/media/ (zero GStreamer: runtime dlopen of PulseAudio / ALSA with silent clock fallback).
+media-audio = ["dep:libc"]
+
 # P8 single instance and activation: src/single_instance/
 single-instance = [
     "dep:tokio",
@@ -89,6 +92,8 @@ zbus = { workspace = true, optional = true }
 x11rb = { workspace = true, optional = true }
 # glib: glib-bridge (P9) and glib-loop (V5).
 glib = { workspace = true, optional = true }
+# libc: _transfer (P0) and media-audio (P7).
+libc = { workspace = true, optional = true }
 
 # dnd (P1)
 
@@ -103,6 +108,8 @@ futures-util = { workspace = true, optional = true, features = ["std"] }
 
 # icon-theme (P6)
 
+# media-audio (P7)
+
 # single-instance (P8)
 
 # glib-bridge (P9)
@@ -112,7 +119,6 @@ gio = { workspace = true, optional = true }
 # glib-loop (V5)
 
 # _transfer (P0)
-libc = { workspace = true, optional = true }
 wayland-backend = { workspace = true, optional = true, features = ["client_system"] }
 wayland-client = { workspace = true, optional = true }
 wayland-protocols = { workspace = true, optional = true, features = ["client", "staging"] }
@@ -141,6 +147,8 @@ tokio = { workspace = true, features = ["rt", "sync", "time"] }
 zbus = { workspace = true, features = ["tokio", "service"] }
 
 # icon-theme (P6)
+
+# media-audio (P7)
 
 # single-instance (P8)
 

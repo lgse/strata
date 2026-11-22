@@ -6,10 +6,11 @@
 //!
 //! - **The view** is by the file's type: video, audio, or the plain media bar for media that
 //!   is neither, as an animated GIF, which loops.
-//! - **Playback** is silent ([`stream`]): Rune has no audio output yet (packet entry 26,
-//!   decision 15). Frames come from the shared sandboxed decoder off the UI thread and reach
-//!   Rune through `Later`. Autoplay follows Settings, a video opens at the saved start
-//!   percentage, and one left partway this session reopens where it was.
+//! - **Playback** ([`stream`]): decoded frames come from the shared sandboxed decoder off the UI
+//!   thread and reach Rune through `Later`, while decoded PCM plays through `strata_platform::media`
+//!   (PipeWire/PulseAudio, ALSA, or a silent real-time clock fallback when headless) and drives A/V
+//!   sync. Autoplay follows Settings, a video opens at the saved start percentage, and one left
+//!   partway this session reopens where it was.
 //! - **The eyebrow** counts the folder's files of the clip's kind whose bytes back their name
 //!   ([`sequence`]), and the previous and next buttons and keys step through them.
 //! - **The badges** come from the sandboxed metadata probe ([`details`]).
@@ -141,6 +142,7 @@ pub(super) fn ready(app: &mut App, arrived: Arrived, tx: &mut Tx) -> Viewer {
     };
     let mut stream = Stream::new(media, inlet, opening.start_percent, tx.clock());
     stream.set_loop(content_type == GIF);
+    stream.set_audio(opening.volume, opening.muted);
     let stepped = app
         .preview
         .stepped
@@ -284,6 +286,11 @@ impl MediaViewer {
             self.stream.pause();
         }
     }
+
+    #[cfg(test)]
+    pub(super) fn audio_levels(&self) -> Option<(f32, bool)> {
+        self.stream.audio_levels()
+    }
 }
 
 /// Playback's frame, from the preview's poll. True when the view changed.
@@ -337,7 +344,10 @@ fn apply(app: &mut App, intent: MediaIntent, tx: &mut Tx) -> bool {
         MediaIntent::Play => media.stream.play(),
         MediaIntent::Pause => media.stream.pause(),
         MediaIntent::Seek(to) => media.stream.seek(to),
-        MediaIntent::SetVolume { volume, muted } => media.state.set_volume(volume, muted),
+        MediaIntent::SetVolume { volume, muted } => {
+            media.state.set_volume(volume, muted);
+            media.stream.set_audio(volume, muted);
+        }
         MediaIntent::DecodeSize(size) => media.stream.resize(size),
         // No storyboard yet: A16's "Open".
         MediaIntent::StoryboardWanted | MediaIntent::Step(_) | MediaIntent::HandOff { .. } => {}
