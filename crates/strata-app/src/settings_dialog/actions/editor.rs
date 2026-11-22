@@ -294,6 +294,7 @@ impl EditorSession {
         self.error = None;
         self.error_tab = None;
         self.examples_open = false;
+        self.examples_query.focused = false;
         self.pending_example = None;
         self.tabs.select(SCRIPT_TAB);
         self.refresh_readiness(later, false);

@@ -376,8 +376,16 @@ fn arguments_section(look: &Look, session: &EditorSession) -> El {
 }
 
 fn behavior_tab(look: &Look, session: &EditorSession) -> El {
-    let mut rows = run_choice_rows(look, session);
-    rows.extend(condition_rows(look, session));
+    let rows = [
+        run_mode_row(look, session),
+        failure_policy_row(look, session),
+        working_dir_row(look, session),
+        placement_row(look, session),
+        applies_to_row(look, session),
+        extensions_row(look, session),
+        max_items_row(look, session),
+        confirm_row(look, session),
+    ];
     let divider = option_divider(look);
     let mut stack = col().w_full();
     for (idx, item) in rows.into_iter().enumerate() {
@@ -394,9 +402,8 @@ fn behavior_tab(look: &Look, session: &EditorSession) -> El {
     stack
 }
 
-fn run_choice_rows(look: &Look, session: &EditorSession) -> Vec<El> {
-    let per_item = session.mode_choice == ExecutionMode::PerItem;
-    let mode = segmented_choice(
+fn run_mode_row(look: &Look, session: &EditorSession) -> El {
+    let control = segmented_choice(
         look,
         SegmentSpec {
             key_prefix: "settings-action-editor-mode",
@@ -410,18 +417,31 @@ fn run_choice_rows(look: &Look, session: &EditorSession) -> Vec<El> {
                 ),
                 (
                     tr("Per item"),
-                    per_item,
+                    session.mode_choice == ExecutionMode::PerItem,
                     Rc::new(|app, _| editor_mut(app).mode_choice = ExecutionMode::PerItem),
                 ),
             ],
         },
     );
-    let policy = segmented_choice(
+    option_row(
+        look,
+        OptionRow {
+            title: "Run",
+            description: "Once, or once per selected item",
+            control,
+            disabled: false,
+        },
+    )
+}
+
+fn failure_policy_row(look: &Look, session: &EditorSession) -> El {
+    let disabled = session.mode_choice != ExecutionMode::PerItem;
+    let control = segmented_choice(
         look,
         SegmentSpec {
             key_prefix: "settings-action-editor-policy",
             group_label: Some(tr("On failure")),
-            disabled: !per_item,
+            disabled,
             choices: vec![
                 (
                     tr("Continue"),
@@ -436,7 +456,19 @@ fn run_choice_rows(look: &Look, session: &EditorSession) -> Vec<El> {
             ],
         },
     );
-    let working_dir = segmented_choice(
+    option_row(
+        look,
+        OptionRow {
+            title: "On failure",
+            description: "Only used when running per item",
+            control,
+            disabled,
+        },
+    )
+}
+
+fn working_dir_row(look: &Look, session: &EditorSession) -> El {
+    let control = segmented_choice(
         look,
         SegmentSpec {
             key_prefix: "settings-action-editor-directory",
@@ -461,7 +493,19 @@ fn run_choice_rows(look: &Look, session: &EditorSession) -> Vec<El> {
             ],
         },
     );
-    let placement = segmented_choice(
+    option_row(
+        look,
+        OptionRow {
+            title: "Working folder",
+            description: "Where the process starts",
+            control,
+            disabled: false,
+        },
+    )
+}
+
+fn placement_row(look: &Look, session: &EditorSession) -> El {
+    let control = segmented_choice(
         look,
         SegmentSpec {
             key_prefix: "settings-action-editor-placement",
@@ -481,48 +525,19 @@ fn run_choice_rows(look: &Look, session: &EditorSession) -> Vec<El> {
             ],
         },
     );
-    vec![
-        option_row(
-            look,
-            OptionRow {
-                title: "Run",
-                description: "Once, or once per selected item",
-                control: mode,
-                disabled: false,
-            },
-        ),
-        option_row(
-            look,
-            OptionRow {
-                title: "On failure",
-                description: "Only used when running per item",
-                control: policy,
-                disabled: !per_item,
-            },
-        ),
-        option_row(
-            look,
-            OptionRow {
-                title: "Working folder",
-                description: "Where the process starts",
-                control: working_dir,
-                disabled: false,
-            },
-        ),
-        option_row(
-            look,
-            OptionRow {
-                title: "Placement",
-                description: "Where the action appears",
-                control: placement,
-                disabled: false,
-            },
-        ),
-    ]
+    option_row(
+        look,
+        OptionRow {
+            title: "Placement",
+            description: "Where the action appears",
+            control,
+            disabled: false,
+        },
+    )
 }
 
-fn condition_rows(look: &Look, session: &EditorSession) -> Vec<El> {
-    let kind_row = row()
+fn applies_to_row(look: &Look, session: &EditorSession) -> El {
+    let control = row()
         .gap(12.0)
         .items_center()
         .child(
@@ -545,7 +560,19 @@ fn condition_rows(look: &Look, session: &EditorSession) -> Vec<El> {
                 .build(&look.kit)
                 .key("settings-action-editor-folders"),
         );
-    let extensions = single_line_input(
+    option_row(
+        look,
+        OptionRow {
+            title: "Applies to",
+            description: "Which selected entries offer this action",
+            control,
+            disabled: false,
+        },
+    )
+}
+
+fn extensions_row(look: &Look, session: &EditorSession) -> El {
+    let control = single_line_input(
         look,
         InputSpec {
             key: EDITOR_EXTENSIONS_KEY,
@@ -558,7 +585,19 @@ fn condition_rows(look: &Look, session: &EditorSession) -> Vec<El> {
             on_edit: |app| &mut editor_mut(app).extensions,
         },
     );
-    let max_items = single_line_input(
+    option_row(
+        look,
+        OptionRow {
+            title: "Extensions",
+            description: "Comma separated, without dots",
+            control,
+            disabled: false,
+        },
+    )
+}
+
+fn max_items_row(look: &Look, session: &EditorSession) -> El {
+    let control = single_line_input(
         look,
         InputSpec {
             key: EDITOR_MAX_ITEMS_KEY,
@@ -571,7 +610,19 @@ fn condition_rows(look: &Look, session: &EditorSession) -> Vec<El> {
             on_edit: |app| &mut editor_mut(app).max_items,
         },
     );
-    let confirm_switch = Switch::new(session.confirm)
+    option_row(
+        look,
+        OptionRow {
+            title: "Maximum items",
+            description: "Optional selection limit",
+            control,
+            disabled: false,
+        },
+    )
+}
+
+fn confirm_row(look: &Look, session: &EditorSession) -> El {
+    let control = Switch::new(session.confirm)
         .label(tr("Confirm"))
         .description(tr("Ask before running this action"))
         .on_toggle(|app: &mut App| {
@@ -580,44 +631,15 @@ fn condition_rows(look: &Look, session: &EditorSession) -> Vec<El> {
         })
         .build(look)
         .key("settings-action-editor-confirm");
-    vec![
-        option_row(
-            look,
-            OptionRow {
-                title: "Applies to",
-                description: "Which selected entries offer this action",
-                control: kind_row,
-                disabled: false,
-            },
-        ),
-        option_row(
-            look,
-            OptionRow {
-                title: "Extensions",
-                description: "Comma separated, without dots",
-                control: extensions,
-                disabled: false,
-            },
-        ),
-        option_row(
-            look,
-            OptionRow {
-                title: "Maximum items",
-                description: "Optional selection limit",
-                control: max_items,
-                disabled: false,
-            },
-        ),
-        option_row(
-            look,
-            OptionRow {
-                title: "Confirm",
-                description: "Ask before running this action",
-                control: confirm_switch,
-                disabled: false,
-            },
-        ),
-    ]
+    option_row(
+        look,
+        OptionRow {
+            title: "Confirm",
+            description: "Ask before running this action",
+            control,
+            disabled: false,
+        },
+    )
 }
 
 struct InputSpec<'a> {
@@ -711,6 +733,13 @@ struct SegmentSpec<'a> {
     choices: Vec<SegmentOption>,
 }
 
+struct SegmentItemSpec<'a> {
+    key_prefix: &'a str,
+    idx: usize,
+    disabled: bool,
+    option: SegmentOption,
+}
+
 fn segmented_choice(look: &Look, spec: SegmentSpec<'_>) -> El {
     let kit = &look.kit;
     let c = &kit.c;
@@ -719,7 +748,17 @@ fn segmented_choice(look: &Look, spec: SegmentSpec<'_>) -> El {
         .choices
         .into_iter()
         .enumerate()
-        .map(|(idx, choice)| segment_item(look, spec.key_prefix, idx, spec.disabled, choice))
+        .map(|(idx, option)| {
+            segment_item(
+                look,
+                SegmentItemSpec {
+                    key_prefix: spec.key_prefix,
+                    idx,
+                    disabled: spec.disabled,
+                    option,
+                },
+            )
+        })
         .collect();
     let border = kit.alpha(c.std_border, c.std_border.a * 0.45);
     let mut bar = row()
@@ -736,13 +775,13 @@ fn segmented_choice(look: &Look, spec: SegmentSpec<'_>) -> El {
     bar
 }
 
-fn segment_item(
-    look: &Look,
-    key_prefix: &str,
-    idx: usize,
-    disabled: bool,
-    (label, active, on_pick): SegmentOption,
-) -> El {
+fn segment_item(look: &Look, spec: SegmentItemSpec<'_>) -> El {
+    let SegmentItemSpec {
+        key_prefix,
+        idx,
+        disabled,
+        option: (label, active, on_pick),
+    } = spec;
     let kit = &look.kit;
     let c = &kit.c;
     let (fill, hover_fill, ink) = if active {

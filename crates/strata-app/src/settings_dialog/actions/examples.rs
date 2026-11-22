@@ -283,55 +283,21 @@ fn template_row(look: &Look, example: &'static ActionExample) -> El {
     let name = tr(example.name);
     let inputs = tr(example.inputs);
     let requirement_text = tr(example.requirements);
-    let badge = row()
-        .px(5.0)
-        .py(1.0)
-        .radius(look.round(4.0))
-        .border(1.0, kit.alpha(c.std_border, c.std_border.a * 0.40))
-        .child(
-            text(example.runtime().label())
-                .font(kit.ty.small)
-                .color(c.text_muted)
-                .a11y_hidden(),
-        );
-    let heading = row()
-        .w_full()
-        .gap(10.0)
-        .items_center()
-        .child(
-            text(name.clone())
-                .font(kit.ty.ui_medium)
-                .color(c.text_base)
-                .grow(1.0)
-                .a11y_hidden(),
-        )
-        .child(badge);
     let req_line = rust_i18n::t!("Requires: %{value1}", value1 = requirement_text).into_owned();
+    let note = |copy: String| {
+        text(copy)
+            .font(kit.ty.small)
+            .color(c.text_muted)
+            .wrap()
+            .a11y_hidden()
+    };
     let content = col()
         .w_full()
         .gap(4.0)
-        .child(heading)
-        .child(
-            text(tr(example.description))
-                .font(kit.ty.small)
-                .color(c.text_muted)
-                .wrap()
-                .a11y_hidden(),
-        )
-        .child(
-            text(inputs.clone())
-                .font(kit.ty.small)
-                .color(c.text_muted)
-                .wrap()
-                .a11y_hidden(),
-        )
-        .child(
-            text(req_line)
-                .font(kit.ty.small)
-                .color(c.text_muted)
-                .wrap()
-                .a11y_hidden(),
-        );
+        .child(template_row_heading(look, &name, example.runtime().label()))
+        .child(note(tr(example.description)))
+        .child(note(inputs.clone()))
+        .child(note(req_line));
     let btn = col()
         .role("button")
         .label(name)
@@ -348,6 +314,34 @@ fn template_row(look: &Look, example: &'static ActionExample) -> El {
         .child(content)
         .on_press_tx(move |app: &mut App, tx: &mut Tx| pick_example(app, example, tx));
     buttons::on_return(example_key(example), btn)
+}
+
+fn template_row_heading(look: &Look, name: &str, runtime_label: &str) -> El {
+    let kit = &look.kit;
+    let c = &kit.c;
+    let badge = row()
+        .px(5.0)
+        .py(1.0)
+        .radius(look.round(4.0))
+        .border(1.0, kit.alpha(c.std_border, c.std_border.a * 0.40))
+        .child(
+            text(runtime_label.to_owned())
+                .font(kit.ty.small)
+                .color(c.text_muted)
+                .a11y_hidden(),
+        );
+    row()
+        .w_full()
+        .gap(10.0)
+        .items_center()
+        .child(
+            text(name.to_owned())
+                .font(kit.ty.ui_medium)
+                .color(c.text_base)
+                .grow(1.0)
+                .a11y_hidden(),
+        )
+        .child(badge)
 }
 
 fn replace_confirmation(look: &Look, pending: &'static ActionExample, divider: Color) -> El {

@@ -126,9 +126,12 @@ pub(super) fn ensure_observing(app: &mut App) {
     }
     let registry = custom_actions::shared_registry(app);
     let weak = app.settings_dialog.actions.later.downgrade();
-    let observed_registry = Rc::clone(&registry);
+    let observed_registry = Rc::downgrade(&registry);
     let guard = registry.observe(Rc::new(move || {
-        let catalog = observed_registry.catalog();
+        let Some(registry) = observed_registry.upgrade() else {
+            return;
+        };
+        let catalog = registry.catalog();
         if let Some(later) = weak.upgrade() {
             later.then(move |app, _| {
                 app.settings_dialog.actions.catalog = Some(catalog);
@@ -217,39 +220,44 @@ pub(super) fn start_edit(app: &mut App, id: String) {
         let Some(later) = weak.upgrade() else {
             return;
         };
-        later.then(move |app, tx| match outcome {
-            Ok(stored) => {
-                let handle = match existing {
-                    Some(prev) => ActionHandle {
-                        definition: stored.definition,
-                        ..(*prev).clone()
-                    },
-                    None => ActionHandle {
-                        directory: PathBuf::new(),
-                        definition: stored.definition,
-                        availability: ActionAvailability::Unavailable {
-                            reason: String::new(),
-                        },
-                    },
-                };
-                open_editor(
-                    app,
-                    EditorDraft {
-                        mode: EditorMode::Edit,
-                        generation: 0,
-                        action: &handle,
-                        script: stored.script,
-                    },
-                    tx,
-                );
-                true
+        later.then(move |app, tx| {
+            if !app.settings_dialog.is_open() {
+                return false;
             }
-            Err(error) => {
-                error_dialog::show(
-                    app,
-                    Error::new(tr("Unable to read the action"), error.user_message()),
-                );
-                true
+            match outcome {
+                Ok(stored) => {
+                    let handle = match existing {
+                        Some(prev) => ActionHandle {
+                            definition: stored.definition,
+                            ..(*prev).clone()
+                        },
+                        None => ActionHandle {
+                            directory: PathBuf::new(),
+                            definition: stored.definition,
+                            availability: ActionAvailability::Unavailable {
+                                reason: String::new(),
+                            },
+                        },
+                    };
+                    open_editor(
+                        app,
+                        EditorDraft {
+                            mode: EditorMode::Edit,
+                            generation: 0,
+                            action: &handle,
+                            script: stored.script,
+                        },
+                        tx,
+                    );
+                    true
+                }
+                Err(error) => {
+                    error_dialog::show(
+                        app,
+                        Error::new(tr("Unable to read the action"), error.user_message()),
+                    );
+                    true
+                }
             }
         });
     });
@@ -424,6 +432,9 @@ pub(super) fn start_import(app: &mut App, _tx: &mut Tx) {
             Ok(id) => {
                 refresh_catalog(app);
                 tracing::info!(action = %id, "imported a custom action");
+                if !app.settings_dialog.is_open() {
+                    return false;
+                }
                 show_notice(
                     app,
                     tr("Action imported"),
@@ -478,6 +489,9 @@ pub(super) fn start_export(app: &mut App, id: String) {
         };
         later.then(move |app, _| match outcome {
             Ok(target) => {
+                if !app.settings_dialog.is_open() {
+                    return false;
+                }
                 show_notice(app, tr("Action exported"), target.display().to_string());
                 true
             }

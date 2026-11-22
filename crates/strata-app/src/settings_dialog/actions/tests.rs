@@ -690,8 +690,166 @@ fn editor_validation_runtime_preservation_examples_and_portal_parser() {
                 folder_picker::parse_portal_response(&accepted),
                 Some(PathBuf::from("/tmp/my-action"))
             );
+            let mut encoded_map: HashMap<String, glib::Variant> = HashMap::new();
+            encoded_map.insert(
+                "uris".to_owned(),
+                vec!["file:///tmp/my%20action"].to_variant(),
+            );
+            let encoded = (0u32, encoded_map).to_variant();
+            assert_eq!(
+                folder_picker::parse_portal_response(&encoded),
+                Some(PathBuf::from("/tmp/my action"))
+            );
             let cancelled = (1u32, HashMap::<String, glib::Variant>::new()).to_variant();
             assert_eq!(folder_picker::parse_portal_response(&cancelled), None);
+        },
+    );
+}
+
+#[test]
+fn escape_unwinds_popover_then_editor_then_settings_and_apply_clears_query_focus() {
+    hosted(
+        MODULE,
+        "escape_unwinds_popover_then_editor_then_settings_and_apply_clears_query_focus",
+        |mut host| {
+            open_actions(&mut host);
+            click(&mut host, NEW_ACTION_KEY);
+            click(&mut host, "settings-action-editor-tabs-tab-1");
+            click(&mut host, examples::EXAMPLES_BTN_KEY);
+
+            assert!(host.app().settings_dialog.is_open());
+            assert!(
+                host.app()
+                    .settings_dialog
+                    .actions
+                    .editor
+                    .as_ref()
+                    .is_some_and(|e| e.examples_open)
+            );
+
+            // First Escape closes only the Library popover.
+            press(&mut host, Key::Escape, Mods::default());
+            assert!(host.app().settings_dialog.is_open());
+            assert!(
+                host.app()
+                    .settings_dialog
+                    .actions
+                    .editor
+                    .as_ref()
+                    .is_some_and(|e| !e.examples_open)
+            );
+
+            // Applying a template while the library search field is focused clears its focus flag.
+            click(&mut host, examples::EXAMPLES_BTN_KEY);
+            host.runtime().update(|app, _| {
+                let editor = app
+                    .settings_dialog
+                    .actions
+                    .editor
+                    .as_mut()
+                    .expect("editor open");
+                editor.examples_query.focused = true;
+                editor.examples_query.replace_text("webp");
+            });
+            idle(&mut host);
+            click(
+                &mut host,
+                "settings-action-library-item-convert-images-to-webp",
+            );
+            let editor = host
+                .app()
+                .settings_dialog
+                .actions
+                .editor
+                .as_ref()
+                .expect("editor open");
+            assert!(!editor.examples_open);
+            assert!(!editor.examples_query.focused);
+
+            // Second Escape closes only the editor modal; Settings stays open.
+            press(&mut host, Key::Escape, Mods::default());
+            assert!(host.app().settings_dialog.actions.editor.is_none());
+            assert!(host.app().settings_dialog.is_open());
+
+            // Third Escape closes Settings.
+            press(&mut host, Key::Escape, Mods::default());
+            assert!(!host.app().settings_dialog.is_open());
+        },
+    );
+}
+
+#[test]
+fn closing_settings_discards_in_flight_edit_and_notices() {
+    hosted(
+        MODULE,
+        "closing_settings_discards_in_flight_edit_and_notices",
+        |mut host| {
+            let actions_dir = config_directory().join("actions");
+            write_sample_action(&actions_dir, "demo", "Demo Action", true);
+            open_actions(&mut host);
+            assert!(
+                host.run_until(PATIENCE, |h| {
+                    find_by_key(&h.tree(), "settings-action-row-demo").is_some()
+                }),
+                "demo action loads"
+            );
+
+            // Start async edit and immediately close Settings before the read completes.
+            host.runtime().update(|app, _| {
+                super::start_edit(app, "demo".to_owned());
+                crate::settings_dialog::close_settings(app);
+            });
+            host.wait(std::time::Duration::from_millis(120));
+            idle(&mut host);
+            assert!(!host.app().settings_dialog.is_open());
+            assert!(
+                host.app().settings_dialog.actions.editor.is_none(),
+                "closing Settings discards an in-flight edit open"
+            );
+
+            // Start async import and immediately close Settings before completion.
+            let source_root = tempfile::tempdir().expect("source tempdir");
+            write_sample_action(source_root.path(), "bg-import", "BG Import", true);
+            let import_src = source_root.path().join("bg-import");
+            open_actions(&mut host);
+            host.runtime().update(move |app, tx| {
+                app.settings_dialog.actions.folder_picker =
+                    Some(Rc::new(move |_| Ok(Some(import_src.clone()))));
+                super::start_import(app, tx);
+                crate::settings_dialog::close_settings(app);
+            });
+            assert!(
+                host.run_until(PATIENCE, |_| {
+                    actions_dir.join("bg-import/action.toml").exists()
+                }),
+                "import still writes to disk"
+            );
+            idle(&mut host);
+            assert!(
+                host.app().settings_dialog.actions.notice.is_none(),
+                "closing Settings suppresses stranded import notice"
+            );
+
+            // Start async export and immediately close Settings before completion.
+            let export_dest = tempfile::tempdir().expect("export tempdir");
+            let dest_path = export_dest.path().to_path_buf();
+            let exported_manifest = export_dest.path().join("demo/action.toml");
+            open_actions(&mut host);
+            host.runtime().update(move |app, _| {
+                app.settings_dialog.actions.folder_picker =
+                    Some(Rc::new(move |_| Ok(Some(dest_path.clone()))));
+                super::start_export(app, "demo".to_owned());
+                crate::settings_dialog::close_settings(app);
+            });
+            assert!(
+                host.run_until(PATIENCE, |_| exported_manifest.exists()),
+                "export still writes to disk"
+            );
+            idle(&mut host);
+            assert!(
+                host.app().settings_dialog.actions.notice.is_none(),
+                "closing Settings suppresses stranded export notice"
+            );
         },
     );
 }
