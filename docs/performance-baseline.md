@@ -20,11 +20,11 @@ Build once so compilation is excluded from startup measurements:
 
 ```bash
 cargo build --release
-RUST_LOG=strata=debug target/release/strata target/fixtures/100000
+RUST_LOG=strata_app=debug,strata_fs=debug target/release/strata target/fixtures/100000
 ```
 
 Default logs contain request IDs, backend names, counts, and timings without browsed locations.
-`RUST_LOG=strata=debug` explicitly enables diagnostic logging and may include full native paths.
+`RUST_LOG=strata_app=debug,strata_fs=debug` explicitly enables diagnostic logging and may include full native paths.
 Remote URI user-info, authentication parameters, queries, and fragments remain redacted at every
 level. Review diagnostic logs before sharing them.
 

@@ -12,7 +12,7 @@ and leaves the links in place. Links owned by another user, links to directories
 or missing targets, and longer chains are refused. A missing file is created
 with owner-only permissions; an existing one keeps its permission bits.
 `crates/strata-app/src/theme.rs` and `crates/strata-app/src/appearance/` manage
-the theme catalog, `strata-kit::Look` synthesis, custom themes, `overrides.toml`,
+the theme catalog, `strata-kit::Look` synthesis, custom themes,
 system light/dark mode following, Omarchy following, and surface transparency.
 Fresh installations select Tokyo Night, unless an available Omarchy theme is
 followed automatically. Saved theme choices remain unchanged. Folder peeking is
@@ -120,7 +120,7 @@ saved whenever tabs change and validated on load.
 
 Reading the files that build the first window happens on the interface thread
 before that window shows: `settings.toml`, `folder-views.toml`, `tabs.toml`, custom
-themes, the Omarchy theme state, `overrides.toml`, and the shared `gtk-3.0/bookmarks` file. These startup reads are an
+themes, the Omarchy theme state, and the shared `gtk-3.0/bookmarks` file. These startup reads are an
 exception to keeping file calls off the interface thread. Every later save goes
 through the settings writer: preferences, folder settings, the tabs session, folder
 history, recent applications, custom themes, pinned folders and custom actions. The

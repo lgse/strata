@@ -34,7 +34,7 @@ The font is distributed unmodified. Strata materializes the embedded font in its
 - Included assets: curated and namespaced SVG icons under `data/icons/scalable/actions/`
 - Full license: [`data/licenses/Lucide-ISC.txt`](data/licenses/Lucide-ISC.txt)
 
-The SVGs retain Lucide geometry. The table sort caret uses the Lucide triangle with a filled foreground, rotated by GTK for descending order. The `-symbolic` chevron-down, plus, and minus icons outline Lucide's 2px round strokes as filled paths, because older GTK releases recolor only the fill of symbolic icons. Their foreground color was changed from `currentColor` to GTK's symbolic foreground color so GTK can recolor them according to the active theme.
+The SVGs retain Lucide geometry. Strata compiles these SVGs into `strata-kit` (normalizing legacy symbolic tint placeholders back to `currentColor` during the build) and renders them directly with Rune, tinting them with the active theme's semantic tokens. The `-symbolic` chevron-down, plus, and minus assets outline Lucide's 2px round strokes as filled paths.
 
 ## Catppuccin VSCode Icons
 
@@ -58,10 +58,10 @@ The SVG geometry is unchanged. Each `var(--vscode-ctp-*)` color is resolved at r
 
 The bundled catalog contains curated Base16 palettes derived from this project, with a few foreground values adjusted for readability (noted in the catalog), alongside Strata's original themes. The Base16 mapping to Strata's semantic UI tokens is documented in the catalog.
 
-## Copies bundled by the Rune-side crates
+## Copies bundled by `strata-kit`
 
-The crates of the Rune interface compile in their own copies of assets listed above, each
-with its licence file beside it. No release ships them yet.
+`strata-kit` compiles in its own copies of the assets listed above, each with its licence
+file beside it, and ships them directly in the Strata binary.
 
 - JetBrains Mono 2.304, unmodified: `crates/strata-kit/fonts/`, with
   [`LICENSE-JetBrains-Mono-OFL-1.1.txt`](crates/strata-kit/fonts/LICENSE-JetBrains-Mono-OFL-1.1.txt).

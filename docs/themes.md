@@ -18,20 +18,18 @@ Tinted Base16 entries map colors to Strata tokens as follows: `base00` to backgr
 
 Strata draws its entire interface with Rune and `strata-kit::Look` tokens rather than adopting desktop widget themes:
 
-- Desktop widget themes, icon themes, and accent colors are never applied to Strata's chrome (application icons in Open With still come from the desktop icon theme via `strata-platform`'s `icon-theme` shim).
+- Desktop widget themes, icon themes, and accent colors are never applied to Strata's chrome (Open With currently renders bundled icons; `strata-platform`'s optional `icon-theme` shim is not yet enabled in `strata-app`).
 - Interface icons (Lucide) and code/config file-type icons (Catppuccin) are bundled into `strata-kit` and follow the active theme live.
 - Menus, popovers, and tooltips render inside Strata's GPU window surface, keeping their corners and shadows everywhere.
 - **Variable surface transparency & frosted glass** (**Settings → Appearance → Transparency**) scale main background and raised chrome surface alpha independently while keeping text, icons, thumbnails, selection fills, and media at full opacity, paired with Rune's GPU backdrop blur and native Wayland compositor blur (`ext_background_effect_v1` / KWin blur).
 
 ## Token overrides
 
-To customize individual look or component tokens beyond the nine semantic theme colors, create an optional TOML file at:
+`strata-app` currently applies built-in and custom themes, system light/dark mode, Omarchy following, and **Settings → Appearance** controls (corner roundness, density, text size, element glow, and surface transparency).
 
-```text
-~/.config/strata/overrides.toml
-```
+At the kit layer, `crates/strata-kit/src/overrides/` implements `overrides.toml` parsing, token application onto `strata-kit::Look`, and `migrate_css` for converting legacy 1.x `style.css` rules (exercised in `strata-gallery` and documented in `crates/strata-kit/src/overrides/MIGRATION.md`). `strata-app` does not yet wire `strata_kit::overrides`, load or watch `~/.config/strata/overrides.toml`, run `style.css` migration, or display override diagnostics in **Settings → Appearance**.
 
-It overrides `strata-kit` tokens live after the active theme, Omarchy following, corner roundness, density, and text size are resolved:
+The `strata-kit::overrides` TOML format targets semantic look and component tokens:
 
 ```toml
 radius.md = 4
@@ -46,8 +44,6 @@ fill = "alpha(@color.text_base, 0.06)"
 [dark]
 color.bg_base = "#101018"
 ```
-
-Strata re-reads `overrides.toml` when it changes, so edits apply to open windows without a restart; deleting it restores the active theme's default tokens. Unknown tokens, invalid values, and syntax errors are reported with line and column numbers in **Settings → Appearance** while valid entries still apply. (When upgrading from an older 1.x `~/.config/strata/style.css`, Strata converts supported rules once into `overrides.toml` without modifying `style.css`; see `crates/strata-kit/src/overrides/MIGRATION.md`.)
 
 ## Custom theme files
 

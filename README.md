@@ -822,7 +822,7 @@ Select **Add a theme**, enter a name, and choose the semantic colors for the bac
 
 Custom themes are stored as shareable TOML files in `~/.config/strata/themes/`. A selected theme is re-read when its file changes on disk, so a generator that rewrites it in place (for example a [matugen](https://github.com/InioX/matugen) template following the wallpaper) updates open windows without a restart. See [Themes](docs/themes.md) for the schema, file location, live updates, and Omarchy color mapping.
 
-To go beyond the color tokens, an optional `~/.config/strata/overrides.toml` overrides Strata's look and component tokens live without a restart; see [Token overrides](docs/themes.md#token-overrides).
+Corner roundness, density, text size, element glow, and surface transparency are configurable live under **Settings → Appearance**; see [Token overrides](docs/themes.md#token-overrides) for the status of `strata-kit`'s `overrides.toml` token-override support.
 
 ## Release channels
 

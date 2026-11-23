@@ -136,8 +136,8 @@ The ignored Rust tests are expected on this VM: they require GVfs Trash,
 
 Harmless noise seen here:
 
-- `libEGL warning: DRI3 error: Could not get DRI3 device` during GTK
-  Rust tests on Xvfb. Software rendering still works.
+- `libEGL warning: DRI3 error: Could not get DRI3 device` during headless
+  Rust/UI tests on Xvfb or headless Wayland. Software rendering still works.
 - Docker prints `DEPRECATED: The legacy builder is deprecated` because
   Buildx is not installed. The host-network wrapper still applies to
   `docker build` / `docker run`.

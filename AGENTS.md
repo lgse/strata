@@ -372,4 +372,4 @@ the files changed against `origin/main`. It needs `CS_ACCESS_TOKEN`.
 ## Theming
 
 - Apply semantic `Kit` / `strata-kit::Look` tokens to every visual state of new interface elements, including icons, text, backgrounds, borders, focus rings, selections, hover/active states, menus, and dialogs.
-- Never use static hex/RGB colors for themeable interface elements. Built-in, custom, and Omarchy themes, as well as live `overrides.toml` and transparency changes, must remain visually consistent and update live.
+- Never use static hex/RGB colors for themeable interface elements. Built-in, custom, and Omarchy themes, as well as live appearance and transparency changes (and kit-layer `strata-kit::overrides` tokens), must remain visually consistent and update live.

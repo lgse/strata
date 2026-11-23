@@ -191,3 +191,21 @@ policy, and real process reuse/replacement across browser views. Runtime checks
 use private headless displays/buses where needed. Changes to supervisor
 initialization must preserve these pre-fork invariants, not merely keep the
 task-count check.
+
+### Pango grapheme-cluster breaks for filename fixes
+
+Location: `crates/strata-fs/src/adapters/local_operations/names/fix.rs::cursor_positions`
+
+Reason: `pango`'s safe Rust bindings omit the `PangoLogAttr` cluster-break attributes needed when truncating filenames without splitting grapheme clusters. Strata calls `pango::ffi::pango_get_log_attrs` on valid UTF-8 with an initialized `Vec<u32>` sized to `text.chars().count() + 1`, a null language pointer, and extracts the endianness-aware `is_cursor_position` bit-field from each filled attribute.
+
+### Sandboxed RAR streaming extraction
+
+Location: `crates/strata-preview/src/sandbox_helper/archive_rar.rs`
+
+Reason: `unrar`'s safe wrapper cannot stream member bytes without writing to disk, so the sandboxed extraction helper calls `unrar_sys` directly. FFI is confined to the sandboxed helper child process, a compile-time `offset_of!` assertion guards `HeaderDataEx`'s field layout against `unrar_sys` struct packing changes, and `Archive::drop` closes handles only after all synchronous callbacks have returned.
+
+### PDF text-layer glyph bounding boxes
+
+Location: `crates/strata-preview/src/sandbox_helper/pdf.rs::pdf_text_layer`
+
+Reason: `poppler-rs` does not bind `poppler_page_get_text_layout`. Inside the sandboxed preview helper, Strata calls `poppler::ffi::poppler_page_get_text_layout` on a valid `poppler::Page`, reads the returned `g_malloc`'d rectangle array through `std::slice::from_raw_parts`, maps coordinates into scaled glyph boxes, and frees the buffer exactly once with `glib::ffi::g_free`.

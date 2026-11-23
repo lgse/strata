@@ -507,9 +507,9 @@ and logs/screenshots land in `target/qa-drive/`. Because it shares the
 names it as `mutation` catches the regression:
 
 ```bash
-./scripts/qa-mutation.sh                      # every scenario with a mutation
-./scripts/qa-mutation.sh clipboard            # the scenario a patch belongs to
-./scripts/qa-mutation.sh copy-leaves-source   # a scenario by its name
+./scripts/qa-mutation.sh                                 # every patch under tests/qa/mutations
+./scripts/qa-mutation.sh shift-click-range               # every patch for a scenario
+./scripts/qa-mutation.sh pdf-zoom-keeps-text-size.window-wheel  # one labelled patch
 ```
 
 The chosen scenarios first run on the unmodified tree and must pass; under the

@@ -66,7 +66,7 @@ Focused selections can be run on the same infrastructure:
 ./scripts/test-headless.py adapters::local_operations::tests::deletion
 ./scripts/test-headless.py trash::
 ./scripts/test-headless.py adapters::gio_location::tests
-./scripts/test-headless.py without_trash_support
+./scripts/test-headless.py without_trash
 ```
 
 The tests create their own temporary payloads and metadata. They cover:

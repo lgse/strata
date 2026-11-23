@@ -13,7 +13,7 @@ stack live in layered crates under `crates/`.
 | `strata-fs` | Listing, file operations, trash, volumes, search, jobs, actions, the browser's state (`app`) | `strata-core`, `strata-preview` |
 | `strata-desktop` | Portal and D-Bus setup, the updater, integrations, build information, saved settings and per-folder views (`settings`), tab sessions (`tabs_session`), and the key catalog with `KeyPress`, key labels, and `xkbcommon` layout resolution (`keys`) | `strata-core`, `strata-preview`, `strata-fs` |
 | `strata-qa` | The `--qa` protocol (steps, targets, predicates and their parsers) and the engine that runs a session through its `Backend` trait | none |
-| `strata-test-support` | Test helpers that need no UI toolkit (dev-dependency) | none |
+| `strata-test-support` | Test helpers that need no UI toolkit (dev-dependency) | `glib` |
 | `strata-platform` | Linux shims for what Rune does not yet ship: drag and drop, clipboard, client-side decorations, foreign parenting, Wayland backdrop blur, desktop settings, icon themes, zero-GStreamer Linux PCM audio (`dlopen` PulseAudio/PipeWire/ALSA), single instance, the GLib bridge, and the GLib loop. One cargo feature per shim | `rune` |
 | `strata-kit` | Strata's look on `rune-kit`: theme mapping, Lucide and Catppuccin icon catalogs, density, text size, transparency, `overrides.toml` token overrides, and bundled JetBrains Mono font | `rune`, `rune-kit` |
 | `strata-components` | Pure, accessor-driven file-manager UI components: collections, views (Columns, Icons, List), chrome, previews, dialogs, and controls | `rune`, `rune-kit`, `strata-kit` |
@@ -97,9 +97,12 @@ backend so all crates share the same translation tables.
 ## Log targets
 
 Modules log under their crate's name (for example `strata_preview::sandbox::browser` or
-`strata_app::shell`). `RUST_LOG=strata=debug` covers every workspace crate registered in
-`EXTRACTED_CRATES` in `crates/strata-core/src/logging.rs`. Add new logging crates to that
-list.
+`strata_app::shell`). `with_extracted_crates()` in `crates/strata-core/src/logging.rs`
+expands `strata::<module>` directives (such as `RUST_LOG=strata::shell=debug`) across every
+crate registered in `EXTRACTED_CRATES` (`strata_app`, `strata_core`, `strata_desktop`,
+`strata_fs`, `strata_preview`); bare `strata=debug` is not expanded, so target crate names
+directly (for example `RUST_LOG=strata_app=debug`) for crate-wide filtering. Add new logging
+crates to `EXTRACTED_CRATES`.
 
 ## Build facts
 
