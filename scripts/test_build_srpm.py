@@ -9,11 +9,15 @@ import unittest
 
 from build_srpm import (
     build_kind,
+    git_vendor_config,
     inspect_vendor,
     license_expression,
+    lockfile_git_sources,
     parse_license_summary,
+    patch_manifest_for_vendoring,
     require_updater_switch,
     rpm_version,
+    vendor_config,
 )
 from update_aur import PackagingError
 
@@ -81,7 +85,10 @@ class UpdaterSwitchTests(unittest.TestCase):
         for build_scripts, packaged in (
             ({"build.rs": switch}, True),
             ({"build.rs": other, "crates/strata-desktop/build.rs": switch}, True),
+            ({"crates/strata-desktop/build.rs": switch}, True),
             ({"build.rs": other, "crates/strata-core/build.rs": other}, False),
+            ({"crates/strata-core/build.rs": other}, False),
+            ({}, False),
         ):
             with self.subTest(build_scripts=build_scripts), tempfile.TemporaryDirectory() as scratch:
                 source = pathlib.Path(scratch)
@@ -120,6 +127,102 @@ class InspectVendorTests(unittest.TestCase):
                 inspect_vendor(vendor),
                 (["unrar_sys v0.5.8", "windows-sys v0.52.0"], ["unrar"]),
             )
+
+    def test_git_vendor_dirs_format_stubs_with_short_commit_and_reject_forbidden(self):
+        git_source = (
+            "git+https://github.com/anomalyco/rune"
+            "?rev=67d73a5f18390686c8e9b8b3a32b3414ebd66db0"
+            "#67d73a5f18390686c8e9b8b3a32b3414ebd66db0"
+        )
+        with tempfile.TemporaryDirectory() as scratch:
+            root = pathlib.Path(scratch)
+            vendor = root / "vendor"
+            git_dir = root / "vendor-git" / "0"
+            self.crate(vendor, "windows-sys", "windows-sys", "0.52.0")
+            self.crate(git_dir, "accesskit_macos", "accesskit_macos", "0.27.2")
+            self.crate(git_dir, "rune", "rune", "0.0.1", extra="src/lib.rs")
+            self.assertEqual(
+                inspect_vendor(vendor, {git_dir: git_source}),
+                (
+                    [
+                        "accesskit_macos v0.27.2 "
+                        "(https://github.com/anomalyco/rune?rev=67d73a5f18390686c8e9b8b3a32b3414ebd66db0#67d73a5f)",
+                        "windows-sys v0.52.0",
+                    ],
+                    [],
+                ),
+            )
+
+
+class GitVendorConfigTests(unittest.TestCase):
+
+    GIT_SOURCE = (
+        "git+https://github.com/anomalyco/rune"
+        "?rev=67d73a5f18390686c8e9b8b3a32b3414ebd66db0"
+        "#67d73a5f18390686c8e9b8b3a32b3414ebd66db0"
+    )
+
+    def test_lockfile_git_sources_finds_git_packages_and_registry_collisions(self):
+        lockfile = {
+            "package": [
+                {"name": "strata", "version": "1.2.1"},
+                {
+                    "name": "tiny-skia-path",
+                    "version": "0.11.4",
+                    "source": "registry+https://github.com/rust-lang/crates.io-index",
+                    "checksum": "abc123",
+                },
+                {
+                    "name": "tiny-skia-path",
+                    "version": "0.11.4",
+                    "source": self.GIT_SOURCE,
+                },
+                {
+                    "name": "rune",
+                    "version": "0.0.1",
+                    "source": self.GIT_SOURCE,
+                },
+            ]
+        }
+        git_sources, collisions = lockfile_git_sources(lockfile)
+        self.assertEqual(
+            git_sources,
+            {self.GIT_SOURCE: {("tiny-skia-path", "0.11.4"), ("rune", "0.0.1")}},
+        )
+        self.assertEqual(
+            collisions,
+            [("tiny-skia-path", "0.11.4", self.GIT_SOURCE, "abc123")],
+        )
+
+    def test_git_vendor_config_replaces_each_git_source_with_its_own_directory(self):
+        self.assertEqual(git_vendor_config([]), "")
+        config = git_vendor_config([self.GIT_SOURCE])
+        self.assertIn(
+            '[source."git+https://github.com/anomalyco/rune?rev=67d73a5f18390686c8e9b8b3a32b3414ebd66db0"]',
+            config,
+        )
+        self.assertIn('git = "https://github.com/anomalyco/rune"', config)
+        self.assertIn('rev = "67d73a5f18390686c8e9b8b3a32b3414ebd66db0"', config)
+        self.assertIn('replace-with = "vendored-git-0"', config)
+        self.assertIn("[source.vendored-git-0]", config)
+        self.assertIn('directory = "vendor-git/0"', config)
+        combined = vendor_config(config)
+        self.assertIn("[source.crates-io]", combined)
+        self.assertIn("[source.vendored-git-0]", combined)
+
+    def test_patch_manifest_for_vendoring_appends_to_or_creates_patch_table(self):
+        collisions = [("tiny-skia-path", "0.11.4", self.GIT_SOURCE, "abc123")]
+        expected = (
+            'tiny-skia-path = { git = "https://github.com/anomalyco/rune", '
+            'rev = "67d73a5f18390686c8e9b8b3a32b3414ebd66db0" }'
+        )
+        with_patch = patch_manifest_for_vendoring('[patch.crates-io]\nwinit = { path = "x" }\n', collisions)
+        self.assertEqual(with_patch.count("[patch.crates-io]"), 1)
+        self.assertIn(expected, with_patch)
+
+        without_patch = patch_manifest_for_vendoring('[package]\nname = "demo"\n', collisions)
+        self.assertIn("[patch.crates-io]", without_patch)
+        self.assertIn(expected, without_patch)
 
 
 if __name__ == "__main__":

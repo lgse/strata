@@ -22,9 +22,6 @@ on:
       - '.github/workflows/publish-copr.yml'
       - '.github/workflows/rpm.yml'
   pull_request:
-    # strata-next's lockfile cannot be vendored until Rune's tiny-skia-path stops sharing a
-    # crates.io name and version (#2698); docs/rune/workspace-migration.md defers the repair.
-    branches-ignore: [strata-next]
     paths:
       - 'packaging/rpm/**'
       - 'scripts/build_srpm.py'
@@ -74,7 +71,7 @@ jobs:
       - name: Build the source RPM
         run: |
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
-          version=$(grep -m1 -oP '^version = "\K[^"]+' Cargo.toml)
+          version=$(python3 -c 'import tomllib; print(tomllib.load(open("Cargo.toml", "rb"))["package"]["version"])')
           python3 scripts/build_srpm.py --tag "v$version" --ref HEAD --outdir dist
 
       - name: Install build dependencies
@@ -108,7 +105,11 @@ jobs:
             echo "The package activates a D-Bus service or installs the AUR update marker." >&2
             exit 1
           fi
-          rpm -q --provides strata | grep -q '^bundled(crate(gtk4))'
+          rpm -q --provides strata | grep -q '^bundled(crate(rune))'
+          if rpm -q --provides strata | grep -q '^bundled(crate(gtk4))'; then
+            echo "The package bundles GTK 4." >&2
+            exit 1
+          fi
           if rpm -q --provides strata | grep -E '^bundled\(crate\(unrar'; then
             echo "The package bundles UnRAR." >&2
             exit 1

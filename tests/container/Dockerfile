@@ -65,9 +65,8 @@ RUN rustup toolchain install 1.99.1 --no-self-update --profile minimal --compone
     && chmod -R a+rX /opt/rustup
 
 FROM toolchain AS dependencies
-# The crates Cargo.lock names, fetched, and the third-party crates of the two QA builds,
-# compiled: the application's, and strata-rune's in a cargo run of its own, as
-# scripts/qa-parity.sh builds them. A run copies them into an empty Cargo cache
+# The crates Cargo.lock names, fetched, and the third-party crates of the QA build,
+# compiled as scripts/qa.sh builds them. A run copies them into an empty Cargo cache
 # (scripts/dependency_seed.py), so they are made where target/qa-container puts them: Cargo's
 # fingerprints hold the path of a crate's sources.
 WORKDIR /workspace
@@ -86,7 +85,6 @@ RUN find crates -type f ! -name Cargo.toml -delete \
         CARGO_TARGET_DIR=/workspace/target/qa-container/build \
     && cargo fetch --locked \
     && cargo test --locked --features qa,invariant-checks --test qa --no-run \
-    && cargo build --locked -p strata-rune --features qa \
     && packages="$(python3 /opt/strata-stub-workspace.py packages .)" \
     && cargo clean --locked --offline $(printf -- '-p %s ' $packages) \
     && python3 /opt/strata-stub-workspace.py leftovers . "$CARGO_TARGET_DIR" \

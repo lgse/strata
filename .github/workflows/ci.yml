@@ -6,7 +6,6 @@ on:
     branches: [main]
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
-    branches-ignore: [strata-next]
 
 permissions:
   contents: read
@@ -105,19 +104,21 @@ jobs:
                 exit 1
               fi
               cargo tree --locked -e normal,build --prefix none > /tmp/default-dependencies.txt
-              if grep -E "^(x11rb|wayland-client|wayland-protocols-(misc|wlr)|xkbcommon) v" /tmp/dependencies.txt /tmp/default-dependencies.txt; then
-                echo "x11rb, wayland-client, wayland-protocols-misc, wayland-protocols-wlr and xkbcommon, the input clients of the qa feature, must not be in a default or feature-disabled build" >&2
+              if grep -E "^(strata-qa|wayland-protocols-misc) v" /tmp/dependencies.txt /tmp/default-dependencies.txt; then
+                echo "strata-qa and wayland-protocols-misc, the qa feature crates, must not be in a default or feature-disabled build" >&2
                 exit 1
               fi
-              # The application without the Rune side, which builds in its own cargo runs.
-              gtk="$(python3 scripts/lanes.py gtk)"
-              cargo check --locked $gtk --all-targets --no-default-features --features test-support
-              cargo test --locked $gtk --all-targets --no-default-features --features test-support launch_mode
-              cargo test --locked $gtk --all-targets --no-default-features --features test-support services::operations::tests
-              cargo test --locked $gtk --all-targets --no-default-features --features test-support rar_disabled
-              xvfb-run -a -s "-screen 0 1280x1024x24 -nolisten tcp -noreset" dbus-run-session -- \
-                env -u WAYLAND_DISPLAY GDK_BACKEND=x11 GTK_A11Y=none NO_AT_BRIDGE=1 STRATA_REQUIRE_GTK_TESTS=1 \
-                cargo test --locked $gtk --all-targets --no-default-features --features test-support archive_extraction_actions_follow_build_support
+              if grep -E "^(gtk4|gdk4|sourceview5|gstreamer) v" /tmp/dependencies.txt /tmp/default-dependencies.txt; then
+                echo "GTK and GStreamer crates must not be in a default or feature-disabled build" >&2
+                exit 1
+              fi
+              cargo check --locked --workspace --no-default-features
+              cargo check --locked --workspace --all-targets --no-default-features --features strata/test-support,strata/qa
+              cargo test --locked -p strata-fs --no-default-features --features test-support services::operations::tests
+              cargo test --locked -p strata-fs --no-default-features --features test-support rar_archives_report_unsupported_format
+              cargo test --locked -p strata-preview --no-default-features --features test-support rar_disabled
+              cargo test --locked -p strata-app --no-default-features --features test-support,qa launch::tests
+              cargo test --locked -p strata-app --no-default-features --features test-support,qa settings_dialog::diagnostics::tests
             '
 
       - name: Compile all test targets once and plan the test shards
@@ -343,7 +344,7 @@ jobs:
         uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
         with:
           command: check
-          # The whole workspace: the application reaches no crate on the Rune side.
+          # The whole workspace, with every crate feature enabled.
           arguments: --all-features --workspace
 
       - name: Check spelling
