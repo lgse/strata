@@ -1,6 +1,6 @@
 # Large directory open (99,998 images)
 
-Measured on 2026-11-21 at `strata-next` commit `5ecb2241c`.
+Measured on 2026-11-21 (baseline) and 2026-11-22 (post-optimization) on the Rune interface.
 
 ## Environment and fixture
 
@@ -15,7 +15,7 @@ Measured on 2026-11-21 at `strata-next` commit `5ecb2241c`.
 ## 1. Windowed launch timings (`--release`, LTO)
 
 Measured in a private headless `sway` (`1200x760`, scale 1, `WLR_RENDERER=gles2`) and private
-session D-Bus with the release `strata-rune` binary (`lto = true`, `codegen-units = 1`).
+session D-Bus with the release `strata` binary (`lto = true`, `codegen-units = 1`).
 Values are median `[min, max]` over 3 runs per mode.
 
 - **Mapped:** process launch until the compositor registers the window.
@@ -194,8 +194,7 @@ enumeration and sorting (`936` to `2,460` turns with `wait = 0 ms`, compared to 
 
 ## 5. Follow-up measurements (2026-11-22)
 
-After addressing bottlenecks #1–#8 on `perf/2160-large-directory-open` (branched from
-`strata-next` `59fbfe5f0`), re-measured on the same 24-core machine and 99,998-image fixture:
+After addressing bottlenecks #1–#8, re-measured on the same 24-core machine and 99,998-image fixture:
 
 ### Windowed launch timings (`--release`, LTO, private headless `sway`, median `[min, max]` over 3 runs)
 

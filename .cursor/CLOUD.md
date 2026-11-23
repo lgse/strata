@@ -6,7 +6,7 @@ verified on this VM. Product rules in `AGENTS.md` still apply; this
 file only explains how to satisfy them here.
 
 The Cloud Agent desktop is an XFCE session on TigerVNC `DISPLAY=:1`.
-Never run GTK or QA tests against that display.
+Never run UI or QA tests against that display.
 
 ## Machine profile
 
@@ -18,7 +18,7 @@ Observed on this snapshot (Ubuntu 24.04.4 LTS, user `ubuntu`, uid/gid
 | CPUs / RAM | 4 logical CPUs, 15 GiB RAM, no swap |
 | Rust | 1.98.1 at `/usr/local/cargo` (`CARGO_HOME=/usr/local/cargo`, `RUSTUP_HOME=/usr/local/rustup`) |
 | Components | `rustfmt`, `clippy` installed; `cargo-deny` and `typos` are not |
-| GTK | GTK 4.14.5, GtkSourceView 5.12.0, Poppler 24.02.0 |
+| Native libs | Poppler 24.02.0, Fontconfig, GDK Pixbuf |
 | Headless X | `xvfb-run`, `Xvfb`, `at-spi2-core`, `python3-gi`, `gir1.2-atspi-2.0`, `dbus-daemon`, ImageMagick `import`, Cantarell fonts |
 | Docker | 29.1.3 (`docker.io`), no Podman |
 | Docker daemon | `fuse-overlayfs`, `iptables: false`, `ip6tables: false`, `bridge: none` |
@@ -55,26 +55,21 @@ commands below for a full suite.
 
 ## Full local CI (format, lint, Rust tests)
 
-Run these from `/workspace`. The test command uses a private Xvfb
-display and disables accessibility bridging, as required by `AGENTS.md`.
+Run these from `/workspace`. The test command runs headless without reaching the
+desktop display, as required by `AGENTS.md`:
 
 ```bash
 cargo fmt --all --check
 
-cargo clippy --all-targets --all-features -- -D warnings
+cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
 
-xvfb-run -a env -u WAYLAND_DISPLAY GDK_BACKEND=x11 \
-  GTK_A11Y=none NO_AT_BRIDGE=1 STRATA_REQUIRE_GTK_TESTS=1 \
-  cargo test --all-targets --all-features
+./scripts/test-headless.py
 ```
 
-`./scripts/test-headless.py` is an equivalent wrapper for the Rust
-suite. Prefer the `xvfb-run` form above so the invocation matches
-`AGENTS.md`.
-
-`cargo-deny` and `typos` are not installed on this image.
-`./scripts/check.sh` will skip them. Do not treat a local skip as a CI
-pass; GitHub Actions still runs those jobs.
+`mise run test` (or `./scripts/check.sh`) runs the workspace tests headless too.
+`cargo-deny` and `typos` are not installed on this image. `./scripts/check.sh`
+will skip them. Do not treat a local skip as a CI pass; GitHub Actions still
+runs those jobs.
 
 ## QA container suite
 
@@ -137,14 +132,12 @@ inside Cloud Agent run `bc-e9e926b7-3910-4572-ac73-35846d9c7804`.
 | Isolated `cargo test --all-targets --all-features` | **991 passed**, 0 failed, **19 ignored** in 46.97s (test compile 24.62s) |
 
 The ignored Rust tests are expected on this VM: they require GVfs Trash,
-`dbus-run-session`, `xdotool`, or “run this test alone” mapped-window
-fixtures. `STRATA_REQUIRE_GTK_TESTS=1` still executed the GTK cases that
-can share the private Xvfb display.
+`dbus-run-session`, or private headless `sway` sessions (`mise run test-platform`).
 
 Harmless noise seen here:
 
-- `libEGL warning: DRI3 error: Could not get DRI3 device` during GTK
-  Rust tests on Xvfb. Software rendering still works.
+- `libEGL warning: DRI3 error: Could not get DRI3 device` during headless
+  Rust/UI tests on Xvfb or headless Wayland. Software rendering still works.
 - Docker prints `DEPRECATED: The legacy builder is deprecated` because
   Buildx is not installed. The host-network wrapper still applies to
   `docker build` / `docker run`.

@@ -34,7 +34,7 @@ The font is distributed unmodified. Strata materializes the embedded font in its
 - Included assets: curated and namespaced SVG icons under `data/icons/scalable/actions/`
 - Full license: [`data/licenses/Lucide-ISC.txt`](data/licenses/Lucide-ISC.txt)
 
-The SVGs retain Lucide geometry. The table sort caret uses the Lucide triangle with a filled foreground, rotated by GTK for descending order. The `-symbolic` chevron-down, plus, and minus icons outline Lucide's 2px round strokes as filled paths, because older GTK releases recolor only the fill of symbolic icons. Their foreground color was changed from `currentColor` to GTK's symbolic foreground color so GTK can recolor them according to the active theme.
+The SVGs retain Lucide geometry. Strata compiles these SVGs into `strata-kit` (normalizing legacy symbolic tint placeholders back to `currentColor` during the build) and renders them directly with Rune, tinting them with the active theme's semantic tokens. The `-symbolic` chevron-down, plus, and minus assets outline Lucide's 2px round strokes as filled paths.
 
 ## Catppuccin VSCode Icons
 
@@ -42,7 +42,7 @@ The SVGs retain Lucide geometry. The table sort caret uses the Lucide triangle w
 - Revision: `b6915da9f6889b683a110aa747de96c2820a537d` (v1.26.0)
 - Copyright: 2023 Catppuccin, 2023 thang-nm
 - License: MIT
-- Included assets: file-type icons under `data/icons/catppuccin/strata-ctp-*.svg`, copied from the upstream `icons/css-variables/` set, and the filename and extension associations in `src/ui/browser/entry/catppuccin.rs`, both generated from upstream by `scripts/catppuccin_icons.py`
+- Included assets: file-type icons under `data/icons/catppuccin/strata-ctp-*.svg` and `crates/strata-kit/icons/catppuccin/`, copied from the upstream `icons/css-variables/` set, and the filename and extension associations in `crates/strata-app/src/entry_icon/catppuccin.rs`
 - Full license: [`data/licenses/Catppuccin-VSCode-Icons-MIT.txt`](data/licenses/Catppuccin-VSCode-Icons-MIT.txt)
 
 The SVG geometry is unchanged. Each `var(--vscode-ctp-*)` color is resolved at render time to the Catppuccin Mocha or Latte palette depending on the active theme's background, and strokes are scaled with the same weight factor as the Lucide icons.
@@ -58,10 +58,10 @@ The SVG geometry is unchanged. Each `var(--vscode-ctp-*)` color is resolved at r
 
 The bundled catalog contains curated Base16 palettes derived from this project, with a few foreground values adjusted for readability (noted in the catalog), alongside Strata's original themes. The Base16 mapping to Strata's semantic UI tokens is documented in the catalog.
 
-## Copies bundled by the Rune-side crates
+## Copies bundled by `strata-kit`
 
-The crates of the Rune interface compile in their own copies of assets listed above, each
-with its licence file beside it. No release ships them yet.
+`strata-kit` compiles in its own copies of the assets listed above, each with its licence
+file beside it, and ships them directly in the Strata binary.
 
 - JetBrains Mono 2.304, unmodified: `crates/strata-kit/fonts/`, with
   [`LICENSE-JetBrains-Mono-OFL-1.1.txt`](crates/strata-kit/fonts/LICENSE-JetBrains-Mono-OFL-1.1.txt).
@@ -88,7 +88,7 @@ copy's source revision and what the build changes.
 - Derived asset: `crates/strata-components/src/controls/icon_picker/emoji/emoji.tsv`, the emoji, their names and their English keywords, written by `generate.py` beside it
 - Full license: [`LICENSE-Unicode.txt`](crates/strata-components/src/controls/icon_picker/emoji/LICENSE-Unicode.txt)
 
-Only the Rune-side icon picker reads this data. No release ships it yet.
+The icon picker in `strata-components` reads this data.
 
 ## GTK and GStreamer media-runtime patch kit
 
@@ -105,7 +105,7 @@ artifacts. See its [build and redistribution requirements](packaging/media-runti
 ## UnRAR
 
 - Project: <https://www.rarlab.com/rar_add.htm>
-- Bundled source: UnRAR 7.01 (2024-05-12), statically linked by `unrar_sys` 0.5.8 only with the default-enabled `rar` Cargo feature, in both the `strata` and the `strata-rune` binaries
+- Bundled source: UnRAR 7.01 (2024-05-12), statically linked by `unrar_sys` 0.5.8 only with the default-enabled `rar` Cargo feature in the `strata` binary
 - Copyright: Alexander Roshal
 - License: custom UnRAR license; **not** MIT or Apache-2.0
 - Full license: [`data/licenses/UnRAR.txt`](data/licenses/UnRAR.txt), also shipped as `UnRAR.txt` in release archives
