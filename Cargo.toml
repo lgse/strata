@@ -1,5 +1,4 @@
-# One workspace for the GTK app, the crates extracted from it and the Rune side. The root
-# package stays the GTK app; every other crate joins under crates/ (docs/workspace.md).
+# One workspace for Strata, its shared crates, and its Rune interface (docs/workspace.md).
 [workspace]
 resolver = "3"
 members = [
@@ -81,7 +80,7 @@ strata-preview = { version = "0.0.0", path = "crates/strata-preview", default-fe
 strata-qa = { version = "0.0.0", path = "crates/strata-qa" }
 strata-test-support = { version = "0.0.0", path = "crates/strata-test-support" }
 
-# The Rune side. The GTK application depends on none of it, and deny.toml keeps it so.
+# The Rune side.
 # Rune is pre-release and not on crates.io. Every Rune crate pins the same `dev` rev; move
 # them together, on purpose (docs/rune/plan.md §0).
 # Rune's defaults minus `embedded-fonts` (strata-kit supplies JetBrains Mono; tests enable it),
@@ -97,8 +96,7 @@ strata-platform = { version = "0.0.1", path = "crates/strata-platform" }
 # Test-only and never published; cargo-deny's `wildcards` ban needs its version.
 strata-test-peer = { version = "0.0.1", path = "crates/strata-platform/tests/support/strata-test-peer" }
 
-# Third-party crates only the Rune side uses. zbus and x11rb are a major behind or ahead of
-# the application's own: Rune's `dbus` feature builds zbus 6 on tokio.
+# Third-party crates the Rune interface and its platform shims use.
 futures-util = { version = "0.3", default-features = false }
 png = "0.18"
 swash = "0.2.10"
@@ -126,7 +124,7 @@ description = "A fast, keyboard-first file manager for Linux"
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
-keywords = ["file-manager", "gtk4", "linux", "wayland"]
+keywords = ["file-manager", "linux", "wayland"]
 categories = ["filesystem", "gui"]
 
 [lints]
@@ -134,96 +132,41 @@ workspace = true
 
 [features]
 default = ["rar"]
-rar = ["strata-core/rar", "strata-fs/rar", "strata-preview/rar"]
-# The scripted `--qa` launch mode and its in-process X or Wayland input. Never in releases.
-qa = [
-    "dep:strata-qa",
-    "strata-core/qa",
-    "dep:x11rb",
-    "dep:regex",
-    "dep:wayland-client",
-    "dep:wayland-protocols-misc",
-    "dep:wayland-protocols-wlr",
-    "dep:xkbcommon",
-]
+rar = ["strata-app/rar"]
+# The scripted `--qa` launch mode. Never in releases.
+qa = ["strata-app/qa"]
 # Exact but slow consistency checks; tests and QA builds turn them on.
-invariant-checks = ["strata-fs/invariant-checks"]
-# Test hooks and test-only items of the workspace crates. The unit tests need it. It is a
-# feature rather than a dev-dependency so that the binary the QA scenarios drive, which
-# `cargo test --test qa` builds without it, carries no test hooks.
-test-support = [
-    "strata-core/test-support",
-    "strata-desktop/test-support",
-    "strata-fs/test-support",
-    "strata-preview/test-support",
-]
+invariant-checks = ["strata-app/invariant-checks"]
+# Test hooks and test-only items of the workspace crates.
+test-support = ["strata-app/test-support"]
 
 [dependencies]
-strata-core.workspace = true
-strata-desktop.workspace = true
-strata-fs.workspace = true
-strata-preview.workspace = true
-strata-qa = { workspace = true, optional = true }
-ashpd = { version = "=0.13.13", default-features = false, features = ["backend", "file_chooser", "settings", "async-io", "tracing"] }
-async-io = "2.6.0"
-cairo-rs.workspace = true
+strata-app.workspace = true
+
+[dev-dependencies]
 flate2.workspace = true
-fontconfig-sys = { package = "yeslogic-fontconfig-sys", version = "6.0.1" }
-futures-channel.workspace = true
-futures-lite.workspace = true
-gdk-pixbuf.workspace = true
-gdk4-wayland = { version = "0.11.4", features = ["v4_12"] }
-gdk4-x11 = { version = "0.11.4", features = ["v4_10"] }
 gio.workspace = true
-gio-unix.workspace = true
 glib.workspace = true
-gstreamer = { version = "0.25.3", features = ["v1_20"] }
-gstreamer-app = { version = "0.25.2", features = ["v1_20"] }
-gtk = { package = "gtk4", version = "0.11.4", features = ["v4_12"] }
 hex.workspace = true
 image.workspace = true
-libc.workspace = true
-pango.workspace = true
-pangocairo = "0.22.0"
-resvg.workspace = true
-rust-i18n.workspace = true
+png.workspace = true
+regex.workspace = true
 rustix.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-sha2.workspace = true
-sourceview5 = { version = "0.11.2", features = ["gtk_v4_12"] }
+strata-qa.workspace = true
+strata-test-peer.workspace = true
 tar.workspace = true
 tempfile.workspace = true
 toml.workspace = true
-tracing.workspace = true
-zbus = { version = "5.19.0", default-features = false, features = ["async-io"] }
+x11rb = { workspace = true, features = ["xkb"] }
 zip.workspace = true
-x11rb = { version = "0.14.0", default-features = false, features = ["xkb", "xtest"], optional = true }
-regex = { workspace = true, optional = true }
-wayland-client = { version = "0.31.15", optional = true }
-wayland-protocols-misc = { version = "0.3.12", features = ["client"], optional = true }
-wayland-protocols-wlr = { version = "0.3.12", features = ["client"], optional = true }
-xkbcommon = { version = "0.9.0", default-features = false, optional = true }
-
-[dev-dependencies]
-# The key library of the Rune interface, for the test that holds it to GDK.
-strata-desktop = { workspace = true, features = ["xkb-keys"] }
-strata-test-support.workspace = true
 
 [[test]]
 name = "qa"
 path = "tests/qa.rs"
 required-features = ["qa"]
 harness = false
-
-# Holds the Rune interface's key library to GDK. It reads a test-only item of strata-desktop.
-[[test]]
-name = "key_lookups"
-path = "tests/key_lookups.rs"
-required-features = ["test-support"]
-
-[build-dependencies]
-glib-build-tools.workspace = true
 
 [profile.release]
 # Whole-program optimization for the hot listing/sort/insert paths. Build
