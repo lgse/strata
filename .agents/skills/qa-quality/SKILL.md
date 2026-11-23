@@ -12,9 +12,9 @@ description: >
 
 Score each scenario in `tests/qa/scenarios/<folder>/*.jsonl` on four
 dimensions, combine them into a 0–100 `score`, and record the result in the
-scenario's header. QA is Strata's only GUI test suite; every comparison below
-is against other QA scenarios and the Rust unit and GTK tests in
-`src/**/tests.rs`.
+scenario's header. QA is Strata's end-to-end GUI test suite; every comparison
+below is against other QA scenarios and the Rust unit and component tests under
+`crates/**/tests*.rs`.
 
 This rubric produces **scores only**. It defines no keep/drop threshold, tier
 or label. The owner sets any cut-offs when applying the scores. Never write a
@@ -99,7 +99,7 @@ Rules:
   lifecycle, filesystem safety, error handling and live preferences. A
   keyboard route and a pointer route to the same action are two behaviours
   when Strata's code routes them differently (focus, input ownership, key
-  bindings). Activating one GTK button by click or by Return is one route.
+  bindings). Activating one button by click or by Return is one route.
 - **Never mark both sides of a duplicate pair as duplicates.** When two
   scenarios cover the same behaviour, the superset (more routes, assertions,
   modes) keeps the coverage for the shared part; the subset scores only its
@@ -129,8 +129,8 @@ equivalent and the assertions on that behaviour are equal or one is a superset.
 | Score | Anchor | Strata examples |
 | --- | --- | --- |
 | 5 | Concurrent or external code path (async workers, filesystem operations, races, portals, D-Bus, sandbox helpers) with repeated past fixes and high churn; only the running application shows the failure. | Provider disconnect and replay over D-Bus (`provider-disconnect-never-replays`); idle sandbox workers exiting and restarting (`idle-workers-exit-and-restart`). |
-| 4 | Complex GUI glue across modules (dialog → operation → listing refresh → focus), or a path with past fix commits or high churn; a unit test cannot reproduce the integration. | Paste-conflict dialogs (`src/ui/browser/transfer*`, `crates/strata-fs/src/adapters/local_operations`: ~100 commits, ~55 fixes); modal input routing added by a fix (`modal-dialog-blocks-window-shortcuts`). |
-| 3 | Non-trivial wiring with moderate churn or one prior regression; a refactor could plausibly break it. Visual baselines of widely restyled surfaces. | Appearance menu switching views (`src/ui/browser_modes`, high churn); filter text selection colour (added with fix #778); baselines refreshed by theming and font-rendering fixes. |
+| 4 | Complex GUI glue across modules (dialog → operation → listing refresh → focus), or a path with past fix commits or high churn; a unit test cannot reproduce the integration. | Paste-conflict dialogs (`crates/strata-app/src/conflict_dialog/`, `crates/strata-fs/src/adapters/local_operations`: high churn); modal input routing added by a fix (`modal-dialog-blocks-window-shortcuts`). |
+| 3 | Non-trivial wiring with moderate churn or one prior regression; a refactor could plausibly break it. | Appearance menu switching views (`crates/strata-app/src/appearance/`, `pane.rs`); filter text selection colour (added with fix #778). |
 | 2 | Stable, simple code, or logic a unit test could pin as well; regressions unlikely or better caught elsewhere. | Static header geometry (`column-header-titles-bounded`). |
 | 1 | Declarative or effectively frozen: a constant, a label with no history, behaviour fully determined by unit-tested logic. | A fixed string never touched since it was added. |
 
@@ -142,9 +142,9 @@ Measure, don't guess:
   introduced the scenario's distinctive assertion (see the recipes below).
   Several commits are batch fixes ("triage batch N") that touch many areas;
   count one only when its subject or diff touches the behaviour.
-- **Level**: if a Rust unit or GTK test could catch the same regression as
-  well, lower criticality by one. If only real input, real windows, real
-  processes or real buses can show it, do not.
+- **Level**: if a Rust unit or headless component test could catch the same
+  regression as well, lower criticality by one. If only real input, real
+  windows, real processes or real buses can show it, do not.
 
 ## Diagnostic: how precisely a failure points at the cause
 
@@ -257,13 +257,13 @@ keep/drop verdict.
    `similar` compares literal steps, so it misses pairs that differ in one
    value (Icons vs List). Always follow up with greps on the controls,
    chords, predicates and preferences the scenario uses.
-4. **Check unit and GTK test coverage.** Find the implementing code from a
+4. **Check unit and component test coverage.** Find the implementing code from a
    name or string the scenario uses, then its adjacent tests:
 
    ```bash
-   grep -rn '"Keep Both"' src --include=*.rs | grep -v tests.rs
-   grep -rn 'fn .*keep_both\|fn .*conflict' src --include=tests.rs
-   ls src/ui/browser/transfer/tests.rs crates/strata-fs/src/adapters/local_operations/tests/
+   grep -rn '"Keep Both"' crates --include=*.rs | grep -v tests.rs
+   grep -rn 'fn .*keep_both\|fn .*conflict' crates --include=tests.rs
+   ls crates/strata-app/src/conflict_dialog/ crates/strata-fs/src/adapters/local_operations/tests/
    ```
 
    Decide which part of the behaviour those tests pin (logic, dialog
@@ -331,7 +331,7 @@ keep/drop verdict.
    - the behaviour or its implementation changes, or the scenario's steps do;
    - a scenario is added that overlaps it: re-score both;
    - an overlapping scenario is removed: the survivor's coverage may rise;
-   - a unit or GTK test now pins the same logic;
+   - a unit or component test now pins the same logic;
    - a bug is found in the area, or escapes past this scenario: raise
      criticality.
 

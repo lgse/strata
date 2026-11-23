@@ -42,10 +42,10 @@ Location: `crates/strata-platform/src/glib_loop/mod.rs::query` and
 Reason: the Rune interface keeps Strata's `Browser` on its UI thread, and `Browser`
 schedules on the default GLib context, which Rune's loop never iterates. Embedding a
 context in a foreign loop means asking it what it waits for and waiting for that
-elsewhere. glib 0.22 binds `g_main_context_prepare`, but not `g_main_context_query`,
+elsewhere. `glib` 0.22 binds `g_main_context_prepare`, but not `g_main_context_query`,
 and nothing safe polls the `GPollFD` records `query` returns. The alternative is a
 timer that polls the context, which Rune delays to four a second while a Wayland
-window is covered (`docs/rune/slice/V5-shell-and-loop.md`).
+window is covered.
 
 `query` runs on the thread that owns the context, which `GlibLoop::start` checks and
 the type, neither `Send` nor `Sync`, keeps. It passes an array of initialized records
@@ -58,37 +58,21 @@ again. Dispatch itself stays GLib's: the UI thread calls `MainContext::iteration
 
 If glib-rs binds `query` with a safe poll, this exception should be removed.
 
-### Bundled font registration
+### Platform transfer, drag-and-drop, and PCM audio shims
 
-Location: `src/assets.rs::register_application_fonts`
+Locations:
 
-Reason: Fontconfig exposes application-private font registration through its C API, and the available safe wrapper does not expose that capability. Strata uses three small FFI calls during single-threaded startup and presents the rest of the application with a safe function.
+- `crates/strata-platform/src/transfer/wayland/display.rs` (`wl_proxy_get_display` via `dlopen`/`dlsym`)
+- `crates/strata-platform/src/transfer/pipe.rs` (`pipe2`, `fcntl`, `poll` via `libc`)
+- `crates/strata-platform/src/dnd/wayland.rs` (`memfd_create` for drag-icon shared memory)
+- `crates/strata-platform/src/media/pulse.rs` and `crates/strata-platform/src/media/alsa.rs` (`dlopen`/`dlsym` of `libpulse-simple` and `libasound` for zero-GStreamer Linux PCM audio output)
 
-The operations are individually scoped and document:
-
-- How the Fontconfig configuration pointer is obtained and null-checked
-- The lifetime and ownership of the C path string
-- Fontconfig's path-copy behavior
-- Why rebuilding the font set occurs before GTK/Pango creates the application font map
-
-If a maintained safe API gains this capability, this exception should be removed.
-
-### Command-line errors for the invoking process
-
-Location: `src/main.rs::print_command_line_error`
-
-Reason: when Strata is already running, the primary instance handles the
-command line, so `eprintln!` would write a usage error to the primary's log
-while the invoking command exits silently. GIO forwards
-`g_application_command_line_printerr` to the caller's stderr, but gio-rs binds
-only `printerr_literal`, which needs GLib 2.80, above the 2.72 Strata supports.
-
-The call passes a fixed `"%s"` format and exactly one NUL-terminated argument,
-so message text is never read as a format. The command line, the format literal
-and the message `CString` all outlive the call, and GLib copies the text before
-it returns. A message containing an interior NUL cannot become a `CString` and
-is dropped rather than truncated. Remove this exception when Strata requires
-GLib 2.80.
+Reason: these Linux platform shims bridge raw Wayland display handles, non-blocking
+transfer pipes, drag-icon shared-memory buffers, and runtime-loaded PulseAudio/PipeWire
+and ALSA PCM sinks without pulling C audio/media runtimes into the hard link set. Every
+symbol lookup checks for null, validates handles and buffer lengths, and falls back
+cleanly (for example, to the silent clock sink when neither PulseAudio nor ALSA is
+available).
 
 ### Verified Trash result
 
@@ -182,7 +166,7 @@ Neither libc fork nor descriptor-sensitive namespace unshare has a suitable safe
 API for this use. The two calls are individually scoped behind private interfaces.
 
 Only the separate bubblewrap supervisor and its trusted setup child call them,
-never the GTK application or an initialized decoder. Both reject anything other
+never the main application or an initialized decoder. Both reject anything other
 than one task in `/proc/self/task`; no caller starts threads, owns shared mappings
 or external locks, or initializes codec/RNG state before this boundary. libc fork
 runs atfork handlers and resets libc's threading state. Namespace unshare uses

@@ -189,8 +189,8 @@ version accepting a patch cleanly does not prove that its ownership rules or ABI
 remain compatible. Review the changed implementation, rerun baseline/candidate
 regressions, and update source hashes and evidence as one change. Retire a patch
 only when the upstream equivalent is verified by the regression, not merely
-because the version number increased. See the maintenance rule in
-[AGENTS.md](../../AGENTS.md#private-media-runtime-patches).
+because the version number increased. See the note in
+[AGENTS.md](../../AGENTS.md#archived-media-runtime-patch-kit).
 
 Upstream check on 2026-09-10 (source inspection, **not** a runtime retest):
 

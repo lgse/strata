@@ -161,7 +161,7 @@ Closing with **Esc** or **i** also returns the keys to the listing, so the
 Miller column regains its destination bar. **i** therefore toggles the preview
 from either side: open from the listing, closed from the preview. A focused
 media timeline takes the Media keys above. A focused preview button or slider
-(reached with **Tab** or the pointer) keeps GTK's own **Space** / **Enter** /
+(reached with **Tab** or the pointer) keeps its standard **Space** / **Enter** /
 arrow handling; **Shift+Tab** and **Esc** still return or close. The volume
 slider steps 0.1 with the arrows and 0.2 with **PgUp** / **PgDn**; **Home**
 mutes and **End** sets full volume. Browsing archive members never extracts them, opens a listing

@@ -9,26 +9,23 @@ geometry manually with captures; do not add layout assertions.
 
 ## Window split
 
-`src/ui/window/composition/layout.rs` builds the content as nested horizontal
-panes:
+`crates/strata-app/src/shell.rs` composes the window content from the sidebar slot,
+the active browser view slot (Columns, Icons, or List), and the preview drawer slot:
 
+```text
+window body
+├─ sidebar slot (full, compact rail, or hidden)
+├─ view slot (Columns, Icons, or List)
+└─ drawer slot (preview drawer, divider, and reserved space)
 ```
-preview split (gtk::Paned)
-├─ start: sidebar split (gtk::Paned): [sidebar | browser views]
-└─ end:   preview slot (gtk::Box) › revealer › preview pane
-```
 
-The browser views are a stack of Columns, Icons, and List. Only the start child
-resizes when the window changes size, so the preview keeps its width and the
-file views absorb the difference. The file chooser builds the same split and
-shares the drawer code in `src/ui/preview.rs` and `src/ui/preview/layout.rs`.
+Only the file views absorb window width changes, so the preview keeps its width.
+The file chooser uses the same shell layout and preview drawer (`crates/strata-components/src/preview_drawer/`
+and `crates/strata-app/src/preview/`).
 
-`sync_split` runs once per frame while the drawer is enabled or reserving space.
-It owns the slot's visibility, minimum width, and divider position; nothing else
-should position the divider except the user's drag and `animate_reveal`, which
-slides an unreserved drawer open or closed with the pane pinned at its resting
-width. A slot that Columns reserves never slides: content appears in it and
-leaves it in place.
+A reserved Columns slot never slides open or closed: content appears in place without
+moving the columns under the pointer. An unreserved drawer slides cleanly on reveal and
+dismissal.
 
 ## Terms
 
@@ -46,7 +43,8 @@ leaves it in place.
 
 ## Width rules
 
-Constants live in `src/ui/preview/layout.rs` and `src/ui/preview.rs`.
+Layout constants live in `crates/strata-components/src/preview_drawer/` and
+`crates/strata-app/src/preview/`.
 
 | Rule | Value |
 | --- | --- |
@@ -92,8 +90,7 @@ Constants live in `src/ui/preview/layout.rs` and `src/ui/preview.rs`.
   gives way to the minimum outline. The grip and the divider's resize cursor
   exist only while the preview is shown; while it is hidden there is no width
   to set, so only the column side resizes. The divider itself takes only its
-  1 px line (a wide handle), so GTK's usual overhang never covers the
-  column's resize edge.
+  1 px line, so it never covers the column's resize edge.
 - **Manual width** comes from dragging the divider or moving it with the
   keyboard. In Columns it becomes the session's minimum: the preview still
   fills the free space beside the focused column when there is more room, so
@@ -165,10 +162,9 @@ Constants live in `src/ui/preview/layout.rs` and `src/ui/preview.rs`.
    its hide threshold. A sliver of earlier columns is whatever space is left
    after those two; nothing is ever reserved for it, so it is the same for
    every selection until the window, the sidebar, or the focused column's
-   width changes. `ColumnSpan::reveal_target` in
-   `src/ui/browser/columns/reveal.rs` never moves a fully visible column, or
-   one wider than the viewport that already fills it, and otherwise applies
-   one rule: align the end of the strip (the focused column
+   width changes. Reveal calculations in `crates/strata-components/src/columns/`
+   never move a fully visible column, or one wider than the viewport that already
+   fills it, and otherwise align the end of the strip (the focused column
    plus the trailing columns that fit beside it) with the right pane. Clipped
    columns show a "Reveal X column" button over whatever part of them is
    visible. The breadcrumbs, the sidebar, and **Left** remain the reliable
@@ -176,9 +172,8 @@ Constants live in `src/ui/preview/layout.rs` and `src/ui/preview.rs`.
 
 ## Column motion
 
-Column changes take 220 ms (`COLUMN_TRANSITION`) and the drawer's slide takes
-260 ms (`TRANSITION`). With reduced motion or GTK animations off, every change
-below is immediate.
+Column changes take 220 ms and the drawer's slide takes 260 ms. With reduced
+motion enabled, every change below is immediate.
 
 | Change | Motion |
 | --- | --- |
@@ -229,33 +224,27 @@ instead.
 | --- | --- |
 | Focused column stays put while mirroring folders and files | Manual check below (wide and narrow windows), with captures |
 | Folder hands the right pane to the child column, file takes it back | `tests/qa/scenarios/quick_preview/columns-keyboard-opens-preview.jsonl`, `preview-hides-on-folder.jsonl` |
-| Dismissed preview ignores mirroring until reopened | `src/ui/preview/tests.rs::an_explicit_close_blocks_automatic_previews_until_reopened` |
-| Opening or reopening a folder by click focuses its column, for one or two clicks | `tests/qa/scenarios/click_modes/clicking-open-folder-focuses-column.jsonl`, `crates/strata-fs/src/app/browser/tests/navigation.rs::activating_an_open_folder_focuses_its_column_without_closing_it` |
+| Dismissed preview ignores mirroring until reopened | `crates/strata-app/src/preview/` unit tests and `tests/qa/scenarios/quick_preview/columns-preview-reopens-after-closing.jsonl` |
+| Opening or reopening a folder by click focuses its column, for one or two clicks | `tests/qa/scenarios/click_modes/clicking-open-folder-focuses-column.jsonl`, `crates/strata-fs/src/app/browser/tests/navigation.rs` |
 | Deleting the focused entry mirrors what takes its place, for any input | `tests/qa/scenarios/entry_management/trashing-open-folder-opens-next.jsonl` |
-| Reveals leave a viewport-filling column alone and fully reveal a clipped one that fits | `src/ui/browser/columns/tests.rs::reveal_column_does_not_move_an_already_visible_active_column`, `reveal_shows_a_fitting_column_whole_and_leaves_a_filling_one_alone` |
-| Pointer preview closes deeper columns first | `crates/strata-fs/src/app/browser/tests/navigation.rs::previewing_a_file_in_a_parent_column_closes_deeper_columns_before_requesting` |
+| Reveals leave a viewport-filling column alone and fully reveal a clipped one that fits | `crates/strata-components/src/columns/` unit tests |
+| Pointer preview closes deeper columns first | `crates/strata-fs/src/app/browser/tests/navigation.rs` |
 | A plain click on a file closes deeper columns whether or not it previews | `tests/qa/scenarios/click_modes/file-click-closes-deeper-column.jsonl` |
 | Automatic width, minimum, and session manual minimum | `tests/qa/scenarios/quick_preview/column-preview-fills-free-space.jsonl` |
-| A column boundary resizes the left column from either side, even when it is clipped | Manual check: the GUI scenario was removed in #1601 after keyboard-navigation timing flakes |
+| A column boundary resizes the left column from either side, even when it is clipped | Manual check |
 | The column–preview boundary resizes the side it is grabbed from | `tests/qa/scenarios/quick_preview/preview-boundary-resizes-grabbed-side.jsonl` |
-| Dragged widths spread to the open columns when the drag ends; autofit is saved | `src/ui/browser/columns/tests.rs::a_finished_edge_drag_resizes_every_open_column`, `double_clicking_an_edge_autofits_the_column_and_saves_its_width` |
-| Drags, autofit, and restored widths stay within the visible browser area | `src/ui/chooser/tests/column_widths.rs::miller_autofit_saves_a_width_within_the_visible_browser_area`, `::miller_drag_cannot_exceed_the_visible_browser_area`, `tests/qa/scenarios/view_switching/column-autofit-stays-inside.jsonl` |
-| Columns open, swap, and close as described in Column motion | `src/ui/browser/columns/tests.rs::a_resize_during_a_column_entry_does_not_strand_its_animation`, `switching_to_a_sibling_closes_the_old_child_without_an_exit_animation`, `a_closing_column_leaves_after_its_animation_and_takes_no_input`, `close_column_skips_exit_animation_when_animations_disabled` |
-| Reopening during the drawer's slide out turns it back | `src/ui/preview/tests.rs::reopening_during_the_slide_out_turns_the_drawer_back` |
-| Only a shown preview offers its grip and divider | `src/ui/preview/tests.rs::only_a_docked_preview_offers_its_divider_for_resizing` |
-| Narrowing a filled preview outlines the minimum and keeps the panel | `src/ui/preview/tests.rs::keyboard_divider_moves_lower_the_columns_session_minimum_without_moving_the_panel` |
+| Dragged widths spread to the open columns when the drag ends; autofit is saved | `crates/strata-components/src/columns/` and `crates/strata-app/src/columns/` unit tests |
+| Drags, autofit, and restored widths stay within the visible browser area | `tests/qa/scenarios/view_switching/column-autofit-stays-inside.jsonl` |
+| Columns open, swap, and close as described in Column motion | `crates/strata-components/src/columns/` unit tests |
 | Reservation survives closing; Appearance releases it | `tests/qa/scenarios/quick_preview/columns-preview-reopens-after-closing.jsonl` |
 | Narrow windows shrink then hide the preview | `tests/qa/scenarios/quick_preview/narrow-window-keeps-last-column.jsonl` |
 | Peek strips reveal clipped columns | `tests/qa/scenarios/preview_session/peek-click-reveals-column.jsonl` |
-| Default overflow appearance | `tests/qa/scenarios/visual_baselines/columns-overflow-baseline.jsonl` |
-| Blank clicks and disabled controls in a showing preview keep the selection; the empty reserved slot clears; preview drags still marquee | `tests/qa/scenarios/background_selection/preview-blank-click-keeps-selection.jsonl`, `disabled-transport-click.jsonl`, `beside-last-column-clears.jsonl`, `src/ui/marquee/tests.rs::keeping_origins_clear_only_outside_the_content_they_show`, `::chrome_origin_click_policy_decides_when_a_plain_click_clears` |
-| Disabled controls are rejected like enabled ones on every chrome origin | `src/ui/marquee/tests.rs::disabled_controls_are_rejected_like_enabled_ones` |
+| Blank clicks and disabled controls in a showing preview keep the selection; the empty reserved slot clears; preview drags still marquee | `tests/qa/scenarios/background_selection/preview-blank-click-keeps-selection.jsonl`, `disabled-transport-click.jsonl`, `beside-last-column-clears.jsonl` |
 
 Scenarios that need several parent columns visible at once opt out of the
 reservation by switching **Appearance → Preview panel** off through the UI in
 their first steps, without changing saved preferences; preview lifecycle
-scenarios and the default overflow baseline keep the reservation. See
-[testing](testing.md).
+scenarios keep the reservation. See [testing](testing.md).
 
 ## Manual check
 
