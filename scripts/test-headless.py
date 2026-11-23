@@ -50,8 +50,6 @@ def main() -> int:
                 "cargo",
                 "test",
                 "--workspace",
-                "--exclude",
-                "strata-gallery",
                 "--all-targets",
                 "--all-features",
                 *sys.argv[1:],

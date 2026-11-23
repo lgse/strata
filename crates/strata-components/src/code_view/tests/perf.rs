@@ -41,11 +41,7 @@ fn summary(v: &mut [f64]) -> String {
 }
 
 fn fixture(name: &str) -> String {
-    let path = format!(
-        "{}/../../tests/fixtures/code/{name}",
-        env!("CARGO_MANIFEST_DIR")
-    );
-    std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{path}: {e}"))
+    super::fixtures::fixture(name).to_owned()
 }
 
 fn text_system() -> TextSystem {

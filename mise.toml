@@ -27,13 +27,8 @@ run = "cargo clippy --workspace --all-targets --all-features --locked -- -D warn
 # can reach the desktop session (libwayland would otherwise fall back to wayland-0).
 # Built without debug info, here and in the tasks below: every test binary links Rune and
 # its renderer, and with debug info each link takes more than two gigabytes of memory.
-#
-# By the owner's instruction of 2026-11-12, strata-gallery's integration tests (its goldens,
-# page tests and scripts; the PNG goldens and the scripts start a gallery process each) are not
-# run here: only its unit tests are. `mise run test-gallery` runs the rest on demand. A trailing filter goes to both
-# cargo runs; mise appends the task's arguments to the script's last line, `both`.
 [tasks.test]
-description = "Run the workspace's Rust tests headless, never on the desktop display, with only the gallery's unit tests"
+description = "Run the workspace's Rust tests headless, never on the desktop display"
 raw_args = true
 run = '''
 tmp="$(mktemp -d)"
@@ -50,13 +45,9 @@ headless() {
     XDG_CACHE_HOME="$tmp/cache" \
     XDG_STATE_HOME="$tmp/state" \
     CARGO_PROFILE_DEV_DEBUG=0 \
-    cargo test "$@"
+    cargo test --workspace --all-targets --all-features --locked "$@"
 }
-both() {
-  headless --workspace --exclude strata-gallery --all-targets --all-features --locked "$@" &&
-    headless --package strata-gallery --lib --bins --examples --all-features --locked "$@"
-}
-both
+headless
 '''
 
 [tasks.test-rune]
@@ -77,67 +68,9 @@ headless() {
     XDG_CACHE_HOME="$tmp/cache" \
     XDG_STATE_HOME="$tmp/state" \
     CARGO_PROFILE_DEV_DEBUG=0 \
-    cargo test "$@"
+    cargo test --workspace --all-targets --all-features --locked "$@"
 }
-both() {
-  headless --workspace --exclude strata-gallery --all-targets --all-features --locked "$@" &&
-    headless --package strata-gallery --lib --bins --examples --all-features --locked "$@"
-}
-both
-'''
-
-# strata-gallery's integration tests: tests/goldens (the PNG and accessibility goldens and the
-# scripts) and the per-page targets, not x2 or x3, which test-platform runs. Part of no gate
-# for now, by the owner's instruction of 2026-11-12: each PNG golden and each script starts a
-# gallery process that opens a GPU device, and run by the hundred they load the machine
-# (docs/rune/parity/working.md).
-[tasks.test-gallery]
-description = "On demand only, part of no gate: the gallery's goldens, page tests and scripts (not x2 or x3)"
-raw_args = true
-run = '''
-targets=""
-for path in crates/strata-gallery/tests/*.rs crates/strata-gallery/tests/*/main.rs; do
-  case "$path" in */main.rs) name="${path%/main.rs}" ;; *) name="${path%.rs}" ;; esac
-  name="${name##*/}"
-  case "$name" in x2|x3) continue ;; esac
-  targets="$targets --test $name"
-done
-gallery() {
-  env -u DISPLAY -u WAYLAND_SOCKET WAYLAND_DISPLAY=strata-test-no-wayland \
-    DBUS_SESSION_BUS_ADDRESS=unix:path=/nonexistent/strata-test-no-bus \
-    CARGO_PROFILE_DEV_DEBUG=0 \
-    cargo test --package strata-gallery $targets --all-features --locked "$@"
-}
-gallery
-'''
-
-# `mise run bless c1` rewrites only page c1's goldens (tests/golden/*/c1/). The filter is a
-# page id, a scene name (c1-empty-folder-dark) or <id>/<script> (c5/stem-selection), in
-# lowercase; with none, every golden is rewritten. RUNE_BLESS turns blessing on, STRATA_BLESS narrows it,
-# and the cargo filter `<id>::` runs only that page's golden tests, plus the test that fails
-# when the filter names nothing (docs/rune/testing.md). Goldens are not a gate for now, by the
-# owner's instruction of 2026-11-12: this task stays for rewriting them when the gallery is
-# cleaned up.
-[tasks.bless]
-description = "Rewrite the Rune goldens (all, or one page, scene or script); review every diff"
-usage = '''
-arg "[filter]" help="A page (c1), a scene (c1-empty-folder-dark) or <id>/<script>; empty: all" default=""
-'''
-run = '''
-set -eu
-f="${usage_filter:-}"
-case "$f" in
-  *[!a-z0-9_/-]*)
-    echo "bless: filter '$f' must be lowercase: a page id, a scene or <id>/<script>" >&2
-    exit 2 ;;
-esac
-set -- cargo test -p strata-gallery --all-targets --all-features --locked
-if [ -n "$f" ]; then
-  set -- "$@" -- "${f%%[-/]*}::" registry::bless_filter_names_a_page_scene_or_script
-fi
-env -u DISPLAY -u WAYLAND_SOCKET WAYLAND_DISPLAY=strata-test-no-wayland \
-  DBUS_SESSION_BUS_ADDRESS=unix:path=/nonexistent/strata-test-no-bus \
-  CARGO_PROFILE_DEV_DEBUG=0 RUNE_BLESS=1 STRATA_BLESS="$f" "$@"
+headless
 '''
 
 # Each strata-platform feature alone, so no shim leans on another's dependencies. The list is

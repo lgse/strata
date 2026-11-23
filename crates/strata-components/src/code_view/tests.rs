@@ -13,6 +13,7 @@ use super::state::{CodeState, Request};
 use crate::document_view::Folded;
 use crate::scroll::BarLook;
 
+pub(super) mod fixtures;
 mod gutter;
 mod perf;
 mod selection_perf;

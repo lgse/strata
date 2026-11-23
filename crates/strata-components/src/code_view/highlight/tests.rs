@@ -26,13 +26,15 @@ use super::*;
 const WAIT: Duration = Duration::from_secs(30);
 
 pub(super) fn fixture(name: &str) -> String {
-    let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../tests/fixtures/code/");
-    std::fs::read_to_string(format!("{path}{name}")).expect("fixture")
+    crate::code_view::tests::fixtures::fixture(name).to_owned()
 }
 
 /// The first `n` lines of a fixture.
 fn head(name: &str, n: usize) -> String {
-    fixture(name).split_inclusive('\n').take(n).collect()
+    crate::code_view::tests::fixtures::fixture(name)
+        .split_inclusive('\n')
+        .take(n)
+        .collect()
 }
 
 pub(super) fn light() -> Arc<Theme> {

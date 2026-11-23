@@ -90,4 +90,4 @@ strata-kit. The crate's own licence stays MIT; the data keeps its own licences.
    isn't a tint placeholder in `lucide/`, a raw colour or unknown variable in `catppuccin/`,
    a name in two folders. `src/icons/lucide/semantic.rs` fails to compile when an icon it
    maps is gone. Update the Rune-ignored table above if those attributes appear in new places.
-3. Run `mise run test icons::` and `mise run test k3`, then bless and review the `k3` goldens.
+3. Run `mise run test icons::` and inspect the `k3` icon catalog page in `mise run gallery`.

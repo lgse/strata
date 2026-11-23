@@ -30,5 +30,5 @@ The crate's own licence stays MIT; the font keeps its own.
 ## Refreshing
 
 Copy the font and its licence from a newer Strata revision, byte for byte, and update the
-revision, version and both hashes above. Then run `mise run test fonts::` and
-`mise run test k6::`, and re-bless the PNG goldens (`mise run bless`): every page draws text.
+revision, version and both hashes above. Then run `mise run test fonts::` and inspect rendered
+text in `mise run gallery`.

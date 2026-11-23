@@ -464,7 +464,7 @@ crates/
 ├── strata-platform/      # Rune Linux shims (Wayland/X11, D-Bus, GLib loop, PCM audio)
 ├── strata-kit/           # theme mapping, icons, fonts, transparency, overrides.toml
 ├── strata-components/    # pure accessor-driven Rune UI components
-├── strata-gallery/       # component showcase scenes, goldens, integration demos
+├── strata-gallery/       # component showcase scenes and integration demos
 ├── strata-app/           # Strata shell, slots, parts, hosts, QA backend
 └── strata-test-support/  # shared test helpers
 ```

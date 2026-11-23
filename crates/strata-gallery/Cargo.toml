@@ -1,6 +1,6 @@
 [package]
 name = "strata-gallery"
-description = "One headless scene per component state, and the golden tests"
+description = "Interactive showcase of Strata UI components"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -15,7 +15,6 @@ strata-components.workspace = true
 swash.workspace = true
 
 [dev-dependencies]
-png.workspace = true
 serde_json.workspace = true
 
 # The integration demos (examples/), one block each. Keep the blank lines: git conflicts when

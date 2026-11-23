@@ -83,9 +83,8 @@ pass before merge.
   native targeted Rust tests across the unified workspace, for example
   `mise run test services::operations::tests` or
   `./scripts/test-headless.py services::operations::tests`. Both run headless
-  with `--workspace --exclude strata-gallery --all-targets --all-features`
-  (`mise run test` also runs `strata-gallery`'s unit tests; `mise run test-rune`
-  is a compatibility alias). The selected filter must match at least one test,
+  with `--workspace --all-targets --all-features` (`mise run test-rune` is a
+  compatibility alias). The selected filter must match at least one test,
   including relevant views, callers, or preferences coverage.
 - Run compositor, D-Bus, and windowed tests with `mise run test-platform [filter]`
   (for example `mise run test-platform window::` for changes to the host, shell,
@@ -229,7 +228,7 @@ its thin binary entrypoint.
 - Rune's API reference is `crates/rune/README.md` and `crates/rune-kit/README.md`
   at the pinned rev. Read them there, not from memory.
 
-### Tests and goldens
+### Tests and gallery
 
 - Workspace Rust tests run headless on Rune's virtual clock and never use the
   desktop display or session bus. Run them with `mise run test [filter]` and
@@ -237,12 +236,11 @@ its thin binary entrypoint.
 - Compositor, D-Bus, and windowed tests run with `mise run test-platform [filter]`,
   each in a private headless sway session; `strata`'s `tests/window.rs` is among
   them. Follow `docs/testing.md`.
-- `strata-gallery`'s integration tests (its PNG/accessibility goldens and scripts
-  under `tests/golden/`) are not part of the default `mise run test` run; only its
-  unit tests run there. Run the gallery's integration suite on demand with
-  `mise run test-gallery [filter]`, and update goldens only deliberately with
-  `mise run bless <page>` followed by a full visual review of every changed PNG.
-- PNG goldens and screenshots cover the look. Do not assert layout geometry,
+- `strata-gallery` is an interactive component display showcase (`mise run gallery`)
+  with a minimal headless unit and smoke test suite (plus `#[ignore]`d compositor
+  DnD and clipboard session tests run by `mise run test-platform`). Primary
+  end-to-end verification lives in the QA scenarios (`./scripts/qa.sh`).
+- Screenshots and manual inspection cover the look. Do not assert layout geometry,
   spacing, or pixel placement.
 
 ## Test organization
