@@ -40,8 +40,6 @@ const INODE_DIRECTORY: &str = "inode/directory";
 
 pub const PACKAGE_PROVIDED: &str = "The package that installed this build provides its desktop integrations. Configure them in your system configuration instead.";
 
-/// A `STRATA_INTEGRATIONS=package` build never writes, removes, or refreshes the
-/// files its package ships.
 fn require_runtime_integrations() -> Result<(), String> {
     if crate::build_info::runtime_integrations_enabled() {
         Ok(())
@@ -402,8 +400,6 @@ fn reload_dbus_config() -> bool {
     )
 }
 
-/// A session bus that accepts the connection but never answers the handshake blocks
-/// gdbus, systemctl and xdg-mime's dbus-send before their own timeouts start.
 const SESSION_COMMAND_DEADLINE: Duration = Duration::from_secs(5);
 
 fn succeeds_within(command: &mut Command) -> bool {
@@ -411,8 +407,6 @@ fn succeeds_within(command: &mut Command) -> bool {
     output_within(command, SESSION_COMMAND_DEADLINE).is_some_and(|output| output.status.success())
 }
 
-/// Runs the command in its own process group so a stuck helper started by a wrapper
-/// script is killed along with it.
 fn output_within(command: &mut Command, limit: Duration) -> Option<Output> {
     use rustix::process::{Pid, Signal, WaitId, WaitIdOptions, kill_process_group, waitid};
 
@@ -898,8 +892,6 @@ fn secure_executable_for_user(
     Ok(path)
 }
 
-/// Distributions that give each user a private group and a umask of 002 leave the user's own
-/// folders group-writable. A group the databases do not describe counts as shared.
 fn group_is_private(user: u32, group: u32, passwd: &str, groups: &str) -> bool {
     let mut name = None;
     for fields in passwd

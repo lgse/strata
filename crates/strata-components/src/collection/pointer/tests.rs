@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! One test per feature-map Behavior bullet the pointer machine decides. Each names its
-//! bullet. Entries 0–2 are folders and 3–9 files; ids are the entries' first indices.
-
 use std::time::Duration;
 
 use rune::Mods;
@@ -196,8 +193,6 @@ impl Rig {
         }
     }
 
-    /// A click on the name of the only selected `index`, after it was selected and the
-    /// interval passed: a rename is now pending.
     fn arm(&mut self, index: usize) {
         self.select(&[index]);
         self.wait(1.0);
@@ -232,8 +227,6 @@ fn opens(o: &Outcome) -> bool {
 
 #[test]
 fn a_drag_from_an_unselected_entry_selects_it_on_press_and_drags_it() {
-    // browser/selection/pointer-intent: On an unselected entry, a drag from the icon or rendered filename starts a file drag.
-    // browser/selection/pointer-intent: Pressing and dragging an unselected entry selects it on press and deselects the previous selection.
     for spot in [Spot::Content, Spot::Name] {
         let mut r = Rig::double();
         r.select(&[5, 6]);
@@ -294,8 +287,6 @@ fn a_plain_press_inside_a_multi_selection_keeps_the_group_for_the_drag() {
 
 #[test]
 fn a_plain_click_inside_a_multi_selection_collapses_it_to_the_entry() {
-    // browser/view-modes/columns: With folders opening on one click, a plain click on a folder inside a multi-selection collapses the selection to it and opens its column.
-    // browser/view-modes/columns: With single-click previews on, a plain click on a previewable file inside a multi-selection collapses the selection to it and previews it.
     let mut r = Rig::columns();
     r.select(&[1, 2, 4]);
     r.click(1, Spot::Content, PLAIN);
@@ -332,8 +323,6 @@ fn ctrl_and_shift_clicks_on_blank_row_space_toggle_and_range() {
 
 #[test]
 fn ctrl_drag_from_an_entry_adds_it_and_drags() {
-    // browser/selection/pointer-intent: Ctrl-drag from an entry's icon or name copies it and adds it to the selection.
-    // Checks the "adds it" half: the copy is the host's, from the modifiers at the drag.
     let mut r = Rig::double();
     r.select(&[3]);
     r.down(5, Spot::Content, CTRL);
@@ -362,8 +351,6 @@ fn ctrl_drag_from_an_entry_adds_it_and_drags() {
 
 #[test]
 fn shift_drag_from_an_entry_drags_the_range() {
-    // browser/selection/pointer-intent: Shift-drag from an entry's icon or name moves it.
-    // Checks the drag of the range; the move is the host's, from the modifiers at the drag.
     let mut r = Rig::double();
     r.click(3, Spot::Content, PLAIN);
     r.wait(1.0).down(5, Spot::Name, SHIFT);
@@ -384,9 +371,6 @@ fn an_alt_drag_from_an_entry_starts_a_marquee() {
 
 #[test]
 fn alt_with_ctrl_or_shift_on_an_entry_leaves_the_selection_to_the_band() {
-    // browser/selection/marquee: Holding Alt starts a marquee even when the press lands on an entry.
-    // How the band then toggles or adds is C1d's. Strata takes the band's selection at press before the row's own press changes anything
-    // (`marquee/state.rs`), so a modified Alt press changes nothing until its release.
     for (mods, index) in [
         (Mods { alt: true, ..CTRL }, 5),
         (Mods { alt: true, ..SHIFT }, 7),
@@ -410,8 +394,6 @@ fn alt_with_ctrl_or_shift_on_an_entry_leaves_the_selection_to_the_band() {
 
 #[test]
 fn alt_with_ctrl_or_shift_on_an_entry_toggles_or_ranges_on_release() {
-    // browser/selection: Ctrl+click toggles one entry in or out of the selection and moves the range anchor to it.
-    // browser/selection: Shift+click selects every entry from the range anchor to the clicked entry.
     let mut r = Rig::double();
     r.click(3, Spot::Content, PLAIN);
     r.wait(1.0).down(5, Spot::Name, Mods { alt: true, ..CTRL });
@@ -431,7 +413,6 @@ fn alt_with_ctrl_or_shift_on_an_entry_toggles_or_ranges_on_release() {
 
 #[test]
 fn travel_within_the_threshold_stays_a_click() {
-    // browser/view-modes/columns: Pressing a row and moving less than GTK's drag threshold starts no file drag.
     let mut r = Rig::double();
     r.down(4, Spot::Content, PLAIN);
     r.to(8.0, 0.0);
@@ -446,8 +427,6 @@ fn travel_within_the_threshold_stays_a_click() {
 
 #[test]
 fn a_press_that_crossed_the_threshold_never_previews_or_opens() {
-    // browser/selection/pointer-intent: A press that crosses the drag threshold never opens a preview, even after the drop.
-    // browser/selection/pointer-intent: A press that crossed the drag threshold does not activate on release, even if the pointer returns to its start.
     let mut r = Rig::new(modes(ClickCount::One, ClickCount::One));
     r.down(4, Spot::Content, PLAIN);
     r.to(0.0, 12.0);
@@ -485,8 +464,6 @@ fn a_press_whose_entry_moved_during_it_does_not_open() {
 
 #[test]
 fn a_press_after_a_release_that_never_came_starts_fresh() {
-    // No bullet of its own: a system drag (P1) can take the release, so the next press must
-    // start afresh rather than finish the old gesture.
     let mut r = Rig::new(modes(ClickCount::One, ClickCount::One));
     r.down(4, Spot::Content, PLAIN);
     r.to(0.0, 30.0);
@@ -557,8 +534,6 @@ fn with_double_set_one_click_only_selects_and_two_open() {
 
 #[test]
 fn a_triple_click_opens_once_and_arms_no_rename() {
-    // operations/rename: A quick double-click opens the item instead; another click, a drag, any key press, or a selection change before the interval cancels the pending rename.
-    // GTK keeps counting a third press (3, 4, …) and Strata acts only on the first and second.
     let mut r = Rig::double();
     for _ in 0..3 {
         r.click(4, Spot::Name, PLAIN);
@@ -621,8 +596,6 @@ fn ctrl_and_shift_clicks_change_the_selection_without_opening() {
 
 #[test]
 fn an_alt_click_opens_with_single_set() {
-    // browser/selection/click-modes: With Single set, one click on a folder opens it.
-    // Alt is not a selection modifier: Strata's `plain_single` reads only Ctrl and Shift.
     let mut r = Rig::columns();
     r.click(1, Spot::Content, ALT);
     assert_eq!(
@@ -636,8 +609,6 @@ fn an_alt_click_opens_with_single_set() {
 
 #[test]
 fn a_changed_click_count_applies_to_the_next_click() {
-    // browser/selection/click-modes: A changed click count applies to open windows without restarting and persists across restarts.
-    // Checks the "without restarting" half: persistence is the host's preferences.
     let mut r = Rig::double();
     r.click(1, Spot::Content, PLAIN);
     assert_eq!(r.take(), [Outcome::Clicked { id: id(1) }]);
@@ -673,8 +644,6 @@ fn a_slow_click_on_the_sole_selections_name_renames_after_the_interval() {
 
 #[test]
 fn an_early_tick_asks_to_be_woken_when_the_rename_is_due() {
-    // operations/rename: Clicking the name text of the only selected item again, after the double-click interval, opens the editor.
-    // A tick can come early (another controller's wake-up); the rename still needs its own.
     let mut r = Rig::double();
     r.arm(4);
     r.wait(0.1);
@@ -828,8 +797,6 @@ fn a_slow_click_doesnt_arm_with_renaming_off_several_selected_or_a_modifier() {
 
 #[test]
 fn a_slow_click_on_an_open_folders_name_renames_instead_of_reopening() {
-    // operations/rename: In Columns, clicking the name of the folder whose child column is open opens its editor instead of collapsing the column.
-    // browser/view-modes/columns: A slow second click on the name of a selected, open folder still starts a rename.
     let mut r = Rig::columns();
     r.select(&[1]);
     r.wait(1.0).click(1, Spot::Name, PLAIN);
@@ -929,8 +896,6 @@ impl Rig {
 
 #[test]
 fn a_middle_click_on_a_folder_opens_a_tab_or_with_ctrl_or_shift_a_window() {
-    // browser/selection: Middle-clicking a folder row in Columns, Icons, or List opens that folder in a new tab.
-    // browser/selection: Ctrl+middle-click or Shift+middle-click on a folder row opens that folder in a new window.
     let mut r = Rig::double();
     r.select(&[5]);
     r.middle(1, PLAIN);
@@ -1008,8 +973,6 @@ fn a_double_middle_click_opens_one_tab_and_a_dragged_one_none() {
 
 #[test]
 fn a_secondary_press_selects_an_unselected_entry_and_keeps_a_selection_it_lands_in() {
-    // browser/context-menu: Right-clicking an unselected entry makes it the only selected entry and the keyboard cursor.
-    // browser/context-menu: Right-clicking an entry inside a multi-selection keeps the whole selection.
     let mut r = Rig::double();
     r.select(&[3, 4]);
     let anchor = r.f.sel.anchor();
@@ -1017,11 +980,7 @@ fn a_secondary_press_selects_an_unselected_entry_and_keeps_a_selection_it_lands_
     r.down_with(Button::Secondary, Some(6), Spot::Content, PLAIN);
     assert_eq!(r.selected(), [6]);
     assert_eq!(r.f.sel.cursor(), Some(id(6)));
-    // Strata's menu moves no Shift anchor (`focus_context_entry`): a Shift+click after it
-    // ranges from where the anchor was (finding lgse/strata#2355).
     assert_eq!(r.f.sel.anchor(), anchor);
-    // With no anchor, as in a column just opened, the anchor goes to the entry: Strata's
-    // selection takes the cursor for an anchor it lacks (`set_selection` in `strata-fs`).
     let mut fresh = Rig::double();
     assert_eq!(fresh.f.sel.anchor(), None);
     fresh.down_with(Button::Secondary, Some(6), Spot::Content, PLAIN);
@@ -1047,11 +1006,6 @@ fn a_secondary_press_selects_an_unselected_entry_and_keeps_a_selection_it_lands_
     ));
 }
 
-/// Strata's search and filter results keep an anchor of their own, which neither a
-/// right-click nor a Shift+press sets (`interactions.anchor` and `pointer_selection` in
-/// `src/ui/`): with `missing_anchor_stays` on, each Shift+click after a right-click with no
-/// anchor selects its entry alone, and an anchor there was still stays (findings
-/// lgse/strata#2375 and #2431).
 #[test]
 fn a_missing_anchor_can_stay_missing_through_right_and_shift_clicks() {
     let results = PointerSettings::default().missing_anchor_stays(true);
@@ -1079,8 +1033,6 @@ fn a_missing_anchor_can_stay_missing_through_right_and_shift_clicks() {
 
 #[test]
 fn ctrl_shift_ranges_by_the_setting() {
-    // browser/selection: Shift+click selects every entry from the range anchor to the clicked entry.
-    // Ctrl+Shift+click: Replace by default, as Strata's `pointer_selection` does; Add when set.
     let mut r = Rig::double();
     r.select(&[8]);
     r.click(3, Spot::Content, CTRL);
@@ -1110,9 +1062,6 @@ fn ctrl_shift_ranges_by_the_setting() {
     );
     assert_eq!(r.selected(), [3, 4, 5, 8]);
 }
-
-// A single-selection collection (`PointerSettings::multiple(false)`), as a portal chooser that
-// was not asked for several files is.
 
 #[test]
 fn with_one_entry_allowed_ctrl_and_shift_clicks_select_the_entry_alone() {
@@ -1158,8 +1107,6 @@ fn with_one_entry_allowed_no_drag_draws_a_band_but_an_entry_still_drags() {
 
 #[test]
 fn content_only_selected_rows_keep_gutter_as_marquee_without_losing_activation() {
-    // List view (`drag_selected_rows: false`): selected row whitespace still starts a marquee,
-    // while icon/name drags carry the selection and clicks/double-clicks on gutter still activate.
     let mut r = Rig::new(PointerSettings::default().drag_selected_rows(false));
     r.select(&[2, 4]);
     r.down(4, Spot::Gutter, PLAIN);
@@ -1196,9 +1143,6 @@ fn content_only_selected_rows_keep_gutter_as_marquee_without_losing_activation()
 
 #[test]
 fn chooser_without_drag_sources_keeps_selected_gutter_for_marquee_and_double_click() {
-    // Portal multiple-selection chooser (`drags: false`, `multiple: true`): selected row gutter
-    // remains a marquee origin for both single-press and tap-drag in either direction, while a
-    // double-click that stays put activates the entry.
     let mut r = Rig::new(PointerSettings::default().drags(false).rename(false));
     r.click(4, Spot::Gutter, PLAIN);
     r.take();

@@ -24,10 +24,6 @@ impl Key {
         backend().key_name(self)
     }
 
-    /// The key a name stands for, and `None` for the name `VoidSymbol` as for a name that
-    /// is no key's (see [`Backend::key_from_name`](super::Backend::key_from_name)). Nothing
-    /// calls this yet and no test covers it; its test comes with the first backend that is
-    /// not GDK's, which must answer as GDK's does.
     pub fn from_name(name: &str) -> Option<Self> {
         backend().key_from_name(name)
     }
@@ -65,8 +61,6 @@ macro_rules! declare {
 crate::key_constants!(declare);
 
 bitflags! {
-    /// Held modifiers, with GDK's names and bits so that the GTK application converts
-    /// without a table. Shortcuts compare the first four; see `SHORTCUT_MODIFIERS`.
     #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
     pub struct Modifiers: u32 {
         const SHIFT_MASK = 1;

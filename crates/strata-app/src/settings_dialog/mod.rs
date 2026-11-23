@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The Settings dialog (`Ctrl+,` and the header's Settings button), theme catalog, and
-//! one-per-streak save notice (`docs/rune/parity/packages/A18.md`).
-
 use rune::{Color, Cursor, El, ScrollSpec, TextEdit, Tx, col, el, icon, row, text};
 use strata_components::{
     controls::{
@@ -44,10 +41,6 @@ mod search_index;
 mod tests;
 mod transparency_section;
 
-// Match GTK's responsive settings panel (`src/ui/settings/responsive.rs`, `src/style.css`):
-// 1250x800 capped to the window minus a 24 px margin (`look.space.xxl`), 240 px navigation
-// rail (216 px min-width + 12 px horizontal padding each side), and 48x24 content padding
-// that narrows to 20x18 on compact viewports.
 const DIALOG_WIDTH: f32 = 1250.0;
 const DIALOG_HEIGHT: f32 = 800.0;
 const RAIL_WIDTH: f32 = 240.0;
@@ -278,9 +271,6 @@ impl SettingsDialog {
         self.open
     }
 
-    /// Shows `page`. The Keyboard page is made the first time it shows, as GTK builds it on its
-    /// first selection (`src/ui/settings.rs`), so it opens on the table of the mode in force then.
-    /// Returns `true` when the active page changed.
     pub(super) fn select_page(&mut self, page: PageId, tenxer_mode: bool) -> bool {
         let changed = self.page != page;
         self.set_page(page);
@@ -327,8 +317,6 @@ impl SettingsDialog {
         self.open && !self.message_open() && self.open_choice.is_some()
     }
 
-    /// Whether a message over the pages has the keyboard: the save notice or Reset all's
-    /// confirmation.
     fn message_open(&self) -> bool {
         self.notice.is_open() || self.keyboard.confirm_open()
     }
@@ -390,8 +378,6 @@ pub(super) fn close_settings(app: &mut App) {
     state.search = SettingsSearchState::new();
     state.theme_query.replace_text("");
     state.theme_filter = appearance_page::ThemeFilter::All;
-    // GTK hides its Settings layer and keeps it: the keybind search and the table shown stay as
-    // they were, and only a capture or a confirmation ends with it.
     state.actions.closed();
     state.keyboard.closed();
     state.integrations.closed();
@@ -425,9 +411,6 @@ impl Part for SettingsDialog {
             return None;
         }
         if dialog.choice_menu_open() || (dialog.open && dialog.actions.popover_open()) {
-            // A choice menu or editor popover is a second modal, which leaves only the popover
-            // in the tree. Its keys stay in it, as GTK's popover in the Settings window keeps
-            // them from the browser.
             return Some(Holds::Popover);
         }
         Some(Holds::Modal {
@@ -864,7 +847,7 @@ fn spawn_relaunch_after_exit() {
         .args([
             "-c",
             "while kill -0 \"$1\" 2>/dev/null; do sleep 0.1; done; exec \"$2\"",
-            "strata-rune-restart",
+            "strata-restart",
         ])
         .arg(pid)
         .arg(exe)

@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! "Run this program?" on the window the crate registers, in a temporary folder: what
-//! `executable-requires-confirmation` and `executable-menu-confirmed-run` do, by the browser's
-//! open and by the menu's row.
-
 use std::{ffi::OsStr, os::unix::fs::PermissionsExt, path::Path};
 
 use rune::{Key, KeyEvent, Mods};
@@ -161,8 +157,6 @@ fn executable_file(folder: &Path, name: &str, text: &str) -> Location {
     Location::local(&path)
 }
 
-/// A program whose start fails says so once its thread has answered, and a shell script with
-/// no terminal emulator on `PATH` starts nothing and reports the missing terminal.
 #[test]
 fn a_program_that_cannot_start_says_so() {
     let empty_dir = tempfile::tempdir().expect("empty PATH dir");

@@ -42,10 +42,8 @@ fn a_keyword_matches_when_the_name_does_not() {
         hit("happy", "grinning face", &["cheerful", "happy", "smile"]),
         Some(Hit::Keyword(1, 5))
     );
-    // Every query word must start some keyword; GTK matches each keyword whole.
     assert!(hit("happy cheer", "grinning face", &["cheerful", "happy"]).is_some());
     assert!(hit("happy dog", "grinning face", &["cheerful", "happy"]).is_none());
-    // Words split between the name and the keywords match neither, as in GTK.
     assert!(hit("grin happy", "grinning face", &["happy"]).is_none());
 }
 

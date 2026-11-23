@@ -101,8 +101,6 @@ fn copy_plans(
         .collect()
 }
 
-/// A rotational disk on either side reads or writes one file at a time;
-/// a disk Windows formats is taken for one where its device does not say.
 fn rotational(plans: &[ParallelCopyPlan], destination: &gio::File, windows_disk: bool) -> bool {
     let source_folders: HashSet<&Path> = plans
         .iter()

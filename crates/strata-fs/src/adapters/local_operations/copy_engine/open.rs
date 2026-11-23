@@ -65,9 +65,6 @@ pub(super) fn open_file(
     }
 }
 
-/// After this machine writes a file, the SMB client keeps its handle open
-/// for `closetimeo` and refuses an open of another name of the file with
-/// `EINVAL` meanwhile, so the open is tried again until then.
 pub(super) fn open_after_deferred_close(
     fs: &dyn FsOps,
     at: Entry<'_>,
@@ -105,10 +102,6 @@ pub(super) fn open_one_name(
     Ok(source)
 }
 
-/// Files on SMB sources that a copy has a name of open, by device and
-/// inode: the SMB client takes one lease per file and refuses an open of
-/// another name meanwhile, or a Samba server defers it forever. Link counts
-/// the client took from a listing say 1, so every file is held.
 pub(super) static OPEN_ON_SMB: Mutex<BTreeSet<(u64, u64)>> = Mutex::new(BTreeSet::new());
 pub(super) static OPEN_ON_SMB_CLOSED: Condvar = Condvar::new();
 

@@ -1,10 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The QA mode on the session host (H4): `strata-rune --qa <directory>` with
-//! `STRATA_QA_WINDOW=1` opens a real window and serves the runner's protocol from it, with
-//! input through the compositor's virtual keyboard and pointer. The steps are the runner's
-//! own; the replies are read as the runner reads them.
-
 use std::path::{Path, PathBuf};
 
 use serde_json::{Value, json};
@@ -12,8 +7,6 @@ use strata_test_peer::protocol::{Offer, Selection, Via};
 
 use crate::support::{Display, Proc, Session};
 
-/// sway's IPC socket in the session's runtime directory, which the session host resizes and
-/// finds its window through.
 fn sway_socket(s: &Session) -> PathBuf {
     std::fs::read_dir(s.runtime_dir())
         .expect("the runtime directory")
@@ -36,7 +29,7 @@ fn serve(s: &Session, folder: &Path) -> Proc {
         .arg(folder)
         .env("STRATA_QA_WINDOW", "1")
         .env("SWAYSOCK", sway_socket(s));
-    let app = s.spawn("strata-rune-qa", command);
+    let app = s.spawn("strata-qa", command);
     let ready = app.wait_json("the ready reply", |reply| reply.get("ok").is_some());
     assert_eq!(ready["ok"], true, "{ready}");
     assert_eq!(ready["result"], json!({ "ready": true }), "{ready}");
@@ -54,9 +47,6 @@ fn passes(app: &Proc, step: &Value) -> Value {
     reply
 }
 
-/// A key and a click cross the compositor and reach the views, and Ctrl+V in the rename
-/// field pastes what another process put on the system clipboard: the clipboard the
-/// offscreen host has none of.
 #[test]
 #[ignore = "needs a private session: mise run test-platform"]
 fn the_qa_mode_drives_a_real_window_through_the_compositor() {
@@ -140,8 +130,6 @@ fn windows_titled(tree: &Value, pid: u32, title: &str) -> usize {
     usize::from(own) + nested
 }
 
-/// Waits until the window `id` has the keyboard or asks for it: on Wayland Rune can only ask
-/// (`WindowHandle::focus` with no activation token), which sway shows as urgent.
 fn wait_asking_for_attention(s: &Session, id: i64) {
     let deadline = std::time::Instant::now() + crate::support::timeout();
     loop {
@@ -183,11 +171,6 @@ fn ask_to_copy(app: &Proc) {
     passes(app, &json!({ "wait": { "menu_items": null } }));
 }
 
-/// The floating Copy to chooser is a window of its own, which Rune cannot make transient for
-/// the browser (Rune packet entry 23). So the host does what GTK's transient chooser gets from
-/// its parent: asking again brings it forward (`DestinationLease::acquire`), as far as Rune can
-/// (on Wayland, an attention request), and closing the browser closes it (`bind_host_parent`),
-/// and with it the process.
 #[test]
 #[ignore = "needs a private session: mise run test-platform"]
 fn the_floating_chooser_comes_forward_and_closes_with_its_browser() {

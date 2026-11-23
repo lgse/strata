@@ -11,14 +11,6 @@ pub fn gio_file_for_location(location: &Location) -> gio::File {
         .unwrap_or_else(|| gio::File::for_uri(location.uri_value().unwrap_or_default()))
 }
 
-/// Builds a `Location` for a `gio::File`, preferring a native path only when
-/// the file is genuinely on a local filesystem. A mounted GVfs backend (SMB,
-/// SFTP, ...) can still return a `.path()` via its FUSE mirror even though the
-/// file isn't native; using that path would leak the mirror's opaque
-/// `/run/user/$UID/gvfs/...` location instead of the clean URI (lgse/strata#5).
-/// GIO URIs keep GLib's normalized percent-encoding (`trash:///caf%E9.txt` is not decoded), so
-/// names that are not valid UTF-8 round-trip. Returns `None` only for a genuinely malformed URI,
-/// such as an invalid `%` escape.
 pub fn location_for_file(file: &gio::File) -> Option<Location> {
     if file.is_native()
         && let Some(path) = file.path()
@@ -42,10 +34,6 @@ pub fn reveal_target_for_file(file: &gio::File) -> Option<(Location, Location)> 
 
 pub const CONTENT_TYPE_ATTRIBUTES: &str = "standard::content-type,standard::fast-content-type";
 
-/// GVfs SMB sets only `standard::fast-content-type` when the name leaves the type
-/// uncertain (`.md`, `.py`, `.json`), so fall back to it like `g_file_query_default_handler`.
-/// Reading the attributes generically avoids the critical `FileInfo::content_type` logs
-/// when the attribute is missing.
 pub fn content_type_of(info: &gio::FileInfo) -> Option<glib::GString> {
     [
         gio::FILE_ATTRIBUTE_STANDARD_CONTENT_TYPE,

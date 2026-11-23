@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! `cargo run -p strata-gallery` opens the gallery on its index; Escape goes back to it.
-//! `-- --snap out.png --scene gallery-index-dark` renders a scene headless, and
-//! `-- --scene <scene> --script tests/scripts/<id>/<name>.json` drives one.
-
 use strata_gallery::{scenes, spec};
 
 fn main() {

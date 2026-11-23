@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The window's own commands: what the browser does at a key, a menu row or a button, with
-//! no part of the interface between. Each is read at the stage, and with the matcher, that
-//! the GTK window's dispatcher has for it.
-
 use rune::Tx;
 use strata_core::model::Location;
 use strata_desktop::keys::{
@@ -33,7 +29,6 @@ fn depth(app: &App, on: &On) -> Option<usize> {
     }
 }
 
-/// `browser_commands` in `src/ui/window/keyboard/commands.rs`, and the pane menu's row.
 fn toggle_hidden(app: &mut App, _: &Call<'_>, _: &mut Tx) -> Outcome {
     app.browser.toggle_hidden();
     Outcome::Ran
@@ -41,8 +36,6 @@ fn toggle_hidden(app: &mut App, _: &Call<'_>, _: &mut Tx) -> Outcome {
 
 /// F5 reads every column again (`refresh_browser`); the pane menu's row reads its own.
 fn refresh(app: &mut App, call: &Call<'_>, _: &mut Tx) -> Outcome {
-    // A user's Reload also retries the Trash on mounts that refused it, as GTK's every Reload
-    // does (`ViewEdit::refresh`, the header's and the folder menu's Refresh).
     let column = match call.on {
         On::Row((depth, _)) | On::Column(depth) => Some(depth),
         On::Focus => None,
@@ -56,10 +49,6 @@ fn refresh(app: &mut App, call: &Call<'_>, _: &mut Tx) -> Outcome {
     Outcome::Ran
 }
 
-/// `open_context_entry` / `open_with_default_app` in `src/ui/browser/context_menu/item_menu.rs`:
-/// a single row's entry opens as a click on it does; a multi-selection's shared-default Open row
-/// launches that handler across all selected entries. Return on the cursor's entry is the view's
-/// own key.
 fn open(app: &mut App, call: &Call<'_>, _: &mut Tx) -> Outcome {
     let On::Row(row) = call.on else {
         return Outcome::Declined;
@@ -98,9 +87,6 @@ fn parent(app: &mut App, _: &Call<'_>, _: &mut Tx) -> Outcome {
     Outcome::Ran
 }
 
-/// `navigate_up` in `src/ui/browser/view_navigation.rs`: outside Columns the parent folder;
-/// in Columns the keyboard's column closes, or from the first the parent opens with the
-/// folder the user came from selected.
 fn up(app: &mut App, _: &Call<'_>, _: &mut Tx) -> Outcome {
     let columns = shell::shown_view(app).is_some_and(|view| (view.shows)("columns"));
     let browser = app.browser.clone();
@@ -108,8 +94,6 @@ fn up(app: &mut App, _: &Call<'_>, _: &mut Tx) -> Outcome {
         browser.parent();
         return Outcome::Ran;
     }
-    // The keyboard's column: the registry has handed the browser what the view moved
-    // (`call`, in `commands.rs`), so its active column is the one the keyboard is in.
     match browser.active_depth() {
         Some(0) => {
             if let Some(parent) = browser.location_at(0).and_then(|first| first.parent()) {
@@ -122,14 +106,10 @@ fn up(app: &mut App, _: &Call<'_>, _: &mut Tx) -> Outcome {
     Outcome::Ran
 }
 
-/// BackSpace is no catalog command: `item_action` reads the bare binding, with Shift or Super
-/// held too.
 fn backspace(press: &KeyPress) -> bool {
     press.is(BACKSPACE.ignoring(SHIFT.union(SUPER)))
 }
 
-/// `items_unfocused_for` in `src/ui/window/keyboard/items.rs`: a key with neither Ctrl nor
-/// Alt held reaches the items only from the shown view's listing.
 fn from_the_listing(_: &App, at: &Situation) -> bool {
     at.in_view()
 }
@@ -148,16 +128,12 @@ pub(super) const ACTIONS: &[Action<App>] = &[
             Stage::FileCommands,
             &[HIDDEN_FILES.in_map(Map::Default)],
         )]),
-    // `browser_commands` reads it with anything held; the window action `refresh` reads it
-    // as bound once the chain has left the key (`WINDOW_ACTIONS` in `keyboard.rs`), which is
-    // what refreshes under a menu.
     Action::new("refresh", refresh).command(REFRESH).keys(&[
         Keys::at(Stage::FileCommands, &[REFRESH.ignoring(SHORTCUT_MODIFIERS)]),
         Keys::at(Stage::AfterYield, &[REFRESH.ignoring(Modifiers::empty())]),
     ]),
     Action::new("open", open).command(ENTER),
     Action::new("select-all", select_all).command(SELECT_ALL),
-    // `history_jump` in `src/ui/window/keyboard/items.rs`, which lets Shift be held.
     Action::new("history-back", back)
         .command(HISTORY_BACK)
         .keys(&[Keys::at(
@@ -176,7 +152,6 @@ pub(super) const ACTIONS: &[Action<App>] = &[
             Stage::ItemNavigation,
             &[PARENT_FOLDER.ignoring(SHIFT)],
         )]),
-    // `item_action` in `src/ui/window/keyboard/items.rs`, at `item_navigation`.
     Action::new("navigate-up", up).keys(&[Keys {
         stage: Stage::ItemNavigation,
         reads: Reads::Press(backspace),
@@ -188,11 +163,9 @@ pub(super) const ACTIONS: &[Action<App>] = &[
             Stage::ItemNavigation,
             &[HOME_FOLDER.ignoring(SHIFT)],
         )]),
-    // `window_commands` in `src/ui/window/keyboard/commands.rs`: the view switch.
     views::SHOW_COLUMNS,
     views::SHOW_ICONS,
     views::SHOW_LIST,
-    // `zoom_shortcut` in `src/ui/window/keyboard.rs`: the text size.
     text_size::LARGER,
     text_size::SMALLER,
     text_size::RESET,

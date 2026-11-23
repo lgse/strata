@@ -1,10 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Local archive operation entry points and worker/event coordination.
-//!
-//! Compression publishes completed staging files; extraction confines writes to
-//! a pinned destination. Format integration stays behind the operation provider.
-
 mod compression;
 mod decoders;
 mod destination;
@@ -67,18 +62,6 @@ use std::{
     },
 };
 
-/// Compresses the entries in `request` into a new local archive.
-///
-/// Validates that the destination is a local path and that
-/// [`CompressRequest::archive_name`] passes [`validate_basename`], then writes
-/// `{name}.{extension}` through [`write_staged_archive`]. Progress is polled
-/// every 100 ms via [`archive_progress_timer`]. Returns a [`LoadHandle`] that
-/// cancels in-flight work when dropped.
-///
-/// # Concurrency
-///
-/// Runs on the default [`glib::MainContext`]. Archive encoding happens on a
-/// worker thread via [`gio::spawn_blocking`].
 pub(super) fn compress(request: CompressRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle {
     let cancellable = gio::Cancellable::new();
     let release_cancellable = cancellable.clone();
@@ -451,8 +434,6 @@ enum ArchiveError {
 }
 
 impl ArchiveError {
-    /// Failures are localized where they are built; password and
-    /// cancellation messages are shared constants translated here.
     fn user_message(&self) -> String {
         match self {
             Self::Cancelled => crate::i18n::tr(ARCHIVE_CANCELLED),
@@ -515,13 +496,6 @@ fn archive_io_failed(error: &std::io::Error) -> ArchiveError {
     archive_failed(crate::services::io_error_message(error))
 }
 
-/// Returns [`ArchiveError::Cancelled`] when the `cancelled` flag is set.
-///
-/// # Errors
-///
-/// - [`Cancelled`] if `cancelled` is set
-///
-/// [`Cancelled`]: ArchiveError::Cancelled
 fn check_archive_cancelled(cancelled: &AtomicBool) -> Result<(), ArchiveError> {
     if cancelled.load(Ordering::Relaxed) {
         Err(ArchiveError::Cancelled)
@@ -530,15 +504,6 @@ fn check_archive_cancelled(cancelled: &AtomicBool) -> Result<(), ArchiveError> {
     }
 }
 
-/// Builds an [`OperationEvent::Cancelled`] for a compress or extract request.
-///
-/// # Arguments
-///
-/// * `request_id` - Identifier of the cancelled request
-/// * `destination` - Archive path or extract directory, recorded as affected
-/// * `completed` - Members fully written before cancellation
-/// * `failed` - Members left in a partial or unremovable state
-/// * `not_attempted` - Members not started, including a cleaned-up partial write
 fn cancelled_archive_event(
     request_id: OperationRequestId,
     destination: Location,
@@ -557,22 +522,6 @@ fn cancelled_archive_event(
     }
 }
 
-/// Copies `reader` to `writer`, checking `cancelled` between 1 MiB chunks.
-///
-/// Returns the number of bytes written.
-///
-/// # Performance
-///
-/// Uses a [`COPY_BUF`]-sized heap buffer so large members are not copied
-/// through the default 8 KiB [`std::io::copy`] path.
-///
-/// # Errors
-///
-/// - [`Cancelled`] if `cancelled` is set between reads
-/// - [`Failed`] if a read or write fails
-///
-/// [`Cancelled`]: ArchiveError::Cancelled
-/// [`Failed`]: ArchiveError::Failed
 fn copy_with_big_buf(
     mut reader: impl std::io::Read,
     writer: &mut (impl std::io::Write + ?Sized),
@@ -594,19 +543,6 @@ fn copy_with_big_buf(
     Ok(total)
 }
 
-/// Starts a 100 ms timer that emits [`OperationEvent::ArchiveProgress`].
-///
-/// The source stays attached until the caller removes the returned
-/// [`glib::SourceId`]. Returning [`glib::ControlFlow::Break`] from the
-/// callback would double-remove that source.
-///
-/// # Arguments
-///
-/// * `request_id` - Identifier included in each progress event
-/// * `progress` - Completed member count polled each tick
-/// * `total` - Expected member count, which may still be zero during counting
-/// * `cancelled` - When set, ticks stop emitting but the source stays attached
-/// * `emit` - Callback that receives progress events on the main context
 fn archive_progress_timer(
     request_id: OperationRequestId,
     progress: &Arc<AtomicUsize>,

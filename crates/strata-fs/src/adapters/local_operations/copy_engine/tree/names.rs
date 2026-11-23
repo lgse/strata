@@ -6,8 +6,6 @@ use super::*;
 pub(in crate::adapters::local_operations::copy_engine) enum Naming {
     Decide,
     Create,
-    /// The filesystem may take two names for one, so names that may collide
-    /// are claimed in byte order before their files are written.
     Claim,
 }
 
@@ -36,18 +34,10 @@ impl Naming {
     }
 }
 
-/// The names of a folder this copy made, against which its aliases are
-/// numbered. A numbered name never takes a name an entry of the folder asks
-/// for, and each is tried by one job only, so a name found taken is never
-/// another job's entry mistaken for one whose reply was lost.
 pub(in crate::adapters::local_operations::copy_engine) struct Names {
     pub(super) requested: Vec<OsString>,
     pub(super) keys: OnceLock<HashMap<OsString, usize>>,
     pub(super) numbered: Mutex<HashSet<OsString>>,
-    /// What the folder's jobs made, by collision key, where a taken name may
-    /// be the copy's own entry whose reply was lost; `None` elsewhere. Some
-    /// mounts list a name in another case than it was made in, so the
-    /// listing alone cannot tell such an entry from another name's.
     pub(super) made: Option<Mutex<HashMap<OsString, Vec<LocalFileIdentity>>>>,
     pub(super) identity: IdentityTraits,
     pub(super) rules: FolderRules,

@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The card: rune-kit's `HoverCard` holding the folder's name, its first rows, and the more,
-//! empty, loading or error line.
-
 use std::rc::Rc;
 use std::time::Duration;
 
@@ -17,18 +14,10 @@ use super::{More, Origin, PeekStatus, PeekTarget, Shared};
 use crate::contract::Entry;
 use crate::thumbnails::picture;
 
-/// `HoverCard`'s padding inside its surface on each side (`overlay.rs`, `padding(4.0)`): the
-/// content is this much narrower than the card, so the card is [`WIDTH`] wide.
 const CARD_PADDING: f32 = 4.0;
 
-/// How many rows tall the body is at least, so the loading, empty and error states don't
-/// shrink the card to its header: Strata's `presentation.stack.set_size_request(-1, 120)` is
-/// four of its 30 pt `.file-row`s.
 const BODY_MIN_ROWS: f32 = 4.0;
 
-/// The line under the header as a share of the border colour: Strata's
-/// `.peek-popover .column-header { border-bottom: 1px solid alpha(@strata_border, 0.24) }`
-/// (`src/style.css`).
 const HEADER_LINE_OPACITY: f32 = 0.24;
 
 /// The key of the card's group, which assistive technology names "Folder peek".
@@ -40,8 +29,6 @@ pub(super) fn card<S: 'static>(sh: &Rc<Shared<S>>, s: &S) -> Option<El> {
     let look = (sh.look)(s);
     let content = body(sh, s, &target, look);
     let mut layer = Vec::new();
-    // The trigger is the zero-width part C22 pins in the folder's row (`attach`), keyed as
-    // `HoverCard` names its anchor; the wrapper it returns is not mounted.
     let _ = HoverCard::new(format!("{}-peek", target.collection))
         .placement(Placement::RightStart)
         .child(content)
@@ -67,8 +54,6 @@ fn body<S: 'static>(sh: &Rc<Shared<S>>, s: &S, target: &PeekTarget, look: &Look)
     let labels = &sh.labels;
     let loading = *c.status == PeekStatus::Loading;
 
-    // The header and the body are plain containers: assistive technology hears the heading
-    // and the list inside them, not two unnamed groups.
     let mut header = row()
         .w_full()
         .h(look.row.columns)
@@ -166,8 +151,6 @@ fn body<S: 'static>(sh: &Rc<Shared<S>>, s: &S, target: &PeekTarget, look: &Look)
         .w(WIDTH - 2.0 * CARD_PADDING)
         .child(header)
         .child(list)
-        // A click anywhere on the card opens the folder; `on_background_press_tx` keeps it a
-        // non-focusable pointer surface, and `a11y_hidden` keeps it out of the accessibility tree.
         .child(
             el().key("peek-open")
                 .pin(Some(0.0), Some(0.0), Some(0.0), Some(0.0))
@@ -187,8 +170,6 @@ fn body<S: 'static>(sh: &Rc<Shared<S>>, s: &S, target: &PeekTarget, look: &Look)
     group
 }
 
-/// Lines of text centred in the body: a plain container, so assistive technology hears the
-/// lines, not an unnamed group around them.
 fn message(look: &Look, body_min: f32) -> El {
     col()
         .w_full()

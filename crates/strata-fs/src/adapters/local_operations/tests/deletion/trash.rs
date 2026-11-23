@@ -9,8 +9,6 @@ fn delete_ended(event: &OperationEvent) -> bool {
     )
 }
 
-/// Deletes `entries` as request `id` and waits until it ends, returning
-/// the operation with what it emitted.
 fn delete_and_wait(
     id: u64,
     entries: Vec<FileEntry>,
@@ -190,8 +188,6 @@ fn trash_reports_the_item_it_moved_when_another_took_the_name_first() {
     );
 }
 
-/// Trashes `folder` through the worker's verified trash, or GIO's with
-/// its leftover cleanup.
 fn trash_folder(
     synchronous: bool,
     folder: &Path,

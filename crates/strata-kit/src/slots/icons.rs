@@ -1,16 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The `icons.*` slot tokens (for example `icons.frame.pad`) that IconsGrid reads.
-//!
-//! Work package: C3, `docs/rune/work/phase-3-views/C3-icons-grid.md`. C3 owns this file. Slot names
-//! are API: renaming one breaks users' override files (plan K4).
-//!
-//! Every default follows the rest of the [`Look`]: the spacing from Content density through
-//! [`density::icons_spacing`], colours from `kit.c` and `fill`. The plain numbers are Strata's
-//! `.icons-card*` and `.file-icons` rules (`src/style.css`, `src/ui/icons_cell.rs`,
-//! lgse/strata `upstream/main` 35ee677ab), which no core token says. The thumbnail size itself
-//! is the look's `tiles` ladder and the host's choice, not a slot token.
-
 use rune::Color;
 
 use crate::density;
@@ -44,8 +33,6 @@ pub struct Icons {
     pub caption_selected_text: Option<Color>,
 }
 
-/// The space at the grid's left and right: `icons.grid.pad`, else Content density's (0 at
-/// Compact, 5 at Airy). Strata pads the top and bottom too; C3 leaves those out (a deviation).
 pub fn grid_pad(look: &Look) -> f32 {
     let s = &look.slots.icons;
     s.grid_pad
@@ -73,8 +60,6 @@ pub fn card_pad_y(look: &Look) -> f32 {
         .unwrap_or_else(|| density::icons_spacing(look.content.pad).card_v)
 }
 
-/// The most tiles a row holds: `icons.grid.max_columns`, else Strata's 20 below Airy Content
-/// density and 16 from it on (`density_icons_columns`).
 pub fn grid_max_columns(look: &Look) -> f32 {
     look.slots.icons.grid_max_columns.unwrap_or(
         if look.content.pad < f32::from(density::CONTENT.airy) {
@@ -85,14 +70,10 @@ pub fn grid_max_columns(look: &Look) -> f32 {
     )
 }
 
-/// The space between the thumbnail slot and its frame's edge: `icons.frame.pad`, else
-/// Strata's 6 (`ICONS_CARD_ICON_PADDING`).
 pub fn frame_pad(look: &Look) -> f32 {
     look.slots.icons.frame_pad.unwrap_or(6.0)
 }
 
-/// The thumbnail frame's corner radius: `icons.frame.radius`, else Strata's 6 at the current
-/// roundness.
 pub fn frame_radius(look: &Look) -> f32 {
     look.slots
         .icons
@@ -100,8 +81,6 @@ pub fn frame_radius(look: &Look) -> f32 {
         .unwrap_or_else(|| look.round(6.0))
 }
 
-/// The placeholder icon's colour: `icons.frame.icon`, else `kit.c.icon_accent` (Strata tints
-/// its Icons fallback icons with the accent).
 pub fn frame_icon(look: &Look) -> Color {
     look.slots
         .icons
@@ -127,10 +106,6 @@ pub fn frame_selected_ring(look: &Look) -> Color {
         .unwrap_or_else(|| k.alpha(k.c.bg_accent, 0.6))
 }
 
-/// A selected tile's frame fill under the pointer: `icons.frame.selected_hover_fill`, else
-/// the default selected fill (the accent at 22 %) deepened as Strata deepens it, to 30 %. It
-/// derives from the accent, not from `icons.frame.selected_fill`: a slot token inherits only
-/// core tokens, so setting one slot token moves no other.
 pub fn frame_selected_hover_fill(look: &Look) -> Color {
     let k = &look.kit;
     look.slots
@@ -151,8 +126,6 @@ pub fn frame_hover_fill(look: &Look) -> Color {
         .unwrap_or_else(|| k.alpha(k.c.bg_accent, 0.15))
 }
 
-/// The frame fill of a folder tile a drag would drop on: `icons.frame.drop_fill`, else the
-/// highlight fill at 82 %.
 pub fn frame_drop_fill(look: &Look) -> Color {
     let k = &look.kit;
     look.slots
@@ -161,8 +134,6 @@ pub fn frame_drop_fill(look: &Look) -> Color {
         .unwrap_or_else(|| k.alpha(look.fill.highlight, look.fill.highlight.a * 0.82))
 }
 
-/// The keyboard cursor's outline on its tile's frame, also a drop target's:
-/// `icons.frame.focus_ring`, else the accent.
 pub fn frame_focus_ring(look: &Look) -> Color {
     look.slots
         .icons
@@ -175,14 +146,10 @@ pub fn caption_gap(look: &Look) -> f32 {
     look.slots.icons.caption_gap.unwrap_or(4.0)
 }
 
-/// The name's padding inside its caption box: `icons.caption.pad`, else Strata's 4 left and
-/// right (and half of it above and below).
 pub fn caption_pad(look: &Look) -> f32 {
     look.slots.icons.caption_pad.unwrap_or(4.0)
 }
 
-/// The name box's corner radius: `icons.caption.radius`, else Strata's 4 at the current
-/// roundness.
 pub fn caption_radius(look: &Look) -> f32 {
     look.slots
         .icons
@@ -190,8 +157,6 @@ pub fn caption_radius(look: &Look) -> f32 {
         .unwrap_or_else(|| look.round(4.0))
 }
 
-/// How many average characters wide a caption is at least, which widens tiles with the text
-/// size: `icons.caption.chars`, else Strata's 12 (`ICONS_CARD_LABEL_CHARS`).
 pub fn caption_chars(look: &Look) -> f32 {
     look.slots.icons.caption_chars.unwrap_or(12.0)
 }
@@ -213,8 +178,6 @@ pub fn caption_selected_fill(look: &Look) -> Color {
         .unwrap_or(look.kit.c.bg_accent)
 }
 
-/// A selected tile's name colour: `icons.caption.selected_text`, else the base background,
-/// as Strata draws `@strata_bg` on the accent.
 pub fn caption_selected_text(look: &Look) -> Color {
     look.slots
         .icons

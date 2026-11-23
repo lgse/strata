@@ -1,48 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The token registry: `get` and `set` by dotted name over the `Kit` tokens, the extensions
-//! and the component slots.
-//!
-//! Work package: W2, `docs/rune/work/phase-0-groundwork/W2-look-contract.md`.
-//!
-//! K4's override file names tokens as this registry does, so it can set any of them without
-//! knowing which component reads it. A name is dot-separated snake_case segments
-//! (`[a-z0-9_]+`), at least two of them:
-//!
-//! | Names | Kind | Field |
-//! | --- | --- | --- |
-//! | `color.<field>` | colour | every `kit.c` colour, such as `color.bg_base` |
-//! | `color.<role>.<part>` | colour | `kit.c.{success,warning,danger,info}.{bg,fg,border,icon}` |
-//! | `radius.{xs,sm,md,lg,xl}` | length | `kit.radius` |
-//! | `type.<style>.{size,line_height}` | length | `kit.ty`'s styles, then `look.ty`'s (`title`, `heading`) |
-//! | `type.<style>.weight` | number, 1–1000 | the same styles |
-//! | `type.<style>.tracking` | number, −10–10 pt | the same styles |
-//! | `space.{xxs,xs,sm,md,lg,xl,xxl}` | length | `look.space` |
-//! | `frame.{inset,bar,control}` | length | `look.frame` |
-//! | `content.pad` | length | `look.content` |
-//! | `row.{list,columns,sidebar,palette}` | length | `look.row` |
-//! | `icon_size.{sm,md,lg}` | length | `look.icon_size` |
-//! | `glow.on` | flag | `look.glow.on` |
-//! | `glow.color` | colour | `look.glow.color` |
-//! | `glow.radius` | length | `look.glow.radius` |
-//! | `glow.opacity` | number, 0–1 | `look.glow.opacity` |
-//! | `fill.{muted,highlight}` | colour | `look.fill` |
-//! | `syntax.<kind>` | colour | `look.syntax`, one per `rune_kit::syntax::Syntax` kind |
-//! | `syntax.preprocessor` | colour | `look.syntax_extra.preprocessor` |
-//! | `<slot>.<part>.<property>` | any | a component slot ([`crate::slots`]), such as `list.row.height`: exactly three segments, the slot's id first |
-//!
-//! Lengths are in points: finite and not negative.
-//!
-//! Some things are deliberately not tokens:
-//!
-//! - roundness, density and text size are K2's settings, and the registry holds the tokens
-//!   they produce;
-//! - the animations switch is a setting;
-//! - the tile and thumbnail ladders are lists;
-//! - Kit's elevation shadows, glyphs and motion springs aren't settable here yet.
-//!
-//! Adding any of them later is an addition.
-
 use std::fmt;
 
 use rune::Color;
@@ -149,10 +106,6 @@ enum Access {
     Flag(fn(&Look) -> bool, fn(&mut Look, bool)),
 }
 
-/// One named token: how to read it from a [`Look`] and how to set it.
-///
-/// A slot registers its tokens in its own file with these constructors. `get` returns what a
-/// component would draw: for a slot token that nothing set, the value it inherits.
 #[derive(Clone, Copy)]
 pub struct Token {
     name: &'static str,
@@ -314,14 +267,6 @@ pub(crate) const CORE: &[&[Token]] = &[
     COLORS, STATES, RADII, TYPE, SPACE, FRAME, CONTENT, ROW, ICON_SIZE, GLOW, FILL, SYNTAX,
 ];
 
-/// Names every `Kit` field, so a Rune bump that adds one fails to build until it is either
-/// registered or listed here as not a token:
-///
-/// - `c`, `ty` and `radius` are tokens: `color.*`, `type.*` and `radius.*`;
-/// - `dark` is the appearance, which the theme picks, not a value to override;
-/// - `elevation` (shadow lists), `glyph` (icons) and `motion` (springs) have no token kind
-///   yet; adding one is an addition;
-/// - `blend_over`, `ring`, `invalid_text` and `forced` are how the theme is painted, not tokens.
 const _: fn(Kit) = |Kit {
                         dark: _,
                         c: _,
@@ -336,8 +281,6 @@ const _: fn(Kit) = |Kit {
                         forced: _,
                     }| {};
 
-/// `color.<field>` for each `kit.c` colour. The pattern names every `Palette` field, so a
-/// Rune bump that adds one fails to build until it is registered here.
 macro_rules! colors {
     ($($field:ident),* $(,)?) => {{
         const _: fn(Palette) = |Palette { $($field: _,)* success: _, warning: _, danger: _, info: _ }| {};
@@ -431,8 +374,6 @@ macro_rules! states {
 
 const STATES: &[Token] = states!(success, warning, danger, info);
 
-/// `<prefix>.<field>` lengths over the struct at `look.<a>` or `look.<a>.<b>`, whose
-/// fields the pattern names exhaustively.
 macro_rules! lengths {
     ($ty:ident, $prefix:literal, $a:ident . $b:ident => $($field:ident),* $(,)?) => {{
         const _: fn($ty) = |$ty { $($field: _,)* }| {};
@@ -454,8 +395,6 @@ macro_rules! lengths {
 
 const RADII: &[Token] = lengths!(Radius, "radius", kit.radius => xs, sm, md, lg, xl);
 
-/// `type.<style>.{size,line_height,weight,tracking}` for each style of `kit.ty`, then of
-/// `look.ty`. The patterns name every field of both, so this one list is the whole ramp.
 macro_rules! type_styles {
     (kit.ty: [$($kit:ident),* $(,)?], ty: [$($ramp:ident),* $(,)?] $(,)?) => {{
         const _: fn(Type) = |Type { $($kit: _,)* }| {};
@@ -513,8 +452,6 @@ const GLOW: &[Token] = &[
     ),
 ];
 
-/// `fill.<field>` for each `look.fill` colour. The pattern names every `Fills` field, so one
-/// added there fails to build until it is registered here.
 const FILL: &[Token] = {
     const _: fn(Fills) = |Fills {
                               muted: _,
@@ -533,8 +470,6 @@ const FILL: &[Token] = {
 /// `syntax.<kind>` for each kind rune-kit colours, then for each of `look.syntax_extra`.
 macro_rules! syntax {
     ($($kind:ident => $name:literal),* $(,)?; extra: $($extra:ident),* $(,)?) => {{
-        // `Syntax` is non-exhaustive, so a kind a Rune bump adds can't fail this build:
-        // check this list against `rune_kit::syntax::Syntax` on every bump.
         const _: fn(SyntaxExtra) = |SyntaxExtra { $($extra: _,)* }| {};
         &[$(Token::color(
             concat!("syntax.", $name),

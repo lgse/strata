@@ -1,15 +1,9 @@
 // SPDX-License-Identifier: MIT
 
-//! The text selection over pages: an anchor, a granularity (characters, words, lines) and the
-//! range selected on each page, as Strata's PDF view keeps them (`pdf_desired_ranges`,
-//! `pdf_selected_text` in `src/ui/preview/pdf/selection.rs`, upstream/main e9a8993b7).
-
 use std::collections::BTreeMap;
 
 use super::model::Shared;
 
-/// How a selection grows: by characters, words or lines (a click, a double-click, a
-/// triple-click).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) enum Unit {
     #[default]
@@ -49,8 +43,6 @@ impl Selection {
         *self = Selection::default();
     }
 
-    /// A press at `caret` on `page` that starts a selection by `unit`: a caret selects nothing,
-    /// a word or line selects it.
     pub fn press(&mut self, layer: &Shared, page: usize, caret: usize, unit: Unit) {
         let (start, end) = match unit {
             Unit::Word => layer.word_range(caret),
@@ -65,8 +57,6 @@ impl Selection {
         }
     }
 
-    /// Extends from the anchor to `caret` on `page`, by the selection's unit, over the pages
-    /// whose layers `layer` finds. True when the ranges changed.
     pub fn extend<'a>(
         &mut self,
         layer: impl Fn(usize) -> Option<&'a Shared>,
@@ -84,8 +74,6 @@ impl Selection {
         true
     }
 
-    /// Every page's whole text, for the pages `layers` holds. The anchor stays where it was,
-    /// as Strata's `select_all` leaves it: a Shift-click after it extends from the last press.
     pub fn all<'a>(&mut self, layers: impl Iterator<Item = (usize, &'a Shared)>) {
         self.ranges = layers
             .filter(|(_, l)| l.has_text())
@@ -93,8 +81,6 @@ impl Selection {
             .collect();
     }
 
-    /// The selected text in page order, a line break between pages unless the text before
-    /// ends with one.
     pub fn text<'a>(&self, layer: impl Fn(usize) -> Option<&'a Shared>) -> String {
         let mut text = String::new();
         for (&page, &(start, end)) in &self.ranges {
@@ -112,8 +98,6 @@ impl Selection {
     }
 }
 
-/// Strata's `pdf_desired_ranges`: from `anchor` to `caret`, in either order, snapping each
-/// end to its unit; whole pages between; pages with no layer skipped.
 fn desired<'a>(
     layer: impl Fn(usize) -> Option<&'a Shared>,
     anchor: (usize, usize),

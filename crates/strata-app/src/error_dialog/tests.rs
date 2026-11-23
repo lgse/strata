@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The error dialog's offered action: Return, which the action's button has, runs it once and
-//! closes the dialog; Escape and Close close it and run nothing.
-
 use std::cell::Cell;
 
 use rune::{Key, KeyEvent, Mods};

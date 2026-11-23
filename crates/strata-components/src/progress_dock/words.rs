@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! [`Words`]: every phrase the dock, its cards and the progress dialog write, as data. The
-//! defaults are Strata's English; Strata passes its own translations.
-
 use std::fmt;
 use std::rc::Rc;
 
@@ -14,8 +11,6 @@ pub type Phrase<T> = Rc<dyn Fn(T) -> String>;
 /// A phrase built from two others: "1.5 MB/s · 2m 5s left".
 pub type Phrase2 = Rc<dyn Fn(&str, &str) -> String>;
 
-/// The dock's and the progress dialog's words. Components carry no translations: Strata
-/// fills these from its catalog (`i18n::file_size`, `tr("Calculating speed…")`, …).
 #[derive(Clone)]
 pub struct Words {
     /// A byte count: "64 MB" ([`format::size`]).

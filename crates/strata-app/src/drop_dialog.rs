@@ -1,14 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Cross-volume file drop confirmation on C15's [`StrataDialog`], matching GTK's
-//! `confirm_cross_volume_drop` in `src/ui/browser/transfer/drop.rs`.
-//!
-//! - **Footer order:** `[Cancel, Move, Copy]`, with `Copy` as the accent primary button and no
-//!   default button so Return activates only the focused control.
-//! - **Initial focus:** `Copy` (`Focus::Primary`), so `Shift+Tab` steps to `Move` and `Cancel`.
-//! - **Dismissal (`Cancel`, `Escape`, `Close dialog`, backdrop):** abandons the drop without
-//!   starting a transfer and returns keyboard focus to the listing.
-
 use rune::{El, Tx};
 use strata_components::dialog::{Focus, MESSAGE_WIDTH, StrataDialog, Tone};
 use strata_core::{

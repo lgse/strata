@@ -34,8 +34,6 @@ pub(super) struct Fake {
     /// Every input event and action, in the order the engine sent them.
     pub(super) sent: RefCell<Vec<String>>,
     pointer: Cell<(i16, i16)>,
-    /// Nodes the toolkit answers as entries though no mark is on them, as GTK's row widgets
-    /// are: the mark is on their `GtkListItem`, which is no widget.
     pub(super) rows: Vec<usize>,
     /// Whether it draws a dialog inside another, as Rune does ([`Backend::nests_dialogs`]).
     pub(super) nests_dialogs: bool,

@@ -1,15 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Drag and drop intents: what a drag carries, what a drop offers and delivers, the drop
-//! zones components mark, and the rule that picks copy or move.
-//!
-//! The shapes mirror Rune's `drag_out`, `on_drop_files` and `on_drop_hover`, and the system
-//! drag-and-drop shim's (P1) API in plan §4. Components never depend on that shim (work
-//! README, rule 1): they attach zones and sources through a host-given [`Dnd`] binder. The
-//! default, [`Dnd::rune`], wires Rune's own file drops, so drops are scriptable headless
-//! today; X2 passes a binder that wires the shim. Drags that stay inside a component (header
-//! reorder, pin reorder) use Rune's `on_drag` and don't go through these types.
-
 use std::borrow::Cow;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -28,13 +18,9 @@ pub use binder::{Dnd, ElementKey};
 pub use uri::{file_uri, parse_uri_list, uri_to_path};
 
 /// The `text/uri-list` MIME type: files as `file://` URIs, one per line.
-///
-/// Used by: C1e, C6, C7, C8, X2.
 pub const URI_LIST: &str = "text/uri-list";
 
 /// What a drop does with what it carries.
-///
-/// Used by: X2, Strata, and the gallery hosts of C1e, C6, C7 and C8.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum DropAction {
     /// Copy the items into the target.
@@ -44,20 +30,10 @@ pub enum DropAction {
     /// Link to the items from the target.
     Link,
     /// Ask whether to copy or move ("Copy or move?").
-    ///
-    /// A binder that negotiates with the drag source offers it to the source as
-    /// [`DropAction::Copy`], as Strata's `Ask { default: Copy }` does, so the drag shows a copy
-    /// and the source keeps its items until the host has asked. The drop is then delivered,
-    /// and the host words the prompt from the [`VolumeRelation`] it looked up: only
-    /// `Different` may say "another device". `Unknown` must never be presented as a confirmed
-    /// device difference.
     Ask,
 }
 
-/// A set of the actions a drag source allows: copy, move and link. `Ask` is only ever a
-/// result of [`choose_action`], never offered.
-///
-/// Used by: C1b (in the payload), C1e, X2.
+/// A set of the actions a drag source allows: copy, move and link.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub struct DropActions(u8);
 
@@ -95,10 +71,7 @@ impl std::ops::BitOr for DropActions {
     }
 }
 
-/// Whether a drop's destination is on the same volume as its sources. The host looks it up;
-/// any source or destination it couldn't resolve makes the relation `Unknown`.
-///
-/// Used by: X2, Strata.
+/// Whether a drop's destination is on the same volume as its sources.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum VolumeRelation {
     /// Every source is on the destination's volume.
@@ -110,8 +83,6 @@ pub enum VolumeRelation {
 }
 
 /// What a plain drop onto another device does: the "Drag & drop to another device" setting.
-///
-/// Used by: X2, Strata.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub enum CrossDevice {
     /// Always copy.
@@ -123,11 +94,7 @@ pub enum CrossDevice {
     Ask,
 }
 
-/// The inputs to [`choose_action`].
-///
-/// Fields may be added: build one with [`ActionInput::new`].
-///
-/// Used by: X2, Strata.
+/// The inputs to `choose_action`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct ActionInput {
@@ -142,8 +109,7 @@ pub struct ActionInput {
 }
 
 impl ActionInput {
-    /// The inputs for a drag allowing `offered`, with `mods` held, onto a destination whose
-    /// volume relation is `volume`, under the `cross_device` setting.
+    /// The inputs for a drag allowing `offered`, with `mods` held, onto a destination whose volume relation is `volume`.
     pub const fn new(
         mods: Mods,
         offered: DropActions,
@@ -159,20 +125,7 @@ impl ActionInput {
     }
 }
 
-/// The copy-or-move rule (`operations/drag-and-drop/copy-or-move`), or `None` when the drop is
-/// forbidden. It ports Strata's `drop_commit`:
-///
-/// - Ctrl copies and Shift moves, on the same or another volume. Ctrl wins when both are held.
-///   A modifier asking for an action the source doesn't offer is ignored.
-/// - A plain drop on the same volume moves, or copies when the source doesn't offer a move.
-/// - A plain drop onto another volume, or one whose relation is unknown, follows the
-///   cross-device setting. It asks only when the source offers both copy and move.
-/// - With neither copy nor move offered, the drop is forbidden. No modifier picks a link.
-///
-/// The volume lookup and the guard against dropping items into their own folder stay with the
-/// host.
-///
-/// Used by: X2 and Strata, at hover and at drop; the gallery hosts of C1e, C6, C7 and C8.
+/// The copy-or-move rule (`operations/drag-and-drop/copy-or-move`), or `None` when the drop is forbidden.
 pub fn choose_action(input: ActionInput) -> Option<DropAction> {
     let can_copy = input.offered.contains(DropActions::COPY);
     let can_move = input.offered.contains(DropActions::MOVE);
@@ -200,15 +153,7 @@ pub fn choose_action(input: ActionInput) -> Option<DropAction> {
     Some(action)
 }
 
-/// What a drag from a collection carries: entry ids for the in-process fast path, plus the
-/// URIs to offer other apps, and the actions it allows.
-///
-/// It carries no MIME list, unlike the W1 work package's wording ("the URIs and MIME types to
-/// offer outside"): X2 derives every type it offers (`text/uri-list`, GNOME's and KDE's file
-/// formats) from the URIs, and the system shim serialises them. Fields may be added, a MIME
-/// list among them: build one with [`DragPayload::new`].
-///
-/// Used by: C1b (its begin-drag intent carries the ids; the host fills in the URIs), C1e, X2.
+/// What a drag from a collection carries: entry ids for the in-process fast path, plus the URIs to offer other apps.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct DragPayload {
@@ -250,13 +195,7 @@ fn uri_list_only() -> MimeList {
     URI_LIST_ONLY.with(Rc::clone)
 }
 
-/// What a drag over a zone offers, known while it hovers: its MIME types, the actions it
-/// allows, whether it comes from this process (and so carries a [`DragPayload`]), its URIs when
-/// the binder could read them before the drop, and the drag's serial.
-///
-/// Fields may be added: build one with [`DropOffer::new`].
-///
-/// Used by: C1e, C6, C7, C8, X2.
+/// What a drag over a zone offers, known while it hovers.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct DropOffer {
@@ -266,14 +205,9 @@ pub struct DropOffer {
     pub actions: DropActions,
     /// Whether the drag comes from this process.
     pub local: bool,
-    /// The dragged URIs, when the binder could read them before the drop: what a host checks
-    /// while the drag hovers (C8 pins only folders). `None` when they arrive only with the drop:
-    /// Rune's binder hears no paths until then.
+    /// The dragged URIs, when the binder could read them before the drop: what a host checks while the drag hovers.
     pub uris: Option<Vec<String>>,
-    /// The drag's serial, from its binder. Two drags never share one, so a host can key what it
-    /// checked about a drag's items by it. A binder that can't tell where a drag begins may give
-    /// one drag several serials (Rune's gives a new one each time the drag reaches a zone), so
-    /// treat a check keyed by serial as a cache, not as the drag's identity.
+    /// The drag's serial, from its binder.
     pub serial: u64,
 }
 
@@ -307,21 +241,13 @@ impl DropOffer {
         self
     }
 
-    /// Whether the drag offers `mime`, or, when `mime` names no parameters, that type with
-    /// some: `application/octet-stream` is offered by `application/octet-stream;name="a.jpg"`,
-    /// the form a browser drags an image's bytes in (P1's `transfer::mime::names`).
+    /// Whether the drag offers `mime`, or, when `mime` names no parameters, that type with some.
     pub fn offers(&self, mime: &str) -> bool {
         self.mime_types.iter().any(|m| names(mime, m))
     }
 }
 
-/// Whether the offered type `offered` is the type `listed`: the same, or `listed` with
-/// parameters when it names none.
-///
-/// The same rule as P1's `strata_platform::transfer::mime::names`, which binders match drags
-/// by: components never depend on `strata-platform` (`docs/workspace.md`), so each crate has
-/// its copy, and a change to one is a change to both, with the cases of
-/// `a_type_without_parameters_names_its_forms_with_parameters` in each.
+/// Whether the offered type `offered` is the type `listed`: the same, or `listed` with parameters when it names none.
 pub fn names(listed: &str, offered: &str) -> bool {
     offered == listed
         || (!listed.contains(';')
@@ -331,8 +257,6 @@ pub fn names(listed: &str, offered: &str) -> bool {
 }
 
 /// Why a drop's read of one MIME type failed.
-///
-/// Used by: C1e, C6, C7, C8, X2.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ReadFailure {
     /// The source sent more than the binder reads for one type.
@@ -344,8 +268,6 @@ pub enum ReadFailure {
 }
 
 /// One MIME type's data, as read from a drop.
-///
-/// Used by: C1e, C6, C7, C8, X2.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DropItem {
     /// The MIME type.
@@ -364,13 +286,7 @@ impl DropItem {
     }
 }
 
-/// What a drop delivered: the in-process payload, if any, and the raw bytes of each MIME type
-/// the binder read. Choosing between them (an image or its address, files or text) is the
-/// host's policy (`operations/drag-and-drop/content-drops`).
-///
-/// Fields may be added: build one with [`DropData::new`] or [`DropData::files`].
-///
-/// Used by: C1e, C6, C7, C8, X2.
+/// What a drop delivered: the in-process payload, if any, and the raw bytes of each MIME type the binder read.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct DropData {
@@ -378,8 +294,7 @@ pub struct DropData {
     pub local: Option<DragPayload>,
     /// Each MIME type read, in the zone's order of preference.
     pub items: Vec<DropItem>,
-    /// Each MIME type whose read failed, and why. A host reports a failure where GTK does
-    /// ("The dropped content is too large").
+    /// Each MIME type whose read failed, and why.
     pub failed: Vec<(String, ReadFailure)>,
 }
 
@@ -435,10 +350,6 @@ impl DropData {
 }
 
 /// A drop on a zone: what was offered, what arrived, the modifiers held, and where it landed.
-///
-/// Fields may be added: build one with [`Dropped::new`].
-///
-/// Used by: C1e, C6, C7, C8, X2.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub struct Dropped {
@@ -448,8 +359,7 @@ pub struct Dropped {
     pub data: DropData,
     /// The modifiers held at the drop, for [`choose_action`].
     pub mods: Mods,
-    /// Where on the zone it landed, in the zone's own points and the window's, when the
-    /// platform said.
+    /// Where on the zone it landed, in the zone's own points and the window's, when the platform said.
     pub point: Option<PointerEvent>,
 }
 
@@ -472,16 +382,13 @@ impl Dropped {
 }
 
 /// A zone's hover state, as a drag moves over the window.
-///
-/// Used by: C1e, C6, C7, C8, X2.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum DropHover {
     /// No drag is over the zone: it left, moved to another zone, or dropped.
     Left,
     /// A drag the zone accepts is over it: draw the drop highlight.
     Accepting,
-    /// A drag the zone refuses is over it, and the zone has [`DropZone::on_reject`]: draw
-    /// "can't drop here".
+    /// A drag the zone refuses is over it, and the zone has `DropZone::on_reject`: draw "can't drop here".
     Rejecting,
 }
 
@@ -492,38 +399,6 @@ type RejectFn<S> = Rc<dyn Fn(&mut S, DropOffer, &mut Tx)>;
 type ActionFn<S> = Rc<dyn Fn(&S, &DropOffer, Mods) -> Option<DropAction>>;
 
 /// A drop target: the MIME types it reads, and its callbacks for drop, hover, move and reject.
-///
-/// Each callback mirrors a Rune handler, with the app state `S`: `on_drop_files`,
-/// `on_drop_hover` (and `on_drop_rejected_hover`), `on_drop_move` and `on_drop_rejected`. A
-/// component builds one per target element as it builds its view, capturing that target (a
-/// crumb, a tab, a gap's index, a folder's [`EntryId`]) in the callbacks, which report it in
-/// the component's own typed intent. It attaches the zone through the host's [`Dnd`] binder.
-///
-/// # Accepting a drag
-///
-/// Whether a zone takes a drag is decided when the view is built, where the component sees
-/// its state (binders' acceptance tests, Rune's among them, get none): by whether it builds the
-/// zone, its MIME types and local flag, [`DropZone::on_reject`], and [`DropZone::action`].
-///
-/// A host that must look at the dragged items first (C8 pins only folders, even from another
-/// app) hears the offer in [`DropZone::on_hover`]: its [`DropOffer::serial`], and its
-/// [`DropOffer::uris`] when the binder could read them. It checks them, perhaps on a worker,
-/// and keeps the result keyed by that serial. The component then builds the zone from the
-/// host's checked state for that serial: refusing it with an `action` that returns `None`, or
-/// with no MIME types and an `on_reject`. Until the check is in, the zone is built as the host
-/// sees fit for an unchecked drag.
-///
-/// # Refusing a drag
-///
-/// [`DropZone::action`] returning `None` refuses the drag. A binder that consults it while the
-/// drag hovers shows [`DropHover::Rejecting`] if the zone has an `on_reject`, and otherwise
-/// passes the drag to the zone around it. A refused drag is never delivered to `on_drop`; on a
-/// drop it goes to `on_reject`, if any. Rune's binder can't consult it while hovering (Rune
-/// routes file drags with no state), so there the zone shows `Accepting` until the drop, then
-/// refuses it at the drop: `on_reject` hears it, or nothing does. It can't pass it on.
-///
-/// Used by: C1e (folder rows, the pane background), C6 (crumbs), C7 (tabs, New tab), C8 (pin
-/// gaps, places, Trash), X2.
 pub struct DropZone<S> {
     mime_types: MimeList,
     local: bool,
@@ -549,8 +424,7 @@ impl<S> Clone for DropZone<S> {
 }
 
 impl<S: 'static> DropZone<S> {
-    /// A zone that reads `text/uri-list` and takes drags from this process, calling `on_drop`
-    /// with each drop.
+    /// A zone that reads `text/uri-list` and takes drags from this process, calling `on_drop` with each drop.
     pub fn new(on_drop: impl Fn(&mut S, Dropped, &mut Tx) + 'static) -> Self {
         Self {
             mime_types: uri_list_only(),
@@ -569,9 +443,7 @@ impl<S: 'static> DropZone<S> {
         self
     }
 
-    /// The same zone, taking `content` from other apps besides files: text, images, web
-    /// addresses, as the host's content-drops policy lists them, most wanted first. Files stay
-    /// first. With none, the zone is unchanged. The host tells files from content at the drop.
+    /// The same zone, taking `content` from other apps besides files.
     pub fn takes_content(mut self, content: &[&'static str]) -> Self {
         if !content.is_empty() {
             let files = std::iter::once(URI_LIST);
@@ -589,9 +461,7 @@ impl<S: 'static> DropZone<S> {
         self
     }
 
-    /// Hear the zone's hover state change, to draw a drop highlight, with what the drag offers:
-    /// a host checks the offer's items here and keys the result by its serial (see "Accepting a
-    /// drag" above).
+    /// Hear the zone's hover state change, to draw a drop highlight, with what the drag offers.
     pub fn on_hover(
         mut self,
         f: impl Fn(&mut S, DropHover, &DropOffer, &mut Tx) + 'static,
@@ -600,30 +470,19 @@ impl<S: 'static> DropZone<S> {
         self
     }
 
-    /// Follow a drag the zone accepts as it moves, at most once a frame, in the zone's own
-    /// points: for a drop caret or edge auto-scroll. Only a zone with this asks for frames
-    /// while a drag moves. Only the innermost zone under the drag hears it.
+    /// Follow a drag the zone accepts as it moves, at most once a frame, in the zone's own points.
     pub fn on_move(mut self, f: impl Fn(&mut S, PointerEvent, &mut Tx) + 'static) -> Self {
         self.on_move = Some(Rc::new(f));
         self
     }
 
-    /// Hear a drop the zone refuses: one it doesn't accept, or one its [`DropZone::action`]
-    /// refuses. With this, the zone stops a drag it doesn't accept, showing
-    /// [`DropHover::Rejecting`], instead of passing it to the zone around it.
+    /// Hear a drop the zone refuses: one it doesn't accept, or one its `DropZone::action` refuses.
     pub fn on_reject(mut self, f: impl Fn(&mut S, DropOffer, &mut Tx) + 'static) -> Self {
         self.on_reject = Some(Rc::new(f));
         self
     }
 
-    /// Say which action a drag over the zone would take, so a binder that negotiates with the
-    /// drag source while it hovers (the system shim's) can show it before the drop. The host
-    /// decides it, usually with [`choose_action`] and its volume lookup for this target.
-    /// Without it, binders use [`choose_action`] with an unknown volume and the default
-    /// cross-device setting.
-    ///
-    /// `None` refuses the drag: see "Refusing a drag" above. Rune's binder asks it only at the
-    /// drop.
+    /// Say which action a drag over the zone would take.
     pub fn action(
         mut self,
         f: impl Fn(&S, &DropOffer, Mods) -> Option<DropAction> + 'static,
@@ -632,14 +491,12 @@ impl<S: 'static> DropZone<S> {
         self
     }
 
-    /// Whether the zone takes a drag offering `offer`: one from this process, if it takes
-    /// those, or one offering any of its MIME types. Its `action` may still refuse it.
+    /// Whether the zone takes a drag offering `offer`.
     pub fn accepts(&self, offer: &DropOffer) -> bool {
         (self.local && offer.local) || self.mime_types.iter().any(|m| offer.offers(m))
     }
 
-    /// Whether the zone reads `mime`, so that a binder whose drags all offer one type checks
-    /// acceptance without building an offer.
+    /// Whether the zone reads `mime`, so that a binder whose drags all offer one type checks acceptance without building an offer.
     pub fn reads(&self, mime: &str) -> bool {
         self.mime_types.iter().any(|m| m == mime)
     }
@@ -695,9 +552,7 @@ impl<S: 'static> DropZone<S> {
         }
     }
 
-    /// The action a drag offering `offer` with `mods` held would take here, or `None` if the
-    /// zone refuses it: it doesn't accept the offer, or its `action` says `None`. A binder
-    /// delivers a drop only when this is `Some`. For binders.
+    /// The action a drag offering `offer` with `mods` held would take here, or `None` if the zone refuses it.
     pub fn choose(&self, state: &S, offer: &DropOffer, mods: Mods) -> Option<DropAction> {
         if !self.accepts(offer) {
             return None;
@@ -717,11 +572,7 @@ impl<S: 'static> DropZone<S> {
 type PayloadFn<S> = Rc<dyn Fn(&S) -> Option<DragPayload>>;
 type EndFn<S> = Rc<dyn Fn(&mut S, rune::DragOutcome, &mut Tx)>;
 
-/// A drag source: the payload a drag from the element carries, read once the pointer passes
-/// the drag threshold, and how the drag ended. It mirrors Rune's `drag_out` and
-/// `on_drag_end`, and reuses Rune's `DragOutcome`.
-///
-/// Used by: C1e (rows, and C2, C3 and C4 through it), X2.
+/// A drag source: the payload a drag from the element carries, read once the pointer passes the drag threshold.
 pub struct DragSource<S> {
     payload: PayloadFn<S>,
     on_end: Option<EndFn<S>>,
@@ -737,8 +588,7 @@ impl<S> Clone for DragSource<S> {
 }
 
 impl<S: 'static> DragSource<S> {
-    /// A source whose drag carries what `payload` returns from the current state. `None`
-    /// cancels the drag, and the press stays a press.
+    /// A source whose drag carries what `payload` returns from the current state.
     pub fn new(payload: impl Fn(&S) -> Option<DragPayload> + 'static) -> Self {
         Self {
             payload: Rc::new(payload),
@@ -770,11 +620,6 @@ impl<S: 'static> DragSource<S> {
     }
 }
 
-/// How long a drop zone's hover that armed a spring asks to wait: its delay, or, under a clock
-/// that reads zero (Rune packet entry 108), only until the next frame, whose tick stamps the
-/// spring's start and asks for the rest. Waiting the whole delay there would stretch the
-/// spring to about twice its length when nothing else draws a frame. The tab strip's and the
-/// location bar's.
 pub(crate) fn spring_wake(clock: f64, delay: f64) -> std::time::Duration {
     if clock > 0.0 {
         std::time::Duration::from_secs_f64(delay)

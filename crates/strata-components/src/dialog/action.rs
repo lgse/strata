@@ -25,20 +25,13 @@ pub enum Tone {
 /// Where focus starts when the dialog opens.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub enum Focus {
-    /// The first control in the body, so the first field; the first footer button when the
-    /// body has none. A form opening on another field sets its `TextEdit::focused`.
     #[default]
     First,
     /// The primary button: a confirmation, so Enter confirms.
     Primary,
     /// The secondary button (Cancel), when Enter should keep things as they are.
     Secondary,
-    /// The extra footer button added as `action(id, …)`; ids can come at runtime (C26's GIO
-    /// choices).
     Action(String),
-    /// The close button, for a dialog whose every footer button commits to something (C26's
-    /// questions when no choice declines): Enter then dismisses. Without a close button
-    /// ([`StrataDialog::closable`]`(false)`), as [`Focus::First`].
     Close,
 }
 
@@ -89,23 +82,6 @@ impl<S: 'static> Action<S> {
     }
 }
 
-/// An action dialog (see the module docs): header, body and footer, in a [`DialogShell`].
-///
-/// ```ignore
-/// StrataDialog::new("delete", "Permanently delete 3 items?", |s: &mut App| s.dialog = None)
-///     .open(s.dialog == Some(Dialog::Delete))
-///     .subtitle("3 items · 4.2 MB will be permanently deleted")
-///     .icon(IconName::Trash)
-///     .tone(Tone::Danger)
-///     .child(file_list)
-///     .secondary("Cancel", |s: &mut App| s.dialog = None)
-///     .primary("Permanently delete 3 items", |s: &mut App| s.delete())
-///     .initial_focus(Focus::Primary)
-///     .build(&look, &mut layer);
-/// ```
-///
-/// Keys, past the shell's: `<key>-title`, `<key>-subtitle`, `<key>-body`, `<key>-primary`,
-/// `<key>-secondary`, `<key>-<action>`, `<key>-loading` and `<key>-close`.
 pub struct StrataDialog<S> {
     key: String,
     title: String,
@@ -128,8 +104,6 @@ pub struct StrataDialog<S> {
 }
 
 impl<S: 'static> StrataDialog<S> {
-    /// A closed dialog keyed `key` with `title`. `on_dismiss` runs on Escape, a click outside
-    /// the panel and the close button: it closes without confirming.
     pub fn new(
         key: impl Into<String>,
         title: impl Into<String>,
@@ -162,8 +136,6 @@ impl<S: 'static> StrataDialog<S> {
         }
     }
 
-    /// Replaces `on_dismiss` with one that gets the dismissal's `Tx` on Escape, backdrop click,
-    /// or the close button.
     pub fn on_dismiss_tx(mut self, on_dismiss: impl Fn(&mut S, &mut Tx) + 'static) -> Self {
         let dismiss: Handler<S> = Rc::new(on_dismiss);
         let shell_dismiss = dismiss.clone();
@@ -186,9 +158,6 @@ impl<S: 'static> StrataDialog<S> {
         self
     }
 
-    /// Exposes `<key>-subtitle` as a named accessible label inside the dialog (in addition to
-    /// the dialog's own description), for dialogs such as Properties whose subtitle displays the
-    /// resolved content-type kind.
     pub fn expose_subtitle(mut self, expose: bool) -> Self {
         self.expose_subtitle = expose;
         self
@@ -205,8 +174,6 @@ impl<S: 'static> StrataDialog<S> {
         self
     }
 
-    /// Adds `child` to the body, top to bottom. The body scrolls when the dialog is taller
-    /// than the window.
     pub fn child(mut self, child: El) -> Self {
         self.body.push(Body::El(Box::new(child)));
         self
@@ -219,15 +186,11 @@ impl<S: 'static> StrataDialog<S> {
         self
     }
 
-    /// Adds a paragraph of message text to the body: it wraps, keeping short Korean words
-    /// whole ([`super::keep_words_whole`]).
     pub fn message(mut self, message: impl Into<String>) -> Self {
         self.body.push(Body::Message(message.into()));
         self
     }
 
-    /// The primary button, last in the footer; Enter presses it from a single-line field or
-    /// when nothing is focused. Without `enabled`, see [`StrataDialog::primary_enabled`].
     pub fn primary(self, label: impl Into<String>, on_press: impl Fn(&mut S) + 'static) -> Self {
         self.primary_tx(label, move |s, _| on_press(s))
     }
@@ -246,18 +209,11 @@ impl<S: 'static> StrataDialog<S> {
         self
     }
 
-    /// Disables the primary button while false: it can't be pressed, and Enter does nothing.
-    /// Call it before or after [`StrataDialog::primary`].
     pub fn primary_enabled(mut self, enabled: bool) -> Self {
         self.primary_enabled = enabled;
         self
     }
 
-    /// Makes the primary the dialog's default button while true, as it is unless set: Return
-    /// presses it from a single-line field or with nothing focused. False for a primary that
-    /// must only be pressed on purpose, such as accepting an unverified SSH host key or ending
-    /// the processes that keep a volume busy (C26): Return then presses a button only when it
-    /// has focus.
     pub fn default_button(mut self, default: bool) -> Self {
         self.default_button = default;
         self
@@ -282,8 +238,6 @@ impl<S: 'static> StrataDialog<S> {
         self
     }
 
-    /// Another footer button, keyed `<key>-<id>`, before the secondary. `id` can't be one of
-    /// the dialog's own parts ([`RESERVED`]) or another action's.
     pub fn action(
         self,
         id: &str,
@@ -319,8 +273,6 @@ impl<S: 'static> StrataDialog<S> {
         self
     }
 
-    /// Disables the footer action `id` while false: it renders disabled and skips Tab and arrow
-    /// focus. Call after [`StrataDialog::action`] or [`StrataDialog::action_tx`].
     pub fn action_enabled(mut self, id: &str, enabled: bool) -> Self {
         let key = format!("{}-{id}", self.key);
         debug_assert!(
@@ -375,16 +327,11 @@ impl<S: 'static> StrataDialog<S> {
         self
     }
 
-    /// The close button's accessible name, "Close dialog" until set (components carry no
-    /// translations).
     pub fn close_label(mut self, label: impl Into<String>) -> Self {
         self.close_label = label.into();
         self
     }
 
-    /// Draws no close button while false: a dialog the user leaves only through its footer,
-    /// such as C16's blocking progress dialog, whose one way out is Cancel. Escape still calls
-    /// `on_dismiss`. True by default.
     pub fn closable(mut self, closable: bool) -> Self {
         self.closable = closable;
         self
@@ -434,8 +381,6 @@ impl<S: 'static> StrataDialog<S> {
                 Some(key)
             }
         };
-        // The initial button takes focus as the modal opens (`El::autofocus`), and Tab goes on
-        // from there in document order.
         let initial = initial_key.filter(|k| focusable.iter().any(|&i| footer[i].0.key == *k));
         let footer_keys: Vec<String> = focusable.iter().map(|&i| footer[i].0.key.clone()).collect();
 

@@ -1,21 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! C14b [`ModelView`] adapter for 3D model previews (`PreviewContent::Model`), as GTK's
-//! `src/ui/preview/model.rs` hosts them:
-//!
-//! - **The frame shows at once.** A load of a model file opens the view loading
-//!   ([`opening`], GTK's `show_model_loading`), and the provider's stages fill its spinner.
-//! - **A mesh** arrives as a rendered PNG and what the mesh is; **a picture saved in the file**
-//!   (a 3MF's thumbnail) arrives with no mesh and shows alone, with no camera controls.
-//! - **The camera buttons** ask the same provider again, with the view to render, the way GTK's
-//!   `change_model_view` loads the file again. While a render runs a press does nothing.
-//! - **Every PNG** is decoded off the UI thread (`gio::spawn_blocking`); its pixels reach the
-//!   view through `Later`, and a reply for a viewer that has gone is dropped.
-//! - **A first load that fails** keeps the drawer's message card (`load::render_failed`), as
-//!   GTK's `show_message` does; a later render that fails keeps the picture and says why.
-//!
-//! Every element is keyed under [`MODEL_KEY`].
-
 use std::{cell::Cell, path::Path, rc::Rc};
 
 use rune::{Cx, El, Pixels, Tx};
@@ -67,7 +51,6 @@ impl ModelViewer {
     }
 }
 
-/// The frame a model file's load shows at once, loading (GTK's `show_model_loading`).
 pub(super) fn opening(app: &App, entry: &FileEntry) -> Option<Viewer> {
     if !strata_fs::services::is_model(entry) {
         return None;
@@ -116,8 +99,6 @@ fn stage_of(stage: ModelPreviewStage) -> Stage {
     }
 }
 
-/// The first load's picture: the frame the load opened, or a new one, which shows it once
-/// decoded.
 pub(super) fn ready(
     app: &mut App,
     entry: FileEntry,
@@ -134,8 +115,6 @@ pub(super) fn ready(
     viewer
 }
 
-/// The palette GTK's `active_model_palette` takes from the theme: its accent and its surface,
-/// which the look keeps as the glow's colour and the raised surface.
 pub(super) fn palette(look: &Look) -> ModelPalette {
     let rgb = |color| {
         let Rgba8 { r, g, b, .. } = Rgba8::from_color(color);
@@ -194,8 +173,6 @@ fn rendered(app: &mut App, id: u64, event: PreviewEvent) -> bool {
             decode(app, id, png, mesh);
             return false;
         }
-        // The provider's messages are catalog keys, as GTK reads them: a new one goes into the
-        // 13 catalogs, or this shows it in English.
         PreviewEvent::Failed { message, .. } => model.state.view_failed(tr(&message)),
         _ => model.state.view_failed(tr("Preview unavailable")),
     }
@@ -240,7 +217,6 @@ fn show(
         }
     };
     if let Some(Some(file)) = opened {
-        // A picture saved in the file shows alone (GTK's `render_model` with no mesh).
         model.state.open(file);
     }
     let (width, height) = image.dimensions();
@@ -309,7 +285,6 @@ fn model_labels() -> ModelLabels {
         Stage::Rendering { triangles } => count("rendering_triangles", triangles),
         Stage::Finishing => tr("Finishing preview…"),
     };
-    // GTK's `set_badges`: "3MF" is a name, not translated.
     labels.encoding = |encoding| match encoding {
         Encoding::BinaryStl => tr("Binary STL"),
         Encoding::AsciiStl => tr("ASCII STL"),
@@ -329,8 +304,6 @@ pub(super) fn build_view(model: &ModelViewer, app: &App, cx: &mut Cx<App>) -> El
         .build(&app.look, cx)
 }
 
-/// The model view's state, or, for a handler Rune queued before the viewer changed, the
-/// preview's detached one (`viewer::Detached`).
 fn model_mut(app: &mut App) -> &mut ModelState {
     let preview = &mut app.preview;
     match &mut preview.viewer {

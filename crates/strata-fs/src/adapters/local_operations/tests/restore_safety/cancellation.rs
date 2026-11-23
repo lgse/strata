@@ -68,8 +68,6 @@ impl CancelledRestore {
         }
     }
 
-    /// Pumps the main context until an event ends the restore, serving the cancel
-    /// once `ready` holds for the events so far, and returns every event.
     fn drive(
         mut self,
         ready: impl Fn(&[OperationEvent]) -> bool,
@@ -179,8 +177,6 @@ impl CutCopy {
         }
     }
 
-    /// The items the cancel completed, failed and did not attempt: "taken" fails as its
-    /// name is in use, and a stuck copy fails every item after the first.
     fn expected_outcome(
         &self,
         trash: &VolumeTrash,

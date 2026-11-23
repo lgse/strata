@@ -1,7 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Global settings search index, ported from `src/ui/settings/search/targets.rs`.
-
 use strata_components::controls::settings_search::{IndexPage, IndexRow, SearchIndex};
 use strata_core::i18n::tr;
 use strata_desktop::{

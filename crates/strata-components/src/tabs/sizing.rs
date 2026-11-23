@@ -9,21 +9,15 @@ use unicode_width::UnicodeWidthStr;
 
 use super::data::LABEL_CHARS;
 
-/// Characters of a long tab's label kept before the strip stops shrinking and starts scrolling,
-/// matching `strata_kit::slots::tabs::MIN_LABEL_CHARS`.
 const MIN_SHRUNK_LABEL_CHARS: f32 = slot::MIN_LABEL_CHARS;
 
-/// Advance per column in `em`, slightly above JetBrains Mono's 0.60 so semibold/proportional
-/// labels have breathing room when deciding whether to shrink.
 const LABEL_ADVANCE_EM: f32 = 0.62;
 
 /// Extra horizontal margin for glyph bearings and rounding when estimating natural width.
 const ESTIMATE_SLACK: f32 = 4.0;
 
-/// Close button hit box width/height inside each tab (matching GTK's 18 px button + padding).
 pub(super) const CLOSE_BUTTON_SIZE: f32 = 20.0;
 
-/// The semibold compact label style matching GTK's `.tab-select { font-weight: 600 }`.
 pub(super) fn label_font(look: &Look) -> TextStyle {
     TextStyle {
         weight: 600.0,
@@ -46,8 +40,6 @@ fn char_advance(font: TextStyle) -> f32 {
     font.size * LABEL_ADVANCE_EM + font.tracking
 }
 
-/// The narrowest cap applied to long tabs before horizontal scrolling begins. Short tabs (such as
-/// `~`) stay at their own narrower natural width rather than inflating to this floor.
 pub(super) fn min_cap(look: &Look) -> f32 {
     look.slots.tabs.min_width.unwrap_or_else(|| {
         let char_w = char_advance(label_font(look));
@@ -55,8 +47,6 @@ pub(super) fn min_cap(look: &Look) -> f32 {
     })
 }
 
-/// The widest a tab may grow: enough for [`LABEL_CHARS`] characters plus chrome, or the user's
-/// `tabs.tab.max_width` override, never below [`min_cap`].
 pub(super) fn max_cap(look: &Look) -> f32 {
     let min_w = min_cap(look);
     look.slots
@@ -78,11 +68,6 @@ pub(super) fn estimate_tab_width(label: &str, look: &Look, max_w: f32) -> f32 {
     (tab_chrome(look) + text_w).ceil().min(max_w)
 }
 
-/// Water-filling width cap across tabs with natural widths `natural`.
-///
-/// When all tabs fit in `available` (minus inter-tab gaps), returns `bounds.1` so every tab takes
-/// its exact natural content width. When they exceed `available`, shrinks the widest tabs first
-/// while leaving compact tabs (such as `~`) alone, clamping at `bounds.0` so excess tabs scroll.
 pub(super) fn width_cap(
     natural: &[f32],
     available: Option<f32>,

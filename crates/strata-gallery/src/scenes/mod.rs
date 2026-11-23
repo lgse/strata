@@ -1,12 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The gallery's page registry: the index, then one page per component and per contract or
-//! look work package that shows something.
-//!
-//! W0 declares every page here once. A work package edits only its own `scenes/<id>.rs`,
-//! which provides `Demo` (its field in [`Gallery`]), `SCENES`, `REVIEW`, `view`, and the
-//! `on_key` and `poll` hooks the app runs while the page is open.
-
 use crate::{Gallery, KeyHook, PollHook, Scene, View};
 
 pub mod c1;
@@ -54,12 +47,10 @@ pub mod x1;
 pub struct Page {
     /// The page id: the prefix of its scene names and its golden and script folder name.
     pub id: &'static str,
-    /// The work package that owns the page, as its docs name it (`C1e`).
     pub wp: &'static str,
     pub name: &'static str,
     /// The index group the page is listed under.
     pub lane: Lane,
-    /// The work package doc, relative to the repository root.
     pub doc: Option<&'static str>,
     /// Golden scenes: each has an accessibility and a PNG golden.
     pub scenes: &'static [Scene],
@@ -73,16 +64,11 @@ pub struct Page {
 }
 
 impl Page {
-    /// Whether the page's work package has built it: true once it has golden scenes. The
-    /// index's markers and count come from this alone, so nothing else needs updating when a
-    /// work package lands.
     pub fn implemented(&self) -> bool {
         !self.scenes.is_empty()
     }
 }
 
-/// The groups the index lists pages under: the work plan's lanes
-/// (`docs/rune/work/README.md`), with phase 0's contracts as their own group.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Lane {
     Groundwork,
@@ -275,7 +261,6 @@ pub const PAGES: &[Page] = &[
         "DocumentView",
         "phase-2-composites/C11-document-view.md"
     ),
-    // No work package doc of its own: split from C11's spreadsheet half.
     page!(
         c11b,
         Preview,

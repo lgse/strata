@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! [`Countdown`]: a finished card's time before it closes itself, paused while the pointer is
-//! over it or it is pinned, then a short fade (Strata's `progress_dock/completion.rs`).
-
 /// How long a completed card stays (Strata's 5 s).
 pub const COMPLETE_FOR: f64 = 5.0;
 
@@ -12,9 +9,6 @@ pub const FADE: f64 = 0.18;
 /// Due times within this of the clock count as reached.
 const EPS: f64 = 1e-6;
 
-/// A time stamped at the next tick. The dock's cards start from handlers that have a `Tx`, so
-/// `Tx::clock` (Rune 631e8a67) could stamp runtime-built `Tx`s, except C15's dialog buttons,
-/// which carry no `Tx` ([`super::Dock::cancel_untimed`]).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum Since {
     Pending,
@@ -49,13 +43,6 @@ pub(crate) struct Step {
     pub wake: Option<f64>,
 }
 
-/// A countdown with Strata's rules:
-///
-/// - It counts down from `duration`, and closes after a fade of [`FADE`] (none with animations
-///   off) once it reaches zero.
-/// - Hover or the pin pauses it, keeping the time left; leaving or unpinning resumes from there.
-///   A pause during the fade stops the fade, and resuming starts it again (no time is left).
-/// - Changes from handlers land at the next tick, which stamps them with the clock.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Countdown {
     duration: f64,

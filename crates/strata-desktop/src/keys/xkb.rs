@@ -1,34 +1,11 @@
 // SPDX-License-Identifier: MIT
 
-//! The key library of the Rune interface: [`Table`] for every key Strata declares, and
-//! libxkbcommon for the rest, corrected to what GDK answers.
-//!
-//! The GTK application asks GDK, and a saved keymap, a label and a press must read the same
-//! on both interfaces. libxkbcommon and GDK agree on most keys and differ on some: the
-//! difference is in [`rules`], as a few rules and tables of single exceptions. Every entry
-//! there is a fact about what the two libraries answer, taken from the output of the GTK
-//! application's test `key_lookups`, which compares this backend with GDK over every keysym
-//! and fails on a difference the rules do not cover. The rules are exact for the libraries
-//! of the test image; `docs/testing.md` says what follows from that.
-//!
-//! A declared key's name, read or written, and the character it types never reach the
-//! library: the table answers first, so every key the catalog binds reads and writes the
-//! same whatever libxkbcommon a user has installed. The key of a character and a key's
-//! other case do go through the rules and the library, for a declared key as for any.
-//!
-//! Accelerator strings, which a saved keymap holds, are read and written in [`accelerator`]
-//! on top of those lookups.
-
 use super::{Backend, Key, Modifiers, Table};
 
 mod accelerator;
 mod rules;
 mod tables;
 
-/// The libxkbcommon this process runs on, as the file the loader mapped: its name carries
-/// the library's version where the distribution's does (`libxkbcommon.so.0.13.2`). The
-/// library has no call that tells its version. For a log line: the tables are exact for one
-/// version, and a report that a key reads differently on the two interfaces starts here.
 pub fn library_in_use() -> Option<std::path::PathBuf> {
     let maps = std::fs::read_to_string("/proc/self/maps").ok()?;
     maps.lines()
@@ -41,19 +18,12 @@ pub fn library_in_use() -> Option<std::path::PathBuf> {
         })
 }
 
-/// What libxkbcommon itself writes for a keysym, before any rule: for the test that holds
-/// this backend to GDK, which reads back every name either library writes.
 #[cfg(any(test, feature = "test-support"))]
 pub fn library_name(keysym: u32) -> Option<String> {
     let name = xkbcommon::xkb::keysym_get_name(xkbcommon::xkb::Keysym::new(keysym));
     (!name.is_empty()).then_some(name)
 }
 
-/// The backend over [`Table`] and libxkbcommon.
-///
-/// It reads and writes accelerator strings in GTK's format, through its own key lookups
-/// ([`accelerator`]), so the accelerator strings of a saved keymap read and write as GTK's
-/// do. Whether an interface reads a saved keymap with it is the interface's.
 pub struct Xkb;
 
 impl Backend for Xkb {

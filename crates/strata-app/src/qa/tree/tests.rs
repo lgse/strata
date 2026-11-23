@@ -118,8 +118,6 @@ fn drawn_folder() -> Drawn {
     }
 }
 
-/// `selection/right-click-selects-entry` waits for the pane's selection with the entry's
-/// menu open, when Rune's tree holds the menu alone.
 #[test]
 fn a_column_behind_an_open_menu_is_presented_from_what_is_drawn() {
     let menu = json!({
@@ -223,8 +221,6 @@ fn a_tables_headings_row_is_not_an_entry() {
     assert_eq!(entries_of(&tree, "list"), ["archive", "readme.md"]);
 }
 
-/// A group's header line in a grouped list is no entry either, whatever its role: it is keyed
-/// as a header (`header_key`), not as a row.
 #[test]
 fn a_groups_header_is_not_an_entry() {
     let tree = json!({ "role": "window", "children": [
@@ -239,8 +235,6 @@ fn a_groups_header_is_not_an_entry() {
     assert_eq!(entries_of(&tree, "list"), ["archive", "todo.txt"]);
 }
 
-/// A scroll view as Rune's tree reports it: its box, its offsets and how far it scrolls down,
-/// the actions it offers, and its content's box.
 fn scroll_view(
     scroll: [f64; 3],
     own: [f64; 4],
@@ -259,8 +253,6 @@ fn scroll_view(
     })
 }
 
-/// What Rune offers on a scroll view: up and down always, left and right when it scrolls
-/// sideways (it lists `scroll-left` and not `scroll-right`).
 const DOWN: &[&str] = &["scroll-up", "scroll-down", "set-scroll-offset"];
 const SIDEWAYS: &[&str] = &[
     "scroll-up",
@@ -357,10 +349,6 @@ fn a_scroll_views_offsets_limits_and_bar_are_read_from_the_tree() {
     );
 }
 
-/// `keyboard_navigation/back-history-dropdown` lets go of a press held on Back after its
-/// history opened, when Rune's tree holds the menu alone: the button is presented from what
-/// is drawn, once, and a button the tree has is not presented again. With no menu open,
-/// a dialog's modal included, nothing is added.
 #[test]
 fn a_button_behind_an_open_menu_is_presented_from_what_is_drawn() {
     let tree = json!({
@@ -427,11 +415,6 @@ fn a_button_behind_an_open_menu_is_presented_from_what_is_drawn() {
     );
 }
 
-/// `column_background/context-menu-keeps-column-target` waits for the pane holding a column
-/// header's Refresh button with the column's menu open: a button drawn inside a column
-/// presented from what is drawn hangs under that column's pane, as a column's header actions
-/// do in GTK's tree, and one drawn outside every column hangs off the window's root, even
-/// where its box lies over a column's.
 #[test]
 fn a_button_behind_an_open_menu_hangs_under_the_column_it_is_drawn_in() {
     let menu = json!({
@@ -576,9 +559,6 @@ fn a_drawn_icon_is_an_image_under_its_entry_and_under_nothing_else() {
     );
 }
 
-/// An Icons tile keys its frame, a margin around the slot its glyph fills; GTK's `image` is
-/// the slot (`ThumbnailSlot`), so the snapshot presents the glyph's box, as the row's first
-/// child.
 #[test]
 fn a_tiles_icon_is_its_slot_not_its_frame_and_comes_first() {
     let tree = json!({
@@ -640,8 +620,6 @@ fn a_tiles_icon_is_its_slot_not_its_frame_and_comes_first() {
     );
 }
 
-/// What `focusable` reads of each node named in `names`, in a column whose list, or the strip
-/// around it, is the focus stop that names an active descendant.
 fn focusable_in(stop: Stop, names: &[&str]) -> Vec<bool> {
     let (strip, list) = match stop {
         Stop::List => (
@@ -693,9 +671,7 @@ fn focusable_in(stop: Stop, names: &[&str]) -> Vec<bool> {
 /// Which element around a column's entries is the focus stop.
 #[derive(Clone, Copy, Debug)]
 enum Stop {
-    /// The list itself, naming its cursor's entry: the Icons and List views (C1).
     List,
-    /// The strip around the columns: the Columns view (C2).
     Strip,
     /// A list that takes focus and names no active descendant.
     NamingNone,
@@ -720,9 +696,6 @@ fn an_entry_is_focusable_as_its_focus_stops_active_descendant() {
     }
 }
 
-/// Rune `#732` appends a 1x1 `status` announcer to the window's children on every frame;
-/// GTK's `GtkAccessible::announce` adds no widget, so the snapshot leaves the announcer out
-/// while keeping real status bars.
 #[test]
 fn window_announcer_is_stripped_while_real_status_bars_remain() {
     let tree = json!({
@@ -804,8 +777,6 @@ fn open_submenu_surfaces_nest_under_their_owning_menu_and_row_icons_carry_descri
     let drawn = row_with_badge();
     let snapshot = Snapshot::read(&tree, &drawn);
 
-    // Only the top-level menu remains under kit-root; each open submenu sits under its
-    // trigger, so its rows come right after the trigger, before the trigger's siblings.
     let kit_root = snapshot.at(1).expect("kit-root");
     let root_menus: Vec<_> = kit_root
         .children

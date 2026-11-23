@@ -8,8 +8,6 @@ use crate::theme::syntax::Role;
 use crate::theme::{Rgba8, bundled_theme};
 use crate::tokens::{self, Value};
 
-/// A bundled theme's look at Strata's default settings: Tokyo Night when `dark`, Omarchy
-/// Light otherwise.
 fn theme_look(dark: bool) -> Look {
     themed(dark, &LookParams::default())
 }
@@ -154,8 +152,6 @@ fn a_value_on_a_group_of_tokens_names_one_of_them() {
     );
 }
 
-/// The WP's test: a bad value. settings/themes: "A rule GTK cannot parse, such as
-/// `label { color: nope; }`, is skipped with an "invalid rule in user stylesheet" warning."
 #[test]
 fn a_bad_value_reports_where_it_is_and_keeps_the_themes_value() {
     let cases: &[(&str, &str, Problem)] = &[
@@ -257,12 +253,8 @@ fn a_bad_value_reports_where_it_is_and_keeps_the_themes_value() {
     );
 }
 
-/// The WP's test: partial apply. settings/themes: "Valid rules in the same file still
-/// apply."
 #[test]
 fn rows_that_parse_still_apply_around_syntax_errors() {
-    // Each file sets row.list = 30, row.columns = 28 and list.row.height = 40 around one
-    // break, on the lines given.
     let deep = format!(
         "row.list = 30\nrow.sidebar = {}1\nrow.columns = 28\n[list.row]\nheight = 40\n",
         "[".repeat(5000)
@@ -397,12 +389,8 @@ fn a_row_whose_value_runs_over_a_broken_line_doesnt_apply() {
     assert_eq!(look.row.list, 30.0);
 }
 
-/// Should-fix 4: the salvage loop and the walk stay near linear. The bound is generous for a
-/// debug build; quadratic bookkeeping took over 15 s here.
 #[test]
 fn a_large_broken_file_parses_quickly() {
-    // Keys set again, unknown tokens and lines of garbage: every line but the first is an
-    // error.
     let src: String = (0..20_000)
         .map(|i| match i % 3 {
             0 => "row.list = 30\n".to_owned(),
@@ -418,8 +406,6 @@ fn a_large_broken_file_parses_quickly() {
     assert!(took.as_secs_f64() < 5.0, "{took:?}");
 }
 
-/// Ruling B1: one row per token wins (the scoped one for this appearance), whichever of the
-/// two is a reference, wherever each sits in the file; a reference reads only winners.
 #[test]
 fn a_scoped_row_beats_an_unscoped_one_whatever_their_kinds() {
     let accent = |look: &Look| look.kit.c.bg_accent;
@@ -454,8 +440,6 @@ fn a_scoped_row_beats_an_unscoped_one_whatever_their_kinds() {
                 color("#123456")
             };
             assert_eq!(look.kit.c.scrim, want, "{src} dark={dark}");
-            // A reference to it reads the winning literal, or the theme's value when the
-            // winner is itself a reference: never the losing row's.
             let read = if wins_ref {
                 base.kit.c.scrim
             } else {
@@ -498,9 +482,6 @@ fn token_names_in_messages_match_the_registry() {
     }
 }
 
-/// settings/themes: "Without the file, Strata's appearance is unchanged." and "Deleting the
-/// file, or making it unreadable, restores Strata's default appearance." The host hands in
-/// empty bytes for a missing or unreadable file.
 #[test]
 fn an_empty_or_missing_file_leaves_the_look_as_the_theme_made_it() {
     for src in ["", "# only a comment\n\n", "[dark]\n[light]\n"] {
@@ -514,9 +495,6 @@ fn an_empty_or_missing_file_leaves_the_look_as_the_theme_made_it() {
     }
 }
 
-/// settings/themes: "With `~/.config/strata/style.css` present at startup, its rules … override
-/// Strata's own rules and the active theme." and "Corner roundness does not scale radii set in
-/// the user stylesheet."
 #[test]
 fn an_override_is_final_over_the_theme_and_the_settings() {
     let o = Overrides::parse("radius.md = 4\nrow.list = 50\nglow.on = false\n");
@@ -537,7 +515,6 @@ fn an_override_is_final_over_the_theme_and_the_settings() {
         // Only what the file names moves.
         let mut moved = changed(&look, &base);
         moved.sort_unstable();
-        // C4's heading strip follows `row.list` (slots inherit).
         let mut expected = vec![
             "glow.on",
             "list.heading.height",
@@ -595,8 +572,6 @@ fn a_rewrite_that_changes_nothing_parses_equal() {
     );
 }
 
-/// Ruling Q2. settings/themes: "Rules in the file may use the active theme's `@strata_*`
-/// colors; switching themes keeps the override and updates those colors."
 #[test]
 fn a_colour_taken_from_a_token_follows_the_theme() {
     let o = Overrides::parse(

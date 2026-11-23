@@ -1,11 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! One cursor and one selection for each column, kept by two owners through
-//! [`crate::handover`], which every view shares: [`Columns::publish`] hands the browser what
-//! a column's collection changed, and [`Columns::adopt`] writes to it what the browser changed
-//! by itself. What is the Columns view's own is the active column and the mirror that follows
-//! the cursor.
-
 use std::rc::Rc;
 
 use strata_components::{
@@ -23,10 +17,6 @@ pub(crate) enum Input {
     Keys {
         /// Shift was held: the key grew or shrank a range.
         extending: bool,
-        /// The view reported the cursor for this key, which it also does when the key left
-        /// the cursor where it was (Home on the first entry, an arrow at the list's end). The
-        /// browser raises `FocusChanged` again for such a key, so the child column follows
-        /// the cursor whether it moved or not.
         rested: bool,
     },
     Pointer,
@@ -45,7 +35,6 @@ impl Columns {
             .map_or_else(Held::default, |column| Held::of(&column.collection))
     }
 
-    /// The active column and its cursor: what the GTK views call the focused item.
     pub(super) fn focused(&self) -> Option<(usize, EntryId)> {
         let depth = self.state.active();
         (depth < self.open())
@@ -54,8 +43,6 @@ impl Columns {
             .map(|id| (depth, id))
     }
 
-    /// [`handover::kept_neighbour`] for column `depth`, whose cursor was `before` the change.
-    /// Never while a filter's results show there: their cursor is no entry of the listing.
     pub(super) fn kept_neighbour(
         &self,
         depth: usize,
@@ -70,9 +57,6 @@ impl Columns {
         handover::kept_neighbour(before, column, &state.collection, marks)
     }
 
-    /// Writes the browser's cursor and selection for column `depth` to the view, unless the
-    /// view shows them already ([`handover::adopt`]). Not while a filter's results show
-    /// there: their selection is the filter's, which the browser does not hold.
     pub(super) fn adopt(&mut self, depth: usize, marks: &Marks) {
         if self.listings.hits_at(depth) {
             return;
@@ -94,11 +78,6 @@ impl Columns {
         }
     }
 
-    /// Hands the browser what the view changed since it last agreed with it, and lets the
-    /// child column follow a cursor that moved. Call it before GLib dispatches and before
-    /// any call that makes the browser act on its cursor, so the browser never works from a
-    /// selection older than the view's. `input` is what made the change, where the caller
-    /// knows: the view says nothing of a key that moves between columns.
     pub(crate) fn publish(&mut self, browser: &Rc<Browser>, input: Option<Input>) {
         let open = self.open();
         for depth in 0..open {
@@ -111,8 +90,6 @@ impl Columns {
         self.follow(browser, input);
     }
 
-    /// Not while a filter's results show in column `depth`: GTK's hits only tell the preview
-    /// and the footer (`search_hits_changed`), never the browser.
     fn hand_over(&mut self, depth: usize, browser: &Browser) {
         if self.listings.hits_at(depth) {
             return;
@@ -132,10 +109,6 @@ impl Columns {
         handover::hand_over(&shown, browser, held);
     }
 
-    /// Tells the mirror when the focused item moved since it last looked. The GTK views
-    /// mirror from `FocusChanged`, which a cursor the view moved does not raise, so the
-    /// adapter says so here. The browser raises it for a move to another row or column, and
-    /// not for a Shift range growing or shrinking (`Browser::extend_selection`).
     fn follow(&mut self, browser: &Rc<Browser>, input: Option<Input>) {
         if let Some(input) = input {
             self.mirror.note_input(matches!(input, Input::Keys { .. }));
@@ -155,8 +128,6 @@ impl Columns {
                 .column(depth)
                 .is_some_and(|column| column.key_handle().range().is_some())
         } else {
-            // Shift says a range moved. Without it (a key fed in with no modifier held), a range
-            // still shows: its anchor stays behind the cursor, in the column the cursor was in.
             let same_column = before.is_some_and(|(earlier, _)| earlier == depth);
             let anchored_behind = same_column
                 && self
@@ -198,9 +169,6 @@ impl Columns {
         ended
     }
 
-    /// Selects every row of column `depth`, as the menu's Select All does: Ctrl+A in the
-    /// Columns view, whose cursor goes to the last entry (`select_all` in
-    /// `src/ui/browser/view_state.rs`, through GTK's selection model).
     pub(crate) fn select_all(&mut self, depth: usize) {
         let (Some(column), Some(state)) =
             (self.listings.shown(depth), self.state.column_mut(depth))
@@ -225,8 +193,6 @@ impl Columns {
         self.mirror.note_pointer(at);
     }
 
-    /// A modal layer opened over the view, or the view left: every column's pointer gesture,
-    /// edge resize, drag autoscroll and scroll-bar drag ends.
     pub(crate) fn end_gestures(&mut self) {
         self.state.reset();
         for depth in 0..self.state.len() {
@@ -236,8 +202,6 @@ impl Columns {
         }
     }
 
-    /// The browser moved the cursor itself, and said so in an event that mirrors it or does
-    /// not: [`Columns::publish`] must not take the move for the view's.
     pub(crate) fn caught_up(&mut self) {
         self.followed = self.focused();
     }

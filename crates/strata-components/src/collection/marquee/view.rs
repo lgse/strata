@@ -1,14 +1,9 @@
 // SPDX-License-Identifier: MIT
 
-//! The band's drawing: one element, placed by a live rect so a move or a scroll moves it
-//! without a view commit. Look and Kit tokens only.
-
 use rune::{Color, El, Live, el};
 use strata_kit::look::Look;
 
 /// How the band looks.
-///
-/// Used by: the C1e adapter, and hosts that draw the band themselves.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct BandLook {
     /// The fill.
@@ -22,12 +17,7 @@ pub struct BandLook {
 }
 
 impl BandLook {
-    /// Strata's `.file-marquee` (`src/style.css`, `upstream/main` 35ee677ab) in the Look's
-    /// tokens. Its fill is the selection highlight at 0.58 opacity; here, the selection colour
-    /// the collection draws selected rows in (rune-kit's table selection) at 0.58 of its own
-    /// opacity, so the band reads as a lighter selection over the rows it crosses. Its 1 px
-    /// outline is the accent: Kit's `text_accent`, which the collection's drop highlight also
-    /// uses. Its 4 px radius scales with the Look's roundness.
+    /// Strata's `.file-marquee` (`src/style.css`, `upstream/main` 35ee677ab) in the Look's tokens.
     pub fn from_look(look: &Look) -> Self {
         let selected = rune_kit::TableStyle::from_kit(&look.kit).selected;
         Self {
@@ -39,15 +29,10 @@ impl BandLook {
     }
 }
 
-/// The band's key, so in-process tests can find it while it shows. Keyed elements get a group
-/// role in Rune's accessibility tree, so the band also leaves the tree ([`El::a11y_hidden`]).
+/// The band's key, so in-process tests can find it while it shows.
 pub const KEY: &str = "marquee-band";
 
-/// The band, keyed [`KEY`], out of flow at the top-left of its parent and placed by `rect`
-/// (`[x, y, w, h]` in the parent's points). The parent is the layer the collection draws its
-/// marquee in, which follows the scroll, so `rect` is in content coordinates: fill it from
-/// `MarqueeMachine::drawn`. It has no handlers, so it takes no input, and it is hidden from
-/// assistive technology: it's decoration, and the status line speaks the count it selects.
+/// The band, keyed `KEY`, out of flow at the top-left of its parent and placed by `rect` (`[x, y, w.
 pub fn band_view(look: &Look, rect: &Live<[f32; 4]>) -> El {
     let style = BandLook::from_look(look);
     el().key(KEY)

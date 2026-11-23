@@ -2,8 +2,6 @@
 
 use super::*;
 
-/// Looks originals up among the entries of the one Trash at `trash_root`
-/// by their recorded identities.
 fn recorded_identity_lookup(
     trash_root: PathBuf,
     originals: HashMap<Location, ItemIdentity>,
@@ -107,8 +105,6 @@ enum Chosen {
     Refused,
 }
 
-/// The per-user Trash beneath a mount, and the original `report` it holds
-/// entries for, made as a file or a `folder`.
 struct TrashRoom {
     trash_root: PathBuf,
     original: PathBuf,
@@ -168,8 +164,6 @@ impl TrashRoom {
     }
 }
 
-/// A mount, whether `report` is a folder, what changes in Trash after it
-/// goes there, and which entry undo then takes for it.
 type PassedOver = (Preset, bool, InTrash, Chosen);
 
 fn check_passed_over((preset, folder, change, chosen): PassedOver) -> Result<(), Box<dyn Error>> {

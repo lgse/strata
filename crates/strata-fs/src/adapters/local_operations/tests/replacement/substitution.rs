@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Items another process substitutes while they are replaced are never taken for the ones
-//! the replacement checked.
-
 use std::sync::atomic::Ordering;
 
 use super::fs_quirks::{autodisable_serverino, evict};
@@ -274,8 +271,6 @@ fn a_target_is_replaced_only_while_its_mount_still_knows_it() -> Result<(), Box<
         reused_inodes: Some("target"),
         ..Quirks::nfs3()
     };
-    // The mount, what happens meanwhile, whether the target is replaced, and whether what
-    // happens is possible on this base.
     let rows: [(Preset, Meanwhile, bool, bool); 9] = [
         (Quirks::vfat, Meanwhile::Evicted, true, true),
         (Quirks::vfat, Meanwhile::StageEvicted, true, true),

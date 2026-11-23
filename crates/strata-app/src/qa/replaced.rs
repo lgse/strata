@@ -1,21 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Which rows the browser has replaced since a step remembered one. GTK replaces a column's
-//! model whole when the browser replaces its entries (`EntriesReplaced`, which a reload such
-//! as F5 ends in: `on_entries_replaced` in `src/ui/browser/events/listing.rs`), so each of its
-//! rows is a new widget, while the events that insert, splice or fill rows keep them. Rune's
-//! row keeps its node, since the collection keys a row by its entry's id and an id is the
-//! entry's location. So the backend counts the replacements and tells a row of a column
-//! replaced since it was remembered from the row it was, as GTK's `replaced` and recall do.
-//!
-//! Only `EntriesReplaced` is modelled. GTK also gives a row a new widget when the view is
-//! rebuilt (`rebuild_icons`, `rebuild_list`), when a filter hides the row and shows it again,
-//! and when the row is scrolled out and back, where Rune keeps the row. A run that relies on
-//! one of those needs this extended first.
-//!
-//! Each tab has a browser of its own (`shell::tabs`): each is watched from the first step
-//! after its tab opens, and a row is asked after in the tab shown.
-
 use std::{
     cell::{Cell, RefCell},
     collections::HashMap,
@@ -34,8 +18,6 @@ struct Watched {
     last: HashMap<Location, u64>,
 }
 
-/// The replacements every tab's browser makes, counted across the window, and asked of the
-/// tab shown: a row is another row only when its own tab's column was replaced.
 #[derive(Default)]
 pub(super) struct Replacements {
     /// How many replacements the browsers have made.
@@ -83,8 +65,6 @@ impl Replacements {
         self.count.get()
     }
 
-    /// Whether the entry the components call `id` was in a replacement of the shown tab's
-    /// browser after `since`.
     pub(super) fn replaced_since(&self, app: &App, id: EntryId, since: u64) -> bool {
         let watched = self.watched.borrow();
         let shown = watched

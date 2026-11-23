@@ -109,8 +109,6 @@ fn sizes_read_as_strata_writes_them() {
     assert_eq!(file_size(999_960), "1 MB");
 }
 
-/// A press then a release on `index` of three 24 pt rows, with `mods`, as click `clicks` of a
-/// run; what the controller asked for.
 fn click(
     p: &mut ArchivePointer,
     sel: &mut Selection,
@@ -169,8 +167,6 @@ fn a_release_highlights_and_a_folder_click_opens() {
     assert!(opens(&fx));
 }
 
-/// `operations/archives/preview`: "Ctrl+click and Shift+click act as a plain click; one member
-/// is highlighted at a time."
 #[test]
 fn modified_clicks_act_as_plain_ones() {
     let l = super::ArchiveListing::new(tree());
@@ -220,8 +216,6 @@ fn the_key_map_keeps_one_member_highlighted() {
     );
 }
 
-/// `operations/archives/preview`: "A wrong password keeps the prompt open with "The password is
-/// incorrect."": with the field empty again, as Strata's prompt comes back.
 #[test]
 fn an_error_clears_the_password_typed() {
     let mut prompt = super::PromptState::default();
@@ -262,8 +256,6 @@ mod prompt {
             .build(&s.look)
     }
 
-    /// The AccessKit ids of the prompt's polite live error nodes (ignoring Rune's empty
-    /// window-level announcer live region until `Tx::announce` speaks).
     fn live_nodes(rt: &Runtime<App>) -> Vec<u64> {
         rt.accessibility_tree()
             .nodes
@@ -293,10 +285,6 @@ mod prompt {
         live_nodes(rt)
     }
 
-    /// `operations/archives/preview`: "A wrong password keeps the prompt open with "The
-    /// password is incorrect."", each time. AT-SPI announces a live region only when its node
-    /// is added or its name changes, and a second error has the same words: it must be a new
-    /// node to be heard.
     #[test]
     fn each_wrong_password_is_a_new_live_node() {
         let app = App {
@@ -422,8 +410,6 @@ mod element {
         rt.frame(1.0 / 60.0);
     }
 
-    /// `key` (Left, or `h` with the letters on) at `at`, with the tree focused by a click on a
-    /// file, with an `on_leave` when `leave`.
     fn left(at: At, leave: bool, key: Key) -> Heard {
         PASSED.with(|p| p.set(0));
         LEFT.with(|l| l.set(0));
@@ -481,8 +467,6 @@ mod element {
         panic!("no option {name}");
     }
 
-    /// Strata's archive rows read a file's size after its name; a folder's name ends in "/"
-    /// and says no more.
     #[test]
     fn a_file_row_reads_its_size_after_its_name() {
         let app = App {
@@ -499,9 +483,6 @@ mod element {
         assert_eq!(description(&rt, "docs/"), None);
     }
 
-    /// Left at the root goes to the host's `on_leave`; with none, it goes on past the tree to
-    /// the window's keys, as Strata's 10xer `h` behaviour does, and so does `h` with the
-    /// letters on. In a folder, Left goes up either way, and the host hears nothing.
     #[test]
     fn left_at_the_root_reaches_the_host() {
         let text = || Key::Text("h".into());
@@ -532,9 +513,6 @@ mod element {
         );
     }
 
-    /// Pressing a folder crumb or "Go up one level" unmounts the activated crumb and returns
-    /// focus to the archive collection where the folder came through is highlighted, instead
-    /// of stranding focus on an earlier crumb.
     #[test]
     fn crumb_and_up_buttons_return_focus_to_the_archive_list() {
         let app = App {
@@ -560,8 +538,6 @@ mod element {
                 .and_then(|e| e.key)
         };
 
-        // At depth 2 (`Contents / docs / api`), clicking `docs` unmounts `archive-crumb-1`
-        // while `archive-crumb-0` stays mounted; focus returns to `archive`, not `crumb-0`.
         click(&mut rt, "docs");
         assert_eq!(rt.state.archive.listing().depth(), 1);
         assert_eq!(focused(&mut rt).as_deref(), Some("archive"));

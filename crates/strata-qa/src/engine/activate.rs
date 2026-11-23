@@ -6,8 +6,6 @@ use super::{LOCATE_TIMEOUT, POLL_INTERVAL, lookup::find_presented, scope::Scope}
 use crate::{Aim, Backend, Target};
 
 impl<B: Backend> Scope<'_, B> {
-    /// Runs a node's default action. A target that need not be drawn, and a plain role and
-    /// name, are looked up among the presented nodes; any other target has to be on screen.
     pub(super) async fn activate(
         &self,
         target: &Target,

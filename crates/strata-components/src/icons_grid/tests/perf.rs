@@ -1,25 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Perf: 100,000 entries in the grid, held to C4's ListTable and C1e's plain list over the
-//! same entries, measured side by side in the same run.
-//!
-//! `cargo test --profile perf -p strata-components --lib icons_grid::tests::perf -- --ignored --nocapture`
-//!
-//! As C1e's and C4's: a 900 pt window at scale 2, the first frame, then 600 frames at 120 Hz
-//! each scrolled 48 pt by the wheel (thumbnails served as they are asked for, as a host's poll
-//! hands them over), then 30 clicks on tiles. The grid runs at 32, 64 and 256 pt tiles. C3
-//! adds a size step (16 steps up the ladder and 16 back, the cursor where the clicks left it) and a
-//! reflow (the width 900 → 780 → 900, ten times). Each figure is the best of three runs.
-//!
-//! The run also reports C1e's lines packed as the grid packs them with C1e's default cells
-//! (an icon and a name), the floor under the grid's own tiles.
-//!
-//! The bar (owner-agreed, work package C3):
-//! - no view run while scrolling, and none while thumbnails land;
-//! - scroll frames within 2 × the ListTable's p95 in the same run, and none over 16.7 ms;
-//! - a click commits within 4 ms at p95 and rebuilds at most 4 tiles on average;
-//! - a size step and a reflow each commit within 16.7 ms at p95.
-
 use std::cell::Cell as StdCell;
 use std::rc::Rc;
 use std::time::Instant;
@@ -112,8 +92,6 @@ enum Kind {
     Grid,
     Table,
     List,
-    /// C1e's own lines packed as the grid packs them, with its default cells: what the grid
-    /// costs before its tiles.
     Packed,
 }
 
@@ -169,8 +147,6 @@ fn base(_: &Host) -> Collection<Host> {
     )
 }
 
-/// The grid's base: tile builds counted through the description, which C1e reads once a
-/// build (the details, which the hit regions read too, would count presses).
 fn grid_base(s: &Host) -> Collection<Host> {
     let built = s.built.clone();
     base(s).describe(crate::collection::element::Describe::pure(
@@ -205,7 +181,6 @@ fn grid(_: &Host) -> IconsGrid<Host> {
     })
 }
 
-/// C4's five columns, as its own perf test has them.
 fn columns() -> Vec<Column<Host>> {
     vec![
         Column::primary("name", "Name")
@@ -394,13 +369,6 @@ fn best(kind: Kind, size: f32) -> Run {
     Run::best(&runs)
 }
 
-/// The bar above, in absolute milliseconds where it isn't relative to C4.
-///
-/// Load-sensitive: the absolute bars, the size step's 16.7 ms above all, hold against wall
-/// time, not against C4 in the same run, so a loaded machine can fail them on its own. A size
-/// step is 6 to 8 ms at p95 at this machine's usual load (C3 review round 1) and failed once
-/// under a 4 × slowdown (C3 review round 2: 22 ms against 16.7). Rerun a failure on an idle
-/// machine before reading it as a regression; the bar stays.
 #[test]
 #[ignore = "perf: run with --profile perf -- --ignored --nocapture"]
 fn a_100k_grid_scrolls_zooms_and_reflows_within_the_bar() {

@@ -1,14 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The gallery page for C15 StrataDialog: its scenes, demo state, view and key and poll hooks.
-//! Scene names start with `c15-` and end in `-light` or `-dark`.
-//!
-//! Work package: `docs/rune/work/phase-1-leaves/C15-strata-dialog.md`.
-//!
-//! The page draws a stand-in window (a header bar, a listing with a focusable cursor row, a
-//! path field) and a row of buttons that open each dialog, so scripts can open a dialog from
-//! an opener and check where focus returns. The golden scenes open a dialog at once.
-
 use rune::{Cx, El, KeyEvent, TextEdit, Tx, col, el, icon, row, text};
 use rune_kit::{Button, ButtonVariant, Checkbox, Progress, Select, Switch, TextInput};
 use strata_components::dialog::{
@@ -52,7 +43,6 @@ const LABEL_ROOM: usize = 11;
 
 const PROTOCOLS: [&str; 4] = ["SMB", "SFTP", "FTP", "WebDAV"];
 
-/// C15's demo state, held in `Gallery::c15`.
 #[derive(Default)]
 pub struct Demo {
     pub open: Option<Open>,
@@ -77,8 +67,6 @@ pub struct Demo {
     /// A field outside any dialog.
     pub path: TextEdit,
     pub hidden_files: bool,
-    /// Puts focus in keyboard mode on the next frame, as a Tab and a Shift+Tab would: the
-    /// keyboard scenes show the focus ring.
     pub keyboard: bool,
 }
 
@@ -120,8 +108,6 @@ fn openers_scene(g: &mut Gallery, dark: bool) {
     g.open("c15", dark);
 }
 
-/// Golden scenes: each gets an accessibility and a PNG golden. Each calls
-/// `g.open("c15", dark)`, then fills in `g.c15`.
 pub const SCENES: &[Scene] = &[
     ("c15-basic-light", |g| open_scene(g, false, Open::Basic)),
     ("c15-basic-dark", |g| open_scene(g, true, Open::Basic)),
@@ -169,15 +155,10 @@ pub fn view(g: &Gallery, cx: &mut Cx<Gallery>) -> El {
     rune_kit::root(window(g, look), layer)
 }
 
-/// Keys no focused element took while this page is open: shortcuts, and keys with nothing
-/// focused. True consumes the key; false lets the gallery's Escape go back to the index.
 pub fn on_key(_g: &mut Gallery, _key: &KeyEvent, _tx: &mut Tx) -> bool {
     false
 }
 
-/// Runs at the start of every frame while this page is open, with the clock in seconds. A
-/// keyboard scene focuses its dialog's initial focus again with the ring once the dialog is
-/// up, shown as the keyboard shows it.
 pub fn poll(g: &mut Gallery, t: f64, tx: &mut Tx) -> bool {
     if !g.c15.keyboard || t <= 0.0 {
         return false;
@@ -517,9 +498,6 @@ fn dialogs(g: &Gallery, look: &Look, reduced: bool, layer: &mut Vec<El>, popups:
     .build(look, layer);
 }
 
-/// Connect to Server: a focused address field, a protocol select, a byte-limited label with
-/// its caption, notes and a checkbox. Connect needs an address, and once anything is typed a
-/// click outside no longer dismisses.
 fn form(
     d: &Demo,
     look: &Look,

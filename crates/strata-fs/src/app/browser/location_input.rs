@@ -59,9 +59,6 @@ pub(super) fn location_from_input_with_home(
     Ok(Location::uri(without_query_or_fragment(uri)))
 }
 
-/// GVfs folds a URI's query and fragment into the mount spec, so a backend that ignores them,
-/// as SFTP does, mounts a spec the location never matches and its listing fails as not
-/// mounted. No accepted scheme addresses files with either, so typed addresses drop both.
 fn without_query_or_fragment(uri: String) -> String {
     let Ok(parsed) = glib::Uri::parse(&uri, GIO_URI_PARSE_FLAGS) else {
         return uri;
@@ -85,8 +82,6 @@ fn without_query_or_fragment(uri: String) -> String {
     .to_string()
 }
 
-/// GIO's spelling of the roots of schemes without a host, which it also reads from
-/// `network:` and `network://`.
 const VIRTUAL_ROOTS: [(&str, &str); 3] = [
     ("network", "network:///"),
     ("trash", "trash:///"),
@@ -104,11 +99,6 @@ fn virtual_root(input: &str) -> Option<&'static str> {
         .map(|(_, root)| *root)
 }
 
-/// UNC paths (`\\host\share`, bare `//host/share`) and SCP-style addresses
-/// (`user@host:path`) are deliberately not accepted as location-bar shorthand
-/// (see lgse/strata#20) so a proper URI (`smb://`, `sftp://`, ...) is always
-/// preserved verbatim rather than being guessed at. Report a clear message
-/// instead of silently treating either as a relative local path.
 pub(super) fn unsupported_shorthand_message(input: &str) -> Option<&'static str> {
     let looks_like_unc = input.starts_with("\\\\")
         || ["smb:", "SMB:"].iter().any(|prefix| {
@@ -145,8 +135,6 @@ pub(super) fn looks_like_scp_shorthand(input: &str) -> bool {
     !host.is_empty() && after_at.contains(':') && !host.contains('/') && !host.contains('\\')
 }
 
-/// Joins natively, so a non-UTF-8 base stays byte-exact, and resolves `.` and
-/// `..` as text.
 pub(super) fn join_relative(base: &Path, relative: &str) -> PathBuf {
     lexically_normalized(&base.join(relative))
 }

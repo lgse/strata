@@ -7,8 +7,6 @@ use std::time::Duration;
 
 use crate::transfer;
 
-/// Which selection: the clipboard (Ctrl+C, Ctrl+V), or the primary selection (select, then
-/// middle-click). The primary selection needs data control on Wayland, or X11.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Selection {
     Clipboard,
@@ -36,12 +34,7 @@ impl From<transfer::Selection> for Selection {
 /// The protocol the clipboard goes through here.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Route {
-    /// Wayland data control (`ext_data_control_v1`, else `zwlr_data_control_v1`): heard and
-    /// written without keyboard focus.
     DataControl,
-    /// Wayland `wl_data_device` on the app's own connection (mutter, which has no data
-    /// control): another app's copy is heard only at the app's next keyboard focus, and a
-    /// write needs the serial of the key or click that asked for it.
     DataDevice,
     /// X11 selections, on X11, or through Xwayland where Wayland has no route at all.
     X11,
@@ -68,8 +61,6 @@ pub struct Status {
     pub hears_unfocused: bool,
     /// The primary selection can be written and read.
     pub primary: bool,
-    /// A copy can outlive the app: X11, where a clipboard manager runs. On Wayland nothing
-    /// client-side can (see the module docs).
     pub keeps_after_exit: bool,
     /// A Wayland window whose clipboard goes through Xwayland: Wayland had no route.
     pub xwayland: bool,
@@ -114,8 +105,6 @@ pub struct Data {
 }
 
 impl Data {
-    /// The bytes as text, if this is a text type ([`super::TEXT_TYPES`]) that decodes:
-    /// `STRING` and `TEXT` as ISO Latin-1 (ICCCM), the others as UTF-8.
     pub fn text(&self) -> Option<String> {
         match self.mime.as_str() {
             "STRING" | "TEXT" => Some(self.bytes.iter().map(|&b| char::from(b)).collect()),
@@ -173,15 +162,11 @@ impl From<transfer::ReadError> for ReadError {
 /// A failed clipboard call.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Error {
-    /// This session has no route for it: not Wayland or X11, or Wayland with no route and no
-    /// Xwayland.
     Unsupported(String),
     /// The clipboard isn't attached ([`super::Clipboard::attach`]), or was shut down.
     NotAttached,
     /// A copy with no types.
     Empty,
-    /// A request refused before it reached the platform (the primary selection where there
-    /// is none, a call off the UI thread).
     Refused(&'static str),
     /// A data-device write needs a key or click first: the app has had none.
     NoSerial,
@@ -221,8 +206,6 @@ impl From<transfer::Error> for Error {
 pub struct CopyId(pub(crate) u64);
 
 impl CopyId {
-    /// The id logged as `n` by [`CopyId::get`]: for strata-platform's own tests, which name
-    /// copies across a process boundary.
     #[doc(hidden)]
     pub fn from_raw(n: u64) -> CopyId {
         CopyId(n)
@@ -237,10 +220,6 @@ impl CopyId {
 /// Where a copy stands.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CopyState {
-    /// Written, not yet confirmed. On X11 the server's timestamp is a round trip away; on
-    /// Wayland the compositor's echo is. On wlroots a data-device write made while the app had
-    /// no keyboard focus is never confirmed, as no echo comes either way (mutter: a hand test).
-    /// Reads of the selection get this copy meanwhile.
     Pending,
     /// The selection holds it.
     Holding,

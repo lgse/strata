@@ -1,10 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! K2's page in process: what the accessibility tree doesn't show. The interface font
-//! reaches Rune's sans slot (`Runtime::font_families`), mono stays the app's (the bundled
-//! JetBrains Mono, K6), and Default and Escape put the app's families back. The scripts in
-//! `tests/scripts/k2/` check the rest.
-
 mod k2 {
     use rune::{Env, Key, KeyEvent, Mods, Runtime};
     use strata_gallery::scenes::k2::APP_FAMILIES;
@@ -54,9 +49,6 @@ mod k2 {
         tap(rt, key);
     }
 
-    /// settings/themes/interface-font: a change applies at once; previews keep the
-    /// monospace font; an uninstalled family falls back to the app's own; Default restores
-    /// the bundled font.
     #[test]
     fn a_chosen_family_leads_the_sans_slot_and_mono_stays_the_apps() {
         let mut rt = mount("k2-defaults-light");

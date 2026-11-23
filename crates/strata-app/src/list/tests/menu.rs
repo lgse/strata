@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The columns menu from the List header's Columns button (`append_columns_menu` in
-//! `src/ui/browser_modes/list_pane.rs`).
-
 use rune::{Key, KeyEvent, Mods, Tx};
 use serde_json::Value;
 
@@ -33,8 +30,6 @@ fn has(node: &Value, state: &str) -> bool {
         .is_some_and(|states| states.iter().any(|seen| seen == state))
 }
 
-/// The open menu's items: each one's name, description, and whether it is checked and
-/// sensitive.
 fn items(host: &Offscreen) -> Vec<(String, String, bool, bool)> {
     let tree = host.tree();
     let items = view::all(&tree, &|node| {
@@ -61,10 +56,6 @@ fn saved_pref(key: &str) -> Option<toml::Value> {
     text.parse::<toml::Table>().ok()?.get(key).cloned()
 }
 
-/// Return on the header's Columns button opens the columns menu with the keyboard in it:
-/// COLUMNS' check items (standard columns checked, optional columns unchecked), Name disabled
-/// with GTK's reason, and "Reset to default columns". Return on Size hides it, Return on
-/// Duration opts it in (`list_shown_columns`), and Reset restores defaults.
 #[test]
 fn return_on_the_columns_button_opens_the_columns_menu() {
     hosted_in(

@@ -30,40 +30,45 @@ pub enum DropSite {
 /// How an in-process drag opens new tabs on the strip.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum TabOpen {
-    /// Places rune-kit's incoming gap under the pointer across the strip and opens at that gap,
-    /// or at the end on New tab: Strata's sidebar location drags (`append = false`).
     AtGap,
-    /// Opens at the end on New tab and on unused strip space, while leaving every tab header to
-    /// transfer or refuse the drop: Strata's folder-only view drags (`append = true`).
     AtEnd,
 }
 
-/// Everything the strip does is one of these. The host owns every policy: it selects, closes,
-/// moves and opens tabs in its data, transfers and saves drops, and sets the window title.
 #[derive(Clone, Debug, PartialEq)]
 pub enum TabsIntent {
     /// Select tab `id`.
-    Select { id: TabId, via: Via },
-    /// Close tab `id`: its X button or a middle click. The host may refuse (running
-    /// operations); it records the tab in its `ClosedTabs` only if it does close it.
-    Close { id: TabId },
+    Select {
+        id: TabId,
+        via: Via,
+    },
+    Close {
+        id: TabId,
+    },
     /// The New tab button: open a tab at the active tab's location and select it.
     New,
     /// A drag moved tab `id` from `from` to `to`.
-    Reorder { id: TabId, from: usize, to: usize },
-    /// Tab `id` was dragged off the strip and let go: open it in a window of its own. Only
-    /// with [`super::BrowserTabs::tear_out`].
-    TearOut { id: TabId, out: TabTearOut },
+    Reorder {
+        id: TabId,
+        from: usize,
+        to: usize,
+    },
+    TearOut {
+        id: TabId,
+        out: TabTearOut,
+    },
     /// A torn-out tab moved, or came back (`out.torn` false), with the button still down.
-    TearMove { id: TabId, out: TabTearMove },
-    /// Files or content dropped on tab `id`: transfer the files into its folder with the action
-    /// the host chooses, or save the content there, and select the tab.
-    DropInto { id: TabId, dropped: Dropped },
-    /// A drag the host said opens tabs dropped on the strip: open one tab per dragged folder,
-    /// in order, from index `at`, and select the last.
-    OpenTabs { at: usize, dropped: Dropped },
-    /// A drag reached or left `site`, with what it offers: for a host that checks a drag's
-    /// items by its serial.
+    TearMove {
+        id: TabId,
+        out: TabTearMove,
+    },
+    DropInto {
+        id: TabId,
+        dropped: Dropped,
+    },
+    OpenTabs {
+        at: usize,
+        dropped: Dropped,
+    },
     DropHover {
         site: DropSite,
         hover: DropHover,

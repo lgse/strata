@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The page registry holds together: every page has golden tests, scene names follow the
-//! `<id>-…-light|dark` rule and open their own page, and every golden or script folder
-//! belongs to a page. These guard what parallel work packages add.
-
 use std::collections::BTreeSet;
 
 use strata_gallery::Gallery;
@@ -51,8 +47,6 @@ fn page_docs_exist() {
     }
 }
 
-/// Every work package has landed, so every page is built: it has golden scenes, and the index
-/// marks it so. A page added without them fails here.
 #[test]
 fn every_page_is_built() {
     let unbuilt: Vec<&str> = scenes::PAGES
@@ -171,8 +165,6 @@ fn bless_filters_name_a_page_a_scene_or_a_script() {
     assert!(!support::blessing(Some("0"), None, "c1", "c1-empty-dark"));
 }
 
-/// `mise run bless <filter>` always runs this, so a filter that names no page, golden scene or
-/// script fails instead of blessing nothing.
 #[test]
 fn bless_filter_names_a_page_scene_or_script() {
     let blessing = std::env::var("RUNE_BLESS").is_ok_and(|v| v != "0");

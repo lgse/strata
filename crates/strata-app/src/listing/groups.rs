@@ -1,11 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Incremental file-type group buckets for a grouped [`super::Column`].
-//!
-//! Staged publication appends rows in browser order. Keeping one bucket per [`TypeGroup`] in
-//! `compare_type_groups` order avoids re-scanning and re-classifying already-indexed rows on
-//! every chunk, and exposes O(groups) run lengths for [`crate::pane`].
-
 use std::collections::HashMap;
 
 use strata_core::model::ViewPreferences;
@@ -15,8 +9,6 @@ use super::TypeGroup;
 
 #[derive(Default)]
 pub(super) struct GroupedBuckets {
-    /// Buckets ordered by `compare_type_groups`, each holding browser row positions in
-    /// ascending browser order.
     buckets: Vec<(TypeGroup, Vec<usize>)>,
     /// Maps each seen [`TypeGroup`] to its index in `buckets`.
     bucket_of: HashMap<TypeGroup, usize>,
@@ -31,8 +23,6 @@ impl GroupedBuckets {
         self.runs.clear();
     }
 
-    /// Rebuilds all buckets from `positions` (browser positions in ascending browser order)
-    /// and their corresponding [`TypeGroup`]s.
     pub(super) fn rebuild(
         &mut self,
         preferences: ViewPreferences,
@@ -46,8 +36,6 @@ impl GroupedBuckets {
         self.refresh_runs();
     }
 
-    /// Appends a single visible row (at a browser position greater than all previous rows)
-    /// into its group bucket, inserting a new bucket in sorted order if unseen.
     pub(super) fn push(&mut self, position: usize, group: TypeGroup, preferences: ViewPreferences) {
         if let Some(&idx) = self.bucket_of.get(&group) {
             self.buckets[idx].1.push(position);
@@ -92,8 +80,6 @@ impl GroupedBuckets {
         }
     }
 
-    /// Fast path when only a single group exists: appends new positions directly to `shown`
-    /// and `back` in O(appended) without rewriting earlier entries.
     pub(super) fn single_group(&self) -> bool {
         self.buckets.len() <= 1
     }

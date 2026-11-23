@@ -1,11 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The pointer controller on the collection element, in a headless runtime: what the seam
-//! routes to it, its settings from `Collection::settings`, what the host hears, and the presses
-//! with modifiers held in process (Rune's scripts can hold them too since `4805095`:
-//! `docs/rune/testing.md`, Scripts).
-//! Entries 1–3 are folders and 4–10 files; a row's key is `row-{id}`.
-
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -33,7 +27,6 @@ struct Host {
     bands: Rc<RefCell<Vec<(Point, Mods)>>>,
 }
 
-/// Records the bands the pointer controller hands it, as C1d's controller would start them.
 struct Band(Rc<RefCell<Vec<(Point, Mods)>>>, bool);
 
 impl MarqueeController for Band {
@@ -285,8 +278,6 @@ fn releasing_ctrl_before_the_button_on_blank_row_space_still_adds_the_row() {
 
 #[test]
 fn ctrl_or_shift_middle_click_on_a_folder_opens_a_window() {
-    // browser/selection: Ctrl+middle-click or Shift+middle-click on a folder row opens that folder in a new window.
-    // Strata reads the modifiers at the release.
     let mut rt = runtime(PointerSettings::default());
     for (i, mods) in [(1, CTRL), (2, SHIFT)] {
         let (x, y) = at(&rt, i, "");
@@ -355,8 +346,6 @@ fn a_drag_from_a_row_starts_with_the_pointers_window_point() {
 
 #[test]
 fn a_slow_click_on_the_name_renames_and_a_key_cancels_it() {
-    // operations/rename: Clicking the name text of the only selected item again, after the double-click interval, opens the editor.
-    // operations/rename: A quick double-click opens the item instead; another click, a drag, any key press, or a selection change before the interval cancels the pending rename.
     let mut rt = runtime(PointerSettings::default());
     click(&mut rt, 4, "label");
     wait(&mut rt, 1.0);
@@ -393,8 +382,6 @@ fn a_slow_click_on_the_icon_does_not_rename() {
 
 #[test]
 fn a_read_only_collection_neither_drags_nor_renames() {
-    // No bullet of its own: C14b's read-only archive preview (`Collection::read_only`) takes
-    // no file drag and no rename. Choosers and Trash turn renaming off through the settings.
     let mut rt = runtime(PointerSettings::default());
     rt.update(|s, _| s.read_only = true);
     rt.frame(1.0 / 60.0);

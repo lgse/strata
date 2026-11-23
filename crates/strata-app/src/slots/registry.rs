@@ -124,8 +124,6 @@ pub(crate) enum Fault {
     SamePart(&'static str, &'static str),
     /// These two parts are in a slot that holds one.
     Crowded(Slot, &'static str, &'static str),
-    /// This command is registered twice, by these two (the window's own table is `window`),
-    /// where both can be active at once: a menu row or a button would run only the first.
     CommandTwice(&'static str, &'static str, &'static str),
 }
 
@@ -144,8 +142,6 @@ impl<S> Clone for Registry<'_, S> {
 impl<S> Copy for Registry<'_, S> {}
 
 impl<'a, S> Registry<'a, S> {
-    /// The table with the view the saved `mode` names shown, or the first registered view
-    /// when none answers to it.
     pub(crate) fn new(entries: &'a [Entry<S>], mode: &str) -> Self {
         let views = || {
             let entries = entries.iter().enumerate();
@@ -161,8 +157,6 @@ impl<'a, S> Registry<'a, S> {
         Self::new(self.entries, mode)
     }
 
-    /// What is wrong with `entries`, if anything: the first fault in registration order, and
-    /// then the first command registered twice, among the parts and the window's `own`.
     pub(crate) fn check(entries: &[Entry<S>], own: &[Action<S>]) -> Result<(), Fault> {
         for (index, entry) in entries.iter().enumerate() {
             for earlier in &entries[..index] {
@@ -199,15 +193,10 @@ impl<'a, S> Registry<'a, S> {
             .map(|(_, entry)| entry)
     }
 
-    /// The active parts of `slot`, in registration order. None for a slot nothing is
-    /// registered in.
     pub(crate) fn of(self, slot: Slot) -> impl Iterator<Item = &'a Entry<S>> {
         self.active().filter(move |entry| entry.slot() == slot)
     }
 
-    /// Whether the element keyed `key` is in a pane a hidden tab keeps the keyboard in: the
-    /// shown view, the sidebar or the drawer, as GTK's `select` keeps a focus only in the
-    /// files, the sidebar or the preview. A part's keys start with its name.
     pub(crate) fn in_panes(self, key: &str) -> bool {
         let panes = self
             .active()
@@ -222,8 +211,6 @@ impl<'a, S> Registry<'a, S> {
         self.entries.get(self.shown?)?.view()
     }
 
-    /// The views that are not shown, which the QA backend's invariants hold to have done
-    /// nothing since they were hidden.
     #[cfg(feature = "qa")]
     pub(crate) fn hidden_views(self) -> impl Iterator<Item = &'a View<S>> {
         let entries = self.entries.iter().enumerate();
@@ -232,8 +219,6 @@ impl<'a, S> Registry<'a, S> {
             .filter_map(|(_, entry)| entry.view())
     }
 
-    /// Shows the view that answers to `mode` in place of the one shown. False when none
-    /// answers to it, or when it is shown already.
     pub(crate) fn show(&mut self, mode: &str) -> bool {
         let named = self
             .entries
@@ -249,8 +234,6 @@ impl<'a, S> Registry<'a, S> {
         }
     }
 
-    /// Which view is shown, as the parts that read it later share it: the view's listener
-    /// ([`Registry::listeners`]) and a part's timer ([`ShownView::is`]).
     pub(crate) fn shown_now(self) -> ShownView {
         let shown = ShownView(Rc::new(Cell::new(None)));
         shown.follow(self);
@@ -281,9 +264,6 @@ impl<'a, S> Registry<'a, S> {
         })
     }
 
-    /// Every part's listener, in registration order. A view's hears only while it is the one
-    /// [`Setup::shown`] names: a view that is not shown misses the browser's events, and is
-    /// rebuilt from the browser when it is shown.
     pub(crate) fn listeners(self, setup: &Setup<'_>) -> Vec<Listener<S>>
     where
         S: 'static,
@@ -301,10 +281,6 @@ impl<'a, S> Registry<'a, S> {
     }
 }
 
-/// Which registered view is shown, for what reads it after the start: a view's listener, which
-/// hears the browser only while its view is shown, and a part's timer, which asks at the time
-/// it fires, as GTK's `child_mirror_blocked` asks for the mode. The shell keeps it with the
-/// registry and moves both together ([`ShownView::follow`]).
 #[derive(Clone)]
 pub(crate) struct ShownView(Rc<Cell<Option<(usize, TypeId)>>>);
 
@@ -328,8 +304,6 @@ impl ShownView {
             .is_some_and(|(_, kind)| kind == TypeId::of::<P>())
     }
 
-    /// From now on the view `registry` shows is the one shown: it hears the browser, and no
-    /// other does.
     pub(crate) fn follow<S>(&self, registry: Registry<'_, S>) {
         let shown = registry
             .shown

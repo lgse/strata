@@ -419,8 +419,6 @@ fn a_move_that_cannot_remove_the_original_it_replaced_keeps_it_and_its_undo()
 fn a_cancel_that_cuts_off_an_item_counts_it_as_not_attempted() -> Result<(), Box<dyn Error>> {
     let _serial = serial()?;
     let bulk = super::super::MAX_LOCAL_IO_WORKERS + 1;
-    // A move runs in the foreground and a copy in the background; enough
-    // files take the bulk path, which copies several at once.
     for (moving, files) in [(true, 2), (false, 2), (true, bulk), (false, bulk)] {
         let row = format!("moving: {moving}, files: {files}");
         let root = tempfile::tempdir()?;

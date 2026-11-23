@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The floating chooser's keys against GTK's chooser key handling
-//! (`handle_chooser_key` in `src/ui/window/keyboard.rs`, and its 10xer keys).
-
 use serde_json::{Value, json};
 use strata_core::model::Location;
 use strata_qa::{Backend as _, Remembered};
@@ -96,9 +93,6 @@ fn in_chooser(name: &str, settings: &'static str, run: impl FnOnce(&Chooser<'_>)
 
 const TENXER: &str = "tenxer_mode = true\n";
 
-/// Space on a folder: refused as "Only one item can be chosen" in 10xer mode, where GTK's
-/// chooser refuses its commands (`tenxer_window_keys`), and not refused in default mode, where
-/// Space previews as in the window (`chooser-pdf-zoom-keeps-text-size`).
 fn space(name: &str, settings: &'static str, refused: bool) {
     in_chooser(name, settings, |chooser| {
         chooser.step(&json!({ "key": "space" }));
@@ -128,10 +122,6 @@ fn space_in_the_floating_chooser_is_not_refused_in_default_mode() {
     );
 }
 
-/// In 10xer mode GTK's chooser runs none of the window's commands its key table lacks: Ctrl+T
-/// and the tab chord's `t n` open no tab, which would close the chooser, Ctrl+Alt+N makes no
-/// folder, and Undo and Settings do nothing (`reached_from_chooser`). Ctrl+T then falls to the
-/// 10xer keys, which swallow it (`claims_unbound_command`).
 #[test]
 fn the_window_s_commands_leave_a_tenxer_chooser_open() {
     in_chooser(
@@ -157,8 +147,6 @@ fn the_window_s_commands_leave_a_tenxer_chooser_open() {
     );
 }
 
-/// GTK's 10xer keys refuse a chooser's commands right after an armed chord, before they arm
-/// one or close the window (`tenxer_window_keys`), and its Go chord pins nothing there.
 fn refused(name: &str, keys: &[&str]) {
     in_chooser(name, TENXER, |chooser| {
         for key in keys {
@@ -195,9 +183,6 @@ fn pinning_is_refused_in_a_tenxer_chooser() {
     refused("pinning_is_refused_in_a_tenxer_chooser", &["g", "plus"]);
 }
 
-/// 10xer's own keys in a chooser: `l` takes the keyboard into the folder and `h` back to its
-/// row, `/` opens the filter, and Escape closes it, then cancels the request once nothing else
-/// is left to dismiss (`tenxer_escape`), copying nothing.
 #[test]
 fn a_tenxer_chooser_s_own_keys_move_filter_and_cancel() {
     in_chooser(

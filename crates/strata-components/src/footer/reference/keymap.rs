@@ -1,26 +1,11 @@
 // SPDX-License-Identifier: MIT
 
-//! Rows from a C1c [`KeyMap`], and chord labels as Strata writes them.
-
 use rune::{Chord, ChordKey, ChordMod, KeyPlatform};
 
 use super::data::{Keys, Shortcut};
 use crate::collection::keyboard::{Command, KeyMap, Letters, Target};
 use crate::contract::Direction;
 
-/// The rows of `map`, in the order its commands are first bound: one row per command that
-/// `describe` names, listing every chord bound to it (`label` writes each). A command with no
-/// chord has no row; one `describe` leaves out (`Command::Swallow`) neither.
-///
-/// Aliases (`h j k l` for the arrows) don't join their commands' rows: with
-/// [`Letters::Arrows`], the only setting they fire under, they make one row of their own,
-/// named `aliases` ("Same as ← ↓ ↑ → (type-to-search off)", Strata's wording), placed after
-/// the row of the first command they stand in for, in the order of the arrows they stand for. Without `aliases`, or with other
-/// [`Letters`], they show nowhere. Tolerated chords (Super with Page Down) aren't listed, as in
-/// Strata. An alias whose chord [`KeyMap::unbind_chord`] didn't remove still fires, so it stays
-/// listed: the reference shows what runs.
-///
-/// Used by: hosts building the navigation section of the reference from the map they run.
 pub fn keymap_rows(
     map: &KeyMap,
     letters: Letters,
@@ -80,8 +65,6 @@ pub fn keymap_rows(
     rows
 }
 
-/// Where an alias of `command` sits in the alias row: by the arrow its step goes, ← ↓ ↑ →
-/// (`h j k l`), then the rest.
 fn arrow_rank(command: Command) -> usize {
     let step = match command {
         Command::Select(Target::Step(d))
@@ -99,12 +82,6 @@ fn arrow_rank(command: Command) -> usize {
     }
 }
 
-/// A chord as Strata labels it in English (`app/keyboard-shortcuts`, Labels): modifiers in the
-/// order Ctrl, Alt, Shift, Super; a plain letter as typed (`j`), Shift with a letter alone as
-/// the capital (`J`), a letter after another modifier as a capital (`Ctrl+Shift+N`); a symbol
-/// that needs Shift as the symbol (`~`); minus as `−`; the arrows as `↑ ↓ ← →`; Escape and
-/// Space by name. Strata's labels follow the interface language (German Strg, Bild auf); a
-/// host in another language passes its own.
 pub fn chord_label(chord: &Chord) -> String {
     let shift = chord.has(ChordMod::Shift);
     let others = chord

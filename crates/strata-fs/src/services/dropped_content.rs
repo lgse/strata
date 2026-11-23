@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Files saved from content another application drops or pastes, rather than
-//! from existing files. Nothing here touches the network: a dropped address
-//! becomes a link file, never a download.
-
 use std::io::{self, Write};
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
@@ -117,8 +113,6 @@ impl DroppedFile {
         }
     }
 
-    /// Keeps a browser's encoded image as it is. The extension always follows
-    /// the bytes, so a supplied name cannot turn an image into another file type.
     pub fn image(name: Option<&str>, fallback_stem: &str, bytes: Vec<u8>) -> Option<Self> {
         let extension = web_image_extension(&bytes)?;
         let stem = name
@@ -186,8 +180,6 @@ pub fn save_dropped_files(directory: &Path, files: &[DroppedFile]) -> io::Result
         .collect()
 }
 
-/// Publishes the complete contents under the first unused numbered name. Existing
-/// entries, including dangling symbolic links, are never replaced or followed.
 pub fn save_new_file(
     directory: &Path,
     stem: &str,
@@ -215,8 +207,6 @@ pub fn save_new_file(
     Err(io::Error::other("file name suffixes exhausted"))
 }
 
-/// Publishing without replacing needs `RENAME_NOREPLACE` or hard links, which
-/// some FUSE mounts, such as rclone and MTP drivers, support neither of.
 fn cannot_rename_without_replacing(error: &io::Error) -> bool {
     matches!(
         error.kind(),
@@ -224,8 +214,6 @@ fn cannot_rename_without_replacing(error: &io::Error) -> bool {
     )
 }
 
-/// Writes in place under an exclusively created name, so the file is visible
-/// while it is written; a failed write removes it again.
 pub(super) fn write_new_file(
     directory: &Path,
     stem: &str,

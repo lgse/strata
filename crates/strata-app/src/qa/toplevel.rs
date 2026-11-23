@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! A chooser as its own offscreen toplevel, for the hosts that open one beside or instead of
-//! the browser window: the portal's ([`super::portal`]) and the floating destination
-//! chooser's ([`super::windows`]).
-
 use std::{cell::Cell, rc::Rc};
 
 use strata_core::model::Location;

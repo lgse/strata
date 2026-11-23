@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! End-to-end hover-tooltip checks across Columns, Icons, and List on the offscreen host,
-//! including live `date_format` changes and List's Modified-column visibility rule.
-
 use strata_core::util::{DateDisplay, DateFormat, modified_date_for_seconds, set_date_format};
 
 use super::LIST;

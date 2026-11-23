@@ -223,7 +223,6 @@ fn each_table_edits_its_own_map_and_reset_all_asks_first() {
 
             click(&mut host, super::RESET_ALL_KEY);
             assert!(!named(&host.tree(), "Reset all keybinds?").is_empty());
-            // GTK leaves it open on Escape: `oracle` finding #2547 (`findings.md`).
             press(&mut host, Key::Escape, Mods::default());
             assert!(host.app().settings_dialog.is_open());
             assert!(named(&host.tree(), "Reset all keybinds?").is_empty());
@@ -242,9 +241,6 @@ fn each_table_edits_its_own_map_and_reset_all_asks_first() {
     );
 }
 
-/// The keybind search filters the shown table only. GTK's `follow_search` moves to the other
-/// table on the visibility of the Settings search's groups, which the keybind search never
-/// changes (the `settings` fuzz alphabet's seed 14).
 #[test]
 fn the_keybind_search_filters_the_shown_table_only() {
     hosted(
@@ -318,7 +314,6 @@ fn every_row_is_listed_once_and_has_its_own_name() {
     }
 }
 
-/// A command added to the catalog needs its row's name here, as GTK's `NAMES` gives it.
 #[test]
 fn every_command_has_a_row_name() {
     let unnamed: Vec<&str> = registry()
@@ -328,8 +323,6 @@ fn every_command_has_a_row_name() {
     assert!(unnamed.is_empty(), "{unnamed:?}");
 }
 
-/// GTK hides its Settings layer and keeps it, so the page reopens as it was left: the search
-/// and the table stay, a capture does not (the `settings` fuzz alphabet's seeds 5 and 15).
 #[test]
 fn the_page_reopens_as_it_was_left_but_a_capture_ends() {
     hosted(

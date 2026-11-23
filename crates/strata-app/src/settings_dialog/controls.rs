@@ -1,7 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Shared Settings rows, switches, segmented toggles, number fields, and GTK-compatible choice menus.
-
 use std::rc::Rc;
 
 use rune::{Color, Cursor, El, Key, KeyEvent, ScrollSpec, TextEdit, Tx, col, el, icon, row, text};
@@ -32,7 +30,6 @@ pub(super) fn settings_bar() -> Bar {
     bar
 }
 
-/// Standard Strata C24 accent bar look for Settings viewports, inset from borders and corners.
 pub(super) fn settings_bar_look(look: &Look, edge: f32, ends: f32) -> BarLook {
     let mut bar_look = BarLook::app(look);
     bar_look.edge = edge;
@@ -40,8 +37,6 @@ pub(super) fn settings_bar_look(look: &Look, edge: f32, ends: f32) -> BarLook {
     bar_look
 }
 
-/// Wraps a `max_h`-bounded scroll viewport with its C24 accent scrollbar without forcing full
-/// height, so short lists shrink to their content while overflowing lists show the bar.
 pub(super) fn bounded_scroll_with_bar(
     viewport: El,
     bar: &Bar,
@@ -119,9 +114,6 @@ pub(super) fn number_field(
         .on_change(on_commit)
 }
 
-/// Blends `base` toward `other` by `t` in sRGB, matching GTK CSS `mix(base, other, t)`.
-/// Rune's `Color::mix` interpolates in linear light, which lifts dark-to-light mixes much
-/// brighter than GTK's sRGB mix.
 pub(super) fn mix_srgb(base: Color, other: Color, t: f32) -> Color {
     let ch = |a: f32, b: f32| {
         let sa = rune::color::srgb_encode(a);
@@ -136,7 +128,6 @@ pub(super) fn mix_srgb(base: Color, other: Color, t: f32) -> Color {
     }
 }
 
-/// Card background matching GTK's `.settings-group { background: mix(@strata_bg, @strata_muted, 0.25); }`.
 pub(super) fn card_surface(look: &Look) -> Color {
     let base = mix_srgb(
         look.transparency.opaque(look.kit.c.bg_base),
@@ -153,13 +144,11 @@ pub(super) fn card_surface(look: &Look) -> Color {
     }
 }
 
-/// Panel/card/divider border matching GTK's `alpha(@strata_border, 0.55)`.
 pub(super) fn panel_border(look: &Look) -> Color {
     let border = look.kit.c.std_border;
     look.kit.alpha(border, border.a * 0.55)
 }
 
-/// Form control border matching GTK's `.settings-dialog .form-control { border: 1px solid alpha(@strata_border, 0.9); }`.
 pub(super) fn control_border(look: &Look) -> Color {
     let border = look.kit.c.std_border;
     look.kit.alpha(border, border.a * 0.90)
@@ -646,8 +635,6 @@ fn choice_menu_key(
     true
 }
 
-/// A page's own search field and its Clear search button: GTK's `settings::search_field`
-/// (`src/ui/settings.rs`), which the theme library and the keybind search share.
 pub(super) struct SearchField {
     pub(super) key: &'static str,
     pub(super) clear_key: &'static str,

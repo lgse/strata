@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! A private session bus: a `dbus-daemon` of the session's own, whose only service directory
-//! is the session's. Nothing from the desktop (portals, gvfsd, the accessibility bus) can be
-//! activated on it.
-
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
@@ -18,8 +14,6 @@ pub struct Bus {
 }
 
 impl Bus {
-    /// Starts the daemon with `env` (activated services inherit it) and waits for its address.
-    /// `spawned` hears its pid at once, so the watchdog knows it from the start.
     pub(super) fn start(
         dir: &Path,
         logs: &Path,
@@ -91,16 +85,10 @@ impl Bus {
         &self.address
     }
 
-    /// The bus's only service directory. Add services with [`Bus::add_service`]: a file
-    /// written here directly may be read half-written, and then never again.
     pub fn service_dir(&self) -> &Path {
         &self.services
     }
 
-    /// Makes `name` activatable, started by running `exec`: writes `<name>.service` whole
-    /// (under another name, then renamed) and has the bus reload its configuration, which
-    /// returns once it has read the service directory again: dbus-daemon's own watch on the
-    /// directory picks the file up too, but later.
     pub fn add_service(&self, name: &str, exec: &str) {
         let file = self.services.join(format!("{name}.service"));
         let part = self.services.join(format!(".{name}.service.part"));

@@ -1,15 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! A window opened on a FileManager1 call: its folder, with the items the call named selected,
-//! as `present_reveal` in `src/ui/window/launch.rs` opens one. For `ShowItemProperties`, the
-//! Properties of the entry the reveal leaves under the cursor show once the folder has listed,
-//! as GTK's `pending_properties` waits for its load (`reveal_loaded_names` in
-//! `src/ui/browser/events/listing.rs`), and forget it on a reset to another location, as GTK's
-//! `on_reset` does. A listing that fails keeps it, as GTK's `on_load_failed` does. A reload in
-//! place then lists the folder with nothing focused, since the failed load took the reveal's
-//! selection, and uses the request up: no Properties show, on GTK either. The window leaves
-//! `tabs.toml` alone.
-
 use std::{cell::Cell, rc::Rc};
 
 use rune::Tx;
@@ -40,10 +30,6 @@ pub(crate) fn open(app: &mut App, request: RevealRequest) {
     }
 }
 
-/// Has the browser queue the Properties of its focused entry when `directory` first lists. The
-/// request is forgotten, as GTK forgets `pending_properties`, once the browser resets to
-/// another location (`on_reset`), so a later visit never shows Properties unasked; a failed
-/// listing keeps it (`on_load_failed`).
 fn show_properties_once_listed(app: &App, directory: strata_core::model::Location) {
     let later = shell::window_later(app);
     let waiting = Rc::new(Cell::new(true));

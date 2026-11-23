@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! A right-click selects the entry it opens the menu on without moving the Shift anchor, in
-//! every view, as GTK's `focus_context_entry` does (finding lgse/strata#2355): the Columns
-//! fuzz pilot's shrunk sequence, step for step.
-
 use serde_json::{Value, json};
 use strata_core::storage;
 use strata_qa::Remembered;
@@ -51,8 +47,6 @@ fn keeps_the_anchor(mode: &str, name: &str) {
     );
 }
 
-/// A column just opened has no anchor: the right-click's entry takes it, as GTK's selection
-/// takes the cursor for an anchor it lacks.
 #[test]
 fn a_right_click_in_a_column_with_no_anchor_anchors_there() {
     runs(

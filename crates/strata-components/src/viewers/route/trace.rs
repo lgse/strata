@@ -1,10 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The route's projected trace: the samples Strata's helper returns, where a distance falls on
-//! them, and which point on them a pointer is nearest. Ported from Strata's
-//! `src/ui/preview/route/position.rs` and the profile mapping in
-//! `src/services/route_preview.rs` (`upstream/main` 35ee677ab).
-
 /// One projected sample of the route (Strata's `RouteSample`).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct RouteSample {
@@ -18,8 +13,6 @@ pub struct RouteSample {
     pub starts_segment: bool,
 }
 
-/// The profile's inset, in its pixels: the helper draws distance 0 at x = 2 and the end at
-/// width − 2, and heights 4 pixels clear of the top and bottom.
 const X_INSET: f64 = 2.0;
 const Y_INSET: f64 = 4.0;
 
@@ -38,8 +31,6 @@ pub fn profile_distance(x: f64, total_m: f64, width: f64) -> f64 {
     ((x - X_INSET) / (width - 2.0 * X_INSET)).clamp(0.0, 1.0) * total_m
 }
 
-/// The height, in metres, a profile pixel row `y` stands for, on a profile `height` pixels high
-/// spanning `[low, high]` metres.
 pub fn profile_elevation(y: f32, [low, high]: [f64; 2], height: f64) -> f64 {
     low + ((height - Y_INSET - f64::from(y)) / (height - 2.0 * Y_INSET)).clamp(0.0, 1.0)
         * (high - low)
@@ -64,8 +55,6 @@ fn interpolate(a: RouteSample, b: RouteSample, fraction: f64) -> RouteSample {
     }
 }
 
-/// The point `distance` metres along the route, clamped to its ends. Distance never bridges a
-/// gap between segments.
 pub fn at_distance(samples: &[RouteSample], distance: f64) -> Option<RouteSample> {
     if distance <= 0.0 {
         return samples.first().copied();
@@ -87,9 +76,6 @@ pub fn at_distance(samples: &[RouteSample], distance: f64) -> Option<RouteSample
     ))
 }
 
-/// The point on the route nearest `point` (route pixels). Where passes overlap, it keeps the
-/// pass nearest `previous_m` among those within `tolerance` of the closest, so a hover follows
-/// the pass it is on rather than jumping to one beside it.
 pub fn nearest(
     samples: &[RouteSample],
     point: [f64; 2],

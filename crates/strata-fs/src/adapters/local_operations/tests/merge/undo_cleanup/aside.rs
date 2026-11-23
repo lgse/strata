@@ -108,8 +108,6 @@ fn rewrite(path: PathBuf, contents: &'static [u8]) -> Racer {
     Box::new(move || fs::write(&path, contents).expect("rewrite the source"))
 }
 
-/// Sets up `source/x`, which the merge leaves out as a socket, or which is
-/// rewritten twice as it is read when `moving`; the socket comes back.
 fn left_nothing_source(
     source: &Path,
     moving: bool,
@@ -185,9 +183,6 @@ fn without_trash_an_original_the_merge_left_nothing_in_place_of_stays() -> Resul
     Ok(())
 }
 
-/// A merge without Trash over an original another program holds open:
-/// whether the copy fails, the source is left out as a socket, or the
-/// original is replaced.
 #[derive(Clone, Copy)]
 struct StillOpen {
     row: &'static str,
@@ -281,8 +276,6 @@ impl StillOpen {
     }
 }
 
-/// The incoming `original` as a socket the merge leaves out, or as a file;
-/// `None` where the base refuses Unix sockets.
 fn incoming_original(
     case: &StillOpen,
     source: &Path,
@@ -387,8 +380,6 @@ fn assert_ending(
     Ok(())
 }
 
-/// The folder set aside holds only the program's silly-renamed file, if
-/// the mount lists it.
 fn assert_nfs_leftovers(aside: &Path, listed: bool, row: &str) -> Result<(), Box<dyn Error>> {
     let leftovers = names(aside.parent().ok_or("no parent")?)?;
     let only_silly = leftovers.iter().all(|name| name.starts_with(".nfs"));
@@ -611,8 +602,6 @@ fn a_failed_aside_puts_every_original_back_before_merging() -> Result<(), Box<dy
     Ok(())
 }
 
-/// Before the flush, removes what the merge published at `gone`, putting
-/// another item there when `replaced`.
 fn remove_published(gone: PathBuf, replaced: bool) -> Racer {
     Box::new(move || {
         if !gone.is_dir() {

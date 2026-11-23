@@ -20,8 +20,6 @@ fn rows(back: &[Location]) -> Vec<(String, Option<String>, Option<usize>)> {
         .collect()
 }
 
-/// `fill_back_history`: the most recent first, each by its name or `~` for home, described
-/// by its path under `~`, and each naming how far back it is.
 #[test]
 fn each_entry_is_named_described_and_knows_how_far_back_it_is() {
     let back = [

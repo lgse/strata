@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The drag autoscroll's state machine: where the held drag is, how long it has dwelt near an
-//! edge, and what each frame scrolls. Plain data with no Rune runtime; the view applies its
-//! [`Step`].
-
 use std::time::Duration;
 
 use rune::Spring;
@@ -91,9 +87,7 @@ impl DragScroll {
         Self::default()
     }
 
-    /// Where an accepted drag is now (`Some`, window points), or that it left the strip, was
-    /// dropped, ended or was refused (`None`). True when a frame is wanted: it reached the
-    /// strip, or left it while scrolling.
+    /// Where an accepted drag is now (`Some`, window points), or that it left the strip, was dropped.
     pub fn over(&mut self, at: Option<Point>) -> bool {
         let was = self.pointer.is_some() || self.scrolling();
         self.pointer = at;
@@ -128,9 +122,7 @@ impl DragScroll {
         *self = Self::default();
     }
 
-    /// One frame at `now` (seconds): what to scroll, gliding (or stepping, with `animations`
-    /// off) toward the edge the drag is near, and stopping dead where the view is when it
-    /// leaves the edge, can't go further, or the drag goes.
+    /// One frame at `now` (seconds): what to scroll, gliding (or stepping.
     pub fn step(&mut self, now: f64, geo: &StripGeometry, animations: bool) -> Step {
         let dt = self
             .ticked
@@ -215,8 +207,6 @@ impl DragScroll {
                     && was != depth
                     && let Some(c) = geo.columns.get(was)
                 {
-                    // Moved to another column's edge: the one it left stops where it is.
-                    // (One listing scrolls a frame; the new one starts on the next.)
                     self.burst_y = None;
                     step.listing = Some((was, Scroll::Instant(c.offset)));
                     step.wake = true;
@@ -241,8 +231,6 @@ impl DragScroll {
     }
 }
 
-/// The column whose span holds `p`'s x, while `p` is in the strip. Later columns win when an
-/// entrance slide overlaps its parent, matching Rune's reverse-tree hit test.
 pub(crate) fn column_at(geo: &StripGeometry, p: Point) -> Option<usize> {
     if !geo.strip.contains(p) {
         return None;

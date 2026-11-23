@@ -57,8 +57,6 @@ mod hosted {
         folder
     }
 
-    /// A debounce whose wait ended, its search queued, before a later edit: GTK's
-    /// `debounce_filter_entry` drops it, so only the text typed now is searched.
     #[test]
     fn a_wait_queued_before_a_later_edit_searches_nothing() {
         hosted_in(
@@ -77,8 +75,6 @@ mod hosted {
 
                 host.runtime()
                     .update(|app, tx| queried(app, "todo".to_owned(), tx));
-                // A frame applies the queue, and GLib's clock, which holds the later wait,
-                // does not turn.
                 host.runtime().frame(0.0);
 
                 assert!(
@@ -89,8 +85,6 @@ mod hosted {
         );
     }
 
-    /// A batch for another text than the field's is no answer (GTK's `expect_query`): the
-    /// results shown stay.
     #[test]
     fn a_batch_for_another_text_than_the_fields_is_dropped() {
         hosted_in(
@@ -124,8 +118,6 @@ mod hosted {
         );
     }
 
-    /// Over a range of results whose cursor is at the end, Ctrl+F refocuses the open field and
-    /// Down lands on the first selected result alone (`filtered-results-group-selection`).
     #[test]
     fn ctrl_f_then_down_over_a_range_selects_only_the_first_result() {
         hosted_in(
@@ -183,8 +175,6 @@ mod hosted {
         );
     }
 
-    /// In Columns (`src/ui/browser/columns/append/keys.rs`), Down from the refocused filter
-    /// field over a range whose cursor is at row 0 lands on the last selected result alone.
     #[test]
     fn ctrl_f_then_down_in_columns_selects_only_the_last_result() {
         hosted_in(
@@ -241,8 +231,6 @@ mod hosted {
         );
     }
 
-    /// Typing `/` over a folder query enters the folder and keeps an empty filter field focused
-    /// there once listed (`filter-slash-enters-folder`).
     fn slash_descent_keeps_filter_focused(
         mode: &'static str,
         where_shown: super::super::Where,

@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! One shell window's state and view: the header, an empty themed window with a readout of
-//! what the platform layer said, and the mounted-volumes dialog. The gallery page draws it on
-//! fake data; `examples/shell` draws it on the real platform shims, so both run the same view.
-
 use rune::{Cx, El, Tx, col, row, text};
 use strata_components::dialog::StrataDialog;
 use strata_components::header::{
@@ -12,13 +8,9 @@ use strata_components::header::{
 use strata_kit::icons::IconName;
 use strata_kit::look::Look;
 
-/// What the window's readout shows of the desktop's settings (strata-platform's `settings`,
-/// as plain data).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Desktop {
     pub text_scale: f32,
-    /// The desktop's double-click interval. Nothing in the shell uses it: the header's double
-    /// press pairs within Rune's fixed 0.5 s (strata-platform draft U13, not filed).
     pub double_click_ms: u32,
     /// The desktop's animations switch: false turns the look's animations off.
     pub animations: bool,
@@ -67,7 +59,6 @@ pub enum Volumes {
 /// One shell window's state.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct ShellWindow {
-    /// The launch argument the window shows, in place of the location bar (C6).
     pub location: String,
     pub buttons: WindowButtons,
     pub chrome: WindowChrome,
@@ -97,10 +88,6 @@ impl<S> Clone for Hooks<S> {
 
 impl<S> Copy for Hooks<S> {}
 
-/// The window: the header, wrapped by `wrap_header` (the host's window menu), over an empty
-/// body with the readout, in the window's frame, wrapped by `wrap_window` (the host's resize
-/// edges, under the overlay layer), with the volumes dialog on the overlay layer. Sets Rune's reduced motion from the look's animations switch for this
-/// commit, and follows the window's focus into `chrome.active` when it is the view's root.
 pub fn view<S: 'static>(
     w: &ShellWindow,
     look: &Look,
@@ -130,16 +117,11 @@ pub fn view<S: 'static>(
     let mut layer = Vec::new();
     volumes_dialog(w, look, reduced, hooks, &mut layer);
     let at = hooks.at;
-    // Rune calls this only on the view's root: in `examples/shell` it is; on the gallery page
-    // the gallery's own root is, so there the scene sets `active` instead.
     rune_kit::root(window, layer).on_window_focus(move |s: &mut S, focused, _: &mut Tx| {
         at(s).chrome.active = focused;
     })
 }
 
-/// The window's header, its keys starting `{prefix}-`, with the demo's Mounted volumes action
-/// when `volumes`. The sidebar toggle, the location bar and Strata's actions are stand-ins for
-/// C8, C6, C7, C17 and Strata: a press says what it stands for in the readout.
 pub fn bar<S: 'static>(
     w: &ShellWindow,
     look: &Look,
@@ -205,8 +187,6 @@ fn readout(w: &ShellWindow, look: &Look) -> El {
     };
     let d = &w.desktop;
     let o = &w.overrides;
-    // The values after "·" are read from the look itself, so a script sees whether a change
-    // reached it, not only that the host heard of one.
     let overrides = match (o.present, o.problems) {
         (false, _) => "Overrides: no file".to_owned(),
         (true, 0) => "Overrides: applied".to_owned(),

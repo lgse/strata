@@ -215,10 +215,6 @@ fn paste_items(
     }
 }
 
-/// Moves `items` onto a fresh mount, lands the deferred closes, undoes the
-/// move `undone_after` later, and counts the forced stats of each `counted`
-/// entry during the undo. With `read_after`, the items are copied away that
-/// long after the move first, and the closes land after that read.
 fn forced_stats_undoing_a_move(
     preset: Preset,
     (items, counted): (&[&str], &[&str]),
@@ -283,8 +279,6 @@ fn undoing_a_move_onto_a_share_forces_each_stat_it_records_there_and_nowhere_els
     let started = SystemTime::now();
     let (now, later) = (Duration::ZERO, Duration::from_millis(1500));
     let in_folder = ["b.txt", "link", "pipe"];
-    // The last row reads the items once the cache from the move expired, and
-    // their deferred closes reach the server only after that.
     let rows: [(&[&str], &[&str], _, _); 5] = [
         (&["notes.txt"], &["notes.txt"], None, now),
         (&["project"], &in_folder, None, now),
@@ -311,8 +305,6 @@ fn undoing_a_move_onto_a_share_forces_each_stat_it_records_there_and_nowhere_els
     Ok(())
 }
 
-/// Pumps the main context until the move back ends, serving the cancel from the main
-/// thread, and returns every event.
 fn drive_until_cancelled(
     events: Rc<RefCell<Vec<OperationEvent>>>,
     cancel: &CancelFromMain,

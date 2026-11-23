@@ -4,16 +4,12 @@
 
 use super::{hosted, in_own_process};
 
-/// A test whose path is written wrong starts a child that runs nothing and exits well
-/// (finding lgse/strata#2193): the helper fails it.
 #[test]
 #[should_panic(expected = "ran nowhere")]
 fn a_test_whose_path_names_no_test_fails() {
     in_own_process("test_support::tests::a_path_no_test_has", &[], || {});
 }
 
-/// The same through the hosted helper, which every part's tests use: a test that moved into
-/// a module its name string does not follow.
 #[test]
 #[should_panic(expected = "ran nowhere")]
 fn a_hosted_test_whose_module_is_written_wrong_fails() {

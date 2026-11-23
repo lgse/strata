@@ -33,7 +33,6 @@ fn refusals(app: &App) -> [Option<Refusal>; 2] {
     [refusal(app, false), refusal(app, true)]
 }
 
-/// GTK's tab guard refuses any window's close while a tab's file operation runs.
 #[test]
 fn a_running_file_operation_refuses_every_close() {
     hosted(
@@ -63,8 +62,6 @@ fn write_waiting_action() {
     std::fs::write(dir.join("action.toml"), manifest).expect("action.toml");
 }
 
-/// Starts the waiting action on `todo.txt` in `folder`, in `host`'s window, and waits for its
-/// job to run.
 fn start_waiting_job(host: &mut Offscreen, folder: &std::path::Path) {
     listed(host, folder);
     let target: PathBuf = folder.join("todo.txt");
@@ -106,8 +103,6 @@ fn cancel_jobs(host: &mut Offscreen) {
     });
 }
 
-/// GTK's jobs guard refuses only the last window's close while a job runs or waits: the
-/// application would end with it.
 #[test]
 fn a_running_job_refuses_only_the_last_window_s_close() {
     hosted(
@@ -125,9 +120,6 @@ fn a_running_job_refuses_only_the_last_window_s_close() {
     );
 }
 
-/// As GTK's `SHARED_JOBS` ("Jobs must survive navigation and individual window closure"): a
-/// job started in one window goes on once that window closes, the other window drives it, and
-/// that window, now the last, may not close while it runs.
 #[test]
 fn a_job_outlives_the_window_it_started_in() {
     in_own_process(

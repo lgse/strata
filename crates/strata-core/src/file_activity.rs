@@ -466,8 +466,6 @@ pub fn is_releasing() -> bool {
     !registry().barriers.is_empty()
 }
 
-/// Direct writes and recursive merges stay distinct so consumers can leave unrelated
-/// descendants alone when invalidating metadata.
 pub struct EndedOperation {
     pub roots: HashSet<PathBuf>,
     pub folders: HashSet<PathBuf>,

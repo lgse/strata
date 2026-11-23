@@ -1,7 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The Jobs dashboard's words and text helpers (Strata's `src/ui/jobs.rs`).
-
 use std::fmt;
 use std::rc::Rc;
 
@@ -100,8 +98,6 @@ impl Default for JobsWords {
     }
 }
 
-/// The footer button's words, or `None` with no jobs: "2 jobs running · 1 queued", else
-/// "3 jobs finished", with "· failures" when one failed (Strata's `indicator_label`).
 pub fn indicator(rows: &[JobRow], words: &JobsWords) -> Option<String> {
     let running = rows.iter().filter(|r| r.status.is_running()).count();
     let queued = rows
@@ -130,8 +126,6 @@ pub fn indicator(rows: &[JobRow], words: &JobsWords) -> Option<String> {
     })
 }
 
-/// The dashboard's summary: "2 running · 1 queued", and the finished count ("3 finished"),
-/// which the list draws after a "· " when both show.
 pub(crate) fn activity(rows: &[JobRow], words: &JobsWords) -> (Option<String>, Option<String>) {
     let running = rows.iter().filter(|r| r.status.is_running()).count();
     let queued = rows
@@ -156,8 +150,6 @@ pub(crate) fn status(row: &JobRow, now: f64, words: &JobsWords) -> String {
     (words.status)(row.status, &(words.duration)(elapsed))
 }
 
-/// A row's meta line: its message, its item count and failures, and its folder (Strata's
-/// `meta_label`).
 pub(crate) fn meta(row: &JobRow, words: &JobsWords) -> String {
     let mut parts = Vec::new();
     if let Some(m) = &row.message {
@@ -179,8 +171,6 @@ pub(crate) fn meta(row: &JobRow, words: &JobsWords) -> String {
     parts.join(" · ")
 }
 
-/// What Details shows: the error first unless the output already says it, then the output
-/// with terminal sequences stripped, or "No output yet." (Strata's `details_text`).
 pub(crate) fn details(row: &JobRow, words: &JobsWords) -> String {
     let log = strip_terminal_sequences(row.output.trim_end());
     let text = match row
@@ -198,17 +188,12 @@ pub(crate) fn details(row: &JobRow, words: &JobsWords) -> String {
     }
 }
 
-/// A per-item job's fraction: completed items plus the current item's reported fraction, over
-/// the total (Strata's per-item progress).
 pub fn per_item_fraction(done: usize, total: usize, current: Option<f32>) -> Option<f32> {
     (total > 0).then(|| {
         ((done as f32 + current.unwrap_or(0.0).clamp(0.0, 1.0)) / total as f32).clamp(0.0, 1.0)
     })
 }
 
-/// `text` without terminal colour and control sequences: CSI (`ESC [ … final`), OSC
-/// (`ESC ] … BEL` or `ESC \`), other two-character escapes, and control characters other
-/// than newline and tab (Strata's `strip_terminal_sequences`).
 pub fn strip_terminal_sequences(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
     let mut chars = text.chars();

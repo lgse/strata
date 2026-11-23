@@ -219,14 +219,6 @@ pub(super) struct ExtractionDestination {
 }
 
 impl ExtractionDestination {
-    /// Opens `path` as a directory. Ordinary symlinks along the path are
-    /// resolved, since users browse symlinked folders, but the resolved
-    /// directory is pinned so later replacement of any component cannot
-    /// redirect writes. This mirrors how copy and compress open their parents.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if `path` is not absolute or cannot be opened as a directory.
     pub(super) fn open(path: &Path) -> Result<Self, String> {
         let relative = path
             .strip_prefix("/")
@@ -406,11 +398,6 @@ impl ExtractionDestination {
         Err(no_available_name(leaf))
     }
 
-    /// Uses [`fstatvfs`] on the pinned root so a swapped path cannot redirect
-    /// the query. A zero `f_blocks` means the filesystem does not report
-    /// capacity, so callers skip the check instead of refusing every extraction.
-    ///
-    /// [`fstatvfs`]: rustix::fs::fstatvfs
     pub(super) fn available_bytes(&self) -> Result<Option<u64>, String> {
         let stat = fs().stat_vfs(self.root.as_fd()).map_err(|error| {
             rust_i18n::t!(
@@ -490,8 +477,6 @@ impl ExtractionDestination {
             .map_err(errno_text)
     }
 
-    /// A folder whose name an earlier member or an existing item already
-    /// holds. Its parent opened, so a link refused here is the one at `path`.
     fn open_claimed_folder(&self, path: &Path) -> Result<OwnedFd, String> {
         fs().open_dir(Entry::new(&self.root, path.as_os_str()))
             .map_err(|error| match error {
@@ -588,8 +573,6 @@ impl ExtractionDestination {
             })
     }
 
-    /// The extracted regular file at `path` and its size. A folder there gives
-    /// `None`; a link is not followed and fails to open.
     pub(super) fn open_extracted(
         &self,
         path: &Path,
@@ -642,15 +625,6 @@ impl ExtractionDestination {
         }
     }
 
-    /// Unlinks the leaf of `path` under the destination root.
-    ///
-    /// Used to discard a partially written member after cancellation or
-    /// copy failure. Does not follow a final symbolic link.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if `path` has no file name, a parent cannot be opened,
-    /// or the unlink fails.
     pub(super) fn remove_file(&self, path: &Path) -> Result<(), String> {
         let parent = self.open_directory(path.parent().unwrap_or_else(|| Path::new("")))?;
         let name = path.file_name().ok_or_else(no_file_name)?;
@@ -826,9 +800,6 @@ fn remove_tree(parent: BorrowedFd<'_>, name: &OsStr, files: bool) -> rustix::io:
     Ok(true)
 }
 
-/// A name another member took, or that the destination finds taken, is numbered past, so
-/// distinct folders are never merged. A name the destination refuses is fixed by stricter
-/// rules, as copies do.
 pub(super) struct ExtractNameResolver {
     names: MemberNames,
     folders: HashMap<PathBuf, (PathBuf, usize)>,

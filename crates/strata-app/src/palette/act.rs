@@ -1,16 +1,10 @@
 // SPDX-License-Identifier: MIT
 
-//! What opening a result does: GTK's `activate_result` and the palette's `reveal`
-//! (`src/ui/window/composition/search.rs`), on the browser.
-
 use rune::Tx;
 use strata_core::model::Location;
 
 use crate::{App, filter, preview, shell};
 
-/// Enter or a click on the result `id`; the palette has closed. A folder is navigated to. A
-/// file is opened when "Open files directly" is on, shown in the preview drawer otherwise, and
-/// revealed in its folder either way (`src/ui/window/composition/search.rs`).
 pub(super) fn open(app: &mut App, id: &str, tx: &mut Tx) {
     let Some(found) = app.palette.found.get(id).cloned() else {
         return;
@@ -32,8 +26,6 @@ pub(super) fn open(app: &mut App, id: &str, tx: &mut Tx) {
     shell::settle(app, tx);
 }
 
-/// Alt+Return or the result's menu on `id`: its folder, with it selected; the palette has
-/// closed (`src/ui/window/composition/search.rs`).
 pub(super) fn reveal(app: &mut App, id: &str, tx: &mut Tx) {
     let Some(found) = app.palette.found.get(id).cloned() else {
         return;
@@ -44,8 +36,6 @@ pub(super) fn reveal(app: &mut App, id: &str, tx: &mut Tx) {
     shell::settle(app, tx);
 }
 
-/// `BrowserView::reveal_location`: the folder's filter is emptied, then the browser shows
-/// the folder with `location` selected.
 fn reveal_location(app: &mut App, location: Location, tx: &mut Tx) {
     let Some(folder) = location.parent() else {
         return;

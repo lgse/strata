@@ -23,9 +23,6 @@ const LIST_MAX_W: f32 = 560.0;
 type IntentFn<S, K> = Rc<dyn Fn(&mut S, PromptIntent<K>, &mut Tx)>;
 type PositionFn = Rc<dyn Fn(usize, usize) -> String>;
 
-/// The prompt's words that aren't a [`super::PromptSpec`]'s, in the interface language.
-///
-/// Used by: hosts.
 #[derive(Clone)]
 pub struct PromptLabels {
     /// The chosen candidate's place, for a spec with `position`: "2 of 5".
@@ -55,18 +52,6 @@ impl std::fmt::Debug for PromptLabels {
     }
 }
 
-/// Builds the footer prompt over the [`PromptState`] `get` and `get_mut` reach, for the
-/// footer's prompt slot (C19), which it fills while a prompt is open:
-///
-/// ```ignore
-/// let prompt = FooterPrompt::new("prompt", |s: &App| &s.prompt, |s: &mut App| &mut s.prompt)
-///     .focus_return("pane")          // the listing's focus stop
-///     .on_intent(|s: &mut App, intent, tx| s.prompted(intent, tx));
-/// footer = footer.prompt(prompt.build(s, &s.look, cx, &mut layer));
-/// // Each poll: s.prompt.tick(), then route its intents; deliver candidates as they come.
-/// ```
-///
-/// Used by: hosts (Strata's 10xer mode), C19.
 pub struct FooterPrompt<S, K> {
     key: String,
     get: fn(&S) -> &PromptState<K>,
@@ -112,8 +97,6 @@ impl<S: 'static, K: Copy + PartialEq + std::fmt::Debug + 'static> FooterPrompt<S
         self
     }
 
-    /// Where the keyboard goes when the prompt closes with it (the listing's focus stop): the
-    /// bar carries `El::focus_return`, which covers every way the prompt can go.
     pub fn focus_return(mut self, key: impl Into<String>) -> Self {
         self.focus_return = Some(key.into());
         self
@@ -144,8 +127,6 @@ impl<S: 'static, K: Copy + PartialEq + std::fmt::Debug + 'static> FooterPrompt<S
         }
     }
 
-    /// The hint beside the field: the host's, else the chosen candidate's place for a spec
-    /// that shows it.
     pub fn hint(&self, s: &S) -> Option<String> {
         let st = (self.get)(s);
         if let Some(h) = st.hint() {
@@ -157,9 +138,6 @@ impl<S: 'static, K: Copy + PartialEq + std::fmt::Debug + 'static> FooterPrompt<S
             .then(|| (self.labels.position)(st.chosen_index().unwrap_or(0) + 1, n))
     }
 
-    /// The prompt bar, or `None` with no prompt open: the label in the accent, the field and
-    /// the hint, across the whole footer. Its candidates go onto `layer` (the overlays
-    /// `rune_kit::root` mounts), above the field at about its width.
     pub fn build(&self, s: &S, look: &Look, cx: &mut Cx<S>, layer: &mut Vec<El>) -> Option<El> {
         let st = (self.get)(s);
         let spec = st.spec()?;
@@ -245,8 +223,6 @@ impl<S: 'static, K: Copy + PartialEq + std::fmt::Debug + 'static> FooterPrompt<S
             st.invalid(),
             &handlers.menu,
         );
-        // A text input is always a text box to Rune's accessibility (Rune draft U-C6-1), so a
-        // prompt with candidates is a combobox group around it, as C6's entry is.
         Some(if spec.legend.is_some() {
             row()
                 .key(format!("{}-combo", self.key))
@@ -261,8 +237,6 @@ impl<S: 'static, K: Copy + PartialEq + std::fmt::Debug + 'static> FooterPrompt<S
         })
     }
 
-    /// The candidate list, anchored above the field: rows with a folder icon, the name with
-    /// its matches in the accent and the parent dim, then the legend's keys.
     fn candidates(&self, s: &S, look: &Look, width: f32) -> El {
         let st = (self.get)(s);
         let k = &look.kit;
@@ -302,7 +276,6 @@ impl<S: 'static, K: Copy + PartialEq + std::fmt::Debug + 'static> FooterPrompt<S
                     } else {
                         Color::TRANSPARENT
                     })
-                    // A tint only: the pointer never moves the keyboard's choice (C6's rule).
                     .hover(k.c.hover)
                     .on_press_tx(move |s: &mut S, tx: &mut Tx| {
                         let polled = (me.get_mut)(s).press_candidate(i);

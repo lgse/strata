@@ -1,11 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The category tabs: a tablist of glyphs, one Tab stop, arrows moving and choosing.
-//!
-//! Its own tablist, as C19's and C20c's are their own: rune-kit's SegmentedControl is a
-//! radio group of text labels at the pin (Rune draft U-C20c-1). Sharing the three is a
-//! follow-up.
-
 use rune::{El, Tx, row};
 use strata_kit::look::Look;
 
@@ -84,8 +78,6 @@ impl<S: 'static> IconPicker<S> {
         st.select_page_in(page, Some((&self.grid_key(), tx)));
     }
 
-    /// The next tab after the one shown (or before, `back`), wrapping: Ctrl+N and Ctrl+P, as
-    /// GTK's chooser steps sections. While searching, the first (or last) tab.
     pub(super) fn step_tab(&self, s: &mut S, back: bool, tx: &mut Tx) -> bool {
         let tabs = (self.get)(s).tabs();
         if tabs.len() < 2 {

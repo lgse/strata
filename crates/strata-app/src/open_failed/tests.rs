@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! A folder the user cannot read, opened from the listing, and a path that names nothing:
-//! the window's error dialog says why, under GTK's two titles.
-
 use std::os::unix::fs::PermissionsExt;
 
 use rune::{Key, KeyEvent, Mods};

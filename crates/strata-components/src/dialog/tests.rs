@@ -298,8 +298,6 @@ fn enter_in_a_field_presses_the_primary_only_while_it_is_the_default_button() {
     }
 }
 
-/// A question whose footer buttons both commit, opening on the close button unless `initial`
-/// says otherwise.
 #[derive(Default)]
 struct Commit {
     dismissed: u32,
@@ -360,8 +358,6 @@ fn a_dialog_opening_on_close_dismisses_on_enter_and_tabs_on_in_document_order() 
     assert_eq!(cycle, ["d-other", "d-primary", "d-close"]);
 }
 
-/// The initial button takes focus as the dialog opens, and Tab cycles in document order from
-/// there: the footer (Log In Once, Log In Anyway), then the close button.
 #[test]
 fn the_initial_button_opens_focused_and_tab_keeps_document_order() {
     let focused = |rt: &Runtime<Commit>| {

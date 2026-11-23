@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! What the palette searches and says: GTK's `start_search`, `begin_query` and
-//! `apply_search_event` (`src/ui/search.rs`), and the words of its panel
-//! (`src/ui/search/panel.rs`).
-
 use std::path::PathBuf;
 
 use rune::Tx;
@@ -39,7 +35,6 @@ pub(super) fn mode(roots: &[PathBuf]) -> PaletteMode {
     let idle = tr("Type to search Home and mounted local drives");
     let no_results = tr("No matching files or folders");
     PaletteMode {
-        // GTK's panel has no name of its own: the field's words name the dialog.
         title: prompt.clone(),
         field_label: prompt.clone(),
         placeholder: prompt,
@@ -103,8 +98,6 @@ fn input(app: &App) -> Input {
     }
 }
 
-/// The palette asked for `query`: the index starts as it opens, and each edit asks it again.
-/// An empty query asks nothing (`begin_query`).
 pub(super) fn asked(app: &mut App, query: &PaletteQuery) {
     app.palette.asked = query.generation;
     let input = input(app);

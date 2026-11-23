@@ -1,28 +1,13 @@
 // SPDX-License-Identifier: MIT
 
-//! Bounded retention for [`crate::slots::Ids`] across large directory visits.
-//!
-//! `Ids` maps `Location -> EntryId` for the window. Opening one 100k-entry folder shares the
-//! `Arc<Path>` buffers with `Browser`, so its cost is bounded while the folder stays open. Over
-//! a long session visiting multiple huge directories, leaving every closed directory's paths in
-//! `Ids` would keep old `Location`s alive indefinitely. Once the table exceeds
-//! [`PRUNE_THRESHOLD`] and no queued events or drags are in flight, we prune entries no longer
-//! referenced by any open tab, `RestoreMemory`, `Worn`, or `Clipboard`. Monotonic id issuance
-//! ensures pruned ids are never reused for a different entry.
-
 use std::collections::HashSet;
 
 use strata_components::contract::EntryId;
 
 use crate::App;
 
-/// Keep `Ids` untouched for ordinary sessions and single 100k-entry directories; prune once
-/// multiple large directories have accumulated unreferenced mappings.
 const PRUNE_THRESHOLD: usize = 131_072;
 
-/// Reclaims unreferenced `Location -> EntryId` mappings when the window's id table has grown
-/// past [`PRUNE_THRESHOLD`] and it is safe to sweep (no queued updates, held hidden-tab events,
-/// or active drag holding ids in closures).
 pub(super) fn prune_if_needed(app: &App) {
     if !can_prune(app) {
         return;

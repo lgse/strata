@@ -1,12 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Headless tests of the decorations on a `rune::Runtime`: where presses go, what the header
-//! keeps of Rune's drag region, and where each window button's request goes.
-//!
-//! Feature map: `app/window`, "dragging … header moves the window and dragging a window edge
-//! resizes it", "Maximize maximizes the window …", "Minimize minimizes the window and Close
-//! closes it", and the double-click probe.
-
 use rune::{Cx, El, Env, PointerPress, Runtime, TitlebarAction, Tx, col, el, row};
 
 use super::frame::pick;
@@ -64,8 +57,6 @@ fn borderless(backend: Backend) -> Csd {
     Csd::new(Frame::Borderless, backend)
 }
 
-/// A press and release at (x, y), 20 ms after the last frame. Returns the titlebar action the
-/// press asked the shell for.
 fn click(rt: &mut Runtime<State>, (x, y): (f32, f32)) -> Option<TitlebarAction> {
     rt.frame(0.01);
     rt.pointer_move(x, y);
@@ -174,8 +165,6 @@ fn a_secondary_click_on_the_header_opens_the_window_menu_only_where_there_is_one
     });
     assert_eq!(rt.state.csd.last_outcome().cloned(), menu);
 
-    // The header's button has no menu of its own, so the window menu takes it, as GTK's header
-    // bar does; the field keeps its own.
     replace(&mut rt, borderless(Backend::Headless));
     deliver(&mut rt, report);
     secondary_click(&mut rt, (20.0, 20.0));
@@ -319,8 +308,6 @@ fn each_request_goes_where_it_can_work() {
     assert_eq!(RuneMinimize.rune_draft(), Some("U7"));
     assert_eq!(RuneWindowMenu.rune_draft(), Some("U8"));
 
-    // A native frame on X11 follows the window's state, but the frame keeps resizing and the
-    // window menu, whatever the window manager supports.
     let mut native_x11 = Csd::new(Frame::Native, Backend::X11);
     let mut report = Report::default();
     report.state.maximized = Some(true);
@@ -353,9 +340,6 @@ fn each_request_goes_where_it_can_work() {
     );
 }
 
-/// Once linked, an X11 request goes out unless the window manager says it can't. Only the
-/// window menu waits to be known: `_GTK_SHOW_WINDOW_MENU` means nothing to a window manager
-/// that doesn't list it, while any may honour `WM_CHANGE_STATE` and `_NET_WM_MOVERESIZE`.
 #[test]
 fn an_x11_request_goes_out_only_where_the_link_and_the_window_manager_allow() {
     use super::state::{Linking, gate};
@@ -440,8 +424,6 @@ fn a_failed_x11_connection_says_so_and_offers_nothing_that_needs_it() {
     );
 }
 
-/// A re-created window replaces the link; a report the old window's watcher had already sent
-/// arrives late, and is dropped.
 #[test]
 fn reports_from_another_window_are_dropped() {
     let maximized = |window| Report {

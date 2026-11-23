@@ -1,11 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! An item's saved customization: its colour (`folder_colors`) and its icon (`custom_icons`),
-//! each keyed by the item's native path, and how file operations carry, drop or bring back those
-//! keys. Both interfaces read and write them here; the GTK manager's methods
-//! (`src/ui/preferences/file_settings.rs` and `src/ui/preferences/item_customizations.rs`) call
-//! these and keep what is GTK's around them, saving and redrawing the icons.
-
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
@@ -23,8 +17,6 @@ pub struct TrashedCustomizations {
     custom_icons: Vec<(String, String)>,
 }
 
-/// The bundled icons an item may wear, each by its catalog name, with its label in the
-/// catalogs (`CUSTOMIZATION_CHOICES` in `src/assets.rs`, which a GTK test holds to this list).
 pub const ICON_CHOICES: [(&str, &str); 16] = [
     ("strata-file-text", "Documents"),
     ("strata-download", "Downloads"),
@@ -47,8 +39,6 @@ pub const ICON_CHOICES: [(&str, &str); 16] = [
 /// How a saved emoji choice starts: `emoji:🎵`.
 pub const EMOJI_PREFIX: &str = "emoji:";
 
-/// The emoji a saved icon names, if it is one that is safe to draw: not empty, at most 64
-/// bytes, and no control character.
 pub fn custom_emoji(name: &str) -> Option<&str> {
     let emoji = name.strip_prefix(EMOJI_PREFIX)?;
     (!emoji.is_empty() && emoji.len() <= 64 && !emoji.chars().any(char::is_control))
@@ -123,9 +113,6 @@ impl Preferences {
         self.item_color(path).is_some() || self.item_icon(path).is_some()
     }
 
-    /// Carries the customization of the item at `from`, and of everything under it, to `to`, or
-    /// drops them when `to` is `None` because the item left local storage. Stale keys at and
-    /// under a non-merged destination are dropped first; a merged destination keeps its own key.
     pub fn relocate_item_customizations(
         &mut self,
         from: &Path,
@@ -148,8 +135,6 @@ impl Preferences {
         changed
     }
 
-    /// Drops the customizations at and under `root`. A `trash_identity` keeps them in `trashed`
-    /// for [`Self::restore_item_customizations`] until the session ends.
     pub fn forget_item_customizations(
         &mut self,
         root: &Path,
@@ -177,8 +162,6 @@ impl Preferences {
         keys > 0
     }
 
-    /// Re-applies what [`Self::forget_item_customizations`] kept for the very item now back at
-    /// `root`; another item restored there gets nothing.
     pub fn restore_item_customizations(
         &mut self,
         root: &Path,
@@ -240,8 +223,6 @@ fn collect_relocated(
     (moving, stale)
 }
 
-/// Moves nothing, and drops nothing, when no key is within `from`, so a repeated relocation is a
-/// no-op.
 fn relocate(map: &mut HashMap<String, String>, from: &Path, to: &Path, merged: bool) -> bool {
     if map.is_empty() {
         return false;

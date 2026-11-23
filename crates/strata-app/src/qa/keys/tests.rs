@@ -11,7 +11,6 @@ fn plain(name: &str) -> Key {
         .clone()
 }
 
-/// The named keys the slice's parity set presses (`docs/rune/slice/V7-rune-qa-backend.md`).
 #[test]
 fn the_parity_sets_named_keys_are_runes_keys() {
     for (name, expected) in [

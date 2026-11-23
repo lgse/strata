@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! C11b's page: what the sheet grid does in process, beside its goldens and scripts, where a
-//! script can't look: a drag held while the preview closes, and a sheet arriving from the
-//! page's fake reader. Each test that checks a feature-map Behavior bullet names it.
-
 mod c11b {
     use rune::{Env, Key, KeyEvent, Mods, Runtime};
     use strata_components::preview_drawer::HostedPreview;
@@ -51,8 +47,6 @@ mod c11b {
         settle(rt, 5);
     }
 
-    /// preview/preview-panel/documents: "Closing the preview during a table cell drag ends the
-    /// drag and its autoscroll."
     #[test]
     fn closing_the_preview_during_a_cell_drag_ends_the_drag_and_its_autoscroll() {
         let mut rt = scene("c11b-csv-light");
@@ -91,8 +85,6 @@ mod c11b {
         rt.pointer_up(from.0, bottom[1] + bottom[3] - 2.0);
     }
 
-    /// A workbook's other sheets come from Strata's reader when their tab is picked: the
-    /// drawer shows it working meanwhile (no bullet: Strata previews the first sheet only, D4).
     #[test]
     fn a_picked_sheet_arrives_from_the_reader_while_the_drawer_shows_it_loading() {
         let mut rt = scene("c11b-book-light");
@@ -108,12 +100,9 @@ mod c11b {
         assert!(rt.elements().iter().any(|e| e.path.ends_with("sheet-h4")));
     }
 
-    /// A sheet the reader can't read says so in the grid's place, the drawer isn't busy, and
-    /// Try again asks the reader once more (the page's reader fails Inventory's first read).
     #[test]
     fn a_sheet_the_reader_fails_says_why_and_try_again_reads_it_again() {
         let mut rt = scene("c11b-book-light");
-        // Inventory's tab sits past the strip's edge: Ctrl+Page Down gets there (D8).
         let at = mid(&rt, "sheet-r0-c0");
         tap(&mut rt, at);
         for _ in 0..3 {
@@ -148,10 +137,6 @@ mod c11b {
         assert!(rt.state.c11b.grid.sheet(3).is_some());
     }
 
-    /// preview/preview-panel/documents: "With a cell range selected, Escape, an arrow key,
-    /// Home, or End also clears it", with the modifiers Strata ignores on them: Escape with
-    /// any, the arrows, Home and End with Ctrl, Alt or Super. The grid takes each key that
-    /// clears a range, so the page stays open; Shift with an arrow still grows it (D6).
     #[test]
     fn modified_escape_arrows_home_and_end_clear_the_range_as_stratas_do() {
         let mut rt = scene("c11b-csv-light");
@@ -244,8 +229,6 @@ mod c11b {
             .rect
     }
 
-    /// Whether the active sheet's tab lies wholly inside the strip's viewport. (Rune's reveal
-    /// stops at the edge, under the edge fade: C7's draft U-C7-7.)
     fn active_tab_shows(rt: &Runtime<Gallery>) -> Result<(), String> {
         let strip = rect(rt, "sheet-tabs-scroll");
         let i = rt.state.c11b.grid.active();
@@ -256,8 +239,6 @@ mod c11b {
         ))
     }
 
-    /// The tabs leave revealing the active one to the app (as C7 does): each sheet switch,
-    /// by keys or by the host, scrolls its tab into the strip.
     #[test]
     fn every_sheet_switch_scrolls_the_active_tab_into_the_strip() {
         let mut rt = scene("c11b-book-light");
@@ -302,8 +283,6 @@ mod c11b {
         true
     }
 
-    /// Without a range, the keys that would clear one (D16) aren't the grid's: Ctrl+Left and
-    /// Alt+Home reach the app's own listener, and the cursor stays put.
     #[test]
     fn ctrl_left_and_alt_home_without_a_range_pass_on_and_leave_the_cursor() {
         let mut rt = scene("c11b-csv-light");

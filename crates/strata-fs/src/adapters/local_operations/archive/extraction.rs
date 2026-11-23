@@ -1,14 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Per-operation extraction policy, independent of archive decoding libraries.
-//!
-//! Decoders lend member streams to the session and supply already-known pending
-//! names only on cancellation. The session validates and maps destination reports
-//! without scanning ahead, probing the filesystem or reserving pending names.
-//!
-//! Staging isolates conflict naming from the user's files. A password failure
-//! discards it, because the retry extracts the whole archive again. Unfinished
-//! sessions retain partial output even during decoder panic unwinding.
 use std::{
     collections::{HashMap, HashSet},
     ffi::{OsStr, OsString},
@@ -445,9 +436,6 @@ impl<'a> ExtractionSession<'a> {
         }
     }
 
-    /// Pending names exclude members already passed to `extract_member`.
-    /// Reports apply established top-level renames, but cannot predict final leaf
-    /// conflicts for unattempted members. Invalid names are omitted, not errors.
     pub(super) fn finish(
         mut self,
         result: Result<(), ArchiveError>,

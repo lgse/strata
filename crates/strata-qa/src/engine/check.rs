@@ -638,8 +638,6 @@ impl<B: Backend> Scope<'_, B> {
                     verdict(text.contains(&check.contains), json!(text))
                 }
             },
-            // What only the toolkit can read: screen pixels, samples it took, and what it
-            // records beside the accessible names.
             Check::Pixel(_)
             | Check::AccentPixels(_)
             | Check::Repainted(_)
@@ -658,8 +656,6 @@ impl<B: Backend> Scope<'_, B> {
         })
     }
 
-    /// The editor's box and the left edge of a pane, in whole window pixels, with the
-    /// window's width.
     fn editor_and_pane(
         &self,
         editor: &B::Node,

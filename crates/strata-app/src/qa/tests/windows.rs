@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! A launch handed to the QA process opens a window of its own: the engine counts it, finds it
-//! by its title, reads a node from the window it is in, and presses one there.
-
 use serde_json::{Value, json};
 use strata_core::model::Location;
 use strata_qa::{Backend as _, Outcome, Remembered, execute, parse_request};

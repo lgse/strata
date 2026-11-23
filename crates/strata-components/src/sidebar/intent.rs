@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! What the sidebar reports. It owns no policy: opening a place, pinning, transfers, ejecting
-//! and saving preferences are the host's, through these intents.
-
 use rune::PointerPress;
 
 use super::data::ItemId;
@@ -10,8 +7,6 @@ use super::drag::Landing;
 use super::state::Step;
 use crate::contract::dnd::{DropHover, Dropped};
 
-/// How a row was activated. Strata opens a place with its first item selected from the
-/// keyboard, and with nothing selected from a click.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Via {
     Pointer,
@@ -34,10 +29,6 @@ impl Section {
     }
 }
 
-/// An insertion gap in PINNED: its place in the full pin list (0 before the first pin, the
-/// pin count after the last), and the pins on either side when the view was built. Another
-/// window may unpin a neighbour before the drop lands; the host then inserts beside the
-/// neighbour that is left, and refuses the drop when both are gone.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Gap {
     pub index: usize,
@@ -61,75 +52,69 @@ pub enum DropSite {
 #[non_exhaustive]
 pub enum SidebarIntent {
     /// Open a row's location.
-    Open { item: ItemId, via: Via },
-    /// Open a row's location in a new tab (a middle click). Never sent for an unmounted
-    /// device, nor when [`super::PlacesSidebar::open_in_new_tab`] is off.
-    OpenInNewTab { item: ItemId },
-    /// A secondary click or the Menu key on a row, or on the sidebar outside any row
-    /// (`item` is `None`, which a heading opens too): the host opens its menu (C21) at
-    /// `point`.
+    Open {
+        item: ItemId,
+        via: Via,
+    },
+    OpenInNewTab {
+        item: ItemId,
+    },
     ContextMenu {
         item: Option<ItemId>,
         point: PointerPress,
     },
-    /// A built-in place was dragged from `from` in the places block and dropped at `landing`,
-    /// which puts it at `to` among the rows shown. Strata moves it by `landing`: in its saved
-    /// order, beside the row the drop names, which can differ from `to` where that order holds
-    /// places the sidebar does not show.
     MovePlace {
         from: usize,
         to: usize,
         landing: Landing,
     },
-    /// The pin `id` was dragged from `from` in the pin list and dropped at `landing`, which
-    /// puts it at `to` among the pins shown. Strata moves it by `landing`: beside the pin the
-    /// drop names, or into a gap before the pin after it.
     MovePin {
         id: String,
         from: usize,
         to: usize,
         landing: Landing,
     },
-    /// A drag reached a pin gap: the host checks its items are folders, keys the result by
-    /// `serial` and writes it to [`super::SidebarState::pin_check`]. `uris` is `None` when the
-    /// binder reads them only at the drop (Rune's).
     PinHover {
         serial: u64,
         uris: Option<Vec<String>>,
         local: bool,
     },
-    /// Folders were dropped into a pin gap. Never a transfer: the host pins the folders among
-    /// the dropped items, or nothing.
-    PinDrop { gap: Gap, dropped: Dropped },
-    /// Files were dropped on a row: places, pins, mounted devices and the Trash. The host
-    /// transfers or trashes them.
-    DropInto { item: ItemId, dropped: Dropped },
+    PinDrop {
+        gap: Gap,
+        dropped: Dropped,
+    },
+    DropInto {
+        item: ItemId,
+        dropped: Dropped,
+    },
     /// A drag's hover over a drop site changed: for spring-loading folders.
-    DropHover { site: DropSite, hover: DropHover },
+    DropHover {
+        site: DropSite,
+        hover: DropHover,
+    },
     /// Eject or unmount a device (its [`super::Release`] says which).
     Eject(String),
     /// Unlock an encrypted device.
     Unlock(String),
     /// Lock an encrypted device.
     Lock(String),
-    /// A section's heading folded or unfolded it. The sidebar already flipped its own state;
-    /// the host saves it and applies it to its other windows.
-    SectionToggled { section: Section, collapsed: bool },
+    SectionToggled {
+        section: Section,
+        collapsed: bool,
+    },
     /// The width stepped (the toggle, or [`super::Width::advance`] through the toggle).
     Stepped(Step),
     /// 10xer `h`, Left or Backspace in the sidebar: focus goes back to the files.
     LeaveToFiles,
     /// A reorderable place or pin row crossed the drag threshold.
-    RowDragStart { item: ItemId },
-    /// A dragged place or pin row moved; `landing` is `Some` while inside its block, `None`
-    /// when outside (e.g. over the window header or tab strip).
+    RowDragStart {
+        item: ItemId,
+    },
     RowDragMove {
         item: ItemId,
         landing: Option<Landing>,
         at: [f32; 2],
     },
-    /// A dragged place or pin row ended; `dropped_outside` carries the window point when the
-    /// button came up outside its block without being cancelled.
     RowDragEnd {
         item: ItemId,
         dropped_outside: Option<[f32; 2]>,

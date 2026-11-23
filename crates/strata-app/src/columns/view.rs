@@ -28,8 +28,6 @@ impl Labels {
         labels.close = tr("Close this pane");
         labels.loading = tr("Loading");
         labels.width = tr("Column width");
-        // `view_name` and `ENTRY_CONTAINER_DESCRIPTION` in `src/ui/accessibility.rs`: the
-        // QA harness finds panes and their lists by these.
         labels.pane = tr("Columns view");
         labels.list = tr("Files");
         labels.reveal = rust_i18n::t!("Reveal %{value1} column", value1 = "{name}").into_owned();
@@ -37,8 +35,6 @@ impl Labels {
     }
 }
 
-/// What column `depth` says in place of rows while it shows none ([`crate::surface`]), and
-/// whether it draws it. A filter's results say what the filter does.
 fn status(app: &App, depth: usize) -> Option<(Cow<'_, str>, bool)> {
     if app.columns.listings.hits_at(depth) {
         return filter::status(app).map(|said| (Cow::Owned(said), true));
@@ -47,8 +43,6 @@ fn status(app: &App, depth: usize) -> Option<(Cow<'_, str>, bool)> {
     app.columns.surface.status(depth, listing)
 }
 
-/// What a column draws in place of rows, as GTK's column draws it (`show_empty` and
-/// `show_error` in `src/ui/browser/presentation.rs`).
 fn shown_status(app: &App, depth: usize) -> Option<El> {
     if app.columns.listings.hits_at(depth) {
         return filter::status_element(app);
@@ -95,18 +89,13 @@ pub(crate) fn view(app: &App) -> ColumnsView<App> {
             .drags(!chooser)
             .multiple(app.chooser.allows_multiple())
     })
-    // GTK's column header actions, in its order (`pane_header::actions`).
     .header_actions(|app: &App, cx| pane_header::actions::column(app, &cx))
     // The filter's field, in a band under the header of the column it is open in.
     .header_band(|app: &App, cx| filter::column_band(app, cx.depth))
-    // The filter's Enter target among its results, the names' find and filter highlights,
-    // plus copied, cut, and dragging marks.
     .marks(row_marks)
     .on_intent(intents::heard)
 }
 
-/// Row `id`'s marks in column `depth`: the filter's Enter target among its results, the name's
-/// find or filter highlight, and the copied, cut and dragging marks.
 pub(crate) fn row_marks(app: &App, depth: usize, id: EntryId) -> RowMarks {
     let marks = filter::marks(app, depth, id);
     let marks = if app.columns.shows_hits(depth) {
@@ -121,8 +110,6 @@ pub(crate) fn row_marks(app: &App, depth: usize, id: EntryId) -> RowMarks {
     crate::dnd::with_marks(app, id, crate::clipboard::with_marks(app, id, marks))
 }
 
-/// One column's collection, as the part dresses it: its status, thumbnails, fills, drags, the
-/// window's zoom wheel, its keys, rename and commands.
 fn column_collection(app: &App, depth: usize, collection: Collection<App>) -> Collection<App> {
     let collection = collection
         .empty(move |app: &App| shown_status(app, depth))
@@ -135,7 +122,6 @@ fn column_collection(app: &App, depth: usize, collection: Collection<App>) -> Co
             false
         })
         .on_wheel(crate::appearance::wheel::heard);
-    // A column with no rows is described as GTK's directory surface is then.
     let collection = match status(app, depth) {
         Some((said, _)) => collection.description(said.into_owned()),
         None => collection,

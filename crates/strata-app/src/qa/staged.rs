@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The offscreen host as the QA backend drives it: this thread owns the `Runtime`, and input
-//! goes in at Rune's input layer with no display server between.
-
 use std::{
     cell::{Cell, RefCell},
     rc::Rc,
@@ -77,31 +74,23 @@ impl Staged {
         turned
     }
 
-    /// Runs `act` on the window's state as a handler would, then settles: what no step does,
-    /// and what the portal host does for a request the caller closes.
     pub(super) fn update(&self, act: impl FnOnce(&mut App, &mut rune::Tx)) {
         let stage = &mut *self.stage.borrow_mut();
         stage.host().runtime().update(act);
         stage.settle();
     }
 
-    /// Tells the window it took the keyboard focus, or lost it, as a compositor does when another
-    /// window is activated, then settles.
     pub(super) fn window_focus(&self, focused: bool) {
         let stage = &mut *self.stage.borrow_mut();
         stage.host().runtime().window_focus(focused);
         stage.settle();
     }
 
-    /// Tells Rune and the shell which modifiers are down, as a keyboard does before the key
-    /// they modify. The Columns adapter reads them to tell a Shift range from a move.
     fn show_modifiers(&self, stage: &mut Stage) {
         let mods = self.keyboard.borrow().mods();
         stage.host().modifiers(mods);
     }
 
-    /// A key going down and up with its modifiers held around it, then a settle. With no
-    /// `event` the key is one a window hears nothing of, a dead key: only the log has it.
     fn tap(&self, name: &str, event: Option<KeyEvent>) {
         let origin = self.keyboard.borrow().origin();
         let stage = &mut *self.stage.borrow_mut();
@@ -120,8 +109,6 @@ impl Staged {
         stage.host().set_key_origin(None);
     }
 
-    /// One click of the wheel at (x, y), as Rune's window host delivers it off macOS: with
-    /// the held modifiers, and with Shift turning it sideways.
     fn wheel_click(&self, x: f32, y: f32, delta: f32) -> WheelEvent {
         let mods = self.keyboard.borrow().mods();
         let (dx, dy) = if mods.shift {
@@ -296,8 +283,6 @@ impl Host for Staged {
             (2, false) => runtime.button_up(x, y, PointerButton::Middle),
             (3, true) => runtime.secondary_down(x, y),
             (3, false) => runtime.secondary_up(x, y),
-            // A wheel click is a press and release of button 4 or 5, as X numbers them.
-            // Positive moves the content down, which is the wheel turning up.
             (4, true) => runtime.wheel_event(self.wheel_click(x, y, WHEEL_CLICK)),
             (5, true) => runtime.wheel_event(self.wheel_click(x, y, -WHEEL_CLICK)),
             (4 | 5, false) => {}

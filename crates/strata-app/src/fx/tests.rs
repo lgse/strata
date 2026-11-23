@@ -325,8 +325,6 @@ struct ToggleState {
 
 fn toggle_poll(state: &mut ToggleState, _clock: f64, _tx: &mut Tx) -> bool {
     state.polls += 1;
-    // Frame 0 renders with plasma/electric slots active; switch back to idle before frame 1 so
-    // the compositor exercises its one-time active -> idle flush and steady idle path.
     if state.polls >= 2 && state.fx_active {
         state.fx_active = false;
         return true;
@@ -412,8 +410,6 @@ fn headless_gpu_compositor_renders_plasma_and_electricity_and_flushes_cleanly_to
         "idle frame must neither draw own nor animate"
     );
 
-    // Active -> idle transition: frame 0 renders all plasma + electricity slots, then frame 1
-    // flushes back to idle and frame 2 stays idle.
     let transition_history = Arc::new(Mutex::new(Vec::new()));
     let out_dir = dir.path().join("plasma-frames");
     RuneApp::new(AppSpec {

@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Desktop integration without an interface toolkit: portal and D-Bus setup, the updater,
-//! bundled integrations, the saved settings and tab session, the key catalog, the window
-//! buttons' defaults, and what this build of the application is.
-
 // strata-core embeds the catalogs; this path holds none, so the macro adds none itself.
 rust_i18n::i18n!(
     "src/no-catalogs",

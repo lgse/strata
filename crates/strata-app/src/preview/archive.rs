@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Archive member tree preview and encrypted-archive password prompt (`A13`), hosted inside
-//! [`super::Preview`] over `strata_components::viewers::archive`.
-
 use rune::{El, KeyEvent, Tx};
 use strata_components::viewers::archive::{
     ArchiveDir, ArchiveItem, ArchivePrompt, ArchiveState, ArchiveTree, ArchiveView, PromptState,
@@ -29,8 +26,6 @@ pub(crate) const PROMPT_KEY: &str = "preview-archive-prompt";
 /// Text input key of the encrypted-archive password prompt.
 pub(crate) const PROMPT_FIELD_KEY: &str = "preview-archive-prompt-field";
 
-/// Whether `entry` is a local previewable archive (`is_previewable_archive` in
-/// `src/ui/window/keyboard/items/preview_keys.rs`).
 pub(super) fn is_previewable_archive(entry: &FileEntry) -> bool {
     !entry.is_directory()
         && entry.location.native_path().is_some()

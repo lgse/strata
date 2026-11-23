@@ -1,24 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! `BrowserEvent`s on their way to the interface.
-//!
-//! A browser observer runs inside GLib's dispatch. The host is then in the middle of `poll` or
-//! between two frames, and Rune holds the application state either way. So an observer only
-//! queues, and the interface applies the queue in order.
-//!
-//! What an event changed is read by each part's [`Listener`] while the browser still holds
-//! exactly that: by the time the queue is applied, later events may have moved its entries
-//! on. So a listener copies what its part needs, and queues an update that carries the copy.
-//!
-//! The callback of any other service runs inside GLib's dispatch too, and queues through a
-//! [`Later`]. Both hosts apply the queue after every dispatch, so it is the one way in that
-//! wakes the window: a queue of a part's own, read in its `poll`, waits for a frame.
-//!
-//! Each tab of the window has a browser and a state for each part of its own, so what is
-//! queued says whose it is ([`Queued::tab`]): a tab's browser and the services its parts asked
-//! queue for that tab, and the window's own services for the window. The shell applies what
-//! is the window's and the shown tab's, and holds the rest for its tab until it is shown.
-
 use std::{
     cell::RefCell,
     collections::{HashMap, VecDeque},
@@ -81,9 +62,6 @@ struct Queue<S> {
     queued: HashMap<TabKey, u64>,
     heard: u64,
     copied: u64,
-    /// Set when a staged `EntriesReplaced` lands with tail chunks still pending, so the host
-    /// lets Rune paint the first visible rows before draining staged tail chunks in the same
-    /// GLib pump. Cleared if `LoadFinished` or `SortingFinished` arrives before the yield.
     yield_paint: bool,
 }
 
@@ -95,10 +73,6 @@ impl<S> Clone for Inbox<S> {
     }
 }
 
-/// Where a part queues an update from the callback of a service other than `Browser`: a
-/// volume monitor, a thumbnailer, a session store. Call it on the interface thread, from
-/// what GLib dispatches there. The update runs in the next `poll`, in its turn among what
-/// the browser's events queued, once its tab is the one shown.
 pub(crate) struct Later<S> {
     inbox: Inbox<S>,
     tab: Option<TabKey>,
@@ -113,8 +87,6 @@ impl<S> Clone for Later<S> {
     }
 }
 
-/// A [`Later`] that does not keep its window's queue: what a process-wide service holds for
-/// each window, so that a closed window's queue goes with it.
 pub(crate) struct WeakLater<S> {
     inbox: Weak<RefCell<Queue<S>>>,
     tab: Option<TabKey>,
@@ -166,8 +138,6 @@ impl<S: 'static> Later<S> {
         }
     }
 
-    /// Queues `update`, after everything queued before it. It returns true when the view has
-    /// to run.
     pub(crate) fn then(&self, update: impl FnOnce(&mut S, &mut Tx) -> bool + 'static) {
         let mut queue = self.inbox.0.borrow_mut();
         if let Some(tab) = self.tab {
@@ -227,8 +197,6 @@ impl<S: 'static> Inbox<S> {
         });
     }
 
-    /// Lets each of `listeners` read `event`, in order, and queues what they ask in that
-    /// order.
     fn hear(
         &self,
         event: &BrowserEvent,
@@ -295,9 +263,6 @@ impl<S: 'static> Inbox<S> {
         self.0.borrow().updates.is_empty()
     }
 
-    /// Returns `true` once after a staged `EntriesReplaced` arrived with tail chunks still
-    /// pending, clearing the flag so the host yields to Rune to paint the initial visible rows
-    /// before draining tail chunks.
     pub(crate) fn take_yield_paint(&self) -> bool {
         std::mem::take(&mut self.0.borrow_mut().yield_paint)
     }

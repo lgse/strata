@@ -1,46 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The 3D model view (`preview/preview-panel/model-views`): a software-rendered picture from
-//! Strata, four camera presets stepped by Previous and Next, the camera indicator between them,
-//! and the format and triangle badges. The same view shows a picture saved in the file (a 3MF's
-//! embedded PNG, a FreeCAD thumbnail, a G-code slicer thumbnail, `preview/preview-panel/gcode`):
-//! it loads with the same details and inactive controls, then shows the picture alone.
-//!
-//! ```ignore
-//! ModelView::new(&s.model, |s: &mut App| &mut s.model, |s: &mut App| &mut s.model.viewport)
-//!     .key("model")
-//!     .pixels(&s.render)
-//!     .on_camera(|s: &mut App, view, _tx| s.render(view))
-//!     .drag_source(dnd, source)
-//!     .build(&s.look, cx)
-//! ```
-//!
-//! The host renders and owns the `Pixels`. It reports to [`ModelState`] as its load runs, and
-//! hears which view to render next through [`ModelView::on_camera`]. Its `HostedPreview` is the
-//! state itself: the drawer's header spinner reads [`ModelState::busy`].
-//!
-//! # What it does
-//!
-//! - **Camera buttons.** Next turns the camera clockwise (Front left, Back left, Back right,
-//!   Front right), Previous the other way. They are insensitive until the first picture. During
-//!   a render they stay sensitive, so focus stays on them, but a press does nothing. No key
-//!   turns the camera.
-//! - **Indicator.** An image named "Camera position", described by the view's name, with no
-//!   visible caption ([`indicator`]).
-//! - **Rendering.** While the initial view loads or another view renders, `<key>-picture`
-//!   carries `El::busy(true)` for assistive technology; while another view renders, the last
-//!   picture stays at 0.3 opacity. A failed render keeps it and shows the error under the
-//!   controls; the buttons try again. A first load that fails shows "Preview unavailable" and
-//!   the error, with no controls.
-//! - **The picture** is a fixed viewport (C14a, no zoom or pan) on a square box for a mesh, and
-//!   ScaleDown (never enlarged) for an embedded picture. It keeps the grab cursor and the file
-//!   drag ([`ModelView::drag_source`]).
-//!
-//! # Two accessors
-//!
-//! C14a's viewport takes its state through a plain `fn` accessor, which a closure over the
-//! model's accessor can't be, so the host passes the viewport's accessor too.
-
 mod indicator;
 mod state;
 
@@ -66,8 +25,6 @@ const RENDERING_OPACITY: f32 = 0.3;
 
 type CameraFn<S> = Rc<dyn Fn(&mut S, CameraView, &mut Tx)>;
 
-/// The model view: `ModelView::new(&s.model, access, viewport) … .build(look, cx)`. It fills its
-/// parent.
 pub struct ModelView<'a, S> {
     state: &'a ModelState,
     access: fn(&mut S) -> &mut ModelState,
@@ -79,8 +36,6 @@ pub struct ModelView<'a, S> {
 }
 
 impl<'a, S: 'static> ModelView<'a, S> {
-    /// The view of `state`, which `access` finds in the app's state; `viewport` finds its
-    /// [`ModelState::viewport`].
     pub fn new(
         state: &'a ModelState,
         access: fn(&mut S) -> &mut ModelState,
@@ -97,9 +52,6 @@ impl<'a, S: 'static> ModelView<'a, S> {
         }
     }
 
-    /// The view's key ("model" unless set). Its parts are `<key>-picture`, `<key>-previous`,
-    /// `<key>-next`, `<key>-camera`, `<key>-format`, `<key>-triangles`, `<key>-error`,
-    /// `<key>-title` and `<key>-eyebrow`.
     pub fn key(mut self, key: impl Into<String>) -> Self {
         self.key = key.into();
         self
@@ -174,8 +126,6 @@ impl<'a, S: 'static> ModelView<'a, S> {
                 .min_h(0.0)
                 .padding(look.space.lg)
                 .center()
-                // The cap as the height it gives: an `aspect_fit` box with a `max_w` takes the
-                // cap for the cross room (C13's Rune draft U-C13-4).
                 .child(
                     picture
                         .aspect_fit(aspect)

@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Drop routing (`ColumnsView::drop_target_at` and `ColumnsState::drop_column`) while a column's
-//! width springs (`El::drawn_rect_into`, U-C2-3).
-
 use rune::{Cx, El, Env, Runtime, Spring, Tx, col};
 use strata_kit::look::Look;
 
@@ -119,8 +116,6 @@ fn drop_targets_follow_drawn_columns_through_a_width_spring() {
         Some((1, Some(col1_first)))
     );
 
-    // Spring column 0 wider from 300 to 500: on the first animated frame, layout already places
-    // column 1 at x = 500..800, while the frame still draws column 1 covering x = 350.
     rt.update(|s, tx| {
         s.columns.set_column_width(0, 500.0);
         tx.animated();
@@ -147,8 +142,6 @@ fn drop_targets_follow_drawn_columns_through_a_width_spring() {
         Some((0, Some(col0_first)))
     );
 
-    // Spring column 0 back from 500 to 300: on the first frame its layout width is 300, while
-    // it is still drawn wider than 420, so x = 420 still hits column 0's folder row.
     rt.update(|s, tx| {
         s.columns.set_column_width(0, 300.0);
         tx.animated();

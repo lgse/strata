@@ -2,8 +2,6 @@
 
 use super::*;
 
-/// Merges `source` into `target` with fixed names through `copy`, staging
-/// what it overwrites through `stage`.
 fn merge_fixing(
     (source, target): (&Path, &Path),
     copy: CopyStep,
@@ -77,8 +75,6 @@ fn staged_contents(staging: &Path, count: usize) -> io::Result<Vec<String>> {
     Ok(contents)
 }
 
-/// Names FAT must fix in a `source/nested?` folder merged onto a FAT
-/// `target/nested_` that already holds some of the fixed names.
 fn fat_names_fixture(root: &Path) -> io::Result<(PathBuf, PathBuf)> {
     let source = root.join("source");
     let target = root.join("target");
@@ -207,8 +203,6 @@ fn a_merge_off_fat_keeps_the_names_fat_would_fix() -> Result<(), Box<dyn Error>>
     with_both_copies(check_merge_off_fat)
 }
 
-/// A folder of a FAT stick holding another device, unless it is the stick's
-/// own, and what the merge leaves in it.
 struct InnerDisk {
     own_device: bool,
     holds: &'static [(&'static str, &'static str)],

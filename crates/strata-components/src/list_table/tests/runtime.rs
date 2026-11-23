@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The table in a headless runtime: what the scripts can't hold or see. Modifier-free gestures
-//! the scripts check stay there; these check state the tree doesn't show (a width mid-drag, the
-//! cursor shape, base units), two tables over one layout, and assistive technology's press.
-
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -233,9 +229,6 @@ fn heading(rt: &Runtime<Host>, pane: usize, id: &str) -> [f32; 4] {
     )
 }
 
-/// list: "Dragging a heading's right edge resizes that column and follows the pointer without
-/// an initial jump" (its width mid-drag, which the tree doesn't show; `resize.json` checks the
-/// host hears it on release).
 #[test]
 fn a_resize_follows_the_pointer_from_the_drawn_width_and_the_host_hears_it_once() {
     let mut rt = runtime(Host::new(1, Look::fallback(false)));
@@ -272,8 +265,6 @@ fn a_resize_follows_the_pointer_from_the_drawn_width_and_the_host_hears_it_once(
     );
 }
 
-/// Owner ruling (Q4): at twice the text size the columns are drawn twice as wide, and a resize
-/// hands the host base units.
 #[test]
 fn at_a_larger_text_size_a_resize_hands_the_host_base_units() {
     let big = Look::fallback(false).with_params(&LookParams {
@@ -291,8 +282,6 @@ fn at_a_larger_text_size_a_resize_hands_the_host_base_units() {
     );
 }
 
-/// list: "Double-clicking a heading's right edge fits the column to its widest content" (as
-/// Strata measures it: the heading and the cells on screen, not rows out of view).
 #[test]
 fn a_double_press_on_the_edge_fits_the_column_to_the_widest_cell_on_screen() {
     let mut rt = runtime(Host::new(1, Look::fallback(false)));
@@ -323,13 +312,6 @@ fn a_double_press_on_the_edge_fits_the_column_to_the_widest_cell_on_screen() {
     assert!(shown.contains(&6) && !shown.contains(&39), "{shown:?}");
 }
 
-/// column-layout: "Pressing a List heading and dragging it horizontally shows a grabbing
-/// cursor and a 3 px accent inset line at the drop point. The headings do not move during the
-/// drag", with "The line sits on the left edge of the heading the column would precede", "For
-/// a drop at the end, the line sits on the last heading's right edge", "Moving the pointer
-/// outside the heading row hides the line" and, ending it with Escape, "A cancelled drag…
-/// leaves the order unchanged and clears the line and cursor" (the cursor, the line's place
-/// and that headings keep theirs; the PNG golden `c4-reorder` shows the line).
 #[test]
 fn a_heading_drag_grabs_marks_the_drop_point_and_moves_no_heading() {
     let mut rt = runtime(Host::new(1, Look::fallback(false)));
@@ -406,8 +388,6 @@ fn a_heading_drag_grabs_marks_the_drop_point_and_moves_no_heading() {
     assert!(rt.state.layouts.is_empty());
 }
 
-/// column-layout: "A drop on the column's current position shows no line and changes
-/// nothing".
 #[test]
 fn a_drop_on_the_columns_own_place_shows_no_line_and_changes_nothing() {
     let mut rt = runtime(Host::new(1, Look::fallback(false)));
@@ -428,9 +408,6 @@ fn a_drop_on_the_columns_own_place_shows_no_line_and_changes_nothing() {
     assert!(rt.state.sorts.is_empty(), "and it isn't a sort click");
 }
 
-/// column-layout: "A cancelled drag, or headings unmapped mid-drag, leaves the order unchanged
-/// and clears the line and cursor" (the unmapped half, with the host's `reset`; the cancelled
-/// half is `a_heading_drag_grabs…`'s end).
 #[test]
 fn a_table_removed_mid_drag_leaves_the_order_and_comes_back_with_no_line() {
     let mut rt = runtime(Host::new(1, Look::fallback(false)));
@@ -455,9 +432,6 @@ fn a_table_removed_mid_drag_leaves_the_order_and_comes_back_with_no_line() {
     assert!(rt.state.layouts.is_empty(), "the order is unchanged");
 }
 
-/// column-layout: "Every browser window and the portal file chooser share order and
-/// visibility, and update live" (two tables over one layout in one process; across processes
-/// is the host's).
 #[test]
 fn two_tables_over_one_layout_both_hide_a_column_one_of_them_hid() {
     let mut rt = runtime(Host::new(2, Look::fallback(false)));
@@ -498,8 +472,6 @@ fn two_tables_over_one_layout_both_hide_a_column_one_of_them_hid() {
     assert!(rt.state.sorts.is_empty(), "never a sort");
 }
 
-/// list: "Clicking the Name, Size, Type, or Modified heading sorts by that field" from
-/// assistive technology: a heading's press action sends the sort.
 #[test]
 fn assistive_technology_presses_a_heading_to_sort() {
     let mut rt = runtime(Host::new(1, Look::fallback(false)));
@@ -519,9 +491,6 @@ fn at_press(rt: &mut Runtime<Host>, id: &str) {
     settle(rt);
 }
 
-/// list: "Clicking the Name, Size, Type, or Modified heading sorts by that field" from
-/// assistive technology, after a reorder drag released outside the heading row: Rune presses
-/// no heading after that release, so nothing may swallow the next press.
 #[test]
 fn an_assistive_press_after_a_reorder_released_outside_the_strip_sorts() {
     let mut rt = runtime(Host::new(1, Look::fallback(false)));
@@ -556,8 +525,6 @@ fn an_assistive_press_after_an_escaped_reorder_sorts() {
     assert_eq!(rt.state.sorts.len(), 1, "the press on Type sorts");
 }
 
-/// As above, after a drag of the heading that doesn't sort (Mode) released on itself: Rune runs
-/// no sort press there, so the next press on Size sorts.
 #[test]
 fn an_assistive_press_after_dragging_a_heading_that_doesnt_sort_sorts() {
     let mut rt = runtime(Host::new(1, Look::fallback(false)));
@@ -568,8 +535,6 @@ fn an_assistive_press_after_dragging_a_heading_that_doesnt_sort_sorts() {
     assert_eq!(rt.state.sorts.len(), 1, "the press on Size sorts");
 }
 
-/// column-layout: "Moving the pointer outside the heading row hides the line, and releasing
-/// there leaves the order unchanged."
 #[test]
 fn outside_the_heading_row_the_line_hides_and_a_release_changes_nothing() {
     let mut rt = runtime(Host::new(1, Look::fallback(false)));
@@ -591,9 +556,6 @@ fn outside_the_heading_row_the_line_hides_and_a_release_changes_nothing() {
     assert!(rt.state.layouts.is_empty(), "the order is unchanged");
 }
 
-/// As above, after a reorder drag of a sortable heading released on itself: Rune presses the
-/// heading then, that press isn't a sort click, and the next press from assistive technology
-/// is.
 #[test]
 fn an_assistive_press_after_a_sortable_heading_released_on_itself_sorts() {
     let mut rt = runtime(Host::new(1, Look::fallback(false)));
@@ -605,8 +567,6 @@ fn an_assistive_press_after_a_sortable_heading_released_on_itself_sorts() {
     assert_eq!(rt.state.sorts.len(), 1, "the press on Size sorts");
 }
 
-/// As above, after a reorder drag released over the part of a heading the sideways scroll
-/// clips away: Rune presses nothing there, as it tests a release against what it drew.
 #[test]
 fn an_assistive_press_after_a_release_over_a_clipped_heading_sorts() {
     // Two 450 pt panes, narrower than the columns: Type's heading runs past pane 0's edge.
@@ -637,12 +597,6 @@ fn an_assistive_press_after_a_release_over_a_clipped_heading_sorts() {
     assert_eq!(rt.state.sorts.len(), 1, "the press on Size sorts");
 }
 
-/// marquee: "A press on a button, text entry, label, image, slider, scrollbar, or sidebar place
-/// keeps that control's own behavior and starts no marquee" (C24b: the table's bars). One
-/// sideways scroll reaches the table's own bars and every host follower in the same frame
-/// (Rune's `on_scroll_offset` replaces a handler, so the table keeps the one and calls the
-/// rest: C22's peek is a follower), and the rows' bar stays at the pane's visible right edge,
-/// where a drag on it scrolls the rows, not at the columns' edge off screen (C24 review 2 SF2).
 #[test]
 fn a_sideways_scroll_reaches_both_bars_and_every_follower_and_the_rows_bar_stays_in_reach() {
     let mut rt = runtime(Host::new(3, Look::fallback(false)));
@@ -692,8 +646,6 @@ fn a_sideways_scroll_reaches_both_bars_and_every_follower_and_the_rows_bar_stays
     );
 }
 
-/// Clicking the bottom edge of the last row in a horizontally overflowing List view selects that
-/// row without hitting the sideways scrollbar underneath it.
 #[test]
 fn bottom_row_stays_interactive_when_sideways_bar_overflows() {
     let mut host = Host::new(3, Look::fallback(false));
@@ -727,8 +679,6 @@ fn bottom_row_stays_interactive_when_sideways_bar_overflows() {
         .rect;
 
     let before_x = rt.state.panes[0].table.sideways_feed().get().offset[0];
-    // Click the Mode cell near the bottom edge of the last row (past the sideways thumb): must
-    // select the last row without hitting the horizontal trough underneath.
     let click_x = last_rect[0] + 200.0;
     let click_y = last_rect[1] + last_rect[3] - 1.5;
     rt.pointer_down(click_x, click_y);

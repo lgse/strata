@@ -92,9 +92,6 @@ impl MountLabels {
         }
     }
 
-    /// Strata's English retry message (`authentication_retry_message`): "Those credentials
-    /// weren’t accepted. Check username, domain and password and try again.", naming only the
-    /// fields `request` shows. A translating host words its own.
     pub fn retry_message(request: &PasswordRequest) -> String {
         let names: Vec<&str> = request
             .shown_fields()

@@ -13,9 +13,6 @@ fn make_fifo(path: &Path) -> io::Result<()> {
     Ok(())
 }
 
-/// A folder of linked names, a link and a pipe, a name linked from outside
-/// it, and a link and pipe beside it, in `source_dir`. Returns the outside
-/// file.
 fn linked_tree(source_dir: &Path) -> io::Result<PathBuf> {
     let folder = source_dir.join("folder");
     fs::create_dir_all(folder.join("sub"))?;
@@ -131,10 +128,6 @@ fn check_rewritten_as_read(row: &str, kernel: (u32, u32, u32)) -> Result<(), Box
 #[test]
 fn a_file_rewritten_as_it_is_read_is_copied_again_whole() -> Result<(), Box<dyn Error>> {
     let _serial = serial()?;
-    // Each pass reads the data, then the end of the file. Every write lands in
-    // one tick of a coarse clock, so only a file last written in an earlier
-    // tick shows a same-size rewrite in its times. Before Linux 6.13, a file
-    // modified within the tick is copied for a digest.
     for (row, kernel) in [
         ("same size", (6, 13, 0)),
         ("shrinks", (6, 13, 0)),
@@ -182,8 +175,6 @@ fn linked_pairs_folder(folder: &Path) -> Result<(), Box<dyn Error>> {
     fs::create_dir_all(folder.join("sub"))?;
     fs::write(folder.join("a.txt"), b"a")?;
     fs::write(folder.join("sub/b.txt"), b"b")?;
-    // Removing a name of a file changes the other's change time, so only size
-    // and modification time tell.
     for (first, second, contents) in [
         ("x", "sub/y", "x"),
         ("m", "sub/n", "m"),
@@ -200,8 +191,6 @@ fn linked_pairs_folder(folder: &Path) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-/// The kernel evicts every entry between the copy and the deletion, while
-/// files are rewritten. cifs counts links, which sshfs does not.
 fn rewrite_and_renumber(changed: PathBuf) -> Racer {
     let evicted = [
         "",

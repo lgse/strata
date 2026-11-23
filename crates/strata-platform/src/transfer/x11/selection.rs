@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! ICCCM selections on the actor thread: owning one (with a server timestamp), answering
-//! `SelectionRequest`s (INCR above one chunk), converting another client's selection (INCR
-//! too), and following owners through XFixes.
-
 use std::collections::VecDeque;
 use std::sync::Arc;
 use std::time::Instant;
@@ -47,13 +43,9 @@ impl Owned {
 
 /// An ownership request waiting for the server's timestamp.
 pub(super) struct Owning {
-    /// The selection's atom: `CLIPBOARD`, `PRIMARY`, or another a module built on the actor
-    /// owns (P1's `XdndSelection`).
     sel: Atom,
     id: SourceId,
     spec: SourceSpec,
-    /// Cleared before its timestamp came: skipped when it does. It keeps its place, as each
-    /// take's timestamp arrives in the order the takes were asked.
     cancelled: bool,
 }
 
@@ -69,10 +61,6 @@ impl Owning {
     }
 }
 
-/// Ownership requests waiting for a server timestamp, in the order asked. Each take appends
-/// to a property of our window, and the server's `PropertyNotify`s come back in that order, so
-/// each notify's time belongs to the take at the front. A cancelled take therefore keeps its
-/// place, and is skipped when its time comes: removing it would hand its time to the next.
 #[derive(Default)]
 pub(super) struct Takes(VecDeque<Owning>);
 
@@ -147,8 +135,6 @@ pub(super) enum Then {
 pub(super) struct Wanted {
     /// The selection's atom.
     sel: Atom,
-    /// The conversion's time: `CurrentTime` for `CLIPBOARD` and `PRIMARY`, the drop's time
-    /// for `XdndSelection`.
     time: u32,
     target: Atom,
     limits: ReadLimits,
@@ -202,9 +188,6 @@ impl Incoming {
     }
 }
 
-/// ICCCM 2.2: whether request `r` was made before we took the selection, and so must be
-/// refused. `CurrentTime` is never early. Server times are 32-bit milliseconds that wrap
-/// (about every 49.7 days), so they compare as a signed difference.
 fn predates(r: &SelectionRequestEvent, owned: &Owned) -> bool {
     r.time != CURRENT_TIME && (r.time.wrapping_sub(owned.time) as i32) < 0
 }
@@ -304,9 +287,6 @@ impl Actor {
         }
     }
 
-    /// ICCCM: own with a real timestamp, never CurrentTime. A zero-length append to our own
-    /// window makes the server send a PropertyNotify carrying its time, and [`Actor::own`]
-    /// then takes the selection.
     pub(super) fn take_with_server_time(&mut self, owning: Owning) {
         let _ = self.conn.change_property8(
             PropMode::APPEND,
@@ -341,16 +321,12 @@ impl Actor {
                 time,
             },
         ) {
-            // Our own earlier source on this selection is replaced: it is cancelled, as on
-            // Wayland.
             lock(&self.shared).owned.remove(&old.id.get());
             self.events.push(Event::SourceCancelled { source: old.id });
         }
         lock(&self.shared).owned.insert(o.id.get());
     }
 
-    /// Gives up whichever selection source `id` holds, with the time it was taken (ICCCM:
-    /// never `CurrentTime`).
     fn disown(&mut self, id: SourceId) {
         // A take still waiting for its timestamp is cancelled, and never happens.
         if self.owning.cancel(id) {
@@ -713,9 +689,6 @@ impl Actor {
         self.notify(&req, req.property);
     }
 
-    /// Writes `data` into `property` of `requestor` as type `target`: at once, or by INCR when
-    /// it is larger than one chunk (the size now, then a chunk each time the requestor
-    /// deletes the property, ending with an empty one).
     pub(super) fn put(&mut self, requestor: Window, property: Atom, target: Atom, data: Arc<[u8]>) {
         if data.len() <= self.chunk {
             let _ =

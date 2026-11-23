@@ -1,12 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The interfaces the primary serves: GApplication's (`org.gtk.Application`,
-//! `org.freedesktop.Application`, `org.gtk.Actions`) at the app id's object path, and, opted
-//! into, `org.freedesktop.FileManager1`.
-//!
-//! The signatures are GLib's (`gio/gapplicationimpl-dbus.c`), so a GApplication of the same id
-//! forwards to this primary and this crate's forwarder reaches a GApplication primary.
-
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -48,12 +41,6 @@ impl GtkApplication {
         });
     }
 
-    /// A forwarded launch. The reply, its exit status, waits until the app is done with the
-    /// [`CommandLine`]; what it prints meanwhile goes to the caller's `path` first, in order.
-    ///
-    /// Once the primary is giving the app id up, a launch the app hasn't answered yet (and any
-    /// that arrives) fails with `Disconnected`, which the caller reads as a primary gone: it
-    /// claims the app id again. One already answered is sent to the end.
     async fn command_line(
         &self,
         path: OwnedObjectPath,
@@ -87,8 +74,6 @@ impl GtkApplication {
                 Some(Out::Print(text)) => ("Print", text),
                 Some(Out::PrintErr(text)) => ("PrintError", text),
             };
-            // Each line is answered before the next goes, so the caller sees them in order
-            // and before the exit status. A caller that went away just misses them.
             let _ = conn
                 .call_method(
                     caller.as_ref(),
@@ -142,11 +127,6 @@ impl FreedesktopApplication {
     }
 }
 
-/// GLib's action group interface. A GApplication forwarder lists the primary's actions first
-/// (`DescribeAll`) and gives up if that fails, so the primary serves the interface. `List` and
-/// `DescribeAll` return nothing even when `Options::actions` accepts some: a listing needs
-/// each action's parameter type, which the app doesn't give. `Activate` still runs the
-/// accepted ones.
 pub(super) struct GtkActions {
     pub inbox: Arc<Inbox>,
     pub actions: Arc<[String]>,
@@ -186,8 +166,6 @@ impl GtkActions {
     }
 }
 
-/// How an action call's parameter array (`av`) becomes one parameter, as GLib reads each
-/// interface's.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum Pack {
     /// `org.freedesktop.Application.ActivateAction`: several pack into one tuple.
@@ -196,8 +174,6 @@ pub(super) enum Pack {
     First,
 }
 
-/// An action call as GLib reads one: refused unless the app accepts the name, its parameters
-/// read as `pack` says.
 pub(super) fn action(
     actions: &[String],
     name: String,

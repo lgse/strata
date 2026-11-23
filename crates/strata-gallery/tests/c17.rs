@@ -1,11 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! C17's page in process: what scripts can't reach (an input method composing, every frame of
-//! a superseded query, a window at rest stepped from wake to wake, a tooltip, the new-tab
-//! chords and the middle click, the states with no feature-map bullet). The scripts in
-//! `tests/scripts/c17/` check the rest. Each test names the bullets it covers, or says it
-//! covers none.
-
 mod c17 {
     use rune::{ElementInfo, Env, Ime, Key, KeyEvent, Mods, PointerButton, Runtime};
     use strata_components::contract::fuzzy;
@@ -105,9 +99,6 @@ mod c17 {
             .collect()
     }
 
-    /// Steps a resting window: a frame only at each requested wake, none in between, for at
-    /// most `limit` seconds, calling `each` after every frame. Reduced motion holds the
-    /// spinner still, so the window rests between wakes.
     fn rest_with(rt: &mut Runtime<Gallery>, limit: f64, mut each: impl FnMut(&Runtime<Gallery>)) {
         let start = rt.state.c17.now;
         for _ in 0..400 {
@@ -130,9 +121,6 @@ mod c17 {
         rt
     }
 
-    // No bullet names it (the WP's "a superseded query's results never show"): a query typed
-    // over another before its answers land shows none of them, in any frame, in a window at
-    // rest stepped from wake to wake.
     #[test]
     fn a_superseded_query_s_answers_never_show() {
         let mut rt = resting("c17-closed-light");
@@ -160,9 +148,6 @@ mod c17 {
         );
     }
 
-    // browser/search: "A spinner shows in the search bar while indexing runs." In a window at
-    // rest the three batches land at the wakes the fake worker asked for, and the count is
-    // announced at the first results and when the query is done (owner ruling).
     #[test]
     fn streamed_batches_land_in_a_resting_window() {
         let mut rt = resting("c17-closed-light");
@@ -186,8 +171,6 @@ mod c17 {
         assert_eq!(status(&rt), Some(format!("{n} results")));
     }
 
-    // No bullet names the loading or error states (the WP's "each state is distinct"): each
-    // state's status reads its own words, results read a count.
     #[test]
     fn each_state_reads_its_own_words() {
         let at_one = |name: &str| {
@@ -223,8 +206,6 @@ mod c17 {
         assert_eq!(all.len(), 6, "distinct");
     }
 
-    // browser/search: "With a pinyin input method composing in the query field, Escape
-    // cancels only the composition and search stays open."
     #[test]
     fn escape_while_composing_keeps_the_palette_open() {
         let mut rt = mount("c17-idle-light");
@@ -239,8 +220,6 @@ mod c17 {
         );
     }
 
-    // browser/search: "With an input method composing in the query field, Enter that the input
-    // method passes back after committing opens the highlighted result."
     #[test]
     fn an_enter_after_the_composition_commits_opens_the_highlighted_result() {
         let mut rt = mount("c17-results-light");
@@ -257,8 +236,6 @@ mod c17 {
         assert!(!rt.state.c17.palette.is_open());
     }
 
-    // No bullet: Strata's palette has no new-tab key (owner ruling, a deviation). The host's
-    // open_in_new_tab chord (Ctrl+Enter, Shift ignored) and a middle click open in a new tab.
     #[test]
     fn ctrl_enter_and_a_middle_click_open_in_a_new_tab() {
         for mods in [ctrl(false), ctrl(true)] {
@@ -292,8 +269,6 @@ mod c17 {
         assert!(rt.state.c17.palette.is_open());
     }
 
-    // browser/search: "Hovering Partial results shows a tooltip with the same causes as its
-    // description; complete results clear the tooltip."
     #[test]
     fn the_partial_notice_shows_its_causes_on_hover_until_results_are_complete() {
         let mut rt = mount("c17-partial-light");
@@ -316,9 +291,6 @@ mod c17 {
         assert_eq!(rt.help_tooltip(), None);
     }
 
-    // browser/search: "Up and Down move the highlight while the caret stays in the query
-    // field". The pointer only tints: a pointer resting on a row never moves the highlight,
-    // even as the rows scroll under it (C6's review round 1).
     #[test]
     fn a_resting_pointer_never_moves_the_highlight() {
         let mut rt = mount("c17-results-light");
@@ -335,9 +307,6 @@ mod c17 {
         }
     }
 
-    // browser/search: "Opening a result, or Open containing folder, hands focus to the
-    // revealed item in the browser rather than the control that opened search." In a window
-    // at rest: the leaving frame ends at the wake the palette asked for (probe P2).
     #[test]
     fn opening_a_result_hands_focus_to_the_view_in_a_resting_window() {
         let mut rt = resting("c17-closed-light");
@@ -355,8 +324,6 @@ mod c17 {
         assert!(rt.state.c17.log.starts_with("Opened "));
     }
 
-    // browser/search: "Each result shows its name, its full path, and a thumbnail for images."
-    // The thumbnails land through the C25 store at the wakes the fake worker asks for.
     #[test]
     fn image_results_get_their_thumbnails_in_a_resting_window() {
         let mut rt = resting("c17-closed-light");
@@ -419,8 +386,6 @@ mod c17 {
         rt
     }
 
-    /// Delivers `items` for the current query, then steps the resting window frame by frame
-    /// until it rests, calling `each` after every frame, the first the batch's commit.
     fn land(
         rt: &mut Runtime<Gallery>,
         items: Vec<PaletteItem>,
@@ -436,11 +401,6 @@ mod c17 {
         }
     }
 
-    // browser/search: "While indexing adds results, the highlighted result stays selected by
-    // path…". Review round 1, B1: until the user moves the highlight, a batch keeps the list's
-    // pixel offset (Strata's restore_scroll with navigation_started false), so better results
-    // a batch puts above the first row show at the top; Rune's anchoring would keep the old
-    // first row there and hide them.
     #[test]
     fn a_batch_above_the_first_row_shows_at_the_top_until_the_user_moves() {
         let mut rt = synthetic();
@@ -464,8 +424,6 @@ mod c17 {
         );
     }
 
-    // The same, through the page's own streamed batches: type "rs" and let the walk finish;
-    // the first result shows in every frame.
     #[test]
     fn the_streamed_best_result_shows_in_every_frame() {
         let mut rt = resting("c17-closed-light");
@@ -479,9 +437,6 @@ mod c17 {
         assert!(!rt.state.c17.palette.busy());
     }
 
-    // browser/search: "When the first result is preselected…" with the review round 1 B2
-    // ruling: a new query scrolls to the top, so its highlighted first result shows, even after
-    // the user arrowed far down the old one.
     #[test]
     fn a_new_query_s_highlighted_first_result_shows_after_arrowing_down() {
         let mut rt = resting("c17-closed-light");
@@ -509,8 +464,6 @@ mod c17 {
         assert!(visible(&rt, &first));
     }
 
-    // Review round 1, SF1: once the user has moved the highlight, a batch that moves the
-    // highlighted row keeps it in view, so Enter never opens a row they can't see.
     #[test]
     fn a_moved_highlight_stays_in_view_when_a_batch_pushes_it_down() {
         let mut rt = synthetic();
@@ -544,8 +497,6 @@ mod c17 {
         );
     }
 
-    // browser/search: "Up and Down move the highlight while the caret stays in the query
-    // field" (review round 1, SF2): the caret doesn't move.
     #[test]
     fn up_and_down_leave_the_caret_where_it_was() {
         let mut rt = mount("c17-results-light");
@@ -564,8 +515,6 @@ mod c17 {
         assert_eq!(rt.state.c17.palette.highlighted(), Some(1));
     }
 
-    // No bullet (review round 1, SF3): a held Enter opens nothing, even one held from before
-    // the results landed; a fresh press then opens.
     #[test]
     fn a_held_enter_opens_nothing_even_through_loading() {
         let mut rt = resting("c17-closed-light");
@@ -596,8 +545,6 @@ mod c17 {
         assert!(rt.state.c17.log.starts_with("Opened "));
     }
 
-    // Review round 1, SF4: a new query announces nothing until its first answer; the old
-    // list's size would be the wrong count.
     #[test]
     fn a_new_query_announces_no_count_until_its_first_answer() {
         let mut rt = mount("c17-results-light");
@@ -620,8 +567,6 @@ mod c17 {
         assert_eq!(status(&rt), Some(format!("{n} results")));
     }
 
-    // browser/search: "Escape, or a click outside the dialog panel, closes search." Strata's
-    // ESCAPE_ANY ignores the modifiers, so Shift+Escape closes too (review round 1, a nit).
     #[test]
     fn shift_escape_closes_as_escape_does() {
         let mut rt = mount("c17-results-light");
@@ -638,8 +583,6 @@ mod c17 {
         assert_eq!(rt.state.c17.log, "Closed (Escape)");
     }
 
-    // Review round 1, a nit: the jump answers its query in the commit that opens it, as
-    // Strata's history search does, so it never shows "Searching…".
     #[test]
     fn the_jump_lists_its_history_in_the_frame_it_opens() {
         let mut rt = resting("c17-closed-light");
@@ -686,8 +629,6 @@ mod c17 {
             .map(|i| i.id.clone())
     }
 
-    // Review round 2, B1 repro 1: a wheel and a same-query batch in one frame. The batch never
-    // undoes the wheel.
     #[test]
     fn a_batch_in_a_wheel_s_frame_keeps_the_wheel_s_scroll() {
         for reduced in [true, false] {
@@ -706,8 +647,6 @@ mod c17 {
         }
     }
 
-    // Review round 2, B1 repro 2: a batch and a Down in one frame, after wheeling the highlight
-    // off screen: the arrow's reveal wins, in every frame.
     #[test]
     fn an_arrow_in_a_batch_s_frame_reveals_its_row() {
         let mut rt = synthetic();
@@ -736,8 +675,6 @@ mod c17 {
         }
     }
 
-    // Review round 2, B1 repro 3: a new query's answer and a second batch in one poll, after a
-    // wheel: the list goes to the top, its first result shown.
     #[test]
     fn a_new_query_s_answers_in_one_poll_scroll_to_the_top() {
         let mut rt = synthetic();
@@ -765,8 +702,6 @@ mod c17 {
         assert!(offset(&rt).abs() < 1.0);
     }
 
-    // Review round 2, B1: a batch mid-fling neither stops nor moves the fling, before the user
-    // moved the highlight and after (a batch's reveal waits for the list to stop).
     #[test]
     fn a_batch_mid_fling_leaves_the_fling_alone() {
         for moved in [false, true] {
@@ -783,8 +718,6 @@ mod c17 {
         }
     }
 
-    /// A fling over 200 rows, with a batch five frames in if `with_batch`, after a Down if
-    /// `moved`: the offsets five frames in and when it stops.
     fn fling(with_batch: bool, moved: bool) -> (f32, f32) {
         {
             let mut rt = synthetic_with(false);
@@ -815,7 +748,6 @@ mod c17 {
         }
     }
 
-    // Review round 2, SF1: an arrow reveals its row, in every frame (reduced motion: no glide).
     #[test]
     fn arrows_keep_the_highlighted_row_in_view() {
         let mut rt = synthetic();
@@ -831,8 +763,6 @@ mod c17 {
         }
     }
 
-    // Review round 2, SF2: before the user moves the highlight, a batch adding rows above keeps
-    // a non-zero offset (Strata's restore_scroll).
     #[test]
     fn a_batch_keeps_a_wheeled_offset_until_the_user_moves() {
         let mut rt = synthetic();
@@ -856,8 +786,6 @@ mod c17 {
         });
     }
 
-    // Review round 2, SF3 (ruling: follow Strata): after the user moved the highlight, any
-    // changed batch reveals the highlighted row, even one that leaves its index alone.
     #[test]
     fn after_moving_any_changed_batch_reveals_the_highlighted_row() {
         let mut rt = synthetic();
@@ -879,8 +807,6 @@ mod c17 {
         );
     }
 
-    // Review round 2, SF4 (ruling: follow Strata): after the user moved the highlight, rows a
-    // batch adds above at offset 0 stay visible while the highlighted row would stay in view.
     #[test]
     fn after_moving_rows_added_above_show_while_the_highlight_stays_in_view() {
         let mut rt = synthetic();
@@ -895,8 +821,6 @@ mod c17 {
         });
     }
 
-    // Review round 2, a nit: while an input method composes, Up and Down are its own; the
-    // highlight stays.
     #[test]
     fn arrows_while_composing_leave_the_highlight() {
         let mut rt = mount("c17-results-light");
@@ -907,10 +831,6 @@ mod c17 {
         assert_eq!(rt.state.c17.palette.highlighted(), Some(0));
     }
 
-    // Review round 2, B1: after the user moved the highlight, a batch the page's poll delivers
-    // while a wheel's scroll is still landing leaves it alone: the tick sees the list move and
-    // the batch's reveal waits (Strata's interaction_revision). A batch handed over in the
-    // wheel's own frame, before the wheel is applied, still reveals (see the module docs).
     #[test]
     fn after_moving_a_batch_during_a_wheel_keeps_the_wheel_s_scroll() {
         let mut rt = synthetic();
@@ -937,10 +857,6 @@ mod c17 {
         );
     }
 
-    // Review round 2 (mutant S7): a new query starts unmoved, as Strata's begin_query clears
-    // navigation_started. After arrowing in the old query, the new one's batches keep the
-    // offset, so results added above its first rows show rather than the list chasing its
-    // highlight.
     #[test]
     fn a_new_query_starts_unmoved_after_arrowing_in_the_old_one() {
         let mut rt = synthetic();
@@ -962,8 +878,6 @@ mod c17 {
         assert_eq!(highlighted(&rt).as_deref(), Some("c00"));
     }
 
-    /// Queues `items` for the current query on the page's fake worker: its poll delivers them
-    /// at the start of the next frame.
     fn queue(rt: &mut Runtime<Gallery>, items: Vec<PaletteItem>) {
         rt.update(move |g, _| {
             let generation = g.c17.palette.generation();
@@ -979,9 +893,6 @@ mod c17 {
         more
     }
 
-    // Review round 3, B1: a click held while a batch moves another result into its row opens
-    // nothing, as GTK's ListBox activates only when press and release land on the same row.
-    // Left and middle.
     #[test]
     fn a_press_held_while_a_batch_moves_its_row_opens_nothing() {
         for button in [PointerButton::Primary, PointerButton::Middle] {
@@ -1007,7 +918,6 @@ mod c17 {
         }
     }
 
-    // Review round 3, B1: the same for a right-click: no menu, and the highlight stays.
     #[test]
     fn a_right_press_held_while_a_batch_moves_its_row_asks_for_no_menu() {
         let mut rt = synthetic();
@@ -1026,8 +936,6 @@ mod c17 {
         assert_eq!(highlighted(&rt).as_deref(), Some("b00"));
     }
 
-    // Review round 3, B1: the guard leaves ordinary clicks alone, a batch landing before the
-    // press or after the release included.
     #[test]
     fn a_click_between_batches_still_acts_on_its_row() {
         for button in [
@@ -1058,10 +966,6 @@ mod c17 {
         }
     }
 
-    // Review round 3, B2: right after an arrow scrolls the list, a batch in the next frame
-    // still reveals the highlighted row: the palette's own scroll isn't the user scrolling.
-    // With and without reduced motion (a reveal glides over frames without it), and with up to
-    // three frames between.
     #[test]
     fn a_batch_right_after_an_arrow_scroll_keeps_the_highlight_in_view() {
         for reduced in [true, false] {
@@ -1102,8 +1006,6 @@ mod c17 {
         }
     }
 
-    // Review round 3 (mutant T5): an arrow scrolls only as far as it takes: the row it reaches
-    // past the bottom lands at the bottom, not in the middle.
     #[test]
     fn an_arrow_scrolls_only_as_far_as_it_takes() {
         let mut rt = synthetic();
@@ -1126,9 +1028,6 @@ mod c17 {
         );
     }
 
-    // Review round 3, B2 (the batch's side): after the user moved the highlight, a batch whose
-    // reveal scrolls the list and another batch in the next frame: the second still reveals,
-    // since the first's scroll was the palette's own, not the user's.
     #[test]
     fn back_to_back_batches_keep_a_moved_highlight_in_view() {
         let mut rt = synthetic();

@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The header's buttons on the offscreen host, in the Icons view: each goes where GTK's does
-//! and is greyed where the browser cannot go, and a press held on Back that listed the
-//! history leaves the next press of any button alone, by the pointer or the keyboard.
-
 use rune::{Key, KeyEvent, Mods};
 use serde_json::Value;
 use strata_core::model::Location;

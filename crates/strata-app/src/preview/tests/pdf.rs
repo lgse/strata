@@ -1,10 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The PDF preview's host (`preview::pdf`): pages asked of the provider one at a time, a later
-//! page landing, a request the view no longer wants dropped, a reply for a viewer that has
-//! gone ignored; and the zoom reset read from the key map at the window's stage, ahead of the
-//! text size.
-
 use rune::{Key, Mods, Tx};
 use strata_core::model::{FileEntry, Location};
 use strata_desktop::settings::{KeymapOverrides, TextSize};
@@ -44,8 +39,6 @@ fn page_png(width: u32) -> Vec<u8> {
     png(width, width * 11 / 8)
 }
 
-/// Opens the preview on `todo.txt`, then shows a PDF of [`PAGES`] pages in it, opened from a
-/// small first page, with its later pages asked of `pages`.
 fn show_pdf(host: &mut crate::host::offscreen::Offscreen, pages: &Recorded) -> tempfile::TempDir {
     let folder = listed(host);
     disable_auto_preview(host);
@@ -80,9 +73,6 @@ fn level(host: &crate::host::offscreen::Offscreen) -> f32 {
     }
 }
 
-/// The view asks one page at a time; a page it is answered lands and the next is asked; a
-/// request for a page scrolled far out of view is dropped unanswered; and an answer for a
-/// viewer that has been replaced changes nothing in the new one.
 #[test]
 fn pages_render_one_at_a_time_and_stale_or_unwanted_ones_are_dropped() {
     hosted(
@@ -154,9 +144,6 @@ fn text_size(host: &crate::host::offscreen::Offscreen) -> TextSize {
     shell::preferences(host.app()).text_size
 }
 
-/// With `pdf_zoom_reset` rebound to Ctrl+E, Ctrl+E resets the focused PDF and Ctrl+0 is the
-/// text size's again; with the binding back to Ctrl+0, Ctrl+0 resets the PDF and leaves the
-/// text size, as GTK's `zoom_shortcut` reads the key map.
 #[test]
 fn the_pdf_zoom_reset_follows_the_key_map_ahead_of_the_text_size() {
     hosted_after(
@@ -215,8 +202,6 @@ fn hover_pages(host: &mut crate::host::offscreen::Offscreen) {
     while host.turn() {}
 }
 
-/// Escape closes a PDF preview with the pointer over its pages: the pages' hover ends as
-/// they go, after the viewer has.
 #[test]
 fn escape_closes_a_pdf_preview_under_the_pointer() {
     hosted(

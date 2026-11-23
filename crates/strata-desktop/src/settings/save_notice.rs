@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Localized titles and details for settings and folder-view save notices, shared
-//! between both interfaces (`src/ui/preferences/save_notice.rs`).
-
 use std::path::Path;
 
 use crate::i18n::tr;
@@ -27,8 +24,6 @@ pub fn save_notice_summary() -> String {
     tr("Changes last only until Strata closes")
 }
 
-/// Title and detail text for `subject` and `problem`; `reason` is already localized
-/// for the slot after a colon.
 pub fn save_notice_text(
     subject: SaveSubject,
     problem: NoticeProblem,

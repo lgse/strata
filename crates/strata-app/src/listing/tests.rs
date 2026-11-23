@@ -189,9 +189,6 @@ fn by_name() -> ViewPreferences {
     }
 }
 
-/// Grouped, the rows show in strata-fs's group order (`compare_type_groups` over each type's
-/// description), each group in the browser's order; positions and ids still cross as the
-/// browser's.
 #[test]
 fn a_grouped_listing_shows_type_groups_in_strata_fs_order_and_each_in_the_browsers() {
     let ids = Ids::default();
@@ -217,9 +214,6 @@ fn a_grouped_listing_shows_type_groups_in_strata_fs_order_and_each_in_the_browse
     }
 }
 
-/// A grouped row read again, as a metadata fill or a change on disk reads it, keeps its group
-/// when its type did not change, and takes its new one when it did: what `group_at` reads, from
-/// which the pane builds the group headers.
 #[test]
 fn a_refilled_grouped_row_keeps_its_group_or_takes_its_new_one() {
     let ids = Ids::default();
@@ -245,8 +239,6 @@ fn a_refilled_grouped_row_keeps_its_group_or_takes_its_new_one() {
     assert_ne!(groups(&column), before, "a new type, a new group");
 }
 
-/// Ungrouped, nothing changes from the browser's order, no type is read and no lookup is
-/// built; turning grouping off again goes back to the browser's order.
 #[test]
 fn an_ungrouped_listing_keeps_the_browsers_order_and_builds_no_lookup() {
     let ids = Ids::default();
@@ -283,10 +275,6 @@ fn photo(modified: Option<i64>, size: Option<u64>) -> FileEntry {
     }
 }
 
-/// A row read again keeps its thumbnail key while no time or size known in both differs (a
-/// fill that makes them known, a reload that forgets them: a new key would ask again and
-/// cancel the request out), and takes a new one when a known time or size changes, however
-/// the rows come back.
 #[test]
 fn a_row_keeps_its_thumbnail_key_until_a_known_time_or_size_changes() {
     let (t1, t2) = (Some(1), Some(2));
@@ -344,8 +332,6 @@ fn a_row_keeps_its_thumbnail_key_until_a_known_time_or_size_changes() {
     }
 }
 
-/// A file replaced by a folder of its name, read again, takes the folder's lack of a key: the
-/// folder's row asks for no render.
 #[test]
 fn a_row_that_has_no_key_keeps_none() {
     let ids = Ids::default();

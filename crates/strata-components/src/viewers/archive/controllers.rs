@@ -1,11 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The archive tree's key map and pointer controller, on C1e's seam.
-//!
-//! One member is highlighted at a time, so the map has no Shift ranges, no Ctrl+A or Ctrl+Space
-//! and no Escape (that's the host's: Columns closes the preview). Left and Right have no
-//! neighbour in a list, so C1c reports them as edges, and the view opens a folder or goes up.
-
 use rune::PointerButton;
 
 use crate::collection::element::{
@@ -20,9 +14,6 @@ use crate::contract::Direction;
 /// How far (points) a release may land from its press and still click: Rune's click slop.
 const CLICK_SLOP: f32 = 4.0;
 
-/// C1c's default map less everything that selects more than one member or clears the
-/// highlight: the arrows, Home, End, the page keys, Ctrl+Up and Ctrl+Down, and Enter. `h j k l`
-/// stay aliases, which act with [`Letters::Arrows`] (Type to search off).
 pub fn key_map() -> KeyMap {
     let mut map = KeyMap::default_map();
     let targets = [
@@ -59,12 +50,6 @@ pub fn key_settings(letters: bool) -> KeySettings {
     })
 }
 
-/// Members highlight on the release of a click, never on a press or a hover, as Strata's
-/// archive list does (lgse/strata#1570): a click on a member highlights it alone, whatever
-/// modifiers are held, and a click on a folder also opens it ([`Intent::Activate`] with
-/// [`Activation::Click`]). Only a run's first click counts: opening a folder replaces every
-/// row, so a double click's second press lands on a row of the folder just opened, and must not
-/// open it too. A drag selects nothing, and starts no marquee and no drag out.
 #[derive(Debug, Default)]
 pub struct ArchivePointer {
     pressed: Option<usize>,
@@ -110,22 +95,15 @@ impl PointerController for ArchivePointer {
     }
 }
 
-/// A collection setting: Left at the folder shown goes on past the tree rather than to C1c. The
-/// view sets it at the root when the host has no `on_leave`, so the key reaches the host's own
-/// key handling (Strata's 10xer `h` behaviour) instead of being swallowed.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct LeftPasses(pub bool);
 
-/// C1c's keyboard, less Left where [`LeftPasses`] says so.
 #[derive(Debug, Default)]
 pub struct ArchiveKeys {
     inner: Keyboard,
 }
 
 impl ArchiveKeys {
-    /// Whether the key is one of the map's Left chords. `chords_for` includes the `h` alias
-    /// whatever [`Letters`] says: with `h` passed on ([`Letters::Pass`]) the inner keyboard
-    /// passes it too, so passing it here changes nothing.
     fn left(input: &KeyInput<'_>, cx: &Ctx<'_>) -> bool {
         cx.settings::<KeySettings>().is_some_and(|k| {
             k.map

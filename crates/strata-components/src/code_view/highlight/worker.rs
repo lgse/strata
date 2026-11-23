@@ -1,13 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The highlighter thread: its requests, and the loop that feeds them to the engine.
-//!
-//! One thread owns the [`Engine`], and so every `ParseState` (S4, B1 option (a)). Requests
-//! arrive over one channel; replies go back over each document's own channel, and the thread
-//! wakes the window with Rune's `Waker` once per step that sent any. Before each step the
-//! worker drains the queue, so the newest viewport per document wins and queued edits share
-//! one foreground pass.
-
 use std::collections::HashMap;
 use std::ops::Range;
 use std::panic::{AssertUnwindSafe, catch_unwind};
@@ -122,16 +114,12 @@ impl Worker {
         }
     }
 
-    /// Runs `f`, the backstop for a panic the engine's own guards don't catch: every text
-    /// and queued block then answers plain, and the thread carries on.
     pub(crate) fn guard(&mut self, f: impl FnOnce(&mut Worker)) {
         if catch_unwind(AssertUnwindSafe(|| f(self))).is_err() {
             self.engine.fail_all();
         }
     }
 
-    /// Sends the engine's replies, and wakes the window if any went out. A document whose
-    /// receiver is gone is closed.
     pub(crate) fn flush(&mut self) {
         let mut sent = false;
         let out = match catch_unwind(AssertUnwindSafe(|| self.engine.take_out())) {
@@ -162,8 +150,6 @@ impl Worker {
     }
 }
 
-/// The thread's loop. It blocks while there is no work, and exits when every sender (the
-/// `Highlighter` handles, documents and block pools) is gone.
 pub(crate) fn run(rx: Receiver<Request>, mut worker: Worker) {
     loop {
         let first = if worker.engine.has_work() {

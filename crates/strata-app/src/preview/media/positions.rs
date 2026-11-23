@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Where each video was left this session, so it reopens there (GTK's
-//! `src/ui/media/positions.rs`).
-
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},

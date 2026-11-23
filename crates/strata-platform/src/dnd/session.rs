@@ -1,54 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The two backend-neutral pieces of a drag: the press guard on a drag source, and which
-//! target a drag over a window lands on.
-//!
-//! # The press guard, and Rune's capture (U10)
-//!
-//! A drag source is an `on_drag` element: Rune's `drag_out` starts nothing on Linux (draft
-//! U1, not filed). Once the system drag starts, the compositor or X server has the pointer,
-//! and Rune's capture of the press is left behind:
-//!
-//! - **Wayland:** winit gets a pointer leave and never the release, so Rune stays pressing
-//!   and later moves reach `on_drag` with no button held (S2, Q3). Rune has no public way to
-//!   end the capture (draft U10, not filed). The workaround: P1 sends Escape through
-//!   `Tx::send_key`, which Rune handles as "Escape during a drag cancels it"
-//!   (`Drag::cancelled`'s documented cause): the element hears `Up` with `cancelled`, the
-//!   capture ends, and the guard swallows that `Up`.
-//!
-//!   An Escape that finds no capture reaches the app's key handlers, so it is sent only when
-//!   the capture is known to be held:
-//!   - Not from the `Move` that crossed the threshold: a fast flick brings that move and the
-//!     release in one batch, and Rune ends the capture at the release's input, before any
-//!     handler runs (review round 1, B2).
-//!   - Only once the compositor proves it took the pointer, by the first of: the drag's own
-//!     `wl_data_device.enter` on one of the app's windows, or a target answering the drag
-//!     (`wl_data_source.target` or `action`), for a drag that starts or stays outside them
-//!     (review round 2, R2-B2). A compositor takes a drag only while the button is held
-//!     (wlroots checks the press serial), and then winit never hears the release.
-//!   - In that update, P1 first dispatches P0's queue and checks that the drag hasn't dropped
-//!     or ended: a focus change at the drop (sway's bounce) follows those in the protocol
-//!     stream. Nothing winit reads can run until the update returns, and Rune handles the
-//!     sent key before it does.
-//!   - Only while the element the press captured is live at the path it had when the drag
-//!     started (review round 2, R2-B1): Rune's `cancel_drag` finds it by that path, and
-//!     skips exiting subtrees. P1 records the path by a pick when the drag starts, and sends
-//!     the Escape from a pick at the press point (which Rune found inside the element's
-//!     visible box) that runs against the same tree, just before Rune handles the key.
-//!   - Only for a press the guard saw go down, and once.
-//!
-//!   With no proof at all (the drag starts over no surface, and no target answers it), P1
-//!   sends nothing: Rune's capture is held until the window's next press or focus change.
-//!   Nothing ends it later on a timer (review round 3, B1): Rune drops a capture without an
-//!   `Up` when a press replaces it or a modal mounts, and an Escape after that would reach
-//!   the app.
-//!
-//!   What remains is listed in the module docs, "Rune's capture on Wayland".
-//! - **X11:** the source is grab-less and winit keeps its implicit grab, so Rune hears every
-//!   move and the real release. The guard swallows them, and the real release also drops
-//!   the drag (a backstop for a release the XI2 events missed, B1). A cancelled `Up` (the
-//!   user's Escape, or focus lost) cancels the drag.
-
 use std::any::Any;
 use std::rc::Rc;
 
@@ -61,7 +12,6 @@ use super::registry::Registry;
 /// How the platform ends Rune's capture of a press that became a system drag.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Release {
-    /// Wayland: P1 sends Escape; a cancelled `Up` follows, which is ours.
     Escape,
     /// X11: Rune hears the real release; a cancelled `Up` before it cancels the drag.
     RealUp,
@@ -70,16 +20,8 @@ pub(crate) enum Release {
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum State {
     Idle,
-    Pressed {
-        x: f32,
-        y: f32,
-    },
-    /// A system drag runs from the press. `escape`: P1 may still end Rune's capture with an
-    /// Escape (Wayland, a press the guard saw go down, none sent yet).
-    Started {
-        release: Release,
-        escape: bool,
-    },
+    Pressed { x: f32, y: f32 },
+    Started { release: Release, escape: bool },
 }
 
 /// What a source's `on_drag` does with a phase.
@@ -141,8 +83,6 @@ impl Guard {
         self.owns(d)
     }
 
-    /// The drag started from the press the guard holds (or, for an app's own `on_drag`
-    /// calling `start_drag`, from whatever press is down).
     pub(crate) fn started(&mut self, release: Release) {
         let pressed = matches!(self.state, State::Pressed { .. });
         self.state = State::Started {
@@ -156,8 +96,6 @@ impl Guard {
         matches!(self.state, State::Started { escape: true, .. })
     }
 
-    /// Whether P1 may send its Escape now: a Wayland drag from a press the guard saw go
-    /// down, whose `Up` hasn't come, and no Escape sent yet. Taking it spends it.
     pub(crate) fn take_escape(&mut self) -> bool {
         match &mut self.state {
             State::Started { escape, .. } if *escape => {
@@ -199,8 +137,6 @@ impl Guard {
 pub(crate) enum Landing {
     /// No target takes it here.
     Nowhere,
-    /// `key` takes it with this action, reading `accept` (the in-process token for a local
-    /// payload).
     Accepting {
         key: String,
         action: DragAction,
@@ -227,8 +163,6 @@ impl Landing {
     }
 }
 
-/// The actions to negotiate with: the source's, or copy while they aren't known yet
-/// (Wayland says just after the drag enters).
 pub(crate) fn allowed(offer: &DropOffer) -> Actions {
     if offer.actions.is_empty() {
         Actions::COPY
@@ -250,8 +184,6 @@ pub(crate) fn land<S: 'static>(
     land_at(registry, path, s, offer, local, mods, None)
 }
 
-/// [`land`], with where the drag is in window points, for targets that ask by point
-/// ([`DropTarget::action_at`](super::DropTarget::action_at)).
 pub(crate) fn land_at<S: 'static>(
     registry: &Registry<S>,
     path: Option<&str>,

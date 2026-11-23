@@ -9,10 +9,6 @@ use strata_kit::look::Look;
 
 use super::state::{FormPage, Mounting, PageCarry, TabbedFormState};
 
-/// Strata's `.settings-action-tabs` (style.css): a tab at least 36 px tall (`min-height`, so
-/// it grows with a large text size) with 6 px sides and 8 px after it, its label at 55 % until
-/// hovered, focused or chosen, a 2 px underline the label's width, a 2 px ring 2 px inside the
-/// tab at half the accent, and a rule under the strip at 35 % of the border colour.
 pub const TAB_HEIGHT: f32 = 36.0;
 pub const TAB_PAD_X: f32 = 6.0;
 pub const TAB_GAP: f32 = 8.0;
@@ -46,19 +42,6 @@ impl Default for FormLabels {
 
 type SelectFn<S> = Rc<dyn Fn(&mut S, usize, &mut Tx)>;
 
-/// A notebook of pages under a tablist (the action editor's General, Script and Behavior).
-///
-/// - Tabs are one Tab stop. Left and Right choose the previous or next page as they move
-///   (wrapping), Home and End the first and last; a press chooses. Focus stays on the tab.
-/// - Ctrl+Page Up and Ctrl+Page Down choose the previous or next page from anywhere: the host
-///   routes them from its `on_key` with [`TabbedForm::window_key`] (a focused field passes them
-///   on to the window, never to an ancestor). As in GtkNotebook, a keyboard on a tab moves to
-///   the new tab, one on the page being hidden to the new page's first focusable element (the
-///   first in the tree, not a group's `focus_selected` one, as `Tx::focus` picks; Rune keeps no
-///   last-focused child), else to its tab, and one
-///   elsewhere stays. The host's poll calls [`TabbedFormState::tick`] to carry it.
-/// - A page with [`FormPage::has_errors`] shows a dot in the danger colour after its title, and
-///   its tab is described as having errors and reports itself invalid.
 pub struct TabbedForm<S> {
     key: String,
     get: fn(&S) -> &TabbedFormState,
@@ -115,8 +98,6 @@ impl<S: 'static> TabbedForm<S> {
         format!("{}-panel-{i}", self.key)
     }
 
-    /// Ctrl+Page Up and Ctrl+Page Down: the previous or next page, wrapping. For the host's
-    /// `on_key` while the form shows. True when it took the key.
     pub fn window_key(&self, s: &mut S, pages: usize, ev: &KeyEvent, tx: &mut Tx) -> bool {
         let m = ev.mods;
         if pages == 0 || !(m.ctrl || m.cmd) || m.shift || m.alt || m.logo {
@@ -132,10 +113,6 @@ impl<S: 'static> TabbedForm<S> {
         if next == at {
             return true;
         }
-        // GtkNotebook's `real_switch_page`: a keyboard on a tab moves to the new tab, one on
-        // the page being hidden into the new page (its first focusable element, else its tab),
-        // and one elsewhere stays. Only the focused key is known here, so a keyboard off the
-        // tabs is carried only if the switch drops it (`TabbedFormState::tick`).
         let ring = tx.focus_visible() || tx.by_keys();
         if let Some(f) = tx.focused().map(str::to_owned) {
             if (0..pages).any(|j| f == self.tab_key(j)) {
@@ -159,8 +136,6 @@ impl<S: 'static> TabbedForm<S> {
         true
     }
 
-    /// The tablist over the panels. `page` builds page `i`'s body: for every page when
-    /// [`Mounting::Kept`], only the chosen one when [`Mounting::Rebuilt`].
     pub fn build(
         &self,
         s: &S,
@@ -188,8 +163,6 @@ impl<S: 'static> TabbedForm<S> {
             .items_center()
             .border_sides([0.0, 0.0, 1.0, 0.0], k.alpha(k.c.border_base, RULE_ALPHA))
             .children(tabs);
-        // One grid cell holds every built panel, so a kept form is as tall as its tallest page.
-        // Changes land at once: a switch neither fades the panels nor slides the form's height.
         let mut stack = row()
             .key(format!("{}-panels", self.key))
             .w_full()
@@ -202,9 +175,6 @@ impl<S: 'static> TabbedForm<S> {
             }
             let mut body = page(s, i);
             if self.mounting == Mounting::Rebuilt {
-                // A new key per visit: Rune keeps a viewport's offset for an element that
-                // mounts again at the same path when the old one left in an instant commit
-                // (Rune draft U-C20c-4), so a stable key would bring the old offset back.
                 body = col()
                     .key(format!("{}-visit-{visit}", self.panel_key(i)))
                     .w_full()
@@ -246,8 +216,6 @@ impl<S: 'static> TabbedForm<S> {
         if !chosen {
             label = label.group_opacity(LABEL_REST_OPACITY, 1.0);
         }
-        // The label carries the underline, so it is as wide as the text (Strata's label
-        // border, not GTK's tab indicator).
         let underline = row()
             .items_center()
             .border_sides(

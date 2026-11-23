@@ -6,14 +6,7 @@ use std::borrow::Cow;
 
 use crate::contract::{EntryId, EntrySource};
 
-/// The folders the strip shows, root first: one listing per column, kept by the host, which
-/// lists folders, follows changes and decides what opens (Strata's policy). The view reads it
-/// by accessor, as rune-kit's Table reads its rows.
-///
-/// Its length must match [`ColumnsState::len`](super::ColumnsState::len): the host opens a
-/// listing and pushes its column in the same handler, and drops them together.
-///
-/// Used by: hosts (Strata's browser and chooser, the gallery).
+/// The folders the strip shows, root first: one listing per column, kept by the host, which lists folders.
 pub trait ColumnSources {
     /// How many columns there are.
     fn len(&self) -> usize;
@@ -26,18 +19,13 @@ pub trait ColumnSources {
     /// Column `depth`'s listing.
     fn source(&self, depth: usize) -> &dyn EntrySource;
 
-    /// Column `depth`'s listing version, as the collection element wants it (C1e's module
-    /// docs): changed whenever its order or entries change at the same length.
+    /// Column `depth`'s listing version, as the collection element wants it.
     fn version(&self, depth: usize) -> u64;
 
-    /// What the column's header shows and assistive technology names its list by: the folder's
-    /// name.
+    /// What the column's header shows and assistive technology names its list by: the folder's name.
     fn title(&self, depth: usize) -> &str;
 
-    /// What assistive technology reads after column `depth`'s header title, as the host words
-    /// it: Strata describes the title by the folder's path (`column_heading`). `None` (the
-    /// default) keeps the title out of the tree, the list being named by it already; with
-    /// words, the title is a `label` named by the folder and described by them.
+    /// What assistive technology reads after column `depth`'s header title, as the host words it.
     fn title_description(&self, _depth: usize) -> Option<Cow<'_, str>> {
         None
     }
@@ -47,63 +35,40 @@ pub trait ColumnSources {
         false
     }
 
-    /// Whether the column's header spinner shows now. Defaults to [`Self::loading`]; hosts
-    /// that hold the spinner back for a short grace period (so fast folder opens neither
-    /// flash a spinner nor run loop animation frames while waiting on background reads)
-    /// override this without changing [`Self::loading`]'s selection-handover semantics.
+    /// Whether the column's header spinner shows now.
     fn spinner(&self, depth: usize) -> bool {
         self.loading(depth)
     }
 
-    /// The entry in column `depth` whose folder column `depth + 1` shows: the open path. `None`
-    /// for the last column, or when the next column shows something else (a search).
+    /// The entry in column `depth` whose folder column `depth + 1` shows: the open path.
     fn open_child(&self, depth: usize) -> Option<EntryId>;
 
-    /// What column `depth`'s entry at `index` shows in its size badge, as the host words it:
-    /// "No items" or "12 items" for a folder whose count is known, a file's size. `None` (the
-    /// default) shows no badge: a folder whose count is unknown, a size not read yet. The
-    /// badge shows while the row is hovered, selected or on the open path, and with
-    /// [`ColumnsView::show_sizes`](super::ColumnsView::show_sizes) on; assistive technology
-    /// hears it as the row's description under the same setting.
+    /// What column `depth`'s entry at `index` shows in its size badge, as the host words it.
     fn badge(&self, _depth: usize, _index: usize) -> Option<Cow<'_, str>> {
         None
     }
 
-    /// What assistive technology reads after the name of column `depth`'s entry at `index`,
-    /// as the host words it: what the entry is ("Folder", "File link"). `None` (the default)
-    /// leaves the description to the size badge's words.
-    ///
-    /// A host's description stands alone: the badge's words are not added to it, and it reads
-    /// whatever [`ColumnsView::show_sizes`](super::ColumnsView::show_sizes) says and while the
-    /// row is renamed. A host that wants the size heard too puts it in these words.
+    /// What assistive technology reads after the name of column `depth`'s entry at `index`, as the host words it.
     fn description(&self, _depth: usize, _index: usize) -> Option<Cow<'_, str>> {
         None
     }
 
-    /// Whether column `depth`'s rows carry a detail line under their names ([`Self::detail`]):
-    /// its rows are taller while they do, all of them, so the column keeps one row height.
-    /// `false` (the default) keeps the one-line rows.
+    /// Whether column `depth`'s rows carry a detail line under their names (`Self::detail`).
     fn has_details(&self, _depth: usize) -> bool {
         false
     }
 
-    /// The detail line under the name of column `depth`'s entry at `index`, as the host words
-    /// it: Strata's search results show the folder each was found in. Wrapped to two lines and
-    /// muted; read while [`Self::has_details`] holds. `None` (the default) draws none.
+    /// The detail line under the name of column `depth`'s entry at `index`, as the host words it.
     fn detail(&self, _depth: usize, _index: usize) -> Option<Cow<'_, str>> {
         None
     }
 
-    /// Version of what [`Self::tooltip`] reads for column `depth`'s entry at `index` beyond
-    /// its entry and row state (for example, its modified timestamp and active date format).
-    /// Defaults to `0`.
+    /// Version of what `Self::tooltip` reads for column `depth`'s entry at `index` beyond its entry and row state (for example, its modified timestamp and active date format).
     fn tooltip_version(&self, _depth: usize, _index: usize) -> u64 {
         0
     }
 
-    /// Hover tooltip text for column `depth`'s entry at `index` when shown unconditionally
-    /// (for example `"{name}\n{date}"`). `None` (the default) falls back to showing the
-    /// entry's full name only while its label is truncated.
+    /// Hover tooltip text for column `depth`'s entry at `index` when shown unconditionally (for example `"{name}\n{date}"`).
     fn tooltip(&self, _depth: usize, _index: usize) -> Option<Cow<'_, str>> {
         None
     }

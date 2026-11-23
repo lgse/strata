@@ -1,19 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The gallery page for C12 PdfView: its scenes, demo state, view and key and poll hooks. Scene
-//! names start with `c12-` and end in `-light` or `-dark`.
-//!
-//! Work package: `docs/rune/work/phase-2-composites/C12-pdf-view.md`.
-//!
-//! A PDF in C9's drawer beside a fake listing. A fake document stands in for the file: pages of
-//! generated prose, a landscape page, a scan with no text layer and a page that fails. A fake
-//! renderer stands in for Strata's sandbox: it renders one page at a time, 60 ms each on the
-//! page's clock, setting each line in the bundled JetBrains Mono (through swash, as a PDF
-//! rasterizer would) with the text layer to match, at the width the view asks. Under the listing, lines scripts read: what the renderer did
-//! (`c12-log`), what copying would take (`c12-selection`), the last copy (`c12-copied`), the
-//! last intent or key the view passed on (`c12-last`), and the interface text size the
-//! Ctrl+wheel and Ctrl+0 the view didn't take would change (`c12-text-size`).
-
 use rune::{Cx, El, Key, KeyEvent, Tx, WheelEvent, col, el, text};
 use strata_components::pdf_view::{
     PageReply, PdfDocument, PdfIntent, PdfState, PdfView, RenderRequest, TextLayer,
@@ -95,8 +81,6 @@ pub fn prose(page: usize, lines: usize) -> Vec<String> {
     out
 }
 
-/// A document of `pages` pages of prose; `mixed` makes page 1 a scan, page 2 landscape and
-/// page 3 broken.
 pub fn fake_doc(pages: usize, mixed: bool) -> Vec<FakePage> {
     (0..pages)
         .map(|p| match p {
@@ -120,8 +104,6 @@ pub fn fake_doc(pages: usize, mixed: bool) -> Vec<FakePage> {
         .collect()
 }
 
-/// Renders `page` to fit `box_px`, as Strata's helper does (`bounded_surface_dimensions`:
-/// whole pixels, rounded down), with its text layer in the image's pixels.
 pub fn render(page: &FakePage, box_px: [u32; 2], dark_ink: bool) -> PageReply {
     let s = (box_px[0] as f32 / page.size[0]).min(box_px[1] as f32 / page.size[1]);
     let w = (page.size[0] * s).floor().max(1.0) as u32;
@@ -207,8 +189,6 @@ impl Pen {
         }
     }
 
-    /// Inks `ch` with its baseline origin at `at` (pixels), darkening toward `ink` by the
-    /// glyph's coverage.
     fn ink(&mut self, rgba: &mut [u8], [w, h]: [u32; 2], ch: char, at: [f32; 2], ink: u8) {
         let id = self.font.charmap().map(ch);
         let mut scaler = self.context.builder(self.font).size(self.ppem).build();
@@ -295,7 +275,6 @@ pub enum Fixture {
     Failed,
 }
 
-/// C12's demo state, held in `Gallery::c12`.
 #[derive(Default)]
 pub struct Demo {
     pub fixture: Fixture,
@@ -395,8 +374,6 @@ fn letters_locked(g: &mut Gallery, dark: bool) {
     g.c12.letters = true;
 }
 
-/// Golden scenes: each gets an accessibility and a PNG golden. Each calls
-/// `g.open("c12", dark)`, then fills in `g.c12`.
 pub const SCENES: &[Scene] = &[
     ("c12-pages-light", |g| setup(g, false, Fixture::Pages)),
     ("c12-pages-dark", |g| setup(g, true, Fixture::Pages)),
@@ -416,9 +393,6 @@ pub const SCENES: &[Scene] = &[
     ("c12-failed-dark", |g| setup(g, true, Fixture::Failed)),
 ];
 
-/// Scenes for review with `--scene` only, kept out of the goldens: the 500-page document, short
-/// landscape pages, find on with its bar closed, and the locked message in the chooser and in
-/// 10xer mode.
 pub const REVIEW: &[Scene] = &[
     ("c12-landscape-light", |g| {
         setup(g, false, Fixture::Landscape)
@@ -530,8 +504,6 @@ fn files(look: &Look, d: &Demo) -> El {
     col().w_full().h_full().child(list).child(status)
 }
 
-/// Keys no focused element took: what the view passed on reaches the window here. Ctrl+0
-/// resets the text size, and a Ctrl+C or Ctrl+A is recorded as passed on.
 pub fn on_key(g: &mut Gallery, key: &KeyEvent, _tx: &mut Tx) -> bool {
     let d = &mut g.c12;
     if ctrl_zero_key(key).is_some() {
@@ -551,8 +523,6 @@ pub fn on_key(g: &mut Gallery, key: &KeyEvent, _tx: &mut Tx) -> bool {
     false
 }
 
-/// Runs at the start of every frame: the fake renderer's work, the view's clock and find's
-/// scrolls, as Strata's poll would. True when state changed.
 pub fn poll(g: &mut Gallery, t: f64, tx: &mut Tx) -> bool {
     let dark = g.dark;
     let d = &mut g.c12;

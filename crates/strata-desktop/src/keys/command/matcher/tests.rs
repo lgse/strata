@@ -25,8 +25,6 @@ fn pressed(binding: Binding, held: Modifiers) -> KeyPress {
     })
 }
 
-/// What a matcher says it reads is what it matches: its command's binding in its map, with
-/// the modifiers it ignores held beside the binding's own, and no other.
 #[test]
 fn a_matcher_matches_its_commands_binding_in_its_map_with_what_it_ignores_held() {
     // The first install decides for the process; another test's is the same backend.

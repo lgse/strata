@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The view: the document root, the scroll viewport with its two overlay bars, and a virtual
-//! row per page.
-
 use std::rc::Rc;
 use std::time::Duration;
 
@@ -61,8 +58,6 @@ impl Paint {
             paper: look.transparency.opaque(k.c.layer_01),
             edge: k.c.border_muted,
             selection: k.selection(),
-            // PDF text is baked into the rasterized page below the highlight bands, so an opaque
-            // theme highlight would obscure it. Keep hits translucent so the text stays readable.
             hit: k.alpha(look.fill.highlight, 0.35),
             active_hit_border: k.alpha(k.c.border_focus, 0.85),
             spinner: k.c.icon_muted,
@@ -155,8 +150,6 @@ pub(crate) fn pages<S: 'static>(ctx: Rc<Ctx<S>>, st: &PdfState, look: &Look, sca
         .focus_ring(FOCUS_RING_WIDTH, -FOCUS_RING_WIDTH, ctx.paint.focus)
         .cursor(cursor)
         .on_key(move |s: &mut S, ev: &KeyEvent, tx: &mut Tx| key_in(&keys_ctx, s, ev, tx))
-        // The pages' presses land here, on the focusable root: Rune focuses only the element
-        // pressed, so a drag on the list would leave the keys elsewhere (probe P5).
         .on_drag(move |s: &mut S, d: &mut Drag, tx: &mut Tx| {
             let shift = tx.mods().shift;
             if !get_mut(s).drag(d, shift, tx) {
@@ -165,8 +158,6 @@ pub(crate) fn pages<S: 'static>(ctx: Rc<Ctx<S>>, st: &PdfState, look: &Look, sca
         })
         // Over the bars, which sit outside the scroll viewport.
         .on_wheel(move |s: &mut S, e: WheelEvent, tx: &mut Tx| wheel(get_mut(s), e, tx))
-        // The I-beam over text: Rune takes the cursor from the element a press would go to,
-        // the root, so it follows the text under the pointer here (probe P3).
         .on_pointer_move_local(move |s: &mut S, e: PointerEvent, tx: &mut Tx| {
             if !get_mut(s).hover([e.window_x, e.window_y]) {
                 tx.live_only();
@@ -185,17 +176,12 @@ pub(crate) fn pages<S: 'static>(ctx: Rc<Ctx<S>>, st: &PdfState, look: &Look, sca
         });
     }
     if st.wake > 0 {
-        // Requests are waiting and the host may be at rest, or the host asked for a zoom: a
-        // fresh element's first layout asks for a frame, whose poll pops them, and applies the
-        // zoom.
         root = root.child(
             el().key(format!("{key}-wake-{}", st.wake))
                 .pin(Some(0.0), Some(0.0), None, None)
                 .size(0.0, 0.0)
                 .a11y_hidden()
                 .on_layout_tx(move |s: &mut S, _r: [f32; 4], tx: &mut Tx| {
-                    // Reported after the pages' own reports of the same layout, so a zoom the
-                    // host asked for finds them where they are.
                     if !get_mut(s).apply_level_request(tx) {
                         tx.live_only();
                     }
@@ -204,8 +190,6 @@ pub(crate) fn pages<S: 'static>(ctx: Rc<Ctx<S>>, st: &PdfState, look: &Look, sca
         );
     }
     if st.viewport.is_some() && st.scale != scale {
-        // A change of display scale alone fires no layout handler (C14a's Rune draft): a fresh
-        // element keyed by the scale brings the state up to date.
         root = root.child(
             el().key(format!("{key}-rescale-{:08x}", scale.to_bits()))
                 .pin(Some(0.0), Some(0.0), None, None)
@@ -286,8 +270,6 @@ fn page_row<S: 'static>(ctx: &Rc<Ctx<S>>, st: &PdfState, i: usize) -> El {
 fn page_body<S>(ctx: &Ctx<S>, page: El, slot: &Slot, [w, h]: [f32; 2]) -> El {
     let labels = &ctx.labels;
     match (&slot.pixels, slot.held) {
-        // On a child hidden from assistive technology: Rune makes an element with pixels an
-        // image, and the page is a group around its text.
         (Some(px), Some(_)) => page.child(
             el().key("image")
                 .pin(Some(0.0), Some(0.0), None, None)
@@ -353,7 +335,6 @@ fn layer_children<S>(
             el
         })
     });
-    // The page's text, for assistive technology (Strata exposes none; deviation D7).
     let text = layer.has_text().then(|| {
         el().key("text")
             .role("paragraph")

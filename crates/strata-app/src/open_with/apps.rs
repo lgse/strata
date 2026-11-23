@@ -1,7 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Application discovery and categorization for Open With (`src/ui/open_with/apps.rs`).
-
 use std::{
     collections::{HashMap, HashSet},
     sync::OnceLock,
@@ -12,8 +10,6 @@ use strata_fs::adapters::{CONTENT_TYPE_ATTRIBUTES, content_type_of};
 
 use super::recent;
 
-/// Inside a Flatpak sandbox GIO only sees the runtime's desktop entries, so files are handed
-/// to the host through the OpenURI portal instead (`src/ui/open_with.rs`).
 pub(crate) fn uses_portal() -> bool {
     static FLATPAK: OnceLock<bool> = OnceLock::new();
     *FLATPAK.get_or_init(|| {

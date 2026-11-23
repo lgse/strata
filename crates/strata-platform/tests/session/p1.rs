@@ -1,16 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! P1's session tests: drags out to the peer and drops in from it, on Wayland and X11, with
-//! the `dnd` example (`examples/dnd.rs`) as the app.
-//!
-//! Work package: P1, `docs/rune/work/phase-2-composites/P1-drag-and-drop.md`.
-//!
-//! What runs here, per backend: a drag out with three MIME types that the peer reads; drops
-//! in of `text/uri-list`, `text/plain`, `text/x-moz-url`, `image/png` and HTML; the action
-//! with each modifier, and an ask; cancelled drags; an in-process drag between two windows
-//! with a typed payload. On Wayland also: Rune's capture ends when the drag starts, not at the
-//! drop. Hand tests (Nautilus, Dolphin, Hyprland, GNOME, KDE) are pending, not run here.
-
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
@@ -162,11 +151,6 @@ impl Demo {
         )
     }
 
-    /// Gives window `key` keyboard focus through sway and waits until the app has heard it
-    /// settle. On Xwayland, the click that focuses an unfocused window brings focus in, out
-    /// and in again (W3's `harness-window` shows it too, with no shim), and Rune cancels a
-    /// press that lands inside it: a drag from that press never starts. So the window is
-    /// focused before the press, not by it.
     fn focus(&self, s: &Session, key: &str) {
         let w = self.window(s, key);
         if !w.focused {
@@ -195,8 +179,6 @@ impl Demo {
         }
     }
 
-    /// Moves the pointer onto element `el` until the app has the pointer there: `plain` logs
-    /// its hover, so the pointer goes there first.
     fn point(&self, s: &Session, key: &str, el: &str) -> (f64, f64) {
         let plain = self.at(s, key, "plain", 0.5, 0.5);
         let mark = self.app.line_count();
@@ -270,8 +252,6 @@ fn peer_beside(s: &Session, display: Display, demo: &Demo) -> (Peer, Window) {
     (peer, w)
 }
 
-/// Presses on `el` of the app's main window, focused first, and waits until the app has
-/// the press.
 fn press_on(s: &Session, demo: &Demo, el: &str) -> usize {
     demo.focus(s, "main");
     demo.point(s, "main", el);
@@ -288,9 +268,6 @@ fn press_on(s: &Session, demo: &Demo, el: &str) -> usize {
     mark
 }
 
-/// Presses on the peer's window, focused first through sway (see [`Demo::focus`]: a click
-/// that focuses an unfocused Xwayland window can lose its press), and waits until the peer
-/// has the press.
 fn press_on_peer(s: &Session, peer: &Peer, window: &Window) {
     let w = s.wait_window_where("the peer's window", |w| w.id == window.id);
     if !w.focused {
@@ -342,8 +319,6 @@ fn three() -> Vec<Offer> {
     ]
 }
 
-/// The five types content drops take, from the peer. `text/x-moz-url` is UTF-16, as
-/// Firefox sends it, so it goes in a file.
 fn five(s: &Session) -> Vec<Offer> {
     let moz: Vec<u8> = "https://example.com/\nExample"
         .encode_utf16()
@@ -390,8 +365,6 @@ fn drag_out_three_types(display: Display) {
     let entered = wait_peer(&peer, "the drag entering the peer", |e| {
         matches!(e, Event::DropEnter { .. })
     });
-    // The in-process token: on X11 only with a payload (other clients see it); on Wayland on
-    // every drag, where it marks the drag as ours when it enters our windows.
     let Event::DropEnter { mimes: listed, .. } = entered else {
         unreachable!()
     };
@@ -440,8 +413,6 @@ fn drag_out_three_types(display: Display) {
     demo.quit();
 }
 
-/// operations/drag-and-drop: "Dragged items are offered as … `text/uri-list`, so other
-/// applications can receive them" (the platform half: any MIME types, each read intact).
 #[test]
 #[ignore = "needs a private session: mise run test-platform"]
 fn wayland_drag_out_offers_three_types_the_peer_reads() {
@@ -454,10 +425,6 @@ fn x11_drag_out_offers_three_types_the_peer_reads() {
     drag_out_three_types(Display::X11);
 }
 
-/// Rune's capture (U10, draft): on Wayland the drag's start ends it. The cancelled Up that
-/// P1's Escape brings arrives while the button is still held, so it isn't the compositor's
-/// focus bounce at the drop; the Escape reaches no key handler; and after the drop the
-/// pointer hovers again with no move reaching the element.
 #[test]
 #[ignore = "needs a private session: mise run test-platform"]
 fn wayland_runes_capture_ends_when_the_drag_starts() {
@@ -614,9 +581,6 @@ fn drag_out_with(
     end["outcome"].as_str().unwrap_or_default().to_owned()
 }
 
-/// operations/drag-and-drop/copy-or-move: "Holding Ctrl at the drop copies and holding
-/// Shift moves" (the source's half). On Wayland the modifiers at the start narrow what the
-/// source offers; on X11 the proposed action follows them, through the drag.
 fn actions_follow_modifiers_on_drag_out(display: Display) {
     let s = Session::start();
     let demo = Demo::start(&s, display, false);
@@ -646,8 +610,6 @@ fn actions_follow_modifiers_on_drag_out(display: Display) {
                 plain, "copied",
                 "a plain drag proposes copy, which the peer takes"
             );
-            // Under GTK's rule Ctrl alone proposes copy, as a plain drag does when copy is
-            // allowed, so no outcome tells them apart on X11: Ctrl+Shift below can fail.
             assert_eq!(ctrl, "copied");
             assert_eq!(shift, "moved", "Shift proposes move");
             let late = drag_out_with(&s, &demo, &to, None, Some("shift"));
@@ -683,8 +645,6 @@ fn x11_drag_out_actions_follow_the_modifiers() {
     actions_follow_modifiers_on_drag_out(Display::X11);
 }
 
-/// A peer drag over the zone, dropped, with `held` held from before it reaches the zone.
-/// The app's drop line and the peer's finish.
 fn drop_in_with(
     s: &Session,
     demo: &Demo,
@@ -715,9 +675,6 @@ fn drop_in_with(
     (dropped, fin)
 }
 
-/// The target's half of the action: Shift on X11 (known there); on Wayland a drag from
-/// another client brings no modifiers, so the compositor's action stands (the owner's
-/// ruling: a known limit); and an ask, answered after the drop.
 fn actions_on_drop_in(display: Display) {
     let s = Session::start();
     let demo = Demo::start(&s, display, false);
@@ -741,8 +698,6 @@ fn actions_on_drop_in(display: Display) {
                     action: Some(Action::Move)
                 }
             );
-            // Ctrl: copy, which a plain drop takes too, so the modifiers it reports are what
-            // can fail here.
             let (dropped, fin) = drop_in_with(
                 &s,
                 &demo,
@@ -831,8 +786,6 @@ fn x11_drop_in_action_follows_shift_and_answers_an_ask() {
 
 // ---- cancel ----
 
-/// operations/drag-and-drop: "Releasing outside every drop target ends the drag without
-/// transferring"; a drag cancelled by the app; on X11 by Escape; and a drag in that leaves.
 fn cancelled_drags(display: Display) {
     let s = Session::start();
     let demo = Demo::start(&s, display, false);
@@ -915,8 +868,6 @@ fn x11_cancelled_drags_transfer_nothing() {
     cancelled_drags(Display::X11);
 }
 
-/// A target with `on_reject` hears the moves of a drag it refuses (for autoscroll that follows
-/// any drag, as Strata's does), and the release drops nothing: the peer, refused, leaves.
 fn a_refusing_target_hears_moves(display: Display) {
     let s = Session::start();
     let demo = Demo::start(&s, display, false);
@@ -1036,10 +987,6 @@ fn x11_in_process_drag_carries_the_typed_payload() {
 
 // ---- fast flicks (review round 1, B1 and B2) ----
 
-/// Presses the tile, crosses the threshold and releases at once, `tries` times. Each drag
-/// must end by itself (B1: on X11 a drag left running dropped on the next click anywhere),
-/// no Escape may reach the app's keys (B2: on Wayland P1's Escape leaked when the release
-/// had already ended Rune's capture), and a later plain click on the peer must drop nothing.
 fn fast_flicks(display: Display) {
     let s = Session::start();
     let demo = Demo::start(&s, display, false);
@@ -1092,8 +1039,6 @@ fn x11_fast_flicks_end_by_themselves() {
     fast_flicks(Display::X11);
 }
 
-/// X11: the drag's icon is an override-redirect window typed `_NET_WM_WINDOW_TYPE_DND`
-/// (review round 1), mapped while the drag runs and gone once it ends.
 #[test]
 #[ignore = "needs a private session: mise run test-platform"]
 fn x11_drag_icon_is_a_dnd_window_for_the_drags_life() {
@@ -1143,10 +1088,6 @@ fn x11_drag_icon_is_a_dnd_window_for_the_drags_life() {
 
 // ---- review round 2 ----
 
-/// R2-B2: the threshold is crossed with the pointer already over the peer (one jump), so the
-/// drag never enters the app's windows. Rune's capture must still end while the button is
-/// held (the peer's answer is the compositor's proof), not wait for sway's focus bounce at
-/// the drop; and afterwards no Escape reached the app.
 #[test]
 #[ignore = "needs a private session: mise run test-platform"]
 fn wayland_capture_ends_for_a_drag_that_never_enters_our_windows() {
@@ -1183,11 +1124,6 @@ fn wayland_capture_ends_for_a_drag_that_never_enters_our_windows() {
     demo.quit();
 }
 
-/// R2-B2's last case: a drag that starts over no surface at all (one jump into sway's outer
-/// gap around the window) gets no proof: nothing enters the app's windows and no target
-/// answers, so P1 sends no Escape (path 3 in the module docs). It is released there: on
-/// sway the capture ends by sway's focus change at the drop, no Escape reaches the app, and
-/// hover comes back. Elsewhere it would wait for the window's next press or focus change.
 #[test]
 #[ignore = "needs a private session: mise run test-platform"]
 fn wayland_a_drag_over_nothing_ends_its_capture_after_it_ends() {
@@ -1233,9 +1169,6 @@ fn wayland_a_drag_over_nothing_ends_its_capture_after_it_ends() {
     demo.quit();
 }
 
-/// Drag and drop alone, where Wayland has no route at all (libwayland < 1.23 and a compositor
-/// without data control, both simulated, with Xwayland at hand): attaching is unsupported,
-/// and opens no X11 connection to Xwayland, which drag and drop has no use for.
 #[test]
 #[ignore = "needs a private session: mise run test-platform"]
 fn wayland_without_any_route_dnd_alone_stays_unsupported() {

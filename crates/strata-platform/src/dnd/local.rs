@@ -1,13 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The in-process fast path: a drag from this process offers a private MIME type naming the
-//! drag, `application/x-local-drag;id=<counter>.<nonce>`, with no process id in it (the
-//! owner's ruling: other clients may see it). A drop in this process that sees the token of
-//! the drag it started takes the typed payload instead of reading any type. Seeing the drag
-//! on our own data device isn't proof (other clients' drags arrive there too); the token is.
-//! The nonce is 64 bits from a process-random hash key, so another process's token, or one
-//! copied from a listing, doesn't match a later drag of ours.
-
 use std::hash::{BuildHasher, Hasher};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -22,8 +14,6 @@ pub(crate) fn new_token() -> String {
     let nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_or(0, |d| d.as_nanos() as u64);
-    // std's RandomState draws its keys from the OS once per thread: hashing the counter and
-    // the clock with them makes the nonce unguessable, with no crate for it.
     let mut h = std::collections::hash_map::RandomState::new().build_hasher();
     h.write_u64(n);
     h.write_u64(nanos);

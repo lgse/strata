@@ -1,11 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Attaches `rune-kit` submenu surfaces (`*-sub-menu`), which mount as siblings on
-//! `kit-root`'s overlay layer, under their owning `menu-item`, matching GTK's nested
-//! `GtkPopoverMenu`, whose submenu popover is a child of the item that opens it. A walk of
-//! the top menu then meets an open submenu's rows right after its trigger, as GTK's does, so
-//! `strata-qa`'s `open_menu` lists them in GTK's order and `Target::MenuItem` reaches them.
-
 use super::tree::Seen;
 
 const SUBMENU_SUFFIX: &str = "-sub-menu";

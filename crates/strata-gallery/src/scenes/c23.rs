@@ -1,18 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The gallery page for C23 Motion effects: its scenes, demo state, view and key and poll hooks.
-//! Scene names start with `c23-` and end in `-light` or `-dark`.
-//!
-//! Work package: `docs/rune/work/phase-1-leaves/C23-motion-effects.md`.
-//!
-//! The page draws C8's real sidebar beside a real C1e list, with the motion layer over both.
-//! Its buttons play Strata's part with fake files: each operation "finishes before its
-//! progress card would show", so it plays its effect, and the page removes or shows rows at
-//! the effects' events as Strata will. Move to Trash flies the selection into the sidebar's
-//! Trash, Delete permanently dissolves it, Restore flies what was trashed back onto its rows,
-//! and Restore here lifts the selection off its rows as a restore in the Trash's own view
-//! does. Buttons start the effect at the next poll, where scenes time theirs.
-
 use rune::{Cx, El, KeyEvent, Tx, col, el, icon, row, text};
 use rune_kit::Button;
 use strata_components::collection::element::{
@@ -44,7 +31,6 @@ pub enum Op {
     Release,
 }
 
-/// C23's demo state, held in `Gallery::c23`.
 pub struct Demo {
     pub fx: Effects,
     pub sidebar: SidebarState,
@@ -54,9 +40,6 @@ pub struct Demo {
     pub version: u64,
     /// What the Trash holds, to restore.
     pub trashed: Vec<ListEntry>,
-    /// Each playing effect the page owes rows to, and what it does with them: effects
-    /// overlap (a Move to Trash while a restore's icons are in the air). A restore's rows are
-    /// owed until Landed, the rest until Done.
     pub owed: Vec<(EffectId, Op, Vec<EntryId>)>,
     /// An operation asked for, and the clock time it may start (scenes time theirs).
     pub ask: Option<(Op, f64)>,
@@ -124,8 +107,6 @@ fn entry_icon(look: &Look, key: &str) -> &'static rune::Icon {
 }
 
 impl Demo {
-    /// Whether the row `id` is listed but hidden: a restore's until its icons land, a
-    /// dissolve's until it ends, and while any effect still holds it so.
     pub fn vanished(&self, id: EntryId) -> bool {
         self.owed
             .iter()
@@ -209,8 +190,6 @@ impl Demo {
                 self.fx.fly(f, look, tx)
             }
             Op::Delete => {
-                // A row already hidden (a restore's icon still in the air) has nothing to
-                // break up: it just stays hidden until it goes.
                 let rows = ids
                     .iter()
                     .filter(|&&id| !self.vanished(id))
@@ -321,8 +300,6 @@ fn collection() -> Collection<Gallery> {
     .marks(marks)
 }
 
-/// How a row looked before it vanished: C1e's default row, selected (a dissolve's rows are
-/// the selection).
 fn ghost(g: &Gallery, token: u64, look: &Look) -> El {
     let kit = &look.kit;
     let Some(e) = g.c23.entry(EntryId::new(token)) else {
@@ -420,8 +397,6 @@ fn release(g: &mut Gallery, dark: bool) {
     g.c23.ask = Some((Op::Release, 0.88));
 }
 
-/// Golden scenes: each gets an accessibility and a PNG golden. Each calls
-/// `g.open("c23", dark)`, then fills in `g.c23`.
 pub const SCENES: &[Scene] = &[
     ("c23-flight-light", |g| flight(g, false)),
     ("c23-flight-dark", |g| flight(g, true)),
@@ -517,14 +492,10 @@ pub fn view(g: &Gallery, cx: &mut Cx<Gallery>) -> El {
         .child(layer)
 }
 
-/// Keys no focused element took while this page is open: shortcuts, and keys with nothing
-/// focused. True consumes the key; false lets the gallery's Escape go back to the index.
 pub fn on_key(_g: &mut Gallery, _key: &KeyEvent, _tx: &mut Tx) -> bool {
     false
 }
 
-/// Runs at the start of every frame while this page is open, with the clock in seconds: the
-/// effects' tick and their events, then an operation asked for.
 pub fn poll(g: &mut Gallery, t: f64, tx: &mut Tx) -> bool {
     g.c23.clock = t;
     let mut changed = false;

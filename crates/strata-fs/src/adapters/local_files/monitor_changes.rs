@@ -185,9 +185,6 @@ pub(super) fn visible_monitor_change(
     }
 }
 
-/// GLib follows every write with `Changed` before the `ChangesDoneHint` that ends the
-/// name's changes, so a hint after a `Created` or `Changed` this watch queried adds nothing.
-/// A file linked into place, as copies publish files, gets its hint two seconds late.
 #[derive(Default)]
 pub(super) struct AwaitedHints(HashSet<Location>);
 
@@ -210,8 +207,6 @@ impl AwaitedHints {
     }
 }
 
-/// Writes to an `O_TMPFILE` reach its folder's watch under the name `#<inode>`, which no
-/// listing holds, so changes to such names are queried only once the folder shows them.
 #[derive(Default)]
 pub(super) struct NumberedNames {
     known: HashSet<OsString>,
@@ -503,9 +498,6 @@ pub(super) fn reports_departure(
     })
 }
 
-/// A background request is skipped while another holds its lane, so a watch looks at its
-/// folder's path once at a time, and the batches that arrive meanwhile ask for one more
-/// look when it ends.
 pub(super) struct DepartureChecks {
     watched: Location,
     began_on: Option<ItemIdentity>,
@@ -515,12 +507,6 @@ pub(super) struct DepartureChecks {
     again: bool,
 }
 
-/// Inotify watches the folder, not its path, so it reports no rename or move of an
-/// ancestor and goes on to report changes under the old path. After each batch, the
-/// folder is looked up at its path as background work on its mount's lane, and its
-/// removal is reported when the path holds no folder, or one proven to be another than
-/// the folder the load that asked for the watch found (`began_on`). A busy or stalled
-/// lane leaves the look to the next batch.
 pub(super) fn report_if_departed(checks: &Rc<RefCell<DepartureChecks>>) {
     if checks.borrow().running.is_some() {
         checks.borrow_mut().again = true;
@@ -557,8 +543,6 @@ pub(super) fn report_if_departed(checks: &Rc<RefCell<DepartureChecks>>) {
     checks.borrow_mut().running = Some(task);
 }
 
-/// Mounts that renumber folders prove nothing either way, so only proof of another folder
-/// counts as a departure there.
 pub(super) fn departed_from(
     path: &Path,
     began_on: Option<ItemIdentity>,

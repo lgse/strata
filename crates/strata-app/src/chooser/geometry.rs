@@ -1,7 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Chooser initial window dimensions (`src/ui/chooser/geometry.rs`).
-
 pub(crate) const MIN_CHOOSER_WIDTH: i32 = 640;
 pub(crate) const MIN_CHOOSER_HEIGHT: i32 = 460;
 pub(crate) const MAX_CHOOSER_WIDTH: i32 = 1000;

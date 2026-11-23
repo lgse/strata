@@ -1,10 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The Customize dialog's body: the preview, the COLOR bar and the ICON choices, as GTK's
-//! `append_preview`, `build_folder_color_bar` (`customization/color_bar.rs`) and
-//! `build_icon_buttons` (`customization/icon_picker.rs`) build them. Every choice is a named
-//! button; the one the item wears shows active.
-
 use rune::{Color, El, Tx, col, icon, row, text};
 use rune_kit::{Button, ButtonVariant};
 use strata_components::{
@@ -68,8 +63,6 @@ fn section(look: &Look, heading: &str, content: El) -> El {
         .child(content)
 }
 
-/// The item's icon or emoji in its colour — inside the coloured folder when the item is a
-/// folder — with its name under it, as GTK's 56 px preview (`show_customized_icon_image`).
 fn preview(look: &Look, shown: &Shown<'_>) -> El {
     let k = &look.kit;
     let kind = if shown.item.folder {
@@ -134,7 +127,6 @@ fn swatch(look: &Look, color: Color, active: bool) -> El {
     dot
 }
 
-/// The theme's colour, GTK's seven presets, and a custom colour.
 fn color_bar(look: &Look, shown: &Shown<'_>) -> El {
     let k = &look.kit;
     let mut bar = row().w_full().flex_wrap().gap(look.space.xs).items_center();
@@ -202,7 +194,6 @@ fn custom_button(look: &Look, shown: &Shown<'_>) -> El {
     )
 }
 
-/// GTK's sixteen bundled icons, each a button named by its label.
 fn icon_choices(look: &Look, shown: &Shown<'_>) -> El {
     let k = &look.kit;
     let mut grid = row().w_full().flex_wrap().gap(look.space.sm);

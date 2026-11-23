@@ -15,15 +15,9 @@ use crate::contract::ThumbKey;
 /// The largest side Rune draws a `Pixels` at (`ImageAtlas::place` at the pinned rev).
 const MAX_SIDE: u32 = 8192;
 
-/// How many empty handles (nothing held, nothing asked) the store keeps before it prunes the
-/// ones no viewer is near.
 const PRUNE_SLACK: usize = 4096;
 
-/// What the store is held to. The defaults are Strata's numbers (`src/ui/thumbnail/cache.rs`,
-/// `src/ui/thumbnail/viewport.rs` at `upstream/main` 35ee677ab): Strata passes its own, and a
-/// test or the gallery passes others.
-///
-/// Fields may be added: start from [`Settings::default`] and set the ones that differ.
+/// What the store is held to.
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[non_exhaustive]
 pub struct Settings {
@@ -66,13 +60,6 @@ impl Default for Settings {
 }
 
 /// A key's handles: the image and the placeholder icon's opacity, each updated in place.
-///
-/// The image ([`Thumb::pixels`]) is empty until a thumbnail lands, and empty again once it is
-/// evicted; the icon's opacity ([`Thumb::icon_alpha`]) is 0 while an image is held and 1
-/// otherwise. Both wake only the windows that draw them, with no view commit, so a view draws
-/// a key's handles once and never builds again when its thumbnail lands, changes size or goes.
-///
-/// Used by: C3, C4, C25 ([`picture`](super::picture)).
 #[derive(Clone)]
 pub struct Thumb {
     pixels: Pixels,
@@ -101,9 +88,7 @@ impl Thumb {
         &self.icon_alpha
     }
 
-    /// Which handles these are. A key's handles keep their epoch while the store holds the
-    /// key; a key the store pruned and sees again gets new handles and a new epoch, which
-    /// [`ThumbnailStore::version`] carries so a row built on the old ones builds again.
+    /// Which handles these are.
     pub fn epoch(&self) -> u64 {
         self.epoch
     }
@@ -130,8 +115,7 @@ pub enum State {
         /// When it may be asked for again.
         until: f64,
     },
-    /// A file operation stopped it: not asked for again until
-    /// [`ThumbnailStore::requeue_stopped`].
+    /// A file operation stopped it: not asked for again until `ThumbnailStore::requeue_stopped`.
     Stopped,
 }
 
@@ -158,8 +142,7 @@ impl Ticket {
 /// How a request ended.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Outcome {
-    /// Rendered: `width × height` straight-alpha sRGB RGBA pixels, rows top first, the long
-    /// edge at most the ticket's step.
+    /// Rendered: `width × height` straight-alpha sRGB RGBA pixels, rows top first, the long edge at most the ticket's step.
     Ready {
         /// Width in pixels.
         width: u32,
@@ -170,8 +153,7 @@ pub enum Outcome {
     },
     /// Rendering failed: the key waits [`Settings`]' `retry_after` before it is asked again.
     Failed,
-    /// Stopped by a file operation, not failed: asked again after
-    /// [`ThumbnailStore::requeue_stopped`].
+    /// Stopped by a file operation, not failed: asked again after `ThumbnailStore::requeue_stopped`.
     Stopped,
 }
 
@@ -193,16 +175,11 @@ pub enum Landed {
 /// Why a result was dropped.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Why {
-    /// The request was cancelled (scrolled away, thumbnails off, the key relocated) or is not
-    /// the key's latest.
+    /// The request was cancelled (scrolled away, thumbnails off, the key relocated) or is not the key's latest.
     Cancelled,
-    /// The image doesn't match its size, is empty, or is larger than the ticket's step: the
-    /// key is recorded as failed.
+    /// The image doesn't match its size, is empty, or is larger than the ticket's step: the key is recorded as failed.
     Invalid,
-    /// It wouldn't fit: rows on screen fill the budget, or a margin image could only land by
-    /// evicting an image some viewer still wants. The key isn't asked for again until room may
-    /// have appeared: a sync to another viewport, new settings, a viewer going, a relocation, a
-    /// wanted image evicted or replaced by a smaller one, or a margin request ending.
+    /// It wouldn't fit: rows on screen fill the budget.
     Budget,
 }
 
@@ -229,15 +206,8 @@ pub struct Stats {
 }
 
 /// Thumbnails as `rune::Pixels` handles under a byte budget, and the requests to load next.
-///
-/// See the [module docs](super) for how a host and a view use it.
-///
-/// Used by: C3, C4, C2, hosts.
 pub struct ThumbnailStore {
     pub(super) inner: RefCell<Inner>,
-    /// Set whenever a view probes an absent key via [`Self::existing_thumb`] or
-    /// [`Self::existing_version`] while thumbnails are enabled, so the next non-deferred
-    /// poll guarantees one rebuild to attach handles once ensured.
     skipped: Cell<bool>,
 }
 
@@ -362,8 +332,7 @@ impl ThumbnailStore {
         self.inner.borrow().settings
     }
 
-    /// Changes the settings. A smaller budget evicts at once (rows on screen aside). A new
-    /// margin applies at each viewer's next sync, even of an unchanged viewport.
+    /// Changes the settings.
     pub fn set_settings(&mut self, settings: Settings) {
         let inner = self.inner.get_mut();
         inner.settings = settings;
@@ -376,8 +345,7 @@ impl ThumbnailStore {
         inner.dirty = true;
     }
 
-    /// The key's handles, made the first time anything asks: call it while building the row
-    /// or tile that draws them. It counts as drawn (least-recently-used order).
+    /// The key's handles, made the first time anything asks: call it while building the row or tile that draws them.
     pub fn thumb(&self, key: ThumbKey) -> Thumb {
         let mut inner = self.inner.borrow_mut();
         inner.ensure(key);
@@ -385,9 +353,7 @@ impl ThumbnailStore {
         inner.entries[&key].thumb.clone()
     }
 
-    /// The key's handles only if the store already holds an entry for it, without allocating
-    /// a new entry (`Pixels` + `Live`). Used while actively dragging a scrollbar thumb so
-    /// transient rows scrolled past never churn store entries or live bindings.
+    /// The key's handles only if the store already holds an entry for it, without allocating a new entry (`Pixels` + `Live`).
     pub fn existing_thumb(&self, key: ThumbKey) -> Option<Thumb> {
         let inner = self.inner.borrow();
         match inner.entries.get(&key) {
@@ -401,9 +367,7 @@ impl ThumbnailStore {
         }
     }
 
-    /// A memo version for a part that draws `key`'s handles: it changes when the key's
-    /// handles are replaced (after a prune) or thumbnails are turned on or off, and never when
-    /// a thumbnail lands, changes size or is evicted.
+    /// A memo version for a part that draws `key`'s handles.
     pub fn version(&self, key: ThumbKey) -> u64 {
         let mut inner = self.inner.borrow_mut();
         inner.ensure(key);
@@ -413,8 +377,7 @@ impl ThumbnailStore {
         h.finish()
     }
 
-    /// Like [`ThumbnailStore::version`], without allocating an entry for keys not yet in the
-    /// store: absent keys hash epoch `0` (distinct from every ensured entry's `epoch >= 1`).
+    /// Like `ThumbnailStore::version`, without allocating an entry for keys not yet in the store.
     pub fn existing_version(&self, key: ThumbKey) -> u64 {
         let inner = self.inner.borrow();
         let epoch = match inner.entries.get(&key) {
@@ -432,9 +395,7 @@ impl ThumbnailStore {
         h.finish()
     }
 
-    /// Whether any view built since the last check skipped allocating a handle for an absent
-    /// key via [`Self::existing_thumb`] or [`Self::existing_version`]. Calling this clears the
-    /// flag so a non-deferred poll can trigger one rebuild to attach handles once synced.
+    /// Whether any view built since the last check skipped allocating a handle for an absent key via `Self::existing_thumb` or `Self::existing_version`.
     pub fn take_skipped(&self) -> bool {
         self.skipped.replace(false)
     }
@@ -485,8 +446,7 @@ impl ThumbnailStore {
         s
     }
 
-    /// Hands back a request's result. Call it from the host's `poll`, and don't commit for
-    /// it: a held image wakes the windows that draw it, with no view commit.
+    /// Hands back a request's result.
     pub fn complete(&mut self, ticket: Ticket, outcome: Outcome, now: f64) -> Landed {
         let inner = self.inner.get_mut();
         let live = inner.entries.get(&ticket.key).is_some_and(|e| {
@@ -540,9 +500,6 @@ impl ThumbnailStore {
         };
         let old = inner.entries[&ticket.key].held.map_or(0, Held::bytes);
         let pinned = inner.is_pinned(ticket.key);
-        // Rows on screen win over the budget. Anything else lands only if it fits once the
-        // images nobody wants are evicted: it never evicts a key some viewer still wants, which
-        // would only be asked for again (and evicts nothing when it won't fit anyway).
         if !protected {
             let free = inner.bytes - inner.pinned - if pinned { 0 } else { old };
             let after = inner.bytes - old + new.bytes();
@@ -570,8 +527,6 @@ impl ThumbnailStore {
             .get(&ticket.key)
             .is_some_and(|w| *w != ticket.step)
         {
-            // Landed at a step no longer wanted (a zoom, or a viewer at another step, while it
-            // was out): it shows until the image at the wanted step lands, so ask for that.
             inner.dirty = true;
         }
         if protected {
@@ -581,8 +536,7 @@ impl ThumbnailStore {
         }
     }
 
-    /// The requests cancelled since the last call: the host stops working on them. A result
-    /// for one is dropped anyway.
+    /// The requests cancelled since the last call: the host stops working on them.
     pub fn take_cancelled(&mut self) -> Vec<Ticket> {
         std::mem::take(&mut self.inner.get_mut().cancelled)
     }
@@ -598,10 +552,7 @@ impl ThumbnailStore {
         inner.dirty = true;
     }
 
-    /// Moves what `from` holds to `to`, keeping its handles (an inline rename that kept the
-    /// thumbnail's content, as the host judges it). True if `from` was there to move. A
-    /// request out for `from` is cancelled, and what `to` held is replaced. Viewers that showed
-    /// `from` show `to` until their next sync, so its protection moves with it.
+    /// Moves what `from` holds to `to`, keeping its handles (an inline rename that kept the thumbnail's content.
     pub fn relocate(&mut self, from: ThumbKey, to: ThumbKey) -> bool {
         let inner = self.inner.get_mut();
         if from == to || !inner.entries.contains_key(&from) {
@@ -628,9 +579,7 @@ impl ThumbnailStore {
         true
     }
 
-    /// Turns thumbnails on or off. Off cancels every request and asks for none; images
-    /// already held stay, so turning it back on draws them with no decode. True when it
-    /// changed: views draw icons only while off, so the host commits once.
+    /// Turns thumbnails on or off.
     pub fn set_enabled(&mut self, on: bool) -> bool {
         let inner = self.inner.get_mut();
         if inner.enabled == on {
@@ -719,8 +668,6 @@ impl Inner {
         self.pinned = wanted + only_protected;
     }
 
-    /// Empties `key`'s image in place (its handles stay, so a row still drawing them shows
-    /// the icon again).
     pub fn evict(&mut self, key: ThumbKey) {
         let pinned = self.is_pinned(key);
         let wanted = self.wanted.contains_key(&key);
@@ -744,8 +691,6 @@ impl Inner {
         }
     }
 
-    /// The least recently touched held key that isn't protected and isn't `except`: one no
-    /// viewer wants first, else (when `wanted_too`) one in a margin.
     fn victim(&self, except: Option<ThumbKey>, wanted_too: bool) -> Option<ThumbKey> {
         let evictable = |k: &ThumbKey| Some(*k) != except && !self.protected.contains(k);
         self.lru
@@ -759,8 +704,6 @@ impl Inner {
             })
     }
 
-    /// Evicts until `key`'s image, growing from `old` to `new` bytes, fits the budget, or
-    /// nothing evictable is left. Margin images go only for a row on screen (`for_screen`).
     fn make_room(&mut self, key: ThumbKey, old: usize, new: usize, for_screen: bool) {
         while self.bytes - old + new > self.settings.budget_bytes {
             let Some(victim) = self.victim(Some(key), for_screen) else {
@@ -770,8 +713,6 @@ impl Inner {
         }
     }
 
-    /// Evicts until the budget holds, or only protected images are left: images no viewer
-    /// wants first, then margins.
     pub fn enforce(&mut self) {
         while self.bytes > self.settings.budget_bytes {
             let Some(victim) = self.victim(None, true) else {
@@ -789,10 +730,6 @@ impl Inner {
         }
     }
 
-    /// Room may have appeared (the pinned bytes or the margin room out dropped): keys the
-    /// budget deferred may fit now, and margin keys `pop` passed for want of room may too. If
-    /// any wait, `pop` ranks again. Anything else that frees room (a sync, a viewer going, new
-    /// settings, a relocation) forgets the deferrals and ranks again itself.
     pub fn room_freed(&mut self) {
         if self.gated || !self.deferred.is_empty() {
             self.deferred.clear();

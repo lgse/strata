@@ -1,10 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! K1's page in process: what the goldens can't show. Each golden scene draws its theme in
-//! that theme's own appearance, the arrow keys step through the themes and Omarchy variants,
-//! and a theme switch animates its colours (WP done-when: "A theme switch in the gallery
-//! animates"). K1 implements no input bullet, so it has no scripts (owner ruling Q8).
-
 mod k1 {
     use rune::{Env, Key, KeyEvent, Mods, Runtime};
     use strata_gallery::scenes::k1::{Shown, theme_of};
@@ -127,8 +122,6 @@ mod k1 {
         look.kit.c.bg_base.hex()
     }
 
-    /// A theme picked from the list is the gallery's: the index and other pages wear it, K2
-    /// builds on it, and Neutral puts the fallback back.
     #[test]
     fn a_theme_picked_from_the_list_applies_to_the_whole_gallery() {
         // Opened from the index, as the app starts.
@@ -181,8 +174,6 @@ mod k1 {
         assert_eq!(bg(&rt.state.look), bg(&fallback), "Neutral keeps dark");
     }
 
-    /// The WP's done-when: "A theme switch in the gallery animates." Mid-switch the glow is
-    /// neither theme's; once the motion settles it is the new theme's.
     #[test]
     fn a_theme_switch_animates_its_colours() {
         let mut rt = mount("k1-curated-dark");

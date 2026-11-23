@@ -92,8 +92,6 @@ fn release_notes_hide_html_comments_but_keep_other_html_inert() {
             "  <!-- indented\n  comment -->\n\nAfter",
             vec![paragraph("After")],
         ),
-        // CommonMark ends a comment block at the end of the line holding
-        // `-->`, so trailing text on that line belongs to the hidden block.
         ("<!-- a --> tail\n\nAfter", vec![paragraph("After")]),
         ("<!-- only a comment -->\n", Vec::new()),
         // An unterminated comment runs to the end of the input.

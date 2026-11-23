@@ -1,23 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The gallery page for K2 Shape, density and type: its scenes, demo state, view and key and poll
-//! hooks. Scene names start with `k2-` and end in `-light` or `-dark`.
-//!
-//! Work package: `docs/rune/work/phase-1-leaves/K2-shape-density-type.md`.
-//!
-//! The page is the "look" scene: a stepper for every [`LookParams`] field down the left, and
-//! a specimen drawn from the resulting look on the right (a header and tab strip, sidebar and
-//! list rows, a search result, rune-kit controls, the radii, the type ramp, and a readout of
-//! the tokens). Every control rebuilds the look from the gallery's theme (K1's pick, the
-//! fallback until one is picked) with [`Look::with_params`]. The golden scenes are Strata's defaults and the extremes.
-//!
-//! The page also plays the host for the interface font: its `poll` hands `look.font` to
-//! `Tx::set_font_families` when it changes, and Escape puts the app's families back before
-//! the gallery returns to the index. The installed families are a fake list, since the host
-//! passes them in as data. The app's own families are the bundled JetBrains Mono
-//! (`strata_kit::fonts`, K6), the only face registered, so a chosen family draws in it unless
-//! Rune finds the family on the machine, and no golden scene picks one.
-
 use rune::{Cx, El, Key, KeyEvent, ScrollSpec, TextEdit, TextStyle, Tx, col, el, icon, row, text};
 use rune_kit::{Button, Checkbox, Switch, TextInput};
 use strata_kit::density::{self, Preset, Scale};
@@ -29,12 +11,8 @@ use strata_kit::{slots, typography::filter_fonts};
 
 use crate::{Gallery, Scene};
 
-/// The gallery's own families, as `strata_gallery::spec` passes them to `AppSpec::families`:
-/// the bundled JetBrains Mono, which `LookParams::default` takes as the app's.
 pub const APP_FAMILIES: (&str, &str) = strata_kit::fonts::FAMILIES;
 
-/// The fake installed families: duplicates by case, a quoted name, a name Rune's family
-/// parser can't take, and a CJK family.
 const INSTALLED: &[&str] = &[
     "Inter",
     "DejaVu Sans",
@@ -50,11 +28,9 @@ const INSTALLED: &[&str] = &[
 /// The font picker's row for the app's own families.
 const DEFAULT_LABEL: &str = "Default";
 
-/// The desktop text scale's range and step, standing in for P5's factor.
 const SCALE_STEP: f32 = 0.25;
 const SCALE_RANGE: (f32, f32) = (0.5, 2.0);
 
-/// K2's demo state, held in `Gallery::k2`.
 pub struct Demo {
     pub params: LookParams,
     /// The font picker is open.
@@ -198,8 +174,6 @@ fn roundness(percent: u16) -> LookParams {
     }
 }
 
-/// Golden scenes: each gets an accessibility and a PNG golden. Each calls
-/// `g.open("k2", dark)`, then fills in `g.k2`.
 pub const SCENES: &[Scene] = &[
     ("k2-defaults-light", |g| open(g, false, defaults())),
     ("k2-defaults-dark", |g| open(g, true, defaults())),
@@ -213,8 +187,6 @@ pub const SCENES: &[Scene] = &[
     ("k2-round-dark", |g| open(g, true, roundness(200))),
 ];
 
-/// Scenes for review with `--scene` only, kept out of the goldens: the QA probe's crossings
-/// of text size and density, and a chosen interface family (machine-dependent pixels).
 pub const REVIEW: &[Scene] = &[
     ("k2-cross-large-dense-light", |g| {
         open(
@@ -881,12 +853,6 @@ fn readout(look: &Look) -> El {
         }))
 }
 
-/// Keys no focused element took while this page is open: shortcuts, and keys with nothing
-/// focused. True consumes the key; false lets the gallery's Escape go back to the index.
-///
-/// Ctrl++, Ctrl+= and Ctrl+− step the text size and Ctrl+0 resets it, as Strata binds them;
-/// with Alt or Super held they do nothing. Escape closes the font picker, or else puts the
-/// app's families and the fallback look back and leaves the page.
 pub fn on_key(g: &mut Gallery, key: &KeyEvent, tx: &mut Tx) -> bool {
     if key.key == Key::Escape {
         if g.k2.picker {
@@ -916,11 +882,6 @@ pub fn on_key(g: &mut Gallery, key: &KeyEvent, tx: &mut Tx) -> bool {
     true
 }
 
-/// Runs at the start of every frame while this page is open, with the clock in seconds.
-/// Deliver fake async results here; a worker wakes the loop with `Gallery::waker`. True when
-/// state changed.
-///
-/// Plays the host for the interface font: a change of `look.font` goes to Rune.
 pub fn poll(g: &mut Gallery, _t: f64, tx: &mut Tx) -> bool {
     let want = g.look.font.clone();
     if g.k2.sent.as_ref() != Some(&want) {

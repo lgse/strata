@@ -1,20 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The hosted preview viewer seam inside [`super::Preview`].
-//!
-//! `A15` mounts C9's [`PreviewDrawer`](strata_components::preview_drawer::PreviewDrawer) once in
-//! [`Place::Drawer`](crate::slots::Place::Drawer) and delegates header capabilities, find, and
-//! content rendering through [`Viewer`]:
-//! - `A15` owns plain text and code (`Viewer::Code`), rendered documents and spreadsheets
-//!   (`Viewer::Document`), and still images in Slice 3.
-//! - `A16` plugs PDF (`PdfView`), audio/video (`MediaPlayer`), 3D models (`ModelView`), and GPS
-//!   routes (`RouteView`) in as new [`Viewer`] variants and arms in [`super::load`].
-//! - `A13` plugs archive trees (`ArchiveTree`) and archive password prompts in as new [`Viewer`]
-//!   variants and arms in [`super::load`].
-//!
-//! Every element key inside a viewer starts with `"preview-"` so tab-switch focus restoration
-//! (`Registry::in_panes`) and command guards (`Situation::within("preview")`) cover it.
-
 use rune::{Cx, El, Tx, col, text};
 use rune_kit::{Button, Spinner};
 use strata_components::{
@@ -44,11 +29,6 @@ use super::{
 };
 use crate::{App, buttons};
 
-/// Where a handler of a viewer that has gone lands: Rune can dispatch a layout report or a
-/// press it queued for a frame after the viewer was replaced in that frame's update, as a
-/// first load that fails at once replaces the model's frame, or a quick move off an image or
-/// a document replaces its view. The report changes this, which nothing reads, instead of the
-/// viewer now shown.
 pub(super) struct Detached {
     pub(super) viewport: ViewportState,
     pub(super) model: strata_components::viewers::model::ModelState,
@@ -192,8 +172,6 @@ impl Viewer {
         }
     }
 
-    /// Focuses directly into an archive tree or password prompt when one is active, returning
-    /// `true` if handled.
     pub(super) fn focus_into(&mut self, tx: &mut Tx) -> bool {
         match self {
             Self::Archive(state) => {
@@ -255,8 +233,6 @@ impl Viewer {
         }
     }
 
-    /// The source text shown now, which scrolls by lines (10xer's J and K): a text file, or a
-    /// document in its source view.
     pub(super) fn code_state(&self) -> Option<&CodeState> {
         match self {
             Self::Code(code) => Some(code),
@@ -265,8 +241,6 @@ impl Viewer {
         }
     }
 
-    /// The scrollable target of the active document viewer: its viewport key, latest scroll
-    /// position, and whether `End` should jump via `f32::MAX` (PDF) instead of bottom-instant.
     pub(super) fn scroll_target(&mut self) -> Option<ScrollTarget> {
         match self {
             Self::Code(code) => Some(ScrollTarget::code(code)),
@@ -554,9 +528,6 @@ fn code_menu_snapshot(code: &CodeState, sel: Option<&rune::TextSelection>) -> Te
     } else if code.selects_whole(sel) {
         Some(crate::menus::SavedPreviewSelection::All)
     } else if let Some((lo, hi)) = code.keyboard_selection_for(sel) {
-        // Multi-line keyboard and gutter selections only highlight their first row in Rune's
-        // single-text selection; check `keyboard_selection_for(sel)` before
-        // `single_node_selection` so lines 2+ are preserved across menu open/dismiss/copy.
         Some(crate::menus::SavedPreviewSelection::CodeRange(lo, hi))
     } else if let Some(node) = single_node_selection(sel) {
         Some(node)
@@ -860,8 +831,6 @@ impl HostedPreview for Viewer {
     }
 }
 
-/// The state `pick` finds in the shown viewer, or, for a handler Rune queued before the viewer
-/// changed, the spare one `spare_of` names ([`Detached`]).
 fn shown<'a, T>(
     app: &'a App,
     viewer: &'static str,

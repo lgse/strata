@@ -5,13 +5,6 @@
 use std::path::{Path, PathBuf};
 
 /// A `file:` URI for `path`, percent-encoding every byte but unreserved characters and `/`.
-///
-/// An absolute path gives `file:///…`. A relative one (headless scripts drop `a.png`) gives
-/// `file:a.png`, which [`uri_to_path`] turns back into the same relative path, so the
-/// conversion reads no working directory.
-///
-/// Used by: the [`Dnd::rune`](super::Dnd::rune) binder, X2, and the gallery hosts of C1e, C6,
-/// C7 and C8.
 pub fn file_uri(path: &Path) -> String {
     let bytes = path_bytes(path);
     let mut uri = String::with_capacity(bytes.len() + 8);
@@ -30,10 +23,7 @@ pub fn file_uri(path: &Path) -> String {
     uri
 }
 
-/// The URIs in a `text/uri-list`: one per line, with `#` comment lines, blank lines and line
-/// ends (`\r\n` or `\n`) left out. Bytes that aren't UTF-8 are replaced.
-///
-/// Used by: [`DropData::uris`](super::DropData::uris), X2.
+/// The URIs in a `text/uri-list`: one per line, with `#` comment lines.
 pub fn parse_uri_list(list: &[u8]) -> Vec<String> {
     String::from_utf8_lossy(list)
         .lines()
@@ -43,14 +33,7 @@ pub fn parse_uri_list(list: &[u8]) -> Vec<String> {
         .collect()
 }
 
-/// The local path a `file:` URI names, or `None` for another scheme, a remote host, a bad
-/// percent escape (anything but `%` and two hex digits) or an escaped NUL (`%00`), which no
-/// path holds. Takes `file:///p`, `file://localhost/p`, `file:/p` and the relative `file:p`
-/// that [`file_uri`] writes. A query or fragment (`?…`, `#…`) is no part of the path and is
-/// left out; a `?` or `#` in a name arrives escaped.
-///
-/// Used by: [`DropData::file_paths`](super::DropData::file_paths), the
-/// [`Dnd::rune`](super::Dnd::rune) binder, X2.
+/// The local path a `file:` URI names, or `None` for another scheme, a remote host.
 pub fn uri_to_path(uri: &str) -> Option<PathBuf> {
     let scheme = uri.get(..5)?;
     if !scheme.eq_ignore_ascii_case("file:") {

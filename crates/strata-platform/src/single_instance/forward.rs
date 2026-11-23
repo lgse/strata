@@ -1,13 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! A later launch: hands its command line to the primary and waits for the answer.
-//!
-//! It calls `org.gtk.Application.CommandLine` with the path of its own
-//! `org.gtk.private.CommandLine` object, as a GApplication does. The primary prints to the
-//! launch's stdout and stderr by calling that object, before it sends the exit status. All of
-//! it is read from one message stream, in the order it arrived, on a connection with no object
-//! server, so every line is written before the launch exits.
-
 use std::pin::Pin;
 use std::time::Duration;
 
@@ -32,17 +24,12 @@ pub(super) enum Forward {
     Failed(String),
 }
 
-/// Errors that mean the primary left between the claim and the call, or before it answered.
-/// A call that timed out is not among them: the primary may still act on it.
 pub(super) fn primary_gone(error_name: &str, message: &str) -> bool {
     match error_name {
         "org.freedesktop.DBus.Error.ServiceUnknown"
         | "org.freedesktop.DBus.Error.NameHasNoOwner"
         | "org.freedesktop.DBus.Error.UnknownObject"
         | "org.freedesktop.DBus.Error.Disconnected" => true,
-        // A call whose recipient disconnected, as opposed to the bus's own reply timeout:
-        // dbus-daemon says "Message recipient disconnected from message bus without
-        // replying", dbus-broker "Remote peer disconnected".
         "org.freedesktop.DBus.Error.NoReply" => message.contains("disconnected"),
         _ => false,
     }

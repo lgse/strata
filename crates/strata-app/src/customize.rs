@@ -1,33 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Customize Folder and Customize File: GTK's `show_customize_modal`
-//! (`src/ui/browser/customization.rs`), on C15's [`StrataDialog`].
-//!
-//! - **What opens it.** The `customize` command: the entry menu's row for its one entry, the
-//!   background menu's for its column's folder, and the sidebar's for its row's folder
-//!   (`commands::On::Place`). Each needs a local path; the saved customizations are keyed by
-//!   it.
-//! - **The dialog.** "Customize Folder" or "Customize File", the item's name under it, and
-//!   Done focused when it opens. The body: a preview of the item's icon in its colour with its
-//!   name, the COLOR bar ([`body`]: the theme's colour, GTK's seven presets and a custom
-//!   colour) and the ICON choices, GTK's sixteen bundled icons. Each choice is saved at once,
-//!   with `shell::change_customization(app, …)` through `strata_desktop::settings`, so the
-//!   rows, the sidebar and the preview follow it at once; Clear forgets both. Done, Escape,
-//!   the close button and a click outside close it, and the keyboard goes back to where it
-//!   was.
-//! - **"Custom color…"** opens the Custom Folder Color or Custom File Color dialog over it
-//!   ([`custom`]), with C20b's picker in place of GTK's colour chooser.
-//! - **"Choose Emoji…"** opens C20d's emoji picker in a popover over the dialog ([`emoji`]):
-//!   picking an emoji saves `emoji:<glyph>` at once, remembers it in the recent tab, and
-//!   changes the button to "Emoji  <glyph>". Escape closes only the popover; a second Escape
-//!   closes Customize.
-//!
-//! Left out, with what brings each back:
-//!
-//! - **The header's palette icon**, which C15 takes only as an `IconName`, a set without it.
-//! - **Clear's insensitive state** while nothing is saved: C15's secondary button is always
-//!   enabled. Pressing it then forgets nothing.
-
 mod body;
 mod custom;
 mod emoji;
@@ -99,8 +71,6 @@ impl Part for Customize {
     const COMMANDS: &'static [Action<App>] = &[Action::new("customize", customize)];
 }
 
-/// The `customize` command: the entry of a menu's row, a background menu's folder, or a
-/// sidebar row's.
 fn customize(app: &mut App, call: &Call<'_>, _: &mut Tx) -> Outcome {
     let target = match &call.on {
         On::Row(at) => {
@@ -129,7 +99,6 @@ fn row_entry(app: &App, (depth, id): At) -> Option<FileEntry> {
         .and_then(|position| app.browser.entry_at(depth, position))
 }
 
-/// GTK's subtitle: the path's last part, or the whole path at the root.
 fn name_of(location: &Location) -> String {
     let path = location.native_path();
     path.and_then(|path| path.file_name())

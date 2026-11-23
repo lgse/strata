@@ -1,24 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Wayland offers: selection offers (data device and data control) and drag offers.
-//!
-//! P0 owns every offer proxy. A subscriber holds an offer handle that shares the proxy, so a
-//! read of an offer P0 has since destroyed fails with [`ReadError::Gone`] instead of sending a
-//! request on a dead object. Offers hold the connection weakly: one kept after shutdown never
-//! keeps winit's display binding alive (dropping it late crashed S2's runs).
-//!
-//! On winit's display every request on an offer must come from the UI thread, and is refused
-//! from any other ([`ReadError::OffUiThread`], [`Error::Refused`]). A request upgrades the weak
-//! connection for a moment to flush; on another thread, racing the UI thread's shutdown, that
-//! moment could hold the last strong reference, and the backend would then be dropped on that
-//! thread, perhaps after winit closed the display. A connection of our own has no such rule.
-//!
-//! A read's `done` never runs while an offer's lock is held, so it may call the offer again.
-//!
-//! A drag offer checks each request against [`DropState`] before sending it: the requests
-//! `wl_data_offer` forbids are fatal protocol errors, and on winit's display a protocol error
-//! ends winit's connection too.
-
 use std::fmt;
 use std::os::fd::{AsFd, OwnedFd};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
@@ -90,8 +71,6 @@ impl AnyOffer {
     }
 }
 
-/// Sends `receive` for `mime` on `offer`: the read end of the pipe the source writes into.
-/// Call it with the offer's lock held, and start the read after releasing it.
 fn receive(offer: &AnyOffer, home: &Home, mime: &str) -> Result<OwnedFd, ReadError> {
     let (r, w) = pipe::pipe().map_err(|e| ReadError::Io(e.to_string()))?;
     offer.receive(mime, w.as_fd());
@@ -109,7 +88,6 @@ fn finish_read(r: Result<OwnedFd, ReadError>, limits: ReadLimits, done: Done) {
     }
 }
 
-/// A selection offer: the proxy until P0 replaces or destroys it.
 pub(super) struct WlSelection {
     mimes: Vec<String>,
     proxy: Mutex<Option<AnyOffer>>,
@@ -142,8 +120,6 @@ impl ReadOffer for WlSelection {
         if !self.home.here() {
             return done(Err(ReadError::OffUiThread));
         }
-        // The lock spans the request, so a close on another thread can't land between the
-        // liveness check and `receive`; `done` runs after it is released.
         let r = match lock(&self.proxy).as_ref() {
             Some(p) => receive(p, &self.home, mime),
             None => Err(ReadError::Gone),
@@ -160,11 +136,6 @@ pub(crate) struct DropState {
     accepted: Option<String>,
     /// The action the compositor settled on (`wl_data_offer.action`).
     action: Option<u32>,
-    /// The actions the drag's source offers (`wl_data_offer.source_actions`). None until the
-    /// event comes, and for ever if it carries bits outside copy, move and ask: wlroots sends
-    /// all ones (-1) for a source that never set its actions, which wayland-client then
-    /// reports as unknown, and it treats such a source as offering copy. Without known source
-    /// actions an ask can't be answered, and `finish` stays refused.
     source_actions: Option<u32>,
     dropped: bool,
     finished: bool,
@@ -224,9 +195,6 @@ impl DropState {
                 self.action = Some(actions);
                 return Ok(());
             }
-            // Confirming the settled action, as `(a, a)`: wlroots then chooses `a` again, so
-            // the compositor's record can't drift from ours through an action event still in
-            // flight at the drop (P0's review, S1).
             if single && offered && preferred == actions && self.action == Some(actions) {
                 return Ok(());
             }
@@ -237,9 +205,6 @@ impl DropState {
         Ok(())
     }
 
-    /// `invalid_finish`: only after the drop, with a type accepted and an action other than
-    /// ask settled. True when the `finish` request exists (version 3); older offers are only
-    /// destroyed.
     pub(crate) fn finish(&mut self) -> Result<bool, &'static str> {
         if self.finished {
             return Err("the drop is finished");
@@ -279,8 +244,6 @@ impl DropState {
         self.dropped
     }
 
-    /// The action the compositor settled on, if it is one `finish` takes: neither none nor
-    /// ask.
     pub(crate) fn settled(&self) -> Option<Action> {
         self.action
             .filter(|a| *a != Action::Ask.bits())
@@ -306,9 +269,6 @@ struct DragInner {
     home: Home,
 }
 
-/// A drag over one of the app's windows (Wayland): its MIME types, what the app accepts, the
-/// read after the drop, and `finish`. P0 keeps a dropped offer alive until `finish`, though
-/// `leave` follows the drop at once.
 #[derive(Clone)]
 pub struct DragOffer(Arc<DragInner>);
 
@@ -350,8 +310,6 @@ impl DragOffer {
         &self.0.mimes
     }
 
-    /// Accepts `mime` (or nothing) at the current position. Send it on enter and on every
-    /// motion: the source shows whether a drop would land.
     pub fn accept(&self, mime: Option<&str>) -> Result<(), Error> {
         self.on_ui()?;
         let mut cell = lock(&self.0.cell);
@@ -368,15 +326,6 @@ impl DragOffer {
         Ok(())
     }
 
-    /// The actions this target takes, and the one it prefers. Send it on enter and on motion,
-    /// before the drop.
-    ///
-    /// After the drop it is refused, with two exceptions: answering a drop whose action is ask
-    /// with a single action, not ask, that the source offers (`DragActions::source`), which
-    /// settles the drop so `finish` works; and confirming the settled action as `(a, a)`
-    /// ([`DragOffer::confirm_action`]). A refused answer changes nothing: a drop left on
-    /// ask stays on ask, and its `finish` is refused for good (the compositor would take it as
-    /// a protocol error). Read the data and drop the offer instead.
     pub fn set_actions(&self, actions: &[Action], preferred: Option<Action>) -> Result<(), Error> {
         let mask = actions.iter().fold(0, |m, a| m | a.bits());
         let pref = preferred.map_or(0, Action::bits);
@@ -396,9 +345,6 @@ impl DragOffer {
         Ok(())
     }
 
-    /// Reads one type, during the drag or after the drop. `done` runs once: on a worker with
-    /// the data, or on this thread at once if the read can't start (a type not offered, the
-    /// drag gone, the wrong thread). It may call this offer again.
     pub fn read(
         &self,
         mime: &str,
@@ -418,19 +364,11 @@ impl DragOffer {
         finish_read(r, limits, Box::new(done));
     }
 
-    /// The action the compositor settled on for this drag, when it is one a drop can finish
-    /// with (not none, not ask).
     pub fn settled_action(&self) -> Option<Action> {
         self.with_state(|s| s.settled())
     }
 
-    /// After the drop, sends `set_actions(a, a)` for the settled action `a`, so the
-    /// compositor and this offer agree on it before [`DragOffer::finish`] (an action event
-    /// may still have been in flight at the drop). The action confirmed, or None when there
-    /// is nothing to confirm (an offer older than version 3, or no settled action).
     pub fn confirm_action(&self) -> Result<Option<Action>, Error> {
-        // Without known source actions (wlroots' all-ones) the request would be refused, and
-        // the drop finishes on the action it has.
         let settled = self.with_state(|s| {
             s.settled().filter(|a| {
                 s.version >= 3
@@ -461,8 +399,6 @@ impl DragOffer {
         Ok(())
     }
 
-    /// Gives up on the drop without finishing it: the proxy is destroyed, and the source
-    /// hears `cancelled`. For a drop the app refuses after it landed (P1).
     #[cfg(feature = "dnd")]
     pub fn abandon(&self) {
         if self.0.home.here() {

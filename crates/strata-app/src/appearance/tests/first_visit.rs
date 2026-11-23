@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The cursor a first visit placed, through a regroup and the view switch: GTK's browser holds
-//! none, so each view rebuilt over it shows its own first row, while a cursor a load placed
-//! stays where the load put it (finding lgse/strata#2427).
-
 use rune::{Key, Mods};
 
 use super::{
@@ -18,8 +14,6 @@ use crate::{
     },
 };
 
-/// Opens `documents` from the fixture's root in List by a double click: its first visit puts
-/// the cursor on the first row shown, with nothing selected.
 fn first_visit_to_documents(host: &mut Offscreen, folder: &std::path::Path) {
     open(host, LIST, folder);
     double_click(host, LIST, "documents");
@@ -41,8 +35,6 @@ fn cursor_alone(host: &Offscreen, name: &str, after: &str) {
     assert_eq!(held, (Vec::new(), Some(name.to_owned())), "{after}");
 }
 
-/// A regroup moves the first visit's cursor to the first row the List view then shows, and
-/// the List row gives the view the keyboard on it: Down goes on from there.
 #[test]
 fn a_regroup_moves_the_first_visit_cursor_to_the_first_row_shown() {
     regrouping(
@@ -68,8 +60,6 @@ fn an_ungroup_moves_the_first_visit_cursor_to_the_first_row_shown() {
     );
 }
 
-/// Whether the folder is grouped first, where its first visit puts the cursor, and where the
-/// regroup moves it.
 struct Regrouping {
     grouped: bool,
     visited: &'static str,
@@ -97,8 +87,6 @@ fn regrouping(name: &str, case: Regrouping) {
     });
 }
 
-/// After a regroup, Icons and Columns shown show the first visit's cursor on their own first
-/// row, the folder's first entry, and List shown again on the first of its groups.
 #[test]
 fn a_view_shown_puts_the_first_visit_cursor_on_its_first_row() {
     let name = "first_visit::a_view_shown_puts_the_first_visit_cursor_on_its_first_row";
@@ -130,8 +118,6 @@ fn a_view_shown_puts_the_first_visit_cursor_on_its_first_row() {
     });
 }
 
-/// A cursor a load placed is no first visit's: after the parent, the folder come from stays
-/// the cursor through a regroup and a switch to Icons, as on GTK.
 #[test]
 fn a_load_cursor_stays_through_a_regroup_and_a_switch() {
     let name = "first_visit::a_load_cursor_stays_through_a_regroup_and_a_switch";
@@ -155,10 +141,6 @@ fn a_load_cursor_stays_through_a_regroup_and_a_switch() {
     });
 }
 
-/// An entry added above the first visit's cursor is no rebuild: GTK's list keeps its focus on
-/// the same row, so the cursor stays on `notes.txt` while `a-new.txt` lists first (finding
-/// lgse/strata#2642, `icons v3` seed `0x5a`). A regroup after it still moves the cursor to the
-/// first row.
 #[test]
 fn an_entry_added_above_keeps_the_first_visit_cursor_on_its_row() {
     let name = "first_visit::an_entry_added_above_keeps_the_first_visit_cursor_on_its_row";

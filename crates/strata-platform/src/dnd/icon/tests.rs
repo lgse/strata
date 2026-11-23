@@ -13,8 +13,6 @@ fn pixels_are_premultiplied_and_swapped_to_bgra() {
     assert_eq!(bgra_premultiplied(&[10, 20, 30, 0]), vec![0, 0, 0, 0]);
 }
 
-/// A 3×5 picture for a scale-2 surface pads to 4×6, so no `invalid_size` reaches winit's
-/// connection; the padding is clear.
 #[test]
 fn a_buffer_pads_to_a_size_its_scale_divides() {
     let img = DragImage::new(vec![255u8; 3 * 5 * 4], 3, 5)

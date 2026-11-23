@@ -56,8 +56,6 @@ fn row<'a>(app: &'a App, rcx: &RowCx<'_>) -> Option<&'a Row> {
     app.icons.single.pane.listing()?.row_at(rcx.index)
 }
 
-/// Moves with what a tile's details line reads, so only the tiles whose facts changed build
-/// again.
 fn details_version(app: &App, rcx: &RowCx<'_>) -> u64 {
     let mut hasher = DefaultHasher::new();
     row(app, rcx).map(Row::facts).hash(&mut hasher);
@@ -103,9 +101,6 @@ fn results_tooltip_text(app: &App, rcx: &RowCx<'_>, truncated: bool) -> Option<S
     tooltip_text_for(hit_row(app, rcx), rcx, truncated)
 }
 
-/// A filter's results in the grid's place (A10's [`crate::filter::pane`]): tiles as the
-/// grid's, at its size, each with its path under the folder as its details line while the
-/// filter searches the subfolders (GTK's `ResultKind::Icons`).
 pub(crate) fn results() -> IconsGrid<App> {
     IconsGrid::new(
         VIEW,

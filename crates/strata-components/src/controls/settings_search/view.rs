@@ -32,8 +32,6 @@ const FLASH: &[Beat] = &[
 pub struct Navigate {
     /// The page to show.
     pub page: String,
-    /// The row a jump goes to (Enter in the field); `None` for a query that opens its best
-    /// page. A host whose page has its own tabs or tables shows the one holding the row.
     pub row: Option<String>,
 }
 
@@ -82,8 +80,6 @@ type NavigateFn<S> = Rc<dyn Fn(&mut S, Navigate, &mut Tx)>;
 type MenuFn<S> = Rc<dyn Fn(&mut S, Point, &mut Tx)>;
 type EscapeFn<S> = Rc<dyn Fn(&mut S, &mut Tx) -> bool>;
 
-/// The settings window's search: the field, and the filter its rows, headings, pages and
-/// navigation follow. See the module docs for the host's part.
 pub struct SettingsSearch<S> {
     key: String,
     get: fn(&S) -> &SettingsSearchState,
@@ -137,8 +133,6 @@ impl<S: 'static> SettingsSearch<S> {
         self
     }
 
-    /// The key of the scroll view the shown page scrolls in: each change of query scrolls it
-    /// to its top, as Strata resets every page's scroll.
     pub fn page_scroll(mut self, key: impl Into<String>) -> Self {
         self.page_scroll = Some(key.into());
         self
@@ -150,15 +144,11 @@ impl<S: 'static> SettingsSearch<S> {
         self
     }
 
-    /// A menu press on the field, at a window point: the host opens C21's `FieldMenu`.
     pub fn on_menu(mut self, f: impl Fn(&mut S, Point, &mut Tx) + 'static) -> Self {
         self.on_menu = Some(Rc::new(f));
         self
     }
 
-    /// Escape in the empty field: the host closes Settings, returning true when it did. Rune's
-    /// text editor takes an Escape a field passes on (it blurs the field), so the field hands
-    /// this one to the host itself. Without it, Escape in the empty field leaves the field.
     pub fn on_escape(mut self, f: impl Fn(&mut S, &mut Tx) -> bool + 'static) -> Self {
         self.on_escape = Some(Rc::new(f));
         self
@@ -189,9 +179,6 @@ impl<S: 'static> SettingsSearch<S> {
         format!("{}-empty", self.key)
     }
 
-    /// Search again if the query or the index changed: rows filter, and a new query opens its
-    /// best page and scrolls it to the top. The field's edits call this; call it after
-    /// [`SettingsSearchState::set_text`] or a `FieldMenu` edit. True when anything changed.
     pub fn refresh(&self, s: &mut S, tx: &mut Tx) -> bool {
         let Some(found) = (self.get)(s).plan((self.index)(s)) else {
             return false;
@@ -215,18 +202,12 @@ impl<S: 'static> SettingsSearch<S> {
         }
     }
 
-    /// From the host's poll every frame, with the clock in seconds: searches a changed index
-    /// and times the jump's highlight. True when the view changes.
     pub fn tick(&self, s: &mut S, now: f64, tx: &mut Tx) -> bool {
         let searched = self.refresh(s, tx);
         let flashed = (self.get_mut)(s).tick_flash(now, tx);
         searched || flashed
     }
 
-    /// Enter: go to the best row. Its page shows, it scrolls into view, the keyboard moves to
-    /// its first control and it is highlighted for [`FLASH_FOR`]. False when no query or no
-    /// match leaves a row to go to. A query or index the host's tick hasn't searched yet is
-    /// searched first: the matches name rows by position in the index.
     pub fn jump(&self, s: &mut S, tx: &mut Tx) -> bool {
         self.refresh(s, tx);
         let st = (self.get)(s);
@@ -249,17 +230,12 @@ impl<S: 'static> SettingsSearch<S> {
                 tx,
             );
         }
-        // Probe P3 (C20c plan): a reveal in the Tx that shows the page lands on the new row.
         tx.scroll_into_view(target.clone());
         (self.get_mut)(s).flash(row, tx);
-        // The page shows in this change (or as it mounts), and the focus request resolves
-        // against it.
         tx.focus_when_shown(target, tx.focus_visible() || tx.by_keys());
         true
     }
 
-    /// Whether the row keyed `key` shows: every row while nothing filters, else the matches.
-    /// A key the index doesn't list always shows, as Strata leaves untagged rows alone.
     pub fn shows_row(&self, s: &S, key: &str) -> bool {
         let st = (self.get)(s);
         let (Some(m), Some(p)) = (st.matches(), st.prepared()) else {
@@ -268,8 +244,6 @@ impl<S: 'static> SettingsSearch<S> {
         p.row_by_key.get(key).is_none_or(|&i| m.rows[i])
     }
 
-    /// Whether the heading of section `key` shows: while a row under it does, or while
-    /// nothing filters. A section no indexed row is under always shows.
     pub fn shows_section(&self, s: &S, key: &str) -> bool {
         let st = (self.get)(s);
         let (Some(m), Some(p)) = (st.matches(), st.prepared()) else {
@@ -284,8 +258,6 @@ impl<S: 'static> SettingsSearch<S> {
             || under.any(|r| p.row_by_key.get(&r.key).is_some_and(|&i| m.rows[i]))
     }
 
-    /// Whether the navigation lists page `key`: while it holds a shown row, or while nothing
-    /// filters.
     pub fn shows_page(&self, s: &S, key: &str) -> bool {
         let st = (self.get)(s);
         let (Some(m), Some(p)) = (st.matches(), st.prepared()) else {
@@ -294,9 +266,6 @@ impl<S: 'static> SettingsSearch<S> {
         p.page_by_key.get(key).is_some_and(|&i| m.pages[i])
     }
 
-    /// The row keyed `key` in the index, given the host's `content`, or `None` while the
-    /// search hides it. The row is keyed [`SettingsSearch::row_key`], for the jump's reveal and
-    /// focus, and draws the jump's highlight behind its content.
     pub fn row(&self, s: &S, look: &Look, key: &str, content: El) -> Option<El> {
         if !self.shows_row(s, key) {
             return None;
@@ -323,8 +292,6 @@ impl<S: 'static> SettingsSearch<S> {
         Some(wrap.child(content.grid_cell(0)))
     }
 
-    /// A row's title with the query's matched text in the accent. `text` is the title the
-    /// host shows (the index row's [`super::IndexRow::title`]).
     pub fn title(&self, s: &S, look: &Look, text: &str, font: TextStyle) -> El {
         let query = (self.get)(s).query();
         let ranges = if query.is_empty() {
@@ -335,9 +302,6 @@ impl<S: 'static> SettingsSearch<S> {
         MatchedText::new(text, ranges).font(font).build(&look.kit)
     }
 
-    /// The view for a query that found nothing: "No settings match your search.". The host
-    /// shows it in place of the page while [`SettingsSearchState::no_results`] holds, under the
-    /// page title [`SettingsSearch::results_title`] (Strata's "Search results").
     pub fn empty(&self, look: &Look) -> El {
         let k = &look.kit;
         text(self.labels.no_match.clone())
@@ -353,9 +317,6 @@ impl<S: 'static> SettingsSearch<S> {
         &self.labels.results_title
     }
 
-    /// The search field: a magnifier, the text, and a clear button while there is text. Escape
-    /// with text clears it; the next goes to [`SettingsSearch::on_escape`], which closes
-    /// Settings. Enter goes to the best row. A hidden status says how many rows the query shows.
     pub fn field(&self, s: &S, look: &Look) -> El {
         let k = &look.kit;
         let st = (self.get)(s);

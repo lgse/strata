@@ -1,20 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The divider between the files and the preview: a 1 point line, and a 6 point grip inside
-//! the preview's leading edge that moves it. The line and grip are one hover group, so the
-//! pointer crossing between them keeps the caption. The files' own resize edges (C2's column
-//! edges) sit outside it.
-//!
-//! - Hovering lights the line and tints the grip; resting 400 ms shows the caption.
-//! - A pointer drag sets the manual width and shows a dashed outline from the divider to the
-//!   trailing edge, captioned, which fades on release. Pressing hides the hover caption.
-//! - Focused (Strata's F8), Left widens it a step and Right narrows it (the divider moves the
-//!   way the arrow points), Up and Down widen and narrow it as a slider's do, Page Up and Page
-//!   Down move ten steps, and Home and End go to the narrowest and widest. No outline shows.
-//! - Its accessible value is what it sets: the width shown in Icons and List, and in Columns
-//!   the session minimum (the manual width, else the width shown). Assistive increment and
-//!   decrement widen and narrow it.
-
 use std::time::Duration;
 
 use rune::{Cursor, Drag, El, Key, KeyEvent, Phase, Transition, Tx, col, el, text};
@@ -22,15 +7,11 @@ use strata_kit::look::Look;
 
 use super::{DrawerState, Shared, Solved};
 
-/// The grip's key: the separator assistive technology reads, and where
-/// [`DrawerState::focus_divider`] sends focus.
 pub(super) const GRIP_KEY: &str = "preview-grip";
 
 /// How long the pointer rests on the divider before its caption shows.
 const CAPTION_DELAY: Duration = Duration::from_millis(400);
 
-/// What the divider sets and reads as its value: in Columns the session minimum (the manual
-/// width, else the width shown), elsewhere the width shown.
 fn value(st: &DrawerState, solved: Solved, columns: bool) -> f32 {
     match st.manual_width() {
         Some(manual) if columns => manual,
@@ -72,7 +53,6 @@ pub(super) fn divider<S: 'static>(
                 .w_full()
                 .h_full()
                 .fill(k.c.border_focus)
-                // Lit by its own hover, or by the host's (a column's edge beside it, C2).
                 .group_opacity(if st.lit { 1.0 } else { 0.0 }, 1.0),
         );
     let grip = el()
@@ -120,8 +100,6 @@ pub(super) fn divider<S: 'static>(
             Phase::Up => {
                 let st = (drag.access)(s);
                 if d.cancelled() {
-                    // Escape, or the pointer taken away: back to where it started, as
-                    // GtkPaned does.
                     st.cancel_drag();
                 } else {
                     st.dragging = false;
@@ -162,8 +140,6 @@ pub(super) fn divider<S: 'static>(
         })
 }
 
-/// What floats over the split while the divider is in use: the hover caption, and the
-/// minimum outline during a pointer drag.
 pub(super) fn overlays<S: 'static>(
     shared: &Shared<S>,
     st: &DrawerState,

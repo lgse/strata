@@ -1,7 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The prompts, built on C15's [`StrataDialog`].
-
 use std::rc::Rc;
 
 use rune::{El, KeyEvent, LiveRegion, TextEdit, Tx, col, row, text, text_input};
@@ -29,26 +27,6 @@ type Respond<S> = Rc<dyn Fn(&mut S, MountResponse)>;
 type EndProcess<S> = Rc<dyn Fn(&mut S, u32)>;
 type FieldMenu<S> = Rc<dyn Fn(&mut S, PromptField, Point, &mut Tx)>;
 
-/// The mount prompt the state holds, as a C15 dialog (see the [module docs](super)).
-///
-/// ```ignore
-/// MountPrompts::new(
-///     "mount",
-///     |s: &App| &s.prompt,
-///     |s: &mut App| &mut s.prompt,
-///     |_s: &mut App, request: Request<MountRequest, MountResponse>, answer| {
-///         request.respond(answer);
-///     },
-/// )
-/// .labels(labels.clone())
-/// .build(&look, s, &mut layer);
-/// ```
-///
-/// Keys: the dialog is `<key>-password`, `<key>-question` or `<key>-processes`, with C15's
-/// parts after it (`<key>-password-dialog`, `-primary`, `-secondary`, `-close`). The password
-/// prompt adds `-user`, `-domain`, `-secret`, `-reveal`, `-connect-as`, `-remember` and
-/// `-error-<n>`; a question's or process list's other choices are `-choice-<index>`; the list
-/// is `-processes`, its rows `-process-<pid>` and their buttons `-end-<pid>`.
 pub struct MountPrompts<S, T> {
     key: String,
     get: Get<S, T>,
@@ -78,8 +56,6 @@ impl<S, T> Clone for MountPrompts<S, T> {
 }
 
 impl<S: 'static, T: 'static> MountPrompts<S, T> {
-    /// The prompts keyed `key`, on the state `get` and `get_mut` reach. `on_answer` runs once
-    /// per request, after its prompt closed, with the request's ticket and the answer.
     pub fn new(
         key: impl Into<String>,
         get: impl for<'a> Fn(&'a S) -> &'a MountPromptState<T> + 'static,
@@ -104,27 +80,21 @@ impl<S: 'static, T: 'static> MountPrompts<S, T> {
         self
     }
 
-    /// Opened over another dialog (Connect to server): see C15's `stacked`.
     pub fn stacked(mut self, stacked: bool) -> Self {
         self.stacked = stacked;
         self
     }
 
-    /// See C15's `reduced_motion`.
     pub fn reduced_motion(mut self, reduced: bool) -> Self {
         self.reduced_motion = reduced;
         self
     }
 
-    /// Gives each process row an End process button, which calls `f` with its pid. Ending it
-    /// is the host's (GTK sent `SIGTERM`); the backend then sends the shorter list.
     pub fn on_end_process(mut self, f: impl Fn(&mut S, u32) + 'static) -> Self {
         self.on_end_process = Some(Rc::new(f));
         self
     }
 
-    /// A right-click, the Menu key or Shift+F10 on a field, for C21's `FieldMenu` (which
-    /// offers no Cut or Copy on the secret field).
     pub fn on_field_menu(
         mut self,
         f: impl Fn(&mut S, PromptField, Point, &mut Tx) + 'static,
@@ -284,8 +254,6 @@ impl<S: 'static, T: 'static> MountPrompts<S, T> {
             .build(look, layer);
     }
 
-    /// A labelled field in C18's frame: the core `text_input`, so C21's field menu can attach
-    /// (rune-kit's `TextInput` takes no right-click handler, U-C21-2).
     #[expect(
         clippy::too_many_arguments,
         reason = "one call per field, all of it the field's"
@@ -330,8 +298,6 @@ impl<S: 'static, T: 'static> MountPrompts<S, T> {
             font: kit.ty.ui,
         };
         let mut input = if disabled {
-            // Without handlers, as rune-kit disables its fields: `El::disabled` alone leaves a
-            // text input focusable and editable.
             text_input(edit, kit.ty.ui)
                 .single_line()
                 .key(key.clone())
@@ -367,7 +333,6 @@ impl<S: 'static, T: 'static> MountPrompts<S, T> {
                     }
                 })
                 .build(&look.accent_icon_kit())
-                // The field stays the Tab stop, as GTK's peek icon is no stop of its own.
                 .focusable(false)
                 .no_focus_ring()
                 .key(format!("{dk}-reveal")),
@@ -478,12 +443,6 @@ impl<S: 'static, T: 'static> MountPrompts<S, T> {
         self.choices(d, &p.choices).build(look, layer);
     }
 
-    /// A question's or a process list's footer: the first accepting choice as the primary, the
-    /// first rejecting one as the secondary, the rest before them, rejecting ones first (see
-    /// the module docs for how that differs from Strata's order with three or more choices).
-    /// Each answers with its index in the request. No choice is the default
-    /// button, so Return presses only the focused one; focus starts on the secondary, the
-    /// declining choice, as Strata's host-key dialog does, or on close when none declines.
     fn choices(&self, d: StrataDialog<S>, choices: &[Choice]) -> StrataDialog<S> {
         let l = &*self.labels;
         let plan = footer(choices);
@@ -507,8 +466,6 @@ impl<S: 'static, T: 'static> MountPrompts<S, T> {
         if let Some(i) = plan.primary {
             d = d.primary(choices[i].label.clone(), choose(i));
         }
-        // With no choice marked declining, every one commits: focus starts on close, which
-        // aborts, as Strata's `focus_button(rejection.unwrap_or(&layout.close))`.
         d.initial_focus(match plan.secondary {
             Some(_) => Focus::Secondary,
             None => Focus::Close,
@@ -538,7 +495,6 @@ pub(crate) fn footer(choices: &[Choice]) -> Footer {
     }
 }
 
-/// GTK's split of a backend message: its first line is the title, the rest the body.
 pub(crate) fn split(message: &str) -> (String, Option<String>) {
     let message = message.trim();
     match message.split_once('\n') {
@@ -564,7 +520,6 @@ fn group(look: &Look, label: &str, control: El) -> El {
         .child(control)
 }
 
-/// Refusal banner matching GTK's `.authentication-error` (`src/style.css`).
 fn error_banner(look: &Look, key: String, error: &str) -> El {
     let kit = &look.kit;
     let danger = kit.c.danger.fg;

@@ -45,8 +45,6 @@ pub enum Command {
         message: Option<String>,
         open_states: Vec<StateName>,
     },
-    /// `adopt` drives the first showing window with this title from then on;
-    /// `activate_window` (`activate`) takes the only one, raised and given the keyboard first.
     Adopt {
         title: String,
         activate: bool,
@@ -184,15 +182,7 @@ pub enum Command {
         message: Option<String>,
     },
     Query(Query),
-    /// The layout a backend that sends its own keys types with. It is no scenario step and
-    /// not among [`COMMANDS`]: the runner sends it to such a target after a `layout` step,
-    /// which it runs itself, and only [`parse_request`] reads it.
     Keymap(Keymap),
-    /// The checks a backend makes of what it holds against what it shows: `{"invariants":{}}`,
-    /// which the fuzz runner sends after a step has come to rest. Like [`Command::Keymap`] it
-    /// is no scenario step and not among [`COMMANDS`]: only [`parse_request`] reads it. The
-    /// result is the list of what failed, empty when every check holds. A backend that makes
-    /// none, as the GTK application's, answers that the step is not supported.
     Invariants,
 }
 
@@ -674,8 +664,6 @@ struct ClipboardSetFields {
     clipboard_set: ClipboardContent,
 }
 
-/// Text, or raw offers under their MIME types the way another application
-/// such as a file manager fills the clipboard.
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
 #[serde(untagged)]
 pub enum ClipboardContent {

@@ -1,20 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Strata's settings matcher (`src/ui/settings/search/matching.rs` at upstream `fb7eb0c4e`),
-//! rule for rule, over a [`SearchIndex`] instead of Strata's static targets, plus the best row
-//! and the matched text this component adds.
-//!
-//! - Text is lowercased and split into words at every character that isn't alphanumeric.
-//! - Every query word must match. A word scores 80 for an exact word, 60 for a prefix, 40 for
-//!   a run of two or more characters with a Han or kana character inside a word, and 20 for a
-//!   typo: one edit for a word of 4 or 5 characters, two for 6 or more, none below 4.
-//! - Title words count in full (the English title, the shown title, and the shown title with
-//!   its spaces removed); keyword and page words count half.
-//! - A query equal to a title adds 1000; one inside a title adds 200.
-//! - A query over 128 characters matches nothing.
-//! - The best page is the one with the highest-scoring record, the first such in index order:
-//!   settings first, then group members, which record for their group row.
-
 use std::collections::HashMap;
 use std::ops::Range;
 
@@ -238,8 +223,6 @@ impl Prepared {
                 m.record(i, i, page, score);
             }
         }
-        // A group found by its own words lists every member (Strata's whole Keyboard page);
-        // one shown only because a member matched does not.
         let found = m.rows.clone();
         for i in (0..self.rows.len()).filter(members) {
             let Some(group) = self.row_group[i] else {
@@ -292,12 +275,6 @@ impl Matches {
     }
 }
 
-/// The byte ranges of `title` that a normalised `query`'s words match in full: an exact word
-/// or a prefix of one, or a Han or kana run inside one, as the matcher scores them. A word
-/// that no title word holds marks where it matches the title's words joined, as the matcher
-/// joins the shown title ("thumbnails" in "Thumbnail size"). The title is read as
-/// [`normalized`] reads it, so a match the matcher finds is marked; a typo marks nothing. A
-/// range covers whole characters.
 pub fn title_ranges(title: &str, query: &str) -> Vec<Range<usize>> {
     let words = words(title);
     let joined = Word::join(&words);
@@ -318,8 +295,6 @@ pub fn title_ranges(title: &str, query: &str) -> Vec<Range<usize>> {
     out
 }
 
-/// A word of a title as [`normalized`] reads it: its lowercase text, and the title bytes
-/// behind each of its characters.
 #[derive(Default)]
 struct Word {
     lower: String,
@@ -351,8 +326,6 @@ impl Word {
         out
     }
 
-    /// The title bytes behind `lower[range]`, one range per run of adjacent title characters
-    /// (a joined match spans the title's spaces in several).
     fn original(&self, range: Range<usize>) -> Vec<Range<usize>> {
         let mut out: Vec<Range<usize>> = Vec::new();
         for (_, src) in self
@@ -369,18 +342,12 @@ impl Word {
     }
 }
 
-/// The title's words, lowercased whole and split after lowercasing, as [`normalized`] does:
-/// a final Σ lowers to ς, and İ to i and a combining dot, which isn't alphanumeric and so
-/// ends the word.
 fn words(title: &str) -> Vec<Word> {
     let lower = title.to_lowercase();
     let mut out = Vec::new();
     let mut current: Option<Word> = None;
     let mut from = 0;
     for (at, c) in title.char_indices() {
-        // `str::to_lowercase` lowers each character alone but for Σ, whose two forms (σ, ς)
-        // are as long as each other: so each character's share of `lower` is as long as its
-        // own lowercase.
         let len: usize = c.to_lowercase().map(char::len_utf8).sum();
         for l in lower[from..from + len].chars() {
             if l.is_alphanumeric() {

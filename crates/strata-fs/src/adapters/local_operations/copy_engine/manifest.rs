@@ -1,10 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! What a move copied of each source entry, as it was once the copy had
-//! read it, so that afterwards only the entries the copy holds unchanged
-//! are deleted. It keeps names, never descriptors. What an operation placed
-//! is recorded the same way, for undo to delete only while unchanged.
-
 use std::{
     collections::{HashMap, HashSet},
     ffi::{OsStr, OsString},
@@ -43,10 +38,6 @@ use crate::{
     services::{Attributes, IdentityTraits, InodeNumbers, KeptCause, Proof},
 };
 
-/// The link count each name deletions removed of a file with several names
-/// had just before, by device and inode. A transfer's deletions share one,
-/// as its items may hold names of one file. Those counts tell which
-/// removals followed a snapshot: the ones at or below its count.
 #[derive(Default)]
 pub(in crate::adapters::local_operations) struct Unlinks {
     unlinked: Mutex<HashMap<(u64, u64), Unlinked>>,
@@ -102,9 +93,6 @@ pub(in crate::adapters::local_operations) fn sleep(duration: Duration) {
 enum Waited {
     Settled,
     Stopped,
-    /// The clock went back to before the copy read the source: a rewrite
-    /// may then be stamped within the tick the copy read, and waiting would
-    /// last as long as it went back.
     SetBack,
 }
 
@@ -130,16 +118,12 @@ fn wait_until(unsettled: Unsettled, stopped: &dyn Fn() -> bool) -> Waited {
     }
 }
 
-/// How far the coarse clock filesystems stamp times with may run behind
-/// ours: a kernel tick, at most 10 ms, with room to spare.
 const COARSE_CLOCK: Duration = Duration::from_millis(100);
 
 #[derive(Clone, Copy)]
 pub(super) struct Unsettled {
     read: SystemTime,
     settled: SystemTime,
-    /// A modification time ahead of our clock, which stamps it: until that
-    /// clock reaches it, no rewrite can have left it as it is.
     ahead: Option<SystemTime>,
 }
 
@@ -187,8 +171,6 @@ impl Contents {
 pub(super) struct Read {
     pub stat: EntryStat,
     pub contents: Option<Contents>,
-    /// What the copy holds, where its times cannot tell another file put in
-    /// its place.
     pub copied: Option<digest::Digest>,
 }
 
@@ -345,8 +327,6 @@ impl Pending {
         }
     }
 
-    /// `contents` are the first name's: a later name is never read, and
-    /// its times cannot tell a same-size rewrite within the tick.
     pub(super) fn made(mut self, contents: Option<Contents>) {
         if contents.is_some() && !self.openable {
             return self.keep(KeptCause::Changed);
@@ -409,8 +389,6 @@ fn has_state(kind: FileType) -> bool {
 pub(super) struct State {
     size: u64,
     mtime: (i64, u32),
-    /// What the copy wrote, where its times cannot tell another file put in
-    /// its place.
     contents: Option<digest::Digest>,
 }
 
@@ -442,8 +420,6 @@ impl State {
         }
     }
 
-    /// Where only the type tells the copy, a file of another size put in its
-    /// place keeps the state the copy was written with.
     pub(super) fn settle(&mut self, stat: &EntryStat) {
         if self.size == stat.size {
             self.mtime = stat.mtime;
@@ -583,9 +559,6 @@ impl Ownership {
                 || self.states.get(path).is_some_and(|state| state.holds(stat)))
     }
 
-    /// A file rewritten in place, or another one given its inode number and
-    /// birth time, shows only in its size or modification time, and within
-    /// one tick of a coarse clock only in its contents.
     fn holds(
         &self,
         fs: &dyn FsOps,
@@ -662,8 +635,6 @@ impl Ownership {
     }
 }
 
-/// Whether the file `stat` saw at `at` holds exactly the bytes digested, up to
-/// one byte past its size.
 fn holds_contents(
     fs: &dyn FsOps,
     at: Entry<'_>,
@@ -737,8 +708,6 @@ impl Placed {
     }
 }
 
-/// The most entries an operation records of what it placed, at some 200
-/// bytes each, as undo history keeps them.
 const PLACED_ENTRIES: usize = 100_000;
 
 #[cfg(any(test, feature = "test-support"))]
@@ -757,8 +726,6 @@ pub(super) fn placed_entries() -> AtomicUsize {
     AtomicUsize::new(PLACED_ENTRIES)
 }
 
-/// Run right after placing. Fails once the operation's records would hold more than `left`
-/// entries, and gives back what it took.
 #[cfg(test)]
 pub(super) fn placed(
     fs: &dyn FsOps,
@@ -840,8 +807,6 @@ impl<'a> Listing<'a> {
     }
 }
 
-/// With `placed`, a file within a tick of its mount's coarse times is digested, for a deletion
-/// to compare.
 fn record(
     fs: &dyn FsOps,
     listing: Listing<'_>,
@@ -1023,8 +988,6 @@ pub(super) fn remove_placed(
     walk(fs, parent, root, unlinks, cancelled, false, true)
 }
 
-/// Keeps what [`remove`] would keep, and folders holding entries added
-/// since, without deleting anything.
 pub(super) fn compare(
     fs: &'static dyn FsOps,
     parent: Arc<OwnedFd>,
@@ -1420,8 +1383,6 @@ impl At {
         }
     }
 
-    /// The file, still open, if it holds what the copy holds; `None` if the
-    /// deletion stopped meanwhile.
     fn same_contents(
         &self,
         contents: &Contents,

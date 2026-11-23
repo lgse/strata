@@ -1,20 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Perf: the picker over K3's catalog and every bundled emoji (about 2,370 choices).
-//!
-//! `cargo test --profile perf -p strata-components --lib icon_picker::tests::perf -- --ignored --nocapture`
-//!
-//! At scale 2, the field focused: a query typed a key at a time and deleted again (each key
-//! and the frame after it), Ctrl+N through every tab twice, and Page Down through every row of
-//! People & Body, the largest emoji category. Reports the parse and index cost of the bundled
-//! emoji, and the image atlas the colour emoji fill.
-//!
-//! The plan's bar (§6) is `RUNE_COMMIT_BUDGET_MS=8` per UI commit: run under it, no single
-//! commit passes 8 ms. The asserts below are this test's own, each a key and the frame after
-//! it at p95: a keystroke within 4 ms, a tab switch and a page within a 60 Hz frame (16.7 ms).
-//! Measured at review: keystroke 1.17 ms, tab switch 11.32 ms, page 9.31 ms; the switch and
-//! the page are mostly drawing new colour glyphs into the atlas.
-
 use std::rc::Rc;
 use std::time::Instant;
 

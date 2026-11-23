@@ -1,11 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! C14a's page: what the viewport does in process, beside its goldens and its script.
-//!
-//! No feature-map bullet describes zooming or panning an image (Strata's image preview has
-//! neither), so the WP's scripts for wheel zoom about the pointer, pinch, fit after a resize,
-//! pan limits and the keyboard are these tests: Runtime input in, viewport state out.
-
 mod c14a {
     use rune::{Env, Key, KeyEvent, MagnifyEvent, Mods, Runtime, WheelEvent};
     use strata_components::viewers::viewport::Mode;
@@ -124,8 +118,6 @@ mod c14a {
         assert_eq!(rt.state.c14a.reports, 2, "the fit, then the zoom");
     }
 
-    /// A pinch zooms about the pointer on macOS. Elsewhere it arrives as Ctrl+wheel (the test
-    /// above), and the viewport has no pinch handler.
     #[test]
     fn a_pinch_zooms_about_the_pointer_on_macos() {
         let mut rt = scene("c14a-fit-light");

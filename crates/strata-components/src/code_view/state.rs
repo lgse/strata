@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! [`CodeState`]: what the host keeps per source preview, and what C9's header and find bar
-//! ask of it.
-
 use std::cell::{Cell, OnceCell};
 use std::ops::Range;
 use std::rc::Rc;
@@ -21,8 +18,6 @@ use crate::document_view::Folded;
 use crate::preview_drawer::{DocumentView, FindStatus, HostedPreview};
 use crate::scroll::Bar;
 
-/// Each text a state shows gets a serial, so a view of a new state or text asks Rune for its
-/// visible rows again even where the row count and keys match the last one's.
 static SERIAL: AtomicU64 = AtomicU64::new(1);
 
 fn serial() -> u64 {
@@ -38,25 +33,17 @@ pub(crate) enum Request {
     Reveal(String),
 }
 
-/// Rune text selection most recently requested by [`CodeState`], used to detect when an
-/// external click or drag replaces or clears our selection.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum ExpectedSelect {
     /// Single-row Rune selection `(row, start, end)` on `{key}-l{row}/t`.
     Row(usize, usize, usize),
-    /// Transparent 0×0 sentinel selection `0..1` on `{key}-gutter-sel`, so gutter line
-    /// selections paint once via live row fills without double-compositing the first row's text.
     GutterSentinel,
 }
 
-/// What doesn't change between [`CodeState::set_text`]s. The view's copy handler holds it,
-/// since Rune gives that handler no app state.
 #[derive(Debug)]
 pub(crate) struct Content {
     pub key: String,
     pub rows: Rows,
-    /// Each row's key, `{key}-l{row}`, made once: Rune reads every key on a list's first
-    /// commit, and borrowing them keeps that commit short.
     pub keys: Vec<Box<str>>,
     /// The first and last rows with text: where a whole-text selection ends.
     pub ends: Option<(usize, usize)>,
@@ -64,9 +51,6 @@ pub(crate) struct Content {
     pub all: Cell<bool>,
     /// Active keyboard or gutter-drag byte range `(lo, hi)` when `lo < hi`.
     pub keyboard_range: Cell<Option<(usize, usize)>>,
-    /// Rune selection most recently requested by [`CodeState::apply_caret`] or
-    /// [`CodeState::apply_gutter_lines`], or `None` when `keyboard_range` covers no non-empty
-    /// row in keyboard mode.
     pub expected_select: Cell<Option<ExpectedSelect>>,
 }
 
@@ -102,8 +86,6 @@ struct Highlight {
     syntax: Option<String>,
 }
 
-/// One source preview's state, kept by the host and given to
-/// [`CodeView`](super::CodeView) by accessor.
 pub struct CodeState {
     content: Rc<Content>,
     revision: u64,
@@ -129,19 +111,14 @@ pub struct CodeState {
     /// Live-only row fills for whole-line gutter selections.
     pub(crate) highlights: RowHighlights,
     pub(crate) position: Position,
-    /// The sideways bar while wrap is off (C24's).
     pub(crate) sideways: Bar,
     /// Whether the text overflows the viewport, as the view last drew the position bar.
     pub(crate) overflow: bool,
     /// The position the bar's accessible value last said, in steps of a two-hundredth.
     pub(crate) said: u32,
-    /// Last scroll offset observed in [`Self::poll`], used to defer `said` commits while
-    /// actively scrolling.
     last_scroll_offset: f32,
     /// Clock deadline after scrolling pauses when `said` should commit its updated value.
     scroll_settled_at: Option<f64>,
-    /// The current match to centre again on the next poll: find opening its bar in the same
-    /// frame moves the viewport's bottom under the first centring.
     reveal_again: Option<String>,
 }
 
@@ -194,15 +171,11 @@ impl CodeState {
         }
     }
 
-    /// The view's key, `code` unless set: its rows are keyed `{key}-l{row}`, each row's text
-    /// `t` and its number `n`. Give each code view on screen its own.
     pub fn key(mut self, key: impl Into<String>) -> Self {
         self.content = Rc::new(Content::new(key.into(), self.content.rows.text.clone()));
         self
     }
 
-    /// Colours the text through `highlighter`, detecting its grammar from `file_name` (and its
-    /// first line), or using `syntax` (a token such as `rs`, or a grammar's name).
     pub fn highlighter(
         mut self,
         highlighter: &Highlighter,
@@ -241,8 +214,6 @@ impl CodeState {
         &self.content.rows.text
     }
 
-    /// Replaces the text (a reload, or a source that grew while loading). An open find runs
-    /// again on the new text, and the next step selects a match; colours start over.
     pub fn set_text(&mut self, text: impl Into<Arc<str>>) {
         self.content = Rc::new(Content::new(self.content.key.clone(), text.into()));
         self.revision = serial();
@@ -288,8 +259,6 @@ impl CodeState {
         self.line_numbers
     }
 
-    /// Lines shown above the text: "Preview limited to the first 1 MB", or why a document
-    /// fell back to its source.
     pub fn set_notices(&mut self, notices: Vec<String>) {
         self.notices = notices;
     }
@@ -298,8 +267,6 @@ impl CodeState {
         &self.notices
     }
 
-    /// `Some(DocumentView::Source)` for a document's source (Markdown, HTML, RTF, CSV, TSV):
-    /// the header then offers View rendered, and the host swaps the view.
     pub fn set_document_view(&mut self, form: Option<DocumentView>) {
         self.document_view = form;
     }
@@ -359,8 +326,6 @@ impl CodeState {
             .filter(|(a, b)| a < b)
     }
 
-    /// Restores a byte-range selection `(lo, hi)` in this view when both offsets lie on valid
-    /// UTF-8 character boundaries of the current text.
     pub fn restore_selection_range(&mut self, lo: usize, hi: usize, tx: &mut Tx) {
         let text = &self.content.rows.text;
         if lo < hi && hi <= text.len() && text.is_char_boundary(lo) && text.is_char_boundary(hi) {
@@ -438,9 +403,6 @@ impl CodeState {
         }
     }
 
-    /// Takes the colours that have landed and applies what find asked for: call it from the
-    /// host's poll, which has a `Tx` ([`HostedPreview::find`] gets none). True when the view
-    /// changed.
     pub fn poll(&mut self, tx: &mut Tx) -> bool {
         if self.gutter_drag.get().is_none()
             && self.highlights.lines().is_some()
@@ -474,8 +436,6 @@ impl CodeState {
         changed
     }
 
-    /// Updates the position bar's accessible value once scrolling pauses, or immediately after
-    /// an explicit keyboard/assistive step or when another change is already rebuilding the view.
     fn poll_said(&mut self, already_changed: bool, tx: &mut Tx) -> bool {
         /// Quiet interval after the last scroll step before rebuilding to update `a11y_value`.
         const SAID_SETTLE_SECS: f64 = 0.15;
@@ -515,9 +475,6 @@ impl CodeState {
         false
     }
 
-    /// Asks for the colours of `lines` and blocks until the highlighter has answered, or
-    /// `timeout` passes. For headless snapshots and tests only: never call it while building
-    /// or polling a window.
     pub fn settle(&mut self, lines: Range<usize>, timeout: std::time::Duration) -> bool {
         match &mut self.doc {
             Some(doc) => {
@@ -540,8 +497,6 @@ impl CodeState {
         copy::reads_whole(&self.content, sel)
     }
 
-    /// Invalidates whole-document and keyboard selection state when a primary pointer press
-    /// lands inside the code viewport.
     pub(crate) fn on_pointer_press(&mut self) {
         self.content.all.set(false);
         self.content.keyboard_range.set(None);
@@ -593,10 +548,6 @@ impl CodeState {
         self.caret = sel.and_then(|s| copy::span(&self.content, s));
     }
 
-    /// Reconciles `all`, `keyboard_range`, and `caret` against Rune's current `sel`, clearing
-    /// stale selection state if Rune's selection was cleared or replaced outside this viewport
-    /// (for example by clicking another pane or via touch drag), and lazily seeding `caret`
-    /// from any live pointer selection in this view.
     pub(crate) fn sync_caret_from_selection(&mut self, sel: Option<&TextSelection>) {
         if self.content.all.get() {
             if sel.is_some_and(|s| copy::reads_whole(&self.content, s)) {
@@ -628,8 +579,6 @@ impl CodeState {
         self.content.keyboard_range.get()
     }
 
-    /// Active keyboard or gutter-drag byte range `(lo, hi)` when Rune's selection `sel` still
-    /// matches what [`Self::apply_caret`] requested.
     pub fn keyboard_selection_for(&self, sel: Option<&TextSelection>) -> Option<(usize, usize)> {
         copy::matches_expected(&self.content, sel)
             .then(|| self.content.keyboard_range.get())
@@ -650,11 +599,6 @@ impl CodeState {
         self.apply_caret_inner(anchor, head, tx);
     }
 
-    /// Selects whole logical lines between `anchor_line` and `target_line` (inclusive) without
-    /// redundant Rune selection commands when the span is unchanged.
-    ///
-    /// Uses the transparent `{key}-gutter-sel` sentinel instead of selecting a code row's text
-    /// node so every selected row paints once via `RowHighlights` with uniform selection alpha.
     pub(crate) fn apply_gutter_lines(
         &mut self,
         anchor_line: usize,
@@ -750,8 +694,6 @@ impl CodeState {
             .then(|| text[a..b].to_owned())
     }
 
-    /// Returns the keyboard selection text when Rune's selection still matches it, clearing
-    /// stale keyboard selection state if the selection was cleared or replaced externally.
     pub(crate) fn copy_keyboard_if_valid(&mut self, sel: Option<&TextSelection>) -> Option<String> {
         self.content.keyboard_range.get()?;
         if copy::matches_expected(&self.content, sel) {
@@ -795,8 +737,6 @@ impl CodeState {
         Found::new(folded, &self.query)
     }
 
-    /// Selects match `current` and centres it. A match that runs past its row (a line split
-    /// at 2 KiB) selects only its part in the first row (Rune selects within one text: R1).
     fn select_current(&mut self) {
         let Some(m) = self.current.map(|c| self.found.ranges[c].clone()) else {
             return;

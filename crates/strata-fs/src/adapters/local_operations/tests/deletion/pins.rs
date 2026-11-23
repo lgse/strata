@@ -14,9 +14,6 @@ fn pin_both(first: &Path, second: &Path) -> io::Result<PathBuf> {
     Ok(bookmarks)
 }
 
-/// Deletes `entries` permanently, dropping the operation once the first
-/// is done if `cancel_after_first`, until it is cancelled or fails. Returns
-/// the operation's slot with what it emitted.
 fn delete_cancelling(
     entries: Vec<FileEntry>,
     cancel_after_first: bool,

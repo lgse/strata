@@ -18,8 +18,6 @@ enum Fold {
 }
 
 impl UndoState {
-    /// Fuses "create folder, then move items into it" into one Group entry, and
-    /// follows a rename of that folder.
     pub(in crate::app::browser) fn fold_group_tail(&mut self) {
         let Some(created) = self.group_folder.clone() else {
             return;

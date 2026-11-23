@@ -24,10 +24,6 @@ pub fn option_key(key: &str, i: usize) -> String {
     format!("{key}-option-{i}")
 }
 
-/// The armed chord's pill (`g-`), for the footer beside the `10X` pill (C19), or `None` with
-/// nothing armed: shares [`crate::footer::pill`] so it matches Strata's
-/// `.shortcut-footer-chord-pill`, `.tenxer-tag` and `.shortcut-footer-paste`. A polite live
-/// region, so assistive technology says the chord as it arms.
 pub fn pill<A: Clone>(look: &Look, key: &str, state: &ChordState<A>) -> Option<El> {
     let map = state.armed()?;
     Some(
@@ -39,11 +35,6 @@ pub fn pill<A: Clone>(look: &Look, key: &str, state: &ChordState<A>) -> Option<E
     )
 }
 
-/// The armed chord's panel, for the window's overlay layer (`rune_kit::root`), or `None`:
-/// above the pill, its right edges with the pill's, listing each line as a keycap beside its
-/// action, down two columns. It takes neither focus nor the keyboard, so the next key still
-/// reaches the chord, and a press on it leaves the keyboard where it was. A list to assistive
-/// technology, each line named "keycap: action".
 pub fn panel<A: Clone>(look: &Look, key: &str, state: &ChordState<A>) -> Option<El> {
     let map = state.armed()?;
     let k = &look.kit;

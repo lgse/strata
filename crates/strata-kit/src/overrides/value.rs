@@ -1,13 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! A row's value, read for its token's kind.
-//!
-//! A colour is a literal, or (ruling Q2) one taken from another colour token, so it follows
-//! the theme: `"@color.text_base"`, or `"alpha(@color.text_base, 0.06)"` for it at a share of
-//! its opacity. `alpha()` takes a literal too, `"alpha(#ff9e64, 0.25)"`, and paints as the
-//! kit's own translucent tokens do ([`Kit::alpha`](rune_kit::Kit::alpha), with the colour's
-//! alpha times the factor).
-
 use rune::Color;
 use toml::de::DeValue;
 
@@ -21,9 +13,10 @@ use crate::tokens::{self, Kind, Token, Value};
 pub(super) enum Setting {
     /// A value as written.
     Value(Value),
-    /// A colour taken from another token, or a literal at a share of its opacity: resolved
-    /// when the look is built.
-    Derived { from: Origin, alpha: Option<f32> },
+    Derived {
+        from: Origin,
+        alpha: Option<f32>,
+    },
 }
 
 /// Where a derived colour starts.
@@ -131,8 +124,6 @@ fn color(name: &'static str, s: &str) -> Result<Setting, Problem> {
     }
 }
 
-/// A literal colour or a reference: `None` when it is neither, an error when it names no
-/// colour token.
 fn source(name: &'static str, s: &str) -> Option<Result<Origin, Problem>> {
     if let Some(target) = s.strip_prefix('@') {
         return Some(match tokens::find(target) {
@@ -146,8 +137,6 @@ fn source(name: &'static str, s: &str) -> Option<Result<Origin, Problem>> {
     Rgba8::parse(s).map(|c| Ok(Origin::Color(c.color())))
 }
 
-/// A TOML integer or float as an `f32`: infinite when an integer doesn't fit, so the range
-/// check rejects it. `None` for anything else.
 fn number(value: &DeValue<'_>) -> Option<f32> {
     match value {
         DeValue::Integer(i) => {

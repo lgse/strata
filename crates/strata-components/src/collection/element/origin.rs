@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! External marquee origin routing ([`super::Collection::origin_drag`]): primary drags starting on
-//! blank chrome outside the collection's viewport (such as the preview drawer).
-
 use std::rc::Rc;
 
 use rune::{Drag, Mods, Phase, PointerButton, Tx};

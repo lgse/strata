@@ -1,12 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The process's thumbnail budget, split across its windows. GTK holds its decoded thumbnails
-//! once per process, in one cache of 64 MiB (`THUMBNAIL_CACHE` in `src/ui/thumbnail/cache.rs`).
-//! Here each window has its own store (C25's `ThumbnailStore`, which keeps per-window viewers
-//! and tickets), so the budget is shared instead: while `n` windows are open, a floating
-//! chooser's included, each store holds at most `1/n` of it, and the process stays within
-//! GTK's figure. A window that opens or goes rebalances the others through their queues.
-
 use std::cell::RefCell;
 
 use strata_components::thumbnails::Settings;
@@ -27,8 +20,6 @@ pub(super) struct Share {
 }
 
 impl Share {
-    /// Joins the window whose queue is `later` to the split, and rebalances the others. The
-    /// window's own store takes [`share`] as it is built.
     pub(super) fn join(later: &Later<App>) -> Self {
         let window = later.downgrade();
         WINDOWS.with(|windows| {

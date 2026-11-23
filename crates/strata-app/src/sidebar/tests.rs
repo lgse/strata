@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The sidebar in the registered window: what assistive technology hears of its rows, what a
-//! click and Return open, where the keyboard goes in and out, and the pins the shared store
-//! gives it.
-
 use std::path::{Path, PathBuf};
 
 use rune::{Key, Mods};
@@ -261,8 +257,6 @@ fn settings_file() -> PathBuf {
     strata_core::storage::config_directory().join("settings.toml")
 }
 
-/// `sidebar_pinned_collapsed` and the sidebar's step start as saved, and the PINNED heading
-/// saves its own state (`docs/preferences.md`, "Sidebar collapsed sections").
 #[test]
 fn the_saved_sections_and_step_start_the_sidebar_and_a_heading_saves_its_state() {
     hosted_after(
@@ -330,9 +324,6 @@ fn saved_order() -> Vec<String> {
     names.map(str::to_owned).collect()
 }
 
-/// `builtin-places-reorder-survive-restart/columns-gap-after`: a place dropped in the gap below
-/// another lands right after it, as Strata's sidebar drops it, though the pointer is past half
-/// a row from where the drag began.
 #[test]
 fn a_place_dropped_in_the_gap_below_a_row_lands_after_it_and_is_saved() {
     hosted(
@@ -368,8 +359,6 @@ fn a_place_dropped_in_the_gap_below_a_row_lands_after_it_and_is_saved() {
     );
 }
 
-/// A drag that ends where it began opens nothing, as Strata's drag source claims the gesture:
-/// the press Rune sends on that release is the drag's.
 #[test]
 fn a_drag_dropped_back_in_place_opens_nothing() {
     hosted(
@@ -391,8 +380,6 @@ fn a_drag_dropped_back_in_place_opens_nothing() {
     );
 }
 
-/// Strata's sidebar rebuilds its rows when they change, which ends a press on one: a press
-/// held while the sidebar lists its rows again opens nothing on its release.
 #[test]
 fn a_press_held_across_a_relist_opens_nothing_on_its_release() {
     hosted(
@@ -416,8 +403,6 @@ fn a_press_held_across_a_relist_opens_nothing_on_its_release() {
 
 const TOGGLE: &str = "header-sidebar-toggle";
 
-/// The saved `sidebar_expanded` and `sidebar_compact`, with their defaults where the file
-/// leaves them out.
 fn saved_width() -> (bool, bool) {
     let saved = std::fs::read_to_string(settings_file()).unwrap_or_default();
     let saved: toml::Table = toml::from_str(&saved).unwrap_or_default();
@@ -433,8 +418,6 @@ fn saved_width() -> (bool, bool) {
     )
 }
 
-/// Waits for the step the toggle took to be saved and to show, and for the toggle to name the
-/// next step.
 fn stepped_to(host: &mut Offscreen, step: Step, saved: (bool, bool), next: &str) {
     let reached = host.run_until(PATIENCE, |_| saved_width() == saved);
     assert!(
@@ -457,9 +440,6 @@ fn stepped_to(host: &mut Offscreen, step: Step, saved: (bool, bool), next: &str)
     assert_eq!(rows, step != Step::Hidden, "the places at {step:?}");
 }
 
-/// The header's toggle and Ctrl+B step the sidebar full, rail, hidden and full again, as GTK's
-/// `SidebarMode::next` does; each step is saved as `bind_sidebar_modes` saves it, and the
-/// toggle's description names the step the next press takes.
 #[test]
 fn the_toggle_and_its_key_step_the_width_and_save_each_step() {
     hosted(
@@ -500,9 +480,6 @@ fn the_toggle_and_its_key_step_the_width_and_save_each_step() {
     );
 }
 
-/// A hidden sidebar saved from the rail (`sidebar_expanded = false`, `sidebar_compact =
-/// true`) starts hidden, and the toggle shows the full sidebar, not the rail, as GTK's step to
-/// `Expanded` saves both.
 #[test]
 fn a_sidebar_hidden_from_the_rail_starts_hidden_and_shows_full() {
     hosted_after(
@@ -540,8 +517,6 @@ fn into_the_sidebar(host: &mut Offscreen) {
     assert_eq!(focused(&host.tree()).as_deref(), Some("sidebar-place-home"));
 }
 
-/// Waits for `key` to have the keyboard after `pressed`: an arrow's other key reaches Rune's
-/// focus navigation as the arrow, a frame later.
 fn focus_reaches(host: &mut Offscreen, key: &str, pressed: &Key) {
     host.run_until(PATIENCE, |host| {
         focused(&host.tree()).as_deref() == Some(key)
@@ -554,9 +529,6 @@ fn letter(letter: &str) -> Key {
     Key::Text(letter.to_owned())
 }
 
-/// The default map's arrows in the sidebar, and their other keys, as GTK's
-/// `sidebar_navigation` reads them: Down and Up move between the rows, and Right gives the
-/// keyboard back to the files.
 #[test]
 fn the_arrows_and_their_other_keys_move_between_the_rows_and_back_to_the_files() {
     hosted(
@@ -584,8 +556,6 @@ fn the_arrows_and_their_other_keys_move_between_the_rows_and_back_to_the_files()
     );
 }
 
-/// `key` on the sidebar's first row reaches the header's toggle
-/// (`TopBarNavigation::move_up_from_sidebar`).
 fn up_from_the_top_reaches_the_toggle(mut host: Offscreen, key: Key) {
     let folder = fixture();
     opened(folder.path(), &mut host);
@@ -613,9 +583,6 @@ fn k_from_the_first_row_reaches_the_headers_toggle() {
     );
 }
 
-/// Shift and Super with Up and Down move between the rows as the plain arrows do, as GTK's
-/// `child_focus` moves them with both held; Shift+Up on the first row moves nothing, and
-/// Super+Up there reaches the header's toggle, since only Shift keeps Up in the sidebar.
 #[test]
 fn shift_and_super_with_up_and_down_move_between_the_rows() {
     hosted(
@@ -677,9 +644,6 @@ fn focus_stays(host: &mut Offscreen, key: &str, pressed: &Key) {
     );
 }
 
-/// The default map's arrows in the header, as GTK's `top_bar_navigation` reads them: Right
-/// and Left move along it and stop at its ends, Up is taken, and Down goes back to the sidebar
-/// row Up left.
 #[test]
 fn the_arrows_move_along_the_header_and_down_returns_to_the_sidebar() {
     hosted(
@@ -717,8 +681,6 @@ fn the_arrows_move_along_the_header_and_down_returns_to_the_sidebar() {
     );
 }
 
-/// Down from the header with the sidebar hidden gives the keyboard to the files
-/// (`browser.focus_active`, where `return_to_sidebar` finds the sidebar unmapped).
 #[test]
 fn down_from_the_header_reaches_the_files_while_the_sidebar_is_hidden() {
     hosted(
@@ -750,10 +712,6 @@ fn down_from_the_header_reaches_the_files_while_the_sidebar_is_hidden() {
     );
 }
 
-/// Down from the header comes back to the row Up left once, as GTK's `return_to_sidebar`
-/// takes it, even an open pin a collapsed PINNED still shows; reached again without Up, Down
-/// goes to the sidebar's first element. Up leaves only from the first element, so the test
-/// plants the row it would remember.
 #[test]
 fn down_from_the_header_returns_to_the_remembered_row_once() {
     hosted_after(
@@ -804,8 +762,6 @@ fn down_from_the_header_returns_to_the_remembered_row_once() {
     );
 }
 
-/// The rows each kind of row's menu lists, by section, in GTK's order
-/// (`attach_place_context_menu_with`, `build_trash_menu`).
 #[test]
 fn each_rows_menu_lists_gtks_rows_in_its_order() {
     use super::{
@@ -894,8 +850,6 @@ fn menu_lists(host: &mut Offscreen, names: &[&str], choose: &str) -> String {
     row.expect("the row to choose").1
 }
 
-/// A right-click on a built-in place opens its menu, and Unpin hides the place and saves it
-/// (`set_sidebar_show_home(false)`).
 #[test]
 fn unpin_in_a_places_menu_hides_the_place_and_saves_it() {
     hosted(
@@ -923,8 +877,6 @@ fn unpin_in_a_places_menu_hides_the_place_and_saves_it() {
     );
 }
 
-/// The Menu key on a focused pin opens its menu, and Unpin takes the pin out of the
-/// bookmarks file (`unpin_location`).
 #[test]
 fn the_menu_key_on_a_pin_opens_its_menu_and_unpin_takes_it_out_of_the_bookmarks() {
     hosted_after(
@@ -975,8 +927,6 @@ fn right_click(host: &mut Offscreen, key: &str) {
     idle(host);
 }
 
-/// A pin's menu keeps the location it was opened on: a relist while it is open renumbers the
-/// pins, and Unpin still takes that pin out, as GTK's menu holds its row's location.
 #[test]
 fn unpin_takes_the_pin_its_menu_opened_on_after_a_relist() {
     hosted_after(
@@ -1025,9 +975,6 @@ fn unpin_takes_the_pin_its_menu_opened_on_after_a_relist() {
     );
 }
 
-/// Unpinning the open place leaves no row marked: the sidebar marks the active location's row
-/// again at each relist, as GTK's `rebuild` ends with `sync_active_place`, and a standard
-/// folder's pin is never listed beside its place.
 #[test]
 fn unpinning_the_open_place_leaves_no_row_marked() {
     hosted(
@@ -1057,9 +1004,6 @@ fn unpinning_the_open_place_leaves_no_row_marked() {
     );
 }
 
-/// The Trash menu offers "Empty Trash…" only once the Trash is known to hold something: an
-/// open menu takes the change the Trash's monitor hears, and the row asks to empty it. The
-/// Trash root is a folder of the test's own: a hosted test has no gvfs to list `trash:///`.
 #[test]
 fn the_trash_menu_offers_empty_trash_once_the_trash_holds_something() {
     hosted_after(
@@ -1096,9 +1040,6 @@ fn the_trash_menu_offers_empty_trash_once_the_trash_holds_something() {
     );
 }
 
-/// The PINNED heading is named, and its count described, in the user's language, as GTK's
-/// `append_section_header` and `set_item_count` give them, and the sidebar's list has no name
-/// of its own, as GTK's has none.
 #[test]
 fn the_headings_speak_the_users_language_and_the_list_has_no_name() {
     hosted_after(
@@ -1126,9 +1067,6 @@ fn the_headings_speak_the_users_language_and_the_list_has_no_name() {
     );
 }
 
-/// Hiding the sidebar while one of its rows has the keyboard gives the keyboard to the view,
-/// where GTK's next keys reach the selection (finding lgse/strata#2406): no element of the
-/// tree had it, and every key went nowhere.
 #[test]
 fn hiding_the_sidebar_with_the_keyboard_in_it_gives_the_keyboard_to_the_view() {
     hosted(
@@ -1163,9 +1101,6 @@ fn hiding_the_sidebar_with_the_keyboard_in_it_gives_the_keyboard_to_the_view() {
     );
 }
 
-/// Dismissing a sidebar row's right-click menu — or cancelling a modal dialog opened from it —
-/// returns focus to that sidebar row rather than to the file view, matching GTK's
-/// `popover.set_parent(row)` (`sidebar_popover.rs`).
 #[test]
 fn dismissing_a_right_clicked_sidebar_menu_or_its_dialog_returns_focus_to_the_row() {
     hosted(
@@ -1224,10 +1159,6 @@ fn dismissing_a_right_clicked_sidebar_menu_or_its_dialog_returns_focus_to_the_ro
     );
 }
 
-/// Unpin from a row's right-click menu hides the place, and the keyboard the menu gave back to
-/// that row goes to the sidebar's first row, whichever row went: a middle row, then the last,
-/// as GTK's rebuilt list draws its ring on its first row (driven on GTK in F4's round 3; finding
-/// lgse/strata#2406's Unpin case).
 #[test]
 fn unpin_gives_the_keyboard_to_the_sidebars_first_row() {
     hosted(

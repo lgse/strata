@@ -1,15 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! One window of the demo: Strata's chrome and views on a real folder, every drop target and
-//! drag source wired to P1 through the adapter, and Strata's policy stood in for (the
-//! transfers are logged, and done with `--apply`).
-//!
-//! Tabs: 1 Columns, 2 List (C4), 3 Icons (C3), each on `--root`; a drop on the strip or New
-//! tab opens a List tab per dragged folder. The sidebar (C8) has the root, its top folders,
-//! the Trash (which takes files, logging them as trashed), one pin and the `usb` device
-//! (another volume). The location bar (C6) names the active pane's folder. List and Icons
-//! peek folders (C22).
-
 use std::cell::{Cell, RefCell};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -73,7 +63,6 @@ const SENTINEL_TYPES: &[&str] = &[
     "image/png",
     adapter::GNOME_COPIED_FILES,
 ];
-/// What a tab takes from other apps besides files (C7's content types).
 const CONTENT: &[&str] = &["image/png", "text/plain;charset=utf-8", "text/plain"];
 
 /// A column's listing.
@@ -184,17 +173,11 @@ pub struct Win {
     peek_ids: Ids,
     spring: Option<(SpringAt, f64, bool)>,
     out: Option<Out>,
-    /// Whether the drag over Columns' strip gaps is one the strip refuses (no highlight), and
-    /// if so whether it offers files (only those autoscroll).
     strip_refused: Option<bool>,
-    /// Whether the drag with this serial opens tabs (all its items are folders): asked on
-    /// every motion over the strip, so the folders are checked once per drag.
     opens: Cell<Option<(u64, bool)>>,
     covered: bool,
     layout: ColumnLayout,
     widths: ColumnWidths,
-    /// What the next view reports where it drew (the `locate` command): a name and what it
-    /// names, resolved to a key path at each view (a grid's paths change as it reflows).
     pub locate: RefCell<Vec<(String, Value)>>,
     pub status: Option<Status>,
 }
@@ -233,11 +216,6 @@ impl Win {
         } else {
             Vec::new()
         };
-        // `Unchecked::Accept`, though P1 reads a drag's URIs while it hovers: under `Wait` a gap
-        // refuses an unchecked drag, and C8 notes which drag is over its gaps only from a gap's
-        // accepting hover, so the check would never start (a C8 finding, reported). Here the
-        // gap's first hover starts it, the read URIs settle it, and a refused drag then stops
-        // at the gap (its `on_reject`).
         let mut sidebar = SidebarState::new(&look);
         sidebar.pin_check.unchecked = Unchecked::Accept;
         let mut peek = PeekState::new();
@@ -399,8 +377,6 @@ impl Win {
         self.trail = Trail::new(crumbs, folder.display().to_string());
     }
 
-    /// Shows `folder` in tab `id`: List and Icons go there, Columns opens it as its last
-    /// column when it is a child of one, else starts over from it.
     fn navigate(&mut self, id: TabId, folder: &Path, tx: &mut Tx) {
         if let Pane::Columns { listings, .. } = &self.tab(id).pane {
             let keep = listings
@@ -514,9 +490,6 @@ impl Win {
 
     // ---- Policy: actions and transfers ----
 
-    /// The action a drop of `offer` into `dest` takes, by Strata's rule: none onto the items'
-    /// own folder or into a dragged folder, else the copy-or-move rule with the demo's volume
-    /// lookup and "Always ask" across devices.
     fn action_for(&self, dest: &Path, offer: &DropOffer, mods: Mods) -> Option<DropAction> {
         let sources = offer.uris.as_deref().map(fsys::paths).unwrap_or_default();
         if fsys::no_op(&sources, dest) {
@@ -531,11 +504,7 @@ impl Win {
         ))
     }
 
-    /// A drop into `dest`: files are transferred with the host's action (with `--apply`),
-    /// content is noted. Logs a `transfer` line either way.
     fn transfer(&mut self, dest: &Path, dropped: &Dropped, via: &str, tx: &mut Tx) {
-        // A drop ends the drag: C22's duties for one that didn't start in this window (the
-        // adapter's end check may have run already, mid-drag, if the drag left every target).
         if self.out.is_none() {
             self.end_of_drag(tx);
         }
@@ -589,8 +558,6 @@ impl Win {
         self.log("transfer", fields);
     }
 
-    /// A drop on the sidebar Trash: Strata moves the files to Trash. The demo logs a
-    /// `trash` transfer and never trashes anything, even with `--apply`.
     fn trash(&mut self, dropped: &Dropped, tx: &mut Tx) {
         if self.out.is_none() {
             self.end_of_drag(tx);
@@ -619,7 +586,6 @@ impl Win {
     // ---- Drags out ----
 
     fn begin_drag(&mut self, tab: TabId, ids: Vec<EntryId>, tx: &mut Tx) {
-        // C22: starting a drag closes any open peek.
         if self.peek.close() {
             self.peeked = Peeked::default();
             self.log("peek", json!({ "open": false, "why": "drag" }));
@@ -666,7 +632,6 @@ impl Win {
         tx.wake_after(Duration::ZERO);
     }
 
-    /// Any drag's end, this window's or another app's: C22's duties, and the spring stops.
     fn end_of_drag(&mut self, _tx: &mut Tx) {
         if self.peek.close() {
             self.peeked = Peeked::default();
@@ -702,7 +667,6 @@ impl Win {
             }
             "select" => self.select(cmd, tx),
             "group" => {
-                // List's file-type groups (C4's), folders first: the stuck header.
                 let id = TabId(cmd["tab"].as_u64().unwrap_or(self.active.0));
                 if let Pane::List(f) = &mut self.tab_mut(id).pane {
                     let groups = groups_from_runs(f.listing.len(), |i| {
@@ -729,7 +693,6 @@ impl Win {
                 self.log("scrolled", json!({ "tab": id.0, "y": y }));
             }
             "pick" => {
-                // What a drag's hit test (P1's) finds at window point (x, y).
                 let (x, y) = (
                     cmd["x"].as_f64().unwrap_or(0.0) as f32,
                     cmd["y"].as_f64().unwrap_or(0.0) as f32,
@@ -915,8 +878,6 @@ impl Win {
     }
 }
 
-/// Strata's Trash rule: local files only, moved there (web addresses, alone or with files,
-/// refuse the drop). While the URIs aren't known yet, a file list is taken.
 fn trash_action(offer: &DropOffer) -> Option<DropAction> {
     let files = match offer.uris.as_deref() {
         Some(u) => !u.is_empty() && fsys::paths(u).len() == u.len(),
@@ -925,8 +886,6 @@ fn trash_action(offer: &DropOffer) -> Option<DropAction> {
     (files && offer.actions.contains(DropActions::MOVE)).then_some(DropAction::Move)
 }
 
-/// The collections' drag hook: P1's guard and the phase a drag starts from, and a `press`
-/// line for the session tests.
 fn phase_hook(wiring: &Wiring<Win>, w: &mut Win, d: &rune::Drag, key: &str) -> bool {
     let owned = wiring.drag_phase(d, key);
     if d.phase == rune::Phase::Down {
@@ -942,8 +901,6 @@ enum Kind {
     Icons,
 }
 
-/// A sidebar row's id for folder `p`. Row keys carry the id (`ItemId::key`), and a key holds no
-/// `/`, which separates a key path's segments: P1 finds targets by those segments.
 fn path_id(p: &Path) -> String {
     p.display().to_string().replace('/', ":")
 }
@@ -1060,8 +1017,6 @@ fn columns() -> Vec<Column<Win>> {
 
 // ---- The view ----
 
-/// The marks on a pane's rows: those of this window's running drag are drawn faded, and the
-/// peek's anchor.
 fn marks_of(w: &Win, tab: TabId, scope: &str, id: EntryId) -> RowMarks {
     let mut m = RowMarks::default();
     m.dragging = w
@@ -1264,10 +1219,6 @@ impl Win {
         self.log("navigate", json!({ "tab": tab.0, "folder": folder }));
     }
 
-    /// Whether Columns tab `tab` keeping only its first `keep` columns would unmount the
-    /// column a running drag started in: P1's rule keeps a drag's source mounted until the
-    /// drag ends, so the navigation to `to` is dropped (logged `held`), not queued: nothing
-    /// opens when the drag ends.
     fn holds_source(&self, tab: TabId, keep: usize, to: &Path) -> bool {
         let Some(out) = self.out.as_ref().filter(|o| o.tab == tab) else {
             return false;
@@ -1341,11 +1292,6 @@ impl Win {
         }
     }
 
-    /// Columns' own target over the whole strip, for what no column's zone covers: the gaps
-    /// between columns. Its moves feed C2's autoscroll and column highlight
-    /// (`ColumnsState::drag_over`); a drop there goes where `ColumnsView::drop_target_at` says
-    /// (the column beside it), and its action is asked with the drag's point (P1's
-    /// `action_at`). Columns' rows and backgrounds take drags themselves, through C1e's zones.
     fn strip_zone(tab: TabId) -> DropZone<Win> {
         DropZone::new(move |w: &mut Win, dropped: Dropped, tx| {
             let at = dropped.point.map(|p| Point::new(p.window_x, p.window_y));
@@ -1359,8 +1305,6 @@ impl Win {
                 None => w.log("strip-miss", json!({})),
             }
         })
-        // A refused drag over a gap stops there (no outer target takes it) and keeps
-        // driving the autoscroll and the column wash, with no drop highlight.
         .on_hover(move |w: &mut Win, h, offer: &DropOffer, tx| {
             use strata_components::contract::dnd::DropHover;
             w.strip_refused =
@@ -1582,9 +1526,6 @@ pub fn view(w: &Win, cx: &mut Cx<Win>) -> El {
         .on_intent(|w: &mut Win, i, tx| w.sidebar_intent(i, tx))
         .build(look);
 
-    // While a drag this window started runs, the pane of the tab it started in stays mounted
-    // when another tab is active (P1's rule: the source stays mounted at its place), drawn
-    // under the active pane, transparent, inert and hidden. No other inactive pane is kept.
     let mut panes = col().key("panes").grow(1.0).min_w(0.0).h_full();
     let keep = w.out.as_ref().map(|o| o.tab);
     for t in &w.tabs {
@@ -1645,7 +1586,6 @@ pub fn view(w: &Win, cx: &mut Cx<Win>) -> El {
         .wiring
         .sentinel(root, ROOT, SENTINEL_TYPES, |w: &mut Win, tx| {
             w.end_of_drag(tx);
-            // This window's own drag leaving it ends later, at P1's outcome.
             let ev = if w.out.is_some() {
                 "drag-left"
             } else {
@@ -1653,9 +1593,6 @@ pub fn view(w: &Win, cx: &mut Cx<Win>) -> El {
             };
             w.log(ev, json!({}));
         });
-    // `locate`: where each asked-for element is in the window now. A layout read has no
-    // value the first time a view asks for it (Rune then runs the view again with it), so an
-    // element not found yet stays asked for.
     let asked = std::mem::take(&mut *w.locate.borrow_mut());
     let mut pending = Vec::new();
     for (name, item) in asked {
@@ -1803,8 +1740,6 @@ impl Win {
         }
     }
 
-    /// Where a drag rests now, for the spring: a folder row in the active pane, or a sidebar
-    /// row.
     fn spring_target(&self) -> Option<SpringAt> {
         if let Some((
             SideSite::Item(item),
@@ -1829,9 +1764,6 @@ impl Win {
     }
 }
 
-/// The window's poll: the clock, the springs (C6's and C7's own, the host's for rows), the
-/// views' ticks (Columns' autoscroll and reveals, the collections' edge scrolls), and the
-/// adapter's drag-end check.
 pub fn poll(w: &mut Win, t: f64, tx: &mut Tx) -> bool {
     w.clock = t;
     let mut changed = false;
@@ -1874,7 +1806,6 @@ pub fn poll(w: &mut Win, t: f64, tx: &mut Tx) -> bool {
         }
         (_, None) => w.spring = None,
     }
-    // C22: rows under an overlay don't peek (the location bar's suggestions).
     let covered = w.bar.editing();
     if covered != w.covered {
         w.covered = covered;

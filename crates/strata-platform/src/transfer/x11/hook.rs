@@ -1,11 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! A module built on the X11 actor (P1's XDND) runs here, on the actor thread, through a
-//! [`Hook`]: it hears the events P0 doesn't handle itself (client messages, XI2), takes
-//! commands posted from other threads, and uses the actor's connection, window and
-//! selection code through a [`HookCx`]. One connection then serves selections and drag and
-//! drop alike, and a reply awaited by the hook never steals events from the actor's poll.
-
 use std::any::Any;
 use std::time::Instant;
 
@@ -22,8 +16,6 @@ use super::{Actor, Reply, lock};
 
 /// A module running on the actor thread.
 pub(crate) trait Hook: Send {
-    /// An event the actor doesn't handle itself: client messages, XI2 and other extension
-    /// events, and events about other windows.
     fn event(&mut self, cx: &mut HookCx<'_>, event: &XEvent);
 
     /// A command posted with [`super::X11::post_hook`].
@@ -37,8 +29,6 @@ pub(crate) trait Hook: Send {
     /// Runs once the actor has passed [`Hook::deadline`].
     fn tick(&mut self, _cx: &mut HookCx<'_>, _now: Instant) {}
 
-    /// The actor is quitting: undo what the hook set on other clients' windows, while the
-    /// connection still works.
     fn stop(&mut self, _cx: &mut HookCx<'_>) {}
 }
 
@@ -69,9 +59,6 @@ impl HookCx<'_> {
         self.actor.name(atom)
     }
 
-    /// Takes `selection` with `spec`, with a server timestamp, as the actor takes
-    /// `CLIPBOARD`: its writers then answer conversions (with INCR), and a refusal or a
-    /// later loss arrives as `SourceCancelled`.
     pub(crate) fn own(&mut self, selection: Atom, id: SourceId, spec: SourceSpec) {
         self.actor
             .take_with_server_time(Owning::new(selection, id, spec));
@@ -90,8 +77,6 @@ impl HookCx<'_> {
         self.actor.owning.cancel_selection(selection);
     }
 
-    /// Converts `selection` to `mime` as of `time` (an XDND drop's), with INCR. `done` runs
-    /// once, on the actor thread.
     pub(crate) fn read(
         &mut self,
         selection: Atom,

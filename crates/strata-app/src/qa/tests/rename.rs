@@ -1,10 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Gate G3's steps through the engine: the `field` target and predicate, the keys of the
-//! rename editor, and the file on disk after them. Each test names the scenarios under
-//! `tests/qa/scenarios/inline_renaming` whose steps it takes; an `fs` step is the runner's,
-//! so the folder is read here instead.
-
 use std::path::Path;
 
 use serde_json::{Value, json};
@@ -97,8 +92,6 @@ fn escape_leaves_the_name_and_return_renames_the_file() {
     );
 }
 
-/// The offsets `long-rename-keeps-caret` reads, over a name whose characters take two and
-/// three bytes: a caret counted in bytes would pass every ASCII scenario.
 #[test]
 fn the_caret_and_the_selection_count_characters_in_a_name_that_is_not_ascii() {
     staged(
@@ -140,8 +133,6 @@ fn the_caret_and_the_selection_count_characters_in_a_name_that_is_not_ascii() {
     );
 }
 
-/// `rename-moves-into-path/columns-file-as-folder` and `invalid-names-retain-original`, then
-/// `rename-commits-on-click-away`.
 #[test]
 fn a_refused_name_is_explained_in_the_field_and_a_click_away_commits_a_good_one() {
     staged(
@@ -197,8 +188,6 @@ fn a_refused_name_is_explained_in_the_field_and_a_click_away_commits_a_good_one(
     );
 }
 
-/// The context menu's Rename row, which the GTK view takes to the same editor as F2
-/// (`rename_context_entry` in `src/ui/browser/context_menu/focus.rs`).
 #[test]
 fn the_menus_rename_row_opens_the_editor_on_its_entry() {
     staged(

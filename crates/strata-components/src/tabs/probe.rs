@@ -1,12 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Where the strip's parts drew, read back from hidden markers, for what Rune can't do from
-//! the outside: read a viewport's scroll offset, or reveal with a margin (U-C7-2, U-C7-7).
-//!
-//! The strip's root starts its horizontal scroll viewport at its left edge, with nothing before
-//! it, and lists the tabs from the viewport's start, tab 0 first. While an incoming drag places an
-//! insertion mark before tab 0, an offset read is off by that 2 px mark.
-
 use std::cell::Cell;
 use std::rc::Rc;
 
@@ -38,20 +31,12 @@ pub(super) struct Probe {
     active: Live<[f32; 4]>,
     /// The tab whose slot `active` marks, as last built.
     active_id: Rc<Cell<Option<TabId>>>,
-    /// The fade over the viewport's edges, and what follows the viewport in the root (the New
-    /// tab button and the gap before it), as last built.
     fade: Rc<Cell<f32>>,
     trailing: Rc<Cell<f32>>,
-    /// A wheel over a tab since the last tick: the user scrolled, so a reveal not yet landed
-    /// stands down.
     wheeled: Rc<Cell<bool>>,
     /// A reveal's jump went out in this frame's tick, so the screen doesn't show it yet.
     revealing: Rc<Cell<bool>>,
-    /// A tab's wheel handler took the current gesture, so Rune hands it every delta of it,
-    /// sideways ones included (`wheel.rs`).
     owning: Rc<Cell<bool>>,
-    /// Where the wheel's jumps in this frame left the viewport, which the markers report only
-    /// at the next frame.
     pending: Rc<Cell<Option<f32>>>,
 }
 
@@ -97,8 +82,6 @@ impl Probe {
             .drawn_rect_into(&self.first)
     }
 
-    /// The marker for the active tab `id`'s slot, which fills it. Its key carries `version`
-    /// (the tab's name, hashed), so a renamed tab mounts a fresh marker.
     pub(super) fn active_marker(&self, id: TabId, version: u64) -> El {
         self.active_id.set(Some(id));
         el().key(format!("probe-active-{version:x}"))
@@ -141,8 +124,6 @@ impl Probe {
         self.owning.set(on);
     }
 
-    /// Where the wheel's next jump starts: where this frame's last one left the viewport, else
-    /// the offset the markers read.
     pub(super) fn wheel_base(&self) -> f32 {
         self.pending.get().unwrap_or_else(|| self.offset())
     }
@@ -157,8 +138,6 @@ impl Probe {
         self.revealing.set(true);
     }
 
-    /// Whether a reveal's jump went out in this frame, unseen yet: a wheel in the same frame
-    /// must override it with a jump of its own, from where the screen shows the strip.
     pub(super) fn revealing(&self) -> bool {
         self.revealing.get()
     }
@@ -168,8 +147,6 @@ impl Probe {
         self.strip.get()[0] - self.first.get()[0]
     }
 
-    /// Where to scroll so the active tab `id` shows a fade's width clear of either edge (at an
-    /// end of the content the viewport's scroll stops short, and that edge has no fade).
     pub(super) fn reveal(&self, id: TabId) -> Reveal {
         let [x, _, w, _] = self.active.get();
         if self.active_id.get() != Some(id) || w <= 0.0 {

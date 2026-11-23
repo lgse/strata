@@ -9,10 +9,6 @@ use crate::services::RenameCause;
 /// What a source meets: its name and what has it on the mount.
 type Met = (&'static str, Option<Collision>);
 
-/// A source: its name and what it meets on vfat, then on ext4, and whether
-/// names inside it change on vfat. `own.txt` and `same` are pasted from
-/// the destination itself, `old.txt` from a Trash on another disk, and
-/// `holder` from inside the folder of its name.
 fn prompt_rows() -> [(&'static str, Met, Met, bool); 11] {
     let collision = |mergeable, replaceable| {
         Some(Collision {
@@ -156,8 +152,6 @@ fn the_prompt_sees_the_name_a_paste_gives_each_item_and_what_has_it() -> Result<
     Ok(())
 }
 
-/// An item pasted under the name its prompt showed: how it collided, the
-/// name shown, whether it is moved, where it lands and why.
 struct Shown {
     item: &'static str,
     conflict: TransferConflict,
@@ -167,8 +161,6 @@ struct Shown {
     cause: RenameCause,
 }
 
-/// Where a paste left the item: what landed, how many entries the disk
-/// holds, whether the source stayed, and the renames it reported.
 #[derive(Debug, PartialEq)]
 struct Landing {
     contents: Vec<u8>,

@@ -1,11 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! C6's page in process: what scripts can't reach (an input method composing, a key repeat, the
-//! crumbs' scroll position and text colour, the overflow bar's fade, every frame of a reopen,
-//! the wakes of a window at rest), and window activation, on a host of the test's own whose
-//! root hears it (the gallery's root is shared, so its pages can't). The scripts in
-//! `tests/scripts/c6/` check the rest. Each test names the bullets it covers.
-
 mod c6 {
     use rune::{
         Cx, El, ElementInfo, Env, Ime, Key, KeyEvent, Mods, PhysicalInput, PointerButton, Runtime,
@@ -111,9 +105,6 @@ mod c6 {
         format!("{LOC}-item-{}", rt.state.c6.trail.crumbs.len() - 1)
     }
 
-    // browser/navigation/location-bar: "With an input method composing in the location field,
-    // Escape cancels only the composition and the editor stays open." Rune gives Escape to the
-    // composition first; the bar never hears it.
     #[test]
     fn escape_while_composing_keeps_the_entry_open() {
         let mut rt = mount("c6-short-light");
@@ -128,8 +119,6 @@ mod c6 {
         assert_ne!(rt.state.c6.log, "Cancelled");
     }
 
-    // browser/navigation/location-bar: "In a file chooser, middle-clicking a crumb opens
-    // nothing."
     #[test]
     fn a_chooser_s_middle_click_opens_nothing() {
         let mut rt = mount_with("c6-short-light", |g| g.c6.chooser = true);
@@ -140,9 +129,6 @@ mod c6 {
         assert!(!rt.state.c6.bar.editing());
     }
 
-    // browser/navigation/location-bar: "When crumbs overflow, the wheel scrolls them
-    // horizontally and edge fades mark the hidden part." The scroll position isn't in the
-    // accessibility tree; the fades are the PNG golden's (`c6-deep`).
     #[test]
     fn the_wheel_scrolls_overflowing_crumbs() {
         let mut rt = mount("c6-deep-light");
@@ -168,8 +154,6 @@ mod c6 {
         assert!(shown(&rt, &current), "and back to the end");
     }
 
-    // browser/navigation/location-bar: "After navigation, or after submitting or cancelling the
-    // entry, the crumbs scroll to show the current crumb."
     #[test]
     fn the_current_crumb_shows_after_a_navigation_a_submit_and_a_cancel() {
         let mut rt = mount("c6-deep-light");
@@ -205,9 +189,6 @@ mod c6 {
         assert!(shown(&rt, &last_item(&rt)), "after a navigation");
     }
 
-    // browser/navigation/location-bar: "The overflow scrollbar sits in its own row below the
-    // crumbs, hidden at rest and shown on hover or scroll, never covering labels." Where it
-    // sits is the PNG golden's; here, when it shows.
     #[test]
     fn the_overflow_bar_shows_on_hover_and_scroll_only() {
         let bar = format!("{LOC}-crumbs-bar");
@@ -242,8 +223,6 @@ mod c6 {
         assert!(opacity(&rt) < 0.01);
     }
 
-    // browser/navigation/location-bar: "Closing and reopening the editor shows no stale or
-    // flashing suggestion list." Every frame after the reopen, until the new list lands.
     #[test]
     fn a_reopened_entry_never_shows_the_old_list() {
         let mut rt = mount("c6-short-light");
@@ -270,8 +249,6 @@ mod c6 {
         assert!(rt.state.c6.bar.suggestions_open(), "the fresh list landed");
     }
 
-    /// Steps a resting window: a frame only at each requested wake, none in between, for at
-    /// most `limit` seconds. Returns the clock it stopped at.
     fn rest(rt: &mut Runtime<Gallery>, limit: f64) -> f64 {
         let start = rt.state.c6.now;
         for _ in 0..200 {
@@ -288,10 +265,6 @@ mod c6 {
         rt.state.c6.now
     }
 
-    // browser/navigation/location-bar: "The Copy path button is named "Copy path"; after a
-    // click it is named "Path copied", then "Copy path" again 2 s later." In a window at rest,
-    // which polls only at the wakes it asked for (C11's review: a timer stamped at the first
-    // poll after the press, with one wake asked from the press, never ended).
     #[test]
     fn the_copy_feedback_ends_in_a_resting_window() {
         let mut rt = mount("c6-short-light");
@@ -313,8 +286,6 @@ mod c6 {
         );
     }
 
-    // browser/navigation/location-bar: "Holding a file drag over a parent breadcrumb for 750
-    // ms navigates there", in a window at rest, as above.
     #[test]
     fn the_spring_opens_in_a_resting_window() {
         let mut rt = mount("c6-short-light");
@@ -355,8 +326,6 @@ mod c6 {
         delay: u32,
         /// How many suggestions each answer holds: `f00/`, `f01/`, … (two by default).
         count: usize,
-        /// Captured by the view's intent handler: what it hears is tagged with the value it had
-        /// when the view last ran.
         tag: u32,
     }
 
@@ -478,9 +447,6 @@ mod c6 {
         rt
     }
 
-    // browser/navigation/location-bar/completion: "Switching to another window, minimising,
-    // or hiding Strata while suggestions show closes the popover. The typed path and location
-    // editing stay." Minimising and hiding reach the window as deactivation too.
     #[test]
     fn losing_the_window_closes_the_suggestions_and_keeps_the_edit() {
         let mut rt = host(0);
@@ -496,9 +462,6 @@ mod c6 {
         assert_eq!(bar.edit.text, "/a");
     }
 
-    // browser/navigation/location-bar/completion: "A listing still pending when the window
-    // loses focus is cancelled, so its result does not reopen the popover." and "Refocusing
-    // the window does not reopen suggestions; the next text change shows them again."
     #[test]
     fn a_listing_pending_at_deactivation_is_cancelled_and_refocus_reopens_nothing() {
         let mut rt = host(20);
@@ -524,8 +487,6 @@ mod c6 {
         );
     }
 
-    // browser/navigation/location-bar/completion: "Editing the entry text while the window is
-    // not focused shows no suggestions."
     #[test]
     fn editing_while_the_window_is_inactive_asks_for_nothing() {
         let mut rt = host(0);
@@ -543,9 +504,6 @@ mod c6 {
         assert_eq!(rt.state.bar.edit.text, "/a");
     }
 
-    // browser/navigation/location-bar/completion: "Hiding the location entry closes the
-    // popover and cancels a pending listing." The host hides it (a tab switch) through
-    // `dismiss_completion`; when is Strata's.
     #[test]
     fn dismissing_closes_the_list_and_cancels_the_listing() {
         let mut rt = host(0);
@@ -565,10 +523,6 @@ mod c6 {
         assert!(rt.state.bar.editing());
     }
 
-    // browser/navigation/location-bar/completion: "Down and Up move through suggestions…" and
-    // "Enter on a highlighted suggestion opens that folder." With the pointer resting on the
-    // list, Down scrolls rows under it; a row passing under a still pointer must not take the
-    // keyboard's highlight (review round 1, B1: Enter opened `f09/` instead of `f17/`).
     #[test]
     fn a_resting_pointer_never_moves_the_highlight() {
         let mut rt = host_with(0, 30);
@@ -595,8 +549,6 @@ mod c6 {
         );
     }
 
-    // Review round 1, SF1: refocusing the window after it closed a list that was showing
-    // reopens nothing ("Refocusing the window does not reopen suggestions").
     #[test]
     fn refocusing_keeps_a_list_closed_by_deactivation_closed() {
         let mut rt = host(0);
@@ -649,8 +601,6 @@ mod c6 {
         );
     }
 
-    // Review round 2: a host's intent handler that captures state the view reads must be the
-    // one from the latest view, even from a suggestion row kept by its memo since the list came.
     #[test]
     fn a_kept_suggestion_row_reports_through_the_latest_handler() {
         let mut rt = host(0);
@@ -676,8 +626,6 @@ mod c6 {
         );
     }
 
-    // Strata's crumbs are dim until the pointer is over one (`.breadcrumb:hover`): the hovered
-    // crumb's label takes the text colour, and gives it back when the pointer leaves.
     #[test]
     fn a_hovered_crumb_takes_the_text_colour() {
         let colour = |rt: &Runtime<Gallery>, label: &str| {
@@ -705,8 +653,6 @@ mod c6 {
         assert_eq!(colour(&rt, "Projects"), c.text_weak, "dim again");
     }
 
-    // A held Escape cancels once: its repeats, arriving after the entry closed or while it
-    // reopens, never cancel an edit.
     #[test]
     fn a_repeated_escape_cancels_nothing() {
         let mut rt = mount("c6-short-light");
@@ -724,9 +670,6 @@ mod c6 {
         assert_ne!(rt.state.c6.log, "Cancelled");
     }
 
-    // The Menu key, or Shift+F10, on a focused crumb opens the hierarchy menu, as a secondary
-    // press on the bar does: Rune hands it to the strip's secondary-press handler at the
-    // crumb's left, so it opens there, under the bar.
     #[test]
     fn the_menu_key_on_a_crumb_opens_the_hierarchy_menu() {
         for (k, mods) in [

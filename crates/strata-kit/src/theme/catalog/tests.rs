@@ -24,8 +24,6 @@ fn ninety_five_themes_load_with_unique_ids_in_alphabetical_order() {
     assert!(bundled_theme(UNKNOWN_ID_FALLBACK).is_some());
 }
 
-/// settings/themes: "Code previews color keywords, strings, constants, types, and preprocessor
-/// directives from the active theme; all 95 bundled themes define these five colors."
 #[test]
 fn every_bundled_theme_sets_every_key() {
     for t in bundled() {
@@ -35,8 +33,6 @@ fn every_bundled_theme_sets_every_key() {
     }
 }
 
-/// settings/themes: "Every bundled theme's text has at least 4.5:1 contrast on its background
-/// and 3:1 on its surface", and "Every bundled theme's dim text, as loaded, has" the same.
 #[test]
 fn every_bundled_theme_meets_the_text_and_dim_text_floors() {
     for t in bundled() {
@@ -52,10 +48,6 @@ fn every_bundled_theme_meets_the_text_and_dim_text_floors() {
     }
 }
 
-/// settings/themes: "Loading a bundled theme whose catalog dim text misses those floors
-/// blends it toward its text color in 1/255 steps, stopping at the first that passes. Tokyo
-/// Night's #737aa2 loads as #767da6", and "Material Lighter draws text in #455A64, 6.94:1 on
-/// its background, and dim text in #5c7785, lifted from its catalog #607D8B".
 #[test]
 fn dim_text_lifts_only_as_far_as_the_floors() {
     assert_eq!(theme("tokyo-night").colors.dim_text.hex(), "#767da6");
@@ -63,8 +55,6 @@ fn dim_text_lifts_only_as_far_as_the_floors() {
     assert_eq!(lighter.text.hex(), "#455a64");
     assert!((contrast(lighter.text, lighter.background) - 6.94).abs() < 0.01);
     assert_eq!(lighter.dim_text.hex(), "#5c7785");
-    // Each lifted dim text still reads dimmer than text. (A catalogue entry may write it
-    // brighter, as Spacemacs does; that one isn't lifted.)
     let doc = parse_document(CATALOG).expect("parses");
     let raw = doc.get_ref()["themes"]
         .get_ref()

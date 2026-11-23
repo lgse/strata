@@ -1,11 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The preview's media keys at the dispatcher's `video_controls` stage: GTK's
-//! `handle_video_key` (`src/ui/preview/drawer.rs`), which hands the shown player or route its
-//! command, one action per catalog command. They reach where
-//! [`super::keys::media_keys_reach`] holds and a player or a route shows: a route takes play,
-//! pause and the seeks, a player every one.
-
 use std::time::Duration;
 
 use rune::Tx;
@@ -27,7 +21,6 @@ use crate::{
     commands::{Action, Call, Keys, Outcome, Situation, Stage},
 };
 
-/// A media key's seek: GTK's `MEDIA_SEEK_STEP_US`.
 const SEEK_STEP: Duration = Duration::from_secs(5);
 
 /// What a key asks of a route, if a route takes it, and of a player.
@@ -65,7 +58,6 @@ pub(super) const PREVIOUS: Action<App> =
     media_key!("preview-media-previous", MEDIA_PREVIOUS, previous);
 pub(super) const NEXT: Action<App> = media_key!("preview-media-next", MEDIA_NEXT, next);
 
-/// A player or a route shows, where the preview's media keys reach (GTK's `has_video`).
 fn plays_here(app: &App, at: &Situation) -> bool {
     matches!(app.preview.viewer, Viewer::Route(_) | Viewer::Media(_))
         && keys::media_keys_reach(app, at)

@@ -1,10 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The single-pane views on the offscreen host, over real folders, read from the
-//! accessibility tree as the QA harness reads it. Each behaviour runs once for each view,
-//! with what differs between them as data: a test runs in a process of its own, so each
-//! view's case is a test of its own.
-
 use rune::{Key, Mods};
 use strata_components::{
     collection::selection::Position,
@@ -51,8 +46,6 @@ const ICONS: Case = Case {
     stays: None,
 };
 
-/// List rows have no sideways neighbours: Right stays (`horizontal_arrow_action` in
-/// `src/ui/window/key_routing.rs`).
 const LIST: Case = Case {
     mode: "list",
     shape: Shape {
@@ -65,9 +58,6 @@ const LIST: Case = Case {
     stays: Some(Key::Right),
 };
 
-/// The window opens on the view the saved mode names, under the name the GTK application
-/// read before the setting was renamed too, named as GTK names the pane, the list and the
-/// entries (`src/ui/accessibility.rs`).
 fn opens_named_as_gtk_names_it(case: &Case, mode: &'static str, name: &str) {
     hosted_in(MODULE, mode, name, |mut host| {
         let folder = fixture();
@@ -98,9 +88,6 @@ fn a_saved_explorer_mode_opens_the_list_view_named_as_gtk_names_it() {
     opens_named_as_gtk_names_it(&LIST, "explorer", name);
 }
 
-/// The keys of `keyboard_navigation`'s runs (`arrow-keys-move-focus-remaining`,
-/// `shift-arrow-extends-selection`): the view moves the cursor and the selection, and after
-/// every key the browser holds what the view shows.
 fn keys_move_and_the_browser_holds_the_result(case: &Case, name: &str) {
     hosted_in(MODULE, case.mode, name, |mut host| {
         let folder = fixture();
@@ -146,8 +133,6 @@ fn keys_move_in_the_table_and_the_browser_holds_the_result() {
     keys_move_and_the_browser_holds_the_result(&LIST, name);
 }
 
-/// Return on a folder opens it in place: one pane, of the folder's entries, and the browser
-/// works in it, as GTK's Icons and List views do (`activate_focused_in_place`).
 fn return_opens_a_folder_in_place(case: &Case, name: &str) {
     hosted_in(MODULE, case.mode, name, |mut host| {
         let folder = fixture();
@@ -185,8 +170,6 @@ fn return_opens_a_folder_in_place_in_list() {
     return_opens_a_folder_in_place(&LIST, "return_opens_a_folder_in_place_in_list");
 }
 
-/// `inline_renaming`'s runs: F2 opens the editor on the cursor's entry with the keyboard in
-/// it, and a window key the field passes on leaves it there.
 fn f2_opens_the_editor_and_f5_leaves_it(case: &Case, name: &str) {
     hosted_in(MODULE, case.mode, name, |mut host| {
         let folder = fixture();
@@ -221,11 +204,6 @@ fn f2_opens_the_editor_with_the_keyboard_and_f5_leaves_it_there_in_list() {
     f2_opens_the_editor_and_f5_leaves_it(&LIST, name);
 }
 
-/// `selection/right-click-selects-entry`: a right-click on an entry outside the selection
-/// opens that entry's menu and selects it alone, one on an entry of a selection of several
-/// opens its menu and keeps the selection, as GTK's `context_entries` reads it, and one on
-/// blank space opens the folder's. A menu is named by what it acts on (`menus.rs`). The
-/// browser holds what the menu acts on.
 fn a_right_click_selects_or_keeps(case: &Case, name: &str) {
     hosted_in(MODULE, case.mode, name, |mut host| {
         let folder = fixture();
@@ -267,9 +245,6 @@ fn a_right_click_selects_an_unselected_row_and_keeps_a_selection_it_is_in() {
     a_right_click_selects_or_keeps(&LIST, name);
 }
 
-/// An empty folder: the list keeps the keyboard and, named by the folder, is described as
-/// GTK's pane surface is then, by what it shows, "This directory is empty", which it also
-/// shows (`describe_pane_surface` in `src/ui/accessibility.rs`).
 fn an_empty_folder_says_so(case: &Case, name: &str) {
     hosted_in(MODULE, case.mode, name, |mut host| {
         let folder = tempfile::tempdir().expect("folder");
@@ -300,8 +275,6 @@ fn an_empty_folder_says_so_in_list() {
     an_empty_folder_says_so(&LIST, "an_empty_folder_says_so_in_list");
 }
 
-/// A folder that cannot be read: the list says the browser's message, and shows it. Skipped
-/// where the folder stays readable, as it does for root.
 fn an_unreadable_folder_says_why(case: &Case, name: &str) {
     use std::os::unix::fs::PermissionsExt;
 
@@ -338,9 +311,6 @@ fn an_unreadable_folder_says_why_in_list() {
     an_unreadable_folder_says_why(&LIST, "an_unreadable_folder_says_why_in_list");
 }
 
-/// `inline_renaming`'s Tab and Shift+Tab: the edit goes on to the next or the previous entry,
-/// which the browser then holds selected, with the keyboard in its field; Tab on the last entry
-/// ends the edit (`advance_rename`).
 fn tab_moves_the_edit_on_with_the_keyboard(case: &Case, name: &str) {
     hosted_in(MODULE, case.mode, name, |mut host| {
         let folder = fixture();
@@ -394,9 +364,6 @@ fn tab_moves_the_edit_on_with_the_keyboard_in_list() {
     tab_moves_the_edit_on_with_the_keyboard(&LIST, name);
 }
 
-/// The context menu's Rename on an entry the cursor is not on: the entry alone is selected,
-/// and its editor opens with the keyboard (`rename_context_entry` in
-/// `src/ui/browser/context_menu/focus.rs`).
 fn the_menus_rename_opens_the_editor_with_the_keyboard(case: &Case, name: &str) {
     hosted_in(MODULE, case.mode, name, |mut host| {
         let folder = fixture();
@@ -425,10 +392,6 @@ fn the_menus_rename_opens_the_editor_with_the_keyboard_in_list() {
     the_menus_rename_opens_the_editor_with_the_keyboard(&LIST, name);
 }
 
-/// A folder a pointer opened, where the browser places no cursor, shows its first row with
-/// the keyboard on it and nothing selected, as a GTK list view focuses its first row when it
-/// takes the keyboard (`keyboard_navigation/list-typed-file-path`, line 6); the next key goes
-/// on from it.
 fn a_folder_a_pointer_opened_starts_on_its_first_row(case: &Case, name: &str) {
     hosted_in(MODULE, case.mode, name, |mut host| {
         let folder = fixture();
@@ -474,8 +437,6 @@ fn folders(count: usize) -> tempfile::TempDir {
     folder
 }
 
-/// Waits until the pane shows `name`'s whole listing: the tree holds only the rows near the
-/// viewport.
 fn listed<V: SinglePane>(host: &mut Offscreen, name: &str) {
     let done = host.run_until(PATIENCE, |host| {
         let pane = &V::single(host.app()).pane;
@@ -505,8 +466,6 @@ fn scroll_with_no_cursor<V: SinglePane>(host: &mut Offscreen) {
     wheel(host, -40.0, 120);
 }
 
-/// Back to a folder left scrolled and with no cursor, as GTK's saved visit with no cursor:
-/// its scroll comes back, and no first visit gives its first row the cursor.
 fn back_keeps_a_scroll_left_with_no_cursor<V: SinglePane>(case: &Case, name: &str) {
     hosted_in(MODULE, case.mode, name, |mut host| {
         let folder = folders(300);
@@ -552,8 +511,6 @@ fn back_keeps_a_scroll_left_with_no_cursor<V: SinglePane>(case: &Case, name: &st
             came_from,
             "the browser's cursor, not row 0's"
         );
-        // The cursor's row may be out of view, so the tree names no focused row: the
-        // browser's own state is compared with the pane's.
         let (selected, focused) = browser_holds(&host);
         assert!(selected.is_empty(), "nothing selected: {selected:?}");
         assert_eq!(focused.as_deref(), Some("folder-030"), "the browser agrees");
@@ -579,9 +536,6 @@ fn back_keeps_a_scroll_left_with_no_cursor_in_list() {
     back_keeps_a_scroll_left_with_no_cursor::<crate::list::List>(&LIST, name);
 }
 
-/// A view's file icons as GTK draws them: fainter than a folder's in Columns rows and Icons
-/// tiles, at full opacity in List rows (`columns/thumbs.rs` turns C25's `dim_files` on,
-/// `list/thumbs.rs` leaves it off, C3's tiles dim always).
 fn a_file_icon_dims_as_the_view_does(mode: &'static str, shape: Shape, dims: bool, name: &str) {
     hosted_in(MODULE, mode, name, |mut host| {
         let folder = fixture();

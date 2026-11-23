@@ -1,27 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Thumbnails for the views: which entries get one, and the render pool that makes them.
-//! Shared code: the Icons grid is its first user, and List's icon column and Columns' rows
-//! will read the same window's store.
-//!
-//! - **The store** of decoded images is strata-components' `ThumbnailStore` (C25), one per
-//!   window, in the shell (`shell::thumbnails`): every view reads the same one. Each view
-//!   that draws thumbnails owns a viewer in it.
-//! - **The render pool** is per process, as GTK's is: its queue and its counts are
-//!   interface-thread state of this module, as `RENDER_QUEUE`, `RENDER_RUNNING`,
-//!   `HEAVY_RUNNING` and `MODEL_RUNNING` are in GTK's `src/ui/thumbnail/jobs.rs`. A view
-//!   pops its store's requests while the pool has room ([`room`]) and [`submit`]s each.
-//! - **A job** reads the shared freedesktop cache first (`strata_fs::adapters::thumbnail_cache`)
-//!   and decodes a hit to the request's step; a miss waits for a render slot, renders in
-//!   `strata-preview`'s sandbox, stores what it rendered in the cache and decodes it. Both
-//!   stages run on blocking threads (`gio::spawn_blocking`); each result comes back on the
-//!   interface thread, in a future on GLib's default context, and the view's callback queues
-//!   it with the part's `later`, as the shell's rules for a worker thread's result say.
-//! - **Limits**, as GTK's: [`READERS`] cache reads at once, which never wait for a render
-//!   slot; at most `sandbox::browser::worker_limit()` renders at once, one of them kept from
-//!   the heavy kinds ([`Kind::heavy`]), and one STL render at a time; and no more than
-//!   [`QUEUED`] jobs held besides the renders running.
-
 use std::{
     cell::RefCell,
     collections::VecDeque,
@@ -48,8 +26,6 @@ use kind::Kind;
 use crate::listing::known;
 pub(crate) use viewer::Viewer;
 
-/// Classifies `entry`'s thumbnail in a single `kind::of` pass, returning `(thumbnail_key,
-/// is_rendered_model)`.
 pub(crate) fn classify(entry: &FileEntry) -> (Option<ThumbKey>, bool) {
     if entry.is_directory() {
         return (None, false);
@@ -68,8 +44,6 @@ pub(crate) fn classify(entry: &FileEntry) -> (Option<ThumbKey>, bool) {
     (Some(ThumbKey::new(key)), kind == Kind::RenderedModel)
 }
 
-/// Per-process random seed so no folder of names can be made to collide.
-/// Nothing keeps a thumbnail key past the process; the disk cache is keyed by path.
 fn thumb_seed() -> u64 {
     static SEED: OnceLock<u64> = OnceLock::new();
     *SEED.get_or_init(|| RandomState::new().build_hasher().finish())
@@ -117,8 +91,6 @@ pub(crate) struct Job {
     pub(crate) done: Box<dyn FnOnce(Made)>,
 }
 
-/// A job's result: the thumbnail, and what the worker read of the file while it rendered
-/// (an image's dimensions, a video's length), which a cache hit does not have.
 pub(crate) struct Made {
     pub(crate) outcome: Outcome,
     pub(crate) metadata: Option<MediaMetadata>,
@@ -133,13 +105,9 @@ impl From<Outcome> for Made {
     }
 }
 
-/// Cache reads running at once: GTK's `MAX_CACHE_READERS`.
 const READERS: usize = 4;
-/// Jobs the pool holds besides the renders running: GTK's `MAX_QUEUED_THUMBNAILS`.
 const QUEUED: usize = 64;
 
-/// A job the pool holds, with what it renders and, once the cache missed, the file's
-/// modification time the render stores under.
 struct Queued {
     job: Job,
     kind: Kind,
@@ -167,8 +135,6 @@ thread_local! {
 }
 
 impl Pool {
-    /// The next job the limits let start: a cache read whenever a reader is free, whatever
-    /// the renders hold, else a render.
     fn next(&mut self, limit: usize) -> Option<Start> {
         self.next_read()
             .map(Start::Read)
@@ -192,7 +158,6 @@ impl Pool {
         self.renders.extend(missed);
     }
 
-    /// The next waiting render the limits let start, as GTK's `next_render_job` picks it.
     fn next_render(&mut self, limit: usize) -> Option<Queued> {
         if self.running >= limit {
             return None;
@@ -223,8 +188,6 @@ impl Pool {
         }
     }
 
-    /// How many more jobs the pool takes now: one for each free reader, while it holds
-    /// fewer than [`QUEUED`] besides the renders the limit lets run.
     fn room(&self, limit: usize) -> usize {
         let held = self.reads.len() + self.reading + self.renders.len() + self.running;
         READERS
@@ -341,8 +304,6 @@ fn look_up(path: &Path, edge: u32, cancellation: &Cancellation) -> Looked {
     }
 }
 
-/// What a render gives the view: its PNG decoded with what the worker read of the file, or
-/// a failure.
 fn made(rendered: Result<Thumbnail, String>, edge: u32) -> Made {
     match rendered {
         Ok(rendered) => Made {

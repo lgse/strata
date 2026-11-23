@@ -173,8 +173,6 @@ impl rust_i18n::Backend for Catalogs {
     }
 }
 
-/// English source messages are keys; missing translations retain readable English.
-/// Call only at presentation boundaries, never for paths, protocol values or user content.
 pub fn tr(message: &str) -> String {
     rust_i18n::t!(message).into_owned()
 }
@@ -346,8 +344,6 @@ const SIZE_UNITS: [&str; 5] = [
     "%{size} TB",
 ];
 
-/// Divides `bytes` into the largest decimal unit whose threshold it meets after
-/// rounding to one decimal, returning the rounded value and the unit index.
 fn rounded_size_and_unit(bytes: u64, unit_count: usize) -> (f64, usize) {
     if bytes < 1_000 {
         return (bytes as f64, 0);
@@ -366,8 +362,6 @@ fn rounded_size_and_unit(bytes: u64, unit_count: usize) -> (f64, usize) {
     }
 }
 
-/// The one shared byte-size presentation: decimal units, at most one fraction
-/// digit, and the language's decimal separator and unit symbols.
 pub fn file_size(bytes: u64) -> String {
     file_size_in(&rust_i18n::locale(), bytes)
 }

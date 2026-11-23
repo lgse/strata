@@ -1,12 +1,7 @@
 // SPDX-License-Identifier: MIT
 
-//! GTK 4's size matching (`theme_dir_size_difference` and `compare_dir_size_matches` in
-//! `gtkicontheme.c`), kept rule for rule so a lookup picks the file GTK picked.
-
 use super::index::{DirKind, DirParams};
 
-/// How far a directory's sizes are from `size` at `scale`, in device pixels: 0 inside the
-/// directory's range.
 pub(super) fn difference(dir: &DirParams, size: i32, scale: i32) -> i32 {
     let scaled = size * scale;
     match dir.kind {
@@ -14,9 +9,6 @@ pub(super) fn difference(dir: &DirParams, size: i32, scale: i32) -> i32 {
         DirKind::Scalable => {
             if scaled < dir.min * dir.scale {
                 dir.min * dir.scale - scaled
-            // GTK compares the unscaled size with the scaled `MaxSize` here (the spec compares
-            // the scaled one), so at scale 2 a Scalable directory covers up to twice its
-            // `MaxSize` in device pixels. Kept, as the owner ruled, to pick what GTK picked.
             } else if size > dir.max * dir.scale {
                 scaled - dir.max * dir.scale
             } else {
@@ -37,8 +29,6 @@ pub(super) fn difference(dir: &DirParams, size: i32, scale: i32) -> i32 {
     }
 }
 
-/// Whether `a` (at difference `da`) is a better match than `b` (at `db`) for `size` at `scale`.
-/// A full tie goes to `a`, which the resolver passes as the later directory, as GTK does.
 pub(super) fn better(
     a: &DirParams,
     da: i32,
@@ -52,7 +42,6 @@ pub(super) fn better(
             return true;
         }
     } else {
-        // Scaling an icon down looks better than scaling one up. GTK compares unscaled sizes.
         if a.size >= size && b.size < size {
             return true;
         }

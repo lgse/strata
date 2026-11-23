@@ -676,9 +676,6 @@ fn log_directory_load_started(request_id: RequestId, location: &Location) {
     );
 }
 
-/// Where the folder last seen at `departed` is now: renamed in place, or moved along with
-/// its deepest missing ancestor renamed within the nearest ancestor that remains, a rename
-/// that inotify does not report to the folder's own watch.
 fn native_relocated_folder(
     departed: &Path,
     identity: ItemIdentity,
@@ -712,9 +709,6 @@ fn native_relocated_folder(
         .find(|candidate| has_identity(candidate, identity, progress))
 }
 
-/// The folders of `directory` whose path `below` stays on the mount of `directory`, judged
-/// from its real path by the mount table: a mount point cannot be renamed, and looking into
-/// another mount can wait on a server that stopped answering or trigger an automount.
 fn native_folders(
     directory: &Path,
     below: &Path,

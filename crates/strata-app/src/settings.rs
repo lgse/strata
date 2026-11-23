@@ -1,17 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The saved settings: what `settings.toml` held when the process started, and what this
-//! interface writes back.
-//!
-//! The values are a [`Preferences`] and the bookkeeping of saving them is
-//! `strata_desktop::settings::Saving`, the same one the GTK application's
-//! `PreferenceManager` (`src/ui/preferences.rs`) wraps with its bindings and notices. So a
-//! save here writes what a save there writes: the keys this process changed since a save
-//! last succeeded, with what loading repaired, and another Strata process's other keys stay.
-//!
-//! A part reaches the settings through `shell::saved(app)`: `preferences()` to read them as
-//! they are now, and `change(…)` to change one and have it saved. `slots.rs` has the rules.
-
 use std::{cell::RefCell, io, path::Path, rc::Rc};
 
 use strata_core::model::ViewPreferences;
@@ -79,10 +67,6 @@ impl NoticeStreaks {
     }
 }
 
-/// The settings every window of the process shares: the values, the bookkeeping of saving
-/// them, and the windows to tell when one of them changes them. One for the process, made at
-/// start-up: two would lose each other's saves (`strata_desktop::settings::Saving`), as the
-/// GTK application keeps one `PreferenceManager` for all its windows.
 struct Store {
     preferences: Preferences,
     transparency: TransparencyPreferences,
@@ -96,8 +80,6 @@ struct Store {
 }
 
 impl Store {
-    /// Queues a [`Saved::follow`] in every window but `changed_by`, through the shell, and
-    /// wakes each to apply it: a window without the keyboard gets no frame of its own to.
     fn tell_others(&mut self, changed_by: u64) {
         self.windows.retain(|(_, later)| later.is_live());
         for (id, later) in &self.windows {
@@ -112,9 +94,6 @@ impl Store {
     }
 }
 
-/// A window's way into the process's settings. It reads the values as of the last change it
-/// heard of ([`Saved::follow`]), so a build borrows them as plain data; a change it makes
-/// goes into the store at once, and the other windows hear of it through their queues.
 pub(crate) struct Saved {
     store: Rc<RefCell<Store>>,
     /// This window's place among the store's windows.
@@ -123,8 +102,6 @@ pub(crate) struct Saved {
     preferences: Preferences,
     transparency: TransparencyPreferences,
     version: u64,
-    /// The window's queue, where a finished save tells the bookkeeping its result. Without
-    /// it a save is still written, and its keys are written again with the next.
     later: Option<Later<App>>,
     notices: NoticeStreaks,
 }
@@ -138,8 +115,6 @@ impl Drop for Saved {
 }
 
 impl Saved {
-    /// Reads the file, salvaged entry by entry and brought within range, and makes its
-    /// language the process's.
     pub(crate) fn load() -> Self {
         let (preferences, rune, saving) = strata_desktop::settings::load_rune();
         rust_i18n::set_locale(saving.startup_locale());
@@ -178,8 +153,6 @@ impl Saved {
         }
     }
 
-    /// Gives the settings the window's queue, once the window has one: a finished save is
-    /// heard there, and so is another window's change.
     pub(crate) fn report_to(&mut self, later: Later<App>) {
         let mut store = self.store.borrow_mut();
         store.windows.retain(|(id, _)| *id != self.id);
@@ -216,8 +189,6 @@ impl Saved {
             .count()
     }
 
-    /// Takes the values another window changed since this one last read them. False when
-    /// none did.
     pub(crate) fn follow(&mut self) -> bool {
         let store = self.store.borrow();
         if store.version == self.version {
@@ -275,8 +246,6 @@ impl Saved {
         store.saving.rebase(&self.preferences);
     }
 
-    /// Adopts default sort and icon-size keys another Strata process wrote, provided none of
-    /// those keys have unsaved edits in this process.
     pub(crate) fn adopt_defaults_from_disk(&mut self, saved: Preferences) -> bool {
         self.follow();
         let shared = Rc::clone(&self.store);
@@ -321,8 +290,6 @@ impl Saved {
         })
     }
 
-    /// The browser's sort or hidden-files choice changed: `set_sort_preferences` in
-    /// `src/ui/preferences/layout_settings.rs`.
     pub(crate) fn store_view(&mut self, view: ViewPreferences) {
         self.change(|preferences| {
             preferences.show_hidden = view.show_hidden;
@@ -331,8 +298,6 @@ impl Saved {
         });
     }
 
-    /// Mutates `Preferences` in place without committing yet, for batches that commit once.
-    /// What it changed is the process's at once; the other windows hear of it at the commit.
     pub(crate) fn mutate(&mut self, change: impl FnOnce(&mut Preferences) -> bool) -> bool {
         self.follow();
         let changed = change(&mut self.preferences);
@@ -351,9 +316,6 @@ impl Saved {
         result
     }
 
-    /// Commits whatever changed in `Preferences` since the last save and queues the write off
-    /// the interface thread. A file that could not be read at start-up is the user's to repair,
-    /// and nothing is saved over it.
     pub(crate) fn commit(&mut self) {
         let shared = Rc::clone(&self.store);
         let store = &mut *shared.borrow_mut();
@@ -391,8 +353,6 @@ impl Saved {
             return;
         };
         let later = self.later.clone();
-        // GLib dispatches the end of the save, so it only queues: the bookkeeping hears of it
-        // in the next `poll`.
         glib::MainContext::default().spawn_local(async move {
             let finished = save.finished().await;
             if let Some(later) = later {
@@ -401,10 +361,6 @@ impl Saved {
         });
     }
 
-    /// Changes the saved settings and queues a save of what changed, off the interface
-    /// thread. Turning `restore_tabs` off also removes `tabs.toml` (`set_restore_tabs` in
-    /// `src/ui/preferences/file_settings.rs`). A file that could not be read at start-up is
-    /// the user's to repair, and nothing is saved over it.
     pub(crate) fn change(&mut self, change: impl FnOnce(&mut Preferences)) {
         self.follow();
         let was_restore_tabs = self.preferences.restore_tabs;

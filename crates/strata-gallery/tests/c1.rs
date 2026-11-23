@@ -1,10 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! C1e's page in process: what the accessibility tree doesn't show (hover, where a row stays on
-//! screen), restores across a view switch and a slow load, and the scripted 100k scroll under
-//! `RUNE_COMMIT_BUDGET_MS=8`. Each test names the bullets it checks; the scripts in
-//! `tests/scripts/c1/` check the rest.
-
 #[expect(
     dead_code,
     reason = "c1 uses only the gallery command and the scripts folder"
@@ -90,12 +85,6 @@ mod c1 {
         run(rt, 0.5);
     }
 
-    /// browser/selection: "After keyboard navigation, a parked pointer's row hover and pending
-    /// folder peek are suppressed until the pointer moves." (The row hover; the peek is C22's.)
-    ///
-    /// Rows draw no hover while the collection says so. Rune keeps the drawn hover colour to
-    /// itself (its paint probe is crate-private), so this checks the collection's switch, which
-    /// the rows' memo version follows.
     #[test]
     fn keyboard_navigation_holds_row_hover_until_the_pointer_moves() {
         let mut rt = mount("c1-ten-rows-light");
@@ -125,8 +114,6 @@ mod c1 {
         );
     }
 
-    /// browser/selection: "Background changes to an open directory keep the selection and
-    /// scroll position and do not take focus." (Where the selected row shows.)
     #[test]
     fn a_live_update_keeps_the_selected_row_where_it_shows() {
         let mut rt = mount("c1-photos-light");
@@ -142,8 +129,6 @@ mod c1 {
         ));
     }
 
-    /// browser/view-modes/position-restore: "After End then F5, the last row keeps the cursor
-    /// at the same position on screen" (End by a reveal; Left and Up are C1c's).
     #[test]
     fn a_refresh_keeps_the_cursor_row_where_it_shows() {
         let mut rt = mount("c1-photos-light");
@@ -161,9 +146,6 @@ mod c1 {
         assert_eq!(element(&rt, "row-11999").unwrap().visible, before);
     }
 
-    /// browser/view-modes/position-restore: "The exact scroll offset returns only in the view
-    /// the folder was left in, and for Icons only at the same grid width. Otherwise the view
-    /// scrolls the cursor into view."
     #[test]
     fn a_restore_in_another_layout_scrolls_the_cursor_into_view() {
         let mut rt = mount("c1-photos-light");
@@ -192,8 +174,6 @@ mod c1 {
         assert_ne!(rt.state.c1.coll.scroll_offset(), left_at);
     }
 
-    /// browser/view-modes/position-restore: "A click, scroll, or key press in the pane before
-    /// a restore settles cancels it." (A click.)
     #[test]
     fn a_press_before_a_slow_load_completes_cancels_the_restore() {
         for press in [false, true] {
@@ -234,7 +214,6 @@ mod c1 {
         assert_eq!(text_of(&rt, "c1-intent"), "Clicked holiday.jpg");
     }
 
-    /// A controller that asks to rename whatever is pressed, as C1b's slow second click will.
     struct RenameOnPress;
 
     impl PointerController for RenameOnPress {
@@ -278,13 +257,6 @@ mod c1 {
         assert_eq!(rt.state.c1.listing.entries()[4].name, "budget.ods");
     }
 
-    /// The scripted 100k scroll (`tests/scripts/c1/scroll-100k.json`) under
-    /// `RUNE_COMMIT_BUDGET_MS=8`: no commit over 8 ms once the scene is mounted. The page waits
-    /// out Rune's one-line-a-second limit after the mount (U-C1e-5), so a slow commit during
-    /// the script can't hide behind the mount's line.
-    ///
-    /// It times release-build commits, so it runs only in an optimized build:
-    /// `cargo test --profile perf -p strata-gallery --test c1 budget`.
     #[test]
     #[cfg_attr(debug_assertions, ignore = "perf: run with --profile perf")]
     fn scrolling_a_hundred_thousand_entries_stays_under_the_commit_budget() {

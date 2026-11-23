@@ -1,13 +1,8 @@
 // SPDX-License-Identifier: MIT
 
-//! What Ctrl+C copies: tab-separated text in the displayed sort order, each cell's whole text.
-//! Cells are copied as they are (no quoting), as Strata does.
-
 use super::model::Sheet;
 use super::range::CellRange;
 
-/// The range's cells: tabs between cells, a newline between rows, none after the last, and a
-/// cell a ragged row lacks copied as empty.
 pub(crate) fn range_text(sheet: &Sheet, order: &[u32], r: CellRange) -> String {
     let body = sheet.body();
     let mut out = String::new();
@@ -28,8 +23,6 @@ pub(crate) fn range_text(sheet: &Sheet, order: &[u32], r: CellRange) -> String {
     out
 }
 
-/// Every loaded row, offscreen ones too: the title row first, then the rows in sort order,
-/// each row's own cells with tabs between and a newline after (Strata's `copy_text`).
 pub(crate) fn all_text(sheet: &Sheet, order: &[u32]) -> String {
     let body = sheet.body();
     let mut out = String::with_capacity(

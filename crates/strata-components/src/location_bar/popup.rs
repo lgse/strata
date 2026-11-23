@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The suggestion list: anchored under the entry at its width, taking no focus, on rune-kit's
-//! public popover parts. Not rune-kit's `PopupList`, whose rows can't draw matched ranges
-//! (Rune draft U-C6-4).
-
 use std::hash::{DefaultHasher, Hash, Hasher};
 
 use rune::{Color, El, GrowthSpec, ScrollSpec, Tx, col, icon, memo, row, text};
@@ -25,12 +21,7 @@ pub(super) fn view<S: 'static>(cx: &Ctx<'_, S>, width: f32, layer: &mut Vec<El>)
     let n = shown.len();
     let active = cx.state.highlighted();
     let row_h = look.row.list;
-    // Rune builds every row's element on each commit; only the mounted ones lay out. A row is
-    // rebuilt only when its list, its highlight or the look changes, so an arrow step builds
-    // two rows, not the whole list.
     let list = cx.state.suggestions_generation();
-    // A row kept by its memo calls the handler this view hands the slot, not the one it was
-    // built with.
     cx.state.handler.set(cx.emit.clone());
     let look_key = look_key(look);
     let mut rows = col()
@@ -114,10 +105,6 @@ fn suggestion<S: 'static>(
         } else {
             Color::TRANSPARENT
         })
-        // A tint only: the pointer never moves the keyboard's highlight. Rune reports a hover
-        // when a row scrolls under a pointer that isn't moving, so Down past the list's end
-        // would hand the highlight to whatever row the pointer rests on (review round 1, B1).
-        // Strata's list has no hover highlight either.
         .hover(k.c.hover)
         .on_press_tx(move |s: &mut S, tx: &mut Tx| {
             let polled = access(s).choose(i);

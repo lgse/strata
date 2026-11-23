@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Settings -> Diagnostics page state, background run coordination, clipboard copy,
-//! and terminal install launcher, ported from `src/ui/settings/diagnostics.rs`.
-
 mod checks;
 mod format;
 mod runner;
@@ -83,8 +80,6 @@ impl DiagnosticsState {
         self.completed && !self.running
     }
 
-    /// Cancels any in-flight diagnostics run when Settings closes so stale
-    /// worker results are discarded cleanly; keeps already-completed results.
     pub(super) fn closed(&mut self) {
         self.copied_until = None;
         self.copied_command = None;

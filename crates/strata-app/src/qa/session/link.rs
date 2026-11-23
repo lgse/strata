@@ -1,10 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The session thread's way into the window's loop. Rune runs the window on the main thread
-//! and owns the application state there, so the session reads it through
-//! `AppHandle::update_if` and waits for the answer, and reads the tree from the frames the
-//! window draws (`App::on_frame_drawn`), which [`Frames`] keeps.
-
 use std::{
     sync::{Arc, Condvar, Mutex, PoisonError, mpsc},
     time::{Duration, Instant},
@@ -16,8 +11,6 @@ use serde_json::Value;
 use super::super::{stage, tree::Drawn};
 use crate::App;
 
-/// How long a question to the window's loop may take: one turn of it, at most a few frames
-/// when it is busy.
 const ANSWER_LIMIT: Duration = Duration::from_secs(10);
 
 /// One frame the window drew, as the session reads it.
@@ -35,8 +28,6 @@ pub(super) struct Frames {
 }
 
 impl Frames {
-    /// Keeps what `runtime` has just presented. Runs on the window's thread after each frame
-    /// it draws.
     pub(super) fn record(&self, runtime: &rune::Runtime<App>) {
         let tree = runtime.accessibility_json();
         let drawn = stage::drawn_with_busy(

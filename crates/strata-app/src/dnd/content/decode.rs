@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The bytes of a dropped type, as what they are: an image as a PNG, a browser's file name,
-//! and text in its charset.
-
 use std::io::Cursor;
 
 use strata_components::contract::dnd::names;
@@ -13,7 +10,6 @@ const TEXT: &str = "text/plain";
 /// X11's name for UTF-8 text.
 const UTF8_STRING: &str = "UTF8_STRING";
 
-/// An image's data as a PNG, as GTK saves a dropped texture.
 pub(super) fn png_of(bytes: &[u8]) -> Option<Vec<u8>> {
     if image::guess_format(bytes).ok()? == image::ImageFormat::Png {
         return Some(bytes.to_vec());
@@ -48,15 +44,6 @@ pub(super) fn is_text(mime: &str) -> bool {
     names(TEXT, mime) || mime == UTF8_STRING
 }
 
-/// The text of `bytes`, offered as `mime`, converted from its charset as GTK's string reader
-/// converts it, or `None` when they are not text in it.
-///
-/// - `charset=utf-8` (in any case) and `UTF8_STRING` are UTF-8, taken only when valid.
-/// - Any other charset GLib knows is converted to UTF-8 (`g_convert`). GTK takes UTF-8 and
-///   the locale's charset; a source naming another (UTF-16, say) gets its text read too,
-///   rather than skipped.
-/// - Plain `text/plain` names no charset. GTK reads it as ASCII; Strata reads UTF-8, of which
-///   ASCII is a part, since other toolkits write UTF-8 there.
 pub(super) fn text(mime: &str, bytes: &[u8]) -> Option<String> {
     match charset(mime) {
         Some(charset) if !is_utf8(charset) => {

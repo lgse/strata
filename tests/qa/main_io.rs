@@ -1,10 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The capture side of `scripts/trace-main-io.py`: with `STRATA_QA_MAIN_IO` set,
-//! every Strata launch of a run starts under `strace`, tracing only the initial
-//! thread, and leaves `<run>/<scenario>__<label>/launch-<n>/` with the trace,
-//! the launch's log and the `meta.json` the script classifies paths by.
-
 use std::{
     cell::OnceCell,
     fs,
@@ -130,8 +125,6 @@ impl Audit {
         meta.insert("runtime".into(), json!(launch.runtime));
         meta.insert("data_dirs".into(), json!(data_dirs));
         meta.insert("binary".into(), json!(BINARY));
-        // The runner's own places: the shared shader cache, the logs it reads,
-        // the PATH folders GIO looks programs up in, and the test volume monitor's file.
         meta.insert("harness".into(), json!(harness));
         meta.insert("started".into(), json!(now()));
         meta.insert("ready".into(), Value::Null);

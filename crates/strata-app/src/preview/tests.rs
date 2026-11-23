@@ -261,8 +261,6 @@ fn right_enters_preview_in_columns_and_stays_in_icons() {
             press(&mut host, Key::Right, Mods::default());
             assert_eq!(focused_key(&mut host).as_deref(), Some("preview-code"));
 
-            // In default mode, Space inside the preview body keeps the drawer open; Escape closes
-            // it and returns focus to the listing (`tenxer-l-enters-preview`).
             space(&mut host);
             assert!(host.app().preview.enabled);
             press(&mut host, Key::Escape, Mods::default());
@@ -640,9 +638,6 @@ fn assert_blank_preview_click_and_marquee(host: &mut Offscreen) {
     while host.turn() {}
 }
 
-/// 10xer's J and K scroll the open text preview a line from the listing, where the keyboard
-/// stays, and from inside it, where `g g` goes to its top (`scroll_open_preview`,
-/// `preview_to_top`).
 #[test]
 fn tenxer_shift_j_and_k_scroll_the_open_preview_from_the_listing() {
     hosted(
@@ -711,8 +706,6 @@ fn columns_divider_and_active_header_yield_to_preview_drawer() {
             let nested = folder.path().join("archive").join("note.txt");
             std::fs::write(&nested, "hello preview\n").expect("write note.txt");
 
-            // Open a child column so we exercise both a between-column divider and the
-            // rightmost column beside the preview drawer.
             select(&mut host, &archive);
             focus_view(&mut host);
             press(&mut host, Key::Right, Mods::default());
@@ -749,8 +742,6 @@ fn columns_divider_and_active_header_yield_to_preview_drawer() {
                 "preview header is unfocused while columns hold focus"
             );
 
-            // Entering the preview moves the top focus bar and active header fill off the active
-            // Miller column and onto the preview header while keeping the preview body on bg_base.
             press(&mut host, Key::Right, Mods::default());
             while host.turn() {}
             assert_eq!(focused_key(&mut host).as_deref(), Some("preview-code"));
@@ -795,8 +786,6 @@ fn columns_divider_and_active_header_yield_to_preview_drawer() {
                 "preview drawer does not repaint bg_base over preview-slot"
             );
 
-            // Returning focus to files restores the active column's top focus bar and clears the
-            // preview header's focused highlight.
             press(&mut host, Key::Left, Mods::default());
             while host.turn() {}
             assert_eq!(focused_key(&mut host).as_deref(), Some("columns"));
@@ -841,8 +830,6 @@ fn columns_header_buttons_stay_non_focusable_across_tenxer_toggle() {
             }));
             while host.turn() {}
 
-            // Focus the columns strip via keyboard focus (as Tab or dialog dismissal does)
-            // and toggle 10xer mode on and off so all column header buttons unmount and remount.
             host.runtime().update(|app, tx| {
                 tx.focus(crate::columns::VIEW, true);
                 shell::saved(app).change(|settings| settings.tenxer_mode = true);
@@ -906,9 +893,6 @@ fn handled_shortcut_leaving_focused_preview_restores_active_column_indicator() {
             assert!(super::owns_focus(host.app()));
             assert!(!has_element_key(&mut host, &indicator));
 
-            // A handled shortcut that moves focus out of the preview (Ctrl+L -> location bar)
-            // must schedule an immediate wake so owns_focus clears and the active column indicator
-            // returns on the next tick with no extra user events.
             let ctrl = Mods {
                 ctrl: true,
                 ..Mods::default()

@@ -1,7 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! GTK's cases for the search roots, from `src/ui/window/devices/tests.rs`.
-
 use strata_fs::adapters::{MountTable, mount_watch};
 
 use super::*;

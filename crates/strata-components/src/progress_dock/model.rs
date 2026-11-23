@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! [`Dock`]: the operations, notices and timers the dock and the progress dialog show. The
-//! host holds it and feeds it data; the views read it.
-
 use std::time::Duration;
 
 use rune::{Live, LiveText, Tween, Tx};
@@ -16,19 +13,13 @@ use super::words::Words;
 /// An operation's id, the host's: stable while the operation shows.
 pub type OpId = u64;
 
-/// The most often committed text and accessibility values change while operations run
-/// (seconds between commits). The bars and live labels follow every sample.
 pub const COMMIT_EVERY: f64 = 0.25;
 
-/// How long after Cancel a transfer that hasn't stopped reads "Device not responding" (Strata's
-/// `STALLED_CANCEL_DELAY`).
 pub const STALL_AFTER: f64 = 8.0;
 
 /// How long a notice shows by default (Strata's provider notices: about 4 s).
 pub const NOTICE_FOR: f64 = 4.0;
 
-/// An operation on fewer than this many items waits [`REVEAL_DELAY`] before it shows (Strata's
-/// `IMMEDIATE_PROGRESS_ITEM_COUNT`).
 pub const IMMEDIATE_ITEMS: usize = 16;
 
 /// The wait before a small operation shows (Strata's `FILE_PROGRESS_DELAY`).
@@ -36,8 +27,6 @@ pub const REVEAL_DELAY: f64 = 0.35;
 
 const EPS: f64 = 1e-6;
 
-/// Strata's rule for when an operation's progress shows: at once for 16 or more items or an
-/// unknown count, otherwise after 350 ms, and never if it finishes first.
 pub fn reveal_after(total_items: Option<usize>) -> f64 {
     match total_items {
         Some(n) if n > 0 && n < IMMEDIATE_ITEMS => REVEAL_DELAY,
@@ -68,8 +57,6 @@ pub enum Progress {
     Unknown,
 }
 
-/// A transfer's progress. `total_files` and `total_bytes` are `None` until the transfer has
-/// counted them.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Transfer {
     pub completed_items: usize,
@@ -86,8 +73,6 @@ pub struct Sample {
     pub progress: Progress,
     /// The file being worked on, which a card shows in place of its info line.
     pub current: Option<String>,
-    /// The card footer's left label for an operation that isn't a transfer: a compression's
-    /// "1 / 2 files", a delete's "270,325 items deleted", "Stopping…". Empty for a delete.
     pub status: Option<String>,
     /// Pulses the bar and shows this in place of the speed: "Writing to device…".
     pub busy: Option<String>,
@@ -177,8 +162,6 @@ pub(crate) enum Phase {
     Ended { kind: EndKind, countdown: Countdown },
 }
 
-/// What the views read, refreshed at most every [`COMMIT_EVERY`] while an operation runs,
-/// and at once when its phase changes.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Shown {
     pub icon: Option<IconName>,
@@ -277,10 +260,6 @@ pub struct Op {
     pub(crate) countdown_bar: Option<Tween<[f32; 4]>>,
     /// The fade before the card goes.
     pub(crate) fade: Option<Tween<f32>>,
-    /// The pointer is over the card, in every phase: Rune reports a hover only when it
-    /// changes, so a card that ends under a resting pointer hears no new enter and starts
-    /// its countdown paused from this (Strata's `completion.rs` tracks motion enter
-    /// throughout).
     hovered: bool,
 }
 
@@ -299,11 +278,7 @@ impl std::fmt::Debug for Op {
 pub struct Notice {
     pub heading: Option<String>,
     pub text: String,
-    /// A success check before the text; off for a status notice ("Text size: 16px"), which
-    /// has no minimum width either.
     pub check: bool,
-    /// Joins the dock and leaves the notices showing in place (a transfer report); otherwise
-    /// it replaces them.
     pub joins: bool,
     /// Seconds it shows.
     pub shown_for: f64,
@@ -355,21 +330,11 @@ pub struct DockNotice {
 /// What the dock asks the host to do.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DockIntent {
-    /// Cancel this operation. Its card already reads "Cancelling…" with X disabled. When the
-    /// operation has stopped, the host removes the card ([`Dock::remove`]) and opens its
-    /// "Operation cancelled" dialog (Strata), or turns it into a notice
-    /// ([`Dock::close_as_notice`]).
     Cancel(OpId),
     /// The user dismissed this finished card (Complete or X). It is already gone.
     Dismissed(OpId),
 }
 
-/// The operations and notices the dock and the progress dialog show, and their timers.
-///
-/// The host holds it and passes it by accessor. Every timer runs from [`Dock::tick`], called
-/// from the host's poll with its clock: it stamps what handlers started, ends what is due,
-/// flushes held commits and asks for a wake when the next thing is due, so a resting window
-/// polls only then. Calls that start a timer ask for a wake so the next tick comes.
 #[derive(Debug, Default)]
 pub struct Dock {
     pub(crate) ops: Vec<Op>,
@@ -379,8 +344,6 @@ pub struct Dock {
     words: Words,
     /// The animations setting is off (so the default, false, has them on).
     still: bool,
-    /// A cancel from a handler without a `Tx` ([`Dock::cancel_untimed`]) waits for the tick
-    /// that stamps it: the views mount a wake beacon with this generation until then.
     beacon: Option<u64>,
     beacons: u64,
     /// When the views last read what the ops show.
@@ -411,8 +374,6 @@ impl Dock {
         !self.still
     }
 
-    /// The animations setting (P5's switch, as data): off, a finished card goes without its
-    /// fade.
     pub fn set_animations(&mut self, on: bool) {
         self.still = !on;
     }
@@ -440,16 +401,12 @@ impl Dock {
         self.notices.iter()
     }
 
-    /// Whether a transfer is cancelling: Strata then refuses to start another file operation
-    /// ("Transfer cancellation pending").
     pub fn cancel_pending(&self) -> bool {
         self.ops
             .iter()
             .any(|o| o.spec.transfer && matches!(o.phase, Phase::Cancelling { .. }))
     }
 
-    /// Starts showing operation `id` (after `spec.reveal_after`). Starting an id that shows
-    /// replaces it.
     pub fn start(&mut self, id: OpId, spec: OpSpec, tx: &mut Tx) {
         self.ops.retain(|o| o.id != id);
         let order = self.take_order();
@@ -480,11 +437,6 @@ impl Dock {
         tx.wake_after(Duration::ZERO);
     }
 
-    /// Takes a progress report for `id` at `now` on the host's clock. The bar and the live
-    /// labels follow at once; what is committed (the file line, the accessibility values)
-    /// follows at most every [`COMMIT_EVERY`], at once when what the card shows changes shape.
-    /// True when the view needs to run again; a held change asks for a wake so it lands even if
-    /// no report follows.
     pub fn progress(&mut self, id: OpId, sample: Sample, now: f64, tx: &mut Tx) -> bool {
         let words = self.words.clone();
         let Some(op) = self.op_mut(id) else {
@@ -526,17 +478,10 @@ impl Dock {
         false
     }
 
-    /// Operation `id` finished: its card reads `title` ("Copy complete") with a check, 100 %
-    /// and Complete, and closes itself after [`COMPLETE_FOR`]. A dialog operation just goes.
-    /// False when it never showed (it ended before its reveal): it is gone, and nothing shows.
-    /// A card that has already ended keeps its ending: a second one is ignored.
     pub fn complete(&mut self, id: OpId, title: impl Into<String>, tx: &mut Tx) -> bool {
         self.end(id, EndKind::Complete, title.into(), None, COMPLETE_FOR, tx)
     }
 
-    /// Operation `id` stopped, and its card turns into a notice that reads `title` and `text`
-    /// and closes itself after `shown_for` seconds (the WP's cancel path; Strata's is
-    /// [`Dock::remove`] and a dialog). False when it never showed.
     pub fn close_as_notice(
         &mut self,
         id: OpId,
@@ -574,8 +519,6 @@ impl Dock {
             return false;
         }
         if matches!(op.phase, Phase::Ended { .. }) {
-            // Already finished: a second ending changes nothing, as Strata's `complete` ignores
-            // a card already completed.
             return true;
         }
         op.title = title;
@@ -602,8 +545,6 @@ impl Dock {
         true
     }
 
-    /// Removes operation `id` at once: Strata's cancel and failure paths, where the host opens
-    /// a dialog instead.
     pub fn remove(&mut self, id: OpId) {
         self.ops.retain(|o| o.id != id);
     }
@@ -626,9 +567,6 @@ impl Dock {
         id
     }
 
-    /// The user pressed a running card's X, or the dialog's Cancel: the card reads
-    /// "Cancelling…" with Cancel disabled. True when that started a cancel (the caller then
-    /// sends [`DockIntent::Cancel`]); a second press does nothing.
     pub fn cancel(&mut self, id: OpId, tx: &mut Tx) -> bool {
         let words = self.words.clone();
         let Some(op) = self.op_mut(id) else {
@@ -652,11 +590,6 @@ impl Dock {
         true
     }
 
-    /// [`Dock::cancel`] from a handler without a `Tx` (C15's buttons and Escape). Rune runs no
-    /// poll on its own after the commit the cancel makes, so nothing would bring the tick that
-    /// starts the stall's clock: until that tick the views mount a wake beacon
-    /// ([`Dock::wants_wake`]), a zero-size element whose `on_layout_tx` (the one place a view
-    /// gets a `Tx`) asks for a wake when the commit lays it out.
     pub fn cancel_untimed(&mut self, id: OpId) -> bool {
         let started = self.cancel(id, &mut Tx::default());
         if started {
@@ -666,8 +599,6 @@ impl Dock {
         started
     }
 
-    /// The wake beacon's generation while one is due ([`Dock::cancel_untimed`]); a new
-    /// generation mounts a new beacon, whose first layout asks for the wake.
     pub fn wants_wake(&self) -> Option<u64> {
         self.beacon
     }
@@ -683,9 +614,6 @@ impl Dock {
         ended
     }
 
-    /// The pointer moved onto or off card `id`, in any phase: a finished card's countdown
-    /// pauses, and a card that finishes under the pointer starts paused. True when a
-    /// countdown changed.
     pub fn hover(&mut self, id: OpId, hovered: bool, tx: &mut Tx) -> bool {
         let Some(op) = self.op_mut(id) else {
             return false;
@@ -713,8 +641,6 @@ impl Dock {
         }
     }
 
-    /// The bar's track laid out at `w` × `h` points. True when the view must run again (the
-    /// first size, or one that restarts a countdown bar); otherwise only live values moved.
     pub fn set_track(&mut self, id: OpId, w: f32, h: f32) -> bool {
         let Some(op) = self.op_mut(id) else {
             return false;
@@ -740,8 +666,6 @@ impl Dock {
         first || restart
     }
 
-    /// One frame at `now` seconds: reveals, stalls, countdowns, notices and held commits. True
-    /// when the views need to run again. Asks `tx` for a wake when the next thing is due.
     pub fn tick(&mut self, now: f64, tx: &mut Tx) -> bool {
         let words = self.words.clone();
         let animations = !self.still;
@@ -829,8 +753,6 @@ impl Dock {
         changed
     }
 
-    /// The wake the last [`Dock::tick`] (or a held [`Dock::progress`]) asked for, in seconds
-    /// from its clock: `None` when nothing is due, so a resting window sleeps.
     pub fn asked_wake(&self) -> Option<f64> {
         self.asked
     }
@@ -957,8 +879,6 @@ impl Op {
         }
     }
 
-    /// The label words this sample gives, Strata's `transfer_progress_status` and
-    /// `sync_compact`.
     fn labels(&self, words: &Words) -> Labels {
         let mut out = Labels::default();
         let percent_of = |f: f64, started: bool| (words.percent)(format::whole_percent(f, started));
@@ -1127,8 +1047,6 @@ struct Labels {
     bytes: String,
 }
 
-/// The count a transfer shows: files once their total is known, else items; `None` while
-/// it still prepares (Strata's `transfer_count`). The flag is true for files.
 fn transfer_count(t: &Transfer) -> Option<(usize, usize, bool)> {
     match t.total_files.filter(|&n| n > 0) {
         Some(total) => Some((t.completed_files, total, true)),
@@ -1136,8 +1054,6 @@ fn transfer_count(t: &Transfer) -> Option<(usize, usize, bool)> {
     }
 }
 
-/// A transfer's fraction (Strata's `transfer_fraction_status`): by bytes once their total is
-/// known, by items for a tree of empty files, `None` (pulsing) before either.
 fn transfer_fraction(t: &Transfer) -> Option<f64> {
     match t.total_bytes {
         Some(0) if t.total_items > 0 => {
@@ -1160,8 +1076,6 @@ fn transfer_status(t: &Transfer, words: &Words) -> (String, Option<f64>) {
     (status, fraction)
 }
 
-/// The speed with the time left: "Calculating speed…" until a rate is measured (Strata's
-/// `transfer_rate_status`).
 fn rate_status(rate: Option<f64>, bytes: u64, total: Option<u64>, words: &Words) -> String {
     let Some(r) = rate.filter(|r| r.is_finite() && *r > 0.0) else {
         return words.calculating_speed.clone();

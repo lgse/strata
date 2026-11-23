@@ -82,8 +82,6 @@ impl File {
         Ok(role)
     }
 
-    /// An SMB client opens one name of a file at a time, so a later name
-    /// of a linked file is never opened there, and the others take turns.
     fn open_source(
         &self,
         tree: &Tree,
@@ -178,8 +176,6 @@ impl File {
         }
     }
 
-    /// Takes `fd`, so a failed file is closed before it is removed: NFS
-    /// renames an open file aside instead.
     fn write(
         &self,
         (copy, data): (&Copy, &mut Data),

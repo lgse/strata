@@ -29,9 +29,6 @@ fn loading() -> Option<(String, bool)> {
     Some(("Loading".to_owned(), false))
 }
 
-/// A folder being read says nothing for GTK's grace period, then "Loading", and nothing is
-/// drawn either way; once read empty, it says so and draws it. The poll asks the view to run
-/// for the announcement only, which the clock alone brings.
 #[test]
 fn a_read_is_announced_only_once_it_outlasts_the_grace_period() {
     let mut surface = Surface::translated();
@@ -56,8 +53,6 @@ fn a_read_is_announced_only_once_it_outlasts_the_grace_period() {
     assert_eq!(read(&surface, 0, &listing), Some(empty));
 }
 
-/// A read that ends within the grace period is never announced, and the next folder's read
-/// waits out a grace period of its own.
 #[test]
 fn a_quick_read_is_never_announced_and_each_folder_waits_its_own() {
     let mut surface = Surface::translated();
@@ -75,8 +70,6 @@ fn a_quick_read_is_never_announced_and_each_folder_waits_its_own() {
     assert!(surface.watch(one(&second), 2.0 + grace, &mut tx));
 }
 
-/// Columns each wait out their own read: a column opened later is still quiet when an
-/// earlier one is announced, and a column the view no longer has leaves nothing behind.
 #[test]
 fn each_column_waits_out_its_own_read_and_a_closed_one_is_forgotten() {
     let mut surface = Surface::translated();
@@ -95,8 +88,6 @@ fn each_column_waits_out_its_own_read_and_a_closed_one_is_forgotten() {
     assert_eq!(surface.readings.len(), 1);
 }
 
-/// A folder of the same name in another place, opened where the first was, waits out a
-/// grace period of its own: the reading is the folder's, not its name's.
 #[test]
 fn another_folder_of_the_same_name_in_the_same_place_restarts_the_grace_period() {
     let mut surface = Surface::translated();
@@ -115,8 +106,6 @@ fn another_folder_of_the_same_name_in_the_same_place_restarts_the_grace_period()
     assert_eq!(read(&surface, 0, &second), loading());
 }
 
-/// A folder that could not be read says so over the browser's reason, drawn, as GTK's
-/// status page does (`show_load_error`), and not as the bare reason.
 #[test]
 fn an_unreadable_folder_says_so_over_the_browsers_reason() {
     let surface = Surface::translated();

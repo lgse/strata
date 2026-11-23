@@ -358,8 +358,6 @@ pub(super) fn run_peaks(input: &Path, output: &Path) -> Result<(), String> {
     result.map_err(|error| error.to_string())
 }
 
-/// One software keyframe decode per cell, each an input seek, so the cost
-/// scales with the cell count rather than the file length.
 pub(super) fn run_storyboard(input: &Path, output: &Path, cell_edge: u32) -> Result<(), String> {
     use media::storyboard::{self, Sheet};
 

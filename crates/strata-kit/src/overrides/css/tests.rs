@@ -163,9 +163,6 @@ fn every_rule_names_a_registry_token_of_its_kind() {
     }
 }
 
-/// Strata's own rules for these selectors (`src/style.css` at lgse/strata 35ee677ab, lines
-/// 5061–5079 and 2373–2389). The two that convert set their slots to the slots' defaults, so
-/// those rows are one-to-one; the rest are listed.
 const STRATA_RULES: &str = ".file-list row,
 .file-list-mode row,
 .preview-archive-list row {
@@ -266,8 +263,6 @@ fn rules_whose_token_reaches_further_than_the_selector_dont_convert() {
     );
 }
 
-/// Should-fix 5: in CSS the later declaration wins, so when it doesn't convert, the earlier
-/// one mustn't either; both are listed.
 #[test]
 fn a_later_declaration_that_doesnt_convert_drops_the_earlier_row() {
     for css in [
@@ -290,8 +285,6 @@ fn a_later_declaration_that_doesnt_convert_drops_the_earlier_row() {
     }
 }
 
-/// Should-fix 4: locations are found incrementally. Strata's own 7,639-line stylesheet took
-/// 0.71 s; this is a generous bound for a debug build.
 #[test]
 fn a_large_stylesheet_migrates_quickly() {
     let css: String = (0..20_000)

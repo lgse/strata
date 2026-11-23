@@ -31,9 +31,6 @@ fn keyboard_rows() -> Vec<String> {
     SHORTCUTS.iter().map(|(k, ..)| k.to_string()).collect()
 }
 
-/// `settings/preferences`, Settings search: each query bullet over Strata's own index. Each
-/// case is (bullet, queries, the page it opens or `None` for any, rows it shows, rows it
-/// hides).
 #[test]
 fn strata_queries_open_their_page_and_show_their_rows() {
     let index = fixture::index();
@@ -300,9 +297,6 @@ fn strata_queries_open_their_page_and_show_their_rows() {
     }
 }
 
-/// "Searching \"keybindings\" opens General at Show F1 Shortcuts button and also lists every
-/// Keyboard row", and "Searching \"hotkeys\", \"keymap\", \"rebind\", or \"remap\" opens
-/// Keyboard with every row listed".
 #[test]
 fn a_query_for_the_keyboard_page_lists_every_keyboard_row() {
     let index = fixture::index();
@@ -320,8 +314,6 @@ fn a_query_for_the_keyboard_page_lists_every_keyboard_row() {
     }
 }
 
-/// "In a `STRATA_UPDATER=disabled` build, searching \"release channel\" or \"check for
-/// updates\" shows \"No settings match your search.\"; no query finds an Updates row."
 #[test]
 fn a_page_left_out_of_the_index_is_never_found() {
     let index = fixture::index_without(&["updates"]);
@@ -331,8 +323,6 @@ fn a_page_left_out_of_the_index_is_never_found() {
     }
 }
 
-/// The left-out rule holds for group members too: a member whose page (or group's page) the
-/// index leaves out never shows, so the count and the no-results view agree with the page.
 #[test]
 fn a_member_on_a_left_out_page_is_never_found() {
     let index = SearchIndex {
@@ -353,8 +343,6 @@ fn a_member_on_a_left_out_page_is_never_found() {
     assert!(st.no_results());
 }
 
-/// "A query with no match shows \"No settings match your search.\"" and the 128-character
-/// limit; an empty query, or one of spaces, filters nothing.
 #[test]
 fn no_match_a_long_query_and_an_empty_one() {
     let index = fixture::index();
@@ -403,8 +391,6 @@ fn translated(rows: Vec<IndexRow>) -> SearchIndex {
     }
 }
 
-/// "Queries also match a row's translated title and the current language's keywords" (with
-/// Strata's "Miniaturansichten" under Deutsch), and the English title still counts.
 #[test]
 fn the_translated_title_the_english_one_and_the_keywords_all_find_a_row() {
     let index = translated(vec![
@@ -417,8 +403,6 @@ fn the_translated_title_the_english_one_and_the_keywords_all_find_a_row() {
     }
 }
 
-/// The Han and kana bullets: a run of two or more such characters matches inside a word; one
-/// doesn't; a query may run across the spaces a title puts around Latin words.
 #[test]
 fn chinese_and_japanese_queries_match_inside_words() {
     let index = translated(vec![
@@ -436,8 +420,6 @@ fn chinese_and_japanese_queries_match_inside_words() {
         "one kana doesn't match inside a word"
     );
     assert_eq!(find(&index, "Omarchy主题变体").1, ["omarchy-variant"]);
-    // Strata's typo rule finds the other variant too: "omarchy變體" is two edits from the
-    // title word "omarchy".
     assert!(
         find(&index, "Omarchy變體")
             .1
@@ -467,10 +449,6 @@ fn matched_text_marks_whole_words_prefixes_and_han_runs_in_the_shown_title() {
     assert_eq!(title_ranges("Drag & drop", "drop"), [7..11]);
 }
 
-/// The marks follow the matcher's own normalisation (`normalized`): the whole title lowercased
-/// (a final Σ is ς) and split after lowercasing (İ lowers to i and a combining dot, which
-/// splits), with the shown title's words joined as the matcher joins them. A range never
-/// splits a character.
 #[test]
 fn matched_text_follows_the_matchers_lowercasing() {
     let cases: [(&str, &str, &[std::ops::Range<usize>]); 6] = [
@@ -499,8 +477,6 @@ fn matched_text_follows_the_matchers_lowercasing() {
     assert!(wrong.is_empty(), "marked wrongly: {wrong:?}");
 }
 
-/// "Typing in Search settings ... opens the best-matching page"; clearing a query with no
-/// match goes back to the first page; a new query drops a jump's highlight.
 #[test]
 fn a_new_query_opens_its_best_page_and_clearing_no_results_goes_to_the_first() {
     let index = fixture::index();
@@ -561,8 +537,6 @@ fn a_new_index_revision_refilters_without_opening_a_page() {
     );
 }
 
-/// Strata's title bonus: a query equal to a title outranks one inside a title, which
-/// outranks the same words matched separately, whatever the index order.
 #[test]
 fn a_whole_title_match_ranks_first() {
     let index = SearchIndex {
@@ -609,8 +583,6 @@ fn search() -> SettingsSearch<Host> {
     .on_navigate(|h: &mut Host, to, _| h.went.push((to.page, to.row)))
 }
 
-/// Strata's `heading_shown`: a heading shows while a row under it does, and always when no
-/// indexed row is under it; navigation lists pages with a shown row.
 #[test]
 fn headings_and_pages_follow_the_rows_under_them() {
     let mut h = Host {
@@ -648,8 +620,6 @@ fn headings_and_pages_follow_the_rows_under_them() {
     );
 }
 
-/// Enter reads the index as it is now: one the host changed since the last tick is searched
-/// first, so the jump never follows a stale row position.
 #[test]
 fn enter_searches_a_changed_index_before_it_jumps() {
     let mut tx = rune::Tx::default();

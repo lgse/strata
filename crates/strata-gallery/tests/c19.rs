@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! C19's page in process: what the accessibility tree a script ends on doesn't show (scroll
-//! offsets, the window losing focus, input-method text) and the large key map's cost. Each test
-//! names the bullets it covers; the scripts in `tests/scripts/c19/` check the rest.
-
 mod c19 {
     use std::time::Instant;
 
@@ -85,9 +81,6 @@ mod c19 {
             .count()
     }
 
-    /// `app/shortcut-reference`: "In the results, arrows, j/k, Page Up, Page Down, Home, and End
-    /// scroll the list" and "With the search field focused, Up, Down, Page Up, and Page Down
-    /// scroll the results without moving focus".
     #[test]
     fn the_results_keys_scroll_the_list_and_the_search_field_scrolls_it_in_place() {
         let mut rt = mount("c19-reference-light");
@@ -125,8 +118,6 @@ mod c19 {
         assert_eq!(focused(&rt).as_deref(), Some(RESULTS));
     }
 
-    /// `app/shortcut-reference`: "Opening the reference focuses … and scrolls the list to the
-    /// top" and "Reopening the reference keeps the previous search text and selected category".
     #[test]
     fn reopening_scrolls_the_results_to_the_top_and_keeps_the_query() {
         let mut rt = mount("c19-reference-light");
@@ -144,9 +135,6 @@ mod c19 {
         assert_eq!(rt.state.c19.reference.query(), "e");
     }
 
-    /// `app/shortcut-reference`: "Focusing another application window leaves the reference
-    /// open with its search text, category, and scroll position" (scripts have no window-focus
-    /// event: Rune draft U-X1-1).
     #[test]
     fn the_window_losing_focus_leaves_the_reference_as_it_was() {
         let mut rt = mount("c19-reference-light");
@@ -170,8 +158,6 @@ mod c19 {
         assert_eq!(offset(&rt), at, "the scroll position stays");
     }
 
-    /// `app/shortcut-reference`: "With fcitx5 … Chinese can be typed there" (the input method's
-    /// own switch key is the input method's; scripts have no input-method event, U-C6-7).
     #[test]
     fn an_input_method_types_into_the_search() {
         let mut rt = mount("c19-reference-light");
@@ -183,8 +169,6 @@ mod c19 {
         assert!(rt.state.c19.reference.is_open());
     }
 
-    /// The plan's performance check: with 5,000 rows, a keystroke builds only the rows on
-    /// screen. Timings print with `--nocapture`; they aren't asserted.
     #[test]
     fn a_keystroke_in_a_5000_row_reference_builds_only_the_rows_on_screen() {
         let mut rt = mount("c19-reference-large-light");
@@ -229,8 +213,6 @@ mod c19 {
         }
     }
 
-    /// The review's chords: browsing shortcuts, editing chords with and without Shift, Alt and
-    /// Super chords, function keys.
     fn chords() -> Vec<(&'static str, Key, Mods)> {
         let n = mods(false, false, false, false);
         let c = mods(false, true, false, false);
@@ -310,11 +292,6 @@ mod c19 {
         ]
     }
 
-    /// `app/shortcut-reference`: "While the reference is open, Delete, Ctrl+V, and other
-    /// browsing shortcuts do nothing to files" and "In the reference's search, a Ctrl, Alt, or
-    /// Super chord the field does not use reaches nothing else". Every chord, from the search
-    /// field, the results and the categories: none reaches the page's key hook (which logs any
-    /// that does) while the reference is open.
     #[test]
     fn no_key_reaches_the_window_while_the_reference_is_open() {
         let mut leaks = Vec::new();
@@ -344,9 +321,6 @@ mod c19 {
         );
     }
 
-    /// `app/shortcut-reference`: "With the search field focused, Up, Down, Page Up, and Page
-    /// Down scroll the results" with Shift held too, and in the results Left and Right scroll as
-    /// Up and Down do (Strata's `scroll_motion` and `search_scroll_key` ignore Shift).
     #[test]
     fn shifted_keys_and_left_and_right_scroll_the_results_as_strata_does() {
         let shift = mods(true, false, false, false);
@@ -377,8 +351,6 @@ mod c19 {
         assert_eq!(offset(&rt), 0.0, "Shift+Home the top");
     }
 
-    /// A category whose section goes (new data while open) shows All, and is forgotten: the
-    /// section coming back later doesn't choose it again.
     #[test]
     fn a_vanished_category_is_forgotten() {
         let mut rt = mount("c19-reference-light");
@@ -410,8 +382,6 @@ mod c19 {
         find(&rt.accessibility_json(), key).unwrap_or_else(|| panic!("no {key} in the tree"))
     }
 
-    /// Choosing a category is announced once: the tab says its count, so the announced result
-    /// count stays silent until a query is typed.
     #[test]
     fn a_category_change_is_announced_once() {
         let mut rt = mount("c19-reference-light");
@@ -441,9 +411,6 @@ mod c19 {
         find(&rt.accessibility_json(), key)
     }
 
-    /// The reference sits above everything else in the overlay layer: in the frame its button
-    /// opens it, an armed chord's panel (which the next poll clears) is under the modal, out of
-    /// the accessibility tree, not drawn over the dialog.
     #[test]
     fn the_reference_is_the_top_overlay() {
         let mut rt = mount("c19-tenxer-light");

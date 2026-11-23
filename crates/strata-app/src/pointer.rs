@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Window pointer wiring (A9): middle-click [`Autoscroll`] driving and its [`Shield`] modal
-//! overlay, plus leading-chrome marquee origins (the sidebar's blank scroll area and the
-//! single-pane header bar).
-
 mod marquee;
 #[cfg(test)]
 mod tests;
@@ -19,8 +15,6 @@ use crate::{
 
 pub(crate) use marquee::leading_origin_drag;
 
-/// Per-tab pointer state: an in-flight marquee begun on leading chrome, and the translated
-/// accessible name of the autoscroll shield.
 pub(crate) struct Pointer {
     origin: marquee::OriginState,
     label: String,

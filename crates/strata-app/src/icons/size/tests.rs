@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The tile size on the offscreen host: the window's keys and Ctrl+Shift+wheel step it, a
-//! reset goes back to the size the folder follows, and it is kept as GTK keeps it.
-
 use std::path::{Path, PathBuf};
 
 use rune::{Key, Mods};
@@ -81,8 +78,6 @@ fn opened(host: &mut Offscreen, folder: &Path) {
     open(host, ICONS, folder);
 }
 
-/// While folders' views are not remembered the size is the saved default: each step is
-/// saved, and a reset goes back to GTK's 64 and saves it.
 #[test]
 fn the_window_keys_step_and_reset_the_saved_size() {
     let name = "the_window_keys_step_and_reset_the_saved_size";
@@ -123,9 +118,6 @@ fn ctrl_shift_wheel_steps_the_size() {
     });
 }
 
-/// While folders' views are remembered, a changed size is the folder's own: the default is
-/// left alone, another folder shows the default, the folder shows its size again when it
-/// comes back, `folder-views.toml` holds it, and a reset forgets it.
 #[test]
 fn a_remembered_folder_keeps_its_own_size() {
     let name = "a_remembered_folder_keeps_its_own_size";
@@ -158,8 +150,6 @@ fn a_remembered_folder_keeps_its_own_size() {
     });
 }
 
-/// A folder's size saved by an earlier session, or by another Strata process while this one
-/// runs, is the size it shows.
 #[test]
 fn a_saved_folder_size_is_shown_from_start_and_followed() {
     let name = "a_saved_folder_size_is_shown_from_start_and_followed";
@@ -182,8 +172,6 @@ fn a_saved_folder_size_is_shown_from_start_and_followed() {
     );
 }
 
-/// A folder of the test's own configuration directory, so that start-up can find its saved
-/// size: the fixture is made only once the window is up.
 fn shown() -> PathBuf {
     strata_core::storage::config_directory().join("shown")
 }

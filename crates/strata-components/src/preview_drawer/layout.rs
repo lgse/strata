@@ -1,20 +1,9 @@
 // SPDX-License-Identifier: MIT
 
-//! The width rules: where the drawer's slot ends up in the split, solved from the split's
-//! width, the view beside it and the manual width. `docs/preview-panel-layout.md` in Strata
-//! (at the plan's watermark) is the source of every number here.
-
-/// The drawer's width rules, in points. [`DrawerRules::STRATA`] is Strata's set; a host may
-/// pass its own (the chooser uses the same set).
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[non_exhaustive]
 pub struct DrawerRules {
-    /// The preview's content hides when less than this would remain beside the focused
-    /// column (Strata's `MIN_SPLIT_PREVIEW_WIDTH`). It is also the narrowest the content box
-    /// is ever laid out at.
     pub hide_below: f32,
-    /// The least manual width: one standard column. In Columns the larger of this and
-    /// [`ColumnsFit::standard_column`] is the floor.
     pub manual_min: f32,
     /// The least automatic width in Icons and List (Strata's `MIN_WIDTH`).
     pub auto_min: f32,
@@ -24,16 +13,11 @@ pub struct DrawerRules {
     pub auto_share: f32,
     /// What Icons and List keep for the files beside the preview: one standard column.
     pub files_min: f32,
-    /// One standard column: the Columns minimum, unless C2 reports another
-    /// ([`ColumnsFit::standard_column`]).
     pub standard_column: f32,
     /// The divider's line.
     pub line: f32,
     /// The grip inside the preview's leading edge that moves the divider.
     pub grip: f32,
-    /// One keyboard or assistive step of the divider. Page Up and Page Down move ten. An
-    /// assumption: Strata leaves the step to GtkPaned, and this hasn't been measured against
-    /// it.
     pub step: f32,
 }
 
@@ -70,8 +54,6 @@ pub enum Arrangement {
     List,
 }
 
-/// What C2 reports about its strip each frame, in points. Grows by addition: build it with
-/// [`ColumnsFit::new`] and the setters.
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[non_exhaustive]
 pub struct ColumnsFit {
@@ -79,8 +61,6 @@ pub struct ColumnsFit {
     pub navigated: f32,
     /// The least width of the files side that keeps the focused column fully visible.
     pub keep_focused: f32,
-    /// [`Self::keep_focused`] with the focused column counted at most one standard column:
-    /// what the narrow-window test leaves beside the preview.
     pub keep_focused_standard: f32,
     /// Trailing columns the empty slot lends its width to (a focused folder's child column).
     pub trailing: f32,
@@ -89,8 +69,6 @@ pub struct ColumnsFit {
 }
 
 impl ColumnsFit {
-    /// A strip whose navigated columns take `navigated` and whose focused column stays
-    /// visible in `keep_focused`. No trailing columns; the rules' standard column.
     pub fn new(rules: &DrawerRules, navigated: f32, keep_focused: f32) -> Self {
         ColumnsFit {
             navigated,
@@ -120,22 +98,14 @@ impl ColumnsFit {
 pub struct Solved {
     /// The preview's width while it shows: the automatic or manual width, within its range.
     pub width: f32,
-    /// The width the content box is laid out at: [`Self::width`], never below
-    /// [`DrawerRules::hide_below`]. The slot clips it.
     pub pane: f32,
-    /// The empty reserved slot's width in Columns: the width and the divider's line, as the
-    /// slot takes with the preview, less the trailing columns it lends, down to 0.
     pub empty_slot: f32,
-    /// Whether the content fits beside the focused column. False is the narrow-window rule:
-    /// the content hides, and the host pauses media and defers loading.
     pub fits: bool,
     /// The divider's range: the least manual width and the widest the files allow.
     pub min: f32,
     pub max: f32,
 }
 
-/// The widths for a split `available` points wide, beside `arrangement`, with an optional
-/// manual width. Pure, so C2 and the host can ask the same question the drawer does.
 pub fn solve(
     rules: &DrawerRules,
     arrangement: &Arrangement,
@@ -160,8 +130,6 @@ pub fn solve(
         ),
     };
     let max = (room - keep).max(0.0);
-    // The least manual width: one standard column. In Columns, C2's standard column counts
-    // too, and the larger of the two wins.
     let manual_floor =
         columns_min.map_or(rules.manual_min, |standard| standard.max(rules.manual_min));
     let floor = match (manual, columns_min) {
@@ -172,8 +140,6 @@ pub fn solve(
     let min = floor.min(max);
     let free = (room - occupied).max(0.0);
     let desired = match columns_min {
-        // A manual width in Columns is the session's minimum: the preview still fills wider
-        // free space, so no gap opens beside the focused column.
         Some(_) => manual.map_or(free, |m| free.max(m)),
         None => manual.unwrap_or_else(|| free.min(rules.auto_max)),
     };
@@ -181,8 +147,6 @@ pub fn solve(
     Solved {
         width,
         pane: width.max(rules.hide_below),
-        // The slot with the preview is the divider's line and the pane, so the empty one is
-        // too: dismissing the preview moves nothing.
         empty_slot: if width > 0.0 {
             (width + rules.line - trailing).max(0.0)
         } else {
@@ -194,10 +158,6 @@ pub fn solve(
     }
 }
 
-/// The right pane in Columns, for C2: how wide the space right of the navigated columns is,
-/// whether the preview shows in it, and what the empty slot keeps once trailing columns have
-/// borrowed their width. A trailing child column is clipped at the right edge when it is
-/// wider than the pane.
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[non_exhaustive]
 pub struct RightPane {

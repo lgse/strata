@@ -53,8 +53,6 @@ pub type ArchiveLister = fn(
 
 static ARCHIVE_LISTER: std::sync::OnceLock<ArchiveLister> = std::sync::OnceLock::new();
 
-/// The archive readers live with the file operations, above the helper, so the process that
-/// runs the helper installs them before its first `archive-list` request.
 pub fn install_archive_lister(lister: ArchiveLister) {
     let _ = ARCHIVE_LISTER.set(lister);
 }

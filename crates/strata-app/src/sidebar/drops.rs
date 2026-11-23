@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Sidebar file drops, Trash drops, `PINNED` gap validation and insertion, spring-loaded folder
-//! opening, and sidebar-row tab-opening drags (`src/ui/window/sidebar_file_drop.rs`,
-//! `sidebar_trash.rs`, `pinned_drop.rs`, `sidebar_pins.rs`).
-
 use std::{collections::HashSet, time::Duration};
 
 use rune::{Mods, Tx};
@@ -118,8 +114,6 @@ pub(super) fn pin_drop(app: &mut App, gap: Gap, dropped: Dropped, _tx: &mut Tx) 
     }
 }
 
-/// The folders a drop pins when they are known already: a local drag's, or a foreign drag's
-/// its hover checked (`Some(None)` when they were refused). `None` when they are still to check.
 fn known_pin_folders(app: &App, dropped: &Dropped) -> Option<Option<Vec<(Location, String)>>> {
     if dropped.offer.local {
         return Some(dnd::local_pin_folders(app).map(<[(Location, String)]>::to_vec));
@@ -231,9 +225,6 @@ pub(super) fn row_drag_end(app: &mut App, dropped_outside: Option<[f32; 2]>, tx:
     dnd::sidebar_drag_end(app, dropped_outside, tx);
 }
 
-/// Spring-loaded opening of a hovered sidebar place/pin row (`spring_navigation` in
-/// `src/ui/window/sidebar_file_drop.rs`): navigates without selecting the first item and keeps
-/// keyboard focus on the hovered sidebar row.
 pub(crate) fn spring_open(app: &mut App, item: &ItemId, tx: &mut Tx) {
     let Some(row) = app.sidebar.location_of(item).cloned() else {
         return;

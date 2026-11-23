@@ -27,8 +27,6 @@ fn candidate(visible: [f32; 4], opacity: f32) -> Candidate<'static> {
     }
 }
 
-/// A button a user could press is presented with its drawn box; one scrolled wholly out of
-/// its viewport, or drawn at no opacity, is not.
 #[test]
 fn only_a_button_in_view_and_drawn_is_presented() {
     let in_view = candidate([10.0, 4.0, 60.0, 24.0], 1.0).button();
@@ -44,8 +42,6 @@ fn only_a_button_in_view_and_drawn_is_presented() {
     assert_eq!(transparent, None, "a button drawn at no opacity");
 }
 
-/// A column's pane, named for its folder, with its list and a header button inside, and a
-/// button outside it, as a sidebar's beside a column scrolled out of the strip.
 fn panes_and_buttons(_: &App, _: &mut Frame<'_, App>) -> Option<El> {
     let button = |key: &str| el().key(key).role("button").label(key).w(20.0).h(20.0);
     let pane = el()
@@ -80,9 +76,6 @@ fn made_parts() -> Vec<Entry<App>> {
     view_entries(panes_and_buttons)
 }
 
-/// A button belongs to the column whose pane is among its ancestors, whatever the boxes say: a
-/// column scrolled out of the strip keeps its full box, over the sidebar for one, and a button
-/// drawn there stays outside it.
 #[test]
 fn a_button_belongs_to_the_column_its_pane_holds_in_the_element_tree() {
     let name = "a_button_belongs_to_the_column_its_pane_holds_in_the_element_tree";

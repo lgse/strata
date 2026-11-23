@@ -8,8 +8,6 @@ use crate::transfer::{SourceSpec, Writer, mime};
 
 use super::files::Files;
 
-/// The names text goes by: `text/plain;charset=utf-8` and `text/plain` for Wayland and newer
-/// X11 apps, `UTF8_STRING` for X11 ones, and ICCCM's `TEXT` and `STRING` (ISO Latin-1).
 pub const TEXT_TYPES: &[&str] = &[
     mime::TEXT_UTF8,
     "UTF8_STRING",
@@ -21,19 +19,6 @@ pub const TEXT_TYPES: &[&str] = &[
 /// How long the app's exit waits for a clipboard manager to take a copy, by default (X11).
 pub const KEEP_AFTER_EXIT: Duration = Duration::from_secs(2);
 
-/// What a copy offers: MIME types (or X11 target names), in order, each with its bytes or a
-/// lazy writer. A type offered twice keeps its first data.
-///
-/// A lazy writer runs on a worker thread when an app first asks for its type, at most once
-/// per copy; its bytes are kept for the copy's life (Nautilus asks six times for one paste).
-/// It may run late, or never, and it can't see the app's state: give it what it needs.
-///
-/// ```ignore
-/// Content::new()
-///     .files(&Files::from_paths(&selected, cut))
-///     .text(&paths_as_text)
-///     .lazy("image/png", move || encode_png(&pixels))
-/// ```
 #[derive(Clone)]
 pub struct Content {
     spec: SourceSpec,
@@ -57,11 +42,6 @@ impl Content {
         }
     }
 
-    /// Adds `mime` with bytes at hand. An X11 target that names a request, not a data type
-    /// (`TARGETS`, `SAVE_TARGETS`, `DELETE`…), can't be offered: [`Clipboard::copy`] of such a
-    /// content is refused.
-    ///
-    /// [`Clipboard::copy`]: super::Clipboard::copy
     pub fn with(self, mime: impl Into<String>, bytes: impl Into<Vec<u8>>) -> Self {
         let bytes = bytes.into();
         self.add(mime.into(), Writer::bytes(bytes))
@@ -85,8 +65,6 @@ impl Content {
         self
     }
 
-    /// Adds text under every name in [`TEXT_TYPES`]. `TEXT` and `STRING` are ISO Latin-1, so
-    /// they are offered only when the text fits it.
     pub fn text(self, text: &str) -> Self {
         let utf8 = text.as_bytes().to_vec();
         let mut c = self
@@ -114,9 +92,6 @@ impl Content {
         files.add_to(self)
     }
 
-    /// How long the app's exit waits for a clipboard manager to take this copy, every type of
-    /// it, when it still holds the clipboard then (X11; see the module docs). `None`: don't
-    /// hand it over, so it goes with the app. [`KEEP_AFTER_EXIT`] by default.
     pub fn keep_after_exit(mut self, wait: Option<Duration>) -> Self {
         self.keep = wait;
         self

@@ -197,8 +197,6 @@ struct ThreeFolders {
     selected: &'static [&'static str],
     /// The choice for the item that meets one/notes.txt; `None` skips it.
     choice: Option<TransferConflict>,
-    /// Whether the request lists the items as selected instead of as the browser does, the
-    /// ones asked about last.
     as_selected: bool,
     /// one/ after the paste.
     listed: &'static [(&'static str, &'static str)],

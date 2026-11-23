@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! A page's text layer read into lines, and the geometry selection runs on: Strata's
-//! `src/ui/preview/pdf_text.rs` (upstream/main e9a8993b7), ported as it is. Offsets are
-//! character indices into the layer's text; points are in pixels of the layer's image.
-
 use std::cell::OnceCell;
 use std::ops::Range;
 
@@ -19,8 +15,6 @@ pub(crate) struct Line {
     pub end: usize,
 }
 
-/// A text layer, read once: its characters, their boxes, its lines, and (for find) its text
-/// folded to lowercase.
 #[derive(Debug)]
 pub(crate) struct Layer {
     pub width: f32,
@@ -103,8 +97,6 @@ impl Layer {
             }
         }
         if top > bottom {
-            // An empty line has no ink: it takes the height of the line above, so a caret can
-            // land there.
             let (top, bottom) = lines
                 .last()
                 .map(|l: &Line| (l.bottom, l.bottom + l.bottom - l.top))
@@ -143,8 +135,6 @@ impl Layer {
         (x1 <= x2).then_some((x1, x2))
     }
 
-    /// Whether `(x, y)` lands near text: within half a line above or below a line, and a line
-    /// height past either end of its ink. Presses in the margins or past a line's end pan.
     pub fn hit_text(&self, x: f32, y: f32) -> bool {
         self.lines.iter().any(|line| {
             let h = (line.bottom - line.top).max(1.0);
@@ -156,8 +146,6 @@ impl Layer {
         })
     }
 
-    /// The caret offset nearest `(x, y)`: on the nearest line, before the first character
-    /// whose middle is right of `x`, else at the line's end (before its break).
     pub fn caret_at(&self, x: f32, y: f32) -> usize {
         let dist = |l: &Line| {
             if y < l.top {
@@ -218,9 +206,6 @@ impl Layer {
         (line.start, self.end_before_break(line))
     }
 
-    /// Latin glyphs whose ink crosses the baseline. A run without them has empty space below
-    /// the baseline, so its band stops early; any non-ASCII character takes the full box
-    /// (Strata: missing a descender clips ink, a false one only draws a taller band).
     fn has_descender(&self, start: usize, end: usize) -> bool {
         self.chars[start..end.min(self.chars.len())]
             .iter()
@@ -246,8 +231,6 @@ impl Layer {
             })
     }
 
-    /// The highlight bands for `start..end`: one per line it touches, `[x1, top, x2, bottom]`,
-    /// cut to 82 % of the line's height on runs without descenders.
     pub fn selection_runs(&self, start: usize, end: usize) -> Vec<[f32; 4]> {
         let (start, end) = (start.min(end), start.max(end));
         self.lines
@@ -281,8 +264,6 @@ impl Layer {
     }
 }
 
-/// Plain text for an unrendered page, searched with the same case-folding and character offsets
-/// as [`Layer::find`] until the page's full glyph layer loads.
 #[derive(Debug)]
 pub(crate) struct PlainText {
     text: String,

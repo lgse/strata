@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The marquee state machine: a band begun, moved, ticked and ended, turned into C1a band
-//! operations and [`Outcome`]s. Plain data, no Rune elements.
-
 use std::time::Duration;
 
 use rune::{Mods, Spring};
@@ -12,57 +9,41 @@ use super::speed::{edge_speed, glide_lead, stop_lead};
 use crate::collection::selection::{BandMode, Changed, Selection};
 use crate::contract::{CollectionGeometry, EntryId, EntrySource, IndexRanges, Point, Rect};
 
-/// The longest gap between two ticks still measured as one frame step; a longer one (the
-/// first tick of a glide) takes [`MarqueeSettings::frame`].
 const MAX_STEP: f64 = 0.1;
 
 /// How far (points) the scroll offset must move between two steps to count as scrolling.
 const MOVED: f32 = 0.01;
 
 /// What the machine asks for besides selection changes.
-///
-/// Variants may be added.
-///
-/// Used by: the C1e adapter.
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum Outcome {
-    /// Glide the viewport so its top shows content y `y`, on `spring`: one step of edge
-    /// auto-scroll. Sent every tick while it scrolls; each keeps the glide's speed.
+    /// Glide the viewport so its top shows content y `y`, on `spring`: one step of edge auto-scroll.
     Glide {
         /// The content offset to aim for.
         y: f32,
         /// The spring to glide on.
         spring: Spring,
     },
-    /// Bring the auto-scroll glide to rest at content offset `y`, on `spring`, without passing
-    /// it. A glide request like [`Outcome::Glide`]; its own variant so the element can map it
-    /// to a stop of its own.
+    /// Bring the auto-scroll glide to rest at content offset `y`, on `spring`, without passing it.
     StopGlide {
         /// Where the glide comes to rest.
         y: f32,
         /// The spring to glide on.
         spring: Spring,
     },
-    /// Stop the view dead at content offset `y`, where it shows now: a jump, which also ends a
-    /// glide in progress. Sent when the band ends (release, Escape, another selection) while
-    /// its auto-scroll still moves the view, so the row under the pointer stays there, as
-    /// Strata's timer stops.
+    /// Stop the view dead at content offset `y`, where it shows now: a jump, which also ends a glide in progress.
     StopScroll {
         /// The offset to stay at.
         y: f32,
     },
     /// Call [`MarqueeMachine::tick`] again after this long (zero: the next frame).
     WakeAfter(Duration),
-    /// The band was shown or hidden: the view must commit to add or drop it. Its rect moves
-    /// without a commit, through the live rect [`MarqueeMachine::drawn`] fills.
+    /// The band was shown or hidden: the view must commit to add or drop it.
     Repaint,
 }
 
-/// What the machine reads and changes: the entries, where they sit, the viewport, the clock,
-/// the selection, and where its outcomes go. C1e's `Ctx` is one; tests use a plain one.
-///
-/// Used by: the C1e adapter.
+/// What the machine reads and changes: the entries, where they sit, the viewport, the clock, the selection.
 pub trait Surface {
     /// The entries, in display order.
     fn source(&self) -> &dyn EntrySource;
@@ -76,11 +57,10 @@ pub trait Surface {
     /// The host's clock, in seconds.
     fn now(&self) -> f64;
 
-    /// How tall the content is: the bottom of the last entry, 0 with none (C1e:
-    /// `Ctx::content_extent`).
+    /// How tall the content is: the bottom of the last entry, 0 with none.
     fn content_extent(&self) -> f32;
 
-    /// The settings the host gave (C1e: `Collection::settings`), else the defaults.
+    /// The settings the host gave, else the defaults.
     fn settings(&self) -> MarqueeSettings;
 
     /// The selection, to read.
@@ -94,11 +74,7 @@ pub trait Surface {
     fn emit(&mut self, outcome: Outcome);
 }
 
-/// How the modifiers held at the press combine the band with the selection: Ctrl toggles
-/// (Ctrl+Shift too, as Strata's `band_selection` lets Ctrl win), Shift adds, anything else
-/// (Alt, which only forces a marquee) replaces.
-///
-/// Used by: the C1e adapter, C2.
+/// How the modifiers held at the press combine the band with the selection.
 pub fn mode_for(mods: Mods) -> BandMode {
     if mods.ctrl {
         BandMode::Toggle
@@ -110,13 +86,6 @@ pub fn mode_for(mods: Mods) -> BandMode {
 }
 
 /// The marquee: one band at a time over one collection.
-///
-/// Call [`MarqueeMachine::begin`] when the pointer controller starts a marquee, then
-/// [`moved`](Self::moved) for each pointer move, [`tick`](Self::tick) from the host's poll
-/// (every frame while it asks, with [`Outcome::WakeAfter`]), and [`end`](Self::end) on the
-/// release or [`cancel`](Self::cancel) on Escape or a cancelled gesture.
-///
-/// Used by: the C1e adapter.
 #[derive(Debug, Default)]
 pub struct MarqueeMachine {
     band: Option<Band>,
@@ -133,27 +102,17 @@ struct Band {
     visible: Rect,
     /// What the band crossed when last applied.
     crossed: IndexRanges,
-    /// The selection's revision after the last apply: another change (a sync, a rename)
-    /// moves it, and the band is applied again over the new listing.
     revision: u64,
-    /// The listing's length and the ids at the ends of what was applied: a re-sort or a
-    /// reload changes them without a selection change, and the band then takes the rows now
-    /// under it, as Strata's band hit-tests by position.
     listing: Listing,
     /// When the band was last applied.
     applied_at: f64,
     /// The auto-scroll speed the last step asked for, points a second.
     speed: f32,
-    /// A soft stop ([`Outcome::StopGlide`]) may still be moving the view: the ticks left with
-    /// the view still before it counts as landed. Two, since the tick right after the stop
-    /// comes before Rune steps it.
     coasting: u8,
     /// Ticks (frames) since the band was last applied.
     frames: u32,
     /// When the last tick ran.
     ticked_at: Option<f64>,
-    /// A key took the view ([`MarqueeMachine::yield_scroll`]): no edge scroll until the
-    /// pointer next moves.
     held: bool,
 }
 
@@ -169,16 +128,12 @@ impl Band {
         Rect::from_corners(self.anchor, self.current())
     }
 
-    /// Whether the selection or the listing changed since the band was last applied, so the
-    /// same indices now mean other entries.
     fn stale(&self, s: &dyn Surface) -> bool {
         s.selection().revision() != self.revision
             || Listing::of(s.source(), &self.crossed) != self.listing
     }
 }
 
-/// A cheap fingerprint of the listing under a band: its length and the ids at the ends of
-/// the crossed ranges.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 struct Listing {
     len: usize,
@@ -222,9 +177,7 @@ impl MarqueeMachine {
         self.band.as_ref().map(Band::rect)
     }
 
-    /// The band to draw, in content coordinates: [`MarqueeMachine::band`] cut to the viewport
-    /// and one viewport around it, so a band over 100,000 rows never draws whole. `None` when
-    /// no band is open or none of it is that near the viewport.
+    /// The band to draw, in content coordinates.
     pub fn drawn(&self) -> Option<Rect> {
         let band = self.band.as_ref()?;
         let v = band.visible;
@@ -232,8 +185,7 @@ impl MarqueeMachine {
         intersect(band.rect(), near)
     }
 
-    /// Starts a band at content point `at`, with `mods` held at the press ([`mode_for`]). A
-    /// band already open ends first, keeping what it selected.
+    /// Starts a band at content point `at`, with `mods` held at the press (`mode_for`).
     pub fn begin(&mut self, at: Point, mods: Mods, s: &mut dyn Surface) {
         if self.band.is_some() {
             self.end(s);
@@ -270,15 +222,12 @@ impl MarqueeMachine {
         self.step(s, Step::Move)
     }
 
-    /// Runs one frame: follows a scroll under the band, glides on near an edge, and applies a
-    /// band update that waited. True when it changed what the view reads (the selection, or
-    /// the band shown or hidden).
+    /// Runs one frame: follows a scroll under the band, glides on near an edge, and applies a band update that waited.
     pub fn tick(&mut self, s: &mut dyn Surface) -> bool {
         self.step(s, Step::Tick)
     }
 
-    /// The button came up: applies the band where it ends, keeps what it selected, and stops
-    /// the auto-scroll dead, so the last row it selected stays under the pointer.
+    /// The button came up: applies the band where it ends, keeps what it selected, and stops the auto-scroll dead.
     pub fn end(&mut self, s: &mut dyn Surface) {
         let Some(mut band) = self.band.take() else {
             return;
@@ -298,9 +247,7 @@ impl MarqueeMachine {
         s.emit(Outcome::Repaint);
     }
 
-    /// Escape, or a gesture that ended without a release: puts back the selection the band
-    /// started from (D2 in the module docs) and stops the auto-scroll dead. False if no band
-    /// was open, so the key goes on.
+    /// Escape, or a gesture that ended without a release.
     pub fn cancel(&mut self, s: &mut dyn Surface) -> bool {
         let Some(band) = self.band.take() else {
             return false;
@@ -319,10 +266,7 @@ impl MarqueeMachine {
         self.band = None;
     }
 
-    /// A key moved the cursor and the view is revealing it: stops the edge scroll with no
-    /// scroll request of its own (a stop on a later tick would undo the reveal), and scrolls
-    /// no more until the pointer next moves. True when the edge scroll was moving the view, so
-    /// the caller stops it dead before the reveal.
+    /// A key moved the cursor and the view is revealing it.
     pub fn yield_scroll(&mut self) -> bool {
         let Some(band) = self.band.as_mut() else {
             return false;
@@ -391,8 +335,6 @@ impl MarqueeMachine {
             s.emit(Outcome::WakeAfter(Duration::ZERO));
         }
         if speed == 0.0 && was != 0.0 {
-            // Leaving the edge mid-band: come to rest softly, as the band goes on. With
-            // animations off Rune lands a glide at once, so aim where the view is.
             let ahead = if settings.animations {
                 stop_lead(was, settings.glide)
             } else {
@@ -410,9 +352,6 @@ impl MarqueeMachine {
         if crossed == band.crossed && !band.stale(&*s) {
             return false;
         }
-        // A glide that ran into this step, or a scroll by hand since the last one. A move that
-        // only now reaches the edge isn't scrolling yet, so it applies at once. While it
-        // scrolls, an apply waits for both the interval and the frames (D1).
         let scrolling = view_moved || was != 0.0;
         let due = band.applied_at + settings.apply_every.as_secs_f64();
         if scrolling && (now < due || band.frames < settings.apply_frames) {
@@ -432,8 +371,6 @@ impl MarqueeMachine {
     }
 }
 
-/// The auto-scroll speed for the band's pointer, or zero where the content can't scroll that
-/// way: at its top or bottom, or when it fits the viewport (Strata's `scrollable_step`).
 fn scroll_speed(band: &Band, s: &dyn Surface, settings: &MarqueeSettings) -> f32 {
     let v = band.visible;
     let speed = edge_speed(band.pointer.y, v.h, settings.edge);

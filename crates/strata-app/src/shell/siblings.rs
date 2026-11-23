@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The window as one of the process's: which it is, its queue for a process-wide service, and
-//! the settings a window opened beside it shares (`crate::application`).
-
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use crate::{App, settings::Saved, slots::Later};
@@ -18,8 +15,6 @@ pub(crate) fn window_id(app: &App) -> u64 {
     app.window.id
 }
 
-/// The way into the window's queue, for a service of the window's own: what it queues runs in
-/// the next `poll`, whichever tab is shown.
 pub(crate) fn window_later(app: &App) -> Later<App> {
     app.window.events.later()
 }

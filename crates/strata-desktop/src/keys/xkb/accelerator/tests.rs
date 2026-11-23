@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Each expected answer here is GTK's own for the same input, as `gtk_accelerator_parse` and
-//! `gtk_accelerator_name` gave it; the GTK application's test `key_lookups` checks them all
-//! against GTK over a far wider domain.
-
 use super::{NO_KEY, name, parse};
 use crate::{
     key_constants,

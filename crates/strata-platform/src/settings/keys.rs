@@ -4,12 +4,9 @@
 
 use std::time::Duration;
 
-/// GNOME's interface settings, which every GTK-based Settings portal backend serves.
 const INTERFACE: &str = "org.gnome.desktop.interface";
 const MOUSE: &str = "org.gnome.desktop.peripherals.mouse";
 const PRIVACY: &str = "org.gnome.desktop.privacy";
-/// The portal's own standard namespace (`color-scheme` there is Rune's; this module reads
-/// only `reduced-motion`).
 const APPEARANCE: &str = "org.freedesktop.appearance";
 
 /// The namespaces the watcher reads and follows.
@@ -94,8 +91,6 @@ impl Key {
     }
 }
 
-/// One typed value, as [`DesktopSettings::set`](super::DesktopSettings::set) takes it and a
-/// change reports it.
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum Setting {
@@ -125,9 +120,6 @@ impl Setting {
         }
     }
 
-    /// Whether the value can be used: a scale factor that is finite and above 0, and durations
-    /// and the drag threshold above 0. GNOME's schemas bound some of these more tightly, but a
-    /// value inside that range is the desktop's to choose, so only unusable ones are refused.
     pub fn is_valid(self) -> bool {
         match self {
             Setting::TextScale(f) => f.is_finite() && f > 0.0,

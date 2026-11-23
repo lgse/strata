@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! In Columns, leaving the filtered column for another column or chrome widget — not a modal
-//! layer, context menu, inline edit, or column Sort menu — closes its filter, as GTK's
-//! `close_filter_after_blur` does (`src/ui/browser/columns/append/shell.rs`).
-
 use rune::Tx;
 
 use super::{bar, place::Where, route};
@@ -30,8 +26,6 @@ fn keeps_filter_open(app: &App, tx: &Tx) -> bool {
     )
 }
 
-/// Closes an open Columns filter once focus has entered its column and then left it for
-/// another column or window chrome.
 pub(super) fn follow(app: &mut App, tx: &mut Tx) -> bool {
     let Some(depth) = app
         .filter

@@ -1,10 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Unified device release lifecycle (eject, unmount, lock), network share disconnect,
-//! process-wide pending-release tracking for stand-in ghost rows, multi-tab/multi-window
-//! leave-before-release, and the 350 ms progress / safe-to-remove overlay
-//! (`src/ui/window/device_release.rs` and its submodules).
-
 use std::{
     cell::{Cell, RefCell},
     collections::HashSet,
@@ -788,7 +783,6 @@ pub(super) struct ShareDisconnect {
     pub(super) root: Location,
 }
 
-/// Disconnects a GVfs network share (`src/ui/window/device_release/disconnect.rs`).
 pub(super) fn disconnect_share(app: &mut App, share: ShareDisconnect, tx: &mut Tx) {
     let ShareDisconnect { id, mount, root } = share;
     let Some(guard) = DisconnectGuard::acquire(id) else {

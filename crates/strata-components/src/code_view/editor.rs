@@ -1,46 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! [`CodeEditor`]: the custom-action script editor (`integration/custom-actions`, Settings →
-//! Actions → Script), on core `text_input` with an editable [`CodeDoc`]'s colours.
-//!
-//! It follows Strata's `script_view()` (`src/ui/settings/actions/editor.rs`):
-//! `monospace(true)`, `show_line_numbers(true)`, `tab_width(4)`,
-//! `insert_spaces_instead_of_tabs(true)`, `auto_indent(true)` and `WrapMode::None`, with
-//! GtkSourceView's defaults for what it leaves unset (`indent-on-tab` true, `indent-width` -1,
-//! so the tab width):
-//!
-//! - **Return** starts the next line with the current line's leading spaces and tabs, up to
-//!   the caret (`auto_indent`).
-//! - **Tab** types spaces to the next four-column stop; with a selection over more than one
-//!   line it indents each of them by four spaces instead (`indent-on-tab`). **Shift+Tab**
-//!   takes up to four spaces, or a tab, off the start of each selected line, or the caret's.
-//!   Either is one undo step.
-//! - **No wrap**: the field is as wide as its widest line inside a sideways viewport (Rune's
-//!   multi-line field always wraps at its width, U-C10b-4), and keeps the caret in view on
-//!   both axes (probe P4). The line numbers stick to the left.
-//! - **Colours**: each edit goes to the [`CodeDoc`] as a [`LineEdit`], which re-highlights
-//!   from the edited line until the parse state matches its cache again (C10a). The field
-//!   draws the spans of a window of lines around the viewport, moved in 128-line steps, so
-//!   scrolling within it doesn't reshape the field (U-C10b-1).
-//! - **Ctrl+Tab** and Ctrl+Shift+Tab move focus out, as GtkTextView's do.
-//! - **The field menu** is C21's [`FieldMenu`](crate::context_menu::FieldMenu), through
-//!   [`CodeEditor::menu`]: a core `text_input` takes `on_secondary_press`, which rune-kit's
-//!   `TextArea` doesn't (U-C21-2).
-//!
-//! # Measured (perf profile, NVIDIA, load average 13 to 37 on 24 cores)
-//!
-//! `tests/fixtures/code/shell-5k.sh`, 5,000 lines, 153 KB, typing in its middle
-//! (`tests/perf.rs`): a keystroke's frame takes p50 24 ms and p95 28 ms, and the frame its
-//! colours land in p50 24 ms and p95 24 ms; Rune's commit report puts 95 % of it in text
-//! layout. Probe P3 split it: with no colours a keystroke takes p50 19 ms and p95 21 ms, so
-//! shaping the whole field is most of it (U-C10b-5), and the colours' second reshape the rest
-//! (U-C10b-1). With every line's spans (27,780) rather than the window's, both take about
-//! 160 ms. The re-highlight itself costs under 0.4 ms. At 500 lines a keystroke takes about
-//! 6 ms with colours. The budget (16.7 ms at p95 on 5,000 lines) is missed: D9, an owner
-//! item. A rich field of `Block::Code` paragraphs (real tab stops in a code block) costs
-//! 2.5 times as much (probe P5) and isn't needed: Rune draws tabs to four-column stops in a
-//! plain field too.
-
 use std::cell::Cell;
 use std::ops::Range;
 use std::rc::Rc;
@@ -57,7 +16,6 @@ use super::render::{Paint, gutter_width};
 use super::rows::{TAB, columns_of};
 use crate::scroll::{Bar, BarLook, BarMode, overlay};
 
-/// Gap keeping the C24 scroll bars inside the editor's rounded corners and border.
 const BAR_INSET: f32 = 2.0;
 
 /// The field draws the spans of lines in windows this many lines long.
@@ -69,8 +27,6 @@ fn editor_bar() -> Bar {
     bar
 }
 
-/// The script editor's state: the text being edited and its colours. The host keeps one per
-/// editor (one per runtime draft, as Strata keeps a buffer per runtime).
 pub struct EditorState {
     pub edit: TextEdit,
     doc: CodeDoc,
@@ -80,7 +36,6 @@ pub struct EditorState {
     height: Rc<Cell<f32>>,
     /// The line height the last build drew with.
     line: Rc<Cell<f32>>,
-    /// Vertical and horizontal C24 scroll bars for the editor viewport.
     bar: Bar,
     sideways: Bar,
     /// The lines whose colours the field draws.
@@ -100,8 +55,6 @@ impl std::fmt::Debug for EditorState {
 }
 
 impl EditorState {
-    /// An editor on `text`, coloured by `highlighter` with the grammar `syntax` (a token such
-    /// as `py` or `bash`), else one detected from `file_name` and the first line.
     pub fn new(
         text: impl Into<String>,
         highlighter: &Highlighter,
@@ -146,8 +99,6 @@ impl EditorState {
         (self.bar.overflows(), self.sideways.overflows())
     }
 
-    /// The editor's key, `script` unless set: its field is keyed `field`, its viewport
-    /// `{key}-scroll` and its gutter `{key}-numbers`.
     pub fn key(mut self, key: impl Into<String>) -> Self {
         self.key = key.into();
         self
@@ -172,8 +123,6 @@ impl EditorState {
         self.edited();
     }
 
-    /// Takes the colours that have landed, and moves the span window with the viewport: call
-    /// it from the host's poll. True when the view changed.
     pub fn poll(&mut self) -> bool {
         let mut changed = self.doc.poll();
         let n = self.doc.line_count();
@@ -187,8 +136,6 @@ impl EditorState {
         changed
     }
 
-    /// Blocks until the highlighter has finished every request, or `timeout` passes. For
-    /// headless snapshots and tests only.
     pub fn settle(&mut self, timeout: Duration) -> bool {
         self.doc.settle(timeout)
     }
@@ -212,8 +159,6 @@ impl EditorState {
         self.doc.is_provisional(line)
     }
 
-    /// The text changed outside the field's own typing (a field menu's Cut or Paste, an
-    /// undo from the host): re-highlight the lines that did. The field's typing calls it.
     pub fn edited(&mut self) {
         let old = self.doc.text().clone();
         let new = self.edit.text.as_str();
@@ -256,9 +201,6 @@ pub(crate) fn newline(e: &mut TextEdit) {
     e.insert(&format!("\n{indent}"));
 }
 
-/// The lines a selection covers, as the byte range from the first one's start to the last
-/// one's end. A selection that ends at a line's start leaves that line out, as GtkSourceView
-/// does.
 fn selected_lines(e: &TextEdit) -> (usize, usize) {
     let (a, b) = e.range();
     let b = if b > a && e.text[..b].ends_with('\n') {
@@ -269,8 +211,6 @@ fn selected_lines(e: &TextEdit) -> (usize, usize) {
     (line_start(&e.text, a), line_end(&e.text, b))
 }
 
-/// Replaces bytes `from..to` with each of their lines mapped by `f`, as one undo step, and
-/// selects the lines.
 fn map_lines(e: &mut TextEdit, (from, to): (usize, usize), f: impl Fn(&str) -> String) {
     let block: Vec<String> = e.text[from..to].split('\n').map(f).collect();
     let block = block.join("\n");
@@ -361,7 +301,6 @@ impl<S: 'static> CodeEditor<S> {
         self
     }
 
-    /// The field's right-click, Menu key and Shift+F10: C21's `FieldMenu::hook`.
     pub fn menu(mut self, f: impl Fn(&mut S, PointerPress, &mut Tx) + 'static) -> Self {
         self.menu = Some(Rc::new(f));
         self
@@ -497,14 +436,8 @@ fn editor_bar_look(look: &Look, horizontal: bool) -> BarLook {
 fn key_in(st: &mut EditorState, ev: &KeyEvent, tx: &mut Tx) -> bool {
     let m = ev.mods;
     if ev.key == Key::Tab && !(m.ctrl || m.cmd) && std::mem::take(&mut st.tab_out) {
-        // The Tab Ctrl+Tab sent: Rune moves focus with it. Only an unmodified Tab is it: a
-        // second Ctrl+Tab in the same frame comes before the first one's Tab and sends its
-        // own (review 2).
         return false;
     }
-    // Ctrl+Tab and Ctrl+Shift+Tab move focus on, as they do out of a GtkTextView, whose Tab
-    // types. Rune moves focus only on an unmodified Tab, so the chord sends one (C18's
-    // precedent), which the editor lets through.
     if ev.key == Key::Tab && (m.ctrl || m.cmd) && !m.alt && !m.logo {
         st.tab_out = true;
         tx.send_key(KeyEvent {

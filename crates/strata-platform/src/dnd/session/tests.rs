@@ -28,8 +28,6 @@ fn a_press_starts_a_drag_past_the_threshold_and_not_before() {
     );
 }
 
-/// Wayland: after the start the guard swallows the moves and the cancelled Up that P1's own
-/// Escape brings, and the next press is the element's again.
 #[test]
 fn on_wayland_the_escapes_cancelled_up_is_swallowed() {
     let mut g = Guard::default();
@@ -49,8 +47,6 @@ fn on_wayland_the_escapes_cancelled_up_is_swallowed() {
     assert_eq!(g.phase(step(Phase::Down, 40.0, false), 8.0), Decision::Pass);
 }
 
-/// X11: the real release is swallowed and drops the drag, while a cancelled Up (Escape,
-/// focus lost) cancels it.
 #[test]
 fn on_x11_a_cancelled_up_cancels_the_drag_and_a_real_one_drops_it() {
     let mut g = Guard::default();
@@ -186,7 +182,6 @@ fn source_actions_unknown_yet_negotiate_as_copy() {
     ));
 }
 
-/// Review round 1: an Escape only for a press the guard saw go down, and only once.
 #[test]
 fn the_escape_is_allowed_once_and_only_for_a_press_seen() {
     let mut g = Guard::default();
@@ -208,8 +203,6 @@ fn the_escape_is_allowed_once_and_only_for_a_press_seen() {
     assert!(!g.take_escape(), "X11 sends none");
 }
 
-/// A target that asks by point (`action_at`) is told where the drag is, in its own points
-/// from where it was last drawn, and decides by it: Columns' strip routes a drop by point.
 #[test]
 fn a_target_asking_by_point_hears_where_the_drag_is() {
     let mut r = Registry::<S>::default();

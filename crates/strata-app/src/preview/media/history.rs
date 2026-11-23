@@ -1,12 +1,7 @@
 // SPDX-License-Identifier: MIT
 
-//! Mono PCM sample history synchronized to the audio sink's heard playback position,
-//! matching GTK's `PcmHistory` (`src/ui/media/history.rs`).
-
 use std::collections::VecDeque;
 
-/// Samples kept behind the playhead (1 second at 48 kHz); everything decoded ahead of the
-/// playhead stays queued too, however far the sink's buffer and device delay push that lead.
 pub(super) const HISTORY_SAMPLES: usize = 48_000;
 
 /// Mono PCM indexed by samples since the last restart/flush, matching `PcmOutput::position_frames`.
@@ -33,8 +28,6 @@ impl PcmHistory {
         self.end += (interleaved.len() / 4) as u64;
     }
 
-    /// Drops samples further than [`HISTORY_SAMPLES`] behind `played`, preserving all unplayed
-    /// samples ahead of `played` across stalls.
     pub(super) fn trim_behind(&mut self, played: u64) {
         let keep_from = played.min(self.end).saturating_sub(HISTORY_SAMPLES as u64);
         let start = self.end - self.samples.len() as u64;
@@ -43,8 +36,6 @@ impl PcmHistory {
         }
     }
 
-    /// Fills `window` with the mono samples ending at `played`. Returns `false` when no samples
-    /// are available at or before `played`.
     pub(super) fn window_ending_at(&self, played: u64, window: &mut [f32]) -> bool {
         let played = played.min(self.end);
         let start = self.end - self.samples.len() as u64;

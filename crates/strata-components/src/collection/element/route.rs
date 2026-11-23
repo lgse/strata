@@ -1,18 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Input routing: Rune's events on the collection, turned into controller inputs, and the
-//! controllers' changes and effects applied.
-//!
-//! Every pointer handler sits on the collection's container, not on rows: a row's handlers
-//! would make it a hit target per row, and Rune reports a `.virtualize` stack's `on_drag` y
-//! rebased to the mounted rows (Rune draft U-C1e-1). Content coordinates come from the window
-//! point, the viewport's window origin (recorded from `on_layout`) and the scroll offset
-//! (followed by `on_scroll_offset`), as `contract::geometry` defines them.
-//!
-//! An input that changes nothing the view reads commits no view: a pointer move with no
-//! selection change, no effect and no [`Ctx::repaint`] says `Tx::live_only`, as do the
-//! moves and the release of a gesture the collection didn't take.
-
 use std::rc::Rc;
 
 use rune::{Drag, KeyEvent, KeyPlatform, Mods, Phase, PointerButton, PointerEvent, Tx};
@@ -34,8 +21,6 @@ pub(super) enum Source {
     Tick,
 }
 
-/// How the element lays out `s`'s entries now: the state's count a line, and the host's groups
-/// when they cover the source.
 pub(super) fn line_map<S: 'static>(cfg: &Config<S>, s: &S) -> LineMap {
     let (src, st) = (cfg.get)(s);
     LineMap::new(st.per_line.get(), Some(&st.groups), src.len())
@@ -63,11 +48,6 @@ pub(super) fn geometry<S: 'static>(cfg: &Config<S>, s: &S) -> Box<dyn Collection
     }
 }
 
-/// Whether content point `p` is under the stuck group header, which covers the top of the
-/// viewport: a press there is on no entry, as on a header line.
-///
-/// Only while the stuck header shows: in the frame between a scroll into another group and the
-/// build that relabels it, it is hidden, and the top line is the one drawn there.
 fn in_stuck_header<S: 'static>(cfg: &Config<S>, s: &S, p: Point) -> bool {
     let st = (cfg.get)(s).1;
     let offset = st.scroll.get();
@@ -89,8 +69,6 @@ pub(super) fn under_stuck_header<S: 'static>(cfg: &Config<S>, s: &S, e: PointerE
     in_stuck_header(cfg, s, p)
 }
 
-/// Runs `f` with the controllers and a [`Ctx`], then applies what it changed and asked for.
-/// Returns the controller's flow, and whether anything the view reads changed.
 pub(super) fn dispatch<S: 'static>(
     cfg: &Rc<Config<S>>,
     s: &mut S,
@@ -118,10 +96,6 @@ pub(super) fn dispatch<S: 'static>(
     let flow = f(controllers, &mut cx);
     let (changed, effects, repaint) = cx.finish();
     let moved = before != st.selection.cursor();
-    // Only what the view reads needs a commit. Scrolls, reveals and wake-ups go through the
-    // transaction, which Rune applies whether or not the view runs (a poll's too, even when it
-    // returns false: `runtime/frame.rs`, the poll's `merge`). Keyboard mode counts only when
-    // the effects leave it other than it was.
     let mode_was = (st.keyboard, st.hover_live);
     let mode = effects.iter().fold(mode_was, |mode, e| match e {
         Effect::KeyboardMode(on) => (*on, !*on),
@@ -147,11 +121,6 @@ fn after<S: 'static>(
     moved: bool,
     effects: Vec<Effect>,
 ) {
-    // A key that moves the cursor takes the view from a band's edge scroll, whose next tick
-    // would otherwise glide on, or stop dead where it was, over the key's reveal (C1d's S-B).
-    // A glide in flight would keep its speed through a reveal request, and an instant stop
-    // would land after it (Rune applies offsets after reveals), so the reveal is one instant
-    // scroll then.
     let instant = from == Source::Key && moved && {
         let st = (cfg.get_mut)(s).1;
         st.controllers
@@ -205,15 +174,11 @@ fn after<S: 'static>(
             Effect::Intent(intent) => intents.push(intent),
         }
     }
-    // A key that moves the cursor turns keyboard mode on, unless the controller said
-    // otherwise; a key that changes nothing leaves it as it was.
     if from == Source::Key && moved && !mode_set {
         let st = (cfg.get_mut)(s).1;
         st.keyboard = true;
         st.hover_live = false;
     }
-    // A key or a tick that moves the cursor keeps it in view; a pointer moves it only to what
-    // it shows.
     if moved && !matches!(from, Source::Pointer(_)) && !revealed {
         let index = {
             let (src, st) = (cfg.get)(s);
@@ -272,8 +237,6 @@ pub(super) fn begin_marquee<S: 'static>(
     });
 }
 
-/// The entry under content point `p`, and the region it's in when `regions` (presses and
-/// releases); a move reuses the press's region over the pressed entry.
 fn hit<S: 'static>(cfg: &Rc<Config<S>>, s: &S, p: Point, press: Option<Hit>) -> Hit {
     let src = (cfg.get)(s).0;
     let geometry = geometry(cfg, s);
@@ -310,9 +273,6 @@ fn hit<S: 'static>(cfg: &Rc<Config<S>>, s: &S, p: Point, press: Option<Hit>) -> 
     }
 }
 
-/// The default row's regions: its icon (and the gap after it) is content, the drawn width of
-/// its name is the name, as Strata counts a label's rendered text (not the space it fills) as
-/// the entry; the rest is gutter.
 fn default_region<S: 'static>(
     cfg: &Rc<Config<S>>,
     s: &S,
@@ -357,17 +317,11 @@ pub(super) fn on_drag<S: 'static>(cfg: &Rc<Config<S>>, s: &mut S, d: &mut Drag, 
     }
     let st = (cfg.get)(s).1;
     let press = st.gesture;
-    // A primary press on the header part's blank space (where no part of it takes presses
-    // itself) is on empty space at the viewport's top edge, as Strata starts a band from a List
-    // heading strip (C4). Only a primary one: the rule is for a band, and a middle press there
-    // (an autoscroll, a new tab) isn't on the collection.
     let on_header = phase == PointerPhase::Down
         && tx.button() == PointerButton::Primary
         && !st.viewport.contains(window)
         && st.header.get().contains(window);
     match phase {
-        // Any other press outside the viewport isn't the collection's, and neither are the
-        // moves and the release that follow it.
         PointerPhase::Down if !st.viewport.contains(window) && !on_header => {
             (cfg.get_mut)(s).1.gesture = None;
             tx.live_only();
@@ -433,8 +387,6 @@ pub(super) fn on_drag<S: 'static>(cfg: &Rc<Config<S>>, s: &mut S, d: &mut Drag, 
         return;
     };
     let shows = route_pointer(cfg, s, tx, &input) || released;
-    // A move that changed nothing the view reads commits nothing, an open band's included: a
-    // marquee that redraws says so with `Ctx::repaint`.
     if phase == PointerPhase::Move && !shows && hover_was_live {
         tx.live_only();
     }
@@ -528,9 +480,6 @@ pub(super) fn on_secondary<S: 'static>(
     route_pointer(cfg, s, tx, &input);
 }
 
-/// Routes a pointer input: the keyboard controller sees it, then an open marquee takes the
-/// gesture's moves and release, else the pointer controller (or the default) has it. True when
-/// anything the view reads changed.
 fn route_pointer<S: 'static>(
     cfg: &Rc<Config<S>>,
     s: &mut S,
@@ -571,8 +520,6 @@ fn route_pointer<S: 'static>(
 pub(crate) enum KeyTaken {
     /// Nobody: the key goes on.
     No,
-    /// The host's [`Collection::before_keys`](super::Collection::before_keys), ahead of the
-    /// controllers.
     ByHost,
     ByController,
 }
@@ -589,13 +536,7 @@ pub(super) fn on_key<S: 'static>(
     {
         return KeyTaken::ByHost;
     }
-    // A copy of the key's transaction, so controllers can match layout-aware chords
-    // (`KeyInput::matches`) while the element keeps the real one for its effects.
     let keys = tx.clone();
-    // The restore waiting when the key arrived. A key the controllers take cancels that one,
-    // not one the key's own effect armed: Return that opens a folder shown before arms its
-    // remembered position inside this dispatch, as GTK's restore arms after the press that
-    // opened it (`arm_input_cancel`, `src/ui/browser_modes/navigation.rs`).
     let waiting = (cfg.get)(s).1.pending.clone();
     let input = KeyInput {
         event,
@@ -629,8 +570,6 @@ pub(super) fn on_key<S: 'static>(
     }
 }
 
-/// A key the controllers took cancels the restore `waiting` when it arrived, not one the key's
-/// own effect armed since.
 fn drop_waiting_restore<S: 'static>(cfg: &Rc<Config<S>>, s: &mut S, waiting: Option<Position>) {
     let st = (cfg.get_mut)(s).1;
     if waiting.is_some() && st.pending == waiting {
@@ -638,10 +577,6 @@ fn drop_waiting_restore<S: 'static>(cfg: &Rc<Config<S>>, s: &mut S, waiting: Opt
     }
 }
 
-/// A rest row's `on_hover_change` (after its delays): the hook hears it, with the row's and the
-/// viewport's window rects. A rest counts only on the row the pointer last arrived on by
-/// moving (not one carried under it by a scroll, nor the row a press or a held drag ended on),
-/// and not while row hover is off after keyboard navigation.
 pub(super) fn on_rest<S: 'static>(
     cfg: &Rc<Config<S>>,
     s: &mut S,
@@ -676,10 +611,6 @@ pub(super) fn on_rest<S: 'static>(
     (rest.report)(s, report, tx);
 }
 
-/// A drop on folder row `id`, taken or refused: with the rest hook, the pointer is on that row
-/// and its rest is held. A system drag carries the pointer there with no move the collection
-/// sees, so without this the pointer's next move there (X11's crossing after the drop, or the
-/// first after a blur during the drag) would count as an arrival and peek the folder.
 pub(super) fn dropped_on_row<S: 'static>(cfg: &Config<S>, s: &mut S, id: crate::contract::EntryId) {
     if cfg.rest.is_some() {
         let st = (cfg.get_mut)(s).1;
@@ -688,8 +619,6 @@ pub(super) fn dropped_on_row<S: 'static>(cfg: &Config<S>, s: &mut S, id: crate::
     }
 }
 
-/// `on_hover_change` on the container of a collection with the rest hook: leaving it forgets
-/// the row the pointer was on.
 pub(super) fn on_hover<S: 'static>(cfg: &Rc<Config<S>>, s: &mut S, inside: bool, tx: &mut Tx) {
     if !inside {
         (cfg.get_mut)(s).1.rest_under = None;
@@ -697,8 +626,6 @@ pub(super) fn on_hover<S: 'static>(cfg: &Rc<Config<S>>, s: &mut S, inside: bool,
     tx.live_only();
 }
 
-/// `on_pointer_move_local` on the container: hover comes back once the pointer moves, and with
-/// the rest hook, the row the pointer arrives on is the one whose rest counts.
 pub(super) fn on_pointer_move<S: 'static>(
     cfg: &Rc<Config<S>>,
     s: &mut S,
@@ -732,16 +659,12 @@ pub(super) fn on_pointer_move<S: 'static>(
     }
 }
 
-/// `on_layout_tx` on the viewport: where it shows, as bookkeeping, except that a width that
-/// changes how many entries a line holds (a grid's reflow) builds the view again.
 pub(super) fn on_layout<S: 'static>(cfg: &Rc<Config<S>>, s: &mut S, r: [f32; 4], tx: &mut Tx) {
     let per = cfg.lines.per_line(r[2]).max(1);
     let row_height = cfg.row_height_of(s);
     let (src, st) = (cfg.get_mut)(s);
     st.viewport = Rect::from(r);
     st.row_height = row_height;
-    // A collapsed viewport (a Columns column at no width) keeps its count: the width it comes
-    // back at decides it, as a reflow. Reveals asked for meanwhile wait for it.
     if r[2] <= 0.0 {
         tx.live_only();
         return;
@@ -749,8 +672,6 @@ pub(super) fn on_layout<S: 'static>(cfg: &Rc<Config<S>>, s: &mut S, r: [f32; 4],
     let changed = if st.laid_out {
         st.reflow_to(&cfg.key, src, per, tx)
     } else {
-        // The very first width isn't a reflow: nothing was laid out at the count the state
-        // started with, so a restore made before it (`enter`) stands.
         st.laid_out = true;
         let changed = per != st.per_line.get();
         st.per_line.set(per);
@@ -768,12 +689,6 @@ pub(super) fn on_layout<S: 'static>(cfg: &Rc<Config<S>>, s: &mut S, r: [f32; 4],
     }
 }
 
-/// A list laid out with lines in view while the range Rune last reported is empty: the lines
-/// from the list's own layout, heard as Rune's report is ([`on_visible`]), so the host, the
-/// rest view, the top line and a waiting restore all take them (Rune packet entry 101,
-/// U-C1f-7). Rune can report a newly mounted list's rows as none before the list's first
-/// layout, and then not again until the rows in view change. Lines that hold no entry (a
-/// header alone) are not heard again at every layout. True when the view has to be built.
 fn catch_up_visible<S: 'static>(cfg: &Rc<Config<S>>, s: &mut S) -> bool {
     let (src, st) = (cfg.get)(s);
     let len = src.len();
@@ -791,10 +706,6 @@ fn catch_up_visible<S: 'static>(cfg: &Rc<Config<S>>, s: &mut S) -> bool {
     on_visible(cfg, s, lines, &map, shown)
 }
 
-/// `on_visible_rows` on the rows stack, with lines turned into entries by `map`, the map of
-/// the build that laid them out. A scroll away from where a waiting restore put the view is
-/// the person's, and cancels it. A scroll into a group other than the one whose header the
-/// build stuck at the top (`shown`) builds the view again, to stick that group's.
 pub(super) fn on_visible<S: 'static>(
     cfg: &Rc<Config<S>>,
     s: &mut S,
@@ -842,14 +753,9 @@ pub(super) fn tick<S: 'static>(cfg: &Rc<Config<S>>, s: &mut S, tx: &mut Tx) -> b
         }
         Flow::Pass
     });
-    // An auto-scroll tick that only glides and asks for the next frame changes nothing the
-    // view reads: the poll returns false, and Rune still applies its scroll and wake-up.
     shows
 }
 
-/// A drag over the collection near the viewport's top or bottom edge glides it that way, a
-/// row's height a move, so a drop target out of view can be reached. `changed`: the move
-/// changed what the view draws (the drop target), so it commits either way.
 pub(super) fn drop_edge_scroll<S: 'static>(
     cfg: &Rc<Config<S>>,
     s: &mut S,

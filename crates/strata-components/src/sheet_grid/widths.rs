@@ -1,10 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Column widths, by Strata's rules (`measure_columns` and the fit in `widget_with_height`):
-//! each column wants the widest of its first 64 rows' text, and while nobody has resized one,
-//! the columns share out the viewport's spare width by how much more than 160 points each
-//! wants.
-
 use super::model::Sheet;
 
 /// The narrowest a column gets by dragging its divider (Strata's last-column drag floor).
@@ -18,8 +13,6 @@ const WANT_MIN: f32 = 72.0;
 const WANT_MAX: f32 = 640.0;
 const SHARE_FLOOR: f32 = 160.0;
 
-/// What each column wants: its widest sampled line by `measure`, plus the cell's padding (and
-/// the sort caret's room in a title), between 72 and 640 points.
 pub(crate) fn wanted(sheet: &Sheet, pad: f32, measure: impl Fn(&str, bool) -> f32) -> Vec<f32> {
     let mut out = vec![WANT_MIN; sheet.columns()];
     for (i, row) in sheet.rows.iter().take(SAMPLE_ROWS).enumerate() {
@@ -37,9 +30,6 @@ pub(crate) fn wanted(sheet: &Sheet, pad: f32, measure: impl Fn(&str, bool) -> f3
     out
 }
 
-/// The widths for `available` points: each column at least the smaller of what it wants and
-/// 160, the spare shared by what each wants beyond that, the last column taking what rounding
-/// leaves, so together they fill `available` once it holds every column's floor.
 pub(crate) fn fit(wanted: &[f32], available: f32) -> Vec<f32> {
     let floors: Vec<f32> = wanted.iter().map(|w| w.min(SHARE_FLOOR)).collect();
     let extra = (available - floors.iter().sum::<f32>()).max(0.0);

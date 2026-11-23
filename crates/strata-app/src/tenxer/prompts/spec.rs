@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Translated [`PromptSpec`]s and [`PromptLabels`] for 10xer's twelve footer prompts
-//! (`Prompt` in `src/ui/tenxer_mode.rs`, `src/ui/shortcut_footer/candidates.rs`).
-
 use std::rc::Rc;
 
 use strata_components::filter_bar::prompt::{Arrows, Legend, PromptLabels, PromptSpec};

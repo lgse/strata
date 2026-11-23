@@ -16,10 +16,6 @@ use super::search::{Index, Line, Lines, fold_query};
 use super::{RESULTS_HEIGHT, SIDEBAR_WIDTH, ShortcutReference};
 use crate::contract::MatchedText;
 
-/// Strata's reference look (`src/style.css`): a chosen category on the accent at 16 % with a
-/// 3 px accent bar at its left, a hovered one at 10 %; compact pills with a border at 40 % of the
-/// border colour, a chosen pill on the accent at 20 % with an accent border. No Kit or
-/// strata-kit token holds them (a W2 `footer.*` slot is a follow-up).
 pub const CATEGORY_CHOSEN_ALPHA: f32 = 0.16;
 pub const CATEGORY_HOVER_ALPHA: f32 = 0.1;
 pub const CATEGORY_BAR: f32 = 3.0;
@@ -36,8 +32,6 @@ const SEARCH_HEIGHT: f32 = 34.0;
 /// A line's height before it measures, for the virtual rows.
 const LINE_ESTIMATE: f32 = 36.0;
 
-/// Semibold UI text matching GTK's `.shortcut-reference-title` and `.shortcut-reference-heading`
-/// (`font-weight: 600` at the interface text size).
 fn semibold_ui(look: &Look) -> TextStyle {
     TextStyle {
         weight: 600.0,
@@ -45,8 +39,6 @@ fn semibold_ui(look: &Look) -> TextStyle {
     }
 }
 
-/// The panel's content: one column, whose key handler routes the categories' and the results'
-/// keys.
 pub(super) fn panel<S: 'static>(r: &ShortcutReference<S>, s: &S, look: &Look) -> Vec<El> {
     let state = (r.get)(s);
     let data = (r.data)(s);
@@ -126,8 +118,6 @@ fn line_key(key: &str, lines: &Lines, i: usize) -> String {
     }
 }
 
-/// The title and the search field: side by side, or stacked when compact. Reports the panel's
-/// width, which picks the layout.
 fn header<S: 'static>(
     r: &ShortcutReference<S>,
     s: &S,
@@ -192,9 +182,6 @@ fn header<S: 'static>(
         .child(frame)
 }
 
-/// The compact category pills' height limits (`src/ui/shortcut_footer/reference.rs`) and
-/// base corner radius (`.shortcut-reference-body.compact .shortcut-reference-category`,
-/// `border-radius: 14px` in `src/style.css`).
 const PILLS_MIN: f32 = 60.0;
 const PILLS_MAX: f32 = 160.0;
 const COMPACT_PILL_RADIUS: f32 = 14.0;
@@ -303,9 +290,6 @@ fn wide_category_tab(base: El, look: &Look, entry: CategoryEntry) -> El {
     }
 }
 
-/// All, then each section: a column of rows with counts beside the results, or wrapping pills
-/// above them when compact. A tab list: arrows, Home and End choose, and Tab visits the chosen
-/// one only.
 fn categories<S: 'static>(
     r: &ShortcutReference<S>,
     s: &S,
@@ -344,8 +328,6 @@ fn categories<S: 'static>(
         .focus_group()
         .children(tabs);
     if compact {
-        // At most a quarter of the panel's height, 60 to 160 pt, scrolling past it (Strata's
-        // `max_sidebar_height`: a quarter of the window, 60 to 160 px).
         let cap = (r.get)(s)
             .height
             .map_or(PILLS_MAX, |h| (h / 4.0).clamp(PILLS_MIN, PILLS_MAX));
@@ -378,8 +360,6 @@ fn categories<S: 'static>(
     }
 }
 
-/// The results: a focusable table of lines (a heading, or one or two rows), in virtual rows,
-/// with the announced count; or "No matching shortcuts".
 fn results<S: 'static>(
     r: &ShortcutReference<S>,
     s: &S,
@@ -411,8 +391,6 @@ fn results<S: 'static>(
         .scroll(ScrollSpec {
             stick_bottom: false,
         });
-    // The announced count. Silent while the query is empty: the categories describe their own
-    // counts, so choosing one is heard once.
     let quiet = state.query().trim().is_empty();
     let status = |words: String| {
         let e = el()
@@ -485,8 +463,6 @@ fn results<S: 'static>(
     )
 }
 
-/// The results' viewport beside its announced count, which stays out of the scroll content (a
-/// growth stack must be its viewport's only child).
 fn frame(viewport: El, status: El) -> El {
     col()
         .grow(1.0)
@@ -522,8 +498,6 @@ fn line(
     match lines.lines[i] {
         Line::Heading { section, shown } => {
             let title = &data.sections[section].title;
-            // Each preceding row line adds `look.space.lg` (12 pt) bottom padding, so 12 pt here
-            // gives GTK's 24 pt gap between sections.
             let top = if i == 0 { 0.0 } else { look.space.lg };
             row()
                 .key(format!("{key}-heading-{section}"))
@@ -626,8 +600,6 @@ fn shortcut(
         .child(keys)
 }
 
-/// One `.shortcut-reference-key` box holding the full key text (including alternatives, chords,
-/// and any context words) with Strata's tinted surface, border, and corner roundness.
 fn reference_keycap(at: &Placed<'_>, key_text: String, folded: &super::search::Folded) -> El {
     let look = at.look;
     let k = &look.kit;

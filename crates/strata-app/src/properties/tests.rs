@@ -1,10 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Behavioural tests for the Properties dialog (`super`): command routing across focus, entry,
-//! folder background and sidebar places, Escape focus restoration, recursive directory and
-//! multi-selection size calculation with symlink skipping and incomplete warnings, permission bit
-//! and executable toggles on disk, and footer actions (`Copy path`, `Rename`, `Pin`/`Unpin`).
-
 use std::{fs, os::unix::fs::PermissionsExt, path::Path};
 
 use rune::{Key, KeyEvent, Mods, Tx};
@@ -352,10 +347,6 @@ fn copy_path_and_rename_actions_follow_file_and_folder_rules() {
     );
 }
 
-/// The Open button hands the browser's `OpenRequested` to the open path in its own commit,
-/// with no `poll` in between, and an executable with no default application asks before it
-/// runs. No application installed on the machine is a default: the lookup GIO answers off the
-/// UI thread finds none.
 #[test]
 fn open_action_on_executable_settles_run_confirmation_immediately() {
     let no_applications = tempfile::tempdir().expect("empty data dirs");
@@ -390,8 +381,6 @@ fn open_action_on_executable_settles_run_confirmation_immediately() {
             host.runtime().pointer_down(x, y);
             host.runtime().frame(1.0 / 60.0);
             host.runtime().pointer_up(x, y);
-            // One frame without `host.turn()` or `poll`: `open_clicked` applied
-            // `BrowserEvent::OpenRequested` in the button's own commit.
             host.runtime().frame(1.0 / 60.0);
             assert_eq!(
                 (host.app().properties.open, host.app().has_queued_changes()),

@@ -1,29 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The gallery page for C18 FilterBar and FooterPrompt: its scenes, demo state, view and key and
-//! poll hooks. Scene names start with `c18-` and end in `-light` or `-dark`.
-//!
-//! Work package: `docs/rune/work/phase-2-composites/C18-filter-bar-footer-prompt.md`.
-//!
-//! A stand-in file pane over one fake folder: a header with the filter toggle, the filter bar,
-//! the listing (a C1e collection whose keys come from the pane, its one focus stop, so a chord
-//! hears every key first), a footer with the prompt, the flash and the chord pill, and two
-//! readouts: `c18-outlined` (the Enter target's outline) and `c18-log` (what the host last
-//! did). The page stands in for Strata's key map and policy: matching is a case-insensitive
-//! substring, and "opening" logs.
-//!
-//! | Key | Map | Does |
-//! | --- | --- | --- |
-//! | Ctrl+F, `/` | default | Open the filter |
-//! | A printable key in the listing | default | Type to search: open the filter with it |
-//! | Escape in the listing | default | Close an open filter |
-//! | Up on the first result | default | Back to the filter field |
-//! | `/`, `?`, `f`, `s`, `r`, F2 | 10xer | Open the find, filter, search and rename prompts |
-//! | `g`, `,`, `c` | 10xer | Arm the go, sort and copy chords; `g Space` opens `go ›` |
-//! | Ctrl+Shift+M | both | Toggle 10xer mode, closing prompts and chords |
-//! | F6 | both | Another program adds `report-new.pdf` to the folder |
-//! | F7 | both | Another program deletes the cursor's entry |
-
 use rune::{Chord, Cx, El, Key, KeyEvent, Mods, Tx, col, row, text};
 use rune_kit::{Button, ButtonVariant};
 use strata_components::collection::element::{Collection, CollectionState, Intent, RowMarks};
@@ -74,7 +50,6 @@ pub enum Act {
     CopyName,
 }
 
-/// C18's demo state, held in `Gallery::c18`.
 pub struct Demo {
     /// The folder's title (Documents, or Trash for the in-place scene).
     pub title: &'static str,
@@ -87,7 +62,6 @@ pub struct Demo {
     pub filter: FilterState,
     pub prompt: PromptState<Kind>,
     pub chord: ChordState<Act>,
-    /// C21's text menu over the filter field or the prompt's.
     pub fields: FieldMenuState<Field>,
     pub flash: Flash,
     pub tenxer: bool,
@@ -250,7 +224,6 @@ fn prompt() -> FooterPrompt<Gallery, Kind> {
         })
 }
 
-/// The fields C21's text menu opens over.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Field {
     Filter,
@@ -275,9 +248,6 @@ fn field_edit(g: &Gallery, f: Field) -> Option<&rune::TextEdit> {
     }
 }
 
-/// C21's text menu for the filter field and the prompt's (Cut, Copy, Paste, Delete, Select
-/// All). An edit it makes reaches the bar or the prompt as typing does; closing it gives the
-/// field the keyboard back and lets the prompt close on a blur again.
 fn field_menu() -> FieldMenu<Gallery, Field> {
     FieldMenu::new(
         "c18-field-menu",
@@ -385,8 +355,6 @@ fn chords(map: &str) -> ChordMap<Act> {
             ],
         },
         "," => {
-            // Strata's sort keys (`src/ui/keys/bindings/tenxer.rs`); Shift reverses the
-            // orders that have a direction.
             let sort = |cap: &'static str, label: &'static str, reverses: bool| {
                 let mut chords = vec![(c(cap), Act::Sort(label, false))];
                 if reverses {
@@ -424,8 +392,6 @@ fn chords(map: &str) -> ChordMap<Act> {
     }
 }
 
-/// A file's stem, up to its last `.`; a folder's whole name (Strata's rule, C5's
-/// `initial_selection` once merged).
 fn stem(name: &str, folder: bool) -> std::ops::Range<usize> {
     match name.rfind('.') {
         Some(i) if !folder && i > 0 => 0..i,
@@ -501,7 +467,6 @@ impl Demo {
                 self.log = format!("Down to {}", self.name_of(id));
             }
             FilterIntent::Preview => self.log = "Quick preview".into(),
-            // C21's FieldMenu answers this in Strata; it isn't merged yet.
             _ => {}
         }
     }
@@ -695,8 +660,6 @@ impl Demo {
         if n == 0 {
             return;
         }
-        // From the cursor, wrapping; with no cursor, from the first entry (the last going
-        // back) itself.
         let from = match self.coll.selection.cursor_index(&self.listing) {
             Some(i) => i,
             None if backward => 0,
@@ -1129,8 +1092,6 @@ pub fn view(g: &Gallery, cx: &mut Cx<Gallery>) -> El {
     )
 }
 
-/// The footer: the prompt while one is open, else the flash, the chord pill and the `10X`
-/// stand-in (C19's), with the chord's panel above the pill.
 fn footer(g: &Gallery, look: &Look, cx: &mut Cx<Gallery>, layer: &mut Vec<El>) -> El {
     let d = &g.c18;
     let k = &look.kit;
@@ -1311,12 +1272,7 @@ fn page_command(g: &mut Gallery, ev: &KeyEvent, tx: &mut Tx) -> bool {
     false
 }
 
-/// Keys no focused element took while this page is open: with nothing focused (a scene's
-/// first frames), the pane's keys, as if it had the keyboard; from the filter field and the
-/// prompt, the page's commands (Ctrl+Shift+M, F6, F7). True consumes the key.
 pub fn on_key(g: &mut Gallery, key: &KeyEvent, tx: &mut Tx) -> bool {
-    // C21's field menu passes on the keys it doesn't use; while it is open they are the menu's,
-    // not the page's key map (no type-to-search, prompt or chord under it).
     if g.c18.fields.is_open() {
         return true;
     }
@@ -1326,9 +1282,6 @@ pub fn on_key(g: &mut Gallery, key: &KeyEvent, tx: &mut Tx) -> bool {
     pane_key(g, key, tx)
 }
 
-/// Runs at the start of every frame while this page is open: the bar's and the prompt's
-/// ticks, the flash, and the fake picker's due answers, asking for a wake when the next one
-/// is due. True when state changed.
 pub fn poll(g: &mut Gallery, t: f64, tx: &mut Tx) -> bool {
     g.c18.now = t;
     let mut changed = false;

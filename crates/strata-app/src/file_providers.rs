@@ -1,10 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Opt-in external file providers on Rune (`src/ui/file_providers.rs`), over the shared
-//! discovery and JSON-lines subprocess transport in [`strata_fs::services::file_providers`]:
-//! visible-row decoration badges and descriptions, context-menu provider sections and live
-//! submenu refreshes, activation dispatch, and outcome feedback.
-
 use std::{
     cell::Cell,
     collections::{HashMap, HashSet},

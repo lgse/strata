@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The grid in a headless runtime: what lands (details, thumbnails) rebuilds only what shows
-//! it, two grids follow one size, a scroll offset comes back only at its grid's width, and a
-//! 4K screen at scale 2 settles its thumbnail queue (C25's B1, at the grid).
-
 use std::cell::Cell;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -297,8 +293,6 @@ fn a_scroll_offset_comes_back_only_at_its_grids_width() {
         at,
         "the same width: the offset"
     );
-    // Narrowed, the grid wraps otherwise: its key differs, and the cursor comes into view
-    // instead of the offset.
     rt.update(|s: &mut Host, _: &mut Tx| s.w = 400.0);
     for _ in 0..10 {
         rt.frame(DT);
@@ -320,9 +314,6 @@ fn a_scroll_offset_comes_back_only_at_its_grids_width() {
     );
 }
 
-/// C25's review item B1, at the grid: a 3840 × 2160 window at scale 2 with 72 pt tiles shows
-/// about 60 MiB of thumbnails against the default 64 MiB budget. Served as it asks, the store
-/// settles: after the screen and what margin fits load, it asks for nothing more.
 #[test]
 fn a_4k_grid_at_scale_2_settles_its_thumbnail_queue() {
     let mut h = host(20_000, 1920.0, 1080.0);
@@ -342,9 +333,6 @@ fn a_4k_grid_at_scale_2_settles_its_thumbnail_queue() {
     assert!(st.bytes <= st.budget, "{} of {}", st.bytes, st.budget);
 }
 
-/// The grid syncs the store with its count a row (C25's `Viewport::per_line`), so the margin it
-/// loads past the viewport is whole lines of tiles, as the grid draws them: served as it asks,
-/// the loaded thumbnails end on a line's last tile, a line or more past the viewport.
 #[test]
 fn the_thumbnail_margin_is_whole_lines_of_tiles() {
     let mut rt = runtime(host(2_000, 900.0, 600.0), 1.0);
@@ -371,9 +359,6 @@ fn the_thumbnail_margin_is_whole_lines_of_tiles() {
     assert_eq!(end % per, 0, "whole lines of {per}: {end}");
 }
 
-/// The host's wheel hook hears every wheel over the grid, before the grid's own, which the
-/// base collection's `on_wheel` could not do (the grid's replaces it): a plain wheel still
-/// scrolls, Ctrl+Shift+wheel still resizes, and a wheel the host takes does neither.
 #[test]
 fn the_hosts_wheel_hook_hears_each_wheel_before_the_size_wheel() {
     let resize = Mods {
@@ -415,9 +400,6 @@ fn the_hosts_wheel_hook_hears_each_wheel_before_the_size_wheel() {
     }
 }
 
-/// A metadata refill that replaces an entry's thumbnail key bumps `IconsParts::listing`
-/// (`thumb_version`) while leaving the collection's row-key version unchanged; `IconsGrid::poll`
-/// must resync the thumbnail store so the new key is requested and painted without scrolling.
 #[test]
 fn poll_resyncs_thumbnails_when_listing_version_changes_without_scroll() {
     let mut rt = runtime(host(40, 900.0, 600.0), 1.0);
@@ -459,9 +441,6 @@ fn poll_resyncs_thumbnails_when_listing_version_changes_without_scroll() {
     );
 }
 
-/// A fast trough click (`pointer_down` + `pointer_up` before `poll`) mounts destination rows
-/// while `bar.is_dragging()` is temporarily true; the next non-deferred poll must consume the
-/// store's skipped-handle flag and rebuild once so destination tiles bind `THUMB` elements.
 #[test]
 fn fast_trough_click_rebinds_skipped_thumbnails_on_next_poll() {
     let mut h = host(1_000, 900.0, 600.0);

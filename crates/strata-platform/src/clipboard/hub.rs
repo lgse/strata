@@ -1,13 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The process's clipboard, on the UI thread: P0's substrate, the bookkeeping, every
-//! [`super::Clipboard`]'s way in, and the hand-off at shutdown.
-//!
-//! Everything here runs on the UI thread: inside an app's call, or inside an
-//! `AppHandle::update_if` that runs a [`Job`]. Other threads (P0's Wayland reader, the X11
-//! actor, read workers) only post jobs. No app callback runs while the hub is borrowed:
-//! changes are queued on each handle, then delivered by that handle's job.
-
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::rc::{Rc, Weak};
@@ -32,7 +24,6 @@ use super::handle::TestRoute;
 pub(super) enum Job {
     /// Take in what the platform reported, then deliver this handle's changes.
     Pump,
-    /// P0's turn: dispatch its queue (see `transfer::Turn`).
     Run(Box<dyn FnOnce() + Send>),
     /// Read `id` finished.
     Read {
@@ -57,8 +48,6 @@ pub(super) trait Sink {
     fn queue(&self, change: Change);
 }
 
-/// Every handle's poster: anything any thread hears wakes them all, and the first to run
-/// takes it in.
 #[derive(Clone, Default)]
 struct Posters(Arc<Mutex<Vec<(u64, Poster)>>>);
 
@@ -91,8 +80,6 @@ struct Hub {
     book: Book,
     /// Each selection's current offer on the route, to read from.
     offers: HashMap<Selection, SelectionOffer>,
-    /// The live copies' content (for reads of our own copy, served in process) and how long
-    /// the exit waits for a clipboard manager to take it.
     specs: HashMap<CopyId, (SourceSpec, Option<Duration>)>,
     sinks: Vec<(u64, Weak<dyn Sink>)>,
     posters: Posters,
@@ -150,8 +137,6 @@ fn route_of(t: &Transfer) -> Result<(Route, Status), Error> {
     Ok((route, status))
 }
 
-/// Attaches `window` for handle `id` (its `sink`, reached through `poster`), binding the
-/// substrate on the first call. On the UI thread, from `App::on_window`.
 pub(super) fn attach(
     window: &WindowHandle,
     id: u64,
@@ -170,8 +155,6 @@ pub(super) fn attach(
             x11_fallback: true,
             ..Wants::default()
         };
-        // P0 binds once per process: when drag and drop bound it first, these wants don't
-        // apply, and its defaults have data control too.
         let (t, _) = Transfer::attach(window, turn, wants)?;
         let (route, status) = route_of(&t)?;
         let posters = Posters::default();
@@ -202,8 +185,6 @@ pub(super) fn attach(
         // Events read while binding wait for a dispatch (winit's display).
         let _ = t.dispatch();
     } else {
-        // P0 tracks every window: the data device's routing compares their surfaces, and its
-        // reader's turns go through any window's app that still runs.
         let turn_poster = poster.clone();
         let turn: Turn = Arc::new(move |f| turn_poster(Job::Run(f)));
         let _ = Transfer::attach(window, turn, Wants::default());
@@ -242,9 +223,6 @@ pub(super) fn status() -> Option<Status> {
     with(|hub| hub.status.clone())
 }
 
-/// Takes in what the platform reported since the last pump, and queues the changes on every
-/// handle. Diagnostics go out once the hub is no longer borrowed: the app's handler may call
-/// the clipboard back.
 pub(super) fn pump() {
     let Some((changes, sinks, diagnostics)) = with(|hub| {
         let mut changes = Vec::new();
@@ -370,9 +348,6 @@ impl Src {
 
 type Done = Box<dyn FnOnce(Result<Vec<u8>, ReadError>) + Send>;
 
-/// The newest copy of ours on `selection` that isn't lost, holding or still on its way, is
-/// what the selection has (or will have once the platform answers): a read right after a
-/// copy must not get the copy it replaced. Else the other app's offer.
 fn source_of(selection: Selection) -> Result<Option<Src>, ReadError> {
     with(|hub| {
         if let Some(spec) = hub
@@ -387,8 +362,6 @@ fn source_of(selection: Selection) -> Result<Option<Src>, ReadError> {
     .ok_or(ReadError::NotAttached)
 }
 
-/// Reads `mime` from `src`; `done` runs once, on any thread (on this one at once when the
-/// read can't start).
 fn read_one(src: &Src, mime: &str, limits: Limits, done: Done) {
     match src {
         Src::Ours(spec) => {
@@ -505,8 +478,6 @@ pub(super) fn read_files(selection: Selection, limits: Limits, answer: AnswerFil
     }
 }
 
-/// Before P0's teardown, on the UI thread: on X11 the clipboard copy that still holds goes to
-/// a clipboard manager, if one runs and the copy asked to be kept, then the hub goes.
 fn teardown(t: &Transfer) {
     let Some(hub) = HUB.with(|h| h.borrow_mut().take()) else {
         return;

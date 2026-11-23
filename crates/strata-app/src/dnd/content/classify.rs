@@ -1,23 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! What a drop from another app holds, in GTK's order, and which of its types to read for it.
-//!
-//! One walk decides both: while the drop is read ([`next_read`]), the first type it needs and
-//! has not read yet is the next to read; once read ([`read`]), what it saves. GTK reads only
-//! the type it uses and falls back where `DeferredContent::read` does: from image bytes that
-//! are no image, or image data that cannot be read, to the addresses or text offered with
-//! them. So a drop reads one type of each kind at most, in that order, and stops at the first
-//! that settles it. Text is the exception: a form whose charset cannot be read gives way to the
-//! next text form, as GTK's string reader takes only the forms it can read.
-//!
-//! Both walks see the same types: the ones a content zone lists ([`URI_LIST`] and
-//! [`CONTENT_TYPES`](super::CONTENT_TYPES)), in the source's order; a type no one read is
-//! passed over.
-//!
-//! One difference from GTK, on purpose: a file list that could not be read (it timed out, say)
-//! leaves the drop to its image and text types, where GTK's `DeferredContent::for_drop` gives
-//! up and its main target refuses the drop.
-
 use strata_components::contract::dnd::{Dropped, ReadFailure, URI_LIST, names, parse_uri_list};
 use strata_core::{error_text::UNEXPECTED_SYSTEM_ERROR, i18n::tr};
 use strata_fs::services::{DroppedFile, WebLink, has_web_scheme, io_error_message};
@@ -51,8 +33,6 @@ pub(crate) fn content_zone_takes(mime: &str) -> bool {
         .any(|listed| names(listed, mime))
 }
 
-/// A drop once read. The binder bounds each read (P1 fails one past 64 MiB, which arrives as
-/// [`ReadFailure::TooLarge`]), so the bytes are not measured again here.
 impl Reads for Dropped {
     fn offered(&self) -> Vec<&str> {
         let types = self.offer.mime_types.iter().map(AsRef::as_ref);
@@ -79,8 +59,6 @@ pub(crate) fn read(dropped: &Dropped) -> Option<Content> {
     classify(dropped).ok().flatten()
 }
 
-/// The offered type to read next for what `reads` holds, or `None` when what it read settles
-/// the drop (P1's `DropTarget::read_next`).
 pub(crate) fn next_read(reads: &impl Reads) -> Option<String> {
     classify(reads).err()
 }
@@ -130,16 +108,12 @@ enum WebLinks {
     Refused,
 }
 
-/// A walk through a drop's types, keeping the first failure to report when nothing else is
-/// there.
 struct Walk<'a, R> {
     reads: &'a R,
     failure: Option<String>,
 }
 
 impl<'a, R: Reads> Walk<'a, R> {
-    /// The bytes of the first offered type `wanted` takes and someone read, `None` when there
-    /// is none or its read failed (noted, if `report` says so), or the type to read first.
     fn bytes(
         &mut self,
         offered: &[&str],
@@ -166,8 +140,6 @@ impl<'a, R: Reads> Walk<'a, R> {
         self.failure.get_or_insert(reason);
     }
 
-    /// GTK reads a file list silently: only a list past the read's bound, which GTK has not,
-    /// is reported.
     fn file_list(&mut self, offered: &[&str]) -> Result<WebLinks, Needs> {
         let list = self.bytes(offered, |m| m == URI_LIST, too_large)?;
         Ok(list.map_or(WebLinks::Links(Vec::new()), |(_, bytes)| {
@@ -194,8 +166,6 @@ impl<'a, R: Reads> Walk<'a, R> {
         )
     }
 
-    /// The image `save` makes of the first offered type `wanted` takes. Bytes that are no
-    /// image, as a failed read, are noted.
     fn image(
         &mut self,
         offered: &[&str],
@@ -212,9 +182,6 @@ impl<'a, R: Reads> Walk<'a, R> {
         Ok(image)
     }
 
-    /// The first text form offered that reads as text in its charset, the next tried when one
-    /// does not: a link when it is one address, else a text file. GTK reads one string and
-    /// reports nothing when it is no use; a read too large is reported.
     fn text(&mut self, offered: &[&str]) -> Result<Option<DroppedFile>, Needs> {
         let mut forms: Vec<&str> = offered
             .iter()
@@ -261,7 +228,6 @@ fn too_large(failure: &ReadFailure) -> bool {
     *failure == ReadFailure::TooLarge
 }
 
-/// Why a read failed, to show: GTK's "too large", a timeout, or a system error.
 fn reason(failure: &ReadFailure) -> String {
     match failure {
         ReadFailure::TooLarge => tr("The dropped content is too large"),

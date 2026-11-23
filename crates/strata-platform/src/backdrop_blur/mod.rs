@@ -2,39 +2,14 @@
 
 //! Compositor-level backdrop blur behind translucent Rune windows on Linux Wayland.
 //!
-//! Prefers the standard cross-compositor staging protocol `ext_background_effect_v1`
-//! (KDE Plasma 6.3+, Hyprland, Wayfire, wlroots) and falls back to `org_kde_kwin_blur_manager`
-//! (KDE Plasma 5 / 6.0–6.2, Wayfire) when `ext_background_effect_manager_v1` is absent.
+//! Prefers `ext_background_effect_v1` and falls back to `org_kde_kwin_blur_manager`.
+//! On unsupported compositors, X11, or libwayland < 1.23, [`BackdropBlur`] is a no-op.
 //!
-//! Rune lacks, at the pinned rev (`7a707454`):
-//!
-//! - **Linux Wayland backdrop blur.** `El::system_material` implements macOS
-//!   `NSGlassEffectView` / `NSVisualEffectView` only and does not bind Wayland
-//!   `ext_background_effect_v1` or `org_kde_kwin_blur_manager`.
-//! - **The native display connection.** `WindowHandle::with_raw_handle` exposes the
-//!   `wl_surface` without winit's `wl_display` (draft U9, not filed), so this shim reaches
-//!   winit's display through the crate's internal `transfer` substrate (`wl_proxy_get_display`,
-//!   libwayland 1.23+).
-//!
-//! # Graceful degradation
-//!
-//! On unsupported compositors (such as Sway or GNOME/Mutter), X11, libwayland < 1.23, or
-//! non-Linux platforms, [`BackdropBlur`] is a silent no-op ([`Protocol::None`]).
-//!
-//! # Lifecycle
-//!
-//! Keep one [`BackdropBlur`] per window (clones share the same window state):
-//!
-//! 1. Call [`BackdropBlur::set_enabled`] whenever the app's backdrop-blur setting changes,
-//!    before or after the native window exists. Repeated calls with the same state are zero-cost
-//!    no-ops.
-//! 2. Call [`BackdropBlur::attach`] from `App::on_window` on the UI thread. It binds the
-//!    compositor protocol once per process and immediately applies the desired enabled state.
-//! 3. Call [`BackdropBlur::detach`] from the window's `on_close` (or drop the last clone) to
-//!    release the surface's blur object without touching winit's `wl_surface`.
-//! 4. Call [`shutdown`] (or `clipboard::shutdown` / `dnd::shutdown` / `foreign_parent::shutdown`)
-//!    on the UI thread before the event loop ends to tear down the shared display substrate while
-//!    winit's display is still alive.
+//! Rune lacks Linux Wayland backdrop blur (`El::system_material` is macOS-only) and exposes
+//! only the `wl_surface` without winit's `wl_display`, so this shim binds through the internal
+//! `transfer` substrate (`wl_proxy_get_display`, libwayland 1.23+). Call [`shutdown`] on the
+//! UI thread before the event loop ends to tear down the shared display substrate while winit's
+//! display is still alive.
 
 mod wayland;
 
@@ -87,9 +62,6 @@ fn is_wayland(window: &WindowHandle) -> bool {
         .unwrap_or(false)
 }
 
-/// Per-window handle for toggling compositor-level Wayland backdrop blur.
-///
-/// Cheap to clone: all clones refer to the same window's desired and applied blur state.
 #[derive(Clone)]
 pub struct BackdropBlur {
     inner: Arc<Inner>,
@@ -123,11 +95,6 @@ impl BackdropBlur {
         }
     }
 
-    /// Attaches this handle to `window` on the UI thread (from `App::on_window`) and applies
-    /// the current desired state.
-    ///
-    /// Silently returns [`Protocol::None`] on non-Wayland windows, unsupported compositors, or
-    /// when winit's Wayland display is unavailable.
     pub fn attach<S: 'static>(&self, window: &WindowHandle, app: &AppHandle<S>) -> Protocol {
         if !is_wayland(window) {
             let mut state = lock(&self.inner.state);
@@ -161,10 +128,6 @@ impl BackdropBlur {
         protocol
     }
 
-    /// Sets whether compositor backdrop blur should be enabled for the attached window.
-    ///
-    /// When unattached or unsupported, remembers `enabled` without performing any platform call.
-    /// Repeated calls with the same applied state are zero-cost no-ops.
     pub fn set_enabled(&self, enabled: bool) {
         let window = {
             let mut state = lock(&self.inner.state);
@@ -190,9 +153,6 @@ impl BackdropBlur {
         }
     }
 
-    /// Releases the attached window's blur object without destroying the native `wl_surface`.
-    ///
-    /// Safe to call when unattached, after window close, or after [`shutdown`].
     pub fn detach(&self) {
         let window = {
             let mut state = lock(&self.inner.state);
@@ -221,8 +181,6 @@ impl BackdropBlur {
     }
 }
 
-/// Tears down every blur object and the shared Wayland display substrate on the UI thread before
-/// the event loop ends. True if a substrate was bound.
 pub fn shutdown() -> Result<bool, ShutdownError> {
     crate::transfer::Transfer::shutdown().map_err(|e| ShutdownError(e.to_string()))
 }

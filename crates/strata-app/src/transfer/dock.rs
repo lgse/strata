@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Hosting C16's [`DockView`] and [`ProgressDialog`] for transfer operations, and reporting
-//! transfer outcomes (`src/ui/browser/progress.rs`, `events/operations.rs`, `transfer_report.rs`).
-
 use std::collections::{HashMap, HashSet};
 
 use rune::{El, Tx};

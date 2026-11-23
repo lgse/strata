@@ -1,10 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! 10xer mode's hooks into [`super::Filter`]: the footer's `filter:` and `search:` marks,
-//! driving listing filters (`f`) and subfolder searches (`s`) from C18's `FooterPrompt`, the
-//! subfolder search hit path under the cursor, Escape's dismissal of `f` vs `s`, and non-Latin
-//! `h j k l` moves on search results (`Stage::SearchResultKeys`).
-
 use std::ops::Range;
 
 use rune::Tx;
@@ -39,8 +34,6 @@ fn open_shown(app: &App, open: &OpenIn) -> bool {
         }
 }
 
-/// The footer's `filter: …` or `search: …` mark while 10xer mode or a subfolder search is
-/// active (`FilterMark`).
 pub(crate) fn mark(app: &App) -> Option<FilterMark> {
     let open = app.filter.open_in.as_ref()?;
     if !app.filter.state.is_open() {
@@ -59,9 +52,6 @@ pub(crate) fn mark(app: &App) -> Option<FilterMark> {
     }
 }
 
-/// The footer's active filter or search result counts (`FilterStatus` in
-/// `src/ui/browser/listing_filter.rs`). While a typed query is still debouncing or awaiting its
-/// first batch with no hits yet, `displayed` is false so the footer keeps the directory count.
 pub(crate) fn footer_counts(app: &App) -> Option<FilterCounts> {
     let open = app.filter.open_in.as_ref()?;
     if !app.filter.state.is_open()
@@ -172,8 +162,6 @@ pub(crate) fn listing_filter_query(app: &App) -> Option<String> {
     (!text.trim().is_empty()).then_some(text)
 }
 
-/// How a 10xer prompt's query reaches the filter: `forced` for `s`'s recursive search, and
-/// `flush` to run it at once on Enter.
 #[derive(Clone, Copy)]
 struct Apply {
     forced: bool,
@@ -223,8 +211,6 @@ fn apply_tenxer_query(app: &mut App, query: &str, how: Apply, tx: &mut Tx) {
     }
 }
 
-/// Opens the filter on `query`, or replaces the open one's text with it, keeping `before` as
-/// the selection Escape gives back.
 fn edit_query(app: &mut App, query: &str, before: Position) -> Polled {
     let state = &mut app.filter.state;
     if !state.is_open() {
@@ -297,8 +283,6 @@ pub(crate) fn commit_listing_search(app: &mut App, query: &str, tx: &mut Tx) {
     focus_results_or_view(app, tx);
 }
 
-/// Clears filters opened by 10xer's `f` or `s` prompts when leaving 10xer mode, keeping a `Ctrl+F`
-/// filter opened before entering 10xer mode (`end_tenxer_session`).
 pub(crate) fn end_tenxer_filters(app: &mut App, tx: &mut Tx) {
     app.filter.saved_filter = None;
     app.filter.focus_on_arrival = false;
@@ -328,8 +312,6 @@ pub(crate) fn focus_visible_results(app: &App, tx: &mut Tx) -> bool {
     true
 }
 
-/// GTK's `focus_filter_results`: with no cursor among the shown results, the keyboard lands on
-/// the first one without selecting it, as a GTK list's `grab_focus` does.
 fn cursor_on_first_result(app: &mut App, tx: &mut Tx) {
     let Some(open) = app.filter.open_in.clone() else {
         return;
@@ -358,8 +340,6 @@ fn cursor_on_first_result(app: &mut App, tx: &mut Tx) {
     app.filter.pane.reveal_index(open.place.view_key(), 0, tx);
 }
 
-/// GTK's `focus_arrived_results`: results that arrive after a commit, while the keyboard
-/// still waits in the view, put the cursor on the first of them.
 pub(super) fn results_arrived(app: &mut App, tx: &mut Tx) {
     if !app.filter.focus_on_arrival {
         return;
@@ -386,9 +366,6 @@ fn focus_results_or_view(app: &mut App, tx: &mut Tx) {
     }
 }
 
-/// Resolves the settled directory match for a `/` typed into 10xer's `f` prompt: `None` while
-/// results are still arriving, `Some(Some(folder))` when the settled first match is a folder, and
-/// `Some(None)` when settled on a file or empty results (`settled_filter_match`).
 pub(crate) fn settled_descent_folder(app: &App, at_cursor: bool) -> Option<Option<Location>> {
     if app.filter.open_in.is_none() {
         return Some(None);
@@ -408,8 +385,6 @@ pub(crate) fn settled_descent_folder(app: &App, at_cursor: bool) -> Option<Optio
     Some(folder)
 }
 
-/// `reveal_listing_search_hit` (`src/ui/browser/listing_search.rs`): ends an active `s`
-/// search and opens the hit's parent folder with the hit selected.
 pub(crate) fn reveal_search_hit(app: &mut App, tx: &mut Tx) -> bool {
     if !search_active(app) {
         return false;
@@ -434,8 +409,6 @@ pub(crate) fn reveal_search_hit(app: &mut App, tx: &mut Tx) -> bool {
     true
 }
 
-/// Non-Latin fallback `h j k l` on search results (`search_result_keys`'s `vim_arrow` where
-/// C1c lacks the offscreen key's physical origin).
 pub(super) fn fallback_vim_arrow(press: &KeyPress) -> Option<Direction> {
     if !press.used_fallback() {
         return None;
@@ -475,8 +448,6 @@ pub(super) fn result_vim_arrow(app: &mut App, call: &Call<'_>, tx: &mut Tx) -> O
 }
 
 thread_local! {
-    /// The matcher of the query the hits' names were last highlighted for: GTK keeps one per
-    /// query too (`with_filter_terms`).
     static HIT_MATCHER: std::cell::RefCell<Option<(String, PathMatcher)>> =
         const { std::cell::RefCell::new(None) };
 }
@@ -487,9 +458,6 @@ pub(crate) fn hit_name(app: &App, id: EntryId) -> Option<&str> {
     Some(entry.display_name.as_str())
 }
 
-/// The parts of result `id`'s name its query matched, as 10xer's fuzzy `f` and `s` mark them
-/// (`search_hit_ranges` in `src/ui/browser/find.rs`). `None` outside them: a plain filter's
-/// results show no highlight.
 pub(crate) fn hit_name_ranges(app: &App, id: EntryId) -> Option<Vec<Range<usize>>> {
     let open = app.filter.open_in.as_ref()?;
     let fuzzy = app.filter.forced_recursive || shell::preferences(app).tenxer_mode;

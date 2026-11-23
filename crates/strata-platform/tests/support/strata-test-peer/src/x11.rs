@@ -1,22 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The peer on X11: one x11rb connection. A thread blocks on X events and the stdin thread
-//! reads commands; both feed one channel that the main thread works through, so all state
-//! lives on one thread.
-//!
-//! Selections are `CLIPBOARD` and `PRIMARY`, with `TARGETS`, `TIMESTAMP` and INCR both ways.
-//! Ownership and conversions carry real server timestamps (ICCCM), from a zero-length property
-//! append. Drag and drop is XDND version 5: the source runs on the implicit grab of the press on
-//! its own window, honours a target's `XdndProxy`, and speaks the lower of the two versions.
-//!
-//! `map` replies once the window is in the root's `_NET_CLIENT_LIST`, which wlroots updates
-//! when the compositor maps the window's `wl_surface`. Up to wlroots 0.20.2, a window whose
-//! first buffer reaches the compositor before its pairing with the X window (they travel on
-//! different sockets) is never mapped in sway; wlroots fixed it after 0.20.2 ("no
-//! synchronization between the two" in `xwayland_surface_associate`). A window that isn't
-//! listed within [`MAP_RETRY`] (times `STRATA_TEST_TIMEOUT_SCALE`) is unmapped and mapped
-//! again, which pairs a new surface, until the test's own timeout gives up.
-
 use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender, channel};
@@ -50,18 +33,12 @@ x11rb::atom_manager! {
     }
 }
 
-/// Data larger than this goes by INCR, in chunks this size. It stays well under the core
-/// protocol's request limit (256 KiB) without BIG-REQUESTS.
 const INCR_CHUNK: usize = 64 * 1024;
 
 const XDND_VERSION: u32 = 5;
 
-/// How long a mapped window may stay out of `_NET_CLIENT_LIST` before the peer maps it again,
-/// before `STRATA_TEST_TIMEOUT_SCALE`.
 const MAP_RETRY: Duration = Duration::from_millis(500);
 
-/// How long an INCR transfer may stall before it is dropped, before the scale: the harness's
-/// own wait.
 const INCR_STALL: Duration = Duration::from_secs(10);
 
 /// `STRATA_TEST_TIMEOUT_SCALE`, which the session passes on: slow machines wait longer.
@@ -103,8 +80,6 @@ enum Conversion {
     ReadMultiple(u64, Vec<Atom>),
 }
 
-/// A hand-over in progress: the `SAVE_TARGETS` request to answer, and each type's data as it
-/// arrives.
 struct Saving {
     requestor: Window,
     property: Atom,
@@ -156,8 +131,6 @@ struct DropIn {
     reads: Vec<String>,
 }
 
-/// A drop target under the drag: the window, where its messages go (it or its `XdndProxy`),
-/// and the XDND version both sides speak.
 #[derive(Clone, Copy, PartialEq)]
 struct Target {
     window: Window,
@@ -172,8 +145,6 @@ struct DragOut {
     accepted: bool,
 }
 
-/// The drop proxy: a window on a second connection, so messages sent to it arrive apart from
-/// messages sent to the peer's own window.
 struct Proxy {
     _conn: Arc<RustConnection>,
 }
@@ -200,8 +171,6 @@ struct X {
     /// The time of the press that is still held, if any.
     press_time: Option<u32>,
     drop_policy: Option<DropPolicy>,
-    /// A drop's reads still out, by its source, and whether every one so far arrived: the
-    /// drop finishes when the last one does.
     drop_left: HashMap<Window, (usize, bool)>,
     drop: Option<DropIn>,
     drag: Option<DragOut>,
@@ -389,8 +358,6 @@ impl X {
         }
     }
 
-    /// A server timestamp: append nothing to a property of the peer's window and read the time
-    /// of the change. Inputs that arrive meanwhile wait in the backlog.
     fn server_time(&mut self) -> Result<u32, String> {
         self.conn
             .change_property8(
@@ -1034,8 +1001,6 @@ impl X {
                 .map_err(err)?;
             return Ok(true);
         }
-        // INCR: announce the size, then send a chunk each time the reader deletes the last.
-        // The reader's window must report property changes to us; ours already does.
         if r.requestor != self.win {
             self.conn
                 .change_window_attributes(
@@ -1113,8 +1078,6 @@ impl X {
     /// A conversion the peer asked for has landed, or was refused.
     fn converted(&mut self, n: SelectionNotifyEvent) {
         if n.property == x11rb::NONE {
-            // Refused, or nobody owns the selection: the property is gone, so match the
-            // selection and target asked for.
             let key = self
                 .pending
                 .iter()
@@ -1339,10 +1302,6 @@ impl X {
             .send_event(false, r.requestor, EventMask::NO_EVENT, notify);
     }
 
-    /// An owner hands `CLIPBOARD` over: take every type it names in one `MULTIPLE`, asked as
-    /// gsd-clipboard and xfsettingsd ask (`clipboard-manager.c`, `save_targets`): into the
-    /// property `MULTIPLE` itself, each pair `(target, target)`, so each type lands in a
-    /// property named after it.
     fn start_save(&mut self, r: &SelectionRequestEvent) -> Result<(), String> {
         if r.property == x11rb::NONE {
             return Err("no property names the types to save".into());
@@ -1394,8 +1353,6 @@ impl X {
         Ok(())
     }
 
-    /// The `MULTIPLE` answer landed: each pair's property holds its data, or INCR's size, or
-    /// the pair names `None` (refused).
     fn multiple_landed(&mut self, pairs: &[u32]) {
         let answered: Vec<(Atom, Atom)> = pairs
             .as_chunks::<2>()
@@ -1442,8 +1399,6 @@ impl X {
                 part.data = Some(data);
             }
         }
-        // As gsd: take CLIPBOARD now, while INCR parts may still be coming, and answer the
-        // owner once they are all in.
         let clipboard = self.atoms.CLIPBOARD;
         match self.server_time() {
             Ok(time) => {
@@ -1456,8 +1411,6 @@ impl X {
         self.save_if_done();
     }
 
-    /// Every part is in: serve it from `CLIPBOARD` (taken when the `MULTIPLE` landed), answer
-    /// the owner, and say what was saved.
     fn save_if_done(&mut self) {
         if self
             .saving
@@ -1585,8 +1538,6 @@ impl X {
     }
 
     fn drop_position(&mut self, l: [u32; 5]) {
-        // The source proposes an action (XDND 2 and later); take it if the policy allows it,
-        // else the policy's preferred one.
         let proposed = self.action_of(l[4]);
         let chosen = self.drop_policy.as_ref().map(|p| match proposed {
             Some(a) if a == p.preferred || p.actions.contains(&a) => a,
@@ -1638,8 +1589,6 @@ impl X {
         }
     }
 
-    /// The XdndAware top-level window under a root point, other than the peer's own, with where
-    /// its messages go: its `XdndProxy` when the proxy names itself, else the window.
     fn target_at(&self, x: i16, y: i16) -> Option<Target> {
         let mut w = self.root;
         for _ in 0..8 {

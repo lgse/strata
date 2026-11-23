@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The strip's number badges while `TAB_NUMBERS.modifiers()` are held alone, including under a
-//! modal dialog that cuts `Stage::TabStrip`, and `Ctrl+Enter` stopping on a focused file even
-//! when `activate` declines.
-
 use std::cell::Cell;
 
 use rune::{ElementInfo, Key, Mods, Tx};
@@ -73,8 +69,6 @@ fn hold(host: &mut Offscreen, mods: Mods) -> Vec<Option<String>> {
     tab_badges(host)
 }
 
-/// Holding Ctrl+Shift without Alt or Super shows 1 to 9 and then 0 on the first ten tabs,
-/// leaving tab 11 unbadged; releasing either modifier or losing window focus hides them.
 #[test]
 fn ctrl_shift_alone_numbers_the_first_ten_tabs_until_released_or_blurred() {
     hosted(
@@ -121,9 +115,6 @@ fn ctrl_shift_alone_numbers_the_first_ten_tabs_until_released_or_blurred() {
     );
 }
 
-/// A modal layer cuts `Stage::TabStrip` commands (so Ctrl+T opens nothing), yet GTK shows and
-/// hides the tab-number hints before `blocked()`: `badges_shown` reads `shell::held_modifiers`
-/// at build time, so they still show and hide under the modal dialog.
 #[test]
 fn a_modal_dialog_leaves_the_number_badges_live_while_cutting_the_tab_keys() {
     hosted(
@@ -174,8 +165,6 @@ impl Part for Watch {
     }
 }
 
-/// The Columns view and the tab strip, without `menus` (so `"activate"` is unregistered and
-/// declines), plus a watch at `Stage::Unclaimed`.
 fn without_activate_and_watched() -> Vec<Entry<App>> {
     vec![
         Entry::of::<Columns>("columns"),
@@ -184,8 +173,6 @@ fn without_activate_and_watched() -> Vec<Entry<App>> {
     ]
 }
 
-/// With no entry focused, Ctrl+Enter declines and goes on to later stages; on a focused file it
-/// always stops at `open-in-tab`, even when `"activate"` declines (`open_focused_in_new`).
 #[test]
 fn ctrl_enter_on_a_file_stops_even_when_activate_declines() {
     hosted_over(

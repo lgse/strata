@@ -1,23 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The image view: C14a's viewport (zoom and pan, the checkerboard behind transparent images)
-//! with the image's name and its dimensions under it.
-//!
-//! ```ignore
-//! ImageView::new(&s.image, |s: &mut App| &mut s.image)
-//!     .pixels(&s.photo)
-//!     .name("harbour.png")
-//!     .size_px([1200, 800])
-//!     .build(&s.look, cx)
-//! ```
-//!
-//! **New vs Strata** (coordinator ruling): Strata's image preview shows the picture alone. The
-//! work package asks for the name and dimensions, so a caption shows them ("harbour.png",
-//! "1200 × 800"), and the picture's accessible description reads the dimensions too.
-//!
-//! The host gives the size in pixels with [`ImageView::size_px`] and sets the content on its
-//! [`ViewportState`] itself (C14a: the viewport never reads the `Pixels`' own size).
-
 use rune::{Cx, El, Pixels, Tx, col, text};
 use strata_kit::look::Look;
 
@@ -72,8 +54,6 @@ impl<'a, S: 'static> ImageView<'a, S> {
         }
     }
 
-    /// The view's key ("image" unless set): the viewport is `<key>-picture`, the caption's
-    /// lines `<key>-name` and `<key>-dimensions`.
     pub fn key(mut self, key: impl Into<String>) -> Self {
         self.key = key.into();
         self

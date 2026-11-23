@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Locking encrypted volumes and mounts, forgetting cached LUKS passwords via Secret Service,
-//! closing LUKS containers through UDisks2, and ejecting password-start drives
-//! (`src/ui/window/device_lock.rs`, `volume_password.rs`, and `drive_ops.rs`).
-
 use std::{
     cell::RefCell,
     collections::{HashMap, HashSet},
@@ -103,8 +99,6 @@ impl LockDeviceError {
     }
 }
 
-/// Starts locking an encrypted volume: checks Secret Service for a cached passphrase, asks to
-/// forget it if saved, then unmounts and locks the container or stops the drive.
 pub(super) fn lock_encrypted_volume(
     app: &mut App,
     id: String,
@@ -208,8 +202,6 @@ fn block_device_for_path(path: &Path) -> Option<String> {
         .map(|source| source.to_string_lossy().into_owned())
 }
 
-/// RAII guard preventing duplicate lock attempts for the same device; releases on drop even
-/// when the initiating window closes or an async step is abandoned.
 #[derive(Debug)]
 pub(super) struct LockGuard(String);
 

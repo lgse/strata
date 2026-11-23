@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Unit tests for the reference: the search, its lines, the state, the keys and the key map
-//! rows (`app/shortcut-reference`, `app/keyboard-shortcuts` Labels).
-
 use std::rc::Rc;
 
 use rune::{Chord, Key, KeyEvent, Mods};
@@ -430,9 +427,6 @@ fn a_category_the_data_lost_is_forgotten() {
     );
 }
 
-/// The panel takes every key it doesn't use wherever focus is in it, an element other than the
-/// categories and the results included (none is focusable today: a press on the header or the
-/// note leaves the search field focused), so nothing reaches the window.
 #[test]
 fn the_panel_takes_keys_with_focus_elsewhere_in_it() {
     let route = super::keys::Route::<ReferenceState> {

@@ -1,22 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Drops on the tab strip and the single-tab header's New tab button (`tabs/strip.rs` and
-//! `tabs/strip/drop.rs` in `src/ui/window/composition/`, with `src/ui/browser/clipboard.rs` and
-//! `transfer/drop.rs`):
-//!
-//! - **Accepting tabs.** A tab showing a local folder takes files and content ([`Accepts::ALL`]);
-//!   a remote folder takes files only ([`Accepts::FILES`]); Trash, Recent and a tab whose folder
-//!   has not opened yet take neither ([`Accepts::NONE`]).
-//! - **File drops (`DropInto`).** The same policy as every other drop zone (`dnd::policy`):
-//!   same-parent and self/descendant drops are refused without switching tabs, the volumes
-//!   are looked up as the drop's action is asked, and a drop that commits selects the tab
-//!   first, then transfers into its active directory or asks "Copy or move?".
-//! - **Opening tabs (`OpenTabs`).** Sidebar location drags ([`TabOpen::AtGap`]) place an incoming
-//!   gap across tabs and open there; folder-only view drags ([`TabOpen::AtEnd`]) transfer on
-//!   accepting tabs, stop on Trash/Recent, and open at the end on New tab and unused strip space.
-//! - **Modal guard.** While any modal layer holds the keyboard, no spring arms, no drop transfers,
-//!   and no tab opens.
-
 use rune::{Mods, Tx};
 use strata_components::{
     contract::dnd::{Dnd, DropAction, DropOffer, Dropped},
@@ -83,7 +66,6 @@ pub(super) fn drop_action(
     crate::dnd::drop_action(app, &dest, offer, mods)
 }
 
-/// Files dropped on tab `id` go into its folder, the tab selected first as GTK's drop does.
 pub(super) fn drop_into(app: &mut App, id: TabId, dropped: Dropped, tx: &mut Tx) -> bool {
     let Some(dest) = destination(app, super::key(id)) else {
         return false;

@@ -1,12 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The mounted volumes, listed through the GLib bridge and kept current as mounts come and go.
-//!
-//!   cargo run -p strata-platform --features glib-bridge --example glib_volumes
-//!
-//! This talks to the desktop's real volume monitor (and so to gvfsd on the session bus), unlike
-//! the bridge's tests.
-
 #[cfg(feature = "glib-bridge")]
 mod demo {
     use gio::prelude::*;

@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! 10xer's footer prompts and file verbs on the offscreen host: find and repeat, the filter's
-//! `/` descent, create and rename by typed path, delete confirmation, and yank and paste.
-
 use std::path::Path;
 
 use rune::{Key, KeyEvent, Mods, Tx};

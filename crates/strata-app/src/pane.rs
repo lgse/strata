@@ -1,34 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The one folder a single-pane view shows, for the Icons and List views: the browser's
-//! active column. GTK's Icons and List views rebuild their pane from `active_depth` whenever
-//! the columns change (`rebuild_icons` and `rebuild_list` in `src/ui/browser_modes/rebuild.rs`,
-//! called from `ColumnsTruncated`, `ColumnsRelocated` and an active `ColumnAdded` in
-//! `src/ui/browser_modes/events.rs`), and this does the same. Shared code, owned by the
-//! contract ([`crate::slots`], "Who owns what"). It knows nothing of a grid or a table: a view
-//! keeps its component's own state beside it.
-//!
-//! - **Events in.** A view's listener queues the changes [`crate::events`] reads, and
-//!   [`Pane::apply`] puts them into its listings, one for each of the browser's columns, so
-//!   that whichever the browser makes active can show at once. The collection shows the active
-//!   one, chosen on the same events as GTK's: a reset, an active column added, and columns
-//!   closing. A cursor moving to another column (`Browser::set_active_column` raises nothing
-//!   of its own) leaves the shown one, as it leaves GTK's pane.
-//! - **One cursor and one selection,** kept through [`crate::handover`], as each column of the
-//!   Columns view keeps them: the collection interprets keys and the pointer, the browser
-//!   holds the result, and [`Pane::publish`] hands it over. The collection is reached only
-//!   through the pane, so nothing changes it outside that bookkeeping but the component's own
-//!   handlers ([`Pane::parts_mut`]).
-//! - **Order.** A view index is the listing's ([`Column`]): the browser's order, or, where the
-//!   browser groups the folder by file type (`Browser::shows_type_groups`, which only a view
-//!   that supports type grouping turns on), strata-fs's group order, each group keeping the
-//!   browser's order. The collection, its cursor, anchor, ranges and keys, and so
-//!   [`Pane::neighbour`], work in view indices; what crosses to the browser goes by id
-//!   ([`Pane::position`], the handover). The pane gives the collection the groups before
-//!   each `enter` and `sync`, and none when the folder is not grouped.
-//! - **One pane for the window.** The collection is keyed by a fixed `scope`; a window with
-//!   tabs will need one pane, and one key, for each tab.
-
 use std::rc::Rc;
 
 use strata_components::{
@@ -81,8 +52,6 @@ pub(crate) enum Applied {
     Within,
     /// Another folder shows, or none does.
     Entered,
-    /// Another folder shows, at the position remembered for it when it was left
-    /// ([`restore`]): a first visit does not arm for it, as GTK's waits for no saved visit.
     Returned,
 }
 
@@ -106,13 +75,9 @@ pub(crate) struct Pane {
     grouped: bool,
     /// Where each folder was left, for when it shows again.
     restore: Restore,
-    /// The revision a remembered position left the collection at when it came back: handed to
-    /// the browser as no choice ([`handover::hand_back`]), unless the user changed it since.
     restored: Option<Held>,
 }
 
-/// The groups of `column`'s rows as it shows them: one for each run of a file type, headed by
-/// its description, cached once per interned type.
 fn groups_of(column: &Column) -> Groups {
     let groups = column
         .group_runs()
@@ -122,14 +87,10 @@ fn groups_of(column: &Column) -> Groups {
 }
 
 impl Pane {
-    /// Remembers where folders were left in `memory`, the window's, shared with its other
-    /// single-pane view.
     pub(crate) fn share_memory(&mut self, memory: &Memory) {
         self.restore.share(memory);
     }
 
-    /// Appends every [`EntryId`] referenced by this pane's listings, kept selection neighbour,
-    /// or pending renames into `out`.
     pub(crate) fn collect_ids(&self, out: &mut impl Extend<EntryId>) {
         for column in &self.columns {
             column.collect_ids(out);
@@ -169,8 +130,6 @@ impl Pane {
         }
     }
 
-    /// The view's layout, as C1e keys a scroll offset: an offset comes back only in the
-    /// layout it was measured in. The view sets it before each change applies.
     pub(crate) fn set_layout_key(&mut self, layout: u64) {
         self.collection.set_layout_key(layout);
     }
@@ -184,8 +143,6 @@ impl Pane {
         self.columns.get(self.shown?)
     }
 
-    /// What the pane holds of the browser's columns: every listing, and the one shown with
-    /// its collection.
     #[cfg(feature = "qa")]
     pub(crate) fn presented(&self) -> handover::Presented<'_> {
         let shown = self.shown.and_then(|depth| {
@@ -212,8 +169,6 @@ impl Pane {
         }
     }
 
-    /// Whether the folder shown has been read: a first visit waits on it, and the QA probe's
-    /// `ready` reads it.
     pub(crate) fn load(&self) -> Option<&Load> {
         self.listing().map(Column::load)
     }
@@ -230,8 +185,6 @@ impl Pane {
         }
     }
 
-    /// The listing and the collection, as the component's handlers take them: what they
-    /// change in the selection reaches the browser at the next [`Pane::publish`].
     pub(crate) fn parts_mut(&mut self) -> (&dyn EntrySource, &mut CollectionState) {
         let source: &dyn EntrySource = match self.shown.and_then(|at| self.columns.get(at)) {
             Some(column) => column,
@@ -269,9 +222,6 @@ impl Pane {
         (index < column.len()).then(|| column.id_at(index))
     }
 
-    /// Applies one change the view's listener queued. A change to a column's rows or load
-    /// carries how the browser groups its folder, read when the event came, which the column
-    /// follows before the change applies.
     pub(crate) fn apply(&mut self, change: Change, tx: &mut rune::Tx) -> Applied {
         let before = (self.shown, self.generation);
         if matches!(
@@ -304,16 +254,12 @@ impl Pane {
         }
     }
 
-    /// Column `depth` follows how the browser groups its folder, before a change to it
-    /// applies.
     fn follow_grouping(&mut self, depth: usize, grouping: Option<ViewPreferences>) {
         if let Some(column) = self.columns.get_mut(depth) {
             column.set_grouping(grouping);
         }
     }
 
-    /// Gives the collection the groups of the folder shown, or takes them away: before each
-    /// `enter` and `sync`, as the collection asks.
     fn regroup(&mut self) {
         let column = self.shown.and_then(|depth| self.columns.get(depth));
         match column.filter(|column| column.grouping().is_some()) {
@@ -364,8 +310,6 @@ impl Pane {
         }
     }
 
-    /// Shows column `depth`, or nothing, at the position remembered for it unless the
-    /// browser `reveal`s an entry there.
     fn show(&mut self, depth: Option<usize>, reveal: bool, tx: &mut rune::Tx) {
         let depth = depth.filter(|depth| *depth < self.columns.len());
         self.shown = depth;
@@ -384,10 +328,6 @@ impl Pane {
         self.held = Held::of(&self.collection);
     }
 
-    /// The columns from `len` closed. GTK rebuilds its pane from the browser's active column
-    /// then, so the active column shows if it is another. An active column not added yet (a
-    /// sibling's `Added` follows) leaves the shown one, as GTK's rebuild finds no snapshot for
-    /// it and keeps its pane, unless the shown one closed.
     fn truncate(&mut self, len: usize, active: Option<usize>, tx: &mut rune::Tx) {
         self.columns.truncate(len);
         match active.filter(|active| *active < len) {
@@ -415,18 +355,11 @@ impl Pane {
         let mut column = Column::new(location, show_hidden, None).with_worn(self.worn.clone());
         column.set_grouping(grouping);
         self.columns.push(column);
-        // Opening a folder in place makes the new root active, and history the column it
-        // restores. A column opened with its parent kept active (`descend`) does not show.
-        // The browser closes a column before it adds another at its depth, so `truncate` has
-        // already left a shown column of this depth; should it not have, the new folder
-        // shows in its place rather than the old one's rows under the new listing.
         if active || self.shown == Some(depth) {
             self.show(Some(depth), reveal, tx);
         }
     }
 
-    /// Folders that moved keep their listings, under their new names and with every row read
-    /// again, since a row's id comes from its location.
     fn relocate(&mut self, from_depth: usize, moved: Vec<Moved>, tx: &mut rune::Tx) {
         for (depth, moved) in (from_depth..).zip(moved) {
             let Some(column) = self.columns.get_mut(depth) else {
@@ -458,8 +391,6 @@ impl Pane {
         if self.shown != Some(depth) {
             return;
         }
-        // A pure metadata refill leaves row keys, order and groups unchanged: skip the O(N)
-        // `regroup` scan and `collection.sync` when no browser marks accompanied it.
         if marks.is_none() && before == Some(column.key_version()) {
             return;
         }
@@ -470,8 +401,6 @@ impl Pane {
         }
     }
 
-    /// The browser's cursor or selection changed in column `depth`. It never changes which
-    /// column shows: GTK's `on_focus_changed` only moves the selection and the focus.
     fn selected(&mut self, selection: Change, tx: &mut rune::Tx) {
         let Change::Selection {
             depth,
@@ -501,8 +430,6 @@ impl Pane {
         }
     }
 
-    /// Scrolls the listing immediately to its top (`y = 0`), countering any growth-anchor
-    /// shift from staged rows inserted above the initial chunk on a first visit.
     pub(crate) fn scroll_to_top(&self, tx: &mut rune::Tx) {
         tx.scroll_to_instant(
             strata_components::collection::element::viewport_path(self.scope),
@@ -531,22 +458,14 @@ impl Pane {
         }
     }
 
-    /// After the rows changed: the collection catches up with them, and then the browser's
-    /// cursor and selection stand, but for a cursor the collection placed itself
-    /// ([`handover::placed`]) and a remembered position that came back ([`restore`]), which
-    /// the browser is then given as no choice.
     fn settle(&mut self, marks: &Marks, tx: &mut rune::Tx) {
         let before = self.collection.selection.cursor();
         let restoring = self.collection.restore_pending();
-        // A remembered cursor whose entry went lets go, so that [`restore::fall_back`] places
-        // it as GTK's `restore_selection` does, not on the entry that took its index.
         let rule = match restoring {
             true => handover::sync_rule,
             false => handover::settle_rule,
         };
         self.sync_by(rule, tx);
-        // A remembered position that came back with the listing is the pane's, as GTK's
-        // restore sets the browser's selection to it: the browser's marks don't replace it.
         let restored = restoring && !self.collection.restore_pending();
         if restored {
             if let Some(column) = self.shown.and_then(|depth| self.columns.get(depth)) {
@@ -563,10 +482,6 @@ impl Pane {
                     handover::kept_neighbour(before, column, &self.collection, marks)
                 });
             self.adopt(kept.as_ref().unwrap_or(marks));
-            // A settle that removed nothing leaves a neighbour kept before to `Kept::marks`,
-            // which ends it once the browser marks a cursor or a selection: an undo bringing
-            // the moved entry back marks only its anchor, and GTK keeps the keyboard where it
-            // was.
             if kept.is_some() {
                 self.kept.keep(kept.as_ref());
             }

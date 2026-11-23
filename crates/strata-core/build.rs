@@ -13,8 +13,6 @@ fn main() {
     validate_trusted_command_path();
 }
 
-/// Extra host helper directories are embedded verbatim, so a relative or empty
-/// entry would be an unsearchable mistake; reject it where the packager sees it.
 fn validate_trusted_command_path() {
     let Some(value) = env::var_os("STRATA_TRUSTED_COMMAND_PATH") else {
         return;
@@ -30,8 +28,6 @@ fn validate_trusted_command_path() {
     }
 }
 
-/// Embeds the catalogs as static tables. rust-i18n's own `i18n!` loader emits one
-/// statement per message, and that unoptimized frame overflows 2 MiB thread stacks.
 fn write_translation_catalogs() {
     let catalogs = rust_i18n_support::load_locales(LOCALES, |_| false);
     // load_locales silently returns nothing when the catalog directory is absent.

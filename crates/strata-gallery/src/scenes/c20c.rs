@@ -1,20 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The gallery page for C20c Tabbed form and settings search: its scenes, demo state, view and key
-//! and poll hooks. Scene names start with `c20c-` and end in `-light` or `-dark`.
-//!
-//! Work package: `docs/rune/work/phase-1-leaves/C20c-tabbed-form-settings-search.md`.
-//!
-//! Two demos, one at a time:
-//!
-//! - **Settings:** a mock settings window over Strata's own search index (ported in
-//!   `settings_search::fixture`): the search field over a navigation of pages, and the shown
-//!   page's sections and rows, each with a switch, or C20a's NumberField for Thumbnail workers
-//!   and Text size. Escape with the field empty closes the window (`c20c-closed`).
-//! - **Editor:** the custom-action editor's notebook (General, Script, Behavior) over a footer
-//!   with Cancel and Save. Save with an empty Name, or with neither Files nor Folders, marks
-//!   the page and moves the keyboard to the field, with Strata's error line above the tabs.
-
 use std::collections::HashSet;
 
 use rune::{Cx, El, KeyEvent, LiveRegion, ScrollSpec, TextEdit, Tx, col, row, text, text_input};
@@ -36,11 +21,9 @@ use crate::{Gallery, Scene};
 /// The page scroll view the search scrolls to its top.
 pub const PAGE_SCROLL: &str = "c20c-page";
 
-/// The page's one text field with C21's menu: the search field.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct SearchField;
 
-/// C20c's demo state, held in `Gallery::c20c`.
 pub struct Demo {
     /// The editor shows instead of the settings window.
     pub editor: bool,
@@ -113,8 +96,6 @@ impl Default for Demo {
     }
 }
 
-/// Golden scenes: each gets an accessibility and a PNG golden. Each calls
-/// `g.open("c20c", dark)`, then fills in `g.c20c`.
 pub const SCENES: &[Scene] = &[
     ("c20c-form-light", |g| form(g, false)),
     ("c20c-form-dark", |g| form(g, true)),
@@ -202,7 +183,6 @@ fn close(g: &mut Gallery) -> bool {
     std::mem::replace(&mut g.c20c.open, false)
 }
 
-/// C21's text menu on the search field; its edits search again.
 fn field_menu() -> FieldMenu<Gallery, SearchField> {
     FieldMenu::new(
         "c20c-field-menu",
@@ -315,8 +295,6 @@ fn page_body(g: &Gallery, look: &Look, search: &SettingsSearch<Gallery>) -> El {
     }
     let mut body = col().w_full().gap(look.space.xs);
     let rows: Vec<&IndexRow> = d.index.rows.iter().filter(|r| r.page == d.page).collect();
-    // Sections in the order they first appear, each with its rows (Strata's order interleaves
-    // them).
     let mut sections: Vec<Option<&str>> = Vec::new();
     for r in &rows {
         if !sections.contains(&r.section.as_deref()) {
@@ -468,8 +446,6 @@ fn form_pages(d: &Demo) -> [FormPage; 3] {
     ]
 }
 
-/// Strata's checks on Save, in its order: the name, then the kinds. Returns the first invalid
-/// field's page and key.
 fn validate(d: &mut Demo) -> Option<(usize, &'static str)> {
     d.errors = [d.name.text.trim().is_empty(), false, !d.files && !d.folders];
     let first = if d.errors[0] {
@@ -664,10 +640,6 @@ pub fn view(g: &Gallery, cx: &mut Cx<Gallery>) -> El {
     )
 }
 
-/// Keys no focused element took while this page is open: shortcuts, and keys with nothing
-/// focused. True consumes the key; false lets the gallery's Escape go back to the index.
-/// Escape with nothing focused (or from the search field's `on_escape`) closes Settings;
-/// Ctrl+Page Up and Down switch the editor's pages.
 pub fn on_key(g: &mut Gallery, key: &KeyEvent, tx: &mut Tx) -> bool {
     if g.c20c.menu.is_open() {
         return false;
@@ -678,9 +650,6 @@ pub fn on_key(g: &mut Gallery, key: &KeyEvent, tx: &mut Tx) -> bool {
     key.key == rune::Key::Escape && close(g)
 }
 
-/// Runs at the start of every frame while this page is open, with the clock in seconds. Runs the
-/// search (and a scene's first jump), the form's carry of the keyboard and the number fields' blur
-/// commits. True when state changed.
 pub fn poll(g: &mut Gallery, t: f64, tx: &mut Tx) -> bool {
     g.c20c.now = t;
     let search = settings();

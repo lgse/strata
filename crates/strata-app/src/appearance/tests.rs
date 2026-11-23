@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The view switch in a window: the keys show another view of the browser's folder, with its
-//! cursor and selection, and save the choice; Columns shown again opens the selected folder
-//! while it mirrors.
-
 use std::{path::PathBuf, time::Duration};
 
 use rune::{Key, Mods};
@@ -73,11 +69,6 @@ fn wait_saved(host: &mut Offscreen, line: &str) {
     assert!(reached, "settings.toml to say {line}");
 }
 
-/// Each key shows its view of the folder the browser has open, with the browser's cursor and
-/// selection on the same entry and the keyboard in the view, and saves the choice: List
-/// shown again after Columns shows the folder as it is now, not as it last showed it. The
-/// browser rechecks the columns the view shows, from the start: every column in Columns, the
-/// active one in Icons and List, as GTK's `enter_mode` sets it.
 #[test]
 fn a_view_key_shows_that_view_of_the_open_folder_and_saves_it() {
     hosted_with(
@@ -117,8 +108,6 @@ fn a_view_key_shows_that_view_of_the_open_folder_and_saves_it() {
     );
 }
 
-/// Columns shown again after List opens the folder List left selected as the child column
-/// while it mirrors the selection.
 #[test]
 fn columns_shown_again_opens_the_selected_folder_while_it_mirrors() {
     returning_to_columns(
@@ -160,10 +149,6 @@ fn returning_to_columns(mirrors: bool, name: &str) {
     });
 }
 
-/// After the parent in List, the folder come from is the cursor the load placed, though the
-/// root comes back where it was left with that folder chosen: the restore is no choice, as
-/// GTK's `restore_selection` commits nothing. So Columns shown again opens no child for it,
-/// while it mirrors (finding lgse/strata#2437).
 #[test]
 fn columns_shown_again_after_the_parent_opens_no_folder() {
     let saved = "columns_mirror_selection = true\n".to_owned();
@@ -195,9 +180,6 @@ fn columns_shown_again_after_the_parent_opens_no_folder() {
     });
 }
 
-/// A child column the cursor was to open in Columns, its wait not over when Icons shows, is
-/// not opened: Columns mirrors only while it is shown, as GTK's `child_mirror_blocked` asks
-/// for the mode when its wait is over.
 #[test]
 fn a_mirror_waiting_when_another_view_shows_opens_no_column() {
     hosted_with(
@@ -230,10 +212,6 @@ fn a_mirror_waiting_when_another_view_shows_opens_no_column() {
     );
 }
 
-/// A folder left in one single-pane view comes back in the other where it was left, as GTK's
-/// one history across the views brings it back, not where the other view last saw it (finding
-/// lgse/strata#2425): the root left in List on `todo.txt`, `documents` opened from it in Icons,
-/// List shown again, then Back. The view and the browser agree on `documents`.
 #[test]
 fn a_folder_comes_back_by_back_where_another_view_left_it() {
     coming_back(

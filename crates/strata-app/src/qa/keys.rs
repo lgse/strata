@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The GDK key names the scenarios use, as Rune's keys. A scenario names a key by where it
-//! is on a US keyboard, as the GTK harness reads it (`src/qa/keyboard.rs`).
-
 use rune::{Key, KeyEvent, Mods};
 use strata_qa::Modifier;
 
@@ -29,8 +26,6 @@ pub(super) enum Named {
     Character(char),
 }
 
-/// GDK's names for the keys that type nothing, and for the characters it spells out. Rune
-/// has one logical key for a keypad key and the main block's, so `KP_Left` is `Left`.
 pub(super) const NAMES: [(&str, Named); 63] = [
     ("BackSpace", Named::Backspace),
     ("Delete", Named::Delete),
@@ -126,8 +121,6 @@ pub(super) fn needs_shift(character: char) -> bool {
 }
 
 impl Named {
-    /// The logical key Rune hears, as its window host maps one (`window/keys.rs` in Rune): a
-    /// character typed with Ctrl held is a command, lowercased, and any other is text.
     pub(super) fn key(self, mods: Mods) -> Key {
         match self {
             Self::Backspace => Key::Backspace,
@@ -153,9 +146,6 @@ impl Named {
     }
 }
 
-/// The modifiers Rune reports for these held keys, as its window host does off macOS: Ctrl
-/// is also the primary shortcut modifier. AltGr is the right Alt key: Alt, unless the layout
-/// makes it a level shift, which is no modifier and only changes what a key types.
 pub(super) fn mods(held: &[Modifier], altgr_shifts_level: bool) -> Mods {
     let holds = |modifier: Modifier| held.contains(&modifier);
     Mods {
@@ -167,9 +157,6 @@ pub(super) fn mods(held: &[Modifier], altgr_shifts_level: bool) -> Mods {
     }
 }
 
-/// The key press Rune hears. `us` is the character the key types on a US layout, for a
-/// layout under which it types another: off macOS, Rune's window host names a command by the
-/// US key when the character typed is not ASCII, so Ctrl+V pastes on every layout.
 pub(super) fn event(key: Named, us: Option<char>, mods: Mods) -> KeyEvent {
     let key = match (key, us) {
         (Named::Character(typed), Some(us)) if mods.cmd && !typed.is_ascii() => {

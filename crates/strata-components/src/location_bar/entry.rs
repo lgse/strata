@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The entry: a combobox around rune-kit's text input, with Navigate and Cancel, and the keys
-//! that drive the suggestions.
-
 use rune::{El, Key, KeyEvent, Tx, row};
 use rune_kit::TextInput;
 use strata_kit::icons::IconName;
@@ -41,8 +38,6 @@ pub(super) fn view<S: 'static>(cx: &Ctx<'_, S>) -> El {
             taken
         })
         .build(k);
-    // A text input is always a text box to Rune's accessibility (U-C6-1), so the combobox is
-    // the group around it, expanded while the suggestions show.
     row()
         .key(format!("{}-entry", cx.key))
         .role("combobox")
@@ -86,9 +81,6 @@ fn entry_button<S: 'static>(cx: &Ctx<'_, S>, icon: IconName, suffix: &str, cance
         })
         .build(&cx.look.accent_icon_kit())
         .key(format!("{}-{suffix}", cx.key))
-        // The entry keeps the keyboard, so pressing the button isn't a press outside it.
-        // A focusable button would take the keyboard on a press, and nothing tells the bar
-        // where it went (U-C6-3), so they are pointer-only: Enter and Escape do the same.
         .focusable(false)
         .preserve_focus_on_press(true)
 }
@@ -100,8 +92,6 @@ fn key(
     tx: &mut Tx,
     complete: &[rune::Chord],
 ) -> (Polled, bool) {
-    // Rune gives Escape and Enter to a composition first; the rest of the keys an input
-    // method is using stay the editor's.
     if st.edit.is_composing() {
         return (Polled::default(), false);
     }
@@ -111,8 +101,6 @@ fn key(
         if tx.key_repeat() {
             return (Polled::default(), true);
         }
-        // `tx.blur()` keeps Rune's `focus_fallback` from handing focus to the next header button
-        // when the entry unmounts; a host's `tx.focus(...)` in `route` still wins after it.
         tx.blur();
         return (st.cancel(), true);
     }

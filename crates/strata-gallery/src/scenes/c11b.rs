@@ -1,19 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The gallery page for C11b SheetGrid: its scenes, demo state, view and key and poll hooks.
-//! Scene names start with `c11b-` and end in `-light` or `-dark`.
-//!
-//! No work package doc of its own: split from C11's spreadsheet half
-//! (`docs/rune/work/phase-2-composites/C11-document-view.md`).
-//!
-//! A sheet in C9's drawer beside a fake listing. Each fixture is what Strata's sandboxed
-//! reader would hand over: rows of text, the first the titles. The page stands in for
-//! Strata's policy: a workbook's other sheets "load" from a fake reader queue on the virtual
-//! clock (its first read of Inventory fails, so Try again reads it), and closing the drawer
-//! ends a range drag. Two lines under the files read what the
-//! scripts check: the last intent (`c11b-last-intent`) and what Ctrl+C would copy from the
-//! range (`c11b-range`), each "None" while empty.
-
 use rune::{Cx, El, Key, KeyEvent, Tx, col, el, text};
 use strata_components::preview_drawer::{
     DocumentView, DrawerIntent, DrawerState, HeaderInfo, PreviewDrawer,
@@ -50,7 +36,6 @@ pub enum Fixture {
     Wide,
 }
 
-/// C11b's demo state, held in `Gallery::c11b`.
 pub struct Demo {
     pub fixture: Fixture,
     pub drawer: DrawerState,
@@ -65,8 +50,6 @@ pub struct Demo {
     pub last: String,
     /// What Ctrl+C would copy from the range, read from the page's poll.
     pub range: String,
-    /// The sheet and range `range` was read from, so the poll reads it again only when it
-    /// changes.
     pub range_at: Option<(usize, CellRange)>,
     /// Whether the reader has failed its one failing read.
     pub failed_once: bool,
@@ -295,8 +278,6 @@ fn failed_sheet(g: &mut Gallery, dark: bool) {
     d.failed_once = true;
 }
 
-/// Golden scenes: each gets an accessibility and a PNG golden. Each calls
-/// `g.open("c11b", dark)`, then fills in `g.c11b`.
 pub const SCENES: &[Scene] = &[
     ("c11b-csv-light", |g| setup(g, false, Fixture::People)),
     ("c11b-csv-dark", |g| setup(g, true, Fixture::People)),
@@ -312,8 +293,6 @@ pub const SCENES: &[Scene] = &[
     ("c11b-failed-dark", |g| failed_sheet(g, true)),
 ];
 
-/// Scenes for review with `--scene` only, kept out of the goldens: Strata's QA table for the
-/// sort scripts, the workbook on its first sheet, and the large and wide sheets.
 pub const REVIEW: &[Scene] = &[
     ("c11b-ties-light", |g| setup(g, false, Fixture::Ties)),
     ("c11b-ties-dark", |g| setup(g, true, Fixture::Ties)),
@@ -415,10 +394,6 @@ fn files(look: &Look, last: &str, range: &str) -> El {
         .child(line("c11b-range", range))
 }
 
-/// Keys no focused element took while this page is open: F9 closes the preview, standing in
-/// for however Strata closes it, and so ends a range drag. (Not Space, Strata's Quick Preview
-/// key: Rune keeps Space from `on_key` while a pointer is held, for its Space-drag pan.) False
-/// lets the gallery's Escape go back to the index.
 pub fn on_key(g: &mut Gallery, key: &KeyEvent, tx: &mut Tx) -> bool {
     let plain = !(key.mods.cmd || key.mods.ctrl || key.mods.alt || key.mods.shift);
     if plain && key.key == Key::Function(9) && g.c11b.drawer.is_open() {
@@ -432,9 +407,6 @@ pub fn on_key(g: &mut Gallery, key: &KeyEvent, tx: &mut Tx) -> bool {
     false
 }
 
-/// Runs at the start of every frame while this page is open: hands over the sheets the fake
-/// reader has "read" by now, drives the range drag's autoscroll and reads the range, as
-/// Strata's poll would. True when state changed.
 pub fn poll(g: &mut Gallery, t: f64, tx: &mut Tx) -> bool {
     let d = &mut g.c11b;
     let mut changed = false;
@@ -457,8 +429,6 @@ pub fn poll(g: &mut Gallery, t: f64, tx: &mut Tx) -> bool {
         tx.wake_after(std::time::Duration::from_secs_f64((at - t).max(0.0)));
     }
     changed |= d.grid.tick(t, &g.look, tx);
-    // Read the range's text only when the range changes: a 100,000-row range is megabytes.
-    // A sort or a sheet arriving clears the range, so the same range has the same text.
     let at = d.grid.range().map(|r| (d.grid.active(), r));
     if at != d.range_at {
         d.range_at = at;

@@ -25,7 +25,7 @@ use crate::{
 const MODULE: &str = "application::tests";
 
 fn argv(list: &[&[u8]]) -> Vec<OsString> {
-    std::iter::once(&b"strata-rune"[..])
+    std::iter::once(&b"strata"[..])
         .chain(list.iter().copied())
         .map(|argument| OsString::from_vec(argument.to_vec()))
         .collect()
@@ -35,8 +35,6 @@ fn argument(path: impl Into<PathBuf>) -> Opening {
     Opening::Argument(Location::local(path.into()))
 }
 
-/// A launch's arguments after the program, whether another process handed it over, and the
-/// windows it asks for.
 type Case = (&'static [&'static [u8]], bool, Vec<Opening>);
 
 #[test]
@@ -58,8 +56,6 @@ fn a_launch_asks_for_a_window_for_each_path_it_names() {
             )))],
         ),
         (&[b"file:///srv/third"], false, vec![argument("/srv/third")]),
-        // The launch read its options before it was handed over: what is left of them is no
-        // window, and `--` ends them.
         (
             &[b"--unknown", b"--", b"-dashed", b"--"],
             true,
@@ -93,8 +89,6 @@ fn selected(host: &Offscreen) -> Vec<Location> {
     entries.into_iter().map(|entry| entry.location).collect()
 }
 
-/// As `classify` in `src/ui/window/open_argument.rs`: a folder opens; a file, a link whose
-/// target is gone, or one of two names that show alike, shows alone selected in its folder.
 #[test]
 fn an_argument_opens_its_folder_or_shows_its_file_selected_in_its_folder() {
     hosted(
@@ -152,8 +146,6 @@ fn an_argument_opens_its_folder_or_shows_its_file_selected_in_its_folder() {
     );
 }
 
-/// A FileManager1 call opens a window per folder, as GTK groups it: the folder itself for
-/// `ShowFolders`, and for the items the folder they are in, with them selected.
 #[test]
 fn a_file_manager_call_asks_for_a_window_per_folder() {
     let call = |method, uris: &[&str]| Reveal {
@@ -197,8 +189,6 @@ fn a_file_manager_call_asks_for_a_window_per_folder() {
     }
 }
 
-/// `ShowItemProperties` shows the revealed item's Properties once its folder has listed, and
-/// `ShowItems` shows none.
 #[test]
 fn a_reveal_selects_its_items_and_shows_their_properties_when_asked() {
     hosted(
@@ -239,9 +229,6 @@ fn a_reveal_selects_its_items_and_shows_their_properties_when_asked() {
     );
 }
 
-/// Each window is created with the activation token its asker forwarded: a launch's, each of
-/// its arguments' windows taking it, an open's and an activation's, and a FileManager1 call's
-/// startup id, which is the caller's token when it has one.
 #[test]
 fn a_window_takes_the_token_of_what_asked_for_it() {
     let token = |token: &str| Activation {
@@ -270,7 +257,7 @@ fn a_window_takes_the_token_of_what_asked_for_it() {
         Event::CommandLine(CommandLine::unanswered(launch))
     };
     let both = vec![
-        OsString::from("strata-rune"),
+        OsString::from("strata"),
         folder_a.path().into(),
         folder_b.path().into(),
     ];
@@ -279,7 +266,7 @@ fn a_window_takes_the_token_of_what_asked_for_it() {
 
     heard(launch(both, token("from-the-terminal")));
     heard(launch(
-        vec![OsString::from("strata-rune")],
+        vec![OsString::from("strata")],
         Activation::default(),
     ));
     heard(Event::Open {
@@ -311,8 +298,6 @@ fn a_window_takes_the_token_of_what_asked_for_it() {
     );
 }
 
-/// As GTK's `on_reset` forgets `pending_properties`: a `ShowItemProperties` window that goes
-/// to another folder before the revealed one lists, then comes back, shows no Properties.
 #[test]
 fn a_reveal_left_before_it_lists_shows_no_properties_later() {
     hosted(
@@ -350,12 +335,6 @@ fn a_reveal_left_before_it_lists_shows_no_properties_later() {
     );
 }
 
-/// As GTK's `on_load_failed` keeps `pending_properties` and its next listing takes it: a
-/// `ShowItemProperties` window whose folder fails to list, then is made readable and reloaded
-/// in place, lists it with nothing focused, since the reveal's selection went with the failed
-/// load, and so shows no Properties; nor does a later reload, with the file focused, once the
-/// request is used up. A GTK `BrowserView` probe of this path, with the folder left readable as
-/// its control, showed the same: no Properties modal after the reload, one in the control.
 #[test]
 fn a_reveal_that_fails_to_list_uses_its_properties_up_at_the_reload() {
     use std::{cell::Cell, os::unix::fs::PermissionsExt, rc::Rc};

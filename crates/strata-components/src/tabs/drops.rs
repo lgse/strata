@@ -1,19 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The strip's W1 drop zones: one per tab, the New tab button's, and the strip's own for the
-//! gaps between tabs and unused space. Each is attached through the host's `Dnd` binder, on an
-//! element keyed for X2's ([`super::tab_key`], [`super::new_tab_key`], the strip's key).
-//!
-//! - A **file or content** drag over an accepting tab tints it and arms its spring (unless it is
-//!   the active tab); a drop there is [`TabsIntent::DropInto`].
-//! - A drag that opens tabs [`TabOpen::AtGap`] (sidebar rows) neither tints nor springs a tab:
-//!   its moves place the strip's vertical accent insertion mark
-//!   ([`BrowserTabsState::set_incoming`]) across the strip, and its drop is
-//!   [`TabsIntent::OpenTabs`] at that slot, or at the end on New tab.
-//! - A drag that opens tabs [`TabOpen::AtEnd`] (folder-only view drags) transfers and springs on
-//!   accepting tabs, is refused on Trash/Recent tabs, and opens at the end on New tab and unused
-//!   strip space.
-
 use std::rc::Rc;
 
 use rune::{Mods, Tx};
@@ -46,8 +32,6 @@ pub(super) struct Ctx<S> {
     pub emit: Emit<S>,
     pub action: Option<ActionFn<S>>,
     pub opens: Option<OpensFn<S>>,
-    /// Whether `Accepts::NONE` tabs attach a zone that accepts [`TabOpen::AtGap`] and stops
-    /// [`TabOpen::AtEnd`] from falling through to the strip (`BrowserTabs::tab_open`).
     pub guard_none: bool,
     pub content: &'static [&'static str],
     pub spring: Option<f64>,
@@ -79,7 +63,6 @@ impl<S: 'static> Ctx<S> {
     }
 }
 
-/// W1's default rule, for a zone the host gave no action.
 fn default_action(offer: &DropOffer, mods: Mods) -> Option<DropAction> {
     choose_action(ActionInput::new(
         mods,
@@ -104,8 +87,6 @@ fn tab_mimes(accepts: Accepts, content: &'static [&'static str]) -> Vec<&'static
     mimes
 }
 
-/// Tab `spec.id`'s zone: on a Trash or Recent tab (`Accepts::NONE`), either `None` (legacy
-/// `opens_tabs`) or a zone that accepts only [`TabOpen::AtGap`] and refuses everything else.
 pub(super) fn tab<S: 'static>(cx: &Ctx<S>, spec: TabSpec) -> Option<DropZone<S>> {
     let mimes = tab_mimes(spec.accepts, cx.content);
     if mimes.is_empty() {
@@ -119,8 +100,6 @@ pub(super) fn tab<S: 'static>(cx: &Ctx<S>, spec: TabSpec) -> Option<DropZone<S>>
         let landing = (drop_cx.access)(s).landing();
         (drop_cx.access)(s).drag_ended();
         let intent = if opens {
-            // Rune's binder reads a drag's paths only at the drop (U3), so a drag it couldn't
-            // tell opened tabs while hovering placed no gap: it opens after this tab.
             let at = landing.unwrap_or(spec.index + 1);
             TabsIntent::OpenTabs { at, dropped }
         } else {
@@ -160,9 +139,6 @@ pub(super) fn tab<S: 'static>(cx: &Ctx<S>, spec: TabSpec) -> Option<DropZone<S>>
     Some(follow_moves(cx, zone, site))
 }
 
-/// A Trash or Recent tab (`Accepts::NONE`) under [`super::BrowserTabs::tab_open`]: takes a
-/// sidebar drag ([`TabOpen::AtGap`]) at its gap, and refuses file, content and folder-only view
-/// drags ([`TabOpen::AtEnd`]) without letting them fall through to [`DropSite::Strip`].
 fn gap_only_tab<S: 'static>(cx: &Ctx<S>, spec: TabSpec) -> DropZone<S> {
     let site = DropSite::Tab(spec.id);
     let (drop_cx, hover_cx, action_cx) = (cx.clone(), cx.clone(), cx.clone());
@@ -191,8 +167,6 @@ fn gap_only_tab<S: 'static>(cx: &Ctx<S>, spec: TabSpec) -> DropZone<S> {
     follow_moves(cx, zone, site)
 }
 
-/// `zone`, placing the gap as a drag that opens tabs moves over it. Only for a host with such
-/// drags: a zone that follows moves asks for a frame on each motion of every drag over it.
 fn follow_moves<S: 'static>(cx: &Ctx<S>, zone: DropZone<S>, site: DropSite) -> DropZone<S> {
     if cx.opens.is_none() {
         return zone;
@@ -203,9 +177,6 @@ fn follow_moves<S: 'static>(cx: &Ctx<S>, zone: DropZone<S>, site: DropSite) -> D
     })
 }
 
-/// The zone of the New tab button (`site` [`DropSite::NewTab`]) or of the strip
-/// ([`DropSite::Strip`]): it takes drags that open tabs, opening [`TabOpen::AtGap`] at the gap
-/// and [`TabOpen::AtEnd`] (or New tab) at the end. Any other drag is refused there.
 pub(super) fn opener<S: 'static>(cx: &Ctx<S>, site: DropSite) -> DropZone<S> {
     let (drop_cx, hover_cx, action_cx) = (cx.clone(), cx.clone(), cx.clone());
     let access = cx.access;
@@ -228,8 +199,6 @@ pub(super) fn opener<S: 'static>(cx: &Ctx<S>, site: DropSite) -> DropZone<S> {
         match (site, open) {
             (DropSite::Strip, Some(TabOpen::AtGap)) => st.follow_open(site, over, tx),
             (DropSite::Strip, _) if !over => st.follow_open(site, false, tx),
-            // The button lights for a drag that opens tabs (and for any while the host says one
-            // runs: `set_open_drag`).
             (DropSite::NewTab, _) if open.is_some() || !over => st.set_drop_hover(site, hover),
             _ => {}
         }

@@ -1,16 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Thumbnails in Columns rows, from the window's store (`shell::thumbnails`), as GTK's
-//! Columns rows draw them: 17 px, in place of the row's icon
-//! (`show_entry_icon` in `src/ui/browser/columns/rows/bind.rs`).
-//!
-//! - **One store viewer per open column**, all in one [`Viewer`]: it grows as columns open
-//!   and drops the last ones as they close ([`Viewer::fit`]).
-//! - **Once a poll.** A column's `on_visible` only records its range ([`Thumbs::see`]); the
-//!   part's `poll` syncs each column that changed once, so a fast scroll in a long column
-//!   does not sync every frame, as [`crate::fills`] asks the browser.
-//! - **Search results** draw their own way on GTK (a result's local path); they are A10's.
-
 use std::{cell::Cell, ops::Range, time::Duration};
 
 use rune::Tx;
@@ -24,17 +13,12 @@ use strata_kit::look::Look;
 
 use crate::{App, fills::ScrollSettle, listing::Column, shell, slots::Later, thumbnails::Viewer};
 
-/// A row's thumbnail, in points: GTK's 17 × 17 (`set_thumbnail_or_icon(…, 17, 17)`).
 const ROW_THUMBNAIL: f32 = 17.0;
 
-/// What a column last synced with the store: each Columns column's, and the List view's one
-/// pane's (`crate::list::thumbs`).
 #[derive(Default, Clone)]
 pub(crate) struct Synced {
     /// The range its view reported since the last poll, not yet synced.
     pub(crate) range: Option<Range<usize>>,
-    /// The folder and the listing's version the store last saw: a sibling opened at the same
-    /// depth is another folder, whose listing's version may equal the last one's.
     location: Option<Location>,
     version: Option<u64>,
     /// Defers thumbnail syncs while the scrollbar thumb is actively dragged.
@@ -58,8 +42,6 @@ pub(crate) enum Sync {
 }
 
 impl Sync {
-    /// Tells the store what viewer `id` shows of `listing`, at `step`. True when the store
-    /// pruned handles a row may still draw.
     pub(crate) fn tell(
         self,
         store: &mut ThumbnailStore,
@@ -93,9 +75,6 @@ impl Synced {
         dragging && !self.settled_while_held
     }
 
-    /// Whether syncing this column should wait while the scrollbar thumb is actively dragged.
-    /// Returns `Ok(rebind)` when ready (`rebind` is true when flushing after a deferred drag),
-    /// or `Err(left)` with the remaining settle time.
     pub(crate) fn settled_for_drag(
         &mut self,
         location: &Location,
@@ -115,14 +94,6 @@ impl Synced {
             }
         }
     }
-    /// What to tell the store of the column now showing `location` at `version`, and the
-    /// column recorded as told.
-    ///
-    /// A range reported empty while the listing has `entries` is passed over: Rune reports a
-    /// folder's rows as none before its list has laid them out, and again once they show
-    /// (Rune packet entry 101 is the case where no second report comes, which the
-    /// collection's catch-up makes). Synced, it would cancel what the rows had asked for,
-    /// renders running included, which GTK's rows keep while they stay bound.
     pub(crate) fn next(
         &mut self,
         location: &Location,
@@ -190,9 +161,6 @@ impl Thumbs {
             .map_or(dragging, |column| column.is_deferring(dragging))
     }
 
-    /// The rows' icon: the entry's thumbnail from the window's store, else its icon, a file's
-    /// fainter than a folder's, as GTK's Columns rows draw it (`set_base_opacity` in
-    /// `src/ui/browser/columns/rows/bind.rs`).
     pub(super) fn icon(&self, look: &Look, depth: usize) -> Slot<App> {
         icon_slot(shell::thumbnails, self.step(look), ROW_THUMBNAIL)
             .dim_files()
@@ -232,10 +200,6 @@ fn parts(app: &mut App) -> (&mut Viewer, &mut ThumbnailStore) {
     (&mut app.columns.thumbs.viewer, app.window.thumbnails_mut())
 }
 
-/// Fits the viewers to the open columns, syncs each column whose range, listing or step
-/// changed, and asks the pool for what the store wants. Defers syncing while a column's
-/// scrollbar thumb is actively dragged until release or a brief pause. True when the store
-/// pruned handles a row may still draw, so the view builds again.
 pub(super) fn poll(app: &mut App, clock: f64, tx: &mut Tx) -> bool {
     let open = app.columns.open();
     let step = app.columns.thumbs.step(&app.look);
@@ -250,8 +214,6 @@ pub(super) fn poll(app: &mut App, clock: f64, tx: &mut Tx) -> bool {
     let mut deferred = false;
     let listings = &app.columns.listings;
     for (depth, listing) in listings.columns.iter().enumerate().take(open) {
-        // A filter's results draw their icons: the store finds a thumbnail's file through the
-        // browser's column, which does not list them.
         if listings.hits_at(depth) {
             continue;
         }

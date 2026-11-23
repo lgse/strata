@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The search palette in a window: Ctrl+K opens it on Home with its field typing, a result's
-//! menu holds the keyboard and gives it back to the field, a middle click opens nothing, and
-//! the header's Search button closes it again. Ctrl+Shift+K opens it on the folders visited.
-
 use rune::{Key, Mods, PointerButton, Tx};
 
 use crate::{
@@ -93,8 +89,6 @@ fn highlighted(host: &Offscreen) -> Option<String> {
     state.highlighted_item().map(|item| item.id.clone())
 }
 
-/// Ctrl+K opens the palette with its field typing, the window's modal layer; a query lists
-/// what Home holds; Escape closes it and gives the keyboard back to the view.
 #[test]
 fn ctrl_k_searches_home_and_escape_closes_it() {
     hosted_in(
@@ -116,9 +110,6 @@ fn ctrl_k_searches_home_and_escape_closes_it() {
     );
 }
 
-/// A right-click on a result opens its menu, which holds the keyboard; Escape closes it and
-/// the field has the keyboard again, the result still highlighted (finding
-/// lgse/strata#2468: GTK leaves it on its layer).
 #[test]
 fn a_results_menu_holds_the_keyboard_and_gives_it_back_to_the_field() {
     hosted_in(
@@ -171,8 +162,6 @@ fn a_results_menu_holds_the_keyboard_and_gives_it_back_to_the_field() {
     );
 }
 
-/// A middle click on a result opens nothing, and the palette keeps its query and highlight:
-/// GTK's rows take no middle click (driven).
 #[test]
 fn a_middle_click_on_a_result_leaves_the_palette_open() {
     hosted_in(
@@ -198,8 +187,6 @@ fn a_middle_click_on_a_result_leaves_the_palette_open() {
     );
 }
 
-/// The header's Search button opens the palette, and a click on it while it is open closes
-/// it, the button keeping the keyboard, as GTK's backdrop gives it back to its opener.
 #[test]
 fn the_search_button_opens_the_palette_and_closes_it() {
     hosted_in(
@@ -227,8 +214,6 @@ fn the_search_button_opens_the_palette_and_closes_it() {
     );
 }
 
-/// Alt+Return, the catalog's `open_containing_folder`, shows the highlighted result's folder
-/// with it selected, and closes the palette.
 #[test]
 fn alt_return_reveals_the_highlighted_result_in_its_folder() {
     hosted_in(
@@ -280,9 +265,6 @@ fn listed(host: &Offscreen) -> Vec<String> {
     state.items().iter().map(|item| item.id.clone()).collect()
 }
 
-/// Ctrl+Shift+K lists the folders the columns finished listing, at once and with the field
-/// typing; a query narrows them; Enter opens the one highlighted. Ctrl+K closes the jump as
-/// it closes its own mode.
 #[test]
 fn ctrl_shift_k_jumps_to_a_folder_visited_before() {
     hosted_in(

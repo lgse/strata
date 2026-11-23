@@ -44,8 +44,6 @@ pub(crate) fn child_processes(prefix: &str) -> Result<Vec<(u32, String)>, String
     Ok(found)
 }
 
-/// A list's rows under the heading each follows. A row that cannot be selected is a heading,
-/// named by its first named child.
 pub(crate) fn list_sections<B: Backend>(backend: &B, root: &B::Node) -> Vec<(String, Vec<String>)> {
     let mut sections: Vec<(String, Vec<String>)> = Vec::new();
     for row in presented(backend, root) {
@@ -112,8 +110,6 @@ pub struct VisibleRow {
     pub name_box: [i64; 4],
 }
 
-/// Runs a check's own disk read on another thread and waits for it, so a
-/// main-thread I/O audit, which traces only the UI thread, sees no QA reads.
 pub fn off_ui_thread<T: Send>(read: impl FnOnce() -> T + Send) -> T {
     std::thread::scope(|scope| {
         scope

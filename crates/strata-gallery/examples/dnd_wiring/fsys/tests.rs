@@ -7,8 +7,6 @@ use std::path::{Path, PathBuf};
 
 use super::apply;
 
-/// A fresh `root` and an `outside` beside it, under the gallery's target directory (never the
-/// desktop's /tmp).
 fn fixture(name: &str) -> (PathBuf, PathBuf) {
     let base = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../../target/tmp/x2-fsys")
@@ -28,8 +26,6 @@ fn is_link(p: &Path) -> bool {
         .is_ok_and(|m| m.file_type().is_symlink())
 }
 
-/// A dangling symlink in the destination under the item's name points outside the root:
-/// the copy takes another name and writes nothing through the link.
 #[test]
 fn a_dangling_link_in_the_destination_is_never_written_through() {
     let (root, outside) = fixture("dangling");
@@ -53,8 +49,6 @@ fn a_dangling_link_in_the_destination_is_never_written_through() {
     );
 }
 
-/// A dragged folder holding links out of the root (to a file, to a folder) copies them as
-/// links: nothing from outside is read in.
 #[test]
 fn links_in_a_copied_folder_stay_links() {
     let (root, outside) = fixture("links-in");
@@ -89,8 +83,6 @@ fn a_dragged_link_is_moved_or_copied_as_a_link() {
     );
 }
 
-/// Every source is checked before anything moves: one from outside the root refuses the
-/// whole drop.
 #[test]
 fn a_source_outside_the_root_refuses_the_whole_drop() {
     let (root, outside) = fixture("outside-source");
@@ -108,8 +100,6 @@ fn a_source_outside_the_root_refuses_the_whole_drop() {
     assert!(outside.join("secret.txt").exists());
 }
 
-/// W1: an entry id lives for the process and is never reused, so two windows' ids (and the
-/// peek's) never meet.
 #[test]
 fn ids_are_unique_across_the_process() {
     let (mut one, mut two) = (super::Ids::default(), super::Ids::default());
@@ -120,9 +110,6 @@ fn ids_are_unique_across_the_process() {
     assert_eq!(two.path(a), None);
 }
 
-/// A move refused for want of permission (a read-only source folder: EACCES) fails, leaving
-/// the source where it was and nothing in the destination: only another device's EXDEV
-/// copies and removes instead.
 #[test]
 fn a_move_refused_by_permissions_leaves_both_folders_as_they_were() {
     use std::os::unix::fs::PermissionsExt;
@@ -149,9 +136,6 @@ fn a_move_refused_by_permissions_leaves_both_folders_as_they_were() {
     assert!(left.is_empty(), "written into the destination: {left:?}");
 }
 
-/// A move to another device (EXDEV) copies, then removes the source: a source that can't be
-/// removed (a read-only folder) stays, and so does nothing in the destination. The other
-/// device is out of reach here, so this runs the copy-and-remove step itself.
 #[test]
 fn a_move_across_devices_that_cant_remove_the_source_removes_its_copy() {
     use std::os::unix::fs::PermissionsExt;

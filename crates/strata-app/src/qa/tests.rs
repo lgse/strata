@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The backend in process: steps run through `strata-qa`'s engine against the QA harness's
-//! canonical tree, on a host with no display and no runner.
-
 use std::{
     future::Future,
     path::PathBuf,
@@ -106,8 +103,6 @@ fn harness_previews_off() {
     std::fs::write(file, saved).expect("settings");
 }
 
-/// Gate G1's scenario, `arrow-keys-move-focus/columns-arrows`, step for step. The runner
-/// sends `keymap` for the scenario's `layout` step.
 #[test]
 fn the_first_light_scenario_passes_step_for_step() {
     let scratch = tempfile::tempdir().expect("a folder");
@@ -258,8 +253,6 @@ fn held_modifiers_reach_the_view_and_what_only_gtk_runs_says_so() {
     );
 }
 
-/// `selection/leftover-click-honors-modifiers`: the run aims at each entry's `part: label`,
-/// two points inside its right edge, and lets the modifier go before the button.
 #[test]
 fn a_click_on_a_rows_name_label_lands_on_the_name_the_view_draws() {
     staged(
@@ -308,8 +301,6 @@ fn a_click_on_a_rows_name_label_lands_on_the_name_the_view_draws() {
     );
 }
 
-/// `selection/right-click-selects-entry`, both variants, step for step, and the rows
-/// `dialogs_and_menus/entry-menu-named-actions` and `pane-menu-directory-actions` read.
 #[test]
 fn a_right_click_opens_an_entry_menu_and_escape_gives_the_keyboard_back() {
     staged(

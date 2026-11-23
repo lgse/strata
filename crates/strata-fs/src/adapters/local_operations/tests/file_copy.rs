@@ -250,8 +250,6 @@ fn a_name_taken_just_before_the_link_is_left_alone() -> Result<(), Box<dyn Error
     let error = copy(&source, &target).expect_err("the name is taken");
 
     assert!(error.matches(gio::IOErrorEnum::Exists), "{error}");
-    // Before Linux 6.10 the `AT_EMPTY_PATH` link fails before the name is
-    // looked at and the `/proc` form follows; neither may try another name.
     let links: Vec<_> = scope
         .calls()
         .into_iter()
@@ -276,8 +274,6 @@ fn a_file_put_at_the_published_name_right_after_publishing_stays_there()
     let elsewhere = tempfile::tempdir()?;
     let saved = elsewhere.path().join("saved.bin");
     fs::write(&saved, b"saved by another program")?;
-    // Without `RENAME_NOREPLACE` the stage is published by a link, then its
-    // own name is unlinked; another program renames over the name meanwhile.
     let mounts = mounts(Quirks::default(), |destination| {
         let over = destination.join("target.bin");
         let racer: Racer =
@@ -700,8 +696,6 @@ fn sparse_files_keep_their_holes_where_both_ends_can() -> Result<(), Box<dyn Err
         mount_type: Some(("ntfs3", "rw")),
         ..Quirks::default()
     };
-    // The source, the destination (`None` on the same mount), what happens
-    // to the source as the copy runs, and whether holes are kept.
     type Row = (
         &'static str,
         Preset,
@@ -795,8 +789,6 @@ fn sparse_files_keep_their_holes_where_both_ends_can() -> Result<(), Box<dyn Err
                 "{case}: {allocated} bytes allocated for {source_allocated} of data"
             );
         } else if destination_preset.is_some() {
-            // Within one filesystem, copy_file_range may share the source's
-            // extents, holes included (btrfs, XFS).
             assert!(
                 allocated >= size,
                 "{case}: {allocated} of {size} bytes allocated"
@@ -1099,10 +1091,6 @@ fn xattrs_are_kept_when_an_acl_takes_the_owners_write_access() -> Result<(), Box
 fn selected_names_of_a_linked_file_on_an_smb_share_are_opened_one_at_a_time()
 -> Result<(), Box<dyn Error>> {
     let _serial = ASYNC_MAIN_CONTEXT_DEFAULT.lock()?;
-    // The first linked name opened stays open until the other was looked
-    // at, as its copy does in parallel just before opening it; small reads
-    // keep the first open while that copy would open the other. The client
-    // may show a link count of 1, as it does for files it listed.
     type Reader = Box<dyn Fn() -> Vec<Call> + Send + Sync>;
     for single_link_count in [false, true] {
         let reader: Arc<OnceLock<Reader>> = Arc::default();
@@ -1151,8 +1139,6 @@ fn selected_names_of_a_linked_file_on_an_smb_share_are_opened_one_at_a_time()
             mounts.sources.join("linked-a"),
             mounts.sources.join("linked-b"),
         )?;
-        // Enough files for the bulk path, the linked names first, so they are
-        // copied in parallel.
         let mut names = vec!["linked-a".to_owned(), "linked-b".to_owned()];
         for index in 0..8 {
             let name = format!("file-{index}");
@@ -1193,8 +1179,6 @@ fn selected_names_of_a_linked_file_on_an_smb_share_are_opened_one_at_a_time()
 fn a_linked_name_on_an_smb_share_swapped_before_its_open_is_not_copied()
 -> Result<(), Box<dyn Error>> {
     let _serial = ASYNC_MAIN_CONTEXT_DEFAULT.lock()?;
-    // The hold is on the file seen at the name, so it keeps no other copy
-    // off a file put there meanwhile, which may have a name open elsewhere.
     let swapped: Arc<OnceLock<PathBuf>> = Arc::default();
     let at = swapped.clone();
     let swap: Racer = Box::new(move || {
@@ -1230,9 +1214,6 @@ fn a_linked_name_on_an_smb_share_swapped_before_its_open_is_not_copied()
 
 const CLOCK_START: Duration = Duration::from_secs(1_800_000_000);
 
-/// Opens of `b` fail with `EINVAL` for `refused_for` on the test clock, as
-/// an SMB client's do for another name of a file this machine just wrote.
-/// `b` is no such name, which a real SMB mount would refuse in real time.
 fn refused_for_a_while(
     (fs_type, options): (&'static str, &'static str),
     refused_for: Duration,
@@ -1327,8 +1308,6 @@ fn source_opens_are_retried_only_on_smb_and_only_for_its_close_timeout()
     let second = Duration::from_secs(1);
     let exactly = |waited: Duration| waited..waited + Duration::from_nanos(1);
     let at_once = exactly(Duration::ZERO);
-    // The mount, the error opens of `b` fail with, how long `EINVAL` lasts,
-    // and how long a copy that fails waited.
     for (row, mount, errno, refused_for, failed_after) in [
         (
             "closetimeo=5",

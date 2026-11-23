@@ -10,11 +10,6 @@ use strata_kit::icons::IconSet;
 use super::matching::{self, Words};
 
 /// What a choice is: a bundled icon by its catalog name, or an emoji by its text.
-///
-/// The host maps it onto what it saves: Strata writes the icon's name (`strata-pin`) or
-/// `emoji:` and the emoji. The picker doesn't check lengths or characters; that is Strata's.
-///
-/// Used by: hosts.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Choice {
     /// An icon, by its K3 catalog name (`Icon::name`, `IconSet::named`).
@@ -24,7 +19,7 @@ pub enum Choice {
 }
 
 impl Choice {
-    /// The icon named `name` in K3's catalogs.
+    /// The icon named `name` in catalogs.
     pub fn icon(name: impl Into<Cow<'static, str>>) -> Self {
         Choice::Icon(name.into())
     }
@@ -59,14 +54,11 @@ impl Choice {
 pub(super) const EMOJI_PREFIX: &str = "emoji:";
 
 /// One choice the picker offers.
-///
-/// Used by: hosts.
 #[derive(Clone, Debug, PartialEq)]
 pub struct PickerItem {
     /// What choosing it sends.
     pub choice: Choice,
-    /// What it is called: its cell's accessible name and tooltip, and what a search matches
-    /// ("grinning face", "Documents").
+    /// What it is called: its cell's accessible name and tooltip, and what a search matches ("grinning face", "Documents").
     pub name: Cow<'static, str>,
     /// Other words a search matches ("happy", "smile"); may be empty.
     pub keywords: Vec<Cow<'static, str>>,
@@ -96,8 +88,6 @@ impl PickerItem {
 }
 
 /// A category: a tab of the picker.
-///
-/// Used by: hosts.
 #[derive(Clone, Debug, PartialEq)]
 pub struct PickerCategory {
     /// A stable id, for the tab's key (`smileys`).
@@ -123,10 +113,7 @@ impl PickerCategory {
     }
 }
 
-/// Everything a picker offers: its categories and their items, in order, with the words a
-/// search matches worked out once. Built once by the host and shared (`Rc`).
-///
-/// Used by: hosts.
+/// Everything a picker offers: its categories and their items, in order, with the words a search matches worked out once.
 #[derive(Debug, Default)]
 pub struct PickerSource {
     categories: Vec<PickerCategory>,
@@ -142,8 +129,7 @@ pub struct PickerSource {
 }
 
 impl PickerSource {
-    /// `items` in `categories`. An item whose category is out of range is dropped, and so is a
-    /// second item with the same choice.
+    /// `items` in `categories`.
     pub fn new(categories: Vec<PickerCategory>, items: Vec<PickerItem>) -> Self {
         let mut source = PickerSource {
             members: vec![Vec::new(); categories.len()],
@@ -170,10 +156,7 @@ impl PickerSource {
         self.items.push(item);
     }
 
-    /// Every icon in K3's catalog `set`, by its catalog name, in two categories: "Interface"
-    /// (Lucide and this repository's own) and "File types" (Catppuccin's, `strata-ctp-*`).
-    /// Each is called by its name less the `strata-`, `strata-kit-` and `ctp-` prefixes, with
-    /// spaces for dashes ("folder open").
+    /// Every icon in catalog `set`, by its catalog name, in two categories.
     pub fn catalog(set: &IconSet) -> Self {
         let categories = vec![
             PickerCategory::new("interface", "Interface", Choice::icon("strata-icons")),

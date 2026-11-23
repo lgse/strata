@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! D-Bus service for `org.freedesktop.impl.portal.FileChooser` and
-//! `org.freedesktop.impl.portal.Request` on `gio::DBusConnection`.
-
 use std::{
     cell::RefCell,
     ffi::{OsStr, OsString},

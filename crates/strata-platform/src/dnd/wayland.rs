@@ -1,14 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Wayland: drags out through `wl_data_device.start_drag`, and drops in through P0's
-//! [`DragOffer`], all on P0's queue on winit's display.
-//!
-//! P1 adds no queue and no thread (the owner's ruling on S2 Q2): its objects (the drag's
-//! `wl_data_source`, the icon's `wl_surface`, `wl_shm_pool` and `wl_buffer`) are made on
-//! P0's queue through [`Conn::with_globals`], with user-data types of P1's own, so their
-//! handlers live here. P0's reader thread (S2's driver C) reads them, and its turn dispatches
-//! them on the UI thread. The handlers only queue what they hear into P1's extension state
-//! and wake the windows; everything that acts on it runs in a window's update.
 #![expect(unsafe_code, reason = "memfd_create for the drag icon's shared memory")]
 
 use std::collections::HashMap;
@@ -36,7 +27,6 @@ use super::icon::{DragImage, buffer_for};
 /// A drag source's user data: the drag's id.
 pub(crate) struct DragSrc(u64);
 
-/// The icon's pool and buffer: no events P1 needs.
 pub(crate) struct IconPool;
 pub(crate) struct IconBuf;
 
@@ -58,7 +48,6 @@ struct Live {
     buffer: Option<(WlShmPool, WlBuffer)>,
 }
 
-/// P1's state on P0's queue (`State::extension`).
 #[derive(Default)]
 pub(crate) struct WlDnd {
     events: Vec<(u64, SrcEvent)>,
@@ -70,7 +59,6 @@ impl WlDnd {
     fn heard(&mut self, id: u64, ev: SrcEvent) {
         self.events.push((id, ev));
         if let Some(n) = &self.notify {
-            // Queues an update; nothing runs here, inside P0's dispatch.
             n();
         }
     }
@@ -90,8 +78,6 @@ impl OutState {
         !self.dropped && !self.ended
     }
 
-    /// The outcome, once the drag has one. A `cancelled` after `dnd_finished` (sway sends one,
-    /// S2 Q3) is ignored.
     pub(crate) fn on(&mut self, ev: SrcEvent) -> Option<DragOutcome> {
         if self.ended {
             return None;
@@ -171,8 +157,6 @@ pub(crate) fn drain(conn: &Conn) -> Vec<(u64, SrcEvent)> {
         .unwrap_or_default()
 }
 
-/// Starts drag `id` from `window` with the newest press serial. `with_icon`: an icon
-/// surface goes with it now, and its picture lands later ([`set_icon`]).
 pub(crate) fn start(
     conn: &Arc<Conn>,
     window: &WindowHandle,
@@ -387,7 +371,6 @@ impl Dispatch<WlBuffer, IconBuf> for State {
     }
 }
 
-/// A drag over one of the app's windows, through P0's offer. On the UI thread only.
 pub(crate) struct WlIn {
     offer: DragOffer,
 }
@@ -400,14 +383,13 @@ impl WlIn {
 
 impl InPort for WlIn {
     fn status(&self, accept: Option<&str>, action: Option<DragAction>) {
-        let r = self.offer.accept(accept).and_then(|()| {
-            // One action, preferred: the compositor then takes that one or none, so what the
-            // app was told it would get is what it gets.
-            match action.and_then(to_p0) {
+        let r = self
+            .offer
+            .accept(accept)
+            .and_then(|()| match action.and_then(to_p0) {
                 Some(a) => self.offer.set_actions(&[a], Some(a)),
                 None => self.offer.set_actions(&[], None),
-            }
-        });
+            });
         if let Err(e) = r {
             hub::diagnostic(&format!("answering a drag: {e}"));
         }
@@ -438,7 +420,6 @@ impl InPort for WlIn {
         {
             hub::diagnostic(&format!("answering an ask drop: {e}"));
         }
-        // P0's review, S1: confirm the settled action before finishing.
         let r = self
             .offer
             .confirm_action()

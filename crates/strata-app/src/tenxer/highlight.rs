@@ -1,10 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The names drawn with their matches in the accent (#2570), as GTK's `refresh_name_highlights`
-//! marks them (`src/ui/browser/find.rs`): a highlighted 10xer find marks its query in every
-//! name, the listing's and the results'; without one, the results of a fuzzy `f` or `s` mark
-//! the parts their query matched. The components only paint the ranges ([`NameMatches`]).
-
 use std::ops::Range;
 
 use strata_components::{
@@ -48,8 +43,6 @@ pub(crate) fn hit_marks(app: &App, id: EntryId, mut marks: RowMarks) -> RowMarks
     marks
 }
 
-/// `ranges` of `name` as the row draws them: none past [`NameMatches::REACH`], and one across
-/// it ends on the last character boundary before it.
 fn within_reach(name: &str, ranges: Vec<Range<usize>>) -> NameMatches {
     let reach = (0..=NameMatches::REACH.min(name.len()))
         .rev()
@@ -62,8 +55,6 @@ fn within_reach(name: &str, ranges: Vec<Range<usize>>) -> NameMatches {
     )
 }
 
-/// The byte ranges of `name` where `query` occurs, compared case-folded, each after the last
-/// (`match_ranges`). A character whose lowercase is longer keeps its own byte span.
 pub(crate) fn match_ranges(name: &str, query: &str) -> Vec<Range<usize>> {
     let needle: Vec<char> = query.chars().flat_map(char::to_lowercase).collect();
     if needle.is_empty() {

@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! A band begun outside the viewport ([`Collection::origin_drag`]), as the sidebar's and the
-//! preview's blank space begin one.
-
 use rune::{Drag, Tx};
 
 use super::*;

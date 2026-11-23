@@ -295,8 +295,6 @@ fn every_gzip_member_of_a_tar_gz_is_read_and_verified() -> Result<(), Box<dyn Er
         let root = tempfile::tempdir()?;
         let archive = root.path().join("content.tar.gz");
         write_two_member_tar_gz(&archive, false)?;
-        // After `a.txt`'s header and data blocks, so a reader that stops at
-        // the first member sees a complete archive.
         split_into_gzip_members(&archive, 1024)?;
         if corrupt_second_member {
             corrupt_gzip_trailer(&archive, 8)?;

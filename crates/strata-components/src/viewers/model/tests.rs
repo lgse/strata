@@ -209,8 +209,6 @@ mod element {
         .build(&s.look, cx)
     }
 
-    /// `preview/preview-panel/model-views`: "The model picture keeps the grab cursor and file
-    /// drag." No orbit by drag: a drag on the picture drags the file, and the camera stays.
     #[test]
     fn a_drag_on_the_picture_drags_the_file_and_never_turns_the_camera() {
         let pixels = Pixels::new();
@@ -244,10 +242,6 @@ mod element {
         assert_eq!(rt.state.model.mesh(), Some(mesh(CameraView::FrontLeft)));
     }
 
-    /// C13 review 1 (the C14b ruling): a plain picture fits the pane's width when the height
-    /// would make it wider. At Rune 5d421fd `aspect_fit` with `max_w` took the cap for the
-    /// cross room (C13's Rune draft U-C13-4), so a wide picture in a narrow, tall pane spilled
-    /// out of it.
     #[test]
     fn a_plain_picture_fits_a_narrow_pane() {
         let mut model = ModelState::default();

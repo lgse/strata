@@ -122,8 +122,6 @@ fn moving_relocates_live_ranges_across_same_length_and_resized_edits() {
         ids.of(&new.location),
     );
 
-    // Same-length `Edit::Replace` after `select_all`: `OverlayIds::Live` must relocate `old` to
-    // `new` rather than false-positive on `new`'s post-rename index.
     let mut column = Column::new(root.clone(), false, None);
     column.apply(Edit::Replace(vec![
         Row::of(&a, &ids),
@@ -151,8 +149,6 @@ fn moving_relocates_live_ranges_across_same_length_and_resized_edits() {
         vec![id_a, id_new, id_c]
     );
 
-    // Length-changing `Edit::Replace` on a live range (`extend_to`): `arrived` must not pass the
-    // unsynced `column` to `Selection::contains` (which would fail `source_len`'s assert).
     let mut column2 = Column::new(root, false, None);
     column2.apply(Edit::Replace(vec![Row::of(&a, &ids), Row::of(&old, &ids)]));
     column2.set_load(Load::Listed);
@@ -275,8 +271,6 @@ fn adopt_updates_anchor_when_cursor_and_selection_already_match() {
     assert_eq!(collection.selection.anchor(), Some(id_b));
 }
 
-/// A move out of the folder in a view in a saved mode: the keys that put the keyboard on the
-/// entry moved, the row expected to take it, and an arrow and the row it then reaches.
 struct Moved {
     mode: &'static str,
     shape: Shape,
@@ -288,11 +282,6 @@ struct Moved {
     name: &'static str,
 }
 
-/// After the entry with the keyboard moves out of the folder, a selectionless removal, the
-/// keyboard is on the row beside it with nothing selected, and the browser holds no cursor,
-/// as GTK's list views leave it (finding lgse/strata#2546): the row now at its position, or
-/// the last row when it was the last. The next arrow goes on from that row, and the browser
-/// follows it.
 fn a_move_out_leaves_the_keyboard_on_the_neighbour(case: Moved) {
     let shape = case.shape;
     hosted_in(MODULE, case.mode, case.name, move |mut host| {
@@ -339,8 +328,6 @@ fn a_move_out_leaves_the_keyboard_on_the_neighbour(case: Moved) {
     });
 }
 
-/// The last entry, `todo.txt`, moved out: `readme.md` before it takes the keyboard, and
-/// `arrow` goes on to `pictures`.
 fn last_row(mode: &'static str, shape: Shape, arrow: Key, name: &'static str) -> Moved {
     Moved {
         mode,
@@ -366,8 +353,6 @@ fn a_move_out_leaves_the_keyboard_on_the_neighbour_in_list() {
     a_move_out_leaves_the_keyboard_on_the_neighbour(last_row("list", LIST, Key::Up, name));
 }
 
-/// Mid-list, the row after the one that went takes the keyboard: the row now at its position,
-/// as GTK's `GtkListBase` keeps its focus.
 #[test]
 fn a_move_out_mid_list_leaves_the_keyboard_on_the_row_now_at_its_position() {
     a_move_out_leaves_the_keyboard_on_the_neighbour(Moved {
@@ -382,9 +367,6 @@ fn a_move_out_mid_list_leaves_the_keyboard_on_the_row_now_at_its_position() {
     });
 }
 
-/// An undo bringing a moved entry back marks only its anchor in the browser: the keyboard
-/// stays on the neighbour it went to, with nothing selected, as GTK's list view keeps its
-/// focus (`fuzz-drag-v1-0000000000000004`, shrunk to the move and Ctrl+Z).
 #[test]
 fn an_undone_move_out_leaves_the_keyboard_on_the_neighbour() {
     let name = "an_undone_move_out_leaves_the_keyboard_on_the_neighbour";
@@ -439,9 +421,6 @@ fn image_entry(path: &Path, modified: MetadataValue<i64>, size: MetadataValue<u6
     }
 }
 
-/// Renaming an image whose thumbnail already loaded — even when its initial key was hashed
-/// before metadata fill learned mtime and size — relocates the loaded thumbnail to the new
-/// key so resyncing the store after the splice submits zero new render requests.
 #[test]
 fn moving_relocates_thumbnail_across_rename_and_avoids_re_request() {
     use strata_components::{
@@ -512,8 +491,6 @@ fn moving_relocates_thumbnail_across_rename_and_avoids_re_request() {
         assert!(store.relocate(src, dst));
     }
 
-    // Resyncing the store on the bumped listing version must reuse the loaded thumbnail
-    // without queueing another render job.
     let _ = store.resync(viewer, &column, column.thumb_version());
     assert!(
         store.pop(0.2).is_none(),

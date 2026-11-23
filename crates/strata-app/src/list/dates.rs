@@ -1,15 +1,7 @@
 // SPDX-License-Identifier: MIT
 
-//! The Modified column's relative dates ("Just now", "5m ago") keep up with the clock, as
-//! GTK's do: `src/ui/modified_date.rs` sets every bound date label again every 30 s
-//! (`ensure_modified_date_timer`), whatever its age and its format. Here the List view does
-//! it only while the saved format is relative, the one whose text moves with the clock, and
-//! the folder shown has rows: every 30 s the rows drawn build again ([`Dates::epoch`] is in
-//! their cells' version), and a date read then reads the clock then.
-
 use std::time::Duration;
 
-/// GTK's period (`Duration::from_secs(30)` in `ensure_modified_date_timer`).
 const EVERY: Duration = Duration::from_secs(30);
 
 /// The refresh's clock: when the period started, and how many have passed.
@@ -32,8 +24,6 @@ impl Dates {
         self.epoch
     }
 
-    /// One poll at `clock`, in seconds. `live`: the format is relative and rows show. A
-    /// period starts at the first live poll, and ends 30 s on, when the dates read again.
     pub(crate) fn tick(&mut self, live: bool, clock: f64) -> Tick {
         if !live {
             self.since = None;

@@ -88,10 +88,6 @@ fn listing(browser: &Recorder, ids: &Ids) -> Column {
     column
 }
 
-/// A scroll through a long folder: however often the range changes between two polls, a
-/// poll asks once, for the rows of the last range and a quarter of it each way. A row is
-/// asked for at most once while its fill is out, and a row never near the viewport at a
-/// poll is never asked for.
 #[test]
 fn a_scroll_asks_each_near_row_once_per_poll() {
     let browser = Recorder::of(1_000);
@@ -137,8 +133,6 @@ fn a_scroll_asks_each_near_row_once_per_poll() {
     assert!(!asked.contains(&last), "the row past the margin");
 }
 
-/// A row is asked for again only once its fill landed and it still lacks something, and
-/// not at all once it lacks nothing; a new folder starts over.
 #[test]
 fn a_row_is_asked_again_only_after_its_fill_landed() {
     let browser = Recorder::of(4);
@@ -183,8 +177,6 @@ fn a_row_is_asked_again_only_after_its_fill_landed() {
     assert_eq!(browser.take(), vec![0, 2, 3], "another folder starts over");
 }
 
-/// A row that left the range and came back is asked for again, its fill never having
-/// landed, as GTK asks again for an item it binds again.
 #[test]
 fn a_row_scrolled_out_and_back_is_asked_again() {
     let browser = Recorder::of(200);
@@ -208,10 +200,6 @@ fn a_row_scrolled_out_and_back_is_asked_again() {
     );
 }
 
-/// GTK's List asks a folder's fill with details, for its item count, and a file's without
-/// (`list_factory.rs`, `details = entry.is_directory()`); so a file that lacks only an
-/// image's dimensions is not asked for at all, and a folder that lacks only its count is.
-/// The Icons view asks every row with details.
 #[test]
 fn the_list_view_asks_a_folders_count_and_no_files_details() {
     let known = |mut entry: FileEntry| {
@@ -245,8 +233,6 @@ fn the_list_view_asks_a_folders_count_and_no_files_details() {
         );
     }
 
-    // Enabling a media column upgrades an existing Fills instance from Folders to All,
-    // re-admitting already-asked rows so media details are requested at the next poll.
     let mut fills = Fills::new(Details::Folders);
     fills.see(0..3);
     fills.request(&browser, 0, &column);
@@ -260,10 +246,6 @@ fn the_list_view_asks_a_folders_count_and_no_files_details() {
     );
 }
 
-/// GTK's Columns rows register a fill only when the time, a file's size or a folder's
-/// `listable` is unknown, or for a folder's count while sizes show (`bind.rs:254-257`): a row
-/// that lacks only its mode is asked by Columns only for a folder while sizes show, and by
-/// the List view always.
 #[test]
 fn a_columns_row_lacking_only_its_mode_is_asked_only_for_a_folders_size() {
     let only_mode = |mut entry: FileEntry| {
@@ -350,8 +332,6 @@ fn scroll_settle_defers_during_thumb_drag_and_flushes_immediately_on_release() {
     );
 }
 
-/// When a reload cancels in-flight metadata fills and replaces the same folder with fresh
-/// `Unknown` entries, `invalidate()` clears `asked` so the next poll re-requests them.
 #[test]
 fn invalidate_readmits_rows_after_reload_cancels_in_flight_fills() {
     let browser = Recorder::of(4);
@@ -363,8 +343,6 @@ fn invalidate_readmits_rows_after_reload_cancels_in_flight_fills() {
     fills.request(&browser, 0, &column);
     assert_eq!(browser.take(), vec![0, 1, 2, 3]);
 
-    // Simulate a reload of the same folder replacing entries with fresh Unknown rows after
-    // cancelling the previous metadata load.
     let reloaded_rows = browser
         .entries
         .borrow()

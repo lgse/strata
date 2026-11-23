@@ -45,16 +45,6 @@ pub fn option_key(key: &str, i: usize) -> String {
     format!("{key}-option-{i}")
 }
 
-/// Strata's location bar: breadcrumbs that switch to an entry with path completion, in the
-/// header's middle (`header::Header::center`).
-///
-/// ```ignore
-/// let bar = LocationBar::new("loc", look, &s.trail, &s.loc, |s: &mut App| &mut s.loc,
-///         |s: &mut App, intent, tx| s.route(intent, tx))
-///     .dnd(s.dnd.clone())
-///     .drop_action(|s: &App, id, offer, mods| s.drop_action(id, offer, mods))
-///     .build(cx, &mut layer);
-/// ```
 pub struct LocationBar<'a, S> {
     key: String,
     look: &'a Look,
@@ -72,11 +62,6 @@ pub struct LocationBar<'a, S> {
 }
 
 impl<'a, S: 'static> LocationBar<'a, S> {
-    /// The bar keyed `key` for the folder `trail` names, drawn from `state` (reached again in
-    /// handlers through `access`), reporting to `on_intent`. Every handler calls the
-    /// `on_intent` of the latest view, so it may capture state the view reads: suggestion rows,
-    /// memoised while their list shows, read it from `state` when pressed rather than keeping
-    /// the one they were built with.
     pub fn new(
         key: impl Into<String>,
         look: &'a Look,
@@ -108,15 +93,11 @@ impl<'a, S: 'static> LocationBar<'a, S> {
         self
     }
 
-    /// The content types an ancestor crumb takes from other apps besides files, most wanted
-    /// first (the host's content-drops policy). Default none.
     pub fn content_types(mut self, mimes: &'static [&'static str]) -> Self {
         self.content = mimes;
         self
     }
 
-    /// The host's action for a drag over ancestor crumb `id`: usually
-    /// [`crate::contract::choose_action`] with its volume lookup. `None` refuses it.
     pub fn drop_action(
         mut self,
         f: impl Fn(&S, &str, &DropOffer, Mods) -> Option<DropAction> + 'static,
@@ -131,15 +112,11 @@ impl<'a, S: 'static> LocationBar<'a, S> {
         self
     }
 
-    /// How long a file drag rests on an ancestor crumb before it opens, in seconds
-    /// ([`SPRING_DELAY`] by default); `None` turns spring-loading off.
     pub fn spring_delay(mut self, delay: Option<f64>) -> Self {
         self.spring = delay;
         self
     }
 
-    /// The keys that complete the typed path: Tab and Shift+Tab by default. Strata passes its
-    /// `focus_next` and `focus_previous` bindings, so a key added to them completes too.
     pub fn complete_keys(mut self, keys: &[Chord]) -> Self {
         self.complete = keys.to_vec();
         self
@@ -151,8 +128,6 @@ impl<'a, S: 'static> LocationBar<'a, S> {
         self
     }
 
-    /// The bar, keyed with its key. Its suggestions and its hierarchy menu go onto `layer`, the
-    /// overlays `rune_kit::root` mounts. It reads the entry's width and its own from `cx`.
     pub fn build(self, cx: &mut Cx<S>, layer: &mut Vec<El>) -> El {
         let default_labels = LocationLabels::default();
         let labels = self.labels.unwrap_or(&default_labels);
@@ -236,8 +211,6 @@ impl<S> Ctx<'_, S> {
         bar.thickness + 2.0 * bar.margin
     }
 
-    /// Where the hierarchy menu opens below the crumbs: past both the crumb row and the overflow
-    /// bar's row underneath it.
     pub fn menu_bottom(&self) -> f32 {
         self.row() + self.band()
     }

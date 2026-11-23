@@ -1,18 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The bookkeeping behind [`Change`]s: this process's copies and where each stands, and what
-//! each selection offers. Pure: the hub feeds it what the platform reported, in order.
-//!
-//! A copy holds once its own selection comes back (the compositor's echo, or X11's owner
-//! change) while the platform still says the source holds it. Several copies of ours can be
-//! in flight at once (a copy, then another before the first's echo), so the echo is matched
-//! to the newest copy that still holds and offers exactly the echoed types (in any order).
-//!
-//! That rule is guarded by the unit tests in `book/tests.rs`, not by the session tests: every
-//! platform here cancels a source before it announces the next owner, on the same
-//! connection, so no session can deliver another client's offer while one of our copies
-//! still holds, which is what the rule's checks (the types, and `holds`) are for.
-
 use std::collections::{HashMap, VecDeque};
 
 use super::api::{Change, CopyId, CopyState, Lost, Offered, Selection};
@@ -26,8 +13,6 @@ struct Entry {
     state: CopyState,
     /// [`Book::clearing`] ran: its cancel is the clear's.
     clearing: bool,
-    /// Another client's offer was heard while this copy was still pending: whatever became
-    /// of the write, the selection has moved on.
     superseded: bool,
 }
 
@@ -53,8 +38,6 @@ impl Book {
         );
     }
 
-    /// `selection` now offers `mimes`, or nothing. `holds` says whether the platform still
-    /// counts a copy as holding.
     pub(super) fn selection(
         &mut self,
         selection: Selection,
@@ -104,8 +87,6 @@ impl Book {
         changes
     }
 
-    /// The platform says `copy` no longer holds its selection. `refused`: the platform judged
-    /// its write dropped (a data-device write with no echo).
     pub(super) fn cancelled(&mut self, copy: CopyId, refused: bool) -> Vec<Change> {
         let Some(e) = self.copies.get(&copy) else {
             return Vec::new();
@@ -187,9 +168,6 @@ impl Book {
         self.offers.get(&selection)
     }
 
-    /// The copy of ours a read of `selection` gets, if any: the newest one holding, or still
-    /// pending with no other client's offer heard since (a read right after a copy gets the
-    /// copy, but a write that never took doesn't shadow what came after it).
     pub(super) fn serving(&self, selection: Selection) -> Option<CopyId> {
         self.live(selection).into_iter().find(|c| {
             let e = &self.copies[c];
@@ -223,8 +201,6 @@ impl Book {
     }
 }
 
-/// The same types, in any order: a platform may list an offer's types in another order than
-/// they were offered.
 fn same_types(a: &[String], b: &[String]) -> bool {
     use std::collections::BTreeSet;
     a.iter().collect::<BTreeSet<_>>() == b.iter().collect::<BTreeSet<_>>()

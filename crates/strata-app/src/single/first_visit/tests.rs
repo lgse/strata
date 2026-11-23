@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! When a first visit gives the first row the cursor, on a pane the browser's changes are
-//! scripted into: a hosted test cannot hold a load open between its rows and its end.
-
 use strata_components::{
     collection::{element::CollectionState, selection::AnchorRule},
     contract::{EntryId, EntrySource},

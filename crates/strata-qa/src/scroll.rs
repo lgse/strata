@@ -2,12 +2,9 @@
 
 //! How far a scroller must turn to show a point, in wheel clicks.
 
-/// GTK scrolls a discrete wheel click by the page size to the power of 2/3.
 const WHEEL_STEP_EXPONENT: f64 = 2.0 / 3.0;
 const MAX_CLICKS: f64 = 12.0;
 
-/// How far the content must scroll to show `point`: the whole span when it fits, else the
-/// point centred. Positive scrolls forward (right or down); `None` when it already shows.
 pub fn travel(span: (f64, f64), point: f64, viewport: (f64, f64)) -> Option<f64> {
     let (start, length) = span;
     let (view_start, view_length) = viewport;

@@ -1,12 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The protocol of the scripted QA mode: what a step, a target and a predicate are, and how
-//! each is parsed. The application and the runner in `tests/qa.rs` both use it, so the runner
-//! rejects a malformed step when it loads a scenario instead of the process rejecting it mid-run.
-//!
-//! It also holds what the application's side decides without a toolkit: the snapshot a reply
-//! reports and the predicates that read it, screen geometry, and pixel measurement.
-
 use std::time::Duration;
 
 use serde::Serialize;

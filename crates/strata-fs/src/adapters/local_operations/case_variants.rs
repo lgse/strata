@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Top-level items of one paste whose names differ only in case. On a
-//! case-insensitive destination whose rules do not fold, such as a casefolded
-//! folder, only looking a later name up shows that an earlier item took it.
-
 use std::{collections::HashMap, ffi::OsString, path::PathBuf};
 
 use gio::prelude::*;

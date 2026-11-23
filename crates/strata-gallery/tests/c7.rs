@@ -1,10 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! C7's page in process: timers stepped from wake to wake, the wheel, the views kept mounted
-//! under a spring, the title, and, through a host with a binder of its own (as X2's will be),
-//! what Rune's binder can't send: drags from this process that open tabs, and content drops.
-//! The scripts in `tests/scripts/c7/` check the rest. Each test names the bullets it covers.
-
 mod c7 {
     use std::cell::RefCell;
     use std::time::Instant;
@@ -79,11 +74,6 @@ mod c7 {
         rt.frame(FRAME);
     }
 
-    /// Steps a still window for at most `limit` seconds: a frame only at each wake the page
-    /// asked for, or for queued input (a layout report), none in between and none for motion
-    /// (a held file drag keeps the runtime animating, which would hide a timer that asked for
-    /// no wake: review 2). Stops at the first frame after which `done` holds, and returns the
-    /// clock it stopped at.
     fn wake_until(rt: &mut Runtime<Gallery>, limit: f64, done: impl Fn(&Gallery) -> bool) -> f64 {
         let start = rt.state.c7.now;
         for _ in 0..400 {
@@ -111,10 +101,6 @@ mod c7 {
         format!("t-c7-{id}")
     }
 
-    // browser/tabs: "Holding a file or browser-content drag over a tab for 450 ms selects it, so
-    // the drop can land on a folder in its listing." In a window at rest, which polls only at
-    // the wakes it asked for (C11's and C6's reviews: a timer stamped at the first poll after
-    // the hover, with one wake asked from the hover, never ended).
     #[test]
     fn the_hover_selects_a_tab_in_a_resting_window() {
         for animations in [true, false] {
@@ -123,8 +109,6 @@ mod c7 {
             rt.drag_files(vec!["/home/demo/report.pdf".into()], Some(at));
             rt.frame(FRAME);
             let arrived = rt.state.c7.now;
-            // Only at wakes: a held file drag keeps the runtime animating, which a frame per
-            // 1/60 s would follow, hiding a timer that asked for no wake (review 2).
             let stopped = wake_until(&mut rt, 3.0, |g| !g.c7.log.is_empty());
             assert_eq!(rt.state.c7.log, "Select Documents (spring)");
             assert_eq!(rt.state.c7.active, Some(TabId(2)));
@@ -133,8 +117,6 @@ mod c7 {
         }
     }
 
-    // browser/tabs: "A Trash or Recent tab also refuses file drags: it neither accents nor
-    // selects under the drag." And a drag resting on the active tab arms nothing.
     #[test]
     fn a_drag_on_the_active_tab_or_trash_selects_nothing() {
         let mut rt = mount("c7-several-light");
@@ -155,9 +137,6 @@ mod c7 {
         assert_eq!(rt.state.c7.state.drop_hover(), None, "nothing is tinted");
     }
 
-    // P1's rule, the host's part: a spring that shows another tab during a drag leaves the
-    // source tab's view mounted at its path and place (styled hidden), so a drag from it keeps
-    // its capture.
     #[test]
     fn a_spring_keeps_the_previous_view_mounted_where_it_was() {
         let mut rt = mount("c7-several-light");
@@ -174,9 +153,6 @@ mod c7 {
         assert_eq!(after.opacity, 0.0);
     }
 
-    // browser/tabs: "When the strip is wider than the window, the wheel scrolls it horizontally
-    // and no scrollbar is shown." Rune turns no vertical wheel sideways (U-C6-5), so without
-    // C7's mapping (`tabs/wheel.rs`) this fails.
     #[test]
     fn a_vertical_wheel_scrolls_an_overflowing_strip_sideways() {
         let mut rt = mount("c7-overflow-light");
@@ -198,8 +174,6 @@ mod c7 {
         assert!(on < back - 60.0, "a wheel down shows more: {back} -> {on}");
     }
 
-    // browser/tabs: "Selecting a tab scrolls it into view", from the keyboard too (Ctrl+Shift+1,
-    // the page's stand-in for Strata's key map).
     #[test]
     fn a_tab_selected_from_the_keyboard_scrolls_into_view() {
         let mut rt = mount("c7-overflow-light");
@@ -220,8 +194,6 @@ mod c7 {
         assert!(t[0] >= viewport[0] - 0.5, "{t:?} in {viewport:?}");
     }
 
-    // browser/tabs: "Selecting a tab scrolls it into view", clear of the strip's edge fades, at
-    // either end (review 1: a revealed tab landed under the fade, U-C7-7).
     #[test]
     fn a_revealed_tab_is_clear_of_the_edge_fades() {
         let mut rt = mount("c7-overflow-light");
@@ -237,8 +209,6 @@ mod c7 {
             shift: true,
             ..Mods::default()
         };
-        // Ctrl+Shift+0: tab 10, off to the left. In a window at rest: a frame while something
-        // moves, else only at each wake the strip asked for.
         let start = rect(&rt, &tab(10))[0];
         key(&mut rt, Key::Command('0'), mods);
         let mut xs = vec![rect(&rt, &tab(10))[0]];
@@ -258,15 +228,10 @@ mod c7 {
             t[0] >= viewport[0] + fade - 0.5,
             "tab 10 {t:?} starts clear of the left fade in {viewport:?}"
         );
-        // It lands in one step: the first frame that moves it puts it where it stays, with no
-        // shift by the fade's width a frame later (review 2).
         let moved = xs.iter().find(|&&x| (x - start).abs() > 0.5).copied();
         assert_eq!(moved, Some(t[0]), "frames: {xs:?}");
     }
 
-    // A host that changes the active tab from a key handler does so after that frame's poll.
-    // In a window at rest with nothing moving, the strip asks for the tick that follows it, so
-    // the tab is revealed and the window retitled with no other frame coming (review 2).
     #[test]
     fn a_key_selection_reveals_and_retitles_in_a_still_window() {
         let mut rt = mount_with("c7-overflow-light", |g| g.look.animations = false);
@@ -292,9 +257,6 @@ mod c7 {
         assert_eq!(rt.state.c7.title, "Folder 10 — Strata");
     }
 
-    /// Sends `deltas` over the tab under the viewport's middle, a frame after each, phased as a
-    /// trackpad's gesture (`Began`, then `Moved`, then `Ended`) or unphased as a wheel's, and
-    /// returns how far tab 1 moved on each frame after the first.
     fn gesture(rt: &mut Runtime<Gallery>, deltas: &[(f32, f32)], phased: bool) -> Vec<f32> {
         use rune::GesturePhase;
         let viewport = rect(rt, "c7-scroll");
@@ -330,9 +292,6 @@ mod c7 {
         xs.windows(2).map(|w| w[1] - w[0]).collect()
     }
 
-    // A sideways gesture whose first delta lands in the frame a reveal's jump goes out: the
-    // tab's handler takes it, so Rune hands it the whole gesture, and it scrolls every delta
-    // after (review 3: the rest was dropped). Phased and unphased.
     #[test]
     fn a_sideways_gesture_through_the_reveal_frame_scrolls_to_its_end() {
         let mods = Mods {
@@ -356,8 +315,6 @@ mod c7 {
         }
     }
 
-    // A gesture that starts mostly vertical (the tab's handler takes it) and turns sideways
-    // keeps scrolling: its sideways deltas reach no one else. Phased and unphased.
     #[test]
     fn a_gesture_that_turns_sideways_keeps_scrolling() {
         for phased in [true, false] {
@@ -372,8 +329,6 @@ mod c7 {
         }
     }
 
-    // Wheel deltas that reach a tab within one frame each scroll: the markers report the offset
-    // once a frame, so the wheel's jumps add up from where the last one left the viewport.
     #[test]
     fn wheel_deltas_within_one_frame_add_up() {
         let mut rt = mount("c7-overflow-light");
@@ -388,8 +343,6 @@ mod c7 {
         assert!((after - before - 120.0).abs() < 2.0, "{before} -> {after}");
     }
 
-    // The active tab renamed by a host's key handler (its folder navigated) retitles the window
-    // in a still window too: the change lands after that frame's poll (review 3).
     #[test]
     fn renaming_the_active_tab_retitles_a_still_window() {
         let mut rt = mount_with("c7-several-light", |g| g.look.animations = false);
@@ -400,8 +353,6 @@ mod c7 {
         assert_eq!(rt.state.c7.title, "Music/Albums — Strata");
     }
 
-    // The user's wheel, vertical or sideways, right after a selection wins over its reveal
-    // still to land (review 2: the reveal's jump undid it).
     #[test]
     fn a_wheel_right_after_a_selection_beats_its_reveal() {
         let mods = Mods {
@@ -418,8 +369,6 @@ mod c7 {
             (2, -200.0, 0.0),
         ] {
             let mut rt = mount("c7-overflow-light");
-            // Ctrl+Shift+0 selects tab 10, off to the left; the wheel then asks for more on
-            // the right.
             rt.key(KeyEvent {
                 key: Key::Command('0'),
                 mods,
@@ -460,9 +409,6 @@ mod c7 {
             .rect[2]
     }
 
-    // browser/tabs: "Names longer than 22 characters are ellipsized", so names up to there show:
-    // at the narrowest, a tab still leaves room for about 10 characters of its label, active
-    // (clear of its close button) or at rest (review 1: at 96 points they read "Folder").
     #[test]
     fn the_narrowest_tab_still_shows_about_ten_characters() {
         let rt = mount("c7-overflow-light");
@@ -481,8 +427,6 @@ mod c7 {
             .fold(f32::NAN, f32::max)
     }
 
-    // browser/tabs: "A 3 px accent underline slides to the selected tab, and jumps without
-    // sliding when animations are disabled."
     #[test]
     fn the_underline_slides_and_jumps_with_animations_off() {
         for animations in [true, false] {
@@ -502,9 +446,6 @@ mod c7 {
         }
     }
 
-    // browser/tabs: "Navigating the active tab, or selecting another tab, retitles the window
-    // after the active tab's folder", through `Tx::set_title`: the window's accessible name is
-    // its title.
     #[test]
     fn selecting_a_tab_retitles_the_window() {
         let mut rt = mount("c7-several-light");
@@ -514,8 +455,6 @@ mod c7 {
         let long = "Quarterly reports and invoices 2026 — Strata";
         assert_eq!(rt.accessibility_json()["name"], long, "the whole name");
     }
-
-    // ---- A host with a binder of its own, as X2's will be. ----
 
     /// A zone the binder attached, with where its element drew.
     type Attached = (Live<[f32; 4]>, DropZone<Host>);
@@ -536,7 +475,6 @@ mod c7 {
         )
     }
 
-    /// The innermost zone at `(x, y)`, as X2's binder finds it by drawn rect.
     fn zone_at(x: f32, y: f32) -> DropZone<Host> {
         ZONES.with(|z| {
             z.borrow()
@@ -564,8 +502,6 @@ mod c7 {
         rune_binder: bool,
         /// Whether the host's own drags open tabs (it sets `opens_tabs`).
         opens: bool,
-        /// Whether every drag opens tabs, so one under Rune's binder (from another process,
-        /// as Rune sees it) does.
         opens_any: bool,
         /// The clock at the last poll.
         now: f64,
@@ -649,7 +585,6 @@ mod c7 {
     }
 
     fn point(x: f32, y: f32) -> PointerEvent {
-        // Non-exhaustive: X2's binder gets one from P1; only the window point matters here.
         let mut p = PointerEvent::default();
         p.window_x = x;
         p.window_y = y;
@@ -681,15 +616,9 @@ mod c7 {
             .count()
     }
 
-    // browser/tabs: "Over the strip, that line moves to the gap nearest the pointer. Releasing
-    // opens the dragged location in a new tab at that gap"; "A folder-only drag released over a
-    // tab header opens a new tab and moves or copies nothing into that tab"; "A folder-only
-    // drag held over a tab does not select it". The gap is rune-kit's incoming gap.
     #[test]
     fn a_drag_that_opens_tabs_places_a_gap_and_opens_there() {
         let mut rt = mount_host(host(5));
-        // A quarter into tab 1: before its middle (even once the gap shrinks the tabs), so it
-        // opens at 0, not after the tab it dropped on.
         let t1 = rect(&rt, "t-tabs-1");
         let (x, y) = (t1[0] + t1[2] * 0.25, t1[1] + t1[3] / 2.0);
         let zone = zone_at(x, y);
@@ -711,8 +640,6 @@ mod c7 {
             DropData::files(&["/srv/a/".into()]),
             Mods::default(),
         );
-        // Both real binders report the zone's leave before they deliver its drop (Rune's
-        // `runtime/input/drop.rs`, P1's `dnd/window.rs`): W1's `Left` is "left, moved, or dropped".
         rt.update(|h, tx| {
             zone.hover(h, DropHover::Left, &offer, tx);
             zone.deliver(h, dropped, tx);
@@ -731,8 +658,6 @@ mod c7 {
         );
     }
 
-    // The same over the strip's own zone, between two tabs (review 1, B1: the drop's leave
-    // closed the gap, and the drop opened at the end).
     #[test]
     fn a_drop_in_the_gap_between_tabs_opens_there_after_its_leave() {
         let mut rt = mount_host(host(5));
@@ -758,9 +683,6 @@ mod c7 {
         assert_eq!(opened(&rt.state), [2]);
     }
 
-    // A drag that leaves a tab's gap for the strip's and drops there, all in one turn: the
-    // strip's gap hasn't built, so its slot isn't known, and the drop keeps the tab's rather
-    // than falling to the end (review 2).
     #[test]
     fn a_drop_on_a_zone_reached_in_the_same_turn_keeps_the_last_slot() {
         let mut rt = mount_host(host(5));
@@ -791,15 +713,8 @@ mod c7 {
         assert_eq!(opened(&rt.state), [0]);
     }
 
-    // A leave with no drop keeps the gap's slot only briefly, and it expires in a window at
-    // rest too: it asks for the wakes that expire it (review 2: it relied on frames that
-    // happened to come).
     #[test]
     fn a_kept_slot_expires_from_wake_to_wake() {
-        // Rune's binder, so the leave and the drop arrive as input inside frames, as a real
-        // binder's do, after that frame's poll. Three tabs keep their widest width with the gap
-        // open or shut, so closing it moves nothing that would bring a frame of its own (the
-        // active tab's marker reports its moves): only the leave's wakes expire the slot.
         let mut h = host(3);
         h.rune_binder = true;
         h.opens_any = true;
@@ -811,8 +726,6 @@ mod c7 {
         run(&mut rt, 0.5);
         assert_eq!(rt.state.tabs_state.drag.incoming_slot(), Some(2));
         rt.drag_files_leave();
-        // As a still window draws: a frame only for queued input or at a wake, none for motion
-        // and none of the test's own (review 3: one stepped here hid the leave's wake).
         for _ in 0..20 {
             if rt.has_pending_input() {
                 rt.frame(FRAME);
@@ -828,8 +741,6 @@ mod c7 {
         assert_eq!(opened(&rt.state), [3], "the kept slot expired");
     }
 
-    // browser/tabs: "After an Escape-cancelled drag, the strip shows no insertion line": the
-    // binder reports a cancelled drag, or one that left the strip, as a leave with no drop.
     #[test]
     fn a_leave_closes_the_gap() {
         let mut rt = mount_host(host(5));
@@ -849,8 +760,6 @@ mod c7 {
         );
         run(&mut rt, 0.5);
         assert_eq!(rt.state.tabs_state.drag.incoming_slot(), None);
-        // The slot the leave kept for a drop expired: a later drop with no hover of its own
-        // (only headless runs send one) opens at the end, not in the old gap.
         let t1 = rect(&rt, "t-tabs-1");
         let strip = zone_at(t1[0] + t1[2] + 2.0, t1[1] + t1[3] / 2.0);
         let dropped = Dropped::new(
@@ -862,9 +771,6 @@ mod c7 {
         assert_eq!(opened(&rt.state), [5]);
     }
 
-    // Moving from a tab to the strip's gap beside it: the binder may report the strip's arrival
-    // before the tab's leave. Only the zone holding the gap closes it, so it never shuts for a
-    // frame and opens again.
     #[test]
     fn a_leave_from_a_tab_after_the_strip_took_the_drag_keeps_the_gap() {
         let mut rt = mount_host(host(5));
@@ -888,10 +794,6 @@ mod c7 {
         assert!(rt.state.tabs_state.drag.incoming_slot().is_some());
     }
 
-    // browser/tabs: "Text, an image, or a web address dropped on a tab from another application
-    // goes to that tab's current folder"; "A tab showing Trash, Recent, or a remote folder
-    // refuses dropped text and images"; "Text dragged from another application onto the strip
-    // is never taken as a tab reorder. The tab header under it receives it as a content drop."
     #[test]
     fn content_goes_into_a_tab_that_takes_it_and_no_other() {
         let rt = mount_host(host(4));
@@ -934,8 +836,6 @@ mod c7 {
         );
     }
 
-    // browser/tabs: "The New tab button under a sidebar, folder, or tab drag shows an accent
-    // tint", and its drop opens at the end.
     #[test]
     fn new_tab_lights_and_opens_a_drag_that_opens_tabs_at_the_end() {
         let mut rt = mount_host(host(3));
@@ -958,8 +858,6 @@ mod c7 {
         assert_eq!(rt.state.tabs_state.drop_hover(), None);
     }
 
-    // Review 1: a zone that follows moves asks for a frame on each motion of a drag over it, so
-    // only a strip whose host has drags that open tabs (which place the gap) follows them.
     #[test]
     fn without_drags_that_open_tabs_no_zone_follows_moves() {
         let mut h = host(4);
@@ -1014,8 +912,6 @@ mod c7 {
         times[times.len() / 2]
     }
 
-    // Many tabs, reorder drags: a frame of a drag across 200 tabs stays under the bar (debug
-    // build, in process: build, layout and the frame's work, no GPU). 1,000 is reported.
     #[test]
     fn a_reorder_drag_across_many_tabs_stays_quick() {
         let two_hundred = drag_frames(200, true);

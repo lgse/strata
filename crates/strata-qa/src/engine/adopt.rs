@@ -36,8 +36,6 @@ impl<'a> Adoption<'a> {
         })
     }
 
-    /// A window to activate must be the only one with its title, so the step means one window
-    /// on every toolkit.
     fn chosen<N>(&self, windows: Vec<N>) -> Option<N> {
         if self.activate && windows.len() != 1 {
             return None;
@@ -75,8 +73,6 @@ impl<'a> Adoption<'a> {
     }
 }
 
-/// Waits for a drawn window with the title, makes it the one steps act on and, for
-/// `activate_window`, has the backend give it the keyboard.
 pub(super) async fn adopt<B: Backend>(backend: &B, adoption: &Adoption<'_>) -> Outcome {
     let deadline = Instant::now() + adoption.timeout;
     let window = match adoptable(backend, adoption, deadline).await {

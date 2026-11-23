@@ -18,8 +18,6 @@ struct App {
     feed: ScrollFeed,
 }
 
-/// A viewport that scrolls both ways under the whole window, and while `open` the outside
-/// layer over it and a panel over that, which scrolls nothing and takes a press.
 fn view(s: &App, _: &mut Cx<App>) -> El {
     let feed = s.feed.clone();
     let viewport = col()
@@ -76,9 +74,6 @@ fn a_tick_outside_closes_the_panel_and_moves_the_listing_by_its_delta() {
 
 #[test]
 fn two_ticks_outside_in_one_frame_move_the_listing_by_both() {
-    // browser/scrolling: That forwarded tick moves the listing by the step a wheel notch normally moves it.
-    // Review round 1, SF2: the feed moves once a frame, so each tick builds on the ones before
-    // it in the same frame.
     let mut rt = runtime();
     rt.wheel_event(
         WheelEvent::new(0.0, -120.0)
@@ -92,8 +87,6 @@ fn two_ticks_outside_in_one_frame_move_the_listing_by_both() {
 
 #[test]
 fn ticks_outside_in_one_frame_stop_at_the_listing_end() {
-    // Two ticks past the end, then one back by half: the listing stands half way, not past
-    // the end and still clamped there.
     let mut rt = runtime();
     let max = rt.state.feed.get().max[1];
     assert!(max > 0.0);
@@ -110,8 +103,6 @@ fn ticks_outside_in_one_frame_stop_at_the_listing_end() {
 
 #[test]
 fn shift_turns_a_vertical_tick_outside_sideways() {
-    // browser/scrolling: Shift+wheel outside an open panel closes it and scrolls the pointed listing horizontally.
-    // (In process: a script's Shift + wheel doesn't reach Rune's turn, U-C24-7.)
     let mut rt = runtime();
     let shift = Mods {
         shift: true,
@@ -127,8 +118,6 @@ fn shift_turns_a_vertical_tick_outside_sideways() {
 
 #[test]
 fn a_shift_tick_the_window_host_turned_stays_sideways() {
-    // Rune's window host turns a Shift + mouse-wheel tick before the scrim hears it; turning
-    // it again would scroll the listing vertically.
     let mut rt = runtime();
     let shift = Mods {
         shift: true,
@@ -144,9 +133,6 @@ fn a_shift_tick_the_window_host_turned_stays_sideways() {
 
 #[test]
 fn a_tick_over_the_panel_neither_closes_it_nor_scrolls_the_listing_under_it() {
-    // browser/scrolling: A wheel over an open panel that doesn't scroll moves nothing. Rune
-    // starts the wheel on the panel and chains it up the panel's ancestors only (#1137), so the
-    // panel needs no wheel handler of its own (draft U-C24b-2, retired).
     let mut rt = runtime();
     let [x, y, w, h] = PANEL;
     tick_at(

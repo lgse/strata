@@ -1,10 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! C20b's page in process: what the picker reports (live, commit, cancel), Escape on a drag and
-//! in the popover, focus as the popover opens and closes, a press outside, the hex field's
-//! blur, assistive actions, the disabled state and the cost of a hue drag. The scripts in
-//! `tests/scripts/c20b/` check the end states.
-
 mod c20b {
     use std::time::Instant;
 
@@ -204,8 +199,6 @@ mod c20b {
         assert_eq!(heard(&rt), ["Accent closed, changed false"]);
     }
 
-    /// A popover's Cancel comes after the Commits its keys, swatches and releases sent: the
-    /// host saves the opening colour it reports.
     #[test]
     fn the_host_saves_the_opening_colour_a_popover_cancel_reports() {
         let mut rt = mount("c20b-opaque-light");
@@ -249,8 +242,6 @@ mod c20b {
         assert_eq!(focused(&rt).as_deref(), Some("c20b-accent-plane"));
     }
 
-    /// Keys queued in one frame reach the plane and a swatch before the poll notices the
-    /// field's blur.
     #[test]
     fn typed_hex_commits_before_a_plane_key_or_a_swatch() {
         let typed = |rt: &mut Runtime<Gallery>| {
@@ -446,8 +437,6 @@ mod c20b {
         assert!(heard(&rt).is_empty());
     }
 
-    /// Perf: a hue drag runs the page's view on each move. Prints each move's cost (the move
-    /// and its frame); asserts each move commits once.
     #[test]
     fn a_hue_drag_commits_once_a_move() {
         let mut rt = mount("c20b-opaque-light");

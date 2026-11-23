@@ -1,15 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The timeline: a slider over the waveform, with chapter ticks and the playhead (Strata's
-//! `src/ui/preview/waveform.rs`), or the plain bar's seek slider (`media_controls.rs`).
-//!
-//! The waveform is a `canvas` shape built when the levels or the width change. The played
-//! part is the same shape in the accent under a clip whose width is a `Live` rect, the part
-//! between the playhead and the pointer a tinted copy under another, and the playhead and the
-//! pointer's line `Live` offsets: playback and hover move them with no view commit. A bar the
-//! playhead crosses is cut where it is, where Strata colours a whole bar by its middle
-//! (deviation D2).
-
 pub(crate) mod levels;
 
 use rune::{Color, Cursor, Drag, El, KeyEvent, Phase, Shape, Tx, WheelEvent, canvas, el};

@@ -1,19 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Metadata fills for Columns rows, one [`Fills`] for each open column, as GTK's Columns rows
-//! ask for them (`request_metadata` in `src/ui/browser/columns/rows/bind.rs`): every row near
-//! the viewport whose time, a file's size or a folder's `listable` is unknown, and a folder's
-//! item count, or its mode, while sizes show (`columns_show_sizes`), as GTK's registration and
-//! then `schedule_refresh`'s test pass them ([`Fills::unfilled`]).
-//!
-//! - **Not while the column scrolls.** GTK asks for no fill while the column scrolled in the
-//!   last 150 ms (`track_listing_scrolling` in `src/ui/browser/columns/append/surface.rs`).
-//!   Here a column's range that changed less than [`SETTLE`] ago is not asked for; the part
-//!   wakes again once it has settled. GTK asks when a row is bound, so a row bound while the
-//!   column scrolls is not asked until it is bound again; here the rows near the settled range
-//!   are asked, those included.
-//! - **Once a poll**, as [`crate::fills`] asks for every view.
-
 use std::{ops::Range, time::Duration};
 
 use rune::Tx;
@@ -39,9 +25,6 @@ impl ColumnFills {
         fills
     }
 
-    /// Sizes show, or no longer do: each open column asks for its folders' counts at the next
-    /// poll, or stops, as GTK's binding asks for them when the setting turns on
-    /// (`request_columns_folder_counts`).
     pub(super) fn show_sizes(&mut self, show: bool) {
         self.details = match show {
             true => Details::Folders,
@@ -64,8 +47,6 @@ impl ColumnFills {
         }
     }
 
-    /// Column `depth`'s view shows `range` now; it is asked for once it settles. A range
-    /// reported before the poll that counts the column open is kept.
     pub(super) fn see(&mut self, depth: usize, range: Range<usize>) {
         self.grow(depth + 1);
         self.columns[depth].see(range);
@@ -84,8 +65,6 @@ impl ColumnFills {
     }
 }
 
-/// Asks for each open column's fills once a poll, but for a column still scrolling, which
-/// wakes the part once it has settled.
 pub(super) fn poll(app: &mut App, clock: f64, tx: &mut Tx) {
     let open = app.columns.open();
     let state = &app.columns.state;

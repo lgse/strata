@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Accepting and cancelling a chooser request: the Open and Save checks, a typed name, the
-//! destinations a save would replace, and the result sent back to the portal
-//! (`src/ui/chooser/state.rs`).
-
 use std::{
     ffi::OsString,
     path::{Path, PathBuf},

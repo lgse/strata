@@ -13,10 +13,6 @@ use super::marks::{self, FilterMark};
 use super::reference::ReferenceState;
 use crate::collection::keyboard::RangeKind;
 
-/// The F1 button's look (`.shortcut-footer-button`, `src/style.css`): transparent at rest; on
-/// hover the accent at 15 %; pressed or checked the accent at 22 % with an accent border; a
-/// 2 px accent ring inside its edge for keyboard focus; 4 px corners. Strata's hover border
-/// (accent at 42 %) isn't drawn: Rune has no hover border colour (upstream #328).
 pub const BUTTON_HOVER_ALPHA: f32 = 0.15;
 pub const BUTTON_CHECKED_ALPHA: f32 = 0.22;
 pub const BUTTON_RING: f32 = 2.0;
@@ -25,12 +21,8 @@ pub const BUTTON_RADIUS: f32 = 4.0;
 /// The footer's words. [`FooterLabels::default`] is Strata's English.
 #[derive(Clone)]
 pub struct FooterLabels {
-    /// The F1 button: "F1 Shortcuts", described "Show all file-view shortcuts (F1)". Strata
-    /// writes the key from its key map.
     pub shortcuts: String,
     pub shortcuts_description: String,
-    /// The clipboard badge: "Files on clipboard", described "Press Ctrl+V to paste into a
-    /// supported directory."
     pub clipboard: String,
     pub clipboard_description: String,
     /// The 10X pill's text, name and caveat.
@@ -74,25 +66,6 @@ impl Default for FooterLabels {
 
 type Toggle<S> = (fn(&S) -> &ReferenceState, fn(&mut S) -> &mut ReferenceState);
 
-/// The window footer: the F1 Shortcuts button at the left, then the search hit under the
-/// cursor; at the right the clipboard badge, the filter or search mark, the range mark, the
-/// flash, the count, the jobs element, the chord pill and the 10X pill. A footer prompt, while
-/// open, takes the whole row. Everything but the button is data the host sets each view.
-///
-/// ```ignore
-/// let footer = Footer::new("footer")
-///     .shortcuts(Some((|s: &App| &s.reference, |s: &mut App| &mut s.reference)))
-///     .count(Some(footer::summary(&s.listing(), &s.words)))
-///     .clipboard(s.files_on_clipboard)
-///     .tenxer(s.tenxer)
-///     .prompt(prompt.build(s, &s.look, cx, &mut layer))
-///     .build(s, &s.look);
-/// ```
-///
-/// Keys under `key`: `<key>` (the row), `<key>-shortcuts`, `<key>-hit`, `<key>-clipboard`,
-/// `<key>-mark`, `<key>-range`, `<key>-count`, `<key>-tenxer`.
-///
-/// Used by: hosts (Strata's browser windows and the portal chooser).
 pub struct Footer<S> {
     key: String,
     shortcuts: Option<Toggle<S>>,
@@ -129,9 +102,6 @@ impl<S: 'static> Footer<S> {
         }
     }
 
-    /// The F1 Shortcuts button over the reference's state, or `None` while the user hides it
-    /// (Show F1 Shortcuts button off: F1 still opens the reference). A press toggles the
-    /// reference; it shows pressed while the reference is open.
     pub fn shortcuts(mut self, toggle: Option<Toggle<S>>) -> Self {
         self.shortcuts = toggle;
         self
@@ -143,8 +113,6 @@ impl<S: 'static> Footer<S> {
         self
     }
 
-    /// Shows the Files on clipboard badge: the host sets it while the clipboard holds a
-    /// non-empty file list (from strata-platform's clipboard notices, X3).
     pub fn clipboard(mut self, on: bool) -> Self {
         self.clipboard = on;
         self
@@ -174,25 +142,21 @@ impl<S: 'static> Footer<S> {
         self
     }
 
-    /// C18's flash (`filter_bar::flash`).
     pub fn flash(mut self, flash: Option<El>) -> Self {
         self.flash = flash;
         self
     }
 
-    /// C18's chord pill (`filter_bar::chord::pill`), beside the 10X pill.
     pub fn chord(mut self, pill: Option<El>) -> Self {
         self.chord = pill;
         self
     }
 
-    /// C16's jobs element, after the count.
     pub fn jobs(mut self, jobs: Option<El>) -> Self {
         self.jobs = jobs;
         self
     }
 
-    /// C18's footer prompt (`FooterPrompt::build`): while given, it takes the whole row.
     pub fn prompt(mut self, prompt: Option<El>) -> Self {
         self.prompt = prompt;
         self
@@ -209,8 +173,6 @@ impl<S: 'static> Footer<S> {
         format!("{}-shortcuts", self.key)
     }
 
-    /// The footer, or `None` with nothing to show (no button, no status): Strata hides it.
-    /// Its height is the look's bar control plus `space.xs` above and below, whatever it shows.
     pub fn build(self, s: &S, look: &Look) -> Option<El> {
         let k = &look.kit;
         let key = self.key.clone();
@@ -270,9 +232,6 @@ impl<S: 'static> Footer<S> {
             right.push(marks::range(look, format!("{key}-range"), words, name));
         }
         right.extend(self.flash);
-        // A status: polite already, so its changes are heard without interrupting.
-        // Middle-elided when narrow so long selected names keep both ends, matching GTK's
-        // `EllipsizeMode::Middle` on `.shortcut-footer-count`.
         if let Some(count) = &self.count {
             right.push(
                 text(count.text.clone())

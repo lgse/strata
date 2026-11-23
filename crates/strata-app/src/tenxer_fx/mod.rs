@@ -1,13 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! GPU-accelerated plasma/electricity splash overlay for entering 10xer mode.
-//!
-//! Renders as a completely pointer-transparent, non-focusable, accessibility-hidden window
-//! overlay (`Scope::Window`, `Place::Dialogs`) so it plays seamlessly over both the file browser
-//! and the Settings dialog, never steals focus or input, respects reduced motion
-//! (`look.animations` and `frame.cx.is_reduced_motion()`), and unmounts cleanly to zero idle CPU
-//! when complete.
-
 use std::time::Duration;
 
 use rune::{El, Pixels, Tx, el};
@@ -31,8 +23,6 @@ pub(crate) const OVERLAY_KEY: &str = "tenxer-fx-overlay";
 const DURATION_SECS: f64 = 1.68;
 /// Target frame step for 60 fps visual animation (coalesced per frame by Rune).
 const FRAME_STEP_SECS: f64 = 1.0 / 60.0;
-/// Minimum elapsed delta between redraws (120 fps ceiling; also prevents tight `turn()` loops
-/// in offscreen unit tests from busy-spinning while the animation is active).
 const MIN_REDRAW_STEP_SECS: f64 = 1.0 / 120.0;
 const FALLBACK_WINDOW_SIZE: (f32, f32) = (1280.0, 800.0);
 

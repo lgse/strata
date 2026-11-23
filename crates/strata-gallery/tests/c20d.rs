@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! C20d's page in process: what a choice sends and saves, the popover closing without a choice,
-//! and C21's text menu on the search field. The scripts in `tests/scripts/c20d/` check the end
-//! states AT hears.
-
 mod c20d {
     use rune::runtime::ElementInfo;
     use rune::{Env, Key, KeyEvent, Mods, Runtime};
@@ -100,8 +96,6 @@ mod c20d {
 
         tap(&mut rt, "c20d-emoji-button");
         assert!(rt.state.c20d.emoji.is_open());
-        // A press outside the popover, on the dialog's Done: Rune's modal dismisses the popover
-        // and keeps the press; the poll reports the close a frame later.
         tap(&mut rt, "c20d-done");
         rt.frame(FRAME);
         let d = &rt.state.c20d;

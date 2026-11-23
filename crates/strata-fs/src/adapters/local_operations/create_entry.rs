@@ -179,8 +179,6 @@ pub(super) async fn create_empty_file(
     stream.close_future(glib::Priority::DEFAULT).await
 }
 
-/// SMB with POSIX extensions fails an exclusive file create over a folder
-/// with `EISDIR`, which GIO reports as `IsDirectory`.
 pub(super) fn name_taken(error: &glib::Error, is_directory: bool) -> bool {
     error.matches(gio::IOErrorEnum::Exists)
         || (!is_directory && error.matches(gio::IOErrorEnum::IsDirectory))

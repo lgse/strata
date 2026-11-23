@@ -42,10 +42,6 @@ fn map(src: &str, variant: Variant) -> Colors {
     theme("azure-glow", src, variant).expect("maps").colors
 }
 
-/// settings/themes/omarchy: "Panes and headers use Quattro's `dark_background`", "Hover
-/// surfaces use `lighter_background`", "Selection uses `selection`", "Borders use `muted`",
-/// and "Lighter puts file columns on `background` and the sidebar, headers, and preview on
-/// `dark_background`".
 #[test]
 fn lighter_maps_quattro_roles_as_written() {
     let t = theme(" tokyo-night\n", QUATTRO, Variant::Lighter).expect("maps");
@@ -63,9 +59,6 @@ fn lighter_maps_quattro_roles_as_written() {
     assert_eq!(c.dim_text, blend(c.background, c.text, 0.62));
 }
 
-/// settings/themes/omarchy: the fallback bullets for `dark_background`, `lighter_background`,
-/// `selection` and `muted`, and "An invalid optional color such as `selection` or `muted` is
-/// ignored and its fallback used."
 #[test]
 fn missing_or_invalid_optional_colours_fall_back_to_blends() {
     let bg = hex("#0a0f1a");
@@ -93,8 +86,6 @@ fn missing_or_invalid_optional_colours_fall_back_to_blends() {
     assert_eq!(c.muted, blend(bg, fg, 0.10));
 }
 
-/// settings/themes/omarchy: "ANSI `color8` is never read: changing it in `colors.toml` changes
-/// no color."
 #[test]
 fn color8_is_never_read() {
     for variant in [Variant::Lighter, Variant::Darker, Variant::Contrast] {
@@ -104,8 +95,6 @@ fn color8_is_never_read() {
     }
 }
 
-/// settings/themes/omarchy: "Follow Omarchy is shown only when ... `colors.toml` exist[s] with
-/// valid `background`, `foreground`, and `accent` colors."
 #[test]
 fn without_a_valid_background_foreground_and_accent_there_is_no_theme() {
     for key in ["background", "foreground", "accent"] {
@@ -121,8 +110,6 @@ fn without_a_valid_background_foreground_and_accent_there_is_no_theme() {
     assert!(theme("x", "background = ", Variant::Darker).is_none());
 }
 
-/// settings/themes/omarchy: "A Quattro color in a GTK-only form, such as `accent =
-/// "#7a7a2af7f"`, loads as `#rrggbb`".
 #[test]
 fn gtk_only_forms_load_canonical() {
     let c = map(
@@ -132,11 +119,6 @@ fn gtk_only_forms_load_canonical() {
     assert_eq!(c.accent.hex(), "#7aa2f7");
 }
 
-/// settings/themes/omarchy: "Code previews take keyword, string, constant, type, and
-/// preprocessor colors from Quattro's `magenta`, `green`, `orange`, `cyan`, and `yellow`",
-/// "Without the named colors, `color5`, `color2`, `color9`, and `color3` supply" them, and
-/// "An unparsable Quattro syntax color, such as `green = "invalid"`, counts as missing and its
-/// fallback applies".
 #[test]
 fn syntax_colours_come_from_named_then_numbered_terminal_colours() {
     let s = map(QUATTRO, Variant::Lighter).syntax;
@@ -160,8 +142,6 @@ fn syntax_colours_come_from_named_then_numbered_terminal_colours() {
         [s.keyword, s.string, s.constant, s.type_],
         ["#111111", "#222222", "#333333", "#444444"].map(|h| Some(hex(h)))
     );
-    // Without the terminal palette (no green), yellow still sets preprocessor; nothing else
-    // fills in, so the look blends the rest from the accent.
     let bare = quattro(&[
         ("magenta", None),
         ("green", None),
@@ -172,9 +152,6 @@ fn syntax_colours_come_from_named_then_numbered_terminal_colours() {
     assert_eq!((s.keyword, s.preprocessor), (None, Some(hex("#e9c27f"))));
 }
 
-/// settings/themes/omarchy: "Darker also puts file columns on `dark_background`", and "Lighter
-/// and Darker keep the theme's colors as authored, so a light palette stays light under
-/// Darker."
 #[test]
 fn darker_moves_the_columns_onto_the_pane_colour_and_keeps_the_rest() {
     let (lighter, darker) = (
@@ -203,10 +180,6 @@ fn surfaces(c: &Colors) -> [Rgba8; 4] {
     [c.background, c.surface, c.muted, c.highlight]
 }
 
-/// settings/themes/omarchy: "Contrast uses the Darker layout and raises text to 7:1",
-/// "Contrast raises dim text, accent, and danger to 4.5:1, and borders to 3:1, against those
-/// four surfaces", and "Contrast raises code-preview syntax colors to 4.5:1 against the window
-/// and pane surfaces."
 #[test]
 fn contrast_raises_every_foreground_to_its_target() {
     let darker = map(QUATTRO, Variant::Darker);
@@ -236,10 +209,6 @@ fn contrast_raises_every_foreground_to_its_target() {
     }
 }
 
-/// settings/themes/omarchy: "Contrast keeps the theme's surfaces and selection unless pure
-/// white, or black on a light palette, falls below 7:1 on one. That surface then moves toward
-/// black, or white on a light palette, until it reaches 7:1", and "Contrast keeps a palette
-/// light with `mode = "light"` ... and dark with `mode = "dark"`."
 #[test]
 fn contrast_moves_only_a_mid_tone_surface_and_follows_mode() {
     let mid = r##"background = "#8a8a8a"
@@ -250,8 +219,6 @@ mode = "dark"
 "##;
     let c = map(mid, Variant::Lighter);
     let raised = map(mid, Variant::Contrast);
-    // Darker moved the columns onto #101010, where white already reaches 7:1; the mid-tone
-    // hover blend from #8a8a8a moves toward black until it does.
     assert_eq!(raised.surface, c.surface);
     assert_ne!(raised.muted, c.muted);
     assert!(contrast(raised.muted, Rgba8::WHITE) >= 7.0);
@@ -266,8 +233,6 @@ mode = "dark"
     );
 }
 
-/// settings/themes/omarchy: "Without `mode`, or with any value other than `light` or `dark`,
-/// Contrast treats a Quattro `background` with relative luminance above 0.45 as light."
 #[test]
 fn without_mode_the_background_decides() {
     assert!(is_light(hex("#c0c0c0"), None));
@@ -277,13 +242,6 @@ fn without_mode_the_background_decides() {
     assert!(is_light(hex("#000000"), Some("light")));
 }
 
-/// Strata's extreme-palette check (`src/ui/theme/omarchy/tests.rs` at lgse/strata 35ee677ab):
-/// Contrast over every bundled theme read as a Quattro palette, and over washed-out, light,
-/// monochrome, all-black and all-white palettes. settings/themes/omarchy: "Contrast raises
-/// text to 7:1", "dim text, accent, and danger to 4.5:1, and borders to 3:1, against those four
-/// surfaces", "code-preview syntax colors to 4.5:1 against the window and pane surfaces", and a
-/// palette keeps its appearance. Strata's `validate_tokens` check becomes a check that every
-/// colour token in the finished look is finite.
 #[test]
 fn contrast_keeps_every_pair_readable_on_dark_light_and_extreme_palettes() {
     let mut palettes: Vec<(String, [Rgba8; 5])> = crate::theme::bundled()

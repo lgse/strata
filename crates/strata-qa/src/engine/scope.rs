@@ -86,8 +86,6 @@ impl<B: Backend> Scope<'_, B> {
         .map_err(|error| error.message().to_owned())
     }
 
-    /// The target's node, or `None` when it is not there; a role target that need not be
-    /// drawn is looked up among the presented nodes.
     pub fn resolve(&self, target: &Target) -> Result<Option<B::Node>, String> {
         if matches!(
             target,
@@ -117,8 +115,6 @@ impl<B: Backend> Scope<'_, B> {
         })
     }
 
-    /// A row a listing just added can report a box before its first allocation lands, so the
-    /// box must come through a painted frame unchanged.
     pub async fn find(
         &self,
         target: &Target,

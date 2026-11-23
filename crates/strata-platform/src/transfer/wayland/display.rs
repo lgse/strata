@@ -1,13 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Reaching winit's `wl_display` from the `wl_surface` Rune hands out.
-//!
-//! Rune's `WindowHandle::with_raw_handle` gives the window handle only, never the display
-//! handle (draft U9, not filed). libwayland 1.23 added `wl_proxy_get_display`, which recovers
-//! the display from any proxy. It is looked up at run time in the libwayland-client winit
-//! already loaded (`RTLD_NOLOAD`), never linked: wayland-sys's `libwayland_client_1_23`
-//! feature would make winit's own load of libwayland fail on 1.22 hosts, and with it all of
-//! winit's Wayland support.
 #![expect(
     unsafe_code,
     reason = "dlopen, dlsym and wl_proxy_get_display through FFI"
@@ -99,10 +91,6 @@ pub(super) fn winit_display(
         .map_err(Error::WindowClosed)?
 }
 
-/// Runs `f` with a proxy for `window`'s own `wl_surface`, built on `conn` (winit's display)
-/// for this call only, as Rune's `platform/activation.rs` builds one: the proxy is never kept,
-/// and a request sent on it names winit's live surface. For a drag's origin (P1), P4's
-/// `set_parent_of`, and `backdrop-blur`. Call it on the UI thread.
 #[cfg(any(feature = "dnd", feature = "foreign-parent", feature = "backdrop-blur"))]
 pub(crate) fn with_surface<R>(
     conn: &wayland_client::Connection,

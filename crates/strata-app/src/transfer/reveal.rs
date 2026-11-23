@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Revealing the items a paste or duplicate placed once their destination folder lists them,
-//! matching `src/ui/browser/events/reveal.rs`.
-
 use rune::Tx;
 use strata_core::model::Location;
 
@@ -27,16 +24,12 @@ fn prepare_reveal(app: &mut App, directory: &Location, tx: &mut Tx) {
     }
 }
 
-/// Selects `locations`, new in `destination`, once it lists them: what a transfer placed, or
-/// what a content drop saved (`dnd::content`).
 pub(crate) fn apply(
     app: &mut App,
     destination: Location,
     mut locations: Vec<Location>,
     tx: &mut Tx,
 ) {
-    // Every reveal takes over from a chosen transfer's navigation, as GTK's
-    // `clear_pending_reveal_requests` does on each of these paths.
     super::chosen::forget_navigation(app);
     if locations.len() > MAX_BULK_REVEAL_SELECTION {
         locations.truncate(1);

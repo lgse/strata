@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! RAW camera metadata footer inside the preview drawer (`raw_details_section` and
-//! `load_raw_details` in `src/ui/preview/drawer.rs` and `src/ui/preview/loading.rs`).
-
 use rune::{El, col};
 use strata_core::model::FileEntry;
 use strata_kit::look::Look;

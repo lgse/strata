@@ -1,10 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! A folder opened again by Return comes back at the position remembered for it, as GTK's
-//! restore brings it back after the press that opened it: the key's own activation arms the
-//! restore, and must not cancel it (finding lgse/strata#2640, `list v4` seeds `0x08` and
-//! `0x14`, F4's round 2).
-
 use serde_json::{Value, json};
 use strata_core::storage;
 use strata_qa::Remembered;

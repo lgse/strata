@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! C20a's page in process: what each control reports (live, commit, cancel), a press on the
-//! track, Home and End, assistive actions, and the field menu holding a field's commit. The
-//! scripts in `tests/scripts/c20a/` check the bullets' end states.
-
 mod c20a {
     use rune::accesskit::{Action, ActionData};
     use rune::runtime::ElementInfo;
@@ -238,8 +234,6 @@ mod c20a {
         }
     }
 
-    /// A sideways notch (Shift+wheel on Linux, a tilt wheel), and a notch with Ctrl (the text
-    /// size), Ctrl+Shift (Strata's thumbnail size) or Alt, go past both controls to the page.
     #[test]
     fn a_sideways_or_modified_wheel_passes_both_controls_by() {
         let ctrl = Mods {

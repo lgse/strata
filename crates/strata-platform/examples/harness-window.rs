@@ -1,22 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! A plain Rune window for the compositor test harness (W3): what strata-platform's session
-//! tests open under headless sway and Xwayland. It uses no shim. The whole window is one
-//! button, and it reports what it sees as JSON lines on stdout:
-//!
-//! - `{"ev":"ready","handle":"wayland"}` (or `xlib`, `xcb`) once the window exists;
-//! - `{"ev":"frame"}` after its first frame is drawn;
-//! - `{"ev":"layout","w":640.0,"h":400.0}` each time its size in points changes;
-//! - `{"ev":"focus","focused":true}`, `{"ev":"press","n":1}`, `{"ev":"secondary-press"}` and
-//!   `{"ev":"key","key":"Enter",…}`;
-//! - `{"ev":"exit-error","error":"…"}` if the app can't run.
-//!
-//! `--title TITLE` sets the window title (default `harness-window`). Its app id is
-//! `strata-harness-window`.
-//!
-//! `cargo run -p strata-platform --example harness-window` opens it on the desktop. The tests
-//! run it in a private session only (`crates/strata-platform/tests/support/`).
-
 use std::io::Write;
 use std::sync::atomic::{AtomicBool, Ordering};
 

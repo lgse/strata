@@ -324,8 +324,6 @@ fn install_at(context: &SetupContext, executable: &Path) -> Result<PathBuf, Stri
     Ok(yml)
 }
 
-/// Creates the udiskie and state directories, reporting whether the udiskie
-/// one is new so uninstall can remove it again.
 fn create_directories(yml: &Path, state_directory: &Path) -> Result<bool, String> {
     let mut created = false;
     if let Some(parent) = yml.parent() {
@@ -447,8 +445,6 @@ fn restore_yaml_source(
     }
 }
 
-/// The backed-up original bytes when the restored settings still match them,
-/// so comments and formatting survive; `None` keeps later user edits instead.
 fn unchanged_original(
     restored: &Mapping,
     backup: &Path,

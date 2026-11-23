@@ -1,10 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The Sort by menu's rows and what each does, GTK's `SortMenu` (`menu_model`, `sync`,
-//! `install_actions`). A row is a frameless button with GTK's role, checked as GTK's check
-//! shows; an insensitive row is drawn and skipped by the keys, and Make default and Reset to
-//! default sort show only while they would do something (GTK's `hidden-when`).
-
 use rune::{El, Tx, col, el, icon, row, text};
 use rune_kit::{Button, ButtonVariant};
 use strata_core::model::{FolderSort, NameComparison, SortDirection, SortKey, ViewPreferences};
@@ -29,8 +24,6 @@ const FOLDERS_FIRST: &str = "sort-folders-first";
 const MAKE_DEFAULT: &str = "sort-make-default";
 const RESET: &str = "sort-reset";
 
-/// GTK's fields, in its order, with their row keys. Unsorted has no row: choosing the checked
-/// field turns sorting off.
 pub(super) const FIELDS: [(&str, SortKey, &str); 10] = [
     ("Name", SortKey::Name, "sort-field-name"),
     ("Size", SortKey::Size, "sort-field-size"),
@@ -81,7 +74,6 @@ impl Shown {
         }
     }
 
-    /// GTK's `editable`: a name order and its case apply only to a real sort.
     fn names_live(&self) -> bool {
         !matches!(
             self.prefs.sort_key,
@@ -362,7 +354,6 @@ fn option(look: &Look, row_of: Row) -> El {
         .build(kit)
         .w_full()
         .role(row_of.role);
-    // A plain menu item carries no check state, as GTK's Make default does not.
     let built = if row_of.role == "menuitem" {
         built
     } else {
@@ -396,7 +387,6 @@ fn depth(app: &App) -> Option<usize> {
     app.sort.open.as_ref().map(|open| open.depth)
 }
 
-/// GTK's `field` action: the checked field turns sorting off, another sorts by it.
 fn field(app: &mut App, key: SortKey) {
     let Some(depth) = depth(app) else {
         return;
@@ -414,7 +404,6 @@ fn direction(app: &mut App, direction: SortDirection) {
     }
 }
 
-/// GTK's `names` and `sensitive` actions: the column's requested comparison, changed.
 fn names(app: &mut App, change: fn(&mut NameComparison)) {
     let Some(depth) = depth(app) else {
         return;
@@ -434,8 +423,6 @@ fn folders_first(app: &mut App, _: &mut Tx) {
     }
 }
 
-/// GTK's `default` action: the column's sort becomes the default, saved, and the folders'
-/// own sorts that now equal it go (`set_default_sort_options`).
 fn make_default(app: &mut App, tx: &mut Tx) {
     let Some(depth) = depth(app) else {
         return;
@@ -463,7 +450,6 @@ fn make_default(app: &mut App, tx: &mut Tx) {
     tx.focus(SURFACE, false);
 }
 
-/// GTK's `reset` action: the folder's own sort goes, and its column takes the default.
 fn reset(app: &mut App, tx: &mut Tx) {
     let Some(depth) = depth(app) else {
         return;

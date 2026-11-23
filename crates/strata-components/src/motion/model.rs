@@ -15,16 +15,8 @@ pub(super) use super::pulse::Pulses;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct EffectId(pub(super) u64);
 
-/// What an effect tells its host, from [`Effects::tick`] and [`Effects::settle`].
-///
-/// A flight that [`Effects::fly`] started sends `Launched`, `Landed` and `Done`, once each
-/// and in that order, whether or not anything flew (reduced motion, no layer, every leg or the
-/// target out of sight), and however it ends (on time, its target gone, or settled). Two or
-/// all three can come in one tick. A dissolve sends `Done` only.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Event {
-    /// A flight's icons have left their sources: remove the rows they left now, in the commit
-    /// this poll makes (and not an instant one: see the module docs).
     Launched(EffectId),
     /// A flight's icons have landed, or nothing flew: show the rows a restore flew onto.
     Landed(EffectId),
@@ -32,11 +24,6 @@ pub enum Event {
     Done(EffectId),
 }
 
-/// The motion effects playing in one window: the host holds it, and its view mounts a
-/// [`MotionLayer`](super::MotionLayer) over everything.
-///
-/// The host calls [`Effects::tick`] from its poll every frame and acts on the events. Effects
-/// ask for the wakes they need, so a window at rest wakes at those times only.
 #[derive(Default)]
 pub struct Effects {
     next: u64,
@@ -72,10 +59,6 @@ impl Effects {
         EffectId(self.next)
     }
 
-    /// Starts `flight`. `None` when nothing plays (animations are off, or it has no legs): apply
-    /// the end state now.
-    ///
-    /// Call it while the source rows still show, and remove them at [`Event::Launched`].
     pub fn fly(&mut self, flight: Flight, look: &Look, tx: &mut Tx) -> Option<EffectId> {
         if !look.animations || flight.legs.is_empty() {
             return None;
@@ -86,11 +69,6 @@ impl Effects {
         Some(id)
     }
 
-    /// Starts `dissolve`. `None` when nothing plays (animations are off, no rows, or a dissolve
-    /// is already playing): apply the end state now.
-    ///
-    /// In the same handler, mark its rows vanished (`RowMarks::vanished`) and keep them listed
-    /// until [`Event::Done`], so the rows around them hold still while it plays.
     pub fn dissolve(&mut self, dissolve: Dissolve, look: &Look, tx: &mut Tx) -> Option<EffectId> {
         if !look.animations || dissolve.rows.is_empty() || self.dissolve.is_some() {
             return None;
@@ -101,9 +79,6 @@ impl Effects {
         Some(id)
     }
 
-    /// One frame at `now` seconds on the host's clock: moves the effects on, asks `tx` for the
-    /// next wake they need (and for motion when a flight launches from a poll without window
-    /// input), and returns what happened, in order.
     pub fn tick(&mut self, now: f64, tx: &mut Tx) -> Vec<Event> {
         let mut events = Vec::new();
         let mut next = None;
@@ -128,9 +103,6 @@ impl Effects {
         events
     }
 
-    /// Ends every effect now (a tab or view-mode switch under them), with the events each
-    /// still owed. Their targets' pulses end too: [`dress_target`](super::dress_target) keeps
-    /// its wrapper, playing nothing.
     pub fn settle(&mut self) -> Vec<Event> {
         let mut events = Vec::new();
         for f in self.flights.drain(..) {

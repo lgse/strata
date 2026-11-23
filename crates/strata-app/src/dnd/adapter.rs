@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Conversions between W1 (`strata_components::contract::dnd`) and P1 (`strata_platform::dnd`),
-//! plus the Linux file-manager drag formats and drag badge snapshot (`X2` adapter).
-
 use std::{cell::RefCell, sync::Arc};
 
 use rune::{Mods, PointerEvent, Tx};
@@ -25,7 +22,6 @@ pub(crate) const GNOME_COPIED_FILES: &str = "x-special/gnome-copied-files";
 /// KDE's cut flag beside `text/uri-list`: `0` for a copy.
 pub(crate) const KDE_CUT_SELECTION: &str = "application/x-kde-cutselection";
 
-/// `drag_actions_for_modifiers` in `src/ui/browser/clipboard.rs`.
 pub(crate) fn actions_for_mods(mods: Mods, can_move: bool) -> DropActions {
     let allowed = if can_move {
         DropActions::COPY | DropActions::MOVE
@@ -74,7 +70,6 @@ pub(crate) fn drag_item(payload: &DragPayload, icon: Option<DragIcon>) -> DragIt
     item
 }
 
-/// Each action as W1 and P1 name it: as a set's member on both sides, and as P1's one action.
 const ACTIONS: [(DropActions, Actions, DragAction); 3] = [
     (DropActions::COPY, Actions::COPY, DragAction::Copy),
     (DropActions::MOVE, Actions::MOVE, DragAction::Move),
@@ -169,7 +164,6 @@ pub(crate) fn dropped_of_p1(data: &P1Data) -> Dropped {
         .point(data.point.map(point_of_p1))
 }
 
-/// Why a read failed, as W1 says it: a read past P1's bound is too large.
 pub(crate) fn failure_of_p1(error: &ReadError) -> ReadFailure {
     match error {
         ReadError::TooLarge => ReadFailure::TooLarge,
@@ -185,8 +179,6 @@ fn failures_of_p1(failed: &[(String, ReadError)]) -> Vec<(String, ReadFailure)> 
         .collect()
 }
 
-/// A drop being read by P1, as the content policy sees it: the offered types a content zone
-/// takes, as the walk after the drop sees them (`content_zone_takes`).
 struct Reading<'a> {
     data: &'a P1Data,
 }
@@ -220,11 +212,7 @@ pub(crate) fn target_of<S: 'static>(zone: DropZone<S>) -> DropTarget<S> {
         dropped_zone.deliver(state, dropped_of_p1(&data), tx);
     })
     .mime_types(zone.preferred_mime_types());
-    // A zone that takes content reads one type at a time, as GTK reads only the one it uses;
-    // a zone of files reads the file list.
     let mut target = if content::zone_takes(&zone) {
-        // The walks read and judge a drop by the policy's list (`content_zone_takes`), not the
-        // zone's: a zone listing other types would be read by the wrong one.
         debug_assert!(
             content::lists_the_policy(&zone),
             "a content zone lists the file list and `CONTENT_TYPES`, and nothing else: {:?}",

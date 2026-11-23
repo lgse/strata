@@ -258,8 +258,6 @@ fn prefixed_markup(
     Ok(styled)
 }
 
-/// One unit of `text` over `range`, with its displayed character count and whether a
-/// newline ended it.
 fn text_unit(
     kind: &DocumentUnitKind,
     text: &str,

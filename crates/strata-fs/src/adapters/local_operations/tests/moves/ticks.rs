@@ -6,9 +6,6 @@ use super::*;
 fn later_names_rewritten_within_the_tick_are_kept() -> Result<(), Box<dyn Error>> {
     let _serial = serial()?;
     let _kernel = KernelGuard::set(Some((6, 12, 0)));
-    // Within one coarse tick only a digest tells a same-size rewrite. SMB
-    // refuses to open a later name, so none of them can be compared there;
-    // which of the unchanged pair is later depends on the listing order.
     for (row, quirks, later_kept) in [
         ("ext4", Quirks::ext4 as fn() -> Quirks, false),
         ("smb", smb_with_one_name_open, true),
@@ -151,8 +148,6 @@ fn a_file_put_in_a_moved_files_place_within_its_time_tick_is_kept() -> Result<()
 #[test]
 fn files_on_a_coarse_mount_inside_a_moved_folder_are_compared() -> Result<(), Box<dyn Error>> {
     let _serial = serial()?;
-    // Multigrain times on the outer mount, so outer.txt, dated around the
-    // frozen clock, is never compared and waited for.
     let _kernel = KernelGuard::set(Some((6, 13, 0)));
     let root = tempfile::tempdir()?;
     let source_dir = root.path().join("source");
@@ -233,11 +228,6 @@ fn files_modified_within_a_tick_of_the_clock_stamping_them_are_compared_before_d
         mount_type: Some(("ramfs", "rw")),
         ..Quirks::default()
     };
-    // Since Linux 6.13, ext4, XFS, btrfs and tmpfs stamp a change right after
-    // a stat with a finer time; elsewhere a same-size rewrite within the tick
-    // keeps the times. How many milliseconds after the tick the copy reads the
-    // file, whether it is rewritten as the deletion starts, and whether the
-    // deletion reads it again.
     type Row = (&'static str, (u32, u32, u32), Preset, u64, bool, bool);
     let rows: [Row; 6] = [
         ("ext4 before 6.13", (6, 12, 0), Quirks::ext4, 5, true, true),

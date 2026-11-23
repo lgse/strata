@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! What the golden checks share: repository paths, the bless decision, the stripped
-//! accessibility tree, a headless runtime per scene, and the gallery binary run headless.
-
 use std::collections::BTreeSet;
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
@@ -41,11 +38,6 @@ pub fn page(id: &str) -> &'static Page {
     scenes::find(id).unwrap_or_else(|| panic!("no gallery page {id:?}"))
 }
 
-/// Whether to write the golden for item `name` of page `id` instead of comparing it.
-///
-/// `rune_bless` is `RUNE_BLESS`: blessing is on when it is set and not `0`, as in Rune.
-/// `filter` is `STRATA_BLESS`: empty or unset blesses everything; otherwise it must equal the
-/// page id (`c1`), the scene name (`c1-empty-dark`) or `<id>/<script stem>` (`c5/stem`).
 pub fn blessing(rune_bless: Option<&str>, filter: Option<&str>, id: &str, name: &str) -> bool {
     if !bless_on(rune_bless) {
         return false;
@@ -136,8 +128,6 @@ pub fn pretty(v: &Value) -> String {
     serde_json::to_string_pretty(v).expect("JSON serializes") + "\n"
 }
 
-/// Where on the virtual clock a golden scene is captured, in seconds: late enough for entrance
-/// motion to come to rest. The PNG check passes it to `--snap` as `--at`.
 pub const AT: f64 = 1.0;
 
 /// Frames per second on the virtual clock, Rune's headless default.
@@ -148,10 +138,6 @@ pub fn at_arg() -> String {
     format!("{AT}")
 }
 
-/// The gallery in `scene` on the virtual clock, with the app's hooks, run frame for frame as
-/// `--snap --at AT` runs it: a first frame at 0 s, then one every 1/60 s up to `AT`. So the
-/// open page's `poll` runs the same number of times, at the same clock, for the a11y golden as
-/// for the PNG golden.
 pub fn mount(scene: fn(&mut Gallery)) -> Runtime<Gallery> {
     let mut gallery = Gallery::default();
     scene(&mut gallery);
@@ -180,13 +166,8 @@ pub fn is_dark(scene: fn(&mut Gallery)) -> bool {
     g.dark
 }
 
-/// A Wayland socket name that never exists. Children get it instead of the session's, so
-/// libwayland can't fall back to `wayland-0` and reach the desktop.
 pub const NO_WAYLAND: &str = "strata-test-no-wayland";
 
-/// The gallery binary, headless: no X display, a Wayland socket that doesn't exist, and Rune's
-/// GPU line on stderr. It renders on lavapipe when `STRATA_VK_ICD` names an ICD file or a
-/// lavapipe ICD is installed, so local renders match CI's; otherwise on the default adapter.
 pub fn gallery() -> Command {
     let mut cmd = Command::new(env!("CARGO_BIN_EXE_strata-gallery"));
     cmd.env_remove("DISPLAY")
@@ -199,8 +180,6 @@ pub fn gallery() -> Command {
     cmd
 }
 
-/// `STRATA_VK_ICD`, else lavapipe's ICD for this architecture (`lvp_icd.x86_64.json`), else
-/// `lvp_icd.json`, else every lavapipe ICD found, joined with `:` for the loader to choose.
 fn vulkan_icd() -> Option<OsString> {
     if let Some(icd) = std::env::var_os("STRATA_VK_ICD").filter(|v| !v.is_empty()) {
         return Some(icd);
@@ -258,9 +237,6 @@ fn tail(s: &str, n: usize) -> String {
     lines[lines.len().saturating_sub(n)..].join("\n")
 }
 
-/// Compares `actual` with the text golden `tests/golden/<kind>/<id>/<name>.json`, or writes
-/// it when blessing. A difference is pushed onto `failures`, with the fresh copy's path.
-/// `bless_name` is what a bless filter names the item by: the scene, or `<id>/<script>`.
 pub fn text_golden(
     kind: &str,
     id: &str,
@@ -306,8 +282,6 @@ pub fn write(path: &Path, bytes: &[u8]) {
     std::fs::write(path, bytes).expect("output written");
 }
 
-/// Goldens in `tests/golden/<kind>/<id>/` with no item behind them fail when comparing, and
-/// are deleted when blessing the whole page. A directory there is always a failure.
 pub fn orphans(
     kind: &str,
     id: &str,

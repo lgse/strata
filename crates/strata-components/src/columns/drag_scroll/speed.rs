@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The drag autoscroll's speed curve: Strata's `drag_scroll.rs` (`edge_direction`,
-//! `scroll_speed`), `upstream/main` 35ee677ab. Pure maths; speeds in points a second.
-
 use std::time::Duration;
 
 /// How far from an edge (points) a held file drag starts to scroll.
@@ -23,9 +20,7 @@ pub const RAMP: Duration = Duration::from_millis(350);
 /// The share of the speed a scroll starts at.
 pub const RAMP_FLOOR: f32 = 0.35;
 
-/// How near an edge `position` is, along a span `size` long: -1 at the leading edge (and
-/// within [`EDGE_SATURATION`] of it), falling to 0 at [`EDGE_MARGIN`] from it; +1 likewise at
-/// the trailing edge; 0 between them, and in a span too short for two margins.
+/// How near an edge `position` is, along a span `size` long.
 pub fn edge_direction(position: f32, size: f32) -> f32 {
     if size.is_nan() || size <= EDGE_MARGIN * 2.0 {
         return 0.0;
@@ -47,8 +42,7 @@ pub fn edge_direction(position: f32, size: f32) -> f32 {
     }
 }
 
-/// [`edge_direction`] for a listing that starts `top` points down and is `height` tall; 0 for
-/// a point outside it.
+/// `edge_direction` for a listing that starts `top` points down and is `height` tall; 0 for a point outside it.
 pub fn band_direction(y: f32, top: f32, height: f32) -> f32 {
     if y < top || y >= top + height {
         return 0.0;
@@ -56,9 +50,7 @@ pub fn band_direction(y: f32, top: f32, height: f32) -> f32 {
     edge_direction(y - top, height)
 }
 
-/// The speed for `direction` (from [`edge_direction`]) after `dwell` in that direction: the
-/// greatest times the square of the nearness, times a share that rises from
-/// [`RAMP_FLOOR`] to 1 over [`RAMP`] on a smoothstep. Its sign is the direction's.
+/// The speed for `direction` (from `edge_direction`) after `dwell` in that direction.
 pub fn scroll_speed(direction: f32, dwell: Duration, max_speed: f32) -> f32 {
     let proximity = direction.abs().clamp(0.0, 1.0);
     if proximity.is_nan() || proximity <= 0.0 {

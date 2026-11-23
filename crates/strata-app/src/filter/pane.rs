@@ -1,19 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The filter in the one pane of Icons and List: GTK's `filter_controls` in
-//! `src/ui/browser_modes/filter.rs`, the pane's in `icons_controls.rs` and `list_pane.rs`.
-//!
-//! - **Its toggle** is the last of the pane header's actions, "Filter icons (Ctrl+F)" or
-//!   "Filter list (Ctrl+F)", and **its field** a band under the header, over the listing, as
-//!   GTK's revealer is (`prepare_listing` in `pane_shell.rs`).
-//! - **Its results** take the listing's place in a collection of their own named "Search
-//!   results" (`inline_search::wrap` and `build_collection`): a grid of tiles in Icons, a list
-//!   of rows in List, each with its path under the folder while "Include subfolders" is on.
-//!   The pane's listing keeps its own selection and cursor underneath, which the browser holds
-//!   as before the filter, so closing the filter gives them back as they were. The results'
-//!   collection takes the view's key, so the view's keyboard, focus and commands are theirs
-//!   while they show.
-
 use std::rc::Rc;
 
 use rune::{El, Tx};
@@ -32,7 +18,6 @@ use strata_components::{
 use super::{hits::HitsUpdate, place::Where};
 use crate::{App, handover, listing::Column, menus, shell, slots::Worn};
 
-/// GTK's `SEARCH_RESULTS_LABEL`: the results' collection's name.
 pub(crate) const SEARCH_RESULTS: &str = "Search results";
 
 /// The results a pane shows in the place of its listing, while it shows them.
@@ -152,9 +137,6 @@ impl PaneHits {
         }
     }
 
-    /// Shows `update.hits` in the listing's place in the view keyed `scope`, nothing selected
-    /// when `update.clear`. The first set starts the collection afresh, with the view's
-    /// controllers; later updates relocate a renamed result before syncing.
     pub(crate) fn show(&mut self, place: Where, update: HitsUpdate, tx: &mut Tx) {
         let scope = place.view_key();
         let first = self.hits.is_none();
@@ -262,8 +244,6 @@ pub(crate) fn band(app: &App) -> Option<El> {
     super::bar(app).build(app, &app.look)
 }
 
-/// The pane header's filter toggle, last of its actions: on opens the filter with the keyboard
-/// in it, off closes it. Its key is `<view>-filter`.
 pub(crate) fn toggle(app: &App, view: &str) -> Option<El> {
     let place = Where::shown(app).filter(|place| *place != Where::Columns)?;
     let look = &app.look;
@@ -287,7 +267,6 @@ fn toggled(app: &mut App, tx: &mut Tx) {
     super::open(app, None, tx);
 }
 
-/// C18's Enter target among the results.
 pub(crate) fn marks(app: &App, id: EntryId) -> RowMarks {
     match &app.filter.open_in {
         Some(open) => super::marks(app, open.depth, id),
@@ -295,15 +274,11 @@ pub(crate) fn marks(app: &App, id: EntryId) -> RowMarks {
     }
 }
 
-/// "Searching…" or "No matching files" over results that have none, centred in the pane as
-/// GTK's status is.
 pub(crate) fn status(app: &App) -> Option<El> {
     let said = super::status(app)?;
     Some(status_line(&app.look, "filter-status", said))
 }
 
-/// What the results' collection asks: a result opens as GTK's do (`SearchClick`), its menu is
-/// the window's, and Left at the start leaves for the sidebar as from the listing.
 pub(crate) fn heard(app: &mut App, intent: Intent, tx: &mut Tx) {
     let Some(depth) = app.filter.open_in.as_ref().map(|open| open.depth) else {
         return;
@@ -375,8 +350,6 @@ pub(crate) fn reveal<V: crate::single::SinglePane>(app: &App, id: EntryId, tx: &
     }
 }
 
-/// The results' path under the folder, while they come from its subfolders too: what each
-/// shows under its name (`relative_result_path`).
 pub(crate) fn path_of(app: &App, id: EntryId) -> Option<String> {
     if !app.filter.pane.recursive {
         return None;

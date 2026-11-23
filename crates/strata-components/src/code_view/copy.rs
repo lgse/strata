@@ -1,13 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! What copying a selection takes: the text between its two ends, from the model, so rows
-//! split from one long line join with no break and lines keep their own breaks. From Rune's
-//! report only the ends are taken: the lowest and highest selected bytes over every selected
-//! text.
-//!
-//! A selection reaching more than 10,000 unbuilt rows is cut short there by Rune (R4, C11), so
-//! its far end is wrong; Ctrl+A is copied whole from the model instead.
-
 use rune::{SelectedText, TextSelection};
 
 use super::state::{Content, ExpectedSelect};
@@ -43,11 +35,6 @@ fn row_bounds(c: &Content, t: &SelectedText) -> Option<(usize, usize)> {
     ))
 }
 
-/// The text bytes a selection covers, if any of it is the view's.
-///
-/// Rune hands over selected texts in tree order, so inspecting only the first and last texts
-/// belonging to this view gives the exact covered byte span in O(1) without scanning interior
-/// rows.
 pub(crate) fn span(c: &Content, sel: &TextSelection) -> Option<(usize, usize)> {
     let texts = sel.texts();
     let (first_a, first_b) = texts.iter().find_map(|t| row_bounds(c, t))?;
@@ -55,9 +42,6 @@ pub(crate) fn span(c: &Content, sel: &TextSelection) -> Option<(usize, usize)> {
     Some((first_a.min(last_a), first_b.max(last_b)))
 }
 
-/// Whether `sel` still matches the Rune selection requested by
-/// [`super::state::CodeState::apply_caret`] or [`super::state::CodeState::apply_gutter_lines`]
-/// for `c.keyboard_range`.
 pub(crate) fn matches_expected(c: &Content, sel: Option<&TextSelection>) -> bool {
     if c.keyboard_range.get().is_none() {
         return false;
@@ -100,13 +84,9 @@ pub(crate) fn copy(c: &Content, sel: &TextSelection) -> String {
     }
 }
 
-/// Rune's collection cap for a selection across unbuilt rows (R4): a report this long may be
-/// cut short.
 const RUNE_ROWS: usize = 10_000;
 const RUNE_BYTES: usize = 4 << 20;
 
-/// Whether `sel` reads as the whole text: every selected text whole, from the first row with
-/// text to the last, or to where Rune's collection stops (R4).
 pub(crate) fn reads_whole(c: &Content, sel: &TextSelection) -> bool {
     let Some((head, tail)) = c.ends else {
         return false;

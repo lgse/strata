@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! 10xer mode (A11): modal keyboard navigation, footer indicators, chord prefix dispatch and
-//! footer prompts, ported from `src/ui/tenxer_mode.rs`, `src/ui/window/keyboard/tenxer.rs` and
-//! `src/ui/shortcut_footer/`.
-
 use rune::{Cx, El, Tx};
 use strata_components::{
     collection::keyboard::{Command as Nav, KeyHandle, RangeKind},
@@ -43,7 +39,6 @@ const FLASH_KEY: &str = "footer-flash";
 const CHORD_KEY: &str = "footer-chord";
 const PROMPT_KEY: &str = "prompt";
 
-/// A pending two-key command (`Chord` in `src/ui/tenxer_mode.rs`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum ChordKind {
     Go,
@@ -303,7 +298,6 @@ pub(crate) fn shows(app: &App, mode: &str) -> bool {
     shell::shown_view(app).is_some_and(|view| (view.shows)(mode))
 }
 
-/// `BrowserView::focused_listing_depth` (`src/ui/browser/view_selection.rs`).
 pub(crate) fn focused_listing_depth(app: &App) -> Option<usize> {
     if shows(app, "columns") {
         Some(app.columns.active_depth())
@@ -314,7 +308,6 @@ pub(crate) fn focused_listing_depth(app: &App) -> Option<usize> {
     }
 }
 
-/// `BrowserView::command_targets` (`src/ui/browser/file_commands.rs`).
 pub(crate) fn command_targets(app: &mut App) -> Vec<FileEntry> {
     let tenxer = shell::preferences(app).tenxer_mode;
     if let Some(results) = filter::targets::selected(app) {
@@ -335,7 +328,6 @@ pub(crate) fn command_targets(app: &mut App) -> Vec<FileEntry> {
         .unwrap_or_default()
 }
 
-/// `BrowserView::focused_target` (`src/ui/browser/file_commands.rs`).
 pub(crate) fn focused_target(app: &mut App) -> Option<FileEntry> {
     if filter::targets::selected(app).is_some() {
         return filter::targets::preview_result(app)
@@ -363,9 +355,6 @@ pub(crate) fn active_key_handle(app: &App) -> Option<KeyHandle> {
     }
 }
 
-/// Queues `command` onto the shown collection's [`KeyHandle`] and ticks that collection at
-/// once, so `commands::call`'s `settle` publishes the updated cursor and selection in the
-/// same frame.
 pub(crate) fn run_collection_command(app: &mut App, command: Nav, tx: &mut Tx) -> bool {
     let Some(handle) = active_key_handle(app) else {
         return false;

@@ -14,8 +14,6 @@ use crate::collection::selection::Listing as Loaded;
 use crate::contract::{Entry, EntryId, EntryKind, EntrySource};
 
 /// What the grid shows: the recent choices, one category, or a search's results.
-///
-/// Used by: hosts.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Page {
     /// The recently used choices, newest first.
@@ -96,11 +94,7 @@ impl EntrySource for Shown {
     }
 }
 
-/// An icon picker's state. The host keeps one per picker and builds an `IconPicker` over it
-/// each frame. The source, the recent choices and the current choice come from the host as
-/// data; nothing here does I/O.
-///
-/// Used by: hosts.
+/// An icon picker's state.
 #[derive(Debug)]
 pub struct IconPickerState {
     pub(super) shown: Shown,
@@ -137,11 +131,7 @@ impl IconPickerState {
         st
     }
 
-    /// The same state with its cells' entry ids from `base` on. A cell's id is `base` plus its
-    /// item's index in the source, and its key (`row-<id>`) lives in one Rune key namespace
-    /// with every other picker's, so pickers shown at once need ranges `base..base + len`
-    /// (`len` the source's item count, the largest source for one given `set_source`) that
-    /// don't overlap: `0` and `10_000` for two pickers of up to 10,000 items, say.
+    /// The same state with its cells' entry ids from `base` on.
     pub fn id_base(mut self, base: u64) -> Self {
         debug_assert!(
             base.checked_add(self.shown.place.len() as u64).is_some(),
@@ -157,8 +147,7 @@ impl IconPickerState {
         &self.shown.source
     }
 
-    /// Shows `source` instead, from its first page, with the query cleared. Recent and current
-    /// choices it doesn't offer are dropped.
+    /// Shows `source` instead, from its first page, with the query cleared.
     pub fn set_source(&mut self, source: Rc<PickerSource>) {
         let recent: Vec<Choice> = self.recent_choices().cloned().collect();
         let current = self.current().cloned();
@@ -173,8 +162,7 @@ impl IconPickerState {
         self.refresh(None);
     }
 
-    /// The recently used choices, newest first: the host's list (see `remember`). Those the
-    /// source doesn't offer are left out.
+    /// The recently used choices, newest first: the host's list (see `remember`).
     pub fn set_recent(&mut self, recent: &[Choice]) {
         let source = &self.shown.source;
         let mut items: Vec<u32> = Vec::with_capacity(recent.len());
@@ -212,10 +200,7 @@ impl IconPickerState {
             .map(|&i| &self.shown.source.items()[i as usize].choice)
     }
 
-    /// The host's current choice (the item's saved icon), marked in the grid; `None` for none,
-    /// or one the source doesn't offer.
-    ///
-    /// The grid's cursor moves onto it when the page shows it (not a search's results).
+    /// The host's current choice (the item's saved icon), marked in the grid; `None` for none, or one the source doesn't offer.
     pub fn set_current(&mut self, choice: Option<&Choice>) {
         let current = choice
             .and_then(|c| self.shown.source.find(c))
@@ -269,8 +254,7 @@ impl IconPickerState {
         self.tabs().first().copied().unwrap_or(Page::Category(0))
     }
 
-    /// Shows `page` (a tab), clearing the query. Without a `Tx` (before the picker shows) the
-    /// grid starts afresh; with one, it scrolls to the top.
+    /// Shows `page` (a tab), clearing the query.
     pub fn select_page(&mut self, page: Page) {
         self.select_page_in(page, None);
     }
@@ -286,13 +270,12 @@ impl IconPickerState {
         self.refresh(at);
     }
 
-    /// The search field's text, for C21's `FieldMenu`.
+    /// The search field's text, for `FieldMenu`.
     pub fn edit(&self) -> &TextEdit {
         &self.field
     }
 
-    /// The search field's text, for C21's `FieldMenu`; call `IconPicker::edited` after a
-    /// change.
+    /// The search field's text, for `FieldMenu`; call `IconPicker::edited` after a change.
     pub fn edit_mut(&mut self) -> &mut TextEdit {
         &mut self.field
     }
@@ -349,8 +332,7 @@ impl IconPickerState {
         self.version
     }
 
-    /// Opens the popover: on the recent choices when there are any, else the first category,
-    /// with the query cleared (GTK's chooser opens on its recent section).
+    /// Opens the popover: on the recent choices when there are any, else the first category, with the query cleared.
     pub fn open(&mut self) {
         self.open = true;
         self.select_page(self.first_page());
@@ -366,9 +348,6 @@ impl IconPickerState {
         self.open
     }
 
-    /// Lists what the page shows and puts the cursor on its first item, or on the current
-    /// choice when the page shows it (not in results). With `at`, the grid scrolls to the top
-    /// on that `Tx` (its scope is the collection's key); without, it starts afresh.
     fn refresh(&mut self, at: Option<(&str, &mut Tx)>) {
         let source = self.shown.source.clone();
         let items: Vec<u32> = match self.page {
@@ -394,8 +373,6 @@ impl IconPickerState {
     }
 }
 
-/// A collection with the picker's controllers: C1c's keyboard and C1b's pointer intent, read
-/// as plain presses.
 fn fresh_collection() -> CollectionState {
     let mut coll = CollectionState::new();
     coll.controllers.keyboard = Some(Box::<Keyboard>::default());

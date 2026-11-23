@@ -92,8 +92,6 @@ impl FolderIdentities {
         }
     }
 
-    /// Like the local adapter, searches the nearest ancestor of `departed` that is not
-    /// `missing` for the folder, renamed itself or moved with an ancestor renamed there.
     pub(super) fn find(
         &self,
         departed: &Location,
@@ -130,8 +128,6 @@ impl FolderIdentities {
             .map(|(location, _)| location.clone())
     }
 
-    /// Renames the folder at `from`, carrying along every identified folder inside it, and
-    /// returns the old locations of those folders.
     pub(super) fn rename_tree(&self, from: &Location, to: &Location) -> Vec<Location> {
         let mut identities = self.0.borrow_mut();
         let moved = identities

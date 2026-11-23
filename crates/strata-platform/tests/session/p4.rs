@@ -1,16 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! P4's session tests: parenting to the peer's exported window.
-//!
-//! Work package: P4, `docs/rune/work/phase-2-composites/P4-foreign-parent.md`. The probe is
-//! `examples/foreign-parent.rs`: a host window, and a chooser per `open` command, each opened
-//! hidden and parented from `App::on_window`, as a portal backend opens its dialog.
-//!
-//! sway's IPC shows no xdg-foreign parent (S3), so a Wayland parent is seen as sway treats a
-//! transient: the window floats where a parentless one tiles, and shows over a full-screen
-//! parent where a parentless one is hidden. On Xwayland the tree has `transient_for`, and the
-//! hints are read from the X server.
-
 use serde_json::{Value, json};
 use x11rb::connection::Connection as _;
 use x11rb::protocol::xproto::{AtomEnum, ConnectionExt};
@@ -181,8 +170,6 @@ fn wayland_refused_and_mismatched_parents_leave_it_parentless() {
     let x11_handle = x11.export();
     let p = probe(&s, Display::Wayland, &[]);
 
-    // A handle the compositor never exported is destroyed at import, and winit's connection
-    // lives on: the next window still parents.
     assert_parentless(
         &open(&p, "c1", "wayland:not-an-exported-handle", true),
         "Destroyed",
@@ -230,8 +217,6 @@ fn wayland_parent_exit_reports_lost_and_keeps_the_window() {
     quit(p, true);
 }
 
-/// Closes chooser `key` (releasing it from `on_close` when `release`), and returns its
-/// `closed` report.
 fn close(s: &Session, p: &Proc, key: &str, release: bool) -> Value {
     let id = chooser(s, p, key).id;
     let at = p.line_count();
@@ -243,10 +228,6 @@ fn close(s: &Session, p: &Proc, key: &str, release: bool) -> Value {
     closed
 }
 
-/// Review 1, B1: the first window to attach P0's substrate gave it the only turn its reader
-/// asked for. Once that window closed the turn never ran again, so no event on winit's
-/// display reached anyone: a later window never heard its parent go. With or without the
-/// first window's `release`.
 #[test]
 #[ignore = "needs a private session: mise run test-platform"]
 fn wayland_a_later_window_hears_its_parent_go_after_the_first_closes() {
@@ -272,7 +253,6 @@ fn wayland_a_later_window_hears_its_parent_go_after_the_first_closes() {
     }
 }
 
-/// Review 1, should-fix 5: P0 kept every window that ever attached, one more per request.
 #[test]
 #[ignore = "needs a private session: mise run test-platform"]
 fn wayland_requests_one_after_another_leave_one_window_tracked() {
@@ -309,8 +289,6 @@ fn wayland_without_winit_display_is_parentless() {
 #[test]
 #[ignore = "needs a private session: mise run test-platform"]
 fn quitting_with_a_live_import_exits_cleanly() {
-    // With the shutdown, the import is destroyed while winit's display lives; without it,
-    // nothing is destroyed after the display is freed (S3's crash was a late destroy).
     let s = Session::start();
     let peer = s.peer(Display::Wayland);
     peer.map("p4 parent");
@@ -443,7 +421,6 @@ fn x11_stale_xid_and_wayland_handle_leave_it_a_parentless_dialog() {
         ("c3", "", "NoParent", "Compositor"),
     ] {
         assert_parentless(&open(&p, key, parent, true), reason, fallback);
-        // A dialog all the same, as GTK's portal dialog is: sway floats it.
         let w = s.wait_window_where(&format!("chooser {key} floating"), |w| {
             w.pid == p.pid() && w.title == format!("chooser {key}") && w.floating
         });
@@ -459,9 +436,6 @@ fn x11_stale_xid_and_wayland_handle_leave_it_a_parentless_dialog() {
     quit(p, true);
 }
 
-/// Review 1, should-fix 3: `GetGeometry` answers for any drawable, so a pixmap passed as a
-/// parent, and the root (`WM_TRANSIENT_FOR` = root is ICCCM's group transient), were taken
-/// for parents.
 #[test]
 #[ignore = "needs a private session: mise run test-platform"]
 fn x11_a_pixmap_or_the_root_is_no_parent() {
@@ -515,8 +489,6 @@ fn wait_modal(x: &X, window: u32, on: bool) {
     }
 }
 
-/// Review 1, should-fix 4: once the window is mapped, modality is asked of the window manager
-/// with a `_NET_WM_STATE` client message (EWMH), and the parent is set as a property.
 #[test]
 #[ignore = "needs a private session: mise run test-platform"]
 fn x11_a_parent_applied_after_the_map_reaches_the_window_manager() {

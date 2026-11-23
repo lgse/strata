@@ -1,14 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The windowless `--portal` host: owns `org.freedesktop.impl.portal.desktop.strata` on the
-//! session bus, pumps GLib on Rune's event loop, opens each `ChooserRequest` as a
-//! foreign-parented Rune window (`strata_platform::foreign_parent`), and exits once no request
-//! has been active for [`IDLE_TIMEOUT`](crate::portal::IDLE_TIMEOUT).
-//!
-//! Each chooser window takes drops from other applications, as GTK's chooser does: a file
-//! dropped on a sidebar pin is copied there. The QA mode's session host runs this daemon with
-//! [`Hooks`] of its own (`qa::session::portal`).
-
 use std::{
     cell::{OnceCell, RefCell},
     collections::HashMap,
@@ -64,8 +55,6 @@ pub(crate) type Opening = Box<dyn Fn(rune::App<App>, &str) -> rune::App<App>>;
 /// The token of a chooser window that closed.
 pub(crate) type Closed = Box<dyn Fn(&str)>;
 
-/// What a host running the daemon adds to it: the QA mode's session host follows each chooser
-/// window and keeps the daemon while no request is active.
 #[derive(Default)]
 pub(crate) struct Hooks {
     pub(crate) started: Option<Started>,
@@ -112,8 +101,6 @@ fn drain(daemon: &mut Daemon, tx: &mut Tx) {
     }
 }
 
-/// Whether the daemon may end: no chooser window is open, no host keeps it, and no request
-/// has been active for the idle timeout, which starts its shutdown.
 fn ends_idle(daemon: &Daemon) -> bool {
     let idle = WINDOWS.with(|windows| windows.borrow().is_empty());
     let stays = hooks(|hooks| hooks.stays).unwrap_or(false);

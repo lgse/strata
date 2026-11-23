@@ -12,8 +12,6 @@ pub(super) trait AudioBackend: Send {
     fn flush(&mut self) -> Result<(), ()>;
 }
 
-/// Opens the best available Linux PCM backend, degrading cleanly to [`SilentBackend`] when
-/// headless or when no audio daemon/device is reachable.
 pub(super) fn open_backend(
     spec: PcmSpec,
     app_name: &str,

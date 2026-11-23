@@ -1,10 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Leading-chrome marquee origins: a primary drag begun on blank space in the sidebar or on
-//! the Icons / List pane header carries a rubber-band into the shown view's leading listing,
-//! matching GTK's `add_marquee_origin` and `add_origin_surface` (`src/ui/browser.rs`,
-//! `src/ui/marquee/origin.rs`).
-
 use std::rc::Rc;
 
 use rune::{Drag, Mods, Phase, PointerButton, Tx};
@@ -296,8 +291,6 @@ fn end_origin(app: &mut App, (press, window): (OriginPress, Point), cancelled: b
     }
 }
 
-/// Routes a primary drag starting on blank leading chrome (sidebar or pane header) into the
-/// shown view's leading listing.
 pub(crate) fn leading_origin_drag(app: &mut App, drag: &mut Drag, tx: &mut Tx) {
     if tx.button() != PointerButton::Primary {
         tx.live_only();

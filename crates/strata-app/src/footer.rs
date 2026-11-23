@@ -1,19 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The window's footer: C19's [`Footer`] under the view, with GTK's F1 Shortcuts button at
-//! its left (`reference_toggle` in `src/ui/shortcut_footer/build.rs`). The button is named
-//! and described with the reference's key as the keymap binds it, shows pressed while the
-//! reference is open, and toggles it ([`crate::shortcuts`]). "Show keybinding hints" off
-//! hides it, and F1 still opens the reference. At its right the "Files on clipboard" badge
-//! (`paste_label` in `src/ui/shortcut_footer/build.rs`, `refresh_paste_availability` in
-//! `src/ui/shortcut_footer/status.rs`) while file URIs are on the clipboard
-//! ([`crate::clipboard`]), and the active column's item and selection count ([`count`]);
-//! with nothing to show, the footer goes.
-//!
-//! Left out, with what brings each back: the 10X pill, the marks and the prompt, [A11]'s.
-//!
-//! [A11]: ../../../docs/rune/parity/packages/A11.md
-
 use std::rc::Rc;
 
 use rune::{El, Tx};
@@ -58,7 +44,6 @@ impl Part for Footer {
     }
 }
 
-/// The button's key: C19's `Footer::shortcuts_key` for the footer keyed `footer`.
 const SHORTCUTS: &str = "footer-shortcuts";
 
 fn build(app: &App, frame: &mut Frame<'_, App>) -> Option<El> {
@@ -86,14 +71,11 @@ fn build(app: &App, frame: &mut Frame<'_, App>) -> Option<El> {
         .count(count::shown(app))
         .labels(labels());
     debug_assert_eq!(footer.shortcuts_key(), SHORTCUTS);
-    // Return presses the button, as on GTK (Rune packet entry 103).
     footer
         .build(app, &app.look)
         .map(|footer| buttons::on_return_within(SHORTCUTS, footer))
 }
 
-/// The button's, clipboard badge's and 10xer indicators' names and descriptions, as GTK's
-/// `follow_keys` and `indicators.rs` write them.
 fn labels() -> FooterLabels {
     let reference = Keys::One(REFERENCE.alternate(0).shown());
     let mode = tr("10xer mode");
@@ -123,8 +105,6 @@ fn labels() -> FooterLabels {
     }
 }
 
-/// GTK's `paste_label` (`src/ui/shortcut_footer/build.rs`), whose `KEYLESS` form is empty
-/// when `PASTE` is unbound (`src/ui/shortcut_reference.rs`).
 fn paste_description() -> String {
     let label = keys::label(&Keys::One(PASTE.shown()));
     if label.is_empty() {

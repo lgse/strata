@@ -147,8 +147,6 @@ fn audible(block: &[u8]) -> bool {
     block.iter().any(|sample| *sample != 0)
 }
 
-/// The PCM block for the audio tick `offset` ticks after the first frame; the
-/// lead places it in the first record or ahead of its own frame.
 fn audio_block(frames: &[Frame], offset: usize) -> &[u8] {
     let lead = media::AUDIO_LEAD_TICKS as usize;
     if offset <= lead {

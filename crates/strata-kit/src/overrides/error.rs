@@ -8,8 +8,6 @@ use super::Scope;
 use crate::theme::Location;
 use crate::tokens::{self, Kind};
 
-/// One problem in the override file, and where. Its `Display` is the line a user reads:
-/// `line 4, column 1: unknown token `list.row.length``.
 #[derive(Clone, Debug, PartialEq)]
 pub struct OverrideError {
     /// Where the problem is: the key for an unknown token, the value for a bad one.
@@ -19,8 +17,6 @@ pub struct OverrideError {
     pub problem: Problem,
 }
 
-/// What is wrong. Names of known tokens are the registry's own (`Token::name`); an unknown
-/// name is as the file wrote it, without its scope.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum Problem {

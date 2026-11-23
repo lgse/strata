@@ -1,20 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Sandboxed media playback and A/V sync: GTK's `DecodedMedia` (`src/ui/media.rs`,
-//! `src/ui/media/playback.rs`) driven by [`strata_platform::media::PcmOutput`] instead of
-//! GStreamer.
-//!
-//! - **Decoding** runs in the shared `strata_preview::sandbox::media::Session`'s worker. A
-//!   [`Pump`] on GLib's main context drains its events every 8 ms and hands them to Rune
-//!   through `Later`, bounded both by [`PRESENTATION_QUEUE`] video frames and by the PCM sink's
-//!   lookahead capacity so the worker waits for the player as GTK's `can_queue_more` makes it.
-//! - **The clock** follows `PcmOutput::position` whenever the clip carries audio (accounting for
-//!   output device latency, or paced in real time on the silent fallback when headless), so video
-//!   frames stay A/V-synced to heard audio. Silent clips (video without audio, GIFs) pace on the
-//!   poll's clock.
-//! - **A paused player** pauses and flushes the output device immediately, releases its worker
-//!   and audio stream after [`PAUSED_IDLE`], and restarts where it stood on the next play.
-
 use std::{
     cell::{Cell, RefCell},
     collections::VecDeque,
@@ -34,7 +19,6 @@ use strata_preview::{
 use super::{history::PcmHistory, positions};
 use crate::{App, slots::Later};
 
-/// Frames decoded ahead of the one shown (GTK's `PRESENTATION_QUEUE`).
 pub(super) const PRESENTATION_QUEUE: usize = 3;
 /// Interleaved PCM format emitted by the sandboxed decoder (48 kHz stereo S16LE).
 const AUDIO_SPEC: PcmSpec = PcmSpec::new(SampleFormat::S16Le, media::SAMPLE_RATE as u32, 2);
@@ -43,12 +27,8 @@ const AUDIO_LOOKAHEAD: Duration =
     Duration::from_micros((media::AUDIO_LEAD_TICKS as u64 + 12) * 1_000_000 / media::FPS as u64);
 /// Sample-boundary tolerance when checking end-of-stream against the audio clock.
 const AUDIO_END_TOLERANCE_US: u64 = 1_000_000_u64.div_ceil(media::SAMPLE_RATE) + 1;
-/// A selection replaced within this long never starts a decoder (GTK's `START_DWELL`).
 const START_DWELL: f64 = 0.05;
-/// A start that fails this soon, as one does while the last worker still holds its slot, is
-/// tried again (GTK's `start_session`).
 const START_RETRY: f64 = 0.25;
-/// How long a paused player keeps its worker (GTK's `PAUSED_IDLE`).
 const PAUSED_IDLE: f64 = 30.0;
 /// How long a resize settles before the decoder restarts at the new size (`RESIZE_DELAY`).
 const RESIZE_DELAY: f64 = 0.25;
@@ -60,8 +40,6 @@ const WAITING: Duration = Duration::from_millis(16);
 /// What a pump hands the app: the events of one session, in order.
 pub(super) type Received = Vec<Event>;
 
-/// The GLib side of one decoder session. The app holds it; the timer holds it weakly and
-/// stops once the app lets it go, which cancels the session.
 pub(super) struct Pump {
     session: Session,
     /// Frames the app can take before the worker must wait.
@@ -78,8 +56,6 @@ impl Drop for Pump {
     }
 }
 
-/// Where the app takes a pump's events: the viewer and session they belong to, and the
-/// update that hands them over.
 #[derive(Clone)]
 pub(super) struct Inlet {
     pub(super) later: Later<App>,
@@ -253,14 +229,10 @@ impl Stream {
         self.looped = looped;
     }
 
-    /// Retains a bounded mono PCM history synced to `PcmOutput`'s heard position for the live
-    /// audio spectrum analyzer (`DecodedMedia::retain_played_audio`).
     pub(super) fn retain_played_audio(&mut self) {
         self.history.get_or_insert_with(PcmHistory::default);
     }
 
-    /// Fills `window` with mono samples ending at the audible playhead. Returns `false` when
-    /// paused, before the first frame, or when no audio samples have reached the playhead yet.
     pub(super) fn played_samples(&self, window: &mut [f32]) -> bool {
         if !self.playing || !self.first_frame {
             return false;
@@ -374,8 +346,6 @@ impl Stream {
         self.seeking = true;
     }
 
-    /// The pane asks for frames this big: the decoder restarts at the new size once the
-    /// resize settles.
     pub(super) fn resize(&mut self, [width, height]: [u32; 2]) {
         let size = MediaPreviewSize::new(width as i32, height as i32);
         if self.source.size != size {
@@ -413,8 +383,6 @@ impl Stream {
         }
     }
 
-    /// The poll's clock moved to `now`: a waiting start starts, playback moves on, and the
-    /// frame whose time has come is returned to show.
     pub(super) fn advance(&mut self, now: f64, tx: &mut Tx) -> Option<Shown> {
         self.now = now;
         if self.error.is_some() {
@@ -499,8 +467,6 @@ impl Stream {
         }
     }
 
-    /// The events a pump handed over, and the first frame to show if they hold it. Events of a
-    /// session that has gone are dropped.
     pub(super) fn receive(&mut self, session: u64, events: Received) -> Option<Shown> {
         if session != self.session || self.error.is_some() {
             return None;
@@ -618,8 +584,6 @@ impl Stream {
         self.show(frame)
     }
 
-    /// Splits a record's PCM into tick-sized blocks, trims any trailing pad past `duration_us`,
-    /// and pushes them to the PCM sink (holding overflow in `pending_audio` for backpressure).
     fn queue_audio(&mut self, header: &Header, samples: Vec<u8>) {
         if self.audio.is_none() || samples.is_empty() {
             return;
@@ -793,7 +757,6 @@ impl Stream {
         self.error = Some(error);
     }
 
-    /// The file is left: a video stopped partway reopens where it stood (GTK's `close`).
     pub(super) fn close(&mut self) {
         self.capture();
         self.pump = None;
@@ -807,8 +770,6 @@ impl Stream {
         if self.has_video() && partway {
             positions::remember(path, self.position_us);
         } else if self.start_requested && self.has_video() {
-            // A video closed in its first second or at its end reopens at 0:00, not at the
-            // configured start.
             positions::remember(path, 0);
         } else {
             positions::forget(&path);

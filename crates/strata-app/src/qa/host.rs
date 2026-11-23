@@ -1,15 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! What the QA backend asks of the host it drives. The backend reads the accessibility tree
-//! the same way on both; the hosts differ in where the tree comes from, how input reaches
-//! Rune and how time passes:
-//!
-//! - [`Staged`](super::staged::Staged), the offscreen host: this thread owns the `Runtime`,
-//!   input goes in at Rune's input layer, and a settle turns the host until it rests.
-//! - [`Session`](super::session::Session), the session host: Rune runs a real window's loop
-//!   on the main thread, the tree comes from the frames it draws, and input crosses the
-//!   compositor through a virtual keyboard and pointer.
-
 use std::{rc::Rc, time::Duration};
 
 use strata_components::contract::EntryId;
@@ -84,18 +74,12 @@ pub(super) trait Host {
     async fn button(&self, number: u8, pressed: bool) -> Result<(), String>;
     /// Presses the element as an assistive client's click would. False when it cannot.
     fn activate(&self, target: &Activated) -> bool;
-    /// Instantly scrolls a scroll view to `(x, y)` (`set_scrollbar`). `at` is its node and its
-    /// key: the node tells a host with more than one window which one has it.
     async fn scroll_to(&self, at: (&Node, &str), x: f32, y: f32) -> Result<(), String>;
 
-    /// Owns the system clipboard from a second connection (`clipboard_set`). `None` when the
-    /// host has no system clipboard (the offscreen host).
     async fn set_clipboard(&self, _content: &ClipboardContent) -> Option<Result<(), String>> {
         None
     }
 
-    /// Reads `mime` (or plain text) from a second connection (`clipboard`). `None` when the
-    /// host has no system clipboard.
     async fn read_clipboard(&self, _mime: Option<&str>) -> Option<Result<Option<String>, String>> {
         None
     }

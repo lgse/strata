@@ -1,20 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The gallery page for C19 Footer and ShortcutReference: its scenes, demo state, view and key and
-//! poll hooks. Scene names start with `c19-` and end in `-light` or `-dark`.
-//!
-//! Work package: `docs/rune/work/phase-2-composites/C19-footer-shortcut-reference.md`.
-//!
-//! The page draws a stand-in window: a row of buttons that change what the footer counts and
-//! shows (scripts tap them by key), a location field, a five-entry listing, the footer, and the
-//! reference over it. The page's key hook stands in for Strata's dispatch: F1 (and `~` in 10xer
-//! mode) toggles the reference, Ctrl+1–3 switch the view, Ctrl+Shift+M the mode, and Delete,
-//! Ctrl+V and Ctrl+, write what they would do to the log, so scripts see that nothing ran under
-//! the reference. The footer prompt (`r`, or the Footer prompt button: a `rename ›` prompt), the
-//! `g` chord's pill and panel and the flash are C18's; the prompt's field menu is C21's, and the
-//! page's key hook stands down while it is open (C18's host rule). C16's jobs element is a
-//! stand-in until C16 lands.
-
 mod fixture;
 
 use rune::{Chord, Cx, El, Key, KeyEvent, TextEdit, Tx, col, row, text, text_input};
@@ -57,7 +42,6 @@ pub enum Change {
     UnbindSearch,
 }
 
-/// C19's demo state, held in `Gallery::c19`.
 pub struct Demo {
     pub reference: ReferenceState,
     pub scope: Scope,
@@ -74,7 +58,6 @@ pub struct Demo {
     pub filter: Option<Filter>,
     pub hit: usize,
     pub range: Option<RangeKind>,
-    /// C18's footer prompt, its `g` chord and its flash, and C21's menu over the prompt's field.
     pub prompt: PromptState<Kind>,
     pub chord: ChordState<Act>,
     pub flash: Flash,
@@ -250,7 +233,6 @@ pub enum Act {
     Downloads,
 }
 
-/// The fields C21's text menu opens over: the prompt's.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Field {
     Prompt,
@@ -284,7 +266,6 @@ fn prompt() -> FooterPrompt<Gallery, Kind> {
     )
     .focus_return("c19-list")
     .on_intent(|g: &mut Gallery, intent, tx| match intent {
-        // C21's menu takes the keyboard; the poll holds the prompt open while it does.
         PromptIntent::FieldMenu { at } => field_menu().open(g, Field::Prompt, at, tx),
         intent => g.c19.prompted(intent),
     })
@@ -497,8 +478,6 @@ pub fn view(g: &Gallery, cx: &mut Cx<Gallery>) -> El {
     if let Some(w) = d.compact_below {
         panel = panel.compact_below(w);
     }
-    // The prompt's candidates, the chord's panel and the field menu go onto the layer first:
-    // the reference, a modal, goes last, above them all.
     let footer = footer(g, look, cx, &mut layer);
     let menu = field_menu().build(g, look, &mut layer);
     panel.build(g, look, &mut layer);
@@ -687,8 +666,6 @@ fn listing(g: &Gallery, look: &Look) -> El {
         }))
 }
 
-/// The footer, with C18's prompt, flash and chord pill (its panel goes onto `layer`), and C16's
-/// stand-in.
 fn footer(g: &Gallery, look: &Look, cx: &mut Cx<Gallery>, layer: &mut Vec<El>) -> Option<El> {
     let d = &g.c19;
     let k = &look.kit;
@@ -733,22 +710,15 @@ fn ctrl(ev: &KeyEvent, c: char) -> bool {
 /// The page's dispatch, standing in for Strata's: keys no focused element took.
 pub fn on_key(g: &mut Gallery, ev: &KeyEvent, tx: &mut Tx) -> bool {
     let d = &mut g.c19;
-    // C21's field menu passes on the keys it doesn't use: while it is open they are the menu's,
-    // not the page's (C18's host rule).
     if d.fields.is_open() {
         return true;
     }
-    // The reference takes every key it doesn't use: one that gets here is a leak. Logged, so a
-    // script that closes the reference after sees it, and taken.
     if d.reference.is_open() {
         let leak = format!("{:?} {:?}", ev.key, ev.mods);
         d.log(&format!("Leaked {leak}"));
         d.leaks.push(leak);
         return true;
     }
-    // The reference's keys run before an armed chord (Strata's `input_owner.rs`): F1 or `~`
-    // after `g` opens the reference. The poll then cancels the chord, as it does whichever way
-    // the reference opened.
     if d.keys().toggles(ev, tx) {
         d.reference.toggle();
         return true;
@@ -763,8 +733,6 @@ pub fn on_key(g: &mut Gallery, ev: &KeyEvent, tx: &mut Tx) -> bool {
         }
         return true;
     }
-    // The prompt's field passes on what it doesn't use: no browsing command runs from it, and
-    // Rune's own fallbacks (Shift+F10 and the Menu key open the field's menu) still do.
     if d.prompt.focused() {
         return ctrl(ev, 'm') && ev.mods.shift && toggle_mode(d);
     }
@@ -824,12 +792,8 @@ fn toggle_mode(d: &mut Demo) -> bool {
 
 /// Applies the scheduled changes as the virtual clock reaches them.
 pub fn poll(g: &mut Gallery, t: f64, tx: &mut Tx) -> bool {
-    // The prompt stays open while the reference or the field menu has the keyboard (F1 from
-    // the prompt, as Strata's `abandoned` does); it closes on a blur otherwise.
     let held = g.c19.reference.is_open() || g.c19.fields.is_open();
     g.c19.prompt.hold_open(held);
-    // While the reference is open no chord stays armed, however it opened (the F1 button
-    // included): Strata cancels the chord on every key under the reference.
     let mut changed = g.c19.reference.is_open() && g.c19.chord.clear();
     let polled = g.c19.prompt.tick();
     changed |= polled.changed;

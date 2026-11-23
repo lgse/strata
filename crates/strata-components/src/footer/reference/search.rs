@@ -1,17 +1,10 @@
 // SPDX-License-Identifier: MIT
 
-//! The reference's search, as Strata's: a row stays when its action, its keys with their
-//! context, or one of its search terms contains the query, compared in lower case with the −
-//! and – that labels show read as a typed `-` (`search_folded` and `Shortcut::matches` in
-//! `src/ui/shortcut_reference.rs`). No fuzzy matching: Strata has none here.
-
 use std::ops::Range;
 
 use super::data::{Section, Shortcut, ShortcutData};
 use crate::contract::char_ranges;
 
-/// `text` folded for the search, and for each folded byte the character of `text` it came
-/// from, so a match maps back onto the shown text.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub(super) struct Folded {
     pub text: String,
@@ -40,8 +33,6 @@ pub(super) fn fold_query(query: &str) -> String {
 }
 
 impl Folded {
-    /// The byte ranges of `shown` (the text this was folded from) where `query`, already
-    /// folded, first appears; empty when it doesn't, or when the query is empty.
     pub fn ranges(&self, shown: &str, query: &str) -> Vec<Range<usize>> {
         if query.is_empty() {
             return Vec::new();
@@ -130,8 +121,6 @@ pub(super) struct Lines {
     pub ordinal: Vec<Vec<Option<usize>>>,
 }
 
-/// The lines for `query` (folded) in `category` (a section index; `None` for All), `columns`
-/// rows to a line.
 pub(super) fn lines(
     sections: &[Section],
     index: &Index,

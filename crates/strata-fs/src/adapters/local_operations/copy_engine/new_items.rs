@@ -41,8 +41,6 @@ pub(super) fn first_free<T>(
     Err(Failure::Place(PlaceError::Exists))
 }
 
-/// A mount that learns keeps the rules that made a name. Fails as at first where none is
-/// made.
 pub(super) fn retry_refused<T>(
     copy: &Copy,
     rules: &FolderRules,

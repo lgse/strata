@@ -77,8 +77,6 @@ const BATCHED_TARGETS: usize = 32;
 
 const PROGRESS_INTERVAL: Duration = Duration::from_millis(33);
 
-/// Reports the entries removed so far, since one large folder completes only when its
-/// last entry is gone.
 pub(in crate::adapters::local_operations) struct RemovedReporter(glib::JoinHandle<()>);
 
 impl RemovedReporter {
@@ -316,8 +314,6 @@ struct Outcome {
     affected_locations: HashSet<Location>,
 }
 
-/// Field order matters: the reporter stops before the pins are forgotten, and the
-/// environment outlives its leftover watch.
 struct Deletion {
     _reporter: Option<RemovedReporter>,
     request_id: OperationRequestId,

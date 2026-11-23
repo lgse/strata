@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Strata's model and the services every other crate builds on: localization, storage,
-//! logging and file-activity tracking. No interface toolkit.
-
 // build.rs embeds data/locales; this path holds no catalogs, so the macro adds none itself.
 rust_i18n::i18n!(
     "src/i18n/no-catalogs",

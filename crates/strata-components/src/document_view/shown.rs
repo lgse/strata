@@ -1,16 +1,9 @@
 // SPDX-License-Identifier: MIT
 
-//! What a unit's text element shows, when it isn't the model's text as it is: an inline
-//! equation's placeholder replaced by its source (D2), and the room the Copy code button
-//! keeps at the end of a code block's first line. Each change is an [`Insert`], which knows
-//! what copying it takes, so a selection copies Strata's text whatever is drawn.
-
 use std::ops::Range;
 
 use super::model::{Span, SpanStyle};
 
-/// A run the view draws in place of `old` (a range of the model's text, empty for a pure
-/// insertion), and what copying any of it takes.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct Insert {
     pub old: Range<usize>,
@@ -25,13 +18,10 @@ pub(crate) struct Shown {
     pub spans: Vec<Span>,
     /// Each insert's range in `text`, with what copying it takes. Sorted, not overlapping.
     pub runs: Vec<(Range<usize>, String)>,
-    /// The inserts by old range, to move offsets of the model's text (C10a's colours).
     edits: Vec<(Range<usize>, usize)>,
 }
 
 impl Shown {
-    /// `text` with `inserts` (sorted by `old`, not overlapping) applied, and `spans` moved to
-    /// match. An inline equation's span covers its source, drawn in the mono face.
     pub fn with(text: &str, spans: &[Span], mut inserts: Vec<Insert>) -> Shown {
         inserts.sort_by_key(|i| (i.old.start, i.old.end));
         let mut out = String::with_capacity(text.len());
@@ -63,9 +53,6 @@ impl Shown {
         shown
     }
 
-    /// Where byte `at` of the model's text is in the shown text. An offset at a replacement's
-    /// end lands after it; an offset at a pure insertion stays before it, so a span ending
-    /// at the line's end doesn't reach over the padding.
     pub fn map(&self, at: usize) -> usize {
         let mut shift: isize = 0;
         for (old, new_len) in &self.edits {
@@ -81,7 +68,6 @@ impl Shown {
         (at as isize + shift) as usize
     }
 
-    /// `ranges` of the model's text (C10a's colours), in the shown text.
     pub fn map_ranges<T: Clone>(&self, ranges: &[(Range<usize>, T)]) -> Vec<(Range<usize>, T)> {
         if self.edits.is_empty() {
             return ranges.to_vec();
@@ -92,8 +78,6 @@ impl Shown {
             .collect()
     }
 
-    /// What copying bytes `range` of the shown text takes: the text, with each insert it
-    /// touches replaced by the insert's copy (an equation's `$source$`, nothing for padding).
     pub fn copy(&self, range: Range<usize>) -> String {
         let range = range.start.min(self.text.len())..range.end.min(self.text.len());
         let mut out = String::new();

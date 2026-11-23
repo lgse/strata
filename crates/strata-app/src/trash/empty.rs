@@ -1,27 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Empty Trash, as GTK's `confirm_empty_trash` runs it (`load_trash_summary` and
-//! `show_empty_trash_confirmation` in `src/ui/browser/trash/empty.rs`): the command
-//! `empty-trash`, which the sidebar's Trash menu runs.
-//!
-//! - **Measuring.** Unless the view lists the Trash and shows it empty, a dialog says
-//!   "Measuring Trash…" with a spinner while the Trash is walked (`summarize_directory`); its
-//!   Cancel, Escape and close button stop the walk. A Trash found empty closes it; a walk that
-//!   fails says "Unable to read Trash".
-//! - **The confirmation.** "Empty Trash?", what will be reclaimed, and that it cannot be
-//!   undone, in the danger tone, with Cancel and Empty Trash. Empty Trash has the keyboard, as
-//!   GTK focuses it, and Return presses only the focused button.
-//! - **Emptying** starts only from that dialog's Empty Trash, while it is open and showing the
-//!   confirmation the press came from: each dialog carries its own generation, and a press on a
-//!   dialog that has closed or been replaced does nothing. The Trash columns are read again
-//!   after; items that could not be deleted, and a failure, are reported in the error dialog.
-//! - **One at a time.** While any of the part's dialogs is open, the command does nothing: an
-//!   open dialog is never replaced under the keyboard.
-//!
-//! Left out: GTK's progress card while the Trash empties ("Emptying Trash", the count deleted
-//! and Cancel), which whoever mounts the file operations' progress (C16) shows; and the
-//! partial failure's own dialog look ("Completed with errors" is shown as an error).
-
 use std::time::Instant;
 
 use strata_components::dialog::{Focus, MESSAGE_WIDTH, StrataDialog, Tone};
@@ -45,8 +23,6 @@ use crate::{
     slots::{Frame, Later},
 };
 
-/// Where the Trash is: `trash:///`. A hosted test has no gvfs to list it with, so a test
-/// points it at a folder of its own; nothing else can.
 pub(crate) fn root() -> Location {
     #[cfg(test)]
     if let Some(folder) = TEST_ROOT.with(|root| root.borrow().clone()) {
@@ -74,8 +50,6 @@ enum Phase {
     Confirm { subtitle: String },
 }
 
-/// One Empty Trash dialog: what it shows, and its generation, which a walk's answer and a
-/// confirmation are matched against.
 pub(super) struct Dialog {
     phase: Phase,
     generation: u64,
@@ -94,7 +68,6 @@ pub(super) struct Empty {
     pub(super) confirmed: Option<u64>,
 }
 
-/// The command: GTK's `confirm_empty_trash`.
 pub(super) fn run(app: &mut App, _: &Call<'_>, _: &mut rune::Tx) -> Outcome {
     if app.trash.open || app.trash.empty.open || listed_empty(app) {
         return Outcome::Ran;
@@ -231,8 +204,6 @@ pub(super) fn confirmed(app: &mut App) {
     empty.open = false;
 }
 
-/// The part's `poll`: empties the Trash for the confirmation pressed, if it is still the
-/// last one shown.
 pub(super) fn poll(app: &mut App) -> bool {
     let Some(generation) = app.trash.empty.confirmed.take() else {
         return false;

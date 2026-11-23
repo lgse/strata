@@ -23,37 +23,15 @@ use super::launch::Launch;
 /// The bus thread's name.
 pub const THREAD_NAME: &str = "single-instance-bus";
 
-/// How many times, in all, a launch tries to claim the app id or reach its primary: a
-/// primary that goes away mid-launch costs one try.
 const ATTEMPTS: usize = 3;
 
 /// How [`claim`] behaves.
 #[derive(Clone, Debug)]
 pub struct Options {
-    /// The longest the claim waits to connect to the session bus and hear whether it owns the
-    /// app id. A bus that never answers leaves the launch [`Unclaimed::Timeout`].
     pub bus_timeout: Duration,
-    /// The longest a forwarded launch waits for the primary's answer, which comes once the app
-    /// is done with its [`CommandLine`].
     pub forward_timeout: Duration,
-    /// A launch the session bus started to provide a service (D-Bus activation): it queues
-    /// no [`Event::CommandLine`] of its own, and when another process already is the primary
-    /// it ends with `Claim::Forwarded(0)`, forwarding nothing.
-    ///
-    /// GLib apps mark such a launch with `--gapplication-service`, which GApplication parses
-    /// itself, and their `.service` files pass it (a GTK app's `Exec=app
-    /// --gapplication-service`). Nothing here reads arguments: a host that keeps such a
-    /// `.service` file takes the flag out of its arguments and sets this instead.
     pub service: bool,
-    /// Also serve `org.freedesktop.FileManager1` as the primary, delivering its calls as
-    /// [`Event::Reveal`]. The name is queued for, never taken: while another file manager
-    /// holds it, calls keep reaching that one. Asking for it is best effort: a bus that
-    /// refuses it (a sandbox without permission to own it) leaves the primary claimed without
-    /// it, and [`Primary::file_manager1`] says so.
     pub file_manager1: bool,
-    /// The actions `ActivateAction` (and `org.gtk.Actions.Activate`) may name, delivered as
-    /// [`Event::Action`]. Any other name is refused with `InvalidArgs`, as a GApplication
-    /// refuses an action it doesn't export. Parameters aren't type-checked.
     pub actions: Vec<String>,
     /// Tests only: the name to ask for instead of `org.freedesktop.FileManager1`.
     #[doc(hidden)]
@@ -78,24 +56,14 @@ impl Default for Options {
 pub enum Claim {
     /// This process owns the app id. Its own launch is the first [`Event::CommandLine`].
     Primary(Primary),
-    /// Another process is the primary and took this launch. Exit with this status: the
-    /// primary's answer, or 1 when it couldn't be reached (said on stderr).
     Forwarded(i32),
-    /// The app id couldn't be claimed: no session bus, one that didn't answer within
-    /// `Options::bus_timeout`, or one that answered with an error ([`Unclaimed`]). This
-    /// process runs on its own, unclaimed. The [`Primary`] still delivers its own launch, and
-    /// nothing else.
     Standalone(Primary, Unclaimed),
 }
 
-/// What became of the request for a name beside the app id (`org.freedesktop.FileManager1`),
-/// when the claim made it.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum NameRequest {
     /// The primary owns it.
     Owned,
-    /// Another process owns it; the primary waits in the bus's queue and takes it when that
-    /// one lets go.
     Queued,
     /// The bus refused it, with this error. The primary runs without it.
     Failed(String),
@@ -112,22 +80,6 @@ pub enum Unclaimed {
     Error(String),
 }
 
-/// Claims `id` on the session bus for this launch.
-///
-/// Call it first in `main`, before Rune starts. The bus decides between launches at the same
-/// moment, so exactly one becomes the primary.
-///
-/// - [`Claim::Primary`]: attach the app ([`Primary::attach_rune`]) and run it.
-/// - [`Claim::Forwarded`]: the primary got the launch (its arguments, working directory and
-///   activation token); exit with the status.
-/// - [`Claim::Standalone`]: run as the primary would, alone.
-///
-/// The bus is `DBUS_SESSION_BUS_ADDRESS`, else `$XDG_RUNTIME_DIR/bus`.
-///
-/// A launch whose primary goes away before answering (it quit, crashed or released the app id
-/// meanwhile) tries again, and may become the primary itself. A primary that had already acted
-/// on the launch, then went away before its answer left, has seen it once already: the launch
-/// is then handled twice, by the old primary and by whichever takes it next.
 pub fn claim(id: &AppId, launch: Launch, options: &Options) -> Claim {
     let mut gone = None;
     for _ in 0..ATTEMPTS {
@@ -184,8 +136,6 @@ fn try_primary(id: &AppId, launch: &Launch, options: &Options) -> Attempt {
         )));
     }
     let (tx, rx) = mpsc::channel();
-    // Set when `claim` stopped waiting: a late connection must not become a primary nobody
-    // serves.
     let abandoned = Arc::new(AtomicBool::new(false));
     let thread = {
         let (id, inbox, abandoned) = (id.clone(), inbox.clone(), abandoned.clone());
@@ -275,8 +225,6 @@ fn serve(
             release(&conn, &names).await;
             return;
         }
-        // Released (`Primary::release`) or dropped: give the names up, so the next launch
-        // claims them, and let calls still waiting fail, so their launches try again.
         let done = stopped.await.ok();
         release(&conn, &names).await;
         finish_answers(&conn, &in_flight, options.bus_timeout).await;
@@ -287,8 +235,6 @@ fn serve(
     });
 }
 
-/// Exports the interfaces, then asks for the name. They are exported first so that a launch
-/// that finds the name taken always reaches them.
 async fn become_primary(
     id: &AppId,
     inbox: &Arc<Inbox>,
@@ -354,8 +300,6 @@ async fn become_primary(
     }
     let file_manager1 = match file_manager1 {
         None => None,
-        // No flags: wait in the queue behind another file manager, never replace it. Best
-        // effort: the app id is what makes the primary.
         Some(name) => Some(
             match conn
                 .request_name_with_flags(name, RequestNameFlags::empty())
@@ -379,14 +323,6 @@ async fn release(conn: &Connection, names: &[&str]) {
     }
 }
 
-/// After the names are given up and before the connection and runtime go (dropping the runtime
-/// aborts every handler still running): lets each forwarded launch already answered finish
-/// sending its output and status, and tells those the app still holds that the primary left,
-/// so they claim the app id again. Bounded by `limit`.
-///
-/// Then a round trip to the bus on the same connection: zbus writes a handler's reply after
-/// the handler returns, so once none is left in flight and the bus has answered a later call,
-/// it has read every reply written before it.
 async fn finish_answers(conn: &Connection, in_flight: &InFlight, limit: Duration) {
     in_flight.stop_waiting();
     let _ = tokio::time::timeout(limit, async {
@@ -408,8 +344,6 @@ async fn finish_answers(conn: &Connection, in_flight: &InFlight, limit: Duration
     .await;
 }
 
-/// The forwarded launches the primary is answering (`CommandLine` calls in flight), and
-/// whether it is giving the app id up.
 #[derive(Debug, Default)]
 pub(super) struct InFlight {
     state: Mutex<(usize, bool)>,
@@ -472,8 +406,6 @@ impl InFlight {
 /// The primary's side of the bus.
 #[derive(Debug)]
 struct Bus {
-    /// Taken on release: once every clone is gone the socket closes, and a launch still
-    /// waiting for an answer hears at once that the primary left.
     conn: Mutex<Option<Connection>>,
     runtime: tokio::runtime::Handle,
     stop: Mutex<Option<oneshot::Sender<mpsc::Sender<()>>>>,
@@ -509,21 +441,10 @@ impl Primary {
         }
     }
 
-    /// Hands every event to `sink`: those queued since the claim at once, on this thread and in
-    /// order, then each as it comes, on the bus thread. A second call replaces the sink.
-    ///
-    /// Events keep the order their calls arrived in. zbus runs each call as a task of its own,
-    /// started in arrival order on the bus thread's single-threaded runtime, and every handler
-    /// delivers its event before it first waits. Handlers can't run inline instead
-    /// (`#[interface(spawn = false)]`): `CommandLine` waits for the app's answer, and inline it
-    /// would hold every later call back until then.
     pub fn attach(&self, sink: impl Fn(Event) + Send + 'static) {
         self.inbox.attach(Box::new(sink));
     }
 
-    /// Delivers every event on Rune's loop: each runs `on` as an [`rune::AppHandle::update`],
-    /// in arrival order, also while no window shows. `on` may open windows there
-    /// (`rune::open_window`).
     pub fn attach_rune<S: 'static>(
         &self,
         handle: rune::AppHandle<S>,
@@ -544,18 +465,12 @@ impl Primary {
         self.status.load(Ordering::Relaxed)
     }
 
-    /// The primary's session bus connection, to serve more on it (a portal backend, say).
-    /// Use it from futures run with [`Primary::spawn`]: it lives on the bus thread's runtime.
-    /// None when standalone or released. Drop the clone with the work it serves: a clone kept
-    /// past [`Primary::release`] keeps the connection open.
     pub fn connection(&self) -> Option<Connection> {
         self.bus
             .as_ref()
             .and_then(|b| b.conn.lock().ok().and_then(|c| c.clone()))
     }
 
-    /// Runs `future` on the bus thread. False when standalone or released, and `future` is
-    /// dropped.
     pub fn spawn(&self, future: impl Future<Output = ()> + Send + 'static) -> bool {
         match &self.bus {
             Some(bus) if self.is_claimed() => {
@@ -566,24 +481,10 @@ impl Primary {
         }
     }
 
-    /// What became of `org.freedesktop.FileManager1` at the claim, with
-    /// `Options::file_manager1`; None without it, or standalone. A [`NameRequest::Queued`]
-    /// primary takes the name later, when its owner lets go.
     pub fn file_manager1(&self) -> Option<&NameRequest> {
         self.file_manager1.as_ref()
     }
 
-    /// Stops being the primary: gives the app id (and `org.freedesktop.FileManager1`) up,
-    /// and returns once they are released, or after `Options::bus_timeout`. Call it when the
-    /// app decides to quit, so a launch at that moment starts a new primary instead of
-    /// reaching one about to exit. Launches still waiting for an answer fail, and try again.
-    ///
-    /// Forwarded launches the app has answered still get their answer before the connection
-    /// goes; those it hasn't are told the primary left, and try again.
-    ///
-    /// From the bus thread itself (an [`Primary::attach`] sink), it asks and returns at once:
-    /// the thread it would wait for is its own. From another thread while an attach sink holds
-    /// the bus thread up, it waits until the sink returns, or `Options::bus_timeout`.
     pub fn release(&self) {
         let Some(bus) = &self.bus else { return };
         let Some(stop) = bus.stop.lock().ok().and_then(|mut s| s.take()) else {

@@ -1,19 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Showing a renamed row where its new name sorts, once the rename lands
-//! (`reveal_completed_rename` and its tick in `src/ui/browser/inline_edit/reveal.rs`).
-//!
-//! The browser says the rename completed before the listing has the entry under its new
-//! name, so the reveal waits for the shown view to list it, for 5 s at most. It gives up
-//! when the selection is no longer the renamed item alone (under its old name or its new
-//! one) or the keyboard has left its column: something else moved the cursor.
-//!
-//! Left out: a person's scroll or press during the wait does not cancel it. GTK hears both
-//! in the window and bumps its reveal generation (`yield_rename_reveal`, from
-//! `install_inline_edit_dismissal` in `src/ui/browser/inline_edit.rs`), so the person's
-//! scroll wins; here the reveal scrolls the row back once the listing has it. Parts have no
-//! pointer or scroll hook (`A7.md`, "Open").
-
 use std::time::{Duration, Instant};
 
 use rune::Tx;

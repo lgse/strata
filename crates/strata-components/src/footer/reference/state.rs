@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! [`ReferenceState`]: whether the reference is open, its query and category, held by the host
-//! and reached by accessor; and [`ReferenceKeys`], the keys it answers.
-
 use std::cell::RefCell;
 use std::fmt;
 use std::ops::Range;
@@ -13,13 +10,6 @@ use rune::{Chord, ChordKey, ChordMod, KeyEvent, TextEdit, Tx};
 use super::data::ShortcutData;
 use super::search::{Index, Lines, fold_query, lines};
 
-/// The shortcut reference's state. It outlives the panel: the query and the category survive
-/// closing and reopening, and while it stays open, the window losing focus changes nothing (the
-/// scroll position included), as in Strata. Each open shows the results from the top: the panel
-/// mounts afresh.
-///
-/// Used by: hosts, through [`ShortcutReference`](super::ShortcutReference) and the footer's
-/// F1 button.
 pub struct ReferenceState {
     open: bool,
     /// The search field.
@@ -82,10 +72,6 @@ impl ReferenceState {
         self.open
     }
 
-    /// Opens it with the query and category it had, its results from the top. Focus goes to
-    /// the search field (the panel's first focus stop) with any kept query selected, as
-    /// GTK's `search.grab_focus()` selects the entry's text on reopen. A host holding a footer
-    /// prompt open while the reference has the keyboard calls C18's `PromptState::hold_open(true)`.
     pub fn open(&mut self) {
         self.open = true;
         let end = self.search.text.len();
@@ -120,9 +106,6 @@ impl ReferenceState {
         self.search.focus = end;
     }
 
-    /// The chosen category's title, or `None` for All. A title the data loses is forgotten
-    /// once the panel shows the data without it, so the section coming back later isn't chosen
-    /// again behind the user's back.
     pub fn category(&self) -> Option<String> {
         self.category.borrow().clone()
     }
@@ -139,8 +122,6 @@ impl ReferenceState {
         data.sections.iter().position(|s| s.title == title)
     }
 
-    /// The results for the current query and category, `columns` rows to a line, from the
-    /// cache while nothing they depend on changed.
     pub(super) fn lines(&self, data: &ShortcutData, columns: usize) -> Rc<Lines> {
         if self.section(data).is_none() {
             // Shown as All now: forget the title.
@@ -178,10 +159,6 @@ impl ReferenceState {
     }
 }
 
-/// The keys the reference answers. [`ReferenceKeys::default`] is Strata's default map: F1
-/// toggles, Ctrl+B, Ctrl+F and Ctrl+L focus the categories, the search and the list;
-/// [`ReferenceKeys::tenxer`] adds `~` as a toggle. Which chords toggle where (not `~` from a
-/// text field) is the host's key dispatch; the reference matches them inside its panel.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ReferenceKeys {
     pub toggle: Vec<Chord>,
@@ -203,8 +180,6 @@ impl Default for ReferenceKeys {
 }
 
 impl ReferenceKeys {
-    /// Strata's 10xer map: `~` toggles too, typed with Shift (US) or without (AltGr on German
-    /// and French layouts).
     pub fn tenxer() -> Self {
         let mut keys = Self::default();
         keys.toggle.push(tilde());
@@ -212,16 +187,10 @@ impl ReferenceKeys {
         keys
     }
 
-    /// Whether `ev` is a toggle chord, following the layout as shortcuts do (`Chord::matches_tx`):
-    /// for the host's key dispatch, and inside the panel outside its search field. The chord
-    /// matches exactly, so F1 with Ctrl, Alt, Super or Shift held doesn't toggle.
     pub fn toggles(&self, ev: &KeyEvent, tx: &Tx) -> bool {
         self.toggle.iter().any(|c| c.matches_tx(ev, tx))
     }
 
-    /// Whether `ev` is a toggle chord by the character it typed alone (`Chord::matches`): in
-    /// the search field, so a typed `~` closes the reference while a key that reads as `~`
-    /// only through the layout fallback (Russian ё) types itself (lgse/strata#1714).
     pub fn toggles_typed(&self, ev: &KeyEvent) -> bool {
         self.toggle.iter().any(|c| c.matches(ev))
     }

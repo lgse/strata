@@ -57,8 +57,6 @@ pub(crate) fn drive(
         outcome.errors.push(format!("launch: {error}"));
         return outcome;
     }
-    // Only now: the process read the US keymap at startup, and key names
-    // keep meaning US key positions under any layout.
     if context.initial_layout != DEFAULT_LAYOUT {
         match launch_layout(application, context, &mut outcome) {
             Ok(()) => context.initial_layout.clone_into(layout),
@@ -423,9 +421,6 @@ pub(crate) fn file_failure(outcome: &mut Outcome, line: usize, label: &str, erro
     }
 }
 
-/// Switches the display's keyboard layout to `name`, then tells a target that has no
-/// display server which one it is now: it types under it itself. Its reply is recorded as a
-/// `keymap` step of the scenario line that asked, if one did.
 fn change_layout(
     application: &mut Application,
     context: &Context,

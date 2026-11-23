@@ -1,24 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The Connect to server dialog (`src/ui/window/network_location.rs` and
-//! `connect_typed_location` in `src/ui/browser/location.rs`), mounted on C15's
-//! [`strata_components::dialog::StrataDialog`].
-//!
-//! - **Opening.** Runs as `"connect-to-server"` from the sidebar Network row's context menu
-//!   (`crates/strata-app/src/sidebar/menu.rs`).
-//! - **Connecting.** Validates and opens the typed address through
-//!   `Browser::navigate_input_located`, sanitizing embedded URI credentials first
-//!   (`sanitize_uri_credentials`). While an asynchronous check is in flight, the address field,
-//!   **Pin to sidebar** checkbox and **Connect** button are disabled and the header spinner says
-//!   **Connecting…** (`MIN_CONNECTING` = 1 s minimum on failures so an instant failure still
-//!   reads as an attempt).
-//! - **Completion.** When the target column opens (`BrowserEvent::ColumnAdded`), the dialog
-//!   closes, focuses the active file view, and — when **Pin to sidebar** was checked — appends
-//!   the normalized location to the shared bookmarks store (`bookmarks::update`). Asynchronous
-//!   refusals (`BrowserEvent::LocationNavigationRejected`) are intercepted ahead of
-//!   [`crate::open_failed`] via [`fail_pending`] so the error shows inline under **Server
-//!   address** without opening a second modal.
-
 mod view;
 
 use std::path::PathBuf;
@@ -179,8 +160,6 @@ fn connect_to_server(app: &mut App, _: &Call<'_>, _: &mut Tx) -> Outcome {
     Outcome::Ran
 }
 
-/// Intercepts a `LocationNavigationRejected` raised by an in-flight Connect to server attempt
-/// (`fail_pending_connect` in `src/ui/browser/location.rs`).
 pub(crate) fn fail_pending(app: &mut App, error: &LocationValidationError) -> bool {
     let state = &mut app.connect_server;
     if !state.open {
@@ -347,8 +326,6 @@ fn pin_label(location: &Location) -> String {
     }
 }
 
-/// Canonicalizes a URI location through `gio::File` (`smb://host/share` -> `smb://host/share/`)
-/// so Unpin matches the reloaded bookmark (`network_location.rs`).
 fn normalized_location(location: Location) -> Location {
     location_for_file(&gio_file_for_location(&location)).unwrap_or(location)
 }

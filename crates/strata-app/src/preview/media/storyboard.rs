@@ -1,13 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Background video storyboard (`video-storyboard`) for timeline hover thumbnails and seek covers,
-//! matching GTK's `load_storyboard` (`src/ui/preview/video/storyboard.rs`).
-//!
-//! - Shares the single background decode slot with [`super::peaks`].
-//! - Streams cells into Rune through `Later`, then sends [`Update::Done`] so the video player can
-//!   hand the shared background slot over to `audio-peaks`.
-//! - Dropping [`StoryboardLoad`] cancels the sandbox helper and removes its GLib timer immediately.
-
 use std::{
     cell::RefCell,
     rc::{Rc, Weak},

@@ -1,11 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! C4's page in process: what the accessibility tree doesn't show or a script can't hold. The
-//! stuck group header is hidden from assistive technology, so this file is its check (with the
-//! `c4-grouped-stuck` PNG golden); modified presses can't be scripted at the pinned Rune; and
-//! the 100k scroll runs under `RUNE_COMMIT_BUDGET_MS=8`. Each test names the bullets it checks;
-//! the scripts in `tests/scripts/c4/` and `strata-components`' `list_table` tests check the rest.
-
 #[expect(
     dead_code,
     reason = "c4 uses only the gallery command and the scripts folder"
@@ -45,8 +39,6 @@ mod c4 {
         }
     }
 
-    /// The element keyed as `path`'s last part, under an element keyed as each part before it
-    /// (`row-3/cell-type`), unkeyed parts between them allowed.
     fn element(rt: &Runtime<Gallery>, path: &str) -> Option<ElementInfo> {
         let parts: Vec<&str> = path.split('/').collect();
         let (last, above) = parts.split_last()?;
@@ -57,9 +49,6 @@ mod c4 {
         })
     }
 
-    /// rename: the editor in a row's Name cell takes the keyboard. Rune gives the keyboard to
-    /// no field it cannot show, so a field that grows from no width of its own, as C5's does,
-    /// must get one from the cell.
     #[test]
     fn a_rename_field_in_a_row_takes_the_keyboard() {
         let rt = mount("c4-renaming-light");
@@ -95,9 +84,6 @@ mod c4 {
             .collect()
     }
 
-    /// view-modes: "Click the first of five entries and Ctrl+click the third. Shift+Down in
-    /// List or Shift+Right in Icons then selects only the third and fourth, as in Columns" (the
-    /// List half).
     #[test]
     fn a_ctrl_click_then_shift_down_selects_only_the_third_and_fourth() {
         let mut rt = mount("c4-default-light");
@@ -129,16 +115,10 @@ mod c4 {
         (label, part.visible[3])
     }
 
-    /// The plan's sticky file-type group headers (C4 work package: "sticky header while
-    /// scrolling"; no feature-map bullet names it, as Strata's GTK headers don't stick):
-    /// scrolling a grouped list keeps the top group's header stuck over the rows, and a scroll
-    /// into the next group sticks that group's header.
     #[test]
     fn the_top_groups_header_stays_stuck_while_the_list_scrolls() {
         let mut rt = mount("c4-grouped-light");
         let h = strata_kit::slots::list::row_height(rt.state.look());
-        // Folder (header line 0), Archive (line 9), then JPEG image (line 40, rows to 206):
-        // into JPEG image by the wheel.
         for _ in 0..12 {
             rt.wheel(480.0, 400.0, -h * 4.0);
             run(&mut rt, FRAME * 2.0);
@@ -156,11 +136,6 @@ mod c4 {
         assert_eq!(stuck(&rt).0.as_deref(), Some("Spreadsheet"));
     }
 
-    /// The scripted 100k scroll (`tests/scripts/c4/scroll-100k.json`) under
-    /// `RUNE_COMMIT_BUDGET_MS=8`: no commit over 8 ms once the scene is mounted, with five
-    /// columns of cells. As c1's, it waits out Rune's one-line-a-second limit after the mount
-    /// (U-C1e-5), and runs only in an optimized build:
-    /// `cargo test --profile perf -p strata-gallery --test c4 budget`.
     #[test]
     #[cfg_attr(debug_assertions, ignore = "perf: run with --profile perf")]
     fn scrolling_a_hundred_thousand_entries_stays_under_the_commit_budget() {
@@ -202,9 +177,6 @@ mod c4 {
         );
     }
 
-    /// browser/scrolling: "Moving the pointer away from the anchor scrolls toward it, faster the
-    /// further away, on both axes the listing can scroll." In List the axes are the rows' and
-    /// the table's sideways scroll (`AutoscrollPointer::sideways`, which this drives end to end).
     #[test]
     fn autoscroll_in_a_narrow_list_moves_the_rows_and_the_columns() {
         use rune::PointerButton;
@@ -249,10 +221,6 @@ mod c4 {
         element(rt, &format!("{SCOPE}-bar")).expect("the rows' bar")
     }
 
-    /// browser/scrolling: "Scrollbars fade in on hover or scrolling and stay hidden at rest".
-    /// A thumb drag cut off by a view switch (Ctrl+1 hides the table) leaves the bar hidden at
-    /// rest once the table is back: Rune tells the removed bar nothing (Rune draft R-C4-2), so
-    /// `ListTableState::reset` lets go of it (review round 1, SF1).
     #[test]
     fn a_bar_drag_cut_off_by_a_view_switch_leaves_the_bar_hidden_at_rest() {
         let ctrl_1 = KeyEvent {

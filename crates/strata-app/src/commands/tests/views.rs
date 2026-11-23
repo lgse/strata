@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The registry in each registered view: a key is offered ahead of the view's own keys and
-//! again after them, each stage once, and the view keeps every key no command takes.
-
 use std::cell::Cell;
 
 use rune::{Key as Logical, KeyEvent, Mods, Tx};
@@ -57,8 +54,6 @@ fn last(_: &mut App, _: &Call<'_>, _: &mut Tx) -> Outcome {
     Outcome::Declined
 }
 
-/// A command at the chain's start on a key the views take, and three on a key they leave: at
-/// a stage ahead of the view's keys, at the stage they stand in, and at the last.
 const PROBE: &[Action<App>] = &[
     Action::new("reads-end", reads_end).keys(&[at(Stage::Entry, end)]),
     Action::new("ahead", ahead).keys(&[at(Stage::Dismissal, f9)]),
@@ -71,8 +66,6 @@ fn the_views_and_a_probe() -> Vec<Entry<App>> {
     crate::parts_and(vec![part::<Probe>("probe", PROBE, |_| None)])
 }
 
-/// The dispatcher's stages ahead of `item_navigation` hear a key before GTK's list does, and
-/// the window's actions after it. A view's controllers are that list.
 #[test]
 fn the_views_own_keys_stand_where_the_chains_last_stage_does() {
     let ahead: Vec<_> = Stage::ALL
@@ -133,8 +126,6 @@ fn a_command_reads_a_key_before_the_view_and_the_view_keeps_what_none_takes(
             "each stage hears a key the view leaves once"
         );
 
-        // Two presses of one key in one frame are two presses: each is asked once, whether a
-        // command took the first or the view did.
         for takes in [true, false] {
             TAKES_END.set(takes);
             for _ in 0..2 {
@@ -148,7 +139,6 @@ fn a_command_reads_a_key_before_the_view_and_the_view_keeps_what_none_takes(
             assert_eq!(noted(), ["End, ahead of the view"; 2], "takes: {takes}");
         }
 
-        // `browser_commands` in `src/ui/window/keyboard/commands.rs`: F5 from the view.
         let copied = host.app().rows_copied();
         press(&mut host, Logical::Function(5), Mods::default());
         let read_again = host.run_until(PATIENCE, |host| host.app().rows_copied() > copied);
@@ -180,9 +170,6 @@ fn the_views_and_a_reader_of_f2() -> Vec<Entry<App>> {
     crate::parts_and(vec![part::<Reader>("reader", AFTER_RENAME, |_| None)])
 }
 
-/// `inline_editing` takes F2 only when `begin_rename` began one
-/// (`src/ui/window/keyboard/commands.rs:67`): in a folder with nothing to rename the key
-/// goes on down the chain.
 #[test]
 fn f2_with_nothing_to_rename_is_not_taken() {
     let name = "views::f2_with_nothing_to_rename_is_not_taken";

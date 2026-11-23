@@ -93,11 +93,6 @@ fn ramp_weights() -> Vec<f32> {
     .to_vec()
 }
 
-// The weight test, which measures through `rune::text`'s shared state, lives alone in
-// `tests/fonts_weight.rs`: see there.
-
-/// The face's family (name ID 1) and typographic family (16, when present) are the name
-/// [`FAMILIES`] gives Rune, and its `wght` axis spans every weight the ramps use.
 #[test]
 fn the_bundled_face_is_named_as_rune_matches_it_and_spans_the_ramps_weights() {
     let family = names(JETBRAINS_MONO, 1);
@@ -114,10 +109,6 @@ fn the_bundled_face_is_named_as_rune_matches_it_and_spans_the_ramps_weights() {
     }
 }
 
-/// Text in both slots and by name shapes in the bundled face: monospace at JetBrains Mono's
-/// 600-unit advance (on 1000 units per em). A proportional fallback gives `i` and `M`
-/// different advances, and DejaVu Sans Mono's is 602. It measures on its own text system, not
-/// through `rune::text`'s shared state, so parallel tests can't change what it measures.
 #[test]
 fn text_shapes_in_jetbrains_mono_not_a_fallback() {
     let mut text = TextSystem::new(FONTS, FAMILIES);

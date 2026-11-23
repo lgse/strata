@@ -899,8 +899,6 @@ fn first_key_falls_back_to_devices_heading_when_only_devices_are_shown() {
     );
 }
 
-// The ordering cases of GTK's `src/ui/window/device_order/tests.rs`.
-
 fn drive(sort_key: Option<&str>, name: &str, identity: &str) -> DeviceHome {
     DeviceHome::Drive(DriveRank {
         sort_key: sort_key.map(str::to_owned),

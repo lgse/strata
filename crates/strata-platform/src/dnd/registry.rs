@@ -1,25 +1,11 @@
 // SPDX-License-Identifier: MIT
 
-//! A window's drop targets, by element key, and how a hit test's path finds one.
-//!
-//! Rune lets a shim neither read an element's key nor add a second handler of a kind (draft
-//! U-P1-1, not filed), so targets are registered by the key the app gives
-//! [`Dnd::drop_target`](super::Dnd::drop_target), and found from `Tx::element_at`'s path,
-//! whose keyed segments name the element and its ancestors. A key must be unique in its
-//! window, or, through [`Dnd::drop_target_in`](super::Dnd::drop_target_in), inside the
-//! keyed ancestor it names as its scope: a path segment then finds the target registered
-//! under it and the nearest ancestor segment that is its scope. Entries are replaced each
-//! time the view builds the target; one whose element is gone is never hit, and the oldest
-//! go once there are more than [`CAP`].
-
 use std::collections::HashMap;
 
 use rune::Live;
 
 use super::api::DropTarget;
 
-/// The most targets kept per window: well above what a view shows at once, so a target
-/// built in a memoized subtree that hasn't been rebuilt in a while is still found.
 pub(crate) const CAP: usize = 16_384;
 
 pub(crate) struct Entry<S> {
@@ -80,9 +66,6 @@ impl<S: 'static> Registry<S> {
         self.entries.get(key)
     }
 
-    /// The registered ids of `path`'s targets, innermost first: a segment's own key, else
-    /// the segment under the nearest ancestor segment it was registered inside
-    /// ([`scoped`]).
     pub(crate) fn along(&self, path: &str) -> Vec<String> {
         let segs: Vec<&str> = keyed_segments(path).collect();
         let mut out = Vec::new();
@@ -109,8 +92,6 @@ impl<S: 'static> Registry<S> {
     }
 }
 
-/// The registry id of a target keyed `key` inside the element keyed `scope`. The separator
-/// is no character a key path uses.
 pub(crate) fn scoped(scope: &str, key: &str) -> String {
     format!("{scope}\u{1f}{key}")
 }

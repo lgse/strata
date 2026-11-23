@@ -126,8 +126,6 @@ fn exchanged_files_stay_listed_unless_they_are_deleted() -> Result<(), Box<dyn E
 fn a_watched_folder_reports_its_removal_when_an_ancestor_was_renamed() -> Result<(), Box<dyn Error>>
 {
     let _serial = serial();
-    // With the identity the folder loaded with, a folder made again at the old path is
-    // told apart from the one the watch follows.
     for remade in [false, true] {
         let root = tempfile::tempdir()?;
         let (ancestor, renamed) = (root.path().join("b"), root.path().join("b2"));
@@ -187,8 +185,6 @@ fn a_look_at_the_path_that_outlasts_later_batches_still_reports_the_departure()
     // The first look has found the folder at its path, and waits to answer.
     drain_until(|| gate.reached());
     fs::rename(&ancestor, &renamed)?;
-    // Each write is a batch of its own, flushed while the first look still waits, so only
-    // the look they ask for once it ends can see the folder gone.
     for name in ["two.txt", "three.txt"] {
         fs::write(renamed.join("c").join(name), b"")?;
         let stale = Location::local(ancestor.join("c").join(name));
@@ -502,8 +498,6 @@ fn a_folder_on_a_mount_that_stopped_answering_gets_no_monitor() -> Result<(), Bo
 fn a_watched_path_counts_as_departed_unless_it_holds_the_same_folder() -> Result<(), Box<dyn Error>>
 {
     type Change = fn(&Path) -> std::io::Result<()>;
-    // Each row changes the watched folder `b/c`, read with and without the identity the
-    // watch began on.
     let rows: [(&str, Change, bool, bool); 4] = [
         ("unchanged", |_| Ok(()), false, false),
         (

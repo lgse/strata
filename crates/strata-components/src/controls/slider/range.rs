@@ -1,14 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! A numeric range with a step grid and a page: the model both of C20a's controls step through.
-
-/// A closed range `min..=max` with a step grid anchored at `min`, a page, and the decimals a
-/// value is kept to.
-///
-/// The grid's points are `min + k * step`, plus `max` when the range isn't a whole number of
-/// steps. Keys move along the grid; a value between two points (a drag, a wheel, a value the
-/// host set) moves first to the next point in the direction of travel, as Strata's thumbnail
-/// ladder does.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Range {
     min: f64,
@@ -22,12 +13,6 @@ pub struct Range {
 const EPSILON: f64 = 1e-9;
 
 impl Range {
-    /// `min..=max` in steps of `step`, a page of ten steps (Rune's `on_step` page), and as
-    /// many decimals as `step` has (GTK's spin button rule): 1 keeps none, 0.1 keeps one.
-    ///
-    /// # Panics
-    ///
-    /// When `min` isn't below `max`, `step` isn't positive, or any of them isn't finite.
     pub fn new(min: f64, max: f64, step: f64) -> Range {
         assert!(
             min.is_finite() && max.is_finite() && step.is_finite(),
@@ -44,8 +29,6 @@ impl Range {
         }
     }
 
-    /// Page Up and Page Down move `page` (rounded to whole steps, at least one): Strata's
-    /// density sliders page 4 px.
     pub fn page(mut self, page: f64) -> Range {
         assert!(page.is_finite() && page > 0.0, "a page is positive: {page}");
         self.page = page;
@@ -106,8 +89,6 @@ impl Range {
         self.clamp(on)
     }
 
-    /// `v` moved `steps` grid points: up for positive, down for negative. From between two
-    /// points the first step lands on the next one in that direction. The ends hold.
     pub fn stepped(&self, v: f64, steps: i32) -> f64 {
         let v = self.clamp(v);
         if steps == 0 {

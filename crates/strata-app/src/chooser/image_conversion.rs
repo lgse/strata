@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! PNG image conversion inspection, consent prompt, and worker execution
-//! (`src/ui/chooser/image_conversion.rs`).
-
 use std::{
     path::{Path, PathBuf},
     sync::{

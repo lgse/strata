@@ -2,8 +2,6 @@
 
 use super::{Binding, Command, Key, Map, Modifiers, active::active, command::Alternate};
 
-/// A key a label shows: a command, which shows its bindings in the active
-/// map, one alternate of a command, or a fixed binding.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Shown {
     Command(Command),
@@ -41,9 +39,6 @@ impl Shown {
     }
 }
 
-/// Leaves out keys that never fire, so a label never shows one: a key no
-/// press reaches, and a plain printable key a user added to the default map
-/// while type-to-search types it.
 fn firing(command: Command, map: Map, bindings: Vec<Binding>) -> Vec<Binding> {
     let typing =
         map == Map::Default && active().is_some_and(|settings| settings.type_to_search_active());
@@ -53,8 +48,6 @@ fn firing(command: Command, map: Map, bindings: Vec<Binding>) -> Vec<Binding> {
         .collect()
 }
 
-/// The [`Shown`] keys of catalog constants, commands and fixed bindings alike,
-/// for [`Keys::Any`] and [`Keys::Chord`].
 #[macro_export]
 macro_rules! shown {
     ($($key:expr),* $(,)?) => { &const { [$($key.shown()),*] } };
@@ -84,14 +77,10 @@ impl Keys {
         self.resolved(Map::Default) == self.resolved(Map::Tenxer)
     }
 
-    /// Whether the active map binds what the label needs: any alternative, and
-    /// every step of a chord. An unbound row is left out rather than shown blank.
     pub fn is_bound(&self) -> bool {
         !label_in_map("en", self, Map::active()).is_empty()
     }
 
-    /// The commands the keys show, in order, chord triggers and digit
-    /// prefixes included.
     pub fn commands(&self) -> Vec<Command> {
         match self {
             Self::One(shown) => shown.command().into_iter().collect(),
@@ -132,8 +121,6 @@ impl Keys {
     }
 }
 
-/// Digit-row keys 1 to `last`, and 0 when `zero`, with shared modifiers or
-/// after a chord prefix, and its second key `then` when the digits follow two.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Digits {
     prefix: Option<Shown>,
@@ -156,8 +143,6 @@ impl Digits {
         }
     }
 
-    /// A chord's digit step. It also accepts Shift, which AZERTY needs to type
-    /// digits and which no chord step uses.
     pub const fn after(prefix: Shown, last: u8, zero: bool) -> Self {
         Self {
             prefix: Some(prefix),
@@ -195,8 +180,6 @@ impl Digits {
         self.ignored
     }
 
-    /// The digits alone, as a panel or badge lists them while the prefix or
-    /// modifiers are held. Handlers match the full range.
     pub const fn step(self) -> Self {
         Self {
             prefix: None,
@@ -211,8 +194,6 @@ impl Digits {
     }
 }
 
-/// The plain letters **a** to **z** after a chord prefix. Each letter names a
-/// slot rather than binding an action, so the range never rebinds.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Letters {
     prefix: Option<Shown>,
@@ -240,9 +221,6 @@ pub fn label(keys: &Keys) -> String {
     label_in(&rust_i18n::locale(), keys)
 }
 
-/// Searchable text: the label in the interface language and in English, so
-/// either spelling finds a shortcut, with shared modifiers also written out
-/// so that **Ctrl+0** finds **Ctrl++ / − / 0**.
 pub fn search_text(keys: &Keys) -> String {
     let local = rust_i18n::locale();
     let map = Map::active();
@@ -296,8 +274,6 @@ pub fn modifiers_label_in(locale: &str, modifiers: Modifiers) -> String {
     modifier_names(locale, modifiers).join("+")
 }
 
-/// One digit of `digits`, for a hint that names a single member: **g 3**,
-/// **Ctrl+Shift+3**, or **3** from [`Digits::step`].
 pub fn digit_label(digits: Digits, digit: u8) -> String {
     debug_assert!(digits.contains(digit), "{digit} is outside {digits:?}");
     let locale = rust_i18n::locale();
@@ -314,8 +290,6 @@ pub fn label_in(locale: &str, keys: &Keys) -> String {
     label_in_map(locale, keys, Map::active())
 }
 
-/// Empty when nothing it shows is bound in `map`, as for a chord with an
-/// unbound step.
 pub fn label_in_map(locale: &str, keys: &Keys, map: Map) -> String {
     match keys {
         Keys::One(shown) => alternatives(locale, &shown.bindings(map)),
@@ -343,8 +317,6 @@ fn primary_label(locale: &str, shown: Shown, map: Map) -> Option<String> {
         .map(|binding| binding_label(locale, binding))
 }
 
-/// Alternatives that share their modifiers write them once (**Ctrl+Alt+← / →**),
-/// unless a key is a letter, which alone would read as a plain key.
 fn alternatives(locale: &str, bindings: &[Binding]) -> String {
     let Some(first) = bindings.first() else {
         return String::new();

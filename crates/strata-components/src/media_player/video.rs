@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The video view (Strata's `src/ui/preview/video.rs`): the frame, its details and badges,
-//! the waveform timeline with the storyboard bubble, and the transport, in C14b's shared
-//! player layout.
-
 use rune::{Cx, El, Pixels, SurfaceFit, Tx, col, el, text};
 use strata_kit::look::Look;
 use strata_kit::slots::media as slot;
@@ -128,9 +124,6 @@ fn badge_row(st: &MediaState, key: &str, look: &Look) -> El {
     layout::badge_row(key, items, look)
 }
 
-/// The frame's keys. A video's frame takes the player's keys. Strata's plain media overlay
-/// takes none; GTK's directional focus moves Left from it to the play toggle, the one other
-/// control, and Left leaves that.
 fn frame_keys<S: 'static>(
     access: fn(&mut S) -> &mut MediaState,
     emit: Emit<S>,
@@ -161,9 +154,6 @@ fn plain_left(k: &rune::KeyEvent, play: &str, tx: &mut Tx) -> bool {
     left
 }
 
-/// The frame: the video surface (C14a, fixed), the stand-in before the first frame, the
-/// storyboard cell while a seek runs, and the bubble over the timeline's pointer. A press
-/// toggles playback; it holds the keys as the timeline does.
 #[expect(
     clippy::too_many_arguments,
     reason = "the builder's parts, passed on as the other views take them"
@@ -185,9 +175,6 @@ fn frame<S: 'static>(
     if let Some(px) = pixels.filter(|_| st.has_frame()) {
         surface = surface.pixels(px);
     }
-    // The frame names itself; the surface inside is the picture it shows. A press plays or
-    // pauses, so Rune makes it a button (deviation D9: Strata's is a focusable group). Plain
-    // media's frame goes unnamed, as Strata's overlay does.
     let surface = surface.build(look, cx).a11y_hidden();
     let name = match st.clip().kind {
         MediaKind::Video => st.labels().video_frame.clone(),
@@ -202,8 +189,6 @@ fn frame<S: 'static>(
         .clip_rounded(radius)
         .focusable(true)
         .no_focus_ring()
-        // The stand-in has faded through its own live opacity (or goes at once with
-        // animations off), and the cover and the bubble go at once, as Strata's do.
         .child_exit(rune::Transition::none())
         .on_layout_tx(move |s: &mut S, r: [f32; 4], tx: &mut Tx| {
             if !access(s).set_frame_box([r[2], r[3]]) {
@@ -258,9 +243,6 @@ fn frame<S: 'static>(
     wrap_with_ambient(st, key, frame, look)
 }
 
-/// Mounts the blurred 6×4 ambient glow halo behind the rounded video frame without clipping it
-/// to the frame's tight bounds. Keeps `{key}-frame` at a stable tree position so focus never
-/// drops when the first video frame lights the glow.
 fn wrap_with_ambient(st: &MediaState, key: &str, frame: El, look: &Look) -> El {
     if st.clip().kind != MediaKind::Video {
         return frame;
@@ -289,9 +271,6 @@ fn wrap_with_ambient(st: &MediaState, key: &str, frame: El, look: &Look) -> El {
         .child(frame)
 }
 
-/// The bubble over the frame while the pointer is over the timeline: the nearest storyboard
-/// cell, the pointer's time and its chapter ("1:05 · Intro"). It follows the pointer through a
-/// live offset; its contents change with the second, the cell and the chapter.
 fn bubble(st: &MediaState, key: &str, look: &Look) -> Option<El> {
     let (cell, t, chapter) = st.bubble()?;
     let k = &look.kit;

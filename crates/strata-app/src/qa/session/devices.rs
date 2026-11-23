@@ -1,11 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The session host's keyboard and pointer: a Wayland virtual keyboard and pointer on a
-//! connection of the session thread's own, so input reaches the window through the
-//! compositor and winit as a user's does. Modelled on the GTK harness's
-//! (`src/qa/input/wayland.rs`). The keymap is US, compiled here, as the scenarios name keys
-//! by where they are on a US keyboard.
-
 use std::{
     cell::{Cell, RefCell},
     collections::HashMap,
@@ -77,8 +71,6 @@ wayland_client::delegate_noop!(Globals: ZwpVirtualKeyboardV1);
 wayland_client::delegate_noop!(Globals: ZwlrVirtualPointerManagerV1);
 wayland_client::delegate_noop!(Globals: ZwlrVirtualPointerV1);
 
-/// What the compositor's modifier state becomes after a key event: depressed, latched,
-/// locked and the layout.
 type Modifiers = [u32; 4];
 
 pub(super) struct Devices {
@@ -93,8 +85,6 @@ pub(super) struct Devices {
     /// The output's size, which absolute motions are in.
     screen: (u32, u32),
     epoch: Instant,
-    /// Just before the last event was sent: Rune dispatching input after it has had that one
-    /// sent, if not yet dispatched every event before it.
     sent: Cell<Instant>,
 }
 
@@ -144,8 +134,6 @@ impl Devices {
         Ok(devices)
     }
 
-    /// The key a scenario names (GDK's names, which are XKB's keysym names), or the key that
-    /// types a one-character name.
     pub(super) fn named(&self, name: &str) -> Result<UsKey, String> {
         let mut keysym = xkb::keysym_from_name(name, xkb::KEYSYM_NO_FLAGS);
         if keysym.raw() == 0 {
@@ -250,8 +238,6 @@ impl Devices {
         self.position.get()
     }
 
-    /// A button as X numbers them: 4 and 5 are one notch of the wheel up and down, sent on
-    /// the press.
     pub(super) fn button(&self, number: u8, pressed: bool) -> Result<(), String> {
         let time = self.stamp();
         let notch = match number {
@@ -303,9 +289,8 @@ where
 
 /// The compositor maps the file, so it holds the keymap and its terminating NUL.
 fn keymap_file(text: &str) -> Result<OwnedFd, String> {
-    let descriptor =
-        rustix::fs::memfd_create("strata-rune-qa-keymap", rustix::fs::MemfdFlags::CLOEXEC)
-            .map_err(|error| format!("cannot create the keymap file: {error}"))?;
+    let descriptor = rustix::fs::memfd_create("strata-qa-keymap", rustix::fs::MemfdFlags::CLOEXEC)
+        .map_err(|error| format!("cannot create the keymap file: {error}"))?;
     let mut file = std::fs::File::from(descriptor);
     file.write_all(text.as_bytes())
         .and_then(|()| file.write_all(&[0]))
@@ -313,8 +298,6 @@ fn keymap_file(text: &str) -> Result<OwnedFd, String> {
     Ok(file.into())
 }
 
-/// The keymap's keys by the keysym each types: keycodes upward, unshifted before shifted, as
-/// the GTK harness picks them.
 fn us_keys(keymap: &xkb::Keymap) -> HashMap<u32, UsKey> {
     let mut keys = HashMap::new();
     for keycode in keymap.min_keycode().raw()..=keymap.max_keycode().raw() {

@@ -171,8 +171,6 @@ fn hovering_inactive_tab_springs_tab_and_keeps_drag_alive_until_drop() {
 
             let from = label_centre(&mut host, "todo.txt");
             let second_centre = key_centre(&mut host, &tab_key("tabs", TabId(second.0)));
-            // A drag cancelled on the sprung tab first, as `tabs/hovered-tab-takes-drop` does:
-            // here the second drag is the one that lost its drop without the stand-in's wait.
             for cancelled in [true, false] {
                 drag_steps(&mut host, from, second_centre, false);
                 assert!(

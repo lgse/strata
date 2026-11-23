@@ -1,17 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Find over a document's text, as Strata's rendered preview finds (`match_ranges` and
-//! `find_matches` in `src/ui/virtual_preview`): literal and case-insensitive by lowercase
-//! folding, so "éclair" finds "ÉCLAIR", matches that don't overlap ("aa" in "aaa" is one), and
-//! one text across units, joined by a newline where a block or line ends, so a match can
-//! span two units. Table cells, images, rules and gaps aren't searched.
-//!
-//! The joined, folded text is built once per document ([`Index`]); each query only searches
-//! it, so typing into the find bar costs a scan of the document, not a rebuild of it. Kept
-//! over `rune_kit::search::Fold` (Rune `#790`), which strips accents asymmetrically (`"cafe"`
-//! matches `"café"`) where Strata's `match_ranges` folds case without stripping accents, and
-//! folds per call rather than indexing the document once.
-
 use std::ops::Range;
 
 /// A point in the document: a unit and a byte offset into its shown text.
@@ -32,9 +20,6 @@ pub struct Match {
 #[derive(Debug, Default)]
 pub(crate) struct Folded {
     pub folded: String,
-    /// `(folded offset, text offset)` wherever the two stop moving together: around each
-    /// character whose lowercase takes a different number of bytes. Between marks, an
-    /// offset in one is the same distance into the other.
     marks: Vec<(usize, usize)>,
     len: usize,
 }
@@ -62,13 +47,9 @@ impl Folded {
         }
     }
 
-    /// The text offset of folded offset `at`: inside a character that folded to another
-    /// length, its start.
     fn back(&self, at: usize) -> usize {
         let i = self.marks.partition_point(|&(f, _)| f <= at) - 1;
         let (f, t) = self.marks[i];
-        // Past a mark that opens a resized character, everything up to its closing mark is
-        // that character: map it to its start.
         if self
             .marks
             .get(i + 1)
@@ -79,8 +60,6 @@ impl Folded {
         (t + (at - f)).min(self.len)
     }
 
-    /// The text offset of folded offset `at` taken as a match's end: inside a resized
-    /// character, its end.
     fn back_end(&self, at: usize) -> usize {
         let i = self.marks.partition_point(|&(f, _)| f < at);
         if let Some(&(nf, nt)) = self.marks.get(i)
@@ -123,8 +102,6 @@ pub(crate) struct Index {
 }
 
 impl Index {
-    /// The searchable texts in order, each a unit, its shown text, and whether a newline
-    /// follows it in the text find reads (the unit ends its block or its line).
     pub fn new<'a>(texts: impl IntoIterator<Item = (usize, &'a str, bool)>) -> Index {
         let mut joined = String::new();
         let mut starts = Vec::new();

@@ -1,16 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The commands each reference section names, for the keyboard settings' tables: GTK's
-//! `command_sections` (`src/ui/shortcut_reference.rs`), over the ported tables in
-//! `contents.rs` and `tenxer.rs`. The 10xer map's sections are the window's in every view; the
-//! portal chooser's scopes (`tenxer_scopes`) join them with [A20]'s chooser rows.
-//!
-//! **A copy:** `src/ui` does not move, so this is kept beside GTK's by hand. A change to `command_sections` or its helpers
-//! on `main` merges clean and changes nothing here: make the same change in the merge
-//! (`docs/rune/shared-state.md`, "Merging from `main`").
-//!
-//! [A20]: ../../../../docs/rune/parity/packages/A20.md
-
 use strata_desktop::keys::{Command, Map};
 
 use super::contents::{self, Mention, Mode, Section, Shortcut};
@@ -20,8 +9,6 @@ const NAVIGATION: &str = "Navigation";
 
 const NAVIGATION_TITLES: [&str; 3] = ["Columns navigation", "Icons navigation", "List navigation"];
 
-/// `command_sections`: each section's title and the commands its rows show, every view's
-/// sections merged in the order their views give them.
 pub(crate) fn command_sections(map: Map) -> Vec<(&'static str, Vec<Command>)> {
     let mut merged: Vec<(&'static str, Vec<Command>)> = Vec::new();
     for mode in [Mode::Columns, Mode::Icons, Mode::List] {
@@ -47,8 +34,6 @@ fn merged_title(title: &'static str) -> &'static str {
     }
 }
 
-/// The index of `title`'s section, inserted after `previous` when new so sections keep the
-/// order their views give them.
 fn merged_section(
     merged: &mut Vec<(&'static str, Vec<Command>)>,
     title: &'static str,

@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! X1's page in process: what the scripts and the accessibility goldens can't see. The
-//! header's drag region (Rune's titlebar actions), the window's focus, the look the desktop's
-//! settings rebuild, the colours a reload animates, and the volumes the fake bridge delivers.
-
 mod x1 {
     use rune::{Cx, El, Env, Key, KeyEvent, Mods, Runtime, TitlebarAction};
     use strata_gallery::scenes::x1::shell::{self, Hooks, ShellWindow, Volumes};
@@ -48,8 +44,6 @@ mod x1 {
         rt.frame(FRAME);
     }
 
-    /// A click at `(x, y)`, and what it did to the window: a move, a double-click zoom, or
-    /// nothing (a press an element kept).
     fn click(rt: &mut Runtime<Gallery>, (x, y): (f32, f32)) -> Option<TitlebarAction> {
         rt.frame(0.01);
         rt.pointer_move(x, y);
@@ -68,9 +62,6 @@ mod x1 {
             .fill
     }
 
-    /// app/window: "On such a compositor, dragging Strata's header moves the window" (the
-    /// move; the edges are strata-platform's `csd`). The double press pairs within Rune's fixed
-    /// 0.5 s (draft U13), and the header's buttons keep their presses.
     #[test]
     fn the_header_moves_the_window_and_its_buttons_keep_their_presses() {
         let mut rt = mount("x1-shell-light");
@@ -102,8 +93,6 @@ mod x1 {
         );
     }
 
-    /// A host whose root is the shell view, as `examples/shell`'s windows are: Rune hears the
-    /// window's focus only on the view's root, which on the gallery page is the gallery's.
     struct Host {
         window: ShellWindow,
         look: Look,
@@ -141,9 +130,6 @@ mod x1 {
         assert!(rt.state.window.chrome.active);
     }
 
-    /// settings/themes/portal-text-scaling: "In that process, changing `text-scaling-factor`
-    /// while the window is open rescales its text and interface icons without a restart." The
-    /// desktop's scale reaches the look's type and icons at once.
     #[test]
     fn a_text_scale_change_rescales_the_look() {
         let mut rt = mount("x1-shell-light");
@@ -157,8 +143,6 @@ mod x1 {
         assert_eq!(back, before);
     }
 
-    /// The desktop's animations switch reaches the look, and with it off the volumes dialog
-    /// shows at once (C15 follows `look.animations`).
     #[test]
     fn with_the_desktop_s_animations_off_the_dialog_shows_at_once() {
         let mut rt = mount("x1-shell-dark");
@@ -174,8 +158,6 @@ mod x1 {
         assert_eq!((layer.opacity, layer.scale), (1.0, 1.0));
     }
 
-    /// settings/themes: "Deleting the file, or making it unreadable, restores Strata's default
-    /// appearance" — through the theme switch's colour motion, as K4 asks of a reload.
     #[test]
     fn a_reload_moves_the_colours_as_a_theme_switch_does() {
         let mut rt = mount("x1-shell-dark");
@@ -195,8 +177,6 @@ mod x1 {
         assert_eq!(fill(&rt, "x1-header"), theme);
     }
 
-    /// settings/themes: "Creating, editing, or deleting the file while Strata runs re-applies
-    /// it…": an edit reaches the look the page draws with, once the settle has passed.
     #[test]
     fn an_edit_re_applies_the_file_to_the_look() {
         let mut rt = mount("x1-shell-light");
@@ -207,8 +187,6 @@ mod x1 {
         assert_eq!(rt.state.x1.window.overrides.problems, 1);
     }
 
-    /// K4's host rule: a read that finds the same overrides changes nothing, and one that
-    /// finds only the file's presence changed updates the readout without a reload.
     #[test]
     fn a_read_that_finds_nothing_new_changes_nothing() {
         let mut rt = mount("x1-shell-dark");
@@ -277,8 +255,6 @@ mod x1 {
         );
     }
 
-    /// Each golden scene's look is built in its own appearance with the fake file last (the
-    /// file's inset beats Strata's density).
     #[test]
     fn each_golden_scene_builds_its_look_with_the_file_last() {
         let page = scenes::all().find(|p| p.id == "x1").expect("the x1 page");

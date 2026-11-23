@@ -1,13 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Thumbnails in List rows, from the window's store (`shell::thumbnails`), as GTK's List rows
-//! draw them: 18 px, in place of the row's icon, at full opacity
-//! (`request_thumbnail_and_metadata` in `src/ui/browser_modes/list_factory.rs`).
-//!
-//! One store viewer for the one pane. As in Columns (`crate::columns::thumbs`, whose
-//! [`Synced`] rule it shares), the view's `on_visible` only records its range
-//! ([`Thumbs::see`]), and the part's `poll` syncs the store once.
-
 use std::{cell::Cell, ops::Range, time::Duration};
 
 use rune::Tx;
@@ -20,7 +12,6 @@ use strata_kit::look::Look;
 
 use crate::{App, columns::thumbs::Synced, shell, slots::Later, thumbnails::Viewer};
 
-/// A row's thumbnail, in points: GTK's 18 × 18 (`set_thumbnail_or_icon(…, 18, 18)`).
 const ROW_THUMBNAIL: f32 = 18.0;
 
 pub(super) struct Thumbs {
@@ -62,8 +53,6 @@ impl Thumbs {
         self.synced.is_deferring(dragging)
     }
 
-    /// The rows' icon: the entry's thumbnail from the window's store, else its icon, at full
-    /// opacity, as GTK's List rows draw it.
     pub(super) fn icon(&self, look: &Look) -> Slot<App> {
         icon_slot(shell::thumbnails, self.step(look), ROW_THUMBNAIL)
             .dragging(|app: &App| app.list.thumbs.is_deferring(app.list.table.is_dragging()))
@@ -86,10 +75,6 @@ fn parts(app: &mut App) -> (&mut Viewer, &mut ThumbnailStore) {
     (&mut app.list.thumbs.viewer, app.window.thumbnails_mut())
 }
 
-/// Syncs the store with the pane when its range, listing or step changed, and asks the pool
-/// for what the store wants. Defers syncing while the scrollbar thumb is actively dragged
-/// until release or a brief pause. True when the store pruned handles a row may still draw,
-/// so the view builds again.
 pub(super) fn poll(app: &mut App, clock: f64, tx: &mut Tx) -> bool {
     let step = app.list.thumbs.step(&app.look);
     let dragging = app.list.table.is_dragging();

@@ -1,18 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Which of Rune's ways to wake its loop still run while a window is covered, and how late:
-//! `wake-probe waker|timer|update [PERIOD_MS]`. Something is due every period, 100 ms unless given:
-//!
-//! - `waker`: a thread calls the `Waker` that `AppSpec::setup` hands out, and `poll` logs how
-//!   long after the call it ran.
-//! - `timer`: `poll` asks for `Tx::wake_after`, and logs how long after the deadline it ran.
-//! - `update`: a thread calls `AppHandle::update_if`, and the closure logs how long after the
-//!   call it ran.
-//!
-//! Each run is one JSON line on stdout: `{"ev":"ran","late_ms":0.4}`. Upstream Rune #139 is a
-//! covered Wayland window whose `poll` and timers stop; `tests/session/wake.rs` reads these
-//! lines with the window shown and then covered.
-
 use std::io::Write;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -40,8 +27,6 @@ struct Probe {
     called: Arc<Mutex<Option<Instant>>>,
     /// When `poll`'s timer is due.
     due: Option<Instant>,
-    /// Whether the window has keyboard focus. A cover takes it, so the window owes a frame it
-    /// cannot draw while covered, as any app that shows its focus does.
     focused: bool,
 }
 
@@ -98,9 +83,6 @@ fn answer_waker(probe: &Probe) {
 /// Logs how late the timer is, and asks for the next one.
 fn answer_timer(probe: &mut Probe, tx: &mut Tx) {
     let now = Instant::now();
-    // Rune counts a deadline from its own clock, read before this function's, so a wake can
-    // come a moment early. Anything else that runs `poll` comes here too, and must not end
-    // the chain.
     if let Some(due) = probe.due.filter(|due| now + EARLY < *due) {
         tx.wake_after(due - now);
         return;

@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! An entry moved out of the folder, a selectionless removal: the keyboard goes to the row
-//! beside it, unselected, as GTK's list view moves its focus there, and the browser holds no
-//! cursor, so a folder there does not open (finding lgse/strata#2546).
-
 use rune::Mods;
 use strata_core::model::Location;
 

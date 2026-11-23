@@ -13,9 +13,6 @@ use crate::{
     test_support::{PATIENCE, fixture, hosted},
 };
 
-/// An in-flight rename records its target `EntryId` in `handover::Moving` before the renamed
-/// row appears in the listing. Pruning `Ids` while that rename is pending must retain the
-/// target id in both Columns and single-pane views while still evicting unreferenced ids.
 #[test]
 fn pending_rename_target_id_survives_pruning() {
     hosted(
@@ -28,8 +25,6 @@ fn pending_rename_target_id_survives_pruning() {
             let listed = host.run_until(PATIENCE, |host| host.app().columns.rows_shown(0) > 0);
             assert!(listed, "fixture folder should load in columns");
 
-            // Switching to Icons populates its `Pane` from the open browser while keeping
-            // Columns' listing intact, so both views hold `readme.md` simultaneously.
             host.runtime().update(|app, tx| {
                 assert!(shell::show_view(app, "icons", tx));
             });
@@ -65,8 +60,6 @@ fn pending_rename_target_id_survives_pruning() {
                 unreachable!("Icons is a View part");
             };
 
-            // Queue pending renames (as `BrowserEvent::ItemRelocated` does before the
-            // renamed row arrives in the directory listing).
             host.runtime().update(|app, tx| {
                 (columns_view.apply)(
                     app,

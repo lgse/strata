@@ -1,14 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Theme colours as Strata stores them: 8-bit sRGB with alpha, parsed from the forms GTK
-//! accepts, and the blending and contrast arithmetic Strata's theme code does on them.
-//!
-//! Strata blends and measures contrast on 8-bit sRGB channels (`src/ui/theme/color.rs` and
-//! `omarchy.rs` at lgse/strata 35ee677ab), rounding half away from zero. The same arithmetic
-//! here gives the same colours, so a bundled theme's lifted dim text and an Omarchy Contrast
-//! palette match Strata's to the byte. Rune's own `Color::mix` works in linear light and
-//! would not.
-
 use std::fmt;
 
 use rune::Color;
@@ -34,18 +25,6 @@ impl Rgba8 {
         Rgba8 { r, g, b, a: 255 }
     }
 
-    /// Parses a colour in a form GTK's `gdk::RGBA::parse` accepts, as Strata's theme files
-    /// may use:
-    ///
-    /// - hex: `#rgb`, `#rrggbb`, `#rrrgggbbb` and `#rrrrggggbbbb`, and with alpha `#rgba`,
-    ///   `#rrggbbaa` and `#rrrrggggbbbbaaaa`;
-    /// - `rgb()` and `rgba()`, with channels from 0 to 255 or in percent;
-    /// - `hsl()` and `hsla()`;
-    /// - CSS Color 4's named colours, and `transparent`.
-    ///
-    /// Commas or spaces separate the arguments, and a `/` may come before the alpha. Case
-    /// doesn't matter. X11 colour names that CSS lacks (`lightgoldenrod`) don't parse:
-    /// GTK reads those through Pango's table, which this doesn't carry.
     pub fn parse(value: &str) -> Option<Rgba8> {
         let v = value.trim().to_ascii_lowercase();
         if let Some(hex) = v.strip_prefix('#') {
@@ -123,9 +102,6 @@ impl Rgba8 {
         }
     }
 
-    /// Strata's badge foreground on a coloured fill (`contrasting_foreground` in
-    /// `src/assets.rs`): dark ink (`#172033`) on light fills and light ink (`#f8fafc`) on dark
-    /// ones.
     pub const fn contrasting_ink(self) -> Rgba8 {
         let luma = (self.r as u32) * 299 + (self.g as u32) * 587 + (self.b as u32) * 114;
         if luma > 150_000 {
@@ -147,9 +123,6 @@ impl fmt::Display for Rgba8 {
     }
 }
 
-/// GTK's hex forms. Four, eight and sixteen digits carry alpha; otherwise three channels of
-/// one to four digits each. A channel of `n` digits widens to 16 bits by repeating its bits,
-/// as Pango does, then rounds to 8.
 fn parse_hex(hex: &str) -> Option<Rgba8> {
     if !hex.bytes().all(|b| b.is_ascii_hexdigit()) {
         return None;
@@ -176,8 +149,6 @@ fn parse_hex(hex: &str) -> Option<Rgba8> {
     Some(Rgba8 { r, g, b, a })
 }
 
-/// The arguments of a colour function: commas or spaces between them, an optional `/` before
-/// the alpha.
 fn args(s: &str) -> Vec<&str> {
     s.split([',', ' ', '/'])
         .map(str::trim)
@@ -249,8 +220,6 @@ fn parse_hsl(s: &str) -> Option<Rgba8> {
     })
 }
 
-/// `t` of the way from `a` to `b`, per 8-bit channel, rounded half away from zero: Strata's
-/// `blend`. The result is opaque.
 pub fn blend(a: Rgba8, b: Rgba8, t: f64) -> Rgba8 {
     let ch = |x: u8, y: u8| {
         let (x, y) = (f64::from(x), f64::from(y));
@@ -278,17 +247,12 @@ pub fn contrast(a: Rgba8, b: Rgba8) -> f64 {
     (a.max(b) + 0.05) / (a.min(b) + 0.05)
 }
 
-/// The first of `color` blended toward `pole` in 1/255 steps that reaches `ratio` against
-/// every one of `backgrounds`: Strata's `readable`. Strata's version panics when no step does;
-/// this returns the pole.
 pub fn readable(color: Rgba8, backgrounds: &[Rgba8], pole: Rgba8, ratio: f64) -> Rgba8 {
     toward(color, pole, |c| {
         backgrounds.iter().all(|&bg| contrast(c, bg) >= ratio)
     })
 }
 
-/// The first of `color` blended toward `pole` in 1/255 steps for which `done` holds, or the
-/// pole.
 pub fn toward(color: Rgba8, pole: Rgba8, done: impl Fn(Rgba8) -> bool) -> Rgba8 {
     (0..=255)
         .map(|step| blend(color, pole, f64::from(step) / 255.0))

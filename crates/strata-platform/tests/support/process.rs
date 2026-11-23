@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Processes a session spawns: stdout kept line by line (and logged), stderr logged, killed when
-//! dropped.
-
 use std::fs::File;
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
@@ -91,9 +88,6 @@ impl Proc {
             .unwrap_or_default()
     }
 
-    /// Waits for the first stdout line, from line `from` on, that `f` maps to a value, and
-    /// gives its index too. Panics with the process's output once the session timeout passes or
-    /// stdout closes first.
     pub fn wait_for<T>(
         &self,
         from: usize,
@@ -138,8 +132,6 @@ impl Proc {
         self.wait_json_from(0, what, pred).1
     }
 
-    /// The first JSON stdout line passing `pred` at index `from` or later, with its index:
-    /// pass `index + 1` (or [`Proc::line_count`] taken before an action) to wait for the next.
     pub fn wait_json_from(
         &self,
         from: usize,
@@ -192,8 +184,6 @@ impl Proc {
         "still running".into()
     }
 
-    /// Waits for the process to exit and for its stdout to close, within the session
-    /// timeout, so [`Proc::lines`] then holds everything it wrote.
     pub fn wait_exit(&mut self) -> ExitStatus {
         let deadline = Instant::now() + timeout();
         loop {
@@ -216,8 +206,6 @@ impl Proc {
         }
     }
 
-    /// Waits until the reader has seen the end of stdout. A child of the process that keeps
-    /// stdout open can hold it past the deadline; then the lines so far are what there is.
     fn wait_closed(&self, deadline: Instant) {
         let (lines, ready) = &*self.out;
         let mut l = lines.lock().expect("process output lock");

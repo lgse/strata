@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! One test per feature-map Behavior bullet the keyboard machine decides. Each names its
-//! bullet; tests of the work package's own scope (type-ahead, Ctrl+Space, layouts) say so.
-//! Ids are the entries' first indices. Page sizes are always the geometry's `page_step()`.
-
 use std::time::Duration;
 
 use rune::{Chord, ChordKey, Key, KeyEvent, Mods};
@@ -335,8 +331,6 @@ fn hjkl_pass_with_type_to_search_on() {
 
 #[test]
 fn left_at_the_first_tile_and_in_list_reaches_the_edge() {
-    // browser/selection/keyboard-navigation: In Icons, Left on the first tile focuses the visible sidebar; in List, Left from any entry does.
-    // browser/selection/keyboard-navigation: With the sidebar hidden, Left in Icons or List does not change directory.
     let mut g = Rig::grid(8, 4);
     g.click(0);
     assert!(g.key(Key::Left));
@@ -352,13 +346,10 @@ fn left_at_the_first_tile_and_in_list_reaches_the_edge() {
 
 #[test]
 fn left_at_a_later_row_start_wraps_to_the_previous_row() {
-    // browser/selection/keyboard-navigation: In Icons, Left on a later row's first tile moves to the previous row's last tile, with Keep arrows on or off.
-    // browser/selection/keyboard-navigation: In the portal file chooser's Icons view, Left at a row start wraps to the previous row.
     let mut g = Rig::grid(12, 4);
     g.click(4);
     g.key(Key::Left);
     assert_eq!((g.selected(), g.cursor()), (vec![3], Some(3)));
-    // Right at a row end wraps the other way, as GTK's grid does.
     g.key(Key::Right);
     assert_eq!(g.cursor(), Some(4));
     g.click(11);
@@ -542,8 +533,6 @@ fn a_plain_move_re_anchors_shift_paging() {
 
 #[test]
 fn columns_shift_home_and_end_extend_from_the_anchor() {
-    // browser/selection: In Columns, Shift+Home and Shift+End extend from the range anchor to the first or last entry, not only the edge entry.
-    // A Columns column is a list of uniform rows.
     let mut r = Rig::list(9);
     r.click(3);
     r.shift(Key::End);
@@ -554,8 +543,6 @@ fn columns_shift_home_and_end_extend_from_the_anchor() {
 
 #[test]
 fn ctrl_a_selects_every_entry_and_keeps_the_cursor() {
-    // C1c scope: Ctrl+A routing. Which collection hears it (the focused column, not the
-    // deepest) is C2's, with one controller per column.
     let mut r = Rig::list(5);
     r.click(2);
     assert!(r.ctrl_letter('a'));
@@ -615,8 +602,6 @@ fn escape_with_nothing_selected_is_left_to_the_view() {
 
 #[test]
 fn page_keys_move_focus_and_selection_by_a_page() {
-    // browser/scrolling: Page Up and Page Down
-    // (The keypad keys are Rune's logical keys; only the focused column moving is C2's.)
     let mut r = Rig::list(50);
     let page = r.page();
     r.click(2);
@@ -635,8 +620,6 @@ fn page_keys_move_focus_and_selection_by_a_page() {
 
 #[test]
 fn a_page_is_the_geometry_page_step_in_icons_rows_times_tiles() {
-    // browser/scrolling: A page is the number of rows that fit the viewport minus one, kept as overlap; in Icons it is those rows times the tiles per row.
-    // The size is the geometry's (W1 for lists, C3 for the grid): the machine moves by it.
     let mut g = Rig::grid(60, 5);
     let page = g.page();
     g.click(1);
@@ -733,11 +716,8 @@ fn plain_home_or_end_leaves_only_the_target_selected() {
     assert_eq!(r.selected(), [9]);
 }
 
-// The work package's own scope.
-
 #[test]
 fn ctrl_moves_the_cursor_without_selecting_and_ctrl_space_toggles() {
-    // C1c scope: Ctrl moves the cursor without selecting, and Ctrl+Space toggles.
     let mut g = Rig::grid(8, 4);
     g.click(1);
     assert!(g.ctrl(Key::Right));
@@ -753,7 +733,6 @@ fn ctrl_moves_the_cursor_without_selecting_and_ctrl_space_toggles() {
 
 #[test]
 fn a_repeated_key_counts_as_a_press() {
-    // C1c scope (recorded decision): a key repeat moves like a press.
     let mut r = Rig::list(5);
     r.click(0);
     let down = KeyEvent {
@@ -770,7 +749,6 @@ fn a_repeated_key_counts_as_a_press() {
 
 #[test]
 fn a_host_rebinds_and_lists_keys() {
-    // C1c scope: the key map is configurable (Strata's keymap rebinding).
     let mut map = KeyMap::default_map();
     let down = Command::Select(Target::Step(Direction::Down));
     let chords = map.chords_for(down);
@@ -830,7 +808,6 @@ fn tenxer_jumps_land_on_the_ends_without_a_cursor() {
     t.typed("G");
     assert_eq!(t.cursor(), Some(6));
     let mut t = Rig::tenxer(7);
-    // `g g` is C18's chord; its step runs the machine's First through the handle.
     t.handle.run(Command::Cursor(Target::First));
     assert!(t.handle.pending());
     assert!(t.m.tick(&mut t.f));
@@ -982,8 +959,6 @@ fn tenxer_shift_arrows_do_nothing_and_paging_extends_a_range() {
 
 #[test]
 fn a_range_ends_when_something_else_changes_the_selection() {
-    // integration/10xer-mode: `v` starts a range from the cursor and `V` starts an unselect range; the footer shows `VISUAL` or `UNSET` while it is active.
-    // A click during a range ends it, as a pointer change does in Strata.
     let mut t = Rig::tenxer(10);
     t.click(1);
     t.typed("v");
@@ -1008,9 +983,6 @@ fn tenxer_empty_folder_has_nothing_to_select() {
 
 #[test]
 fn tenxer_keys_never_run_their_default_action() {
-    // integration/10xer-mode: With the file list focused, `h`/`j`/`k`/`l`, other letters, Space, Ctrl+D, Ctrl+F, Ctrl+B, and Ctrl+R never also run their default-map action.
-    // Taking a key keeps it from the page and Rune; letters the 10xer map doesn't bind (its
-    // verbs) are C18's and the host's.
     let mut t = Rig::tenxer(30);
     t.click(10);
     for c in ["h", "j", "k", "l", " "] {
@@ -1023,7 +995,6 @@ fn tenxer_keys_never_run_their_default_action() {
 
 #[test]
 fn tenxer_ctrl_up_and_down_move_the_cursor_only() {
-    // C1c scope (recorded decision): in 10xer, Ctrl+Up and Ctrl+Down move the cursor only.
     let mut t = Rig::tenxer(9);
     t.click(4);
     t.ctrl(Key::Down);
@@ -1034,11 +1005,6 @@ fn tenxer_ctrl_up_and_down_move_the_cursor_only() {
 
 #[test]
 fn tenxer_space_inside_a_range_flips_the_cursor_and_keeps_the_range() {
-    // integration/10xer-mode: `v` starts a range from the cursor and `V` starts an unselect range; the footer shows `VISUAL` or `UNSET` while it is active.
-    // The feature map has no bullet for Space inside a range (an owner item); this cites the
-    // closest, as W1d's tests do.
-    // Inside a range, Strata's Space flips the cursor's entry against the range and later
-    // steps keep the flip (`toggle_visual_cursor`, `VisualRange.toggled`).
     let mut t = Rig::tenxer(10);
     t.click(2);
     t.typed("v");
@@ -1056,8 +1022,6 @@ fn tenxer_space_inside_a_range_flips_the_cursor_and_keeps_the_range() {
     );
 }
 
-// Type-ahead (the work package's own scope; Strata has no counterpart).
-
 fn type_ahead(names: &[&str]) -> Rig {
     let s = KeySettings {
         letters: Letters::TypeAhead,
@@ -1070,7 +1034,6 @@ fn type_ahead(names: &[&str]) -> Rig {
 
 #[test]
 fn type_ahead_finds_by_prefix_until_the_timeout() {
-    // C1c scope: type-ahead finds by a typed prefix, with a timeout.
     let mut r = type_ahead(&["alpha", "Beta", "bravo", "brown", "charlie"]);
     assert!(r.typed("b"));
     assert_eq!(r.selected(), [1], "case-insensitive");
@@ -1093,7 +1056,6 @@ fn type_ahead_finds_by_prefix_until_the_timeout() {
 
 #[test]
 fn type_ahead_repeating_a_letter_steps_through_its_entries() {
-    // C1c scope: type-ahead finds by a typed prefix, with a timeout.
     let mut r = type_ahead(&["bat", "cat", "bee", "bird"]);
     r.typed("b");
     assert_eq!(r.cursor(), Some(0));
@@ -1110,7 +1072,6 @@ fn type_ahead_repeating_a_letter_steps_through_its_entries() {
 
 #[test]
 fn type_ahead_takes_space_only_inside_a_prefix_and_is_off_by_default() {
-    // C1c scope: type-ahead finds by a typed prefix, with a timeout.
     let mut r = type_ahead(&["my notes", "myth", "my files"]);
     assert!(!r.typed(" "), "Space with no prefix is the host's");
     r.typed("m");
@@ -1130,13 +1091,8 @@ fn type_ahead_takes_space_only_inside_a_prefix_and_is_off_by_default() {
     assert_eq!(KeySettings::default().letters, Letters::Pass);
 }
 
-// Review round 1.
-
 #[test]
 fn ctrl_left_and_right_report_no_edge_and_pass_at_one() {
-    // C1c scope: only a plain Left goes towards the sidebar (Strata's single_pane_arrow_action).
-    // Ctrl+Left and Ctrl+Right report no edge; at one they aren't taken, so a Columns column
-    // hands them to C2, as Strata's directory_navigation proceeds with Ctrl held.
     let mut r = Rig::list(5);
     r.click(2);
     assert!(!r.ctrl(Key::Left) && !r.ctrl(Key::Right), "passed on");
@@ -1168,8 +1124,6 @@ fn ctrl_left_and_right_report_no_edge_and_pass_at_one() {
 
 #[test]
 fn shift_up_and_down_extend_with_ctrl_alt_or_super_held_too() {
-    // browser/selection: Shift+Up and Shift+Down extend the selection by one entry from the range anchor.
-    // Strata's selection_navigation ignores Ctrl, Alt and Super on them.
     let mut r = Rig::list(10);
     r.click(2);
     let alt = Mods { alt: true, ..SHIFT };
@@ -1199,8 +1153,6 @@ fn shift_up_and_down_extend_with_ctrl_alt_or_super_held_too() {
 
 #[test]
 fn page_keys_ignore_super_and_escape_ignores_shift() {
-    // browser/selection: Shift+Page Up and Shift+Page Down extend or shrink the selection by one page from the range anchor.
-    // browser/selection: With no transient UI open, Escape clears the active pane's selection and keeps the keyboard cursor and directory.
     let mut r = Rig::list(60);
     let page = r.page();
     r.click(2);
@@ -1225,9 +1177,6 @@ fn page_keys_ignore_super_and_escape_ignores_shift() {
 
 #[test]
 fn a_sideways_shift_step_with_no_neighbour_is_left_to_the_view() {
-    // browser/selection: Shift+Up and Shift+Down extend the selection by one entry from the range anchor.
-    // Shift+Left and Shift+Right have no neighbour in a list or column: Columns' Shift+Right
-    // enters the folder (C2), and List does nothing, even with nothing selected.
     let mut r = Rig::list(5);
     r.click(2);
     assert!(!r.shift(Key::Right) && !r.shift(Key::Left));
@@ -1247,9 +1196,6 @@ fn a_sideways_shift_step_with_no_neighbour_is_left_to_the_view() {
 
 #[test]
 fn shift_down_with_no_anchor_steps_from_the_first_entry() {
-    // browser/selection: Shift+Down with nothing selected selects only the first entry; the next Shift+Down selects two.
-    // A selection with no cursor or anchor (a marquee's) isn't "nothing selected": Strata steps,
-    // anchoring at the first entry, rather than selecting it in place.
     let mut r = Rig::list(6);
     r.f.sel
         .begin_band(crate::collection::selection::BandMode::Replace);
@@ -1302,7 +1248,6 @@ fn an_edge_reached_by_a_held_key_is_reported_once() {
 
 #[test]
 fn reset_drops_queued_commands() {
-    // C1c scope: a folder change drops what is in progress. A `g g` queued for a folder that was left doesn't run in the next one.
     let mut t = Rig::tenxer(5);
     t.handle.run(Command::Cursor(Target::Last));
     t.m.reset();
@@ -1311,12 +1256,8 @@ fn reset_drops_queued_commands() {
     assert_eq!(t.cursor(), None);
 }
 
-// Review round 2.
-
 #[test]
 fn an_empty_collection_passes_sideways_shift_steps() {
-    // C1c scope: a sideways Shift step with no neighbour is the view's (C2's Shift+Right enters,
-    // Shift+Left opens the parent), in an empty folder too.
     let mut r = Rig::list(0);
     assert!(!r.shift(Key::Left) && !r.shift(Key::Right));
     assert!(r.shift(Key::Down), "a vertical one is still taken");
@@ -1324,8 +1265,6 @@ fn an_empty_collection_passes_sideways_shift_steps() {
 
 #[test]
 fn an_exact_binding_wins_over_a_tolerated_match() {
-    // C1c scope: the key map is configurable (Strata's keymap rebinding, C20).
-    // Shift+Escape bound to Select all takes it from Escape, which tolerates Shift.
     let mut map = KeyMap::default_map();
     map.bind(
         Chord::new(ChordKey::Escape).with(rune::ChordMod::Shift),
@@ -1364,7 +1303,6 @@ fn an_exact_binding_wins_over_a_tolerated_match() {
 
 #[test]
 fn unbinding_a_tolerated_chord_takes_it_off_its_binding() {
-    // C1c scope: the key map is configurable (Strata's keymap rebinding, C20).
     let super_page_down = Chord::new(ChordKey::PageDown).with(rune::ChordMod::Super);
     let sup = Mods {
         logo: true,
@@ -1411,9 +1349,6 @@ fn columns_keys() -> KeySettings {
 
 #[test]
 fn a_select_key_that_cannot_move_the_cursor_reselects_its_entry_only_where_asked() {
-    // C2's rule in Strata's Columns (slice decision 17): `Browser::move_selection` and
-    // `page_along` re-place the cursor on a key that leaves it where it is, so a
-    // multi-selection collapses to the cursor's entry and `FocusChanged` is raised again.
     for (case, at, extend, key, edge) in [
         ("Down on the last entry", 5, Key::Up, Key::Down, true),
         ("Up on the first entry", 0, Key::Down, Key::Up, true),
@@ -1447,8 +1382,6 @@ fn a_select_key_that_cannot_move_the_cursor_reselects_its_entry_only_where_asked
             let out = r.take();
             assert_eq!(r.cursor(), Some(at), "{case}");
             assert_eq!(out.contains(&Outcome::Rested), reselects, "{case}: {out:?}");
-            // Home, End and the page keys select their entry alone in any collection; an
-            // arrow at the edge does only where the setting asks.
             let alone = reselects || !edge;
             let mut both = vec![at as u64, neighbour as u64];
             both.sort_unstable();
@@ -1468,8 +1401,6 @@ fn a_select_key_that_cannot_move_the_cursor_reselects_its_entry_only_where_asked
 
 #[test]
 fn left_with_no_cursor_reports_its_edge_only_where_asked() {
-    // C2's rule in Strata's Columns: Left is `Browser::focus_parent` whether or not the
-    // column has a cursor, and a click on a folder leaves its column without one.
     for (leaves, settings) in [(true, columns_keys()), (false, KeySettings::default())] {
         let mut r = Rig::list_with(4, settings);
         assert_eq!(r.cursor(), None);
@@ -1501,8 +1432,6 @@ fn a_select_key_that_moves_the_cursor_does_not_report_a_rest() {
 
 #[test]
 fn ctrl_a_takes_the_cursor_to_the_last_entry_where_asked_and_keeps_the_anchor() {
-    // C2's rule in Strata's Columns (slice decision 17): the GTK view's selection model
-    // reports its newest selected row as the cursor, and `set_selection` keeps the anchor.
     let mut r = Rig::list_with(5, columns_keys());
     r.click(2);
 
@@ -1520,9 +1449,6 @@ fn ctrl_a_takes_the_cursor_to_the_last_entry_where_asked_and_keeps_the_anchor() 
     assert!(r.ctrl_letter('a'));
     assert_eq!((r.cursor(), r.anchor()), (Some(4), Some(4)));
 }
-
-// A single-selection collection (`KeySettings::multiple(false)`), as a portal chooser that was
-// not asked for several files is.
 
 #[test]
 fn with_one_entry_allowed_shift_moves_and_fills_are_refused() {

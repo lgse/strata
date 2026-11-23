@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! C11b [`SheetGrid`] adapter for delimited tables (`CSV`, `TSV`) and sandboxed workbooks
-//! (`XLS`, `XLSX`, `ODS`).
-
 use std::{ffi::OsStr, path::Path};
 
 use rune::{Cx, El};
@@ -18,9 +15,6 @@ use crate::App;
 /// Key of the spreadsheet/table viewer inside the preview drawer.
 pub(crate) const SHEET_KEY: &str = "preview-sheet";
 
-/// Whether `entry` is a spreadsheet workbook or delimited table file (`CSV`, `TSV`, `XLS`,
-/// `XLSX`, `ODS`). Tables inside Markdown, HTML, DOCX, or ODT documents stay in C11's
-/// `DocumentView` (`SheetGrid` D10).
 pub(super) fn is_table_file(content_type: &str, name: &OsStr) -> bool {
     if strata_preview::services::table::is_workbook(content_type, name) {
         return true;

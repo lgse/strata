@@ -1,13 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The open columns as the Columns component reads them: the shared listings
-//! ([`crate::listing`]), root first, behind strata-components' `ColumnSources`.
-//!
-//! A filter's results take the place of one column's rows while they show
-//! ([`Listings::show_hits`]), as GTK's column swaps its model for the search's hits
-//! (`search_recursively` in `src/ui/browser/columns/append/query.rs`): the column's listing
-//! stays, and follows the browser underneath.
-
 use std::{
     borrow::Cow,
     collections::HashMap,
@@ -29,9 +21,6 @@ use crate::{
     slots::Worn,
 };
 
-/// Grace period before a loading column's header shows its animated spinner, matching GTK's
-/// `COLUMN_SPINNER_DELAY` (`src/ui/browser/columns.rs`). Keeps fast folder opens from
-/// flashing a spinner or spinning loop animation frames while waiting on background reads.
 const SPINNER_DELAY: Duration = Duration::from_millis(120);
 
 #[derive(Default)]
@@ -83,8 +72,6 @@ pub(super) struct Listings {
     described: Words,
     /// A filter's results, and the column whose rows they replace.
     hits: Option<(usize, Column)>,
-    /// Each result's path, by its id: its detail line while `hit_details` holds (GTK's
-    /// `show_origin`).
     hit_paths: HashMap<EntryId, String>,
     /// The results come from the subfolders too: each shows its path under its name.
     hit_details: bool,
@@ -128,8 +115,6 @@ impl Listings {
         (0..self.columns.len()).any(|depth| self.shown(depth).is_some_and(|c| !c.is_empty()))
     }
 
-    /// Advances each column's spinner grace timer at `clock`. Returns `true` when any column's
-    /// spinner newly becomes visible.
     pub(super) fn watch_spinners(&mut self, clock: f64, tx: &mut Tx) -> bool {
         self.spinners
             .resize_with(self.columns.len(), SpinnerDelay::default);
@@ -195,8 +180,6 @@ impl Listings {
         self.hit_paths.get(&hits.id_at(index)).map(String::as_str)
     }
 
-    /// Drops the results when the column they showed in goes or shows another folder: column
-    /// `from` and every one after it.
     pub(super) fn drop_hits_from(&mut self, from: usize) {
         if self.hits.as_ref().is_some_and(|(at, _)| *at >= from) {
             self.drop_hits();
@@ -234,7 +217,6 @@ impl ColumnSources for Listings {
         self.columns[depth].title()
     }
 
-    /// `column_heading` in `src/ui/browser/columns/append/header.rs`: the folder's path.
     fn title_description(&self, depth: usize) -> Option<Cow<'_, str>> {
         Some(Cow::Owned(self.columns[depth].location().display_path()))
     }
@@ -257,8 +239,6 @@ impl ColumnSources for Listings {
         self.columns.get(depth + 1)?.from()
     }
 
-    /// GTK's size badge (`column_size_text`, `entry_size` in `src/ui/browser_modes`): a
-    /// folder's item count, a file's size, or none while the browser does not know it.
     fn badge(&self, depth: usize, index: usize) -> Option<Cow<'_, str>> {
         let column = self.shown(depth)?;
         let row = column.row_at(index)?;
@@ -266,8 +246,6 @@ impl ColumnSources for Listings {
         (!text.is_empty()).then_some(Cow::Owned(text))
     }
 
-    /// What the row is, a result's too: GTK's `show_origin` sets the path on the row's inner
-    /// box only, and `describe_entry` describes the entry by its kind.
     fn description(&self, depth: usize, index: usize) -> Option<Cow<'_, str>> {
         let description = self.shown(depth)?.description(index, &self.described)?;
         Some(Cow::Borrowed(description))

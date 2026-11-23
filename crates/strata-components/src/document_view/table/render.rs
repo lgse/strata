@@ -1,10 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Interactive table rendering inside [`DocumentView`](super::super::DocumentView): sortable
-//! column headers with accent sort indicators, column resize dividers (including the last
-//! column), rich inline-styled selectable body cells in sorted row order, and a horizontal
-//! scroll viewport with Strata's C24 overlay scrollbar.
-
 use std::rc::Rc;
 
 use rune::{Cursor, Drag, El, Phase, TextStyle, Tx, col, icon, row, text};

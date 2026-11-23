@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The headers' "Refresh" button, GTK's `pane_refresh_button` (`src/ui/browser/pane_header.rs`):
-//! icon-only, named and tooltipped "Refresh (F5)" for the key as bound now, and reading its
-//! column's folder again through B3's `refresh` (`retry_column`), as GTK's does.
-
 use rune::{El, Tx};
 use strata_components::header;
 use strata_desktop::keys::{Keys, bindings::REFRESH};

@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Encrypted-volume detection, lock state, LUKS password UUID resolution, and orphaned
-//! password-start drive checks (`src/ui/window/gio_devices.rs` and `src/ui/window/devices.rs`).
-
 use std::path::{Path, PathBuf};
 
 use gio::prelude::*;
@@ -150,8 +147,6 @@ pub(super) fn is_encrypted_device(
         || block_indicates_crypto(block)
 }
 
-/// GVfs' padlock emblem wins; without it, an open mapping whose filesystem is
-/// unmounted (for example an fstab entry) still counts as unlocked.
 pub(super) fn encrypted_device_is_locked(
     icon_names: &[&str],
     has_mount: bool,

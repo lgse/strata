@@ -13,14 +13,10 @@ pub enum ArchiveItem {
     File {
         name: String,
         size: u64,
-        /// The icon's catalog name, from the host's file-name mapping (empty: the Look's File
-        /// icon).
         icon: String,
     },
 }
 
-/// A folder in the archive, its children in the order to show (Strata's lister puts folders
-/// first, then files, each by name; the order is the host's).
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct ArchiveDir {
     /// Empty for the archive's root.
@@ -31,8 +27,6 @@ pub struct ArchiveDir {
 #[derive(Clone, Debug)]
 struct Node {
     id: EntryId,
-    /// What the row shows: a folder's name ends in "/", since an archive may hold a file and
-    /// a folder of the same name.
     shown: String,
     /// The name as the crumbs show it.
     name: String,
@@ -54,13 +48,6 @@ pub struct ArchiveTree {
 }
 
 impl ArchiveTree {
-    /// The tree under `root`, with an id from `alloc` for every member.
-    ///
-    /// The ids follow W1's [`EntryId`] contract: `alloc` hands out ids unique across every
-    /// source the process shows at once (the listing, every pane, column and window), each of
-    /// which lives for the process and is never handed out again, even after this tree is
-    /// dropped. Strata reserves them from its process-wide table; the gallery reserves a high
-    /// range of its own.
     pub fn new(root: ArchiveDir, mut alloc: impl FnMut() -> EntryId) -> ArchiveTree {
         let mut tree = ArchiveTree {
             nodes: vec![Node {
@@ -205,8 +192,6 @@ impl ArchiveListing {
         }
     }
 
-    /// Shows the folder `depth` levels below the root, on the way to the one shown. Returns
-    /// where the folder left sits in it, for the cursor.
     pub(super) fn go_to(&mut self, depth: usize) -> Option<usize> {
         let path = self.path();
         if depth >= path.len() {

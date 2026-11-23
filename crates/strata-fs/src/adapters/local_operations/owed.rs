@@ -1,10 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Deletions a transfer owes once its copies are on disk: the sources of
-//! moves that had to copy, Replace originals moved out of the way, and the
-//! originals a merge set aside. A paste batches them per destination
-//! filesystem, so one barrier serves many items.
-
 #[cfg(any(test, feature = "test-support"))]
 use std::cell::Cell;
 use std::{
@@ -125,8 +120,6 @@ impl Owed {
         self.deletions.push(deletion);
     }
 
-    /// Entries given back their names beneath the copy's root, deepest first, so the copy is
-    /// still found before its sources are deleted.
     pub(super) fn follow_renames(&mut self, renamed: &[(PathBuf, PathBuf)]) {
         for deletion in &mut self.deletions {
             if let Deletion::Sources(_, manifest) = deletion {
@@ -196,8 +189,6 @@ fn limits() -> Limits {
     LIMITS
 }
 
-/// How far tests moved the batches' clock on, in milliseconds; racers on
-/// worker threads move it.
 #[cfg(any(test, feature = "test-support"))]
 static TEST_CLOCK: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
@@ -227,8 +218,6 @@ fn now() -> Instant {
 
 struct Batch<T> {
     key: Option<MountKey>,
-    /// The earliest opened of its entries' barriers, so it reports the
-    /// writeback errors of every one of their copies.
     barrier: Option<Barrier>,
     nested: Vec<Barrier>,
     entries: Vec<(T, Vec<Deletion>)>,
@@ -365,8 +354,6 @@ pub(super) struct Source {
     pub merged: bool,
 }
 
-/// A transfer's items as they are done: an item that owes deletions is
-/// done, and reported moved, only once its batch closes.
 pub(super) struct Settling {
     request_id: OperationRequestId,
     sources: Vec<Source>,
@@ -433,8 +420,6 @@ impl Settling {
         self.completed.push(done.index);
     }
 
-    /// Batches that are due close, except after the `last` item: [`Self::finish`]
-    /// closes them, showing the device flush.
     pub(super) async fn owe(&mut self, done: Done, owed: Owed, copied: u64, last: bool) {
         if owed.deletions.is_empty() {
             self.done(done);

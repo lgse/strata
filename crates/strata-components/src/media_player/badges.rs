@@ -1,13 +1,7 @@
 // SPDX-License-Identifier: MIT
 
-//! A video's badges from its probe: Strata's `src/ui/preview/video/badges.rs`
-//! (lgse/strata `upstream/main` e9a8993), rule for rule. The words are the host's
-//! ([`Labels`]).
-
 use super::labels::Labels;
 
-/// What the probe found (Strata's `MediaMetadata`, the fields the badges read) plus the
-/// sidecar subtitle files the host counted.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct VideoDetails {
     /// Width and height in pixels.

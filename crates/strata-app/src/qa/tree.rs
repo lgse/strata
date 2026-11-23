@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Rune's accessibility tree as the QA engine walks it: one snapshot of
-//! `Runtime::accessibility_json`, with each node under the path of keys that leads to it.
-
 use std::{
     collections::{HashMap, HashSet},
     fmt::Write as _,
@@ -20,11 +17,6 @@ use super::{
     roles,
 };
 
-/// A row's name as the view draws it. Rune's row is one accessible node, and its name is an
-/// element the tree leaves out; the GTK row has a `label` child, which a scenario aims at as
-/// an entry's `part: label`. The component keys the element for its hosts
-/// (`strata_components::collection::element::LABEL`), so its box is read from the drawn
-/// elements, and the snapshot presents it under its row.
 #[derive(Clone, Debug, PartialEq)]
 pub(super) struct NameLabel {
     /// The keys of the elements around it, the nearest first.
@@ -32,23 +24,15 @@ pub(super) struct NameLabel {
     pub(super) text: String,
     /// In window points.
     pub(super) bounds: Rect,
-    /// True when the label is C2b's size/count chip (`strata_components::columns::BADGE`).
     pub(super) badge: bool,
 }
 
-/// A row's icon as the view draws it: the GTK row's `image`, which a scenario aims at as an
-/// entry's `part: icon` and a drag starts on. The component keys it as it keys the name
-/// (`strata_components::collection::element::ICON`), and the snapshot presents it under its
-/// row the same way.
 #[derive(Clone, Debug, PartialEq)]
 pub(super) struct RowIcon {
     /// The keys of the elements around it, the nearest first.
     pub(super) above: Vec<String>,
     /// The keyed element's box, in window points.
     pub(super) bounds: Rect,
-    /// The box of the glyph inside it (`strata_components::thumbnails::GLYPH`), when it holds
-    /// one. An Icons tile keys its frame, a margin around the thumbnail slot the glyph fills,
-    /// where GTK's `image` is the slot alone (`ThumbnailSlot`, `src/ui/icons_cell.rs`).
     pub(super) glyph: Option<Rect>,
 }
 
@@ -61,11 +45,6 @@ pub(super) struct DrawnRow {
     pub(super) bounds: Rect,
 }
 
-/// A column as the view draws it: its list, the group around it, and its rows. Behind an
-/// open menu Rune's accessibility tree holds only the menu, since a menu is modal, while
-/// the GTK tree keeps the panes, and scenarios read a pane's selection with its menu open.
-/// The snapshot then presents each column from what is drawn: names, selection and boxes.
-/// A drawn element carries no description, so those rows have none.
 #[derive(Clone, Debug, PartialEq)]
 pub(super) struct DrawnColumn {
     /// The key of the column's list.
@@ -77,8 +56,6 @@ pub(super) struct DrawnColumn {
     pub(super) rows: Vec<DrawnRow>,
 }
 
-/// What the shown view says of its panes (`slots::Probe`): its name in the protocol, and
-/// Rune's role of an entry list and of an entry in one.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(super) struct Shape {
     pub(super) name: &'static str,
@@ -86,20 +63,6 @@ pub(super) struct Shape {
     pub(super) entry: &'static str,
 }
 
-/// A button as drawn: its key, its name and its box. Behind an open menu Rune's tree holds
-/// only the menu, where GTK's keeps the window's buttons, and a scenario presses one with
-/// a menu open (`keyboard_navigation/back-history-dropdown` lets go of a press held on
-/// Back after its history opened). The snapshot then presents each keyed, named button the
-/// tree left out, from what is drawn, if any of it is in view and it is not inert.
-///
-/// It is presented with nothing else: it reads `sensitive` whatever it is (Rune's drawn
-/// elements say nothing of being disabled), it is not focusable and offers no click action,
-/// so a run that asserts a state of a button behind a menu needs an `a11y` twin. It hangs
-/// under the pane of the drawn column it is drawn inside, by the element tree, as a column's
-/// header actions do in GTK's tree (`panes_with` finds the pane holding it), and off the
-/// window's root otherwise, where a target `within` a pane misses it and `nth: -1` finds it
-/// first. Targets are matched depth first from the root, so a button under a pane comes
-/// before the window's later nodes; no run's `nth` reaches a button presented here.
 #[derive(Clone, Debug, PartialEq)]
 pub(super) struct DrawnButton {
     pub(super) key: String,
@@ -128,11 +91,7 @@ pub(super) struct Drawn {
     pub(super) words: super::control_words::Words,
     /// The entry the filter's Enter would open (`qa::filter`).
     pub(super) outlined: Option<EntryId>,
-    /// On the focused non-secure text field: its selection's anchor and caret in UTF-8 bytes
-    /// of its text (`ElementInfo::edit_range`).
     pub(super) edit_range: Option<[usize; 2]>,
-    /// Paths of nodes whose AccessKit node reports `is_busy` (`El::busy`), which
-    /// `Runtime::accessibility_json` leaves out of `"states"`.
     pub(super) busy: HashSet<String>,
 }
 
@@ -154,11 +113,7 @@ pub(super) struct Seen {
     /// In window points.
     pub(super) bounds: Option<Rect>,
     pub(super) active_descendant: Option<String>,
-    /// A text field's selection as Rune reports it: the line and the place in it of the end
-    /// that stays, then of the end that moves, which is the caret.
     pub(super) selection: Option<[u64; 4]>,
-    /// On the focused non-secure text field: the selection's anchor and caret in UTF-8 bytes
-    /// of `value` (`ElementInfo::edit_range`).
     pub(super) edit_range: Option<[usize; 2]>,
     pub(super) busy: bool,
     /// A scroll view's offsets and limits.
@@ -189,8 +144,6 @@ impl Seen {
 pub(super) struct Snapshot {
     nodes: Vec<Seen>,
     index: HashMap<Node, usize>,
-    /// The node that takes key presses: the focused element's active descendant when it
-    /// names one, since a Rune list keeps focus and points at its current row.
     focus: Option<usize>,
     outlined: Option<EntryId>,
 }
@@ -207,8 +160,6 @@ fn texts(node: &Value, field: &str) -> Vec<String> {
         .collect()
 }
 
-/// What a node says beside its name. A menu row's shortcut is what Rune reports as its
-/// keyboard shortcut and the GTK menu as its description, where scenarios read it.
 fn description(node: &Value) -> String {
     let described = text(node, "description");
     let menu_row = node["role"]
@@ -238,10 +189,6 @@ fn bounds(node: &Value) -> Option<Rect> {
     })
 }
 
-/// What a scroll view reports. Rune's tree gives its offsets and how far it scrolls down
-/// (`"scroll": [x, y, y_max]`), and no horizontal limit. It offers `scroll-left` exactly when
-/// it can scroll sideways and input may reach it (`a11y/node.rs` at the pinned rev), which is
-/// whether it scrolls sideways for a user.
 fn scrolled(node: &Value) -> Option<Scrolled> {
     let [x, y, down] = node["scroll"].as_array()?.as_slice() else {
         return None;
@@ -257,10 +204,6 @@ fn scrolled(node: &Value) -> Option<Scrolled> {
     })
 }
 
-/// A keyed node's segment of its path. The preview's PDF page row is keyed by its zoom too, so
-/// Rune measures it afresh (`pdf_view::page_row_identity`), where GTK resizes the same page
-/// widget: the path leaves the zoom out, so a page remembered before a zoom is the page after
-/// it. Only the preview's PDF keys are read so.
 fn segment_of(key: &str) -> String {
     let pdf_page = key
         .strip_prefix(crate::preview::PDF_KEY)
@@ -271,13 +214,8 @@ fn segment_of(key: &str) -> String {
         .unwrap_or_else(|| key.to_owned())
 }
 
-/// Rune's role of an unnamed box, which the role map presents as GTK's `panel`.
 const PANEL: &str = "group";
 
-/// Whether `node`, a direct child of the window, is Rune's window-level live region for
-/// `Tx::announce` (`a11y/tree.rs` at the pinned rev): a 1x1 `status` node with no key,
-/// actions or children. GTK's `GtkAccessible::announce` emits an AT-SPI signal without adding
-/// a widget to the tree.
 fn is_window_announcer(node: &Value) -> bool {
     let unit = Rect {
         x: 0.0,
@@ -299,8 +237,6 @@ impl Snapshot {
         Self::read_named("window", tree, drawn)
     }
 
-    /// Reads `tree`, the nested JSON of `Runtime::accessibility_json`, and what the view
-    /// draws that the tree leaves out, under the root `root_key`.
     pub(super) fn read_named(root_key: &str, tree: &Value, drawn: &Drawn) -> Self {
         let mut snapshot = Self::default();
         if tree.is_object() {
@@ -358,12 +294,6 @@ impl Snapshot {
         }
     }
 
-    /// Presents a button an open menu keeps out of the tree: under the pane of the column
-    /// presented from what is drawn (`panes`, by list) that the button is drawn inside, as a
-    /// column's header actions sit in its pane in GTK's tree; else under the window. Not behind
-    /// a dialog, to stay cautious: GTK's dialogs are overlay layers that leave the window's
-    /// widgets in the tree, so a run aiming behind one fails on Rune rather than passing
-    /// falsely.
     fn add_hidden_button(&mut self, button: &DrawnButton, panes: &[(&str, usize)]) {
         let listed = |seen: &Seen| seen.key.as_deref() == Some(button.key.as_str());
         let menu = |seen: &Seen| seen.role == "menu" && seen.has_state("modal");
@@ -414,8 +344,6 @@ impl Snapshot {
         index
     }
 
-    /// Presents a column the tree left out, under the window, as the tree would hold it. The
-    /// index of its pane, when it was presented.
     fn add_hidden_column(&mut self, column: &DrawnColumn, view: &Shape) -> Option<usize> {
         let listed = |seen: &Seen| seen.key.as_deref() == Some(column.list.as_str());
         if self.nodes.is_empty() || self.nodes.iter().any(listed) {
@@ -456,11 +384,6 @@ impl Snapshot {
         Some(pane)
     }
 
-    /// Presents under each entry the box its content is drawn in, as a `panel`. A GTK row is a
-    /// `list item` with such a box inside, which a scenario aims at to check the row's content
-    /// is shown (`rename_visibility/committed-rename-stays-visible`, line 14). A Rune row is one
-    /// element that draws its content in its own box, so the panel's box is the row's: read,
-    /// not guessed (slice decision 20).
     fn add_row_panels(&mut self) {
         let rows: Vec<(usize, Rect)> = (0..self.nodes.len())
             .filter(|index| self.nodes[*index].mark == Some(Mark::Entry))
@@ -491,9 +414,6 @@ impl Snapshot {
         self.push(row, segment, seen);
     }
 
-    /// GTK's archive preview row has no name of its own: it is read through its name and size
-    /// labels (`src/ui/preview/archive_view.rs`). Rune names the option for screen readers, so
-    /// the snapshot leaves that name to the drawn labels presented under it.
     fn unname_archive_members(&mut self) {
         let in_archive = |nodes: &[Seen], mut at: Option<usize>| {
             while let Some(index) = at {
@@ -513,9 +433,6 @@ impl Snapshot {
         }
     }
 
-    /// GTK's text buttons in the archive preview, its crumbs and `Unlock`, each hold a `GtkLabel`
-    /// with the button's text; a Rune button is one node. The snapshot presents that label
-    /// under each of them. The icon-only `Go up one level` button has none on either target.
     fn label_archive_text_buttons(&mut self) {
         let crumb = format!("{}-crumb-", crate::preview::ARCHIVE_KEY);
         let unlock = format!("{}-unlock", crate::preview::PROMPT_KEY);
@@ -561,14 +478,10 @@ impl Snapshot {
             ..Seen::default()
         };
         self.push(row, "@icon", seen);
-        // First among the row's children, as GTK's row holds its icon first, so an image
-        // added later, such as a badge, does not stand in for it.
         let children = &mut self.nodes[row].children;
         children.rotate_right(1);
     }
 
-    /// The nearest entry or collection option row among the elements `above` an element, by
-    /// their keys.
     fn entry_around(&self, above: &[String]) -> Option<usize> {
         let entry = |key: &String| {
             let row_id = is_entry_key(key);
@@ -643,9 +556,6 @@ impl Snapshot {
         }
     }
 
-    /// GTK's `GtkScrolledWindow` in `tabs/strip.rs` spans the full tab bar (`hexpand = true`),
-    /// whereas rune-kit's `tabs-scroll` shrinks to the tabs and leaves unused strip space on its
-    /// parent `tabs` row; match GTK's bounds while the strip does not scroll horizontally.
     fn widen_unscrolled_tab_strip(&mut self) {
         let Some(scroll_idx) = self
             .nodes
@@ -695,10 +605,6 @@ impl Snapshot {
         found
     }
 
-    /// Marks one column where the adapter put it: the list with the column's key is the entry
-    /// container, the nodes of the entry role under it keyed as the collection keys its rows
-    /// are the entries, and the named group around it, which the view names by the folder, is
-    /// the pane.
     fn mark_column(&mut self, list: &str, view: &Shape, columns: &[DrawnColumn]) {
         let is_list = |seen: &Seen| seen.role == view.list && seen.key.as_deref() == Some(list);
         let Some(container) = self.nodes.iter().position(is_list) else {
@@ -724,9 +630,6 @@ impl Snapshot {
         }
     }
 
-    /// This window's tree with `other`'s, a second toplevel, beside it: every node of both
-    /// stays where its own path names it, and the focus is `other`'s, the window in front
-    /// that takes the keys.
     pub(super) fn with_toplevel(&self, other: &Snapshot) -> Snapshot {
         let offset = self.nodes.len();
         let moved = other.nodes.iter().cloned().map(|mut seen| {
@@ -751,8 +654,6 @@ impl Snapshot {
         }
     }
 
-    /// This window's tree with `other`'s beside it, as [`Snapshot::with_toplevel`] puts it,
-    /// with this one's focus: `other` is a window behind it, which takes no keys.
     pub(super) fn with_window_behind(&self, other: &Snapshot) -> Snapshot {
         let mut both = self.with_toplevel(other);
         both.focus = self.focus;
@@ -763,9 +664,6 @@ impl Snapshot {
         self.index.get(node).map(|index| &self.nodes[*index])
     }
 
-    /// The first scroll view in the tree that scrolls along `along`, with its keyed path for
-    /// `Tx::scroll_to_instant` and its current `[x, y]` offsets (`src/qa/reveal.rs`,
-    /// `set_scrollbar`).
     pub(super) fn scrollbar_target(&self, along: Orientation) -> Option<(Node, String, [f64; 2])> {
         for (index, seen) in self.nodes.iter().enumerate() {
             let Some(scrolled) = seen.scroll else {
@@ -804,11 +702,6 @@ impl Snapshot {
         self.focus().is_some_and(|focus| focus.node == seen.node)
     }
 
-    /// Whether the keyboard can reach `seen`, as GTK's `is_focusable` says: an element that
-    /// takes focus itself, or an entry reachable as the active descendant of the focus stop
-    /// around it. A Rune collection keeps one focus stop and points at its current entry (C1's
-    /// list, or C2's strip for the Columns view's columns), so an entry offers no focus action
-    /// of its own; `keyboard_focus` reads `focused` the same way.
     pub(super) fn is_focusable(&self, seen: &Seen) -> bool {
         seen.has_action("focus") || self.reached_as_active_descendant(seen)
     }
@@ -846,9 +739,6 @@ impl Snapshot {
             .and_then(|seen| seen.node.clone())
     }
 
-    /// The tree as text, a line for each node: Rune's role and key, the AT-SPI role, the name,
-    /// the description, the states the scenarios test and the box. The GTK harness prints its
-    /// widgets in the same shape.
     pub(super) fn dump(&self) -> String {
         let mut output = String::new();
         if let Some(focus) = self.focus() {
@@ -887,7 +777,6 @@ impl Snapshot {
         }
     }
 
-    /// What a node says of itself, in the order the GTK harness prints it.
     fn dump_words(&self, seen: &Seen, output: &mut String) {
         if !seen.name.is_empty() {
             let _ = write!(output, " name={:?}", seen.name);

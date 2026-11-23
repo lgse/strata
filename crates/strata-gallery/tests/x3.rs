@@ -1,17 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! X3's session tests: the clipboard wiring demo (`examples/clipboard_wiring/`) against W3's
-//! peer in a private headless sway, on Wayland (data control, and the data device as on
-//! mutter) and X11 (`mise run test-platform x3::`).
-//!
-//! Each test starts the demo with `--apply` on a fixture folder in the session's private
-//! runtime directory, sets it up with its commands (`open`, `select`), and presses the
-//! clipboard's keys with the session's virtual keyboard. What the demo did comes back as its
-//! JSON lines (`copied`, `badge`, `paste`, `state`), what it offered as the peer's reads, and
-//! what a paste wrote on disk.
-//!
-//! Work package: X3, `docs/rune/work/phase-3-views/X3-clipboard-wiring.md`.
-
 #[path = "../../strata-platform/tests/support/mod.rs"]
 #[expect(
     dead_code,
@@ -46,8 +34,6 @@ mod x3 {
         "STRING",
     ];
 
-    /// Where the demo runs: Wayland with data control (sway's), Wayland with the data device
-    /// (as on mutter), or X11.
     #[derive(Clone, Copy, Debug, PartialEq, Eq)]
     enum B {
         W,
@@ -80,8 +66,6 @@ mod x3 {
         }
     }
 
-    /// The fixture: `src` with files to paste from, `dest` (with `inner`) to paste into, and
-    /// `Music` holding a `notes.txt` of its own.
     fn fixture(s: &Session) -> PathBuf {
         let root = s.runtime_dir().join("root");
         for d in ["src", "dest/inner", "Music"] {
@@ -212,9 +196,6 @@ mod x3 {
                 .is_some_and(|v| v["on"] == true)
         }
 
-        /// The peer copies `offers`, and the demo has heard it: the badge shows for a file
-        /// list, else is off. A badge already showing is first turned off by a text copy, so
-        /// that its turning on again means this offer was heard.
         fn peer_copies(&self, peer: &Peer, via: Via, offers: &[Offer], files: bool) {
             if files && self.badge_is() {
                 let at = self.app.line_count();
@@ -344,9 +325,6 @@ mod x3 {
         copy_and_cut_offer_the_three_formats(B::W);
     }
 
-    /// That the data-device route carries the copy and its formats (`--as-if-no-data-control`
-    /// attaches as on mutter). It doesn't show that the copy runs inside the key's handler:
-    /// wlroots takes any serial it has sent the client, so a later write would pass too.
     #[test]
     #[ignore = "needs a private session: mise run test-platform"]
     fn wayland_data_device_copy_and_cut_offer_the_three_formats() {
@@ -518,8 +496,6 @@ mod x3 {
         let demo = Demo::start(&s, b);
         let peer = s.peer(b.display());
         let root = demo.root.clone();
-        // A cut's paste empties the clipboard of what it moved. (That a newer copy stays, the
-        // other half of the operations/clipboard bullet, is the Board's: adapter/tests.rs.)
         demo.copy(&s, &["todo.txt"], true);
         wait_targets(&peer, b.via(), Some(&[GNOME]));
         demo.open("Music");
@@ -597,15 +573,10 @@ mod x3 {
         std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode)).expect("chmod");
     }
 
-    /// The rest of a cut stays cut, after a paste that skipped part of it and after one that
-    /// failed partway. Not on the data device: the rest is copied again from the paste's read,
-    /// outside the key's handler.
     fn a_partial_cut_paste_keeps_the_rest_cut(b: B) {
         let s = Session::start();
         let root = fixture(&s);
         std::fs::write(root.join("dest/x.txt"), "x").expect("a file");
-        // `a-moves` moves; `b-locked` can't (a folder moves only with write access to it, for
-        // its `..`).
         for d in ["src/a-moves", "src/b-locked"] {
             std::fs::create_dir(root.join(d)).expect("a folder");
         }
@@ -753,9 +724,6 @@ mod x3 {
         (app, window)
     }
 
-    /// Says a test ran nothing, on stderr past libtest's capture (which takes only `print!`
-    /// and `eprint!`), so it shows in every run: libtest has no "skipped" result, so the test
-    /// still reports ok (docs/rune/testing.md).
     fn skip(test: &str, why: &str) {
         use std::io::Write;
         // One write on the locked handle, so a parallel test's output can't split the line.
@@ -763,10 +731,6 @@ mod x3 {
         let _ = std::io::stderr().lock().write_all(line.as_bytes());
     }
 
-    /// Nautilus in the nested sway: a file it copies pastes into the demo by Ctrl+V, and the
-    /// demo's cut pastes into Nautilus as a move. Opt-in, with Nautilus installed:
-    /// `STRATA_TEST_NAUTILUS=1 mise run test-platform x3::nautilus`. Best effort: Nautilus
-    /// lists a folder some time after it maps, so its keys are repeated until they take.
     fn nautilus_round_trip(b: B, test: &str) {
         if std::env::var_os("STRATA_TEST_NAUTILUS").is_none() {
             return skip(

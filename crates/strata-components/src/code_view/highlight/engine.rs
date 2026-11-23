@@ -1,12 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The synchronous core: documents, checkpoints, per-line states, edits and block jobs.
-//!
-//! Every syntect `ParseState` lives here, and the engine runs only on the highlighter thread
-//! (S4, B1: with `onig` a `ParseState` is neither `Send` nor `Sync`). It has no threads or
-//! channels of its own: requests come in as calls, and replies collect in an outbox the
-//! worker routes, so tests drive it directly.
-
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::ops::Range;
 use std::panic::{AssertUnwindSafe, catch_unwind};
@@ -24,8 +17,6 @@ use super::{LineEdit, Mode, Options};
 /// A run of a line: its byte range within the line's content (no line break) and its class.
 pub(crate) type Token = (u32, u32, Class);
 
-/// A line's runs, in order and not overlapping. Empty when the line is plain: a plain-text
-/// grammar, or a line past the long-line cap.
 pub(crate) type LineTokens = Box<[Token]>;
 
 /// How often a time-bounded slice checks the clock, in lines.
@@ -35,27 +26,28 @@ const CLOCK_EVERY: usize = 16;
 #[derive(Debug)]
 pub(crate) enum Reply {
     /// The grammar detection picked.
-    Opened { syntax: String },
+    Opened {
+        syntax: String,
+    },
     /// Colours of classes `from..`; `from == 0` replaces the palette (a theme switch).
     Palette {
         from: usize,
         colors: Vec<Option<Color>>,
     },
-    /// Lines `first..`, under edit generation `generation`. `exact` is false for lines computed from
-    /// a provisional state (past an edit's frontier).
     Lines {
         generation: u64,
         first: usize,
         lines: Vec<LineTokens>,
         exact: bool,
     },
-    /// The background pass after an edit ended: cached lines from `from` on are exact, and
-    /// provisional lines before it that weren't re-sent are stale.
-    Settled { generation: u64, from: usize },
+    Settled {
+        generation: u64,
+        from: usize,
+    },
     /// The document has no work left after request `seq`.
-    Idle { seq: u64 },
-    /// A code block's runs, with byte ranges into the whole block. `code` is the block as
-    /// asked, so a reply for a block since replaced under the same key is told apart.
+    Idle {
+        seq: u64,
+    },
     Block {
         key: u64,
         code: Arc<str>,
@@ -65,8 +57,6 @@ pub(crate) enum Reply {
     Failed,
 }
 
-/// A text split into lines. There is one more line than there are `\n`s, so a text ending in
-/// a newline has an empty last line, as an editor shows it.
 #[derive(Clone, Debug)]
 pub(crate) struct Lines {
     pub(crate) text: Arc<str>,
@@ -126,8 +116,6 @@ struct Ctx {
 /// Grammar errors end highlighting for that text.
 struct ParseFailed;
 
-/// Parses one line's content from `state`, leaving the state at the next line's start.
-/// A line longer than the cap is skipped: it stays plain and the state carries over (S4).
 fn parse_line(
     ctx: Ctx,
     state: &mut State,
@@ -138,8 +126,6 @@ fn parse_line(
     if content.len() > ctx.long_line {
         return Ok(Box::default());
     }
-    // The newlines grammar set expects each line with its `\n` (S4), and a CRLF line without
-    // its `\r`.
     scratch.clear();
     scratch.push_str(content);
     scratch.push('\n');
@@ -181,18 +167,11 @@ pub(crate) struct Doc {
     syntax: &'static SyntaxReference,
     /// Checkpoint interval: 1 for an editable text (a state per line), else S4's 64.
     every: usize,
-    /// `states[k]` is the state at the start of line `k * every`. Every one up to line
-    /// `exact` is exact. With `every == 1`, states past `exact` are an edit's provisional
-    /// leftovers (S4, B2 workaround 1); with `every > 1` there are none.
     states: Vec<State>,
     /// The pass has parsed lines `..exact` in order.
     exact: usize,
     /// The pass's state at line `exact` when `every > 1`.
     cursor: Option<State>,
-    /// A converged state counts only at or past this line: the end of every edit the pass
-    /// hasn't covered, and the first state past an earlier pass's frontier. Before it, the
-    /// cached states after a line weren't all computed from it over the current text, so
-    /// equality proves nothing.
     dirty_until: usize,
     /// True between an edit and the end of its background pass.
     provisional: bool,
@@ -282,8 +261,6 @@ impl Doc {
         self.pending.as_ref().is_some_and(|p| p.contains(&line))
     }
 
-    /// One step of the pass: parses line `exact` and moves on, stopping an edit's cascade
-    /// where the state matches its cached one again.
     fn pass_step(&mut self, ctx: Ctx) -> Result<(), ParseFailed> {
         let line = self.exact;
         let mut state = match self.cursor.take() {
@@ -310,11 +287,6 @@ impl Doc {
             self.cursor = Some(state);
         } else if next < self.states.len() {
             if next >= self.dirty_until && self.states[next] == state {
-                // The rest of the cache is exact again: what follows is unchanged text
-                // parsed from this same state. With onig, a state holding captures (inside a
-                // heredoc or a fence) never equals another, since `Region` compares raw
-                // pointers (S4, B2): the pass runs on to the end of that context, the safe
-                // direction.
                 self.exact = self.states.len() - 1;
                 self.settle(next);
             } else {
@@ -367,9 +339,6 @@ impl Doc {
         exact: bool,
     ) -> Result<(), ParseFailed> {
         if !exact {
-            // These colours come from a provisional state, off the chain the pass checks
-            // against: had the pass stopped inside them, `Settled` would mark them exact.
-            // So it may not stop before their end, and re-sends or drops each of them.
             self.dirty_until = self.dirty_until.max(range.end);
         }
         for line in range {
@@ -413,8 +382,6 @@ impl Doc {
             self.pending = Some(done..range.end);
             self.run_pass(ctx, range.end, None)
         } else if let Some(state) = self.states.get(range.start) {
-            // Past an edit's frontier: colours from the provisional state now, and exact
-            // ones from the pass when it gets here.
             let state = state.clone();
             self.pending = Some(range.clone());
             self.emit_from(ctx, state, range, false)
@@ -424,8 +391,6 @@ impl Doc {
         }
     }
 
-    /// Applies an edit to the text and the state cache. The foreground part runs later, in
-    /// [`Doc::run_foreground`], so queued edits share one.
     fn apply_edit(
         &mut self,
         text: Arc<str>,
@@ -442,8 +407,6 @@ impl Doc {
         let valid =
             edit.first + edit.removed <= old_n && old_n - edit.removed + edit.inserted == new_n;
         if self.every > 1 || !valid {
-            // A preview re-highlights from scratch: its checkpoints sit at fixed line
-            // numbers, which an edit would shift.
             let initial = State::new(self.syntax);
             self.cursor = (self.every > 1).then(|| initial.clone());
             self.states = vec![initial];
@@ -461,13 +424,8 @@ impl Doc {
             inserted,
         } = normalize(edit, old_n);
         if self.provisional {
-            // The states past the old frontier came from another chain (the text before the
-            // last edit): the new pass may only stop on one of them, never jump across.
             self.dirty_until = self.dirty_until.max(self.exact + 1);
         }
-        // States are line boundaries: keep the one before `first`, drop the removed lines'
-        // interior ones, add placeholders for the inserted lines' (overwritten before they
-        // are compared), and keep the rest shifted, as provisional.
         if first < self.states.len() {
             let interior =
                 (first + 1).min(self.states.len())..(first + removed).min(self.states.len());
@@ -494,8 +452,6 @@ impl Doc {
         self.foreground = Some(first..target);
     }
 
-    /// An edit's foreground: re-parses from the edit to the bottom of the viewport plus the
-    /// overscan, stopping early where it converges. The background pass does the rest.
     fn run_foreground(&mut self, ctx: Ctx) -> Result<(), ParseFailed> {
         let Some(target) = self.foreground.take() else {
             return Ok(());
@@ -503,9 +459,6 @@ impl Doc {
         if self.exact >= target.start {
             return self.run_pass(ctx, target.end, None);
         }
-        // An earlier edit's cascade hasn't reached this one yet. Colour the viewport from its
-        // provisional state now, and leave the exact colours to the pass, which still owes
-        // the window: re-parsing the gap here would cost the whole cascade.
         match self.states.get(target.start) {
             Some(state) => {
                 let state = state.clone();
@@ -536,9 +489,6 @@ fn window(visible: Range<usize>, overscan: usize, n: usize) -> Range<usize> {
     visible.start.min(n)..visible.end.saturating_add(overscan).min(n)
 }
 
-/// An edit that replaces at least one line on each side: an insertion or a deletion of whole
-/// lines is widened by an unchanged neighbouring line, so the boundary before `first` and
-/// the one after the removed lines are distinct.
 fn normalize(edit: LineEdit, old_n: usize) -> LineEdit {
     let mut e = edit;
     if e.removed == 0 || e.inserted == 0 {
@@ -723,8 +673,6 @@ impl Engine {
         }
     }
 
-    /// Drops the queued jobs of blocks the pool's cache no longer holds: one pass over the
-    /// queue, whatever the number of keys.
     pub(crate) fn forget(&mut self, pool: u64, keys: &[u64]) {
         let keys: HashSet<u64> = keys.iter().copied().collect();
         self.blocks
@@ -754,8 +702,6 @@ impl Engine {
         !self.blocks.is_empty() || self.docs.values().any(Doc::has_work)
     }
 
-    /// Does one unit of work, most urgent first: an edit's foreground, a viewport, a block
-    /// slice, then a background slice. False when there was nothing to do.
     pub(crate) fn step(&mut self) -> bool {
         let Some(ctx) = self.ctx() else {
             // No grammars: open answered `Failed`, blocks answered plain; nothing to do.
@@ -855,9 +801,6 @@ impl Engine {
         });
     }
 
-    /// Moves every document's and pool's replies to the engine's outbox, resolving palette
-    /// entries against the current theme as they go out, and owes an `Idle` to each
-    /// document that has run out of work.
     fn collect(&mut self) {
         let theme = &self.theme;
         let mut ids: Vec<u64> = self.docs.keys().copied().collect();
@@ -919,8 +862,6 @@ impl Engine {
         }
     }
 
-    /// The backstop for a panic outside a guarded document: every text fails (plain) and
-    /// every queued block answers plain, so nothing on the UI side waits forever.
     pub(crate) fn fail_all(&mut self) {
         let mut ids: Vec<(u64, u64)> = self.docs.iter().map(|(&id, d)| (id, d.seq)).collect();
         ids.sort_unstable();

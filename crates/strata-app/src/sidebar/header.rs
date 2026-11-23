@@ -1,20 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The default map's arrows in the window's header, as GTK's dispatcher reads them at its
-//! `focus_navigation` stage (`top_bar_navigation` in `src/ui/window/keyboard/focus.rs`, through
-//! `TopBarNavigation` in `src/ui/top_bar_navigation.rs`, which holds the header, the sidebar
-//! and its toggle together, as this part does): with the keyboard in the header or its location
-//! bar's crumbs, not in a text field, an arrow (Super tolerated) moves it.
-//!
-//! - **Left and Right** move along the header, as `child_focus(TabBackward)` and
-//!   `(TabForward)` do: Rune's Tab order is the header's, from the sidebar's toggle to the last
-//!   window button, and at either end nothing moves.
-//! - **Down** goes back to the sidebar's row that Up left (`return_to_sidebar`), else the
-//!   sidebar's first element, and to the files while the sidebar is hidden.
-//! - **Up** is taken.
-//!
-//! In 10xer mode GTK reads none of this (`tenxer_pane_focus`).
-
 use rune::{Key, KeyEvent, Mods, Tx};
 use strata_components::sidebar::{ItemId, Step};
 use strata_desktop::keys::{
@@ -44,7 +29,6 @@ pub(super) const TO_DOWN: Action<App> = arrow!("header-down", DOWN, down);
 pub(super) const TO_UP: Action<App> = arrow!("header-up", UP, up);
 pub(super) const TO_RIGHT: Action<App> = arrow!("header-right", RIGHT, right);
 
-/// GTK's guard: `top_bar.has_focus()` and no text field has the keyboard, outside 10xer mode.
 fn in_header(app: &App, at: &Situation) -> bool {
     at.in_top_bar() && !at.text() && !shell::preferences(app).tenxer_mode
 }
@@ -90,9 +74,6 @@ fn tab(tx: &mut Tx, back: bool) {
 }
 
 impl super::Sidebar {
-    /// Where Down from the header lands in the sidebar: the row Up left, once, while it is
-    /// still shown (`return_to_sidebar` takes it), else the sidebar's first element. None while
-    /// the sidebar is hidden.
     fn back_from_header(&mut self) -> Option<String> {
         if self.state.width.shown() == Step::Hidden {
             return None;
@@ -101,8 +82,6 @@ impl super::Sidebar {
         kept.or_else(|| self.first_key())
     }
 
-    /// Whether the sidebar shows the element keyed `key` now: a collapsed PINNED still shows
-    /// the open place's pin.
     fn shows(&self, key: &str) -> bool {
         let row = self.listed.rows.iter().find(|row| row.item.key(KEY) == key);
         match row {

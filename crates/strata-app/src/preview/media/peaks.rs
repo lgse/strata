@@ -1,14 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Background audio waveform peaks (`audio-peaks`) for media previews, matching GTK's
-//! `load_peaks` (`src/ui/preview/audio/details.rs`).
-//!
-//! - Uses `strata_preview::sandbox::media::PeaksSession`, which shares a single background slot
-//!   with video storyboards; retries while the slot is busy.
-//! - Streams `PeaksEvent::Levels { start, levels }` batches into Rune through `Later`, guarded by
-//!   the viewer's monotonic id so stale events from a replaced or closed player are discarded.
-//! - Dropping [`PeaksLoad`] cancels the sandbox helper and removes its GLib timer immediately.
-
 use std::{
     cell::RefCell,
     rc::{Rc, Weak},

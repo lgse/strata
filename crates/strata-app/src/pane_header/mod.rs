@@ -1,28 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The Icons and List panes' header (A5): GTK's `pane_header` in
-//! `src/ui/browser_modes/pane_shell.rs`, over the listing of both single-pane views, which
-//! [`crate::single::group`] puts there.
-//!
-//! - **Back, Forward and Parent folder** (`list_navigation` in
-//!   `src/ui/browser_modes/pane_header.rs`), each insensitive where the browser cannot go,
-//!   named for its first key as bound now ("Back (Alt+Left)"), and running the window's own
-//!   commands (`history-back`, `history-forward`, `parent-folder`).
-//! - **Back lists the back history** ([`history`]): a right-click, a press held for
-//!   [`history::HOLD`] (whose release then does not go back), or the Menu key or Shift+F10 on
-//!   the focused button open it under Back, and a chosen entry jumps back to it in one step
-//!   (`Browser::back_to`). While it is open the window's commands wait, as under GTK's
-//!   popover ([`Holds::Menu`]).
-//! - **The heading:** the folder's name, described by it, as GTK's heading label is.
-//! - **The header's own actions** ([`actions`]): the Trash's "Empty Trash", "Refresh", and the
-//!   Icons view's "Thumbnail size" button and its popover ([`thumbnail_size`]), and the List
-//!   view's Columns button with its columns menu, which the view brings (C4's), in GTK's order;
-//!   [`actions`] serves a Columns column's header too, and names who brings the rest.
-//!
-//! The rest of GTK's header is other packages': the spinner and the truncated listing's hint,
-//! and the other actions after the heading (leftovers, the sort and the filter). They go in [`bar`]'s `actions` row, in GTK's order (`icons_controls` in
-//! `src/ui/browser_modes/icons_controls.rs`).
-
 use rune::{Drag, El, KeyEvent, Phase, PointerEvent, Tx, row, text};
 use strata_components::{
     context_menu::{ContextMenu, ContextMenuState, MenuIntent, MenuTarget, menu_chord},
@@ -72,8 +49,6 @@ struct Labels {
     empty_trash: String,
 }
 
-/// One of the three buttons: its key's end, its icon, its name, the key that names it, the
-/// command it runs, and whether the browser can go there.
 struct Button {
     suffix: &'static str,
     icon: IconName,
@@ -115,8 +90,6 @@ const BUTTONS: [Button; 3] = [
     },
 ];
 
-/// The header over the listing of the view keyed `view`, for the folder named `title`, with
-/// the view's own `actions` after the header's (the List view's Columns button).
 pub(crate) fn bar(app: &App, view: &str, title: &str, own: Option<El>) -> El {
     let look = &app.look;
     let navigation = BUTTONS
@@ -127,7 +100,6 @@ pub(crate) fn bar(app: &App, view: &str, title: &str, own: Option<El>) -> El {
         .on_drag(|_: &mut App, _: &mut Drag, tx: &mut Tx| tx.live_only())
         .focusable(false)
         .preserve_focus_on_press(true);
-    // Middle-ellipsized bold accent heading, matching GTK's `.mode-pane-header`.
     let heading_font = rune::TextStyle {
         weight: 700.0,
         ..look.kit.ty.ui_medium
@@ -142,8 +114,6 @@ pub(crate) fn bar(app: &App, view: &str, title: &str, own: Option<El>) -> El {
         .on_drag(|_: &mut App, _: &mut Drag, tx: &mut Tx| tx.live_only())
         .focusable(false)
         .preserve_focus_on_press(true);
-    // Other packages' actions follow the heading here, in GTK's order (the module docs).
-    // GTK's order ([`actions`]): Empty Trash, Refresh, then the Icons view's thumbnail size.
     let mut actions = row()
         .key(format!("{view}-header-actions"))
         .items_center()
@@ -153,7 +123,6 @@ pub(crate) fn bar(app: &App, view: &str, title: &str, own: Option<El>) -> El {
         actions = actions.children(crate::sort::direction_and_menu(app, view));
     }
     actions = actions.children(own);
-    // The filter's toggle ends GTK's list (A10).
     actions = actions
         .children(crate::filter::pane::toggle(app, view))
         .on_drag(|_: &mut App, _: &mut Drag, tx: &mut Tx| tx.live_only())
@@ -207,8 +176,6 @@ fn navigation(app: &App, view: &str, button: &Button) -> El {
         .on_key(back_key)
 }
 
-/// A press on one of the buttons: its command, unless it is Back's, and the release of a
-/// press held on Back that listed the history instead.
 fn pressed(app: &mut App, command: &str, tx: &mut Tx) {
     if command == "history-back" && std::mem::take(&mut app.pane_header.swallow) {
         return;
@@ -216,8 +183,6 @@ fn pressed(app: &mut App, command: &str, tx: &mut Tx) {
     commands::run(app, command, On::Focus, tx);
 }
 
-/// The history closed, chosen from or not: a held press's release is no longer pending, as
-/// Back lies inert behind the menu and its release may reach the menu's scrim instead.
 fn closed(app: &mut App) {
     app.pane_header.swallow = false;
 }
@@ -236,8 +201,6 @@ fn held(app: &mut App, drag: &mut Drag, tx: &mut Tx) {
     }
 }
 
-/// The Menu key or Shift+F10 on Back lists the history, read as the catalog's
-/// `context_menu`; with anything else held they open nothing, as on GTK.
 fn back_key(app: &mut App, event: &KeyEvent, tx: &mut Tx) -> bool {
     let at = Situation::of(app, tx);
     if commands::read(app, event, &at, tx).is(CONTEXT_MENU) {
@@ -306,8 +269,6 @@ impl Part for PaneHeader {
         }
     }
 
-    /// A press on Back held long enough lists the history, and its release goes nowhere; the
-    /// thumbnail size's slider follows the size.
     fn poll(app: &mut App, clock: f64, tx: &mut Tx) -> bool {
         let followed = thumbnail_size::follow(app, tx);
         let Some(since) = app.pane_header.held else {

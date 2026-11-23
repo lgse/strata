@@ -1,13 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Search: GTK's emoji chooser rule (`gtk/gtkemojichooser.c`, `match_tokens`, GTK 4.18).
-//!
-//! The query and the name are split into words (runs of letters and digits) and folded
-//! (lowercased, Latin accents dropped, so "cafe" finds "café"). An item matches when every
-//! query word starts one of its name's words, or else when every query word starts one of its
-//! keywords (each keyword is matched whole, as GTK matches them). Matches keep the catalog's
-//! order: there is no ranking.
-
 use std::borrow::Cow;
 use std::ops::Range;
 
@@ -23,11 +15,7 @@ pub(crate) struct Words {
 /// What a query matched in an item.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum Hit {
-    /// The name: for each query word, the name word it starts and how many characters it
-    /// covers there.
     Name(Vec<(usize, usize)>),
-    /// A keyword, the first the first query word starts, and how many characters that word
-    /// covers there.
     Keyword(usize, usize),
 }
 
@@ -92,8 +80,6 @@ pub(crate) fn words(name: &str, keywords: &[Cow<'static, str>]) -> Words {
     }
 }
 
-/// The byte ranges of `name` a name hit covers: each query word's share of the start of the
-/// name word it matched. Empty for a keyword hit.
 pub(crate) fn name_ranges(name: &str, words: &Words, hit: &Hit) -> Vec<Range<usize>> {
     let Hit::Name(found) = hit else {
         return Vec::new();
@@ -103,8 +89,6 @@ pub(crate) fn name_ranges(name: &str, words: &Words, hit: &Hit) -> Vec<Range<usi
         .filter_map(|&(word, chars)| {
             let (_, range) = words.name.get(word)?;
             let part = name.get(range.clone())?;
-            // Folding keeps a character a character here, but a lowercase that grows ("İ")
-            // would count more: the cut stays inside the word either way.
             let end = part
                 .char_indices()
                 .nth(chars)
@@ -114,8 +98,6 @@ pub(crate) fn name_ranges(name: &str, words: &Words, hit: &Hit) -> Vec<Range<usi
         .collect()
 }
 
-/// The byte range of `keyword` a keyword hit lights: the first query word's share of its start,
-/// as [`name_ranges`] lights a name word.
 pub(crate) fn keyword_range(keyword: &str, chars: usize) -> Range<usize> {
     0..keyword
         .char_indices()

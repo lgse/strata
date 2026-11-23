@@ -1,34 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Copy and paste with any MIME types between a Rune window and other apps: a demo of the
-//! `clipboard` feature, and the app strata-platform's session tests drive
-//! (`tests/session/p2.rs`). Commands arrive as JSON lines on stdin; what happens goes to
-//! stdout as JSON lines (`{"ev": …}`).
-//!
-//! Commands:
-//! - `{"cmd":"copy","selection":"clipboard"|"primary","offers":[Offer],"keep_ms":n|null}`:
-//!   copies the offers, each with a lazy writer that logs `writer` when it runs (those named in
-//!   `"hang":[…]` then never return);
-//!   `keep_ms` is how long the exit waits for a clipboard manager (`null`: don't hand over;
-//!   absent: the default);
-//! - `{"cmd":"arm","offers":[Offer]}`: what Ctrl+C in the window copies;
-//! - `{"cmd":"copy-then-read","selection":…,"offers":[Offer],"mimes":[…]}`: a copy, then a read,
-//!   in one handler; `{"cmd":"copy-then-clear",…}`: a copy and its clear, in one handler;
-//! - `{"cmd":"copy-files","uris":[…],"cut":bool,"text":"…"|null}`;
-//! - `{"cmd":"clear","copy":n}`, `{"cmd":"state","copy":n}`, `{"cmd":"offered","selection":…}`;
-//! - `{"cmd":"clear-later","copy":n,"ms":n}`: holds the UI thread `ms`, then clears;
-//! - `{"cmd":"read","selection":…,"mimes":[…],"max_bytes":n}`, `{"cmd":"read-files","selection":…}`;
-//! - `{"cmd":"rune-copy","text":"…"}`: Rune's own `Tx::copy`;
-//! - `{"cmd":"break"}`: the platform ends the clipboard's connection (a test switch);
-//! - `{"cmd":"quit"}`: the clipboard's shutdown, then `Tx::quit`; `{"cmd":"quit-dnd"}`: drag
-//!   and drop's shutdown instead (with `--with-dnd`); `{"cmd":"quit-only"}`: `Tx::quit` alone,
-//!   so `App::on_quit` shuts down.
-//!
-//! Flags: `--title T`, `--with-dnd` (drag and drop attached too, sharing the substrate),
-//! and the test switches `--as-if-no-data-control` (a compositor without data control, as
-//! mutter: the data device) and
-//! `--as-if-libwayland-1-22` (no route to winit's display).
-
 #[cfg(feature = "clipboard")]
 fn main() {
     demo::main();
@@ -193,8 +164,6 @@ mod demo {
                     log("read-error", json!({ "error": format!("{e:?}") }));
                 }
             }
-            // A copy, then its clear in the same handler: on X11, while it waits for its
-            // timestamp.
             "copy-then-clear" => {
                 let offers: Vec<Offer> =
                     serde_json::from_value(field("offers")).unwrap_or_default();
@@ -231,8 +200,6 @@ mod demo {
                     json!({ "was": format!("{copy:?}"), "ok": r.as_ref().ok(), "error": r.err().map(|e| e.to_string()) }),
                 );
             }
-            // Holds the UI thread first, so the platform's news (another app took the
-            // clipboard) waits behind this update: the clear can't know of it.
             "clear-later" => {
                 std::thread::sleep(Duration::from_millis(field("ms").as_u64().unwrap_or(500)));
                 let copy = CopyId::from_raw(field("copy").as_u64().unwrap_or_default());
@@ -387,8 +354,6 @@ mod demo {
         let clip = Clipboard::<State>::new()
             .test_route(route)
             .on_change(|_, c, _| log("change", change(c)));
-        // It asks the clipboard back, as an app's handler may: no borrow of the clipboard's may
-        // be held while it runs.
         let diag_clip = clip.clone();
         clipboard::on_diagnostic(move |m| {
             let route = diag_clip.status().map(|s| format!("{:?}", s.route));

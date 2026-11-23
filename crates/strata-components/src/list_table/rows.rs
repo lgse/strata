@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The rows' cells (C1e's content slot), the middle-truncated name, and the hit regions C1b
-//! reads.
-
 use std::hash::{Hash, Hasher};
 use std::rc::Rc;
 
@@ -17,14 +14,10 @@ use crate::collection::element::{ContentSlot, LABEL, Region, RowCx, Slot};
 use crate::contract::Point;
 
 /// The key of a row's cell in column `id`, under its row (`row-{entry}/cell-{id}`).
-///
-/// Used by: C4, scripts.
 pub fn cell_key(id: &str) -> String {
     format!("cell-{id}")
 }
 
-/// The name, cut in the middle so the extension stays visible (Strata's List Name column),
-/// keyed [`LABEL`] as C1e's own label is.
 pub(super) fn label<S: 'static>() -> Slot<S> {
     Slot::pure(|_: &S, rcx: &RowCx<'_>| {
         let kit = &rcx.look.kit;
@@ -65,8 +58,6 @@ impl Fonts {
     }
 }
 
-/// The cells' slot: one cell per shown column, at the resolved widths. The cells take no role:
-/// a list item holds them, as GTK's holds labels (lgse/strata#2324).
 pub(super) fn content<S: 'static>(
     shared: &Rc<Shared<S>>,
     resolved: &Rc<Resolved>,
@@ -152,8 +143,6 @@ fn cells<S: 'static>(
             Some(f) => {
                 let cell = f(s, rcx);
                 match cell.content {
-                    // The text is the cell: one element a cell keeps a row of five cheap to
-                    // mount while scrolling.
                     CellContent::Text(t) => {
                         let color =
                             cell.color
@@ -196,10 +185,6 @@ fn justify(e: El, a: Align) -> El {
     }
 }
 
-/// Which part of a row a point (in the row's own points) is on, as Strata's List counts it
-/// (`hits_list_item_content` in `src/ui/pointer.rs`): only the primary column's icon and drawn
-/// filename are item hit content; unused Name space, row padding, and every metadata column
-/// remain selection space, wherever the primary column sits.
 pub(super) fn region(resolved: &Resolved, look: &Look, name: &str, local: Point) -> Region {
     let x = local.x - resolved.lead;
     let Some(p) = resolved.column_at(x) else {

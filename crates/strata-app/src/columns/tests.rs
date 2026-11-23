@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The adapter on the offscreen host, over real folders. What a test sees of the view it
-//! reads from the accessibility tree, as the QA harness will.
-
 use std::{
     path::{Path, PathBuf},
     time::Instant,
@@ -160,8 +157,6 @@ fn seen(host: &Offscreen) -> Seen {
     }
 }
 
-/// Turns the host until `done`, as a scenario's `wait` step does, and returns what the tree
-/// showed then.
 fn wait(host: &mut Offscreen, what: &str, done: impl Fn(&Seen) -> bool) -> Seen {
     let reached = host.run_until(PATIENCE, |host| done(&seen(host)));
     let seen = seen(host);
@@ -169,9 +164,6 @@ fn wait(host: &mut Offscreen, what: &str, done: impl Fn(&Seen) -> bool) -> Seen 
     seen
 }
 
-/// Turns the host until neither GLib nor Rune has anything ready, landing each motion at its
-/// end as the QA backend will. A timer still running, such as the mirror's wait, does not
-/// hold it up.
 fn idle(host: &mut Offscreen) {
     while host.turn() {
         host.runtime().settle_all();
@@ -279,8 +271,6 @@ fn browser_holds(host: &Offscreen, depth: usize) -> (Vec<String>, Option<String>
     (names, cursor)
 }
 
-/// The browser and the view say the same of every column: which is active, which entries
-/// are selected, and where the keyboard is.
 fn assert_browser_agrees(host: &Offscreen, after: &str) {
     let seen = seen(host);
     let browser = host.app().browser();
@@ -320,7 +310,6 @@ fn a_folder_lists_in_the_browsers_order_without_its_hidden_entries() {
                 shown.map(|entry| entry.display_name.clone()).collect()
             });
             assert_eq!(held, Some(FIXTURE.map(str::to_owned).to_vec()));
-            // GTK launches with the first entry focused and selected, which the browser does.
             assert_eq!(seen.focused.as_deref(), Some("archive"));
             assert_eq!(seen.panes[0].selected(), ["archive"]);
             assert_browser_agrees(&host, "the launch");
@@ -354,7 +343,6 @@ fn a_large_folder_arrives_whole_with_each_row_copied_once() {
             );
             // Every published range once, and no column read again in full.
             assert_eq!(app.rows_copied() - copied_before, ENTRIES as u64);
-            // A virtual list mounts the rows near its viewport, as GTK's realizes them.
             let mounted = seen(&host).panes[0].rows.len();
             assert!(
                 (1..ENTRIES).contains(&mounted),
@@ -373,16 +361,12 @@ fn the_child_column_follows_the_cursor_after_its_wait_and_not_before() {
             let root = folder_name(folder.path());
             open(&mut host, folder.path());
 
-            // A pointer parked over the view is reported again whenever what is under it
-            // changes. That is not movement, and keys go on mirroring.
             let parked = centre_of(&mut host, &root, "todo.txt");
             host.runtime().pointer_move(parked.0, parked.1);
             idle(&mut host);
 
             let pressed = Instant::now();
             send(&mut host, "Down");
-            // One turn takes the key. The wait runs on GLib's clock, which only a later turn
-            // dispatches, so nothing can have opened yet however long this one took.
             host.turn();
 
             let moved = seen(&host);
@@ -401,8 +385,6 @@ fn the_child_column_follows_the_cursor_after_its_wait_and_not_before() {
             host.runtime().pointer_move(parked.0, parked.1);
             idle(&mut host);
 
-            // Keys that come faster than the wait open nothing on the way: `pictures` is
-            // passed over, and the file the cursor stops on closes the child column.
             let copied = host.app().rows_copied();
             send(&mut host, "Down");
             send(&mut host, "Down");
@@ -464,9 +446,6 @@ fn the_hidden_files_shortcut_shows_and_hides_rows_and_positions_still_map() {
                 seen.panes[0].rows.len() == 5
             });
             assert_eq!(hidden.panes[0].names(), FIXTURE);
-            // A row's place in the view is not its place in the browser, which still holds
-            // `.cache` before it: Return must open the folder under the cursor.
-            // Return comes before the mirror's wait is over, so it opens the folder itself.
             send(&mut host, "Down");
             send(&mut host, "Return");
             let opened = wait(&mut host, "documents to open", |seen| {
@@ -539,7 +518,6 @@ fn a_folder_that_cannot_be_read_says_why() {
             unreachable!("the load failed");
         };
         let tree = host.tree();
-        // GTK's status page: the reason under "Unable to read this directory", and Retry.
         let said = format!("Unable to read this directory\n{message}");
         let shown = find(&tree, &|node| node["name"] == said.as_str());
         assert_eq!(shown.len(), 1, "{said}");
@@ -613,10 +591,6 @@ fn a_click_selects_in_the_browser_and_opens_or_closes_columns_as_the_gtk_views_d
     );
 }
 
-/// What V0's name probe read from the GTK harness for the same fixture, two Downs in
-/// (`.v0/gtk/tree-after.txt` on the spike branch), with Rune's role names: the QA backend
-/// maps `group`, `list-box` and `list-box-option` onto AT-SPI's `grouping`, `list` and
-/// `list item` (V7). Each column's header title is a `label` too.
 #[test]
 fn panes_lists_and_rows_carry_the_names_the_gtk_views_give_them() {
     hosted(
@@ -672,8 +646,6 @@ fn panes_lists_and_rows_carry_the_names_the_gtk_views_give_them() {
                 ]
             );
             assert_eq!(seen.focused.as_deref(), Some("pictures"));
-            // Each column's header title is a label named for its folder and described by
-            // its path, as GTK's `column_heading` is.
             let tree = host.tree();
             let columns = find(&tree, &|node| node["description"] == "Columns view");
             let titles: Vec<[String; 2]> = columns
@@ -694,9 +666,6 @@ fn panes_lists_and_rows_carry_the_names_the_gtk_views_give_them() {
     );
 }
 
-/// An empty folder's column is described as GTK's directory surface on a column is then, and
-/// draws what it says (`show_empty` in `src/ui/browser/presentation.rs`): the mirrored
-/// `archive`, the fixture's empty folder.
 #[test]
 fn an_empty_column_says_so() {
     hosted("an_empty_column_says_so", |mut host| {
@@ -717,8 +686,6 @@ fn an_empty_column_says_so() {
     });
 }
 
-/// Clicks the empty space at the foot of the pane named `pane`, as a scenario's press on a
-/// pane's background does.
 fn click_empty(host: &mut Offscreen, pane: &str) {
     let tree = host.tree();
     let is_pane = |node: &Value| node["description"] == "Columns view" && node["name"] == pane;
@@ -734,10 +701,6 @@ fn click_empty(host: &mut Offscreen, pane: &str) {
     idle(host);
 }
 
-/// `background_selection/empty-column-clears-other-columns`: with Ctrl+clicks adding to the
-/// root's selection while the empty `archive` column is open, a press on that column's empty
-/// space clears every column's selection, as GTK's `clear_marquee_selection` does, and the
-/// columns stay open.
 #[test]
 fn a_press_on_a_columns_empty_space_clears_every_columns_selection() {
     hosted(

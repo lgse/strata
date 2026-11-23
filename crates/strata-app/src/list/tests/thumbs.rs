@@ -7,8 +7,6 @@ use strata_components::{contract::EntrySource, thumbnails::State};
 use super::{LIST, MODULE, settle};
 use crate::test_support::view::{hosted_in, open};
 
-/// An image's row has its thumbnail asked for once its folder shows, as GTK's List row asks
-/// in `request_thumbnail_and_metadata`, and a folder opened in place has its own asked for.
 #[test]
 fn an_image_row_has_its_thumbnail_asked_for_in_each_folder_shown() {
     hosted_in(

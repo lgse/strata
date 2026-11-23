@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Regression tests for DocumentView selection drag performance and lazy `all_selected`
-//! invalidation without `on_selection_change`.
-
 use std::cell::Cell;
 use std::rc::Rc;
 use std::sync::Arc;

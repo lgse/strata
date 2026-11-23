@@ -1,33 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The delete confirmation, GTK's `show_delete_dialog` (`src/ui/browser/trash/delete_dialog.rs`)
-//! on C15's [`StrataDialog`]: what will be deleted, how far the deletion reaches, Cancel and
-//! the delete itself.
-//!
-//! - **The panel.** A Trash icon in a danger box; "Permanently delete 2 items?" (or "Delete …
-//!   without Trash?" where the provider may keep a copy); the items' kind summary under it,
-//!   with a spinner and "Calculating total size…" until the total is known, which then takes
-//!   its place. The body lists up to 50 items, each with its size, "Folder" or "Folder link",
-//!   and a line for the rest; then why: Trash unsupported here, the mount's reason, and what
-//!   cannot be undone.
-//! - **The keyboard.** The delete has it when the dialog opens; Cancel has it where Trash was
-//!   asked for and is unsupported, since the user did not ask to delete. Escape, a click
-//!   outside and the close button cancel. Left and Right move between the buttons (C15).
-//! - **Cancel** puts the cursor back on the items asked about if something moved it while the
-//!   dialog was open (`return_cursor_on_cancel`).
-//! - **The size task** runs on GLib's context and answers through `Setup::later`. It stops
-//!   when the dialog closes, and a dialog that has closed, or another that has opened, takes
-//!   no answer.
-//! - **Return** presses the focused button only (`activate_focused_button`): the delete is no
-//!   default button. The keyboard returns to the listing on close
-//!   (`remember_modal_focus_for_listing`).
-//! - **One at a time.** A confirmation asked while one is open waits for it to close, under a
-//!   key of its own, so it takes its own first focus; GTK stacks it over the first.
-//!
-//! Left out: the dissolve of the deleted rows (`prepare_delete_dissolve`), and 10xer's key
-//! that confirms a trash (`TENXER_DELETE_CONFIRM`, A11's). A file link's size shows when the
-//! whole total does, where GTK shows each as it is found.
-
 use rune::El;
 use strata_components::dialog::{Focus, MESSAGE_WIDTH, StrataDialog, Tone};
 use strata_core::{
@@ -179,8 +151,6 @@ fn item_list(app: &App, confirm: &Confirm) -> El {
     list
 }
 
-/// The dialogs, while one is open or closing: Empty Trash's ([`super::empty`]) and the delete
-/// confirmation.
 pub(super) fn build(app: &App, frame: &mut Frame<'_, App>) -> Option<El> {
     super::empty::build(app, frame);
     let trash = &app.trash;
@@ -195,8 +165,6 @@ pub(super) fn build(app: &App, frame: &mut Frame<'_, App>) -> Option<El> {
         Kind::Permanent | Kind::TrashUnavailable => Tone::Danger,
     };
     let loading = confirm.sizing.then(|| tr("Calculating total size…"));
-    // A key of its own for each, so a confirmation that opens as another closes takes its own
-    // first focus.
     let key = format!("delete-confirm-{}", confirm.generation);
     let mut dialog = StrataDialog::new(key.clone(), title, super::cancelled)
         .open(trash.open)
@@ -212,8 +180,6 @@ pub(super) fn build(app: &App, frame: &mut Frame<'_, App>) -> Option<El> {
         .secondary(tr("Cancel"), super::cancelled)
         .primary(confirm_label, super::confirmed)
         .initial_focus(focus)
-        // GTK's Return presses the focused button only (`activate_focused_button`): with
-        // nothing focused it deletes nothing.
         .default_button(false)
         .close_label(tr("Close dialog"))
         .width(MESSAGE_WIDTH);

@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The portal's replies, typed: a `ReadAll` answer and a `SettingChanged` body, applied to a
-//! [`DesktopSettings`]. Kept free of the connection, so it is tested without a bus.
-
 use std::collections::HashMap;
 use std::time::Duration;
 
@@ -23,10 +20,6 @@ pub(super) struct Applied {
     pub fallbacks: Vec<Fallback>,
 }
 
-/// Applies a whole `ReadAll` answer to each key `fresh` passes (the keys no newer message has
-/// set): every key it holds with a usable value, and an `Invalid` for each bad one. A key it
-/// lacks goes back to its default and is no longer known (a change, if it was known), with an
-/// `Unset`.
 pub(super) fn apply_reply(
     settings: &mut DesktopSettings,
     reply: &Reply,
@@ -80,9 +73,6 @@ fn apply_value(
     }
 }
 
-/// `value` as `key`'s typed setting, or None when its type is wrong or the value unusable.
-/// The scale must be a `d`, its schema's type. Integer keys take any integer type, since
-/// backends other than GSettings may not keep the schema's `i`.
 pub(super) fn setting(key: Key, value: &Variant<'_>) -> Option<Setting> {
     let value = plain(value);
     let millis = |v: &Variant<'_>| {
@@ -112,8 +102,6 @@ pub(super) fn setting(key: Key, value: &Variant<'_>) -> Option<Setting> {
     setting.is_valid().then_some(setting)
 }
 
-/// The value inside any number of variant wrappers: `Read` wraps its answer twice, and a
-/// backend may wrap a value it relays.
 fn plain<'a, 'v>(value: &'a Variant<'v>) -> &'a Variant<'v> {
     match value {
         Variant::Variant(inner) => plain(inner),

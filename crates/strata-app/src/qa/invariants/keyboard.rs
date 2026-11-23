@@ -1,21 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! `keyboard`: who has the keyboard against what the tree shows. The window's commands wait
-//! while a part says it holds the keyboard ([`Holds`]), so a hold that outlives its surface
-//! leaves every window shortcut dead, and a surface that takes keys with no hold lets them
-//! through: Delete would move files to the trash while a name is typed. And an element must
-//! have the keyboard, or the next key goes nowhere.
-//!
-//! - Something in the tree has the keyboard, unless a floating chooser in front has it.
-//! - A part holds it for a menu only while the tree shows a menu, and for a modal layer only
-//!   while it shows a dialog other than a chooser's footer error, an alert that takes no keys. A menu or a dialog the tree shows is held for by its own hold or
-//!   by a plain popover: the Sort by menu and the Appearance popover show as one. A part holds
-//!   it for an inline edit or the location bar only while a text field has the keyboard.
-//! - A text field with the keyboard is held for by some part.
-//!
-//! A plain popover's hold ([`Holds::Popover`]) needs no surface: the snapshot names no
-//! popover, and not every popover shows as a dialog.
-
 use strata_qa::Observation;
 
 use super::Failures;

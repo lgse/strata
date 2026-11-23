@@ -132,8 +132,6 @@ fn send(
     }
 }
 
-/// The returned output directory may hold the executable snapshot bwrap binds,
-/// so it must outlive the helper.
 fn spawn_helper(
     source: &SandboxedMedia,
     operation: ParseOperation,

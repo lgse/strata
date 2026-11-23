@@ -1,10 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! What each mount was seen to support. Entries order fallback rungs and
-//! interpret ambiguous errors; every ladder rung refuses to replace on its own,
-//! so a stale entry costs speed or a refusal. The exception is the
-//! reserved-name rung, which an entry alone enables, with its small window.
-
 use std::{collections::BTreeMap, ffi::OsStr, sync::Mutex, time::Duration};
 
 use super::{CoarseTimes, Family, FuseFormat, MountNames, SillyNames, Strictness};
@@ -35,8 +30,6 @@ pub(crate) struct MountCapabilities {
     pub tmpfile_link_through_proc: Option<bool>,
     pub reflink: Option<bool>,
     pub copy_range: Option<bool>,
-    /// Namespaces the mount refuses as unsupported; a refused name alone
-    /// says nothing about its namespace.
     pub refused_xattrs: XattrNamespaces,
     /// From mountinfo, kept here so a mount change drops it with the rest.
     pub family: Option<Family>,
@@ -127,8 +120,6 @@ pub(crate) fn teach_mount_capability(
     }
 }
 
-/// Mount ids can be reused once a mount goes away, so a mount change drops
-/// everything learned from real mounts.
 pub(crate) fn forget_mount_capabilities() {
     capabilities().retain(|key, _| is_test_key(key));
 }

@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Armed 10xer chord completion for sort (`,`), copy (`c`), tabs (`t`), and actions (`;` / `; .`),
-//! ported from `src/ui/window/keyboard/chords.rs` and `src/ui/window/keyboard/files.rs`.
-
 use rune::Tx;
 use strata_core::{
     i18n::tr,
@@ -53,8 +50,6 @@ pub(super) fn handle_armed_chord(app: &mut App, press: &KeyPress, tx: &mut Tx) -
     Outcome::Ran
 }
 
-/// Shift with a step reverses it, on whatever key the step is bound to (`sort_choice` in
-/// `src/ui/window/keyboard/files.rs`).
 fn sort_choice(press: &KeyPress) -> Option<(SortKey, SortDirection)> {
     const STEPS: [(Command, SortKey); 7] = [
         (SORT_BY_NAME, SortKey::Name),
@@ -167,15 +162,11 @@ fn complete_tab(app: &mut App, press: &KeyPress, tx: &mut Tx) -> bool {
     true
 }
 
-/// The targets and the action ids `;` or `; .` listed as it armed (`ArmedActions` in
-/// `src/ui/window/keyboard/files.rs`).
 pub(crate) struct ArmedActions {
     targets: Vec<Location>,
     ids: Vec<String>,
 }
 
-/// `;` (`folder_only` false) or `; .`: lists the actions that run on the selection or on the
-/// folder by number, and the lettered ones after them (`arm_actions`).
 pub(super) fn arm_actions(app: &mut App, folder_only: bool) {
     let source = if folder_only {
         InvocationSource::Background
@@ -286,8 +277,6 @@ fn slot_key(index: usize) -> String {
     key_catalog::digit_label(ACTIONS_NUMBERS.step(), digit)
 }
 
-/// A digit after `;` or `; .` runs the action listed on it, once the targets and the actions
-/// are still the ones listed (`complete_numbered_action`); `0` is the tenth.
 fn complete_numbered_slot(
     app: &mut App,
     press: &KeyPress,

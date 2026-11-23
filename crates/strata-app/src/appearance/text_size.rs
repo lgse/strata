@@ -1,27 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The interface's text size from the keyboard, as GTK's window changes it (`zoom_shortcut` in
-//! `src/ui/window/keyboard.rs`, `TextSizeShortcut::for_shortcut` in
-//! `src/ui/preferences/text_size.rs`):
-//!
-//! - **The keys** are read at the dispatcher's `zoom_shortcut` stage, which runs before
-//!   `input_owner`: they work while a rename, a menu or a modal layer has the keyboard, and
-//!   only a plain popover keeps them (`commands::Holds::Popover`). Ctrl+plus and Ctrl+= make
-//!   the text one pixel larger, Ctrl+minus one smaller, Ctrl+0 the default again. Each is the
-//!   active map's binding with its own modifiers, as `press.is` reads it, so Ctrl+Alt+= is
-//!   the Icons view's tile size and not this.
-//! - **GTK's Ctrl+0 first resets a focused PDF's zoom** (`preview.reset_pdf_zoom`, ahead of
-//!   the text size at the same stage). The preview registers that reset, the key map's
-//!   `pdf_zoom_reset`, at the same stage (`preview-pdf-reset`, `preview::pdf::RESET`), and a
-//!   part's commands are asked before these, the window's own: Ctrl+0 with the keyboard in a
-//!   PDF resets the PDF, and reaches the text size only when `pdf_zoom_reset` is bound elsewhere.
-//! - **The wheel**: Ctrl+wheel steps the size as these keys do ([`step`], from
-//!   `appearance::wheel`).
-//! - **The size** steps by the shared rule (`strata_desktop::settings::TextSize`): 8 to 48 px,
-//!   13 by default. It is saved at once, and the look follows it (`shell::follow_look`).
-//!
-//! Left out: GTK's notice "Text size: N px", which this interface has no surface for yet.
-
 use strata_desktop::{
     keys::{
         Modifiers,
@@ -35,9 +13,6 @@ use crate::{
     commands::{Action, Keys, Outcome, Stage},
     shell,
 };
-
-// `text-larger`, `text-smaller` and `text-reset`, among the window's own commands
-// (`commands::own`), for the popover's stepper to run too.
 
 pub(crate) const LARGER: Action<App> =
     Action::new("text-larger", |app, _, _| set(app, |size| size.stepped(1)))
@@ -64,13 +39,10 @@ pub(crate) const RESET: Action<App> =
             &[TEXT_RESET.ignoring(Modifiers::empty())],
         )]);
 
-/// Steps the saved size by `steps` pixels, as the window's zoom wheel does (GTK's `zoom_by`).
 pub(crate) fn step(app: &mut App, steps: i32) {
     set(app, |size| size.stepped(steps));
 }
 
-/// Saves the size `to` makes of the saved one, and has the look follow it. The key is taken
-/// at either end of the range too, as GTK's stage takes it.
 fn set(app: &mut App, to: impl FnOnce(TextSize) -> TextSize) -> Outcome {
     crate::tenxer::cancel_chord(app);
     let size = to(shell::preferences(app).text_size);

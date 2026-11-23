@@ -1,18 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Perf on the largest document Strata renders: 1 MiB of mixed units (Strata's input limit),
-//! about 10,000 of them, with code blocks coloured by the real highlighter thread and tables.
-//! `#[ignore]`d; run with the `perf` profile, and Rune's commit budget to hear slow commits:
-//!
-//! ```sh
-//! RUNE_COMMIT_BUDGET_MS=8 cargo test --profile perf -p strata-components --lib \
-//!     document_view::tests::perf -- --ignored --test-threads=1 --nocapture
-//! ```
-//!
-//! It times the first frame; 600 frames at 120 Hz each scrolled 48 pt by the wheel (as C1e's
-//! perf does), the host polling the block pool and rebuilding when colours land; find over the
-//! whole document; and Ctrl+A then Ctrl+C, from the model and through Rune's own collection.
-
 use std::cell::Cell as StdCell;
 use std::sync::Arc;
 use std::time::Instant;
@@ -44,8 +31,6 @@ fn percentile(v: &mut [f64], p: f64) -> f64 {
     v[((v.len() - 1) as f64 * p).round() as usize]
 }
 
-/// 1 MiB of units: headings, paragraphs, list items, a 6-line Rust block every 25 units and a
-/// 4-row table every 40.
 pub(crate) fn big_document() -> Document {
     let mut units = Vec::new();
     let mut bytes = 0;

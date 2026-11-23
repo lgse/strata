@@ -1,15 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The search bar's field: Rune's core `text_input`, frameless as Strata's `.search-field` is,
-//! and the keys that drive the results.
-//!
-//! Not rune-kit's `TextInput`, which draws a box and builds its inner field itself, taking no
-//! `on_secondary_press` for it (Rune draft U-C21-2): a right-click there asks for Rune's native
-//! field menu, empty on Linux. The core field takes the press, and the palette sends it as
-//! [`PaletteIntent::FieldMenu`] for C21's menu; pointer selections and middle-click paste use
-//! Rune's primary selection on Linux, and losing focus finishes an active IME composition into
-//! the query. C18's filter bar made the same choice; one shared field is a follow-up.
-
 use rune::{Chord, ChordMod, El, Key, KeyEvent, PointerPress, Tx, text_input};
 use strata_kit::look::Look;
 
@@ -19,9 +9,6 @@ use super::state::{PaletteState, Polled};
 use super::view::{Ctx, route};
 use crate::contract::Point;
 
-/// The field, editing `state.edit` unless nothing can be searched: a field with no edit
-/// handler takes neither text nor focus, as Strata's insensitive field does, and the panel
-/// keeps the keyboard (Escape still closes it).
 pub(super) fn field<S: 'static>(
     cx: &Ctx<S>,
     look: &Look,
@@ -87,8 +74,6 @@ fn matches_with(chord: &Chord, extra: ChordMod, ev: &KeyEvent, tx: &Tx) -> bool 
     chord.matches_tx(ev, tx) || (!chord.has(extra) && chord.with(extra).matches_tx(ev, tx))
 }
 
-/// A key in the field, before the editor sees it. True takes it. Rune hands Return and
-/// Escape to an input-method composition first, so they never reach here while one runs.
 pub(super) fn on_key(
     st: &mut PaletteState,
     ev: &KeyEvent,

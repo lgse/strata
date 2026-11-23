@@ -1,12 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! A keyboard layout other than the US one, for a host with no display server to ask.
-//!
-//! The runner's `layout` step swaps the keymap of the X display it started, which the GTK
-//! application types through. Rune's offscreen host has no display, so the runner also sends
-//! the layout here as a `keymap` step, and this module answers what a key at a US position
-//! types under it, from the same xkeyboard-config data the X server compiles.
-
 use std::collections::HashMap;
 
 use strata_qa::{Keymap, Modifier};
@@ -31,8 +24,6 @@ pub(super) struct Typed {
 pub(super) struct Layout {
     keymap: xkb::Keymap,
     us: xkb::Keymap,
-    /// Each keysym's key on a US keyboard, and whether it needs Shift there: the same
-    /// first-match order as the X keymap, keycodes upward, unshifted before shifted.
     positions: HashMap<u32, (xkb::Keycode, bool)>,
     group: u32,
     caps_lock: bool,
@@ -119,8 +110,6 @@ impl Layout {
         }
     }
 
-    /// Whether the right Alt key is this layout's level shift, as on a German keyboard, and
-    /// not Alt, as on a US one.
     pub(super) fn has_altgr(&self) -> bool {
         let right_alt = keysym(Modifier::AltGr.keysym_name());
         let position = right_alt.and_then(|keysym| self.positions.get(&keysym));
@@ -131,8 +120,6 @@ impl Layout {
         })
     }
 
-    /// The key named `name` on a US keyboard, as this layout has it with Shift or AltGr held:
-    /// its keycode, the state it is pressed in, and whether Shift is down for it.
     fn pressed(
         &self,
         name: &str,
@@ -159,16 +146,11 @@ impl Layout {
         Some((keycode, state, shift))
     }
 
-    /// The keysym the key named `name` on a US keyboard gives here: a dead key's own, which
-    /// types nothing by itself.
     pub(super) fn keysym(&self, name: &str, shift: bool, altgr: bool) -> Option<xkb::Keysym> {
         let (keycode, state, _) = self.pressed(name, shift, altgr)?;
         Some(state.key_get_one_sym(keycode))
     }
 
-    /// What the key named `name` on a US keyboard types here, with Shift or AltGr held.
-    /// `None` for a name no US key has: a character such a keyboard cannot type. `None` too
-    /// for a dead key.
     pub(super) fn typed(&self, name: &str, shift: bool, altgr: bool) -> Option<Typed> {
         let (keycode, state, shift) = self.pressed(name, shift, altgr)?;
         let named = keys::named(&xkb::keysym_get_name(state.key_get_one_sym(keycode))).ok();

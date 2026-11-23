@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Regression tests for CodeView selection drag performance, whole-line gutter selection and
-//! edge auto-scroll, lazy caret/all-selected tracking without `on_selection_change`, and deferred
-//! position-bar `a11y_value` commits during active scroll.
-
 use std::cell::Cell;
 use std::rc::Rc;
 
@@ -76,8 +72,6 @@ fn gutter_drag_commits_zero_views_during_press_and_move() {
     let (mut rt, views) = runtime("the quick brown fox\nsecond line\n".into(), false);
     rt.update(|_, tx| tx.focus("code", false));
     rt.frame(1.0 / 60.0);
-    // First drag runs with Rune's debug `live_only` verifier enabled to prove `gutter_drag`
-    // mutates no view-visible state.
     rt.pointer_move(20.0, 14.0);
     rt.pointer_down(20.0, 14.0);
     rt.frame(1.0 / 60.0);
@@ -86,8 +80,6 @@ fn gutter_drag_commits_zero_views_during_press_and_move() {
     rt.pointer_up(100.0, 14.0);
     rt.frame(1.0 / 60.0);
 
-    // With the debug verifier off, the press focuses the document once and every subsequent
-    // drag move and release commits zero views.
     rt.check_live_only(false);
     rt.pointer_move(20.0, 14.0);
     rt.pointer_down(20.0, 14.0);
@@ -238,8 +230,6 @@ fn poll_defers_a11y_value_during_continuous_scroll_and_updates_when_settled() {
         "settled value={settled:?}"
     );
 
-    // Explicit Ctrl+End / Ctrl+Home jumps update `a11y_value` immediately via `go_step`,
-    // without waiting for the 150 ms settle window.
     let ctrl = Mods {
         ctrl: true,
         ..Mods::default()
@@ -348,16 +338,12 @@ fn external_selection_clear_invalidates_stale_keyboard_and_select_all_state() {
     assert_eq!(rt.selected_text(), None);
     assert_eq!(rt.state.code.keyboard_selection_for(None), None);
 
-    // Returning focus via keyboard: plain Left must not collapse a dead selection, and
-    // Shift+Right must start fresh at offset 0 rather than resurrecting `alpha\n`.
     focus_code(&mut rt);
     send(&mut rt, Key::Left, Mods::default());
     assert_eq!(rt.state.code.keyboard_selection(), None);
     send(&mut rt, Key::Right, shift);
     assert_eq!(rt.state.code.copy_keyboard().as_deref(), Some("a"));
 
-    // 2. Ctrl+A selects all; clicking outside clears Rune's selection. Returning focus and
-    // pressing Shift+Left must not resurrect/shrink the cleared 0..len range.
     send(&mut rt, Key::Command('a'), cmd);
     assert!(rt.state.code.all_selected());
     click_outside(&mut rt);

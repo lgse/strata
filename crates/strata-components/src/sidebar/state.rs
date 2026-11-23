@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The sidebar's own state, held by the app and reached by accessor: the width step, the
-//! collapsed sections, the reorder drags, the drop hover and the host's pin check.
-
 use std::cell::Cell;
 use std::collections::HashMap;
 
@@ -39,14 +36,10 @@ pub enum Step {
     Hidden,
 }
 
-/// The sidebar's width: the step the user chose, an automatic rail the host's fit rule set,
-/// and the full width the user dragged to.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Width {
     chosen: Step,
     auto_rail: bool,
-    /// The full sidebar's width and range. Its grip drags it; the rail and hidden steps leave
-    /// it as it was, so the full sidebar comes back at the same width.
     pub pane: PaneState,
 }
 
@@ -84,9 +77,6 @@ impl Width {
         self.auto_rail
     }
 
-    /// One press of the toggle: full to rail to hidden to full, from what shows. Choosing the
-    /// rail holds it at any width; stepping from hidden shows the full sidebar even where the
-    /// fit rule had railed it, until the host's rule next finds it short of room.
     pub fn advance(&mut self) -> Step {
         self.chosen = match self.shown() {
             Step::Full => Step::Rail,
@@ -97,16 +87,11 @@ impl Width {
         self.chosen
     }
 
-    /// The user chose `step` some other way (a saved preference, Settings). A chosen rail
-    /// holds when the window widens again, even if the fit rule had railed the sidebar first.
     pub fn choose(&mut self, step: Step) {
         self.chosen = step;
         self.auto_rail = false;
     }
 
-    /// The host's fit rule (C9's `demand()` and Strata's sum) railed the sidebar or released
-    /// it. Call it only when the fit changes: the rule is edge-triggered. A chosen rail or a
-    /// hidden sidebar ignores it.
     pub fn set_auto_rail(&mut self, rail: bool) {
         self.auto_rail = rail && self.chosen == Step::Full;
     }
@@ -149,17 +134,11 @@ pub enum PinVerdict {
 /// How a gap treats a drag the host hasn't checked.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub enum Unchecked {
-    /// Show the insertion line and take the drop; the host checks the items at the drop.
-    /// For binders that can't read a drag's items while it hovers (Rune's).
     #[default]
     Accept,
-    /// Show nothing until the host says [`PinVerdict::Folders`]. Strata's, under a binder that
-    /// reads URIs while the drag hovers.
     Wait,
 }
 
-/// The host's verdicts on drags over the pin gaps: one for its own drag (it knows what it
-/// dragged), one for the last foreign drag it checked, keyed by the drag's serial.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct PinCheck {
     pub local: PinVerdict,
@@ -184,8 +163,6 @@ impl PinCheck {
         }
     }
 
-    /// Whether a gap takes a drop of a drag with `verdict`: one it shows, or under
-    /// [`Unchecked::Accept`] any it hasn't refused, for the host to check at the drop.
     pub fn takes(&self, verdict: PinVerdict) -> bool {
         match self.unchecked {
             Unchecked::Accept => verdict != PinVerdict::Refused,
@@ -218,23 +195,14 @@ pub struct SidebarState {
     pub pin_check: PinCheck,
     /// The `g` chord is armed: rows with a keycap show it.
     pub keycaps: bool,
-    /// Vertical scroll bar for the sidebar list: hidden when items fit, shown whenever the
-    /// sidebar overflows vertically.
     pub scroll_bar: Bar,
     drop: Option<(DropSite, DropHover)>,
     /// The drag over the sidebar, as its offer said: from this process, and its serial.
     pub(crate) drag: Option<(bool, u64)>,
-    /// The row a reorder just dropped. Rune presses a row on the release that ends its drag
-    /// when the pointer is still over it (U21), and that press opens nothing. The next press
-    /// on any row, or the next drag, forgets it.
     pub(crate) dropped: Option<ItemId>,
     /// Each row's laid-out box, in window points: where a menu the keyboard opens on it goes.
     pub(crate) boxes: HashMap<ItemId, [f32; 4]>,
-    /// Whether the trailing resize grip is actively dragged: keeps the divider accent lit while
-    /// the pointer moves faster than layout catches up.
     pub(crate) resizing: bool,
-    /// Last rendered width step so transitions between `Full`, `Rail` and `Hidden` always
-    /// release held hover/drag state on [`Self::scroll_bar`].
     pub(crate) last_shown: Cell<Option<Step>>,
 }
 
@@ -270,8 +238,6 @@ impl SidebarState {
         }
     }
 
-    /// Where the row `item` was last laid out, `[x, y, w, h]` in window points: the anchor of
-    /// a menu the keyboard opens on it, as GTK points a row's popover at the row.
     pub fn row_box(&self, item: &ItemId) -> Option<[f32; 4]> {
         self.boxes.get(item).copied()
     }
@@ -281,8 +247,6 @@ impl SidebarState {
         self.drop.as_ref()
     }
 
-    /// A drag is over the sidebar: rows show no hover fill and no focus ring, and an empty
-    /// PINNED section shows its gap.
     pub fn dragging(&self) -> bool {
         self.drop.is_some()
     }
@@ -304,10 +268,6 @@ impl SidebarState {
         *c
     }
 
-    /// A drop site's hover changed: the sidebar's zones call this, and a host or test may to
-    /// show a drop. One site owns the indicator: arriving takes it, and a
-    /// leave clears it only if that site still holds it, so a late leave from the site a drag
-    /// moved off never clears the one it moved onto.
     pub fn set_drop_hover(&mut self, site: DropSite, hover: DropHover) {
         match hover {
             DropHover::Left => {

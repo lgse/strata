@@ -126,8 +126,6 @@ fn on_close(w: &mut Window, _: &mut Tx) {
     }
 }
 
-/// Opens a window on `location`, created with `token` (so the compositor lets it take focus)
-/// or opened without one.
 pub fn open(c: &mut Controller, location: String, token: Option<&str>) {
     c.launches += 1;
     let key = format!("window-{}", c.launches);
@@ -154,11 +152,6 @@ pub fn open(c: &mut Controller, location: String, token: Option<&str>) {
         "window",
         json!({ "key": key, "location": location, "token": token.is_some() }),
     );
-    // Strata's default window size (`app/window`: 1200×760). Each window is its own app,
-    // started windowless (which implies keep_running) and shown by `activate` or `open`, as
-    // strata-platform's `single-instance-demo` does: closing it runs `on_close`, which drops it
-    // from `WINDOWS` and quits the controller after the last one. Text draws in the bundled
-    // JetBrains Mono, in both slots, as Strata's does (K6).
     let app = App::new(AppSpec {
         poll: Some(poll),
         fonts: strata_kit::fonts::FONTS,

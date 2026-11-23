@@ -46,14 +46,10 @@ impl App {
             return;
         }
         match how {
-            // Return opens a folder with the cursor on its first entry: `activate_focused`
-            // in `src/ui/browser/view_navigation.rs`.
             Activation::Key if self.browser_is_on(depth, position) => {
                 self.browser.activate_focused();
             }
             Activation::Key => self.browser.activate(depth, position),
-            // A click opens it with no cursor: `activate_column_entry` in
-            // `src/ui/browser/columns/state.rs`.
             _ => {
                 crate::preview::note_click_opening(self, depth, position);
                 self.browser.activate(depth, position);
@@ -61,8 +57,6 @@ impl App {
         }
     }
 
-    /// Right on a folder whose column is not open: `enter_focused_directory`, as
-    /// `src/ui/window/keyboard/items.rs` calls it.
     fn enter(&self, depth: usize, id: EntryId) {
         let Some(position) = self.columns.position(depth, id) else {
             return;
@@ -91,10 +85,6 @@ impl App {
             .then_some(position)
     }
 
-    /// A plain click on a file previews it when single-click previews are enabled and two
-    /// clicks open files (`PendingActivationKind::Standard { preview: true }`), or else closes
-    /// the columns after it (`PendingActivationKind::CloseDeeper` in
-    /// `src/ui/browser/columns/rows/click.rs`).
     fn clicked(&self, depth: usize, id: EntryId) {
         let file = self
             .columns
@@ -121,9 +111,6 @@ impl App {
         }
     }
 
-    /// A middle click on a folder row (`open_middle_clicked` in
-    /// `src/ui/browser/columns/rows/click.rs`): `open-in-tab`, or `open-in-window` with Ctrl or
-    /// Shift.
     fn open_in_new(&mut self, at: At, window: bool, tx: &mut Tx) {
         let Some(entry) = self.entry_at(at) else {
             return;
@@ -136,9 +123,6 @@ impl App {
         commands::run(self, command, On::Place(entry.location), tx);
     }
 
-    /// A middle click on a file row (`MiddleClickAction::RevealParent` in
-    /// `src/ui/browser/columns/rows/click.rs`): empties its folder's filter and reveals the file
-    /// in its folder, closing deeper columns or navigating to a subfolder hit's parent.
     fn reveal(&mut self, at: At, tx: &mut Tx) {
         let Some(entry) = self.entry_at(at) else {
             return;
@@ -165,7 +149,6 @@ impl App {
             crate::dnd::begin_entries(self, entries, self.columns.scale.get(), tx);
             return;
         }
-        // A filter's results open as GTK's hits do, and are renamed nowhere yet.
         if self.columns.shows_hits(depth) && filter::hit_intent(self, depth, &intent, tx) {
             return;
         }
@@ -190,17 +173,12 @@ impl App {
             Intent::Other(other) if other.downcast_ref::<NothingToSelect>().is_some() => {
                 crate::tenxer::flash_nothing_to_select(self, tx);
             }
-            // Drags are interface the slice leaves out. Up and Down at a
-            // column's edge have nowhere to go without a header to focus: the view has
-            // selected the cursor's entry alone again, as the browser does there.
             _ => {}
         }
     }
 }
 
 pub(super) fn heard(app: &mut App, intent: ColumnsIntent, tx: &mut Tx) {
-    // What the input did to the cursor and the selection goes first: the browser acts on
-    // its own.
     let input = match tx.by_keys() {
         true => Input::Keys {
             extending: tx.mods().shift,
@@ -361,8 +339,6 @@ pub(crate) fn spring_open(app: &mut App, depth: usize, id: EntryId, tx: &mut Tx)
     shell::settle(app, tx);
 }
 
-/// Opens the entry of a row as a click on it does: what the context menu's Open asks
-/// (`open_context_entry` in `src/ui/browser/context_menu/item_menu.rs`).
 pub(super) fn clicked_open(app: &mut App, (depth, id): At) {
     if app.columns.shows_hits(depth) {
         filter::open_hit(app, depth, id);

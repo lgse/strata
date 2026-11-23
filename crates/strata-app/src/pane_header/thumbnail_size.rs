@@ -1,26 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The Icons pane header's "Thumbnail size" button and its popover (A5), GTK's
-//! `ThumbnailSizeMenu` and `SizeActions` in `src/ui/browser_modes/icons_controls.rs`.
-//!
-//! - **The button** sits in the header's actions row of the Icons view only, named and
-//!   described "Thumbnail size", and opens the popover under it; Return presses it as Space
-//!   does ([`buttons::on_return`]).
-//! - **The popover:** a heading with the size in px, C20a's slider from 32 to 256 in steps of
-//!   16, named "Thumbnail size", with "Small" and "Large" at its ends; each move sets the size
-//!   as A1's commands do, kept by the shared policy (`icons::size::set`). A wheel notch over
-//!   the slider moves it 1 px.
-//! - **"Make this the default size" and "Reset to default size"** show only while the shown
-//!   folder is remembered at a size other than the default, and each closes the popover
-//!   (`closing_menu_action`).
-//! - While it is open it takes every key, as GTK's plain popover does
-//!   ([`crate::commands::Holds::Popover`]): no window command runs, Delete on the slider
-//!   trashes nothing. Its slider follows a size changed from elsewhere.
-//! - It is a plain popover ([`crate::popover`]): Tab cycles through its controls, Escape, a
-//!   press outside or a wheel outside closes it and gives the button the keyboard back, and a
-//!   wheel over the listing also scrolls it. Another folder or view showing closes it too, as
-//!   GTK's goes with its pane.
-
 use rune::{El, Tx, col, row, text};
 use rune_kit::{Button, ButtonVariant};
 use strata_components::{
@@ -44,14 +23,11 @@ const SLIDER: &str = "icons-thumbnail-slider";
 const MAKE_DEFAULT: &str = "icons-thumbnail-make-default";
 const RESET: &str = "icons-thumbnail-reset";
 
-/// GTK's `MIN_ICONS_THUMBNAIL_SIZE`, `MAX_ICONS_THUMBNAIL_SIZE` and the scale's step.
 const RANGE: (f64, f64, f64) = (32.0, 256.0, 16.0);
 
 /// The popover's state: whether it is open, and its slider.
 pub(crate) struct ThumbnailSize {
     open: bool,
-    /// The folder the popover opened over: GTK's goes away with its pane when a navigation
-    /// rebuilds it, and this one closes when the folder changes or another view shows.
     over: Option<Location>,
     slider: SliderState,
     labels: Labels,
@@ -98,7 +74,6 @@ pub(crate) fn button(app: &App) -> El {
     buttons::on_return(BUTTON, built)
 }
 
-/// Opens the popover with the keyboard on its slider, as GTK's opens, or closes it.
 fn toggle(app: &mut App, tx: &mut Tx) {
     if app.pane_header.thumbnails.open {
         close(app);
@@ -113,16 +88,10 @@ fn toggle(app: &mut App, tx: &mut Tx) {
     tx.focus(SLIDER, true);
 }
 
-/// While the popover is open its slider follows a size changed from elsewhere (another
-/// process's saved folder view, say), as GTK's scale does (`icons_thumbnail_scale` in
-/// `src/ui/browser/view_modes.rs`), unless a drag holds it; and it closes when another folder
-/// or another view shows, as GTK's goes with its pane (`rebuild_icons` on `ColumnAdded`). True
-/// when anything changed.
 pub(crate) fn follow(app: &mut App, tx: &Tx) -> bool {
     if !app.pane_header.thumbnails.open {
         return false;
     }
-    // GTK's popover hides when the keyboard leaves it.
     if crate::popover::focus_left(tx, BUTTON, &stops(app), &[]) {
         close(app);
         return true;
@@ -162,7 +131,6 @@ pub(crate) fn build(app: &App, frame: &mut Frame<'_, App>) {
     .label(labels.title.clone())
     .value_text(value.clone())
     .wheel(Some(1.0))
-    // GTK's scale lands a drag on any whole pixel; its keys step by 16.
     .free_drag(true)
     .on_change(slid)
     .build(app, look);
@@ -246,7 +214,6 @@ fn actions(app: &App, labels: &Labels) -> El {
             })
             .build(kit)
             .w_full()
-            // GTK's `DefaultActions` are buttons that assistive technology hears as menu items.
             .role("menuitem");
         buttons::on_return(key, button)
     };
@@ -262,7 +229,6 @@ fn make_default(app: &mut App, tx: &mut Tx) {
     size::make_default(app, chosen, tx);
 }
 
-/// A move of the slider: the size follows it, as GTK's `value-changed` does.
 fn slid(app: &mut App, value: f64, _: SliderChange, tx: &mut Tx) {
     size::set(app, value.round() as i32, tx);
 }

@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The lookup itself: a theme chain over a search path, each theme's directories listed once
-//! and checked for changes on demand.
-
 #[cfg(test)]
 mod tests;
 
@@ -18,26 +15,17 @@ use super::matching;
 /// The theme the spec makes every chain end in.
 pub const FALLBACK_THEME: &str = "hicolor";
 
-/// How many names of themes that no root has stay remembered, so a lookup in one doesn't read
-/// the roots again. Each is checked on every revalidation, so an app that tries arbitrary
-/// names (or a theme that inherits many missing ones) mustn't add one for good.
 const UNKNOWN_THEMES: usize = 8;
 
 /// Where icons are looked up.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct SearchPath {
-    /// The roots that hold themes (`<root>/<theme>/index.theme`) and unthemed icons, in order:
-    /// a theme directory in an earlier root overrides the same directory in a later one.
     pub icon_dirs: Vec<PathBuf>,
     /// Further roots for unthemed icons only, searched after `icon_dirs`.
     pub pixmap_dirs: Vec<PathBuf>,
 }
 
 impl SearchPath {
-    /// GTK 4's search path: `$XDG_DATA_HOME/icons` (by default `~/.local/share/icons`),
-    /// `~/.icons`, then `icons` under each of `$XDG_DATA_DIRS` (by default `/usr/local/share`
-    /// and `/usr/share`), with `pixmaps` under each of those for unthemed icons, and
-    /// `/usr/share/pixmaps` last when they leave it out (the spec names it).
     pub fn from_env() -> Self {
         Self::from_vars(|name| std::env::var_os(name))
     }
@@ -83,21 +71,11 @@ pub struct Resolved {
 }
 
 impl Resolved {
-    /// Whether it was found under a `-symbolic` name. Symbolic icons draw as their files
-    /// paint them, not in a foreground colour (see the module docs).
     pub fn is_symbolic(&self) -> bool {
         self.name.ends_with("-symbolic")
     }
 }
 
-/// Finds icon files by name, size and scale, following the Icon Theme Specification the way
-/// GTK 4's `GtkIconTheme` does (the module docs give the rules).
-///
-/// It reads the file system: a theme's `index.theme` and directory listings the first time a
-/// lookup reaches the theme, and the timestamps of every directory it has read on
-/// [`revalidate`](Self::revalidate). Call it off the UI thread; [`IconLoader`] does.
-///
-/// [`IconLoader`]: super::IconLoader
 #[derive(Debug)]
 pub struct IconResolver {
     search: SearchPath,
@@ -121,12 +99,6 @@ impl IconResolver {
         &self.search
     }
 
-    /// The best file for the first of `names` that `theme`'s chain has, at `size` logical
-    /// pixels and integer `scale` (clamped to 1..=4096 and 1..=8), or `None`.
-    ///
-    /// Themes are searched outside names: a later name in the theme beats an earlier name in
-    /// a theme it inherits. Leading `-symbolic` names are first searched through the whole
-    /// chain. Unthemed icons (the roots' own files, then pixmaps) come last.
     pub fn resolve(
         &mut self,
         theme: &str,
@@ -150,8 +122,6 @@ impl IconResolver {
                 theme: Some(theme.clone()),
             })
         };
-        // GTK prefers a symbolic icon from an inherited theme over a full-colour one in the
-        // current theme when the request leads with symbolic names.
         let symbolic = names.iter().take_while(|n| n.ends_with("-symbolic"));
         for theme in &chain {
             if let Some(hit) = symbolic.clone().find_map(|n| found(theme, n)) {
@@ -176,9 +146,6 @@ impl IconResolver {
         })
     }
 
-    /// Checks the timestamps of every directory and `index.theme` read so far, and reads again
-    /// each theme (and the unthemed roots) where one changed, appeared or went away. Returns
-    /// whether anything did.
     pub fn revalidate(&mut self) -> bool {
         let mut changed = false;
         let stale: Vec<String> = self
@@ -199,9 +166,6 @@ impl IconResolver {
         changed
     }
 
-    /// The themes a lookup in `theme` searches: `theme`, what it inherits depth-first in
-    /// order, then hicolor. A theme without an `index.theme` is left out with what it
-    /// inherits, as GTK does; so is a theme name that isn't one path component.
     fn chain(&mut self, theme: &str) -> Vec<String> {
         let mut chain = Vec::new();
         let mut visited = Vec::new();
@@ -212,8 +176,6 @@ impl IconResolver {
         chain
     }
 
-    /// Stores a theme just read. A missing one joins the unknown names, and the oldest unknown
-    /// name beyond [`UNKNOWN_THEMES`] that is still missing is forgotten.
     fn keep(&mut self, name: String, theme: Theme) {
         if !theme.found && !self.unknown.contains(&name) {
             self.unknown.push_back(name.clone());
@@ -252,8 +214,6 @@ fn valid_theme_name(name: &str) -> bool {
     !name.is_empty() && name != "." && name != ".." && !name.contains(['/', '\0'])
 }
 
-/// A file's best format in one directory: PNG beats SVG, as in GTK. XPM is left out (Rune
-/// can't decode it), so a name with only an XPM falls through to the next directory or name.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 enum Suffix {
     Svg,
@@ -262,7 +222,6 @@ enum Suffix {
 
 impl Suffix {
     fn split(file: &str) -> Option<(&str, Suffix)> {
-        // GTK's pre-rendered symbolic PNG files encode their colours in the channels.
         if file.ends_with(".symbolic.png") {
             return None;
         }
@@ -314,8 +273,6 @@ fn list(dir: &Path, mut found: impl FnMut(&str, Suffix)) {
     }
 }
 
-/// Directories with the same size parameters, merged into one class as GTK does. Each name
-/// keeps the first directory (in `Directories` order, then root order) that has it.
 #[derive(Debug)]
 struct SizeClass {
     params: DirParams,
@@ -336,9 +293,6 @@ impl Theme {
     fn load(name: &str, roots: &[PathBuf]) -> Theme {
         let mut watched = Watched::default();
         let mut index: Option<ThemeIndex> = None;
-        // Only roots that have the theme are listed: most have none of a given theme, and
-        // hicolor alone names hundreds of directories. A root that gains the theme later
-        // changes its watched `<root>/<theme>`, and the theme is read again.
         let mut present: Vec<&PathBuf> = Vec::new();
         for root in roots {
             let dir = root.join(name);
@@ -419,8 +373,6 @@ impl Theme {
     }
 }
 
-/// `<root>/<theme>/<a>/<b>` directory paths (`a/b`) in every root, for a hicolor without an
-/// `index.theme`.
 fn subdirs(roots: &[PathBuf], theme: &str) -> Vec<String> {
     let names = |dir: &Path| -> Vec<String> {
         let Ok(entries) = fs::read_dir(dir) else {
@@ -446,8 +398,6 @@ fn subdirs(roots: &[PathBuf], theme: &str) -> Vec<String> {
     out
 }
 
-/// Icons directly in a root: the first PNG and the first SVG of each name, in root order. A
-/// PNG beats an SVG, as in GTK.
 #[derive(Debug)]
 struct Unthemed {
     files: HashMap<Box<str>, (Option<PathBuf>, Option<PathBuf>)>,

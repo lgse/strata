@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The reference's rows as C19 takes them, from the port in `contents.rs`, and the keys its
-//! panel answers, from the catalog: GTK's `Shortcut::key_text`, `action_text` and `matches`
-//! (`src/ui/shortcut_reference.rs`) and `reference_note` (`src/ui/shortcut_footer/catalog.rs`).
-
 use rune::{Chord, ChordKey, ChordMod};
 use strata_components::footer::reference::{
     self as reference, Context, ReferenceKeys, ReferenceLabels, ShortcutData,
@@ -40,7 +36,6 @@ fn row(shortcut: &Shortcut) -> reference::Shortcut {
         let (before, after) = around_keys(template);
         row.context = Some(Context { before, after });
     }
-    // GTK's `matches` also finds a row by its keys written out and by its English action.
     row.search(
         [keys::search_text(&shortcut.keys), action_in(shortcut, "en")]
             .into_iter()
@@ -74,10 +69,6 @@ fn mentioned(mention: Mention, locale: &str) -> String {
     }
 }
 
-/// The words a context template puts before and after its keys: "%{keys} at first pane"
-/// reads "", " at first pane". GTK fills the template whole (`key_text`), including 10xer's
-/// prompt labels (`%{go}`, `%{move_to}`, `%{copy_to}`, `%{jump}`, `%{recent}`), so the words
-/// are those of the filled template on either side of the keys.
 fn around_keys(template: &str) -> (String, String) {
     const MARK: &str = "\u{1}";
     let filled = rust_i18n::t!(
@@ -96,9 +87,6 @@ fn around_keys(template: &str) -> (String, String) {
     }
 }
 
-/// The keys as keycaps: one per alternative, and one per step of a chord. Their text, the
-/// alternatives a " / " apart and the steps a space apart, is GTK's label of the keys as it
-/// is: "Ctrl+Alt+← / →" draws as "Ctrl+Alt+←" and "→".
 fn caps(keys: &Keys) -> reference::Keys {
     let alternatives = match keys {
         Keys::Mixed(each) => each.iter().flat_map(|keys| caps(keys).0).collect(),
@@ -116,14 +104,11 @@ fn split<'a>(label: &'a str, separator: &'a str) -> impl Iterator<Item = &'a str
     label.split(separator).filter(|part| !part.is_empty())
 }
 
-/// The panel's words. GTK names neither its categories nor its results, and shows each
-/// category's row count as a number.
 pub(super) fn labels() -> ReferenceLabels {
     ReferenceLabels {
         title: tr("Keyboard shortcuts"),
         search: tr("Search actions or keys…"),
         categories: String::new(),
-        // GTK's first category is "All" in every language.
         all: "All".to_owned(),
         results: String::new(),
         no_match: tr("No matching shortcuts"),
@@ -154,10 +139,6 @@ fn note() -> Vec<String> {
     .collect()
 }
 
-/// The keys the open panel answers, as the keymap binds them now: F1 closes it, and the
-/// three area keys move among its search, categories and results.
-/// The panel's keys, as the keymap binds them; 10xer mode's `~` toggles it however the layout
-/// types it (C19's `ReferenceKeys::tenxer`).
 pub(super) fn panel_keys(tenxer: bool) -> ReferenceKeys {
     let mut toggle = chords(REFERENCE);
     if tenxer {
@@ -183,8 +164,6 @@ fn chords(command: Command) -> Vec<Chord> {
         .collect()
 }
 
-/// A binding as Rune's chord, for a key Rune names: a function key, a named key or a key
-/// that types a character.
 fn chord(binding: Binding) -> Option<Chord> {
     let key = binding.key();
     let named = [

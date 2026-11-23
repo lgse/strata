@@ -1,13 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The gallery page for W1 Component contracts: matched-text labels, the one contract type
-//! that draws. Scene names start with `w1-` and end in `-light` or `-dark`.
-//!
-//! Each row names a case on the left and shows its label on the right. The ranges come from
-//! `contract::fuzzy`, a substring search or `char_ranges`, as callers would get them.
-//!
-//! Work package: `docs/rune/work/phase-0-groundwork/W1-component-contracts.md`.
-
 use std::ops::Range;
 
 use rune::{Cx, El, KeyEvent, Tx, col, row, text};
@@ -15,12 +7,9 @@ use strata_components::contract::{MatchedText, fuzzy};
 
 use crate::{Gallery, Scene};
 
-/// W1's demo state, held in `Gallery::w1`. The page draws fixed data, so it holds none.
 #[derive(Default)]
 pub struct Demo {}
 
-/// Golden scenes: each gets an accessibility and a PNG golden. Each calls
-/// `g.open("w1", dark)`, then fills in `g.w1`.
 pub const SCENES: &[Scene] = &[
     ("w1-matched-light", |g| g.open("w1", false)),
     ("w1-matched-dark", |g| g.open("w1", true)),
@@ -133,8 +122,6 @@ pub fn view(g: &Gallery, _cx: &mut Cx<Gallery>) -> El {
                     .color(kit.c.text_muted)
                     .w(180.0),
             )
-            // Every label sits in a slot of one width, so the column lines the rows up; the
-            // narrow one is cut short inside its slot.
             .child(
                 row()
                     .w(360.0)
@@ -155,15 +142,10 @@ pub fn view(g: &Gallery, _cx: &mut Cx<Gallery>) -> El {
         .children(cases().into_iter().map(line))
 }
 
-/// Keys no focused element took while this page is open: shortcuts, and keys with nothing
-/// focused. True consumes the key; false lets the gallery's Escape go back to the index.
 pub fn on_key(_g: &mut Gallery, _key: &KeyEvent, _tx: &mut Tx) -> bool {
     false
 }
 
-/// Runs at the start of every frame while this page is open, with the clock in seconds.
-/// Deliver fake async results here; a worker wakes the loop with `Gallery::waker`. True when
-/// state changed.
 pub fn poll(_g: &mut Gallery, _t: f64, _tx: &mut Tx) -> bool {
     false
 }

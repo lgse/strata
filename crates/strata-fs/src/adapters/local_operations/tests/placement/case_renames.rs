@@ -193,8 +193,6 @@ fn a_twin_spelling_is_never_taken_for_a_case_alias() -> Result<(), Box<dyn Error
             .open(root.path().join(name))?
             .set_modified(modified)?;
     }
-    // Separate nodes alike in type, size and time, as libfuse without `use_ino`
-    // numbers each spelling; the first listed would pass for the item itself.
     let listed = fs::read_dir(root.path())?
         .map(|entry| entry.map(|entry| entry.file_name().to_string_lossy().into_owned()))
         .collect::<Result<Vec<_>, _>>()?;
@@ -332,8 +330,6 @@ fn check_replaced_new_link(
 
 #[test]
 fn a_racer_replacing_a_new_link_keeps_its_item() -> Result<(), Box<dyn Error>> {
-    // NOSYS links before any probe; EINVAL probes first. On sshfs the probe
-    // after the link finds that links renumber.
     let cases: [(&str, Preset, bool); 3] = [
         ("NOSYS", || without_flags(Errno::NOSYS), true),
         ("INVAL", || without_flags(Errno::INVAL), true),

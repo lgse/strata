@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The page's fake data: a copy of part of Strata's shortcut catalog (the real one is Strata's,
-//! built from its key map per view, map and chooser request), and a small listing to count.
-
 use strata_components::collection::keyboard::{Command, KeyMap, Letters, Target, Vertical};
 use strata_components::contract::Direction;
 use strata_components::footer::reference::{
@@ -204,8 +201,6 @@ pub fn data(scope: Scope, revision: u64) -> ShortcutData {
     ShortcutData { sections, revision }
 }
 
-/// A few rows in German, with English search terms beside them, as Strata's search matches
-/// key names in English and in the interface language.
 fn german(revision: u64) -> ShortcutData {
     ShortcutData {
         sections: vec![Section {

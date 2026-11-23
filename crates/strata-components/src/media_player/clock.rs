@@ -14,26 +14,11 @@ pub enum PlaybackState {
     Loading,
     Paused,
     Playing,
-    /// A seek runs: [`PlaybackClock::position`] is its target, and the frame on screen is
-    /// still the old one.
     Seeking,
     /// Playback reached the end and stopped there.
     Ended,
 }
 
-/// The clock playback follows: P7's audio sink implements it, and so does [`FakeClock`].
-///
-/// The player only reads it, once a frame from [`MediaState::tick`](super::MediaState::tick).
-/// It asks for play, pause and seeks through [`MediaIntent`]s, which the host applies.
-///
-/// **Wakes are the clock's.** The player asks for a wake each frame only while
-/// [`PlaybackState::Playing`], while the waveform grows in or the spectrum's bars fall, and
-/// while the stand-in fades. A clock that changes on its own otherwise (a seek landing, a
-/// start finishing [`PlaybackState::Loading`], an underrun, the end of a stream) must wake the
-/// host for each state change, so its poll runs the tick that shows it: P7 through the app's
-/// setup waker (or `AppHandle::update`), [`FakeClock`] through [`FakeClock::next_due`] and the
-/// host's `Tx::wake_after`. A clock that never does leaves the view on the old state in a
-/// resting window.
 pub trait PlaybackClock {
     /// Where playback is: while seeking, the seek's target.
     fn position(&self) -> Duration;
@@ -46,16 +31,6 @@ pub trait PlaybackClock {
     }
 }
 
-/// A clock that plays on the host's clock (seconds, as `poll` gets them): for the gallery,
-/// tests, and hosts without P7 yet.
-///
-/// ```ignore
-/// clock.advance(now);                       // in poll, before MediaState::tick
-/// clock.apply(&intent);                     // for each intent the player sends
-/// ```
-///
-/// Play and seeks can take a while ([`FakeClock::latency`]): until then it reports
-/// [`PlaybackState::Loading`] or [`PlaybackState::Seeking`], as a real sink does.
 #[derive(Clone, Debug)]
 pub struct FakeClock {
     duration: Option<Duration>,
@@ -120,8 +95,6 @@ impl FakeClock {
         self.pending = None;
     }
 
-    /// The host's clock moved to `now`: playback advances, ends at the duration, and a start
-    /// or a seek that came due lands.
     pub fn advance(&mut self, now: f64) {
         if let Some((due, next)) = self.pending
             && now >= due
@@ -148,8 +121,6 @@ impl FakeClock {
         self.pending.map(|(due, _)| due)
     }
 
-    /// Applies what the player asked. Volume, steps, hand-off and the rest are the host's, so
-    /// they do nothing here.
     pub fn apply(&mut self, intent: &MediaIntent) {
         match *intent {
             MediaIntent::Play => self.play(),

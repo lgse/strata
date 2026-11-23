@@ -1,28 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Undo and redo: Ctrl+Z, and Ctrl+Shift+Z or Ctrl+Y, outside a text field. `Browser` keeps
-//! the history and replays it; this part reads the keys where the GTK window does and asks
-//! for the replay as the GTK view does (`undo_last_operation` and `redo_last_operation` in
-//! `src/ui/browser/view_edit.rs`).
-//!
-//! - **The keys.** The dispatcher's `text_input` stage reads both outside a text field, after
-//!   the inline edit, the filter and the location bar (`src/ui/window/keyboard/commands.rs`).
-//!   A key with nothing to replay is not taken. In a field Ctrl+Z is the field's own.
-//! - **What is replayed, in GTK's order.** Undo: a rename at once; a move, a typed path's
-//!   move into a folder it made (a group), a copy (what was created, too) and a merge after a
-//!   check of what is on disk (`replay`); then the Trash, at once. Redo: a rename and a copy at
-//!   once, a move and the Trash after the check.
-//! - **The check** reads the replay's locations off the interface thread
-//!   (`strata_fs::adapters::probes::presence`) and answers through `Setup::later`. A second
-//!   press for the same replay while it runs is taken and starts nothing.
-//!
-//! Left out, with what brings each back:
-//!
-//! - **The card that shows the check running** (`show_transfer_preparation`): the progress
-//!   card for preparation checks is not on this interface yet.
-//! - **The Trash undo's fly-out** (`prepare_fly_from_trash`): an animation of the trash
-//!   button, which this interface has not.
-
 use std::rc::Rc;
 
 use rune::Tx;
@@ -72,8 +49,6 @@ impl Part for Undo {
         }
     }
 
-    // `text_input` in `src/ui/window/keyboard/commands.rs`: `press.is(UNDO)`, the active
-    // map's bindings as they are, and `!event.text_has_focus()`.
     const COMMANDS: &'static [Action<App>] = &[
         Action::new("undo", undone).command(UNDO).keys(&[Keys::at(
             Stage::TextInput,
@@ -149,8 +124,6 @@ fn redo_last(app: &mut App) -> bool {
     false
 }
 
-/// Reads what is at `locations` and hands it to `resume` in a later update. True, so the key
-/// is taken, also when this replay is being checked already (`check_replay`).
 fn check(
     app: &mut App,
     replay: Replay,
@@ -195,8 +168,6 @@ fn replay_existing(
     })
 }
 
-/// The view's `undo_merge`: what the merge created is checked; what it overwrote is in the
-/// Trash, and is restored whether or not the copy is still there.
 fn undo_merge(
     app: &mut App,
     generation: u64,
@@ -237,8 +208,6 @@ fn replay_move(app: &mut App, replay: Replay, records: Vec<MoveRecord>, grouped:
     })
 }
 
-/// `resume_replay_move`: discards empty replays or steps through any colliding records in
-/// [`crate::conflict_dialog`] before dispatching (`src/ui/browser/transfer/replay.rs`).
 fn resume_move(app: &mut App, replay: Replay, sorted: Sorted, grouped: bool) {
     let Sorted {
         accepted,

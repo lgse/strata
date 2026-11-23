@@ -1,11 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! W3's own checks of the harness: a Rune window under headless sway and Xwayland, virtual
-//! input reaching it, the peer's clipboard, drag and drop (with an `XdndProxy` too) and export
-//! on both backends, the private bus, and teardown, orderly and after a SIGKILL.
-//!
-//! Work package: W3, `docs/rune/work/phase-0-groundwork/W3-compositor-harness.md`.
-
 use strata_test_peer::protocol::{Action, Event, Offer, Payload, Selection, Via, fnv1a64, pattern};
 
 use std::collections::BTreeMap;
@@ -22,11 +16,6 @@ use crate::support::{
 const TEXT: &str = "héllo from the peer ✓";
 const UTF8: &str = "text/plain;charset=utf-8";
 
-/// Opens the example window and waits until it has drawn and laid out at the size sway gave
-/// it: the app, its window in sway's tree, and the kind of native handle Rune reported.
-///
-/// The layout wait matters on X11: the window maps at its own size and sway tiles it after,
-/// so input sent before Rune lays out again can land outside its old size.
 fn harness_window(s: &Session, display: Display, title: &str) -> (Proc, Window, String) {
     let mut cmd = s.command(example("harness-window"), display);
     cmd.args(["--title", title]);
@@ -304,8 +293,6 @@ fn teardown_leaves_no_processes_or_files() {
     assert!(left.is_empty(), "left behind: {left:?}");
 }
 
-/// What a session left behind: processes started with its directory, Xwayland, the directory
-/// itself, and Xwayland's lock file and socket.
 fn leftovers(dir: &Path, xwayland: Option<(u32, u32)>) -> Vec<String> {
     let mut left: Vec<String> = processes_of(dir)
         .into_iter()
@@ -348,9 +335,6 @@ fn x_locks() -> BTreeMap<PathBuf, String> {
         .collect()
 }
 
-/// Locks that weren't in `before` and name a process that is gone: what a killed session
-/// leaked. Locks that were there already (another X server's, a stray empty one) don't count,
-/// nor do the live sessions of tests running alongside.
 fn leaked_locks(before: &BTreeMap<PathBuf, String>) -> Vec<String> {
     x_locks()
         .into_iter()
@@ -360,9 +344,6 @@ fn leaked_locks(before: &BTreeMap<PathBuf, String>) -> Vec<String> {
         .collect()
 }
 
-/// The child of the SIGKILL and SIGINT tests: with `STRATA_SESSION_REPORT` set, it starts a
-/// session, opens an X11 window (so Xwayland runs), reports, and waits to be stopped. Without
-/// it, it does nothing.
 #[test]
 #[ignore = "needs a private session: mise run test-platform"]
 fn sigkill_child() {
@@ -396,11 +377,6 @@ enum Stop {
     Group(&'static str),
 }
 
-/// Runs `w3::sigkill_child` in a test binary of its own, in a process group of its own, stops it
-/// `delay_ms` after it reports `point`, and checks the watchdog leaves nothing behind: no
-/// process started with the session's directory, no directory, no new lock file naming a dead
-/// server. With `decoy`, a process outside the session, whose pid sits in the session's `pids`
-/// file as a reused number would, must survive.
 fn stop_child(point: &str, delay_ms: u64, stop: Stop, decoy: bool) {
     let what = format!("{stop:?} at {point:?} +{delay_ms} ms");
     // Both kill tests run children at once: each child gets its own report and log names.
@@ -500,9 +476,6 @@ fn stop_child(point: &str, delay_ms: u64, stop: Stop, decoy: bool) {
     }
 }
 
-/// SIGKILLs a test binary while sway starts (at four points in its first 120 ms, where it has
-/// made Xwayland's lock and socket but not yet said which display they are), and once its
-/// session is up with an X11 window, with a decoy pid in its `pids` file.
 #[test]
 #[ignore = "needs a private session: mise run test-platform"]
 fn a_killed_test_leaves_no_processes_or_files() {
@@ -512,8 +485,6 @@ fn a_killed_test_leaves_no_processes_or_files() {
     stop_child("window", 0, Stop::Kill, true);
 }
 
-/// Ctrl-C (SIGINT) and SIGTERM to a test binary's whole process group: the session's processes
-/// go with it, and the watchdog, in a group of its own that ignores both, cleans up.
 #[test]
 #[ignore = "needs a private session: mise run test-platform"]
 fn an_interrupted_test_leaves_no_processes_or_files() {
@@ -523,14 +494,10 @@ fn an_interrupted_test_leaves_no_processes_or_files() {
 
 // ---- drag and drop, and export ----
 
-/// The input peer drags from peer `a`'s window to peer `b`'s; `b` reads the drop. With
-/// `proxy` (X11), `b`'s drag messages go through its `XdndProxy`.
 fn drag_between_peers(display: Display, proxy: bool) {
     let s = Session::start();
     let a = s.peer(display);
     let b = s.peer(display);
-    // sway tiles them side by side. The syncs make sure both have drawn at their tiled size;
-    // point_at makes sure the press reaches `a` (docs/rune/testing.md, "Point, then press").
     a.map("w3 drag source");
     b.map("w3 drop target");
     let [from, to] = <[_; 2]>::try_from(s.wait_windows(&[a.pid(), b.pid()])).expect("two windows");

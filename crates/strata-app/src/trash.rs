@@ -1,37 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Deleting: Move to Trash and Permanently Delete, by their keys and the entry menu's rows,
-//! and the confirmation GTK asks first (`request_delete` in `src/ui/browser/trash.rs`).
-//!
-//! - **The keys.** The dispatcher's `dismissal` stage reads Delete and Shift+Delete in the
-//!   default map, with Ctrl, Alt or Super held too, outside a text field (`delete_kind` and
-//!   `confirms_delete` in `src/ui/window/keyboard/items.rs`). In Columns they act on the active
-//!   column's selection, or its cursor's entry, else on the folder the keyboard entered; in the
-//!   other views on the selection or that folder (`confirm_delete` in
-//!   `src/ui/browser/view_edit.rs`). In the Trash, Delete deletes for good. 10xer's D and
-//!   Shift+D are 10xer mode's own stage, A11's.
-//! - **The menu rows** act on the selection when the row's entry is in it, else on the entry
-//!   alone (`context_entries` in `src/ui/browser/context_menu.rs`).
-//! - **What happens.** Nothing inside a trashed folder can be removed alone, and nothing is
-//!   asked for one. A permanent delete, and a trash where the location deletes but cannot
-//!   trash, ask first ([`dialog`]). Otherwise the items go to the Trash. Either way a folder
-//!   whose column is open gives the keyboard to its row in the folder above first, so the
-//!   deletion moves the cursor on to a neighbour (`leave_folder_being_deleted`). Undo puts
-//!   trashed items back (`undo.rs`).
-//! - **A trash that fails for some items** because the location cannot trash them asks to
-//!   delete those permanently, when nothing else failed (`report_partial_failure` in
-//!   `src/ui/browser/events/operations.rs`).
-//! - **The dialog's buttons** only queue what they do: the part's `poll` hands it to the
-//!   browser, with the handler's `Tx` the button lacks.
-//!
-//! Left out, with what brings each back:
-//!
-//! - **"Completed with errors"**, GTK's message for a failure with nothing to retry, and its
-//!   form with a retry button beside failures that cannot be retried: the error dialog the
-//!   location bar's package makes the window's (A5).
-//! - **The fly-to-trash animation** (`prepare_fly_to_trash`): C23's trash flight.
-//! - **A recursive search's own selection** (`selected_search_results`): A10's.
-
 use rune::Tx;
 use strata_core::model::{FileEntry, Location};
 use strata_desktop::keys::{
@@ -61,8 +29,6 @@ const DELETE_MODIFIERS: Modifiers = Modifiers::CONTROL_MASK
 
 const DIALOG_ARROW_MODIFIERS: Modifiers = Modifiers::SHIFT_MASK.union(Modifiers::SUPER_MASK);
 
-/// What a dialog button asked, for the part's next `poll`, with what it was asked about: a
-/// confirmation that opens meanwhile changes nothing of it.
 enum Queued {
     Trash {
         entries: Vec<FileEntry>,
@@ -83,15 +49,10 @@ pub(crate) struct Trash {
     confirm: Option<Confirm>,
     open: bool,
     queued: Vec<Queued>,
-    /// A confirmation asked for while another is open: it opens once that one closes, so an
-    /// open one is never replaced under the keyboard (GTK stacks a second dialog).
     waiting: Option<(Vec<FileEntry>, Kind)>,
-    /// The open confirmation's size task, which stops when it closes (GTK aborts it).
     sizing: Option<glib::JoinHandle<()>>,
     /// Counts the confirmations, so a size task's answer finds its own.
     opened: u64,
-    /// What the last Move to Trash asked for (`pending_delete_entries`): what a partial
-    /// failure's retry may delete.
     trashing: Vec<FileEntry>,
     /// Empty Trash's dialog ([`empty`]).
     empty: empty::Empty,
@@ -239,8 +200,6 @@ fn tenxer_confirm(app: &mut App, _: &Call<'_>, _: &mut Tx) -> Outcome {
     Outcome::Ran
 }
 
-/// `h` and `l` move the keyboard between the confirmation's buttons, as GTK's
-/// `delete_confirmation_focus_target` does; the arrows are the dialog's own.
 fn focus_button(app: &mut App, suffix: &str, tx: &mut Tx) -> Outcome {
     let Some(confirm) = app.trash.confirm.as_ref() else {
         return Outcome::Declined;
@@ -258,8 +217,6 @@ fn is_trash(location: &Location) -> bool {
         .is_some_and(|uri| uri.starts_with("trash:"))
 }
 
-/// `can_remove_location` in `src/ui/browser/paths.rs`: GVfs moves or deletes a whole
-/// trashed item, not what is inside one.
 fn can_remove(location: &Location) -> bool {
     let trash_item = || {
         location
@@ -269,15 +226,10 @@ fn can_remove(location: &Location) -> bool {
     !is_trash(location) || trash_item()
 }
 
-/// Whether the shown view is Columns, where a column's cursor counts when nothing is
-/// selected in it.
 fn in_columns(app: &App) -> bool {
     shell::shown_view(app).is_some_and(|view| (view.shows)("columns"))
 }
 
-/// What the key acts on, and whether its folder is the Trash (`confirm_delete`). In Columns:
-/// the active column's selection, or its cursor's entry, else the folder the keyboard
-/// entered. In the other views: the selection, or that folder, and never the cursor alone.
 fn focused_entries(app: &App) -> (Vec<FileEntry>, bool) {
     let browser = &app.browser;
     let depth = browser.active_depth();
@@ -285,7 +237,6 @@ fn focused_entries(app: &App) -> (Vec<FileEntry>, bool) {
         let folder = depth.and_then(|depth| browser.location_at(depth));
         folder.as_ref().is_some_and(is_trash)
     };
-    // A filter's results, while they show: GTK's `selected_search_results` first.
     if let Some((results, at)) = filter::targets::selected_with_depth(app) {
         return (results, folder_is_trash(Some(at)));
     }
@@ -297,8 +248,6 @@ fn focused_entries(app: &App) -> (Vec<FileEntry>, bool) {
     (entries, folder_is_trash(depth))
 }
 
-/// What the menu opened on row `at` acts on (`context_entries`), and whether its folder is
-/// the Trash.
 fn row_entries(app: &App, (depth, id): At) -> (Vec<FileEntry>, bool) {
     let browser = &app.browser;
     let in_trash = browser.location_at(depth).as_ref().is_some_and(is_trash);
@@ -322,8 +271,6 @@ fn row_entries(app: &App, (depth, id): At) -> (Vec<FileEntry>, bool) {
     }
 }
 
-/// `trash_unsupported_for`: every item's folder is open in a column that can delete and
-/// cannot trash, or the items are an administrator's.
 fn trash_unsupported(app: &App, entries: &[FileEntry]) -> bool {
     let browser = &app.browser;
     let unsupported = |entry: &FileEntry| {
@@ -342,8 +289,6 @@ fn trash_unsupported(app: &App, entries: &[FileEntry]) -> bool {
     !entries.is_empty() && entries.iter().all(unsupported)
 }
 
-/// `leave_folder_being_deleted`: the folder the active column shows is being deleted, so
-/// its row in the folder above takes the keyboard first.
 fn leave_folder_being_deleted(app: &App, entries: &[FileEntry]) {
     let browser = &app.browser;
     let open = browser
@@ -355,8 +300,6 @@ fn leave_folder_being_deleted(app: &App, entries: &[FileEntry]) {
     }
 }
 
-/// Moves dropped file entries to the Trash (`trash_dropped_locations` in
-/// `src/ui/browser/trash.rs`).
 pub(crate) fn trash_dropped(app: &mut App, entries: Vec<FileEntry>) {
     let _ = request(app, entries, false);
 }
@@ -411,8 +354,6 @@ fn deleted(app: &mut App, call: &Call<'_>, _: &mut Tx) -> Outcome {
     }
 }
 
-/// `BrowserView::confirm_targets_delete` (`src/ui/browser/file_commands.rs:179`): 10xer's `d`
-/// and `D` always confirm before trashing or deleting. Returns `false` when nothing is targeted.
 pub(crate) fn confirm_tenxer_delete(app: &mut App, permanent: bool) -> bool {
     let mut entries = crate::tenxer::command_targets(app);
     if entries.is_empty() && empty_active_column_falls_back(app) {
@@ -455,8 +396,6 @@ fn request_confirmed(app: &mut App, entries: Vec<FileEntry>, permanent: bool) {
     show(app, entries, kind);
 }
 
-/// `show_delete_dialog`: the confirmation opens over the window, and its size task starts.
-/// While one is open, the new one waits for it to close.
 fn show(app: &mut App, entries: Vec<FileEntry>, kind: Kind) {
     if app.trash.open {
         app.trash.waiting = Some((entries, kind));
@@ -484,8 +423,6 @@ fn show(app: &mut App, entries: Vec<FileEntry>, kind: Kind) {
     }
 }
 
-/// `spawn_delete_size_task`: the total, and each listed file link's size, off the interface
-/// thread's turn.
 fn size_in_background(
     later: &Later<App>,
     entries: Vec<FileEntry>,
@@ -523,8 +460,6 @@ fn size_in_background(
     })
 }
 
-/// Closes the open confirmation, and stops its size task: what the buttons and dismissal
-/// share. `None` when none was open.
 fn close(app: &mut App) -> Option<&Confirm> {
     let trash = &mut app.trash;
     if !trash.open {
@@ -567,8 +502,6 @@ fn cancelled(app: &mut App) {
     app.trash.queued.push(queued);
 }
 
-/// Leaves out of a waiting confirmation what a confirmed delete is taking already: nothing is
-/// asked about twice.
 fn not_again(asked: &mut Vec<FileEntry>, deleting: &[FileEntry]) {
     asked.retain(|entry| !deleting.iter().any(|gone| gone.location == entry.location));
 }
@@ -579,8 +512,6 @@ fn delete_confirmed(app: &mut App, entries: Vec<FileEntry>, remote: bool) {
     app.browser.focus_active();
 }
 
-/// `return_cursor_on_cancel`: a cursor something moved while the dialog was open goes back
-/// to the items it asked about.
 fn return_cursor(app: &mut App, cursor: Option<(usize, Location)>, entries: &[FileEntry]) {
     let Some((depth, cursor)) = cursor else {
         return;
@@ -598,8 +529,6 @@ fn return_cursor(app: &mut App, cursor: Option<(usize, Location)>, entries: &[Fi
     }
 }
 
-/// `on_operation_completed_with_errors` and `report_partial_failure`, for what a trash
-/// failed: the items the location could not trash may go for good, when nothing else failed.
 fn completed_with_errors(app: &mut App, failed: Failed) -> bool {
     let trashing = std::mem::take(&mut app.trash.trashing);
     // `retryable_delete_entries`.

@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The offscreen host as the QA mode drives it: every turn lands its motions, and the tree
-//! is read once for as long as nothing ran.
-
 use std::{
     collections::{HashMap, HashSet},
     fmt::Write as _,
@@ -23,8 +20,6 @@ use super::tree::{
 };
 use crate::{App, host::offscreen::Offscreen, shell};
 
-/// How long one settle keeps turning a host that never comes to rest. The GTK harness waits
-/// this long for a frame.
 const SETTLE_LIMIT: Duration = Duration::from_millis(250);
 
 fn rect(element: &ElementInfo) -> Rect {
@@ -46,9 +41,6 @@ fn above<'a>(
         .filter_map(|index| elements.get(index))
 }
 
-/// A row label's box as GTK's `hexpand` `gtk::Label` exposes it to AT-SPI: from the drawn
-/// text's left edge to the trailing edge of its drawn cell (`cell-name` in List) or row content
-/// box (in Columns and List filter results). An Icons tile (`grid-cell`) keeps its caption box.
 fn label_bounds(elements: &[ElementInfo], element: &ElementInfo, app: &App) -> Rect {
     let mut bounds = rect(element);
     let chain: Vec<&ElementInfo> = above(elements, element).collect();
@@ -71,8 +63,6 @@ fn label_bounds(elements: &[ElementInfo], element: &ElementInfo, app: &App) -> R
         let pad = f64::from(strata_kit::slots::list::cell_pad(&app.look));
         f64::from(cell.rect[0] + cell.rect[2]) - pad
     } else if row_pos >= 2 {
-        // `chain[row_pos]` is the row, `chain[row_pos - 1]` its inner box, and
-        // `chain[row_pos - 2]` its drawn content box.
         let content = chain[row_pos - 2];
         f64::from(content.rect[0] + content.rect[2])
     } else {
@@ -138,8 +128,6 @@ fn above_indices(elements: &[ElementInfo], index: usize) -> impl Iterator<Item =
     std::iter::successors(parent, |at| elements.get(*at)?.parent)
 }
 
-/// The index of the list keyed `list`, as drawn, and of its pane: the nearest named element
-/// around the list.
 fn list_and_pane(elements: &[ElementInfo], list: &str) -> Option<(usize, usize)> {
     let keyed = |element: &ElementInfo| element.key.as_deref() == Some(list);
     let at = elements
@@ -149,9 +137,6 @@ fn list_and_pane(elements: &[ElementInfo], list: &str) -> Option<(usize, usize)>
     Some((at, pane))
 }
 
-/// A row's drawn card box: for list/column rows, the inner card child inside the padded
-/// virtual line (matching GTK's `GtkListItemWidget` border-box inside its CSS `margin`); for
-/// bare grid cells, the tile itself.
 fn row_card_bounds(elements: &[ElementInfo], row_index: usize) -> Rect {
     let element = &elements[row_index];
     if element.role == "grid-cell" {
@@ -163,8 +148,6 @@ fn row_card_bounds(elements: &[ElementInfo], row_index: usize) -> Rect {
         .map_or_else(|| rect(element), rect)
 }
 
-/// The column whose list is keyed `list`, as drawn: its rows are the keyed, named elements
-/// directly under the list's rows, and its pane the nearest named element around the list.
 fn drawn_column(elements: &[ElementInfo], list: &str) -> Option<DrawnColumn> {
     let (at, pane) = list_and_pane(elements, list)?;
     let pane = &elements[pane];
@@ -193,8 +176,6 @@ fn drawn_column(elements: &[ElementInfo], list: &str) -> Option<DrawnColumn> {
     })
 }
 
-/// Replaces `seen.bounds` with the inner card bounds drawn for its row in `list`, if present.
-/// Grid cells (`Icons`) keep AccessKit's union bounds across their icon, caption, and details.
 pub(super) fn sync_entry_bounds(columns: &[DrawnColumn], list: &str, seen: &mut Seen) {
     if seen.role == "grid-cell" {
         return;
@@ -237,9 +218,6 @@ impl<'a> Candidate<'a> {
         }
     }
 
-    /// A button a user could press once the menu closes: keyed and named, not leaving, not
-    /// transparent, and with some of it in view (a crumb scrolled out of its strip is not).
-    /// Whether it is inert says nothing: behind a modal Rune makes everything else inert.
     fn button(&self) -> Option<DrawnButton> {
         let [_, _, width, height] = self.visible;
         let shown = width > 0.0 && height > 0.0 && self.opacity > 0.01;
@@ -262,10 +240,6 @@ impl<'a> Candidate<'a> {
     }
 }
 
-/// The keyed, named buttons drawn and in reach, as the snapshot presents those the tree
-/// leaves out, each with the list of the column whose pane is among its ancestors: by the
-/// element tree, not by boxes, since a column scrolled out of the strip keeps its full box,
-/// over the sidebar for one.
 fn drawn_buttons(elements: &[ElementInfo], lists: &[String]) -> Vec<DrawnButton> {
     let panes: Vec<(usize, &String)> = lists
         .iter()
@@ -326,9 +300,6 @@ fn collect_busy(
     }
 }
 
-/// Paths of nodes whose AccessKit node reports `is_busy` (`El::busy`), keyed as
-/// [`Snapshot`] keys `Runtime::accessibility_json`. Rune's JSON dump (`a11y/dump.rs` at the
-/// pinned rev) omits `is_busy` from `"states"`.
 fn busy_paths(update: &rune::accesskit::TreeUpdate) -> HashSet<String> {
     if !update.nodes.iter().any(|(_, node)| node.is_busy()) {
         return HashSet::new();
@@ -344,8 +315,6 @@ fn busy_paths(update: &rune::accesskit::TreeUpdate) -> HashSet<String> {
     busy
 }
 
-/// What the snapshot reads beside the accessibility tree: what `app` draws as `elements`.
-/// Both hosts read it, the session host's on each frame its window draws.
 pub(super) fn drawn(elements: &[ElementInfo], app: &App) -> Drawn {
     let probe = shell::shown_view(app).map(|view| &view.probe);
     let lists = probe.map_or_else(Vec::new, |probe| (probe.lists)(app));
@@ -432,9 +401,6 @@ impl Stage {
             .clone()
     }
 
-    /// One turn of the host. A turn that did something lands every motion at its end
-    /// (`Runtime::settle_all`): `Runtime::frame` reports work for some hundred milliseconds
-    /// after a key otherwise, with the look's animations off too.
     pub(super) fn turn(&mut self) -> bool {
         let host = self.host();
         let worked = host.turn();
@@ -444,8 +410,6 @@ impl Stage {
         worked
     }
 
-    /// Turns until neither GLib nor Rune has anything ready. A timer still running, such as
-    /// the wait before a child column opens, does not hold it up: a scenario waits for that.
     pub(super) fn settle(&mut self) {
         let deadline = Instant::now() + SETTLE_LIMIT;
         while self.turn() && Instant::now() < deadline {}

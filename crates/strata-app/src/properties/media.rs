@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Media and RAW metadata loading and formatting for Single-File Properties
-//! (`src/ui/browser/properties/media.rs` and `src/ui/browser/properties.rs` lines 642–663).
-
 use std::path::PathBuf;
 
 use gio::prelude::*;

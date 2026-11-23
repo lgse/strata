@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Custom-action verification, `"Run this action?"` confirmation dialog, and error reporting
-//! (`src/ui/actions.rs`).
-
 use rune::{El, Tx};
 use strata_components::dialog::{Focus, MESSAGE_WIDTH, StrataDialog, Tone};
 use strata_core::{
@@ -24,8 +21,6 @@ pub(super) struct ConfirmSpec {
     pub(super) generation: u64,
 }
 
-/// Checks that `request.action` still matches the manifest on disk before confirming or
-/// enqueueing (`run_action` in `src/ui/actions.rs`).
 pub(crate) fn run_action(app: &mut App, request: JobRequest) {
     let registry = super::shared_registry(app);
     let current = registry.definition(request.action.id().to_owned());
@@ -110,7 +105,6 @@ pub(super) fn build(app: &App, frame: &mut Frame<'_, App>) -> Option<El> {
     .secondary(tr("Cancel"), cancelled)
     .primary_tx(tr("Run"), confirmed)
     .initial_focus(Focus::Primary)
-    // GTK's Return presses the focused button only: with nothing focused it runs nothing.
     .default_button(false)
     .close_label(tr("Close dialog"))
     .width(MESSAGE_WIDTH);

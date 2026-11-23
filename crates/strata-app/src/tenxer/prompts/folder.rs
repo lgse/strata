@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! History (`z` / `Z`) and folder-picker (`g Space`, `M`, `C`, `; E`) candidates and submission
-//! for 10xer's footer prompts (`src/ui/folder_picker.rs`, `src/ui/window/keyboard/prompts.rs`).
-
 use std::{
     cell::RefCell,
     path::{Path, PathBuf},
@@ -329,8 +326,6 @@ fn complete_folder(app: &mut App, kind: PromptKind, query: CompletionQuery, tx: 
     start_folder_index(app, scope, refused, listing);
 }
 
-/// What a folder index's batches answer: the completion they belong to, and the typed folder
-/// itself, listed first.
 #[derive(Clone)]
 struct Listing {
     generation: u64,

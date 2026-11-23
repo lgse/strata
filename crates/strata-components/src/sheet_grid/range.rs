@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Cells, the cursor and cell ranges, in display coordinates (rows in sort order), and the
-//! sideways arithmetic that turns a point into a column.
-
 /// A cell by its row in the current sort order and its column.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub struct CellPos {
@@ -16,8 +13,6 @@ impl CellPos {
     }
 }
 
-/// A rectangle of whole cells, both ends included (deviation D2: Strata's GTK range is
-/// reading-order text with character offsets in its end cells).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct CellRange {
     pub top: usize,
@@ -41,8 +36,6 @@ impl CellRange {
     }
 }
 
-/// The keyboard cursor and the end a range grows from. A range exists only while they differ:
-/// a click, or a drag that stays in one cell, leaves just the cursor.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct Selection {
     pub anchor: CellPos,
@@ -106,8 +99,6 @@ impl Columns {
         (self.edges[j], self.edges[j + 1])
     }
 
-    /// The columns that show, at least partly, in a viewport `width` wide scrolled `offset`
-    /// sideways, past the gutter that covers the start of what scrolls under it.
     pub fn showing(&self, offset: f32, width: f32) -> std::ops::Range<usize> {
         if self.count() == 0 {
             return 0..0;
@@ -115,8 +106,6 @@ impl Columns {
         self.at(offset + self.gutter)..self.at(offset + width - 0.5) + 1
     }
 
-    /// The columns to build for a view scrolled `offset`: what shows and half a viewport's
-    /// width either side, so a sideways scroll builds afresh about once half a viewport width.
     pub fn window(&self, offset: f32, width: f32) -> std::ops::Range<usize> {
         if self.count() == 0 {
             return 0..0;

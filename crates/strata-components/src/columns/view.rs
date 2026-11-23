@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! [`ColumnsView`]: the builder, the collection each column builds, and how keys, presses,
-//! intents and drags reach the strip.
-
 use std::rc::Rc;
 
 use rune::{Drag, El, Key, KeyEvent, Mods, Phase, PointerButton, Tx, col, row};
@@ -29,8 +26,6 @@ use crate::preview_drawer::{ColumnsFit, DrawerRules};
 use crate::scroll::{AutoscrollSettings, BarLook, overlay};
 
 /// What the view reads from the host's state, in one accessor.
-///
-/// Used by: hosts.
 pub struct ColumnsParts<'a> {
     /// The listings, root first.
     pub sources: &'a dyn ColumnSources,
@@ -40,10 +35,7 @@ pub struct ColumnsParts<'a> {
     pub look: &'a Look,
 }
 
-/// What the view changes in the host's state, in one accessor: the strip's state, beside the
-/// listings and the look it reads.
-///
-/// Used by: hosts.
+/// What the view changes in the host's state, in one accessor.
 pub struct ColumnsPartsMut<'a> {
     /// The listings, root first.
     pub sources: &'a dyn ColumnSources,
@@ -54,8 +46,6 @@ pub struct ColumnsPartsMut<'a> {
 }
 
 /// What a column's header actions slot is told.
-///
-/// Used by: hosts.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct HeaderCx {
@@ -63,17 +53,13 @@ pub struct HeaderCx {
     pub depth: usize,
     /// The column holds the keyboard cursor: the paste destination, which its header marks.
     pub active: bool,
-    /// The latest pointer or keyboard input targeted it (or an open menu holds it): Strata
-    /// shows its header actions (Refresh, Sort by, the filter, Empty Trash) only then.
+    /// The latest pointer or keyboard input targeted it (or an open menu holds it).
     pub targeted: bool,
     /// Its folder is still loading.
     pub loading: bool,
 }
 
-/// The words the view shows and assistive technology reads. Strata passes translated text;
-/// the defaults are English.
-///
-/// Used by: hosts.
+/// The words the view shows and assistive technology reads.
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub struct ColumnsLabels {
@@ -191,16 +177,7 @@ impl EntrySource for NoEntries {
 
 static NO_ENTRIES: NoEntries = NoEntries;
 
-/// The Columns view: see the [module docs](super).
-///
-/// The view owns two of each column collection's slots: the rows' content
-/// (`Collection::content`: the icon, the label and the size badge) and their description
-/// (`Collection::describe`: the host's words for the entry, else the badge's text). A host
-/// sets neither in [`ColumnsView::collection`]; it gives the badge's words through
-/// [`ColumnSources::badge`], its setting through [`ColumnsView::show_sizes`], and what the
-/// entry is through [`ColumnSources::description`].
-///
-/// Used by: hosts (Strata's browser and chooser, the gallery).
+/// The Columns view: see the module docs.
 pub struct ColumnsView<S> {
     pub(super) sh: Rc<Shared<S>>,
 }
@@ -214,8 +191,7 @@ impl<S> Clone for ColumnsView<S> {
 }
 
 impl<S: 'static> ColumnsView<S> {
-    /// A view over the listings, the strip's state and the look `parts` returns, changing the
-    /// state through `parts_mut`.
+    /// A view over the listings, the strip's state and the look `parts` returns, changing the state through `parts_mut`.
     pub fn new(
         parts: impl for<'a> Fn(&'a S) -> ColumnsParts<'a> + 'static,
         parts_mut: impl for<'a> Fn(&'a mut S) -> ColumnsPartsMut<'a> + 'static,
@@ -249,18 +225,7 @@ impl<S: 'static> ColumnsView<S> {
         self
     }
 
-    /// The host's additions to column `depth`'s collection: its clock, its controllers'
-    /// settings (except [`PointerSettings`], which go through
-    /// [`ColumnsView::pointer_settings`]), a label or icon slot, a rename editor, and what the
-    /// column shows and is described as while it has no rows (`Collection::empty`, and
-    /// `Collection::description` over [`ColumnsLabels::list`], which the view sets first). The
-    /// view sets the rest after (the name, row height, header, marks, intents, drops and keys),
-    /// so don't set those here. A host that reads keys ahead of the columns' own sets
-    /// [`Collection::before_keys`] here: the strip gives each key to the active column, whose
-    /// hook hears it first, and a key the hook takes does not reveal the column. The view owns the rows' content slot
-    /// (`Collection::content`: the icon, the label and the size badge) and their description
-    /// (`Collection::describe`: [`ColumnSources::description`], else the badge's text), so
-    /// don't set those either.
+    /// The host's additions to column `depth`'s collection.
     pub fn collection(
         self,
         f: impl Fn(&S, usize, Collection<S>) -> Collection<S> + 'static,
@@ -268,88 +233,62 @@ impl<S: 'static> ColumnsView<S> {
         self.with(|sh| sh.collection = Some(Rc::new(f)))
     }
 
-    /// The pointer controllers' settings (P5's double-click interval, the click modes): the
-    /// view adds which folder each column has open (`PointerSettings::already_open`), so a slow
-    /// second click on it still renames.
+    /// The pointer controllers' settings: the view adds which folder each column has open (`PointerSettings::already_open`), so a slow second click on it still renames.
     pub fn pointer_settings(self, f: impl Fn(&S) -> PointerSettings + 'static) -> Self {
         self.with(|sh| sh.pointer = Rc::new(f))
     }
 
-    /// A column header's actions (Refresh, Sort by, the filter field, Empty Trash): the host's,
-    /// placed after the title. The view adds the close button to the targeted column after the
-    /// first. A secondary press on these is theirs, not the folder menu's. Build them
-    /// `.focusable(false).no_focus_ring()`, as the close button is: the strip is the view's one
-    /// focus stop, a press on a focusable button would take the keyboard from it (Strata's header
-    /// buttons don't take focus on a click), and clearing the kit's focus ring stops Rune from
-    /// painting it for the focused strip.
+    /// A column header's actions (Refresh, Sort by, the filter field, Empty Trash): the host's, placed after the title.
     pub fn header_actions(self, f: impl Fn(&S, HeaderCx) -> Option<El> + 'static) -> Self {
         self.with(|sh| sh.actions = Some(Rc::new(f)))
     }
 
-    /// A band under a column's header, across the column: the host's, for any column it
-    /// returns one for (Strata's filter field, in a revealer under the header,
-    /// `src/ui/browser/columns/append/header.rs`). It is part of the header above the rows,
-    /// so the rows start under it; a press on its parts is theirs. Build it `.focusable(false)`
-    /// but for a field that takes the keyboard itself.
+    /// A band under a column's header, across the column: the host's, for any column it returns one for.
     pub fn header_band(self, f: impl Fn(&S, HeaderCx) -> Option<El> + 'static) -> Self {
         self.with(|sh| sh.band = Some(Rc::new(f)))
     }
 
-    /// The host's marks on each row (cut, dragging, the Enter target); the view adds the open
-    /// path's.
+    /// The host's marks on each row (cut, dragging, the Enter target); the view adds the open path's.
     pub fn marks(self, f: impl Fn(&S, usize, EntryId) -> RowMarks + 'static) -> Self {
         self.with(|sh| sh.marks = Some(Rc::new(f)))
     }
 
-    /// Whether Escape with nothing selected in the active column closes the deepest one: on by
-    /// default; off in 10xer mode, where Escape with nothing to dismiss does nothing.
+    /// Whether Escape with nothing selected in the active column closes the deepest one: on by default.
     pub fn escape_closes(self, f: impl Fn(&S) -> bool + 'static) -> Self {
         self.with(|sh| sh.escape_closes = Rc::new(f))
     }
 
-    /// Whether columns after the first show their close button in the header: on by default;
-    /// off in 10xer mode (`hide_while_enabled(&close)` in `src/ui/browser/columns/append/header.rs`).
+    /// Whether columns after the first show their close button in the header: on by default.
     pub fn close_buttons(self, f: impl Fn(&S) -> bool + 'static) -> Self {
         self.with(|sh| sh.close_buttons = Rc::new(f))
     }
 
-    /// Whether rows show their size badge ([`ColumnSources::badge`]): Strata's "Show sizes in
-    /// Columns view", on by default. Off, no row shows one, and assistive technology hears no
-    /// size; a count that arrives while it is off stays hidden.
+    /// Whether rows show their size badge (`ColumnSources::badge`): Strata's "Show sizes in Columns view", on by default.
     pub fn show_sizes(self, f: impl Fn(&S) -> bool + 'static) -> Self {
         self.with(|sh| sh.show_sizes = Rc::new(f))
     }
 
-    /// Whether the rightmost column draws its trailing vertical divider line: on by default; off
-    /// when a neighbouring pane (such as C9's preview drawer) already draws a 1-point divider
-    /// flush against the strip's right edge.
+    /// Whether the rightmost column draws its trailing vertical divider line: on by default.
     pub fn trailing_edge(self, f: impl Fn(&S) -> bool + 'static) -> Self {
         self.with(|sh| sh.trailing_edge = Rc::new(f))
     }
 
-    /// Whether the active column's header draws its destination bar, raised fill, and active title
-    /// colour: on by default; off while another pane (such as C9's preview drawer) owns keyboard
-    /// focus.
+    /// Whether the active column's header draws its destination bar, raised fill, and active title colour: on by default.
     pub fn active_header(self, f: impl Fn(&S) -> bool + 'static) -> Self {
         self.with(|sh| sh.active_header = Rc::new(f))
     }
 
-    /// The drag-and-drop binder: Rune's own by default; X2 passes the system shim's.
+    /// The drag-and-drop binder: Rune's own by default; passes the system shim's.
     pub fn dnd(self, dnd: Dnd<S>) -> Self {
         self.with(|sh| sh.dnd = dnd)
     }
 
-    /// The content types each column's folder rows and background take from other apps
-    /// besides files, most wanted first (C1e's `Collection::content_types`). Default none.
+    /// The content types each column's folder rows and background take from other apps besides files, most wanted first.
     pub fn content_types(self, mimes: &'static [&'static str]) -> Self {
         self.with(|sh| sh.content = mimes)
     }
 
-    /// Says which action a drag would take, or `None` to refuse it, for a binder that
-    /// negotiates while the drag hovers (W1's `DropZone::action`): over column `depth`'s folder
-    /// row (`Some((depth, Some(id)))`), its background (`Some((depth, None))`), or the blank
-    /// space after the last column (`None`, which takes no drop: refuse it there unless the host
-    /// routes it itself). Without it, W1's rule with an unknown volume, everywhere.
+    /// Says which action a drag would take, or `None` to refuse it, for a binder that negotiates while the drag hovers.
     pub fn drop_action(
         self,
         f: impl Fn(&S, Option<(usize, Option<EntryId>)>, &DropOffer, Mods) -> Option<DropAction>
@@ -368,18 +307,14 @@ impl<S: 'static> ColumnsView<S> {
         self.with(|sh| sh.on_intent = Some(Rc::new(f)))
     }
 
-    /// Column `depth`'s collection, as the view builds it: for its geometry (a menu anchored at
-    /// its cursor) or its `tick`. `None` past the last column.
+    /// Column `depth`'s collection, as the view builds it: for its geometry (a menu anchored at its cursor) or its `tick`.
     pub fn column_collection(&self, s: &S, depth: usize) -> Option<Collection<S>> {
         let p = (self.sh.parts)(s);
         let serial = p.state.columns.get(depth)?.serial;
         (depth < p.sources.len()).then(|| collection(&self.sh, s, serial))
     }
 
-    /// Runs the columns' controllers' timeouts and queued commands, a held drag's autoscroll,
-    /// and the widths' following of the text size and the area: call it from the host's poll
-    /// on every frame, with the host's clock in seconds. True when state the view reads changed. The window's middle-click autoscroll is
-    /// the host's to drive (`ColumnsState::autoscroll`).
+    /// Runs the columns' controllers' timeouts and queued commands, a held drag's autoscroll.
     pub fn tick(&self, s: &mut S, now: f64, tx: &mut Tx) -> bool {
         let serials: Vec<u64> = {
             let p = (self.sh.parts)(s);
@@ -400,8 +335,7 @@ impl<S: 'static> ColumnsView<S> {
         changed | drive(&self.sh, s, now, tx)
     }
 
-    /// Routes a primary drag starting on an external marquee origin surface (such as the preview
-    /// drawer) into the rightmost open column's collection.
+    /// Routes a primary drag starting on an external marquee origin surface (such as the preview drawer) into the rightmost open column's collection.
     pub fn origin_drag(&self, s: &mut S, (d, clears_on_press): (&mut Drag, bool), tx: &mut Tx) {
         let (serial, last, was_in_band, press_mods) = {
             let p = (self.sh.parts_mut)(s);
@@ -454,17 +388,13 @@ impl<S: 'static> ColumnsView<S> {
         }
     }
 
-    /// What the strip tells C9's drawer about itself, for `PreviewDrawer::arrangement` in
-    /// Columns: the columns from the root through the active one, the width that keeps the
-    /// active one whole, and the columns after it, which borrow the empty slot's width.
+    /// What the strip tells drawer about itself, for `PreviewDrawer::arrangement` in Columns.
     pub fn fit(&self, s: &S, rules: &DrawerRules) -> ColumnsFit {
         let p = (self.sh.parts)(s);
         fit::columns_fit(p.state, p.look, rules)
     }
 
-    /// Where a drop at window point `window` would go: the column, and its folder row or its
-    /// background, by the columns' drawn rects (`El::drawn_rect_into`) and each column's index
-    /// geometry (mounted rows or not). For a binder that routes drops itself (X2).
+    /// Where a drop at window point `window` would go.
     pub fn drop_target_at(&self, s: &S, window: Point) -> Option<(usize, Option<EntryId>)> {
         let p = (self.sh.parts)(s);
         let geo = geometry(p.state, p.look);
@@ -487,10 +417,7 @@ impl<S: 'static> ColumnsView<S> {
         Some((depth, row))
     }
 
-    /// The strip: one Tab stop, whose keys go to the active column. Build it on every view;
-    /// don't memoise it (`memo`), since the strip reads the state the handlers change between
-    /// commits (the active and targeted column, a resize's live width), and each column's
-    /// collection memoises its own rows.
+    /// The strip: one Tab stop, whose keys go to the active column.
     pub fn build(&self, s: &S) -> El {
         super::strip::build(&self.sh, s)
     }
@@ -504,8 +431,6 @@ fn clears_selection_on_press(phase: Phase, clears: bool, m: Mods) -> bool {
     phase == Phase::Down && clears && is_plain_mods(m)
 }
 
-/// Column `serial`'s row height: one line, or the name and a two-line detail under it while
-/// the host gives the column's rows details ([`ColumnSources::has_details`]).
 fn row_height<S: 'static>(sh: &Shared<S>, s: &S, serial: u64, look: &Look) -> f32 {
     let p = (sh.parts)(s);
     let details = p
@@ -667,10 +592,6 @@ fn new_column_collection<S: 'static>(
     )
 }
 
-/// Column `depth`'s collection with the host's extras ([`ColumnsView::collection`]), and its
-/// key settings with the three rules that are Columns' own in Strata, whatever map the host
-/// binds: a Select key that cannot move the cursor re-selects its entry, Ctrl+A takes the
-/// cursor to the last entry, and Left leaves a column that has no cursor.
 fn hosted<S: 'static>(sh: &Shared<S>, s: &S, depth: usize, c: Collection<S>) -> Collection<S> {
     let c = match &sh.collection {
         Some(f) => f(s, depth, c),
@@ -689,8 +610,6 @@ pub(super) fn depth_of<S>(sh: &Shared<S>, s: &S, serial: u64) -> Option<usize> {
     p.state.depth_of(serial).filter(|d| *d < p.sources.len())
 }
 
-/// The host's marks, and the open path: the folder whose column is active strongly, the
-/// folders on the path before it faintly.
 fn row_marks<S>(sh: &Shared<S>, s: &S, serial: u64, id: EntryId) -> RowMarks {
     let Some(depth) = depth_of(sh, s, serial) else {
         return RowMarks::default();
@@ -707,9 +626,6 @@ fn row_marks<S>(sh: &Shared<S>, s: &S, serial: u64, id: EntryId) -> RowMarks {
     marks
 }
 
-/// A column's intent: Left and Right move between columns, activating the folder whose column
-/// is open goes to that column, a move key that left the cursor in place is reported as the
-/// cursor, a click on empty space closes deeper columns; everything else goes to the host.
 fn column_intent<S: 'static>(
     sh: &Rc<Shared<S>>,
     s: &mut S,
@@ -723,15 +639,10 @@ fn column_intent<S: 'static>(
     match intent {
         Intent::Edge(Direction::Right) => enter_right(sh, s, depth, tx),
         Intent::Edge(Direction::Left) => go_left(sh, s, depth, tx),
-        // Activating the folder whose column is open goes to that column. A key does it as
-        // Right does (Strata's `activate_focused` ends in `focus_child`): the cursor goes on
-        // the column's first entry if it has none.
         Intent::Activate {
             id,
             how: Activation::Key,
         } if reopens(sh, s, depth, id) => enter_child(sh, s, depth + 1, tx),
-        // A click gives the column the keyboard and no cursor (`Browser::activate`:
-        // "reopening lands where opening did").
         Intent::Activate { id, .. } if reopens(sh, s, depth, id) => {
             let p = (sh.parts_mut)(s);
             p.state.set_active(depth + 1, p.look, tx);
@@ -756,8 +667,6 @@ fn column_intent<S: 'static>(
     }
 }
 
-/// Remembers the folder an activation is about to open in column `depth`: the second press
-/// of the click that opened it leaves its column active (`column_press`).
 fn note_opened<S>(sh: &Shared<S>, s: &mut S, depth: usize, intent: &Intent) {
     let Intent::Activate { id, .. } = intent else {
         return;
@@ -778,8 +687,6 @@ fn reopens<S>(sh: &Shared<S>, s: &S, depth: usize, id: EntryId) -> bool {
     p.sources.open_child(depth) == Some(id) && depth + 1 < p.state.columns.len()
 }
 
-/// The keyboard goes into the open column `child`: its cursor on its first entry if it has
-/// none, or once it has one. The host hears the column is active.
 fn enter_child<S: 'static>(sh: &Rc<Shared<S>>, s: &mut S, child: usize, tx: &mut Tx) {
     let p = (sh.parts_mut)(s);
     let listing = if p.sources.loading(child) {
@@ -794,10 +701,6 @@ fn enter_child<S: 'static>(sh: &Rc<Shared<S>>, s: &mut S, child: usize, tx: &mut
     sh.emit(s, ColumnsIntent::Active { depth: child }, tx);
 }
 
-/// Right at the column's edge. The open child column is entered, unless the cursor is on
-/// another folder than the one it shows: that folder opens in its place, as does a folder
-/// with no column open (Strata's `enter_focused_directory`: `focus_child` for the open child
-/// and for a file, a descent for any other folder).
 fn enter_right<S: 'static>(sh: &Rc<Shared<S>>, s: &mut S, depth: usize, tx: &mut Tx) {
     let p = (sh.parts)(s);
     let source = p.sources.source(depth);
@@ -816,8 +719,6 @@ fn enter_right<S: 'static>(sh: &Rc<Shared<S>>, s: &mut S, depth: usize, tx: &mut
     }
 }
 
-/// Left at the column's edge: into the parent column (its cursor on its open folder if it has
-/// none), or past the root to the host.
 fn go_left<S: 'static>(sh: &Rc<Shared<S>>, s: &mut S, depth: usize, tx: &mut Tx) {
     if depth == 0 {
         sh.emit(s, ColumnsIntent::LeftOfRoot, tx);
@@ -831,11 +732,6 @@ fn go_left<S: 'static>(sh: &Rc<Shared<S>>, s: &mut S, depth: usize, tx: &mut Tx)
     sh.emit(s, ColumnsIntent::Active { depth: parent }, tx);
 }
 
-/// A plain click on column `depth`'s empty space: every column's selection clears and the
-/// deeper columns close, as Strata's `clear_marquee_selection` does for a press on a column's
-/// background (`src/ui/browser/columns/append/surface.rs`); in a column that wasn't active, it
-/// then becomes active (and is revealed) and its first visible entry is selected. Either way
-/// the column keeps its scroll position.
 fn background_click<S: 'static>(sh: &Rc<Shared<S>>, s: &mut S, depth: usize, tx: &mut Tx) {
     let p = (sh.parts_mut)(s);
     let was_active = p.state.press_was_active;
@@ -857,9 +753,6 @@ fn background_click<S: 'static>(sh: &Rc<Shared<S>>, s: &mut S, depth: usize, tx:
     }
 }
 
-/// Every press a column takes, before its controllers: it targets the column, makes it the
-/// active one (except the second press of a click that opened the next column), and cancels a
-/// slow-click rename pending in another column (Strata's `cancel_click_rename`).
 fn column_press<S: 'static>(
     sh: &Rc<Shared<S>>,
     s: &mut S,
@@ -976,8 +869,6 @@ fn reveal_clipped<S: 'static>(
     sh.emit(s, ColumnsIntent::Active { depth }, tx);
 }
 
-/// The strip's `on_key`: the key goes to the active column; then Escape that nothing took
-/// closes the deepest column.
 pub(super) fn strip_key<S: 'static>(
     sh: &Rc<Shared<S>>,
     s: &mut S,
@@ -1000,8 +891,6 @@ pub(super) fn strip_key<S: 'static>(
             p.state.reveal(p.look, tx);
             return true;
         }
-        // The host's own key (`Collection::before_keys`) moved nothing in the column: Strata
-        // reveals a column when its cursor or the active column changes, not for a key.
         KeyTaken::ByHost => return true,
         KeyTaken::No => {}
     }
@@ -1023,8 +912,6 @@ pub(super) fn blank_press<S: 'static>(sh: &Rc<Shared<S>>, s: &mut S) {
     p.state.clear_selection(p.sources);
 }
 
-/// An accepted drag over a column's zones or the strip's blank space (`Some`), or gone from
-/// them (`None`). True when the view's drop highlight changed.
 pub(super) fn drag_over<S: 'static>(
     sh: &Rc<Shared<S>>,
     s: &mut S,
@@ -1039,10 +926,6 @@ pub(super) fn drag_over<S: 'static>(
     p.state.drag.hover(&geo)
 }
 
-/// The strip's blank space as a drop zone. A drop there does nothing (Strata's has no
-/// target), but the zone follows every drag over it, accepted or refused, so the strip
-/// autoscrolls and washes the column under the drag there too. A refusal keeps the last
-/// point, and only leaving clears it.
 pub(super) fn blank_zone<S: 'static>(sh: &Rc<Shared<S>>) -> DropZone<S> {
     let (hover, moves) = (sh.clone(), sh.clone());
     let zone = DropZone::new(|_: &mut S, _, _| {});
@@ -1070,9 +953,6 @@ pub(super) fn blank_zone<S: 'static>(sh: &Rc<Shared<S>>) -> DropZone<S> {
     })
 }
 
-/// Where the strip and its columns are now, in window points: each column's shell as the last
-/// frame drew it (`El::drawn_rect_into`, moving through width springs, entrance slides and strip
-/// scrolls), or its laid-out span before the first draw.
 pub(super) fn geometry(st: &ColumnsState, look: &Look) -> StripGeometry {
     let feed = st.strip_feed.get();
     let offset = feed.offset[0];
@@ -1165,9 +1045,6 @@ pub(super) fn columns_row<S: 'static>(sh: &Rc<Shared<S>>, s: &S) -> El {
         .grow(1.0)
         .min_w(0.0)
         .h_full()
-        // Blank space, not a control: a press there clears the selection, as an empty area
-        // does, so it takes no keyboard focus (`on_background_press`) and assistive technology
-        // hears nothing for it.
         .a11y_hidden()
         .on_background_press(move |s: &mut S| blank_press(&blank, s));
     content.child(sh.dnd.drop_zone_keyed(blank_el, blank_key, blank_zone(sh)))

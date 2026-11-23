@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The rows' metadata fills: each column asks the browser for what its rows lack, and a
-//! folder's item count only while sizes show, as GTK's Columns rows ask (`request_metadata` in
-//! `src/ui/browser/columns/rows/bind.rs`).
-
 use strata_core::model::{FileEntry, MetadataValue};
 
 use super::{MODULE, click, fixture, folder_name, open, rest, save_settings};
@@ -78,9 +74,6 @@ fn a_column_asks_no_folder_count_while_sizes_are_hidden() {
     );
 }
 
-/// Reloading the active column while initial metadata fills are in flight cancels those fills
-/// in `Browser`; `ColumnReloaded` must invalidate `Fills` so the reloaded folder's entries
-/// and folder counts still get filled.
 #[test]
 fn a_reload_during_in_flight_fills_still_fills_folder_counts() {
     hosted_after(
@@ -90,8 +83,6 @@ fn a_reload_during_in_flight_fills_still_fills_folder_counts() {
         |mut host| {
             let folder = fixture();
             open(&mut host, folder.path());
-            // Trigger a reload immediately after the initial entries appear (while or right
-            // after metadata fills were requested for the same Location).
             host.app().browser().reload_active();
             let reached = host.run_until(PATIENCE, |host| {
                 filled(host, 0, "readme.md")

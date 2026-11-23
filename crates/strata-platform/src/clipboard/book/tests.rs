@@ -240,8 +240,6 @@ fn a_pending_copy_is_served_until_another_apps_offer_is_heard_after_it() {
         Some(CopyId(1)),
         "a read right after the copy gets it"
     );
-    // A write never confirmed (a data-device write the compositor dropped while another
-    // client's event was taken for its echo, say) mustn't shadow what came after it.
     b.selection(C, Some(m(&["theirs"])), &|_| false);
     assert_eq!(b.serving(C), None);
     // A later copy of ours is served again, and once holding, stays served.

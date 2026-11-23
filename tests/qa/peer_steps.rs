@@ -38,8 +38,6 @@ pub(crate) struct LaunchStep {
 #[serde(deny_unknown_fields)]
 pub(crate) struct Relaunch {
     pub(crate) directory: Option<String>,
-    /// Launches with no folder argument, as a user starting `strata` does, so the window
-    /// opens the saved tab session or the default folder.
     #[serde(default)]
     pub(crate) plain: bool,
     #[serde(default)]
@@ -141,8 +139,6 @@ pub(crate) struct ForeignStep {
 pub(crate) struct ForeignPaths {
     #[serde(default)]
     pub(crate) paths: Vec<String>,
-    /// Content offered as it is, like a browser's: each MIME type with the
-    /// file holding its bytes.
     #[serde(default)]
     pub(crate) offers: Vec<ForeignOffer>,
     #[serde(default)]
@@ -487,8 +483,6 @@ fn portal_response(
         .as_ref()
         .map_or(Ok(()), |png| check_png(first, png).map_err(failed));
     if check.discard {
-        // Only a `services::remote_download` directory straight in the
-        // temporary directory, named with its `DOWNLOAD_PREFIX`.
         let parent = first
             .parent()
             .filter(|parent| {

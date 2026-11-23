@@ -1,14 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The bookkeeping of saving `settings.toml`: what changed since a save last succeeded, what
-//! the file was last asked to hold, and whether saving is off for this session.
-//!
-//! It owns no values. An interface holds its [`Preferences`] however it holds state, changes
-//! them, and then calls [`Saving::commit`]. A commit finds a change by comparing with the
-//! values of the commit before, queues a save of the changed keys on the settings writer,
-//! and hands the pending save back. Nothing here schedules or calls back: the interface
-//! awaits the save where it awaits things and tells [`Saving::saved`] how it went.
-
 use std::{collections::BTreeSet, future::Future, io, path::PathBuf, pin::Pin};
 
 use super::{
@@ -37,20 +28,11 @@ struct RuneCommit {
     transparency: Option<TransparencyPreferences>,
 }
 
-/// Reads the file, salvaged entry by entry and brought within range, and starts the
-/// bookkeeping from it: what loading repaired is saved with the first change.
-///
-/// It applies nothing process-wide. The caller makes [`Saving::startup_locale`] the
-/// process's language, and applies whatever else its interface takes from the values.
-///
-/// Call it once in a process. See [`Saving`].
 pub fn load() -> (Preferences, Saving) {
     let (preferences, _, saving) = load_internal(RuneTracking::default());
     (preferences, saving)
 }
 
-/// Like [`load`], also reading Rune's persisted visual preferences (surface transparency) from
-/// `settings.toml` without altering [`Preferences`] for GTK.
 pub fn load_rune() -> (Preferences, RunePreferences, Saving) {
     load_internal(RuneTracking { transparency: true })
 }
@@ -93,11 +75,6 @@ fn load_internal(track: RuneTracking) -> (Preferences, RunePreferences, Saving) 
     (preferences, RunePreferences { transparency }, saving)
 }
 
-/// The bookkeeping of one process's saves of `settings.toml`.
-///
-/// **One for the file in a process.** The settings writer coalesces the saves queued for a
-/// path and gives every waiting save the result of the newest contents, so a second `Saving`
-/// would be told its save succeeded and forget keys that were never written.
 pub struct Saving {
     startup_interface_renderer: InterfaceRenderer,
     startup_locale: &'static str,
@@ -105,7 +82,6 @@ pub struct Saving {
     load_failure: Option<io::Error>,
     /// The values as of the last commit, to see whether the next one changes anything.
     baseline: Preferences,
-    /// Tracked transparency values for Rune processes; `None` in GTK processes.
     baseline_transparency: Option<TransparencyPreferences>,
     revision: u64,
     /// A save is owed: one is on its way, or the last one failed.
@@ -117,8 +93,6 @@ pub struct Saving {
     dirty_keys: BTreeSet<SettingKey>,
 }
 
-/// What a commit did. Dropping `save` unawaited loses nothing on disk, but the keys it wrote
-/// stay marked as changed and are written again with every later save.
 #[must_use = "a queued save is awaited and its result given to `Saving::saved`"]
 pub struct Commit {
     /// Whether a value differs from the commit before.
@@ -154,11 +128,14 @@ pub struct FinishedSave {
 
 /// Why a commit queued no save although one is owed.
 pub enum SaveProblem {
-    /// The file could not be read at start-up, so saving stays off to keep it. Reported for a
-    /// commit that changed a value; [`Saving::load_failure`] has the error.
-    UnreadableAtStartup { path: PathBuf },
+    UnreadableAtStartup {
+        path: PathBuf,
+    },
     /// The values could not be put in the file's form. Each later commit tries again.
-    Snapshot { path: PathBuf, error: io::Error },
+    Snapshot {
+        path: PathBuf,
+        error: io::Error,
+    },
 }
 
 pub enum SaveOutcome {
@@ -173,15 +150,10 @@ pub enum SaveOutcome {
 }
 
 impl Saving {
-    /// Records what `preferences` changed since the commit before and queues a save of the
-    /// keys changed since a save last succeeded. A commit that changes nothing still queues
-    /// one while a save is owed, because a retry with unchanged values can fail too.
     pub fn commit(&mut self, preferences: &Preferences) -> Commit {
         self.commit_internal(preferences, RuneCommit::default())
     }
 
-    /// Like [`Self::commit`], also persisting Rune's surface transparency preferences into
-    /// `settings.toml`.
     pub fn commit_rune(&mut self, preferences: &Preferences, rune: RunePreferences) -> Commit {
         self.commit_internal(
             preferences,
@@ -292,13 +264,6 @@ impl Saving {
         }
     }
 
-    /// Takes `keys` of `preferences` as what the file holds, for values another Strata
-    /// process saved and this one adopted: they are not saved again. Returns whether a value
-    /// differs from the commit before.
-    ///
-    /// The caller adopts a key only while [`Self::setting_unsaved`] is false for it. A save
-    /// on its way has already taken this process's value for an unsaved key, and would write
-    /// it over the other process's.
     pub fn record_adopted(&mut self, preferences: &Preferences, keys: &[&str]) -> bool {
         if let Ok(current) = toml::Table::try_from(preferences) {
             for key in keys {
@@ -312,13 +277,6 @@ impl Saving {
         self.record(preferences)
     }
 
-    /// Makes `preferences` the values later commits compare with, without counting a change,
-    /// so repairs made at start-up are not the next change. What they changed is saved with
-    /// the next save.
-    ///
-    /// For start-up only, before the first commit. With a save on its way, that save's
-    /// success would clear the keys this marks, and the repair would not be written until
-    /// the value changed again.
     pub fn rebase(&mut self, preferences: &Preferences) {
         if let Ok(mut normalized) = toml::Table::try_from(preferences) {
             if let Some(transparency) = self.baseline_transparency {
@@ -339,8 +297,6 @@ impl Saving {
         true
     }
 
-    /// Counts the commits and adoptions that changed a value: an interface that keeps the
-    /// number it last saw knows when to read the values again.
     pub fn revision(&self) -> u64 {
         self.revision
     }

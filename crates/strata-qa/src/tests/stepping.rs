@@ -279,9 +279,6 @@ fn select_with_keyboard_rehomes_when_a_late_entry_appears_above_the_cursor() {
     }
 }
 
-/// `activate_window` takes the only window with its title, and a backend that cannot give a
-/// window the keyboard refuses the step rather than passing it on the wrong window; `adopt`
-/// takes the first such window either way.
 #[test]
 fn activate_window_needs_one_window_and_a_backend_that_can_switch() {
     let mut fake = Fake::new();

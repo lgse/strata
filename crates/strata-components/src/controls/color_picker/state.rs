@@ -1,26 +1,15 @@
 // SPDX-License-Identifier: MIT
 
-//! The picker's model: the colour as HSV, the drag in progress, the parts' laid-out sizes, the
-//! hex field's text and the popover's opening colour. Pure logic; `view/` wires it to Rune.
-
 use rune::TextEdit;
 
 use super::value::{Hsv, Srgba};
 use crate::controls::slider::Range;
 
-/// What a change to the colour is, as C20a's `SliderChange` says it for a slider.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ColorChange {
     /// A drag moved it: apply it (a live preview), but don't save yet.
     Live,
-    /// The colour settled: a drag released, a key, a hex commit, a swatch, an assistive
-    /// action, or the popover closing on a press outside. Save it.
     Commit,
-    /// A drag was cancelled, or the popover closed on Escape: the colour is back where the
-    /// drag started or the popover opened. Apply it and save it. After a drag that is the
-    /// colour last saved (its moves were only `Live`); in the popover, keys, swatches, hex
-    /// commits and releases sent `Commit`s before Escape, so the opening colour it reports
-    /// replaces what they saved.
     Cancel,
 }
 
@@ -88,8 +77,6 @@ impl ColorPickerState {
         }
     }
 
-    /// With an alpha strip, and eight hex digits for a translucent colour. Without it (Strata's
-    /// folder colours and theme editor, as GTK's `use_alpha(false)`) the colour stays opaque.
     pub fn alpha(mut self, on: bool) -> ColorPickerState {
         self.alpha = on;
         if !on {
@@ -104,8 +91,6 @@ impl ColorPickerState {
         self.alpha
     }
 
-    /// Starts at `value` with its alpha (with the strip on), as [`ColorPickerState::new`] and
-    /// [`ColorPickerState::alpha`] then [`ColorPickerState::set_value`] would.
     pub fn with_value(mut self, value: Srgba) -> ColorPickerState {
         self.set_value(value);
         self
@@ -122,9 +107,6 @@ impl ColorPickerState {
         self.hsv
     }
 
-    /// The colour the host holds (another window changed it, a preference loaded). A grey
-    /// keeps the hue the picker had, so the plane doesn't jump to red. The hex text follows,
-    /// replacing any text being typed. A drag in progress keeps going from here.
     pub fn set_value(&mut self, value: Srgba) {
         let value = if self.alpha { value } else { value.opaque() };
         self.hsv = Hsv::of_keeping(value, self.hsv);
@@ -141,25 +123,18 @@ impl ColorPickerState {
         self.invalid
     }
 
-    /// The hex field's text, for C21's `FieldMenu`.
     pub fn edit(&self) -> &TextEdit {
         &self.edit
     }
 
-    /// The hex field's text, for C21's `FieldMenu`. Call [`ColorPickerState::edited`] after
-    /// changing it.
     pub fn edit_mut(&mut self) -> &mut TextEdit {
         &mut self.edit
     }
 
-    /// The text changed outside the field's own typing (the field menu's Paste or Delete):
-    /// check it again.
     pub fn edited(&mut self) {
         self.invalid = self.parse().is_none();
     }
 
-    /// While the field's menu has the keyboard (from its open until its close), losing the
-    /// keyboard to it commits nothing.
     pub fn hold(&mut self, held: bool) {
         self.held = held;
     }
@@ -200,9 +175,6 @@ impl ColorPickerState {
 
     // ---- Pointer ----
 
-    /// A press at `(x, y)` in `part`'s box, whose drawn area is inset `margin` on each side
-    /// (half a cursor, so the cursor stays inside the box): the cursor jumps there, as GTK's
-    /// do. True when the colour moved.
     pub(super) fn press(&mut self, part: Part, x: f32, y: f32, margin: f32) -> bool {
         self.grab = Some((part, self.hsv));
         self.move_part(part, x, y, margin)
@@ -216,8 +188,6 @@ impl ColorPickerState {
         self.move_part(part, x, y, margin)
     }
 
-    /// The drag ended: a commit when the colour moved, a cancel (back to the start, hue and
-    /// all) when it was cancelled after moving.
     pub(super) fn release(&mut self, cancelled: bool) -> Option<ColorChange> {
         let (_, start) = self.grab.take()?;
         let moved = self.value() != self.value_of(start);
@@ -254,10 +224,6 @@ impl ColorPickerState {
 
     // ---- Keys and assistive actions ----
 
-    /// Saturation `ds` and value `dv` whole percents along (the plane's arrows), from the
-    /// nearest whole percent (C20a's `Range::stepped`), holding at the ends. From an off-grid
-    /// start (a drag, a swatch) Right then Left lands on a whole percent, not back on the start.
-    /// True when the colour moved.
     pub(super) fn plane_step(&mut self, ds: i32, dv: i32) -> bool {
         let before = self.value();
         let r = percent_range();
@@ -272,8 +238,6 @@ impl ColorPickerState {
         self.value() != before
     }
 
-    /// A strip `steps` steps along: a degree of hue, a percent of alpha. True when the colour
-    /// moved.
     pub(super) fn strip_step(&mut self, part: Part, steps: i32) -> bool {
         let before = self.value();
         match part {
@@ -300,8 +264,6 @@ impl ColorPickerState {
         self.value() != before
     }
 
-    /// A swatch: the colour becomes `c` (opaque without alpha), keeping the hue for a grey.
-    /// True when the colour moved.
     pub(super) fn pick(&mut self, c: Srgba) -> bool {
         let before = self.value();
         self.set_value(c);
@@ -321,8 +283,6 @@ impl ColorPickerState {
         self.edit.text != self.value().hex()
     }
 
-    /// Commits the typed text: a colour moves the picker there, anything else reverts it. The
-    /// text shows the colour either way. True when the colour moved.
     pub(super) fn commit_text(&mut self) -> bool {
         let moved = match self.parse() {
             Some(c) => self.pick(c),
@@ -332,15 +292,10 @@ impl ColorPickerState {
         moved
     }
 
-    /// Commits typed text the field still holds, before another part changes the colour: as
-    /// GTK applies its entry when the entry loses focus, ahead of the press that took it. True
-    /// when the colour moved.
     pub(super) fn commit_pending(&mut self) -> bool {
         self.dirty() && self.commit_text()
     }
 
-    /// Escape in the field: typed text reverts to the colour's (true), else nothing does and
-    /// Escape goes on (false).
     pub(super) fn revert_text(&mut self) -> bool {
         if !self.dirty() {
             return false;
@@ -349,10 +304,6 @@ impl ColorPickerState {
         true
     }
 
-    /// Notices the field losing the keyboard, from the host's poll (no focus-change hook,
-    /// upstream #106), as C20a's NumberField does. On the first frame without it, after having
-    /// had it, typed text commits. Losing it to the field's own menu commits nothing. `Some`
-    /// when it committed, holding whether the colour moved.
     pub(super) fn blurred(&mut self) -> Option<bool> {
         if self.edit.focused {
             self.seen = true;
@@ -378,17 +329,12 @@ impl ColorPickerState {
 
     // ---- The popover ----
 
-    /// Opens the popover, as a press on its button does ([`super::ColorPicker::button`]),
-    /// remembering the colour Escape goes back to. Already open, it keeps the first.
     pub fn open(&mut self) {
         if self.opened.is_none() {
             self.opened = Some(self.hsv);
         }
     }
 
-    /// The popover closes. `cancel` (Escape) puts the opening colour back. Returns whether the
-    /// colour now differs from the opening one, and whether closing itself moved it (typed
-    /// text committed, or the cancel).
     pub(super) fn close(&mut self, cancel: bool) -> (bool, bool) {
         let Some(start) = self.opened.take() else {
             return (false, false);

@@ -43,9 +43,6 @@ fn parse_preferences_checked(contents: &str) -> io::Result<(Preferences, BTreeSe
 
 const SETTINGS_LOCK_WAIT: Duration = Duration::from_millis(500);
 
-/// Keeps other Strata processes from saving between this one's merge and its
-/// rename, which would drop their changes. Locks the directory, because every
-/// save replaces the file.
 pub fn lock_saves(path: &Path, wait: Duration) -> io::Result<fs::File> {
     let directory = path
         .parent()
@@ -113,10 +110,6 @@ fn record_change(
         }
     }
 }
-/// Another Strata process, such as the portal chooser, saves the same file, so a save
-/// replaces only what this process changed and keeps the rest as it is on disk,
-/// including keys this version does not know. A file that cannot be read or parsed
-/// is left alone.
 pub fn merged_settings(
     path: &Path,
     snapshot: &toml::Table,
@@ -196,10 +189,6 @@ fn merge_setting(
         table.remove(key);
     }
 }
-/// Rebuilds preferences from every entry that deserializes on its own, so one
-/// malformed value does not reset the rest (and, on the next save, overwrite
-/// them with defaults). A malformed list or table keeps its other entries.
-/// Also returns the keys whose saved value was dropped or filled in.
 pub fn salvage_preferences(saved: toml::Table) -> (Preferences, BTreeSet<String>) {
     let Ok(mut merged) = toml::Table::try_from(Preferences::default()) else {
         return (
@@ -229,10 +218,6 @@ pub fn salvage_preferences(saved: toml::Table) -> (Preferences, BTreeSet<String>
     (merged.try_into().unwrap_or_default(), repaired)
 }
 
-/// Returns `value` if `accepts` takes it, otherwise the entries that still pass
-/// after dropping the bad ones, level by level. Entries are tried alone, so
-/// salvage stays linear in a collection's size, and then checked together. A
-/// value of the wrong shape, or a record missing a required field, yields `None`.
 fn salvage_value(
     value: toml::Value,
     accepts: &dyn Fn(&toml::Value) -> bool,
@@ -279,8 +264,6 @@ pub fn settings_path() -> PathBuf {
     crate::storage::config_directory().join("settings.toml")
 }
 
-/// The saved settings, or temporary defaults with the read error when the file
-/// exists but cannot be read; also returns the keys salvage repaired.
 pub fn read_loaded_preferences() -> (Preferences, Option<io::Error>, BTreeSet<String>) {
     match read_preferences_checked() {
         Ok((preferences, salvaged)) => (preferences, None, salvaged),

@@ -111,8 +111,6 @@ impl<B: Backend> Scope<'_, B> {
         {
             return StepResult::Failed(outcome);
         }
-        // A directory reload arriving while parked on the last row leaves focus there; restart
-        // from `Home` so the next steps walk through the newly listed entry.
         if self.scene().observation.focused_entry == before.focused
             && let Err(outcome) = self.rehome(name, home).await
         {

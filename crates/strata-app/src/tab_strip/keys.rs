@@ -1,10 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The tab commands, as GTK's `TabWindow::handle_key` reads them: at the window's first
-//! stage, from anywhere but a modal layer (the registry cuts the stage there), each taking
-//! its key whether or not it did anything. `tab-new` is the header's and the strip's New
-//! tab too. `open-in-tab` is read later, from the listing (`open.rs`).
-
 use rune::Tx;
 use strata_desktop::keys::{
     KeyPress, Matcher, Modifiers,
@@ -48,8 +43,6 @@ fn shift(app: &mut App, delta: isize) {
     }
 }
 
-/// The tab a digit selects, 1 the first and 0 the tenth (`tab_number`, `tab_index`): not a
-/// digit that types the `+` or `−` of a text size shortcut, as Shift+1 does on Swiss German.
 fn numbered(press: &KeyPress) -> Option<usize> {
     let sizes = TEXT_LARGER
         .primary()
@@ -73,8 +66,6 @@ fn number(app: &mut App, call: &Call<'_>, tx: &mut Tx) -> Outcome {
     Outcome::Ran
 }
 
-/// What a tab command did, as its key: taken either way, cancelling any armed 10xer chord
-/// first (`TabWindow::handle_key` in `src/ui/window/composition/tabs.rs`).
 fn ran(app: &mut App, act: impl FnOnce(&mut App)) -> Outcome {
     crate::tenxer::cancel_chord(app);
     act(app);

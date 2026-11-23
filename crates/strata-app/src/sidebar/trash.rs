@@ -1,18 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! What the Trash holds, as GTK's sidebar probes it (`refresh_trash_contents` and
-//! `watch_trash` in `src/ui/window/sidebar_trash.rs`): whether `trash:///` has one item. The
-//! Trash menu offers "Empty Trash…" only once it is known to hold something
-//! (`trash_menu_visibility`).
-//!
-//! - **When.** As the sidebar starts, whenever its monitor of the Trash hears a change, after
-//!   the browser's operations that can fill or drain it (`event_changes_trash_contents`), and
-//!   as the Trash's menu opens. A probe asked for while one runs runs again after it: the
-//!   running one may have read the Trash before the change.
-//! - **An open Trash menu** takes the answer at once.
-//!
-//! GTK's sidebar draws the Trash row with one icon, full or not, so this interface does too.
-
 use gio::prelude::*;
 use strata_core::model::{LoadHandle, Location};
 use strata_fs::{

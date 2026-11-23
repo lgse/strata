@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Behavioral tests for the horizontal strip scrollbar reserving non-overlapping space below
-//! the columns when the strip overflows.
-
 use std::cell::Cell;
 use std::rc::Rc;
 
@@ -185,8 +182,6 @@ fn strip_overflows_tracks_horizontal_overflow_and_does_not_rebuild_on_scroll() {
         "horizontal scroll frames report no overflow transition"
     );
 
-    // Widening the strip so both columns fit clears strip_overflows via on_layout_tx; narrowing
-    // it again restores strip_overflows.
     rt.update(|s, _| s.width = 700.0);
     settle(&mut rt);
     assert!(
@@ -251,8 +246,6 @@ fn bottom_entry_and_column_scrollbar_stay_interactive_when_strip_overflows() {
     let last_id = EntryId::new(count);
     let last_rect = find_rect(&rt, &row_key(last_id));
 
-    // Click near the bottom edge of the last row: must select the last entry without the
-    // horizontal strip scrollbar intercepting the click or jumping the strip offset.
     let click_x = last_rect[0] + last_rect[2] / 2.0;
     let click_y = last_rect[1] + last_rect[3] - 2.0;
     let strip_before = rt.state.columns.strip_offset();
@@ -292,8 +285,6 @@ fn bottom_entry_and_column_scrollbar_stay_interactive_when_strip_overflows() {
         "pressing the bottom of a column's vertical bar must not hit the strip scrollbar"
     );
 
-    // Clicking the horizontal strip scrollbar's own trough in the reserved bottom band still
-    // scrolls the strip horizontally.
     let strip_bar = find_rect(&rt, &format!("{}-bar", keys::strip("t")));
     let hbar_x = strip_bar[0] + strip_bar[2] - 20.0;
     let hbar_y = strip_bar[1] + strip_bar[3] / 2.0;

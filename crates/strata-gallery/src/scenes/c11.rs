@@ -1,17 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The gallery page for C11 DocumentView: its scenes, demo state, view and key and poll hooks.
-//! Scene names start with `c11-` and end in `-light` or `-dark`.
-//!
-//! Work package: `docs/rune/work/phase-2-composites/C11-document-view.md`.
-//!
-//! A document in C9's drawer beside a fake listing. Each fixture is what Strata's converters
-//! would hand over for one format: Strata's parsers aren't here, so the fixtures are built as
-//! units directly, with the shapes Strata's layout gives (list markers in the text, Title as
-//! a level-1 heading, ODT's "Column N" titles, notices for omitted content). The page stands
-//! in for Strata's policy: it records a link click instead of opening it, keeps the wrap
-//! preference, and moves focus back to the files on Leave.
-
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -74,7 +62,6 @@ impl Live {
     }
 }
 
-/// C11's demo state, held in `Gallery::c11`.
 #[derive(Default)]
 pub struct Demo {
     pub fixture: Fixture,
@@ -83,8 +70,6 @@ pub struct Demo {
     pub live: Option<Live>,
     /// The last intent, as the page's status line reads it ("Open https://…", "Leave").
     pub last: String,
-    /// What copying the selection would take, read from the page's poll: scripts check
-    /// selections and the copy rule through the line keyed `c11-selection`.
     pub selection: String,
 }
 
@@ -477,8 +462,6 @@ fn find_open(g: &mut Gallery, dark: bool) {
     g.c11.doc.find_step(true);
 }
 
-/// Golden scenes: each gets an accessibility and a PNG golden. Each calls
-/// `g.open("c11", dark)`, then fills in `g.c11`.
 pub const SCENES: &[Scene] = &[
     ("c11-markdown-light", |g| setup(g, false, Fixture::Markdown)),
     ("c11-markdown-dark", |g| setup(g, true, Fixture::Markdown)),
@@ -510,8 +493,6 @@ pub const SCENES: &[Scene] = &[
     }),
 ];
 
-/// Scenes for review with `--scene` only, kept out of the goldens: the long document the
-/// scrolling scripts run over.
 pub const REVIEW: &[Scene] = &[
     ("c11-long-light", |g| setup(g, false, Fixture::Long)),
     ("c11-long-dark", |g| setup(g, true, Fixture::Long)),
@@ -571,9 +552,6 @@ fn drawer_intent(g: &mut Gallery, intent: DrawerIntent, _tx: &mut Tx) {
     }
 }
 
-/// The fake listing beside the drawer, its focus group keyed `files`, and under it two lines
-/// scripts read: the last intent (`c11-last-intent`) and what copying the selection would
-/// take (`c11-selection`), each named "None" while empty.
 fn files(look: &Look, last: &str, selection: &str) -> El {
     let k = &look.kit;
     let line = |key: &str, s: &str| {
@@ -616,15 +594,10 @@ fn files(look: &Look, last: &str, selection: &str) -> El {
     col().w_full().h_full().child(list).child(status)
 }
 
-/// Keys no focused element took while this page is open: shortcuts, and keys with nothing
-/// focused. True consumes the key; false lets the gallery's Escape go back to the index.
 pub fn on_key(_g: &mut Gallery, _key: &KeyEvent, _tx: &mut Tx) -> bool {
     false
 }
 
-/// Runs at the start of every frame while this page is open, with the clock in seconds:
-/// starts the highlighter, takes the colours that landed, runs Copy code's clock and applies
-/// find's selections, as Strata's poll would. True when state changed.
 pub fn poll(g: &mut Gallery, t: f64, tx: &mut Tx) -> bool {
     let d = &mut g.c11;
     let mut changed = false;

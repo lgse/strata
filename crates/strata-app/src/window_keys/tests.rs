@@ -48,8 +48,6 @@ fn selected(host: &Offscreen) -> Vec<String> {
         .collect()
 }
 
-/// The QA harness's `single_click_previews = false` (`tests/fixtures/harness.json`), under
-/// which lgse/strata#2411 was driven so resting on `todo.txt` opens no preview first.
 fn without_auto_preview() {
     let file = strata_core::storage::config_directory().join("settings.toml");
     std::fs::create_dir_all(file.parent().expect("a folder")).expect("settings folder");
@@ -57,9 +55,6 @@ fn without_auto_preview() {
     std::fs::write(file, saved).expect("settings");
 }
 
-/// Finding lgse/strata#2411, driven on GTK: with no preview open, an Escape with the keyboard
-/// on a header button clears the active column's selection, and the keyboard stays on the
-/// button.
 #[test]
 fn escape_outside_the_files_clears_the_selection() {
     crate::test_support::hosted_after(
@@ -85,10 +80,6 @@ fn escape_outside_the_files_clears_the_selection() {
     );
 }
 
-/// Finding lgse/strata#2426: with nothing selected, an Escape in the files closes the browser's
-/// deepest column, in a view that does not show it too. `archive`, chosen in Columns, opens
-/// its column; in Icons, which shows the root alone, the second Escape closes that column, so
-/// the next folder opened in place has nothing of `archive` behind it.
 #[test]
 fn escape_with_nothing_selected_closes_the_deepest_column_a_view_does_not_show() {
     hosted(
@@ -140,9 +131,6 @@ fn chord(host: &mut Offscreen, key: Key, ctrl: bool) {
     while host.turn() {}
 }
 
-/// A structural alias acts as the key it stands for where the view and the editor read the
-/// key alone: `o` opens the cursor's folder as Enter does, in place in List, and Ctrl+[ ends
-/// a rename as Escape does, renaming nothing.
 #[test]
 fn structural_aliases_open_and_cancel_as_their_keys_do() {
     crate::test_support::hosted_after(

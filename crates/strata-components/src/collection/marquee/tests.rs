@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The marquee machine on a plain [`Surface`] and a virtual clock. Each test names the
-//! feature-map bullet (or the decision) it checks. Rows are 28 pt tall and ids are the rows'
-//! first indices, so `[4, 5]` reads as "the fifth and sixth rows as first listed".
-
 use std::time::Duration;
 
 use rune::{Mods, Spring};
@@ -149,9 +145,6 @@ fn stops(out: &[Outcome]) -> usize {
         .count()
 }
 
-/// A viewport glide as Rune steps one (`runtime/scroll/offset.rs` at the pinned rev): a new
-/// target keeps the speed unless it would overshoot (`retarget_v`), then the spring's exact
-/// solution moves the offset.
 #[derive(Default)]
 struct Glide {
     v: f32,
@@ -184,8 +177,6 @@ impl Glide {
     }
 }
 
-/// Applies the scroll requests in `f.out` as Rune does: a glide aims the glide, a stop jumps
-/// and ends it. With `jumps` (reduced motion), a glide lands at once too.
 fn scroll(f: &mut Fake, glide: &mut Glide, jumps: bool) {
     let spring = f.settings.glide;
     let max = f.geometry.len as f32 * ROW - VIEW;
@@ -206,8 +197,6 @@ fn scroll(f: &mut Fake, glide: &mut Glide, jumps: bool) {
     }
 }
 
-/// One frame as the element runs it, `dt` long: the host's poll ticks the machine, then Rune
-/// steps the glide the machine asked for. Returns the tick's result.
 fn frame_of(f: &mut Fake, m: &mut MarqueeMachine, glide: &mut Glide, dt: f64) -> bool {
     f.now += dt;
     let changed = m.tick(f);
@@ -224,8 +213,6 @@ fn frame(f: &mut Fake, m: &mut MarqueeMachine, glide: &mut Glide) -> bool {
 
 #[test]
 fn a_band_selects_every_row_it_crosses_mounted_or_not() {
-    // Hit-testing by index: the band takes every row it crosses, mounted or not (the
-    // marquee-drag script checks the drag from blank space).
     let mut f = fake(10_000);
     let mut m = machine();
     m.begin(at_row(0), Mods::default(), &mut f);
@@ -300,8 +287,6 @@ fn a_shift_band_adds_to_the_selection_at_press() {
 
 #[test]
 fn the_mode_mapping_lets_alt_replace() {
-    // The modifiers to band mode: Alt only forces a marquee (C1b's decision), so an Alt band
-    // replaces and a Ctrl+Alt band toggles.
     let alt = Mods {
         alt: true,
         ..Mods::default()
@@ -329,8 +314,6 @@ fn the_selection_survives_pointer_movement_after_release() {
 
 #[test]
 fn the_band_never_moves_the_cursor_or_the_anchor() {
-    // D3: the band leaves the cursor and the anchor alone (the marquee-drag script checks the
-    // preview and the intents on the page).
     let mut f = fake(20);
     f.sel.select_only(&f.source, 2);
     let (cursor, anchor) = (f.sel.cursor(), f.sel.anchor());
@@ -345,7 +328,6 @@ fn the_band_never_moves_the_cursor_or_the_anchor() {
 
 #[test]
 fn escape_puts_back_the_selection_the_band_started_from() {
-    // D2: Escape, or a gesture cancelled without a release, restores the selection at press.
     let mut f = fake(20);
     f.sel.select_only(&f.source, 1);
     f.sel.toggle(&f.source, 2);
@@ -366,7 +348,6 @@ fn escape_puts_back_the_selection_the_band_started_from() {
 
 #[test]
 fn another_selecting_operation_ends_the_band() {
-    // C1a: any other selecting operation ends a band; the marquee drops its band with it.
     let mut f = fake(20);
     let mut m = machine();
     m.begin(at_row(2), Mods::default(), &mut f);
@@ -385,7 +366,6 @@ fn another_selecting_operation_ends_the_band() {
 
 #[test]
 fn a_sync_during_the_band_applies_it_again_over_the_new_listing() {
-    // C1a hands this to C1d: after a re-sort mid-band, the band covers the rows now under it.
     let mut f = fake(20);
     let mut m = machine();
     m.begin(at_row(2), Mods::default(), &mut f);
@@ -401,8 +381,6 @@ fn a_sync_during_the_band_applies_it_again_over_the_new_listing() {
 
 #[test]
 fn the_speed_curve_is_stratas_auto_scroll_step() {
-    // Strata's `auto_scroll_step`: zero to the edge line, linear to the most at the edge, held
-    // beyond it.
     let e = EdgeScroll::STRATA;
     assert_eq!(edge_speed(VIEW / 2.0, VIEW, e), 0.0);
     assert_eq!(edge_speed(e.edge, VIEW, e), 0.0);
@@ -478,7 +456,6 @@ fn holding_at_the_bottom_edge_glides_and_extends_the_selection() {
     assert!(scrolled > 1000.0, "it glided down ({scrolled} pt in 2 s)");
     assert!(counts.windows(2).all(|w| w[1] >= w[0]));
     assert!(counts[119] > counts[30] && counts[30] > counts[0]);
-    // D1: while it scrolls, the band is applied at most every 100 ms.
     let during: Vec<f64> = f
         .applied
         .iter()
@@ -592,9 +569,6 @@ fn rows_scrolled_out_stay_selected_and_rows_above_the_anchor_stay_unselected() {
 
 #[test]
 fn the_release_and_escape_stop_the_view_dead() {
-    // S1 (review): Strata's auto-scroll timer stops with the band, so the view stays where it
-    // is and the last row the band took stays under the pointer. A soft stop from leaving the
-    // edge just before is cut short too.
     for (how, leave_first) in [("end", false), ("cancel", false), ("end", true)] {
         let mut f = fake(10_000);
         let mut m = machine();
@@ -645,8 +619,6 @@ fn the_release_and_escape_stop_the_view_dead() {
 
 #[test]
 fn with_animations_off_the_edge_scroll_keeps_the_curves_speed() {
-    // S2 (review): under reduced motion Rune lands each glide at once. With the host's
-    // `animations` off, each step aims one frame's travel ahead, so the speed stays the curve's.
     let mut f = fake(100_000);
     f.settings.animations = false;
     let mut m = machine();
@@ -670,8 +642,6 @@ fn with_animations_off_the_edge_scroll_keeps_the_curves_speed() {
 
 #[test]
 fn with_animations_off_leaving_the_edge_stops_where_the_view_is() {
-    // Review round 2: Rune lands a glide at once under reduced motion, so a soft stop aimed
-    // ahead would jump the view; with animations off it aims where the view is.
     for animations in [true, false] {
         let mut f = fake(10_000);
         f.settings.animations = animations;
@@ -698,8 +668,6 @@ fn with_animations_off_leaving_the_edge_stops_where_the_view_is() {
 
 #[test]
 fn below_sixty_hertz_the_band_waits_for_frames_too() {
-    // D1: Rune's warning counts frames, so at 30 Hz the band applies once in 6 frames (0.2 s),
-    // not every 100 ms.
     let mut f = fake(100_000);
     let mut m = machine();
     let mut glide = Glide::default();
@@ -716,8 +684,6 @@ fn below_sixty_hertz_the_band_waits_for_frames_too() {
         "{times:?}"
     );
 }
-
-// The adapter on C1e's seam, through a `Ctx` with no runtime.
 
 mod adapter {
     use std::rc::Rc;
@@ -771,8 +737,6 @@ mod adapter {
 
     #[test]
     fn the_adapter_reads_the_collections_settings() {
-        // D6: the host's MarqueeSettings, through `Collection::settings`, reach the machine. A
-        // pointer 160 pt above the bottom glides only with a 200 pt edge band.
         let wide = MarqueeSettings {
             edge: EdgeScroll {
                 edge: 200.0,
@@ -821,8 +785,6 @@ mod adapter {
 
     #[test]
     fn a_band_wholly_away_from_the_view_draws_nothing() {
-        // S5 (review): when nothing of the band is near the view, the drawn rect goes, rather
-        // than staying where the band last drew.
         let mut sel = Selection::new();
         let mut m = Marquee::new();
         with_cx(&mut sel, None, 0.0, |cx| {
@@ -831,8 +793,6 @@ mod adapter {
         });
         let [_, _, w, h] = m.drawn_rect();
         assert!(w * h > 0.0, "it draws near the view");
-        // Scrolled 20,000 pt down by hand, with the pointer two viewports above the window:
-        // the band ends 1,120 pt above the view, more than a viewport away.
         let top = 20_000.0;
         with_cx_at(&mut sel, None, 1.0 / 60.0, top, |cx| {
             m.moved(Point::new(300.0, top - 2.0 * VIEW), cx);
@@ -844,8 +804,6 @@ mod adapter {
 
     #[test]
     fn a_key_that_takes_the_view_holds_the_edge_scroll_until_the_pointer_moves() {
-        // C1d's S-B (C2's E6): after `yield_scroll`, ticks glide no more until the band's
-        // pointer next moves.
         let mut sel = Selection::new();
         let mut m = Marquee::new();
         with_cx(&mut sel, None, 0.0, |cx| {

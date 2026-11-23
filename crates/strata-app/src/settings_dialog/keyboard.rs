@@ -1,10 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Settings → Keyboard: each map's table of commands and their keys, GTK's
-//! `src/ui/settings/keyboard.rs`. The page only edits the saved keymap overrides and
-//! type-to-search, through `shell::saved(app).change`; dispatch and labels follow the saved
-//! settings at the next press (`shell::live_keys`). See `docs/keyboard-shortcuts.md`.
-
 use std::rc::Rc;
 
 use rune::{El, TextEdit, Tx, col, row, text};
@@ -35,8 +30,6 @@ const SEARCH_KEY: &str = "settings-keymap-search";
 const RESET_ALL_KEY: &str = "settings-keymap-reset-all";
 const MAPS_KEY: &str = "settings-keymap-maps";
 
-/// The page's own state: the table shown, the keybind search, the armed capture and the
-/// open Reset all confirmation. It outlives closing Settings, as GTK's page does.
 pub(crate) struct KeyboardState {
     /// Whether the page has shown yet, which sets the table it shows first.
     built: bool,
@@ -82,7 +75,6 @@ impl KeyboardState {
         self.confirm.is_some()
     }
 
-    /// The capture ends when its row goes, as GTK ends it when the button unmaps.
     pub(super) fn end_capture(&mut self) {
         self.capture = None;
     }
@@ -177,8 +169,6 @@ fn heading(app: &App, title: &str) -> El {
         .pb(10.0)
 }
 
-/// The map switcher and Reset all, then the keybind search, and the note when it matches
-/// nothing in the shown table.
 fn controls(page: &Page<'_>, no_match: bool, overridden: bool) -> El {
     let app = page.app;
     let look = &app.look;

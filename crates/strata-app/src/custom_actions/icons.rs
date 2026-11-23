@@ -1,11 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Custom-action manifest icon slug mapping (`ACTION_ICON_CHOICES` in `src/ui/actions.rs`).
-//!
-//! Each bundled slug maps to both its exact Lucide asset key (`look.icon_named`) and a semantic
-//! [`IconName`] fallback for [`strata_components::dialog::StrataDialog::icon`] and placeholder
-//! icon sets.
-
 use rune::Icon;
 use strata_kit::{icons::IconName, look::Look};
 

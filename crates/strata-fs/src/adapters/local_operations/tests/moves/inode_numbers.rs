@@ -32,9 +32,6 @@ fn share(preset: Preset, no_birth_time: bool) -> MakeQuirks {
     })
 }
 
-/// A source mount, whether its server inode numbers are turned off during
-/// the move, what happens to the moved folder meanwhile, and what the move
-/// keeps at the source.
 struct Numbers {
     case: &'static str,
     quirks: MakeQuirks,
@@ -69,8 +66,6 @@ fn replaced(case: &'static str, turned_off: bool, linked: Linked) -> Numbers {
     }
 }
 
-/// The moved `folder` beside `backup.txt` in `source`, and the `arrival`
-/// that may replace its `a.txt`.
 struct NumberedTree {
     root: PathBuf,
     source: PathBuf,
@@ -116,8 +111,6 @@ impl Numbers {
         )
     }
 
-    /// Gives `a.txt` and the `arrival` alike settled times, or says why this
-    /// base cannot run the case.
     fn prepare_replacement(
         &self,
         tree: &NumberedTree,
@@ -141,8 +134,6 @@ impl Numbers {
         Ok(Ok(()))
     }
 
-    /// Once the server inode numbers go, renumbers the folder or replaces
-    /// its file, recording whether that happened.
     fn once_numbers_go(&self, tree: &NumberedTree, switched: Arc<AtomicBool>) -> Racer {
         let (turned_off, meanwhile, evicted) = (self.turned_off, self.meanwhile, tree.evicted());
         let at = tree.source.clone();
@@ -168,8 +159,6 @@ impl Numbers {
         })
     }
 
-    /// The racers before calls at the source, after calls at the source,
-    /// and after calls at the destination.
     fn racers(
         &self,
         tree: &NumberedTree,

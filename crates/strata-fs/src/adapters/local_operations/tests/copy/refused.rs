@@ -45,11 +45,7 @@ struct Refusing {
     first: [&'static str; 2],
     /// A refused folder.
     second: &'static str,
-    /// A refused item at the top, a folder or a file, and an item already
-    /// there with the name stricter rules give it.
     top: (&'static str, bool, &'static str),
-    /// Pasted later: a refused name and one ending in a dot in a folder,
-    /// and a refused name at the top.
     later: [&'static str; 3],
     /// What `first`, `second`, `top` and `later` are saved as.
     saved: [&'static str; 6],
@@ -75,8 +71,6 @@ fn a_refused_name_takes_the_first_stricter_rules_it_passes_and_teaches_only_a_mo
         invalid_name: Some(has_colon),
         ..Quirks::ext4()
     };
-    // Each mount places the top item its own way: a staged folder, a
-    // staged file, and a file linked from an unnamed one.
     let rows = [
         Refusing {
             label: "unknown FUSE daemon",
@@ -134,8 +128,6 @@ impl Refusing {
         }
     }
 
-    /// Lays out the `one`, `two` and `three` folders and the top items
-    /// beneath `source`, and what `disk` already holds.
     fn create(&self, source: &Path, disk: &Path) -> io::Result<()> {
         let [first, kept] = self.first;
         let (top, top_folder, existing) = self.top;
@@ -320,9 +312,6 @@ fn a_mount_that_learns_keeps_only_the_rules_its_refused_names_needed() -> Result
     Ok(())
 }
 
-/// What the mount refuses, a first name it refuses and what that is saved
-/// as, the names asked for and refused, three later names and what they are
-/// saved as, and whether a colon typed in a rename is then refused.
 type Learned<'a> = (
     Refusal,
     &'a str,

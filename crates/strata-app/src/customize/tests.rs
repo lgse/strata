@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The Customize dialog on the window the crate registers: each choice is saved as it is
-//! made, the custom colour's Apply saves it, and Clear forgets both.
-
 use std::path::Path;
 
 use rune::{Color, Key, KeyEvent, Mods, Tx};

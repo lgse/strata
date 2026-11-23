@@ -5,9 +5,6 @@ use strata_core::model::Location;
 
 use super::{move_pin_in, place_target, reorder_pinned_places, reorder_places};
 
-/// A place dropped where GTK's sidebar takes it moves in the whole saved order, beside the row
-/// the drop names: with Network hidden between Trash and Desktop, a drop between Trash and
-/// Desktop puts Desktop after Trash, ahead of Network, as GTK's gap "after the row above" does.
 #[test]
 fn a_place_moves_beside_the_row_its_drop_names_in_the_whole_saved_order() {
     // The rows shown: Home, Trash, Desktop. (from, landing, the saved order after)
@@ -82,9 +79,6 @@ fn names(places: &[(Location, String)]) -> Vec<&str> {
     places.iter().map(|(_, name)| name.as_str()).collect()
 }
 
-/// A pin dropped where GTK's sidebar takes it moves in the bookmarks file beside the pin the drop
-/// names, or into a gap before the pin after it: with a pin of the home folder, which the
-/// sidebar does not show, between `a` and `b`, the results are GTK's.
 #[test]
 fn a_pin_moves_beside_the_pin_its_drop_names_in_the_whole_file() {
     let shown: Vec<Location> = pins(&["a", "b"]).into_iter().map(|(at, _)| at).collect();

@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! What the preview follows: `Browser` focus, selection and removal events
-//! (`PreviewDrawer::handle_browser_event` in `src/ui/preview/drawer.rs`), and the moves the
-//! views make without the browser's cursor moving, which GTK's views raise `FocusChanged` for.
-
 use rune::Tx;
 use strata_core::model::FileEntry;
 use strata_fs::app::{Browser, BrowserEvent, EntrySplice};
@@ -76,8 +72,6 @@ fn hear_splices(depth: usize, splices: &[EntrySplice], heard: &mut Heard<'_, App
     heard.then(move |app: &mut App, tx: &mut Tx| follow_removal(app, depth, tx));
 }
 
-/// The preview follows `entry`, focused at `depth`: it shows a file it can preview, and
-/// otherwise clears, lending its slot to a folder's column.
 pub(super) fn follow_focus(
     app: &mut App,
     depth: usize,
@@ -127,10 +121,6 @@ pub(crate) fn follow_filter_pick(app: &mut App) {
     );
 }
 
-/// The Columns view moved the keyboard to another column itself (Left, Right into an open
-/// column, a click on a column's header, peek or reopened folder), so the browser's cursor did
-/// not move: GTK's `focus_parent`, `focus_child` and `focus_active` raise `FocusChanged` there,
-/// and the preview follows the active column's cursor.
 pub(crate) fn follow_active_column(app: &mut App, tx: &mut Tx) {
     let Some(depth) = app.browser.active_depth() else {
         return;
@@ -139,10 +129,6 @@ pub(crate) fn follow_active_column(app: &mut App, tx: &mut Tx) {
     follow_focus(app, depth, entry, tx);
 }
 
-/// A click in Columns is opening the folder at `position` of column `depth`: until its column
-/// has loaded, the focus on it and in its column keeps the preview's slot (GTK's
-/// `TabLocationHold::opening`, which `lend_slot_to_child` reads). A folder whose column is
-/// open already loads nothing, and GTK's hold ends with the click.
 pub(crate) fn note_click_opening(app: &mut App, depth: usize, position: usize) {
     app.preview.click_opening = app
         .browser
@@ -153,8 +139,6 @@ pub(crate) fn note_click_opening(app: &mut App, depth: usize, position: usize) {
         .map(|folder| super::ClickOpening { depth, folder });
 }
 
-/// A closed filter puts the listing's cursor back without the browser's moving: the preview
-/// leaves the result it showed for that cursor, as GTK's does.
 pub(crate) fn follow_filter_close(app: &mut App) {
     if !app.preview.enabled {
         return;

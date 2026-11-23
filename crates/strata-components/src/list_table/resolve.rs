@@ -1,15 +1,10 @@
 // SPDX-License-Identifier: MIT
 
-//! Where each shown column sits at a viewport width: the one sizing rule the headings, the
-//! cells and the hit regions all read, so what is drawn and what a press hits agree.
-
 use std::hash::{Hash, Hasher};
 
 use super::column::{Column, ColumnId};
 use super::layout::{ColumnLayout, ColumnWidths, DropSite};
 
-/// One shown column: its id, its index among the table's columns, and its left edge and width
-/// in points, from the left of the first column.
 #[derive(Clone, Debug, PartialEq)]
 pub(super) struct Placed {
     pub id: ColumnId,
@@ -24,8 +19,6 @@ pub(super) struct Placed {
 #[derive(Clone, Debug, PartialEq)]
 pub(super) struct Resolved {
     pub cols: Vec<Placed>,
-    /// The space before the first column and after the last: the row's inset and its inner
-    /// padding (C1e's row frame).
     pub lead: f32,
     /// The columns' total width.
     pub content: f32,
@@ -46,11 +39,6 @@ pub(super) struct Inputs<'a> {
     pub scale: f32,
 }
 
-/// The rule, after Strata's `ListColumnLayout` (`src/ui/browser_modes/list_columns.rs`): each
-/// column takes its hand-set width (or the one being dragged), else its default, clamped to
-/// its bounds, in base points times `scale`. The first fill column with no hand-set width
-/// takes what the others leave of the viewport, and at least its own width; below that the
-/// columns overflow and the table scrolls sideways.
 pub(super) fn resolve<S>(defs: &[Column<S>], i: &Inputs<'_>) -> Resolved {
     let scale = if i.scale.is_finite() && i.scale > 0.0 {
         i.scale
@@ -125,9 +113,6 @@ impl Resolved {
         self.cols.iter().find(|p| x >= p.x && x < p.x + p.w)
     }
 
-    /// Where `dragged` drops with the pointer at `x` (from the left of the first column), as
-    /// Strata's `column_drop_site` decides: before the first other shown column whose middle
-    /// is right of the pointer, else after the last; `None` where it already is.
     pub fn drop_site(&self, dragged: &ColumnId, x: f32) -> Option<DropSite> {
         let original = self.cols.iter().position(|p| p.id == *dragged)?;
         let others: Vec<&Placed> = self.cols.iter().filter(|p| p.id != *dragged).collect();

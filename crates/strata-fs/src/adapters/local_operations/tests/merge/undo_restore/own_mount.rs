@@ -10,8 +10,6 @@ enum VolumeTrash {
     Shared,
 }
 
-/// A mounted volume with a user Trash, the `folder/report.txt` original
-/// and its `other.txt` sibling, and a `planted` Trash elsewhere on it.
 struct Volume {
     trash: PathBuf,
     original: PathBuf,
@@ -62,8 +60,6 @@ impl Volume {
         Self::trash_as(trash, ("report.txt", "report.txt"), contents, date)
     }
 
-    /// Fills Trash as `trashed` describes, returning the recorded identities
-    /// of originals that were trashed or purged.
     fn plant(
         &self,
         trashed: Trashed,
@@ -86,8 +82,6 @@ impl Volume {
         Ok(originals)
     }
 
-    /// The original in this Trash, and a newer one in a Trash elsewhere
-    /// that the shared Trash links to.
     fn plant_behind_a_link(&self, uid: u32) -> io::Result<()> {
         Self::put_in_trash(&self.trash, "original", "2026-01-01")?;
         fs::create_dir_all(self.planted.join("files"))?;
@@ -136,8 +130,6 @@ fn restore_ended(event: &OperationEvent) -> bool {
     )
 }
 
-/// Undoes `undone` of the volume's originals and waits until it ends,
-/// returning the operation with what it emitted.
 fn undo(
     undone: Undone,
     volume: &Volume,

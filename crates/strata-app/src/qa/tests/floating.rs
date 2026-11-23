@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The floating destination chooser as a second toplevel (`qa::windows`): the steps find it
-//! by its title, keys go to it while it is in front, and the browser has no focus then.
-
 use serde_json::json;
 use strata_core::model::Location;
 use strata_qa::{Backend as _, Remembered};
@@ -76,9 +73,6 @@ fn the_floating_chooser_is_a_toplevel_in_front_of_the_browser() {
     );
 }
 
-/// A right-click selects `todo.txt` and leaves the Shift anchor on `documents`, clicked
-/// before; once Move to has taken `todo.txt` into `archive`, the row the view keeps the
-/// keyboard on keeps that anchor too, as the browser does, and the invariants hold.
 #[test]
 fn a_move_through_the_chooser_keeps_the_browser_s_shift_anchor() {
     staged(
@@ -124,9 +118,6 @@ fn a_move_through_the_chooser_keeps_the_browser_s_shift_anchor() {
     );
 }
 
-/// Default mode: the chooser's key table has no clipboard, as GTK's has none
-/// (`NAVIGATION_STAGES` in `src/ui/chooser/shortcuts.rs`), so Ctrl+C and Ctrl+V on a folder
-/// in the floating chooser copy nothing, and the chooser stays open on its request.
 #[test]
 fn the_floating_chooser_s_keys_copy_and_paste_nothing() {
     staged(

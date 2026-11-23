@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Rune's side of the QA mode: what `strata_qa::Backend` asks, answered from the
-//! accessibility tree of the host it drives (`qa::host`): the offscreen host, or a real
-//! window on the session host.
-
 use std::{
     cell::Cell,
     path::PathBuf,
@@ -31,9 +27,6 @@ use crate::{App, host::offscreen::Offscreen, shell};
 
 const READY_TIMEOUT: Duration = Duration::from_secs(60);
 const READY_POLL: Duration = Duration::from_millis(5);
-/// The names of the preview drawer, the folder peek and the search results, as the GTK
-/// application's `PREVIEW_LABEL`, `PEEK_LABEL` and `SEARCH_RESULTS_LABEL` spell them. The
-/// slice draws none of the three.
 const PREVIEW: &str = "Preview";
 const PEEK: &str = "Folder peek";
 const SEARCH_RESULTS: &str = "Search results";
@@ -69,16 +62,11 @@ impl Rune {
         self.host.app(shell::held_modifiers)
     }
 
-    /// Runs `act` on the window's state as a handler would: what a test reaches behind the
-    /// steps.
     #[cfg(test)]
     pub(super) fn update(&self, act: impl FnOnce(&mut App, &mut rune::Tx)) {
         self.host.update(act);
     }
 
-    /// Hands the window's unsaved folder views to the settings writer and waits for it, as
-    /// the windowed host's quit does: the session ends once stdin closes, and the next launch
-    /// reads what this one saved, `tabs.toml` and `folder-views.toml` included.
     pub(super) fn flush_at_exit(&self) {
         self.host
             .update(|app, _| crate::folder_views::flush_at_exit(app));
@@ -151,9 +139,6 @@ fn listed(app: &App) -> bool {
     shell::shown_view(app).is_some_and(|view| (view.probe.listed)(app))
 }
 
-/// Whether the view shown is the one the saved `browser_mode` names, which the runner
-/// writes for the run's mode. The shell shows the first view when none answers to it, so a
-/// run of a view not mounted would otherwise pass on that one.
 fn shows_saved_mode(app: &App) -> Result<(), String> {
     let mode = &shell::preferences(app).browser_mode;
     match shell::shown_view(app) {
@@ -177,8 +162,6 @@ impl<H: Host> Backend for Rune<H> {
             return Ok(());
         }
         let deadline = Instant::now() + READY_TIMEOUT;
-        // The view is chosen when the window is built, so a fallback is named at once rather
-        // than waited on until it lists.
         self.host.with_app(shows_saved_mode)??;
         loop {
             self.host.settle().await;
@@ -204,9 +187,6 @@ impl<H: Host> Backend for Rune<H> {
         self.host.windowless()
     }
 
-    /// Settings draws its messages ("Reset all keybinds?", the save notice) inside itself, so
-    /// the one on top is the innermost, as GTK's snapshot names the message over its Settings
-    /// layer (the owner's ruling of 2026-11-17 on lgse/strata#2572).
     fn nests_dialogs(&self) -> bool {
         true
     }
@@ -233,8 +213,6 @@ impl<H: Host> Backend for Rune<H> {
         width
     }
 
-    /// The focus while `window` has the keyboard: a window that another one is in front of
-    /// has none, as GTK's inactive window reports none.
     fn focus(&self, window: &Node) -> Option<Node> {
         let focus = self.snapshot().focus()?.node.clone()?;
         focus.is_within(window).then_some(focus)
@@ -284,9 +262,6 @@ impl<H: Host> Backend for Rune<H> {
         self.read(node, |_, seen| seen.mark).flatten()
     }
 
-    /// `focusable` is GTK's `is_focusable`: for an entry, that it is reachable as the active
-    /// descendant of a list that takes focus, since a Rune list keeps the one focus stop and
-    /// points at its current entry ([`Snapshot::is_focusable`](super::tree::Snapshot)).
     fn states(&self, node: &Node) -> States {
         self.read(node, |snapshot, seen| States {
             selected: seen.has_state("selected"),
@@ -367,7 +342,6 @@ impl<H: Host> Backend for Rune<H> {
         self.snapshot().keep(node).after(self.host.replacements())
     }
 
-    /// A row its column has been replaced in since is another row, as on GTK.
     fn recall(&self, kept: &Kept) -> Option<Node> {
         let replaced = kept
             .entry()
@@ -395,8 +369,6 @@ impl<H: Host> Backend for Rune<H> {
         self.host.adopt(window);
     }
 
-    /// The Rune hosts drive one browser window each, so there is no other window to give the
-    /// keyboard to; the step fails with that reason rather than passing on the wrong window.
     async fn activate_window(
         &self,
         _window: &Node,
@@ -466,8 +438,6 @@ impl<H: Host> Backend for Rune<H> {
             .is_some_and(|target| self.host.activate(&target))
     }
 
-    /// The steps of Rune's own: the keyboard layout, the invariants ([`invariants`]), and the
-    /// session host's second-connection clipboard steps (`clipboard_set` and `clipboard`).
     async fn command(&self, scope: &Scope<'_, Self>, command: &Command) -> Option<Outcome> {
         match command {
             Command::Keymap(keymap) => Some(Outcome::from(self.host.set_layout(keymap))),

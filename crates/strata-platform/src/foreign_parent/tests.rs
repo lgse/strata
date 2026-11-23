@@ -28,7 +28,6 @@ fn an_empty_or_blank_handle_is_no_parent() {
 
 #[test]
 fn x11_takes_bare_hex_and_one_0x_prefix() {
-    // GTK, then Chromium (S3, Q3).
     assert_eq!(xid("x11:400003"), 0x40_0003);
     assert_eq!(xid("x11:0x400003"), 0x40_0003);
     assert_eq!(xid("x11:0X4a"), 0x4a);

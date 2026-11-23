@@ -1,41 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Opens Rune windows transient for another process's window, through the `foreign-parent`
-//! shim: P4's session tests (`tests/session/p4.rs`) run it, and the owner's hand tests use it
-//! with `--parent`.
-//!
-//! A small host window opens first. Each chooser opens as a portal backend opens its dialog:
-//! its own window (`rune::open_window`), created hidden, parented from `App::on_window`,
-//! then shown. Its app id is `strata-foreign-parent`, its title `chooser <key>`.
-//!
-//! Commands, as JSON lines on stdin:
-//! - `{"cmd":"open","key":"c1","parent":"wayland:…","modal":true}` opens chooser `c1`
-//!   (`modal` defaults to true);
-//! - `{"cmd":"reapply","key":"c1","parent":"x11:…","modal":true}` applies a parent again to
-//!   chooser `c1`, which is shown by now (the late path);
-//! - `{"cmd":"close","key":"c1"}` closes it; with `"release":false` its `on_close` skips
-//!   `foreign_parent::release`, as an app that forgot it would;
-//! - `{"cmd":"quit","shutdown":true}` quits, calling `foreign_parent::shutdown` first unless
-//!   `shutdown` is false.
-//!
-//! It reports JSON lines on stdout:
-//! - `{"ev":"host-ready"}` once the host window exists;
-//! - `{"ev":"bad-parent","key":…,"error":…}` for a handle `Parent::parse` refuses (the chooser
-//!   then opens with no parent);
-//! - `{"ev":"applied","key":…,"parented":…,"system":…,"late":…,"reason":…,"fallback":…,"text":…}`
-//!   on each native creation of a chooser and each `reapply`, with `p0_windows`, the windows
-//!   P0's substrate tracks (a test hook);
-//! - `{"ev":"ready","key":…}` at a chooser's first frame, `{"ev":"lost","key":…}` when its
-//!   Wayland parent goes away, `{"ev":"closed","key":…,"released":…}` when it closes;
-//! - `{"ev":"exit","code":0}` after the event loop ends.
-//!
-//! Flags: `--parent HANDLE` opens chooser `c1` with that parent once the host is up (the hand
-//! test); `--as-if-libwayland-1-22` behaves as on libwayland < 1.23, where winit's display is
-//! out of reach (a test switch).
-//!
-//! `cargo run -p strata-platform --example foreign-parent --features foreign-parent --
-//! --parent wayland:<handle>` runs it on a desktop.
-
 #[cfg(feature = "foreign-parent")]
 fn main() {
     probe::main();
@@ -101,7 +65,6 @@ mod probe {
             .child(text(format!("chooser {}", s.key)))
     }
 
-    /// How many windows P0's substrate tracks, for the tests: it must not grow with requests.
     fn p0_windows() -> Option<usize> {
         Transfer::current().map(|t| t.attached_windows())
     }

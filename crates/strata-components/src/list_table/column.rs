@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Columns as data: each one's id, title, sizing, alignment, whether it sorts, and what its
-//! cells show.
-
 use std::fmt;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -11,11 +8,7 @@ use rune::{Align, Color, El};
 
 use crate::collection::element::RowCx;
 
-/// A column's id: what the layout, the widths, the sort and a sort intent name it by
-/// (Strata's `name`, `mode`, `size`, `type`, `modified`). Cheap to clone, and `Send`, so a
-/// layout can travel to another window or a worker.
-///
-/// Used by: C4, hosts.
+/// A column's id: what the layout, the widths, the sort and a sort intent name it by.
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ColumnId(Arc<str>);
 
@@ -50,8 +43,6 @@ impl From<&str> for ColumnId {
 }
 
 /// What a cell shows: text that truncates at its end, or any element.
-///
-/// Used by: C4, hosts.
 pub struct Cell {
     pub(super) content: CellContent,
     pub(super) color: Option<Color>,
@@ -75,8 +66,7 @@ impl Cell {
         }
     }
 
-    /// Any element. A double click on the column's edge can't measure it, so it leaves the
-    /// width as it is.
+    /// Any element.
     pub fn el(e: El) -> Self {
         Self {
             content: CellContent::El(Box::new(e)),
@@ -114,26 +104,11 @@ impl Cell {
 }
 
 /// The widest a column without a max is drawn, in base points.
-///
-/// Used by: C4, hosts (to bound a saved width).
 pub const WIDTH_CEILING: f32 = 4096.0;
 
 pub(super) type CellFn<S> = Rc<dyn Fn(&S, &RowCx<'_>) -> Cell>;
 
-/// One column: its id, its heading's title, its sizing, alignment, whether a heading click
-/// sorts by it, and its cells.
-///
-/// Sizing follows rune-kit's `TableColumn` (`crates/rune-kit/src/table.rs` at the pinned rev):
-/// a width in points or a share of the free width, bounded by a min and a max, with
-/// [`Column::clamp`] as `TableColumn::clamp`. rune-kit keeps those fields private (Rune draft
-/// R-K1), so the rules are copied here, not the type reused. Widths are in base units, at
-/// Strata's default text size; the table scales them with the text size
-/// ([`super::text_scale`]).
-///
-/// The primary column ([`Column::primary`], Strata's Name) holds the row's icon and label,
-/// fills the free width until it is resized by hand ([`Column::fill`]), and can't be hidden.
-///
-/// Used by: C4, hosts.
+/// One column: its id, its heading's title, its sizing, alignment, whether a heading click sorts by it, and its cells.
 pub struct Column<S> {
     pub(super) id: ColumnId,
     pub(super) title: String,
@@ -163,8 +138,7 @@ impl<S> Clone for Column<S> {
 }
 
 impl<S: 'static> Column<S> {
-    /// The primary column: the row's icon and label (C1e's slots, and the rename editor),
-    /// filling the free width until resized. It can't be hidden.
+    /// The primary column: the row's icon and label, filling the free width until resized.
     pub fn primary(id: &str, title: impl Into<String>) -> Self {
         Self {
             id: ColumnId::new(id),
@@ -218,8 +192,7 @@ impl<S> Column<S> {
         self
     }
 
-    /// It takes the width the other columns leave, at least its width, until the host's
-    /// widths hold one set by hand.
+    /// It takes the width the other columns leave, at least its width, until the host's widths hold one set by hand.
     pub fn fill(mut self) -> Self {
         self.fill = true;
         self
@@ -252,15 +225,12 @@ impl<S> Column<S> {
         self.cell.is_none()
     }
 
-    /// `w` within the column's min and max, as `TableColumn::clamp`: a max under the min yields
-    /// to the min.
+    /// `w` within the column's min and max, as `TableColumn::clamp`: a max under the min yields to the min.
     pub fn clamp(&self, w: f32) -> f32 {
         w.max(self.min).min(self.max.max(self.min))
     }
 
-    /// `w` as the table draws it, in base points: within the column's bounds, at most
-    /// [`WIDTH_CEILING`] when the column has no max, and the default width for a width that
-    /// isn't a finite number. A saved width can be anything a hand-edited file holds.
+    /// `w` as the table draws it, in base points.
     pub fn bounded(&self, w: f32) -> f32 {
         let w = if w.is_finite() { w } else { self.width };
         let w = self.clamp(w);

@@ -5,8 +5,6 @@
 use super::{MODULE, find, fixture, open, press, save_settings, text, wait};
 use crate::test_support::{PATIENCE, hosted_after};
 
-/// `keyboard_navigation/arrow-keys-move-focus-remaining` (`columns-hjkl`): its header turns
-/// "Type to search" off, and `j` and `k` are then Down and Up.
 #[test]
 fn with_type_to_search_off_the_letters_move_as_the_arrows_do() {
     hosted_after(

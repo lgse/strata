@@ -1,11 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Recording a new key for a row: GTK's `start_capture`, `end_capture` and `captured`
-//! (`src/ui/settings/keyboard.rs`) over `keys::capture`. While a capture is armed its button
-//! has the keyboard and takes every press but a lone modifier, as pressed and before the
-//! aliases (`commands::read_pressed`), ahead of the dialog's own keys. Escape ends it,
-//! Backspace unbinds the row, and a key the checker refuses keeps it waiting with the reason.
-
 use rune::{El, KeyEvent, Tx};
 use rune_kit::{Button, ButtonVariant};
 use strata_core::i18n::tr;
@@ -28,8 +22,6 @@ pub(super) struct Capturing {
     /// What the checker said of the last key it refused, and that key.
     refused: Vec<String>,
     pressed: Option<Binding>,
-    /// Whether the capture's button has had the keyboard, after which losing it ends the
-    /// capture.
     held: bool,
 }
 
@@ -157,8 +149,6 @@ fn captured(app: &mut App, press: &KeyPress, tx: &mut Tx) {
     }
     let keymap = shell::live_keys(app).keymap();
     let mut entry = keymap.bindings(map, command).to_vec();
-    // The press also matches its digit-row position where the layout types a symbol there,
-    // so a digit that is taken refuses it too.
     let mut matched = vec![binding];
     matched.extend(
         press
@@ -188,8 +178,6 @@ fn captured(app: &mut App, press: &KeyPress, tx: &mut Tx) {
     }
 }
 
-/// Ends the capture once its button, having had the keyboard, loses it to anything but
-/// Cancel: GTK's `focus-widget` watch.
 pub(super) fn follow_focus(app: &mut App, tx: &Tx) -> bool {
     let state = &mut app.settings_dialog.keyboard;
     let Some(capturing) = state.capture.as_mut() else {

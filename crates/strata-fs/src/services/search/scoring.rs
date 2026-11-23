@@ -115,8 +115,6 @@ impl QueryScorer<'_> {
     }
 }
 
-/// One scored index position. Higher ranks first; equal scores fall back to the folded
-/// name and then the path, so the walk's enumeration order never decides.
 #[derive(PartialEq, Eq, PartialOrd, Ord)]
 pub(super) struct Ranked<'a> {
     score: i64,

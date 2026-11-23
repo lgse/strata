@@ -1,38 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The sort controls (A10): the "Choose sort field" button and its menu, the sort direction
-//! button, and the List view's "Sort: …" label, GTK's `src/ui/browser/pane_header/sort_menu.rs`
-//! and `column_sort_direction_toggle` in `src/ui/browser/pane_header.rs`. Driven on GTK first
-//! (2026-11-14).
-//!
-//! - **Where they are** ([`controls`]): in a Columns column's header, the direction and Sort by
-//!   after Refresh and before the filter's toggle; in Icons, after the thumbnail size; in List,
-//!   Sort by leads the header's actions and the direction shows only in the Recent root, as
-//!   GTK places them (`pane_header::actions` has the orders).
-//! - **The menu** ([`menu`]) is a plain popover of the menu kind ([`popover::Kind::Menu`]),
-//!   GTK's `gtk::PopoverMenu`: SORT BY with Name, Size, Modified, Type, Extension and Created
-//!   (Device order in a camera's photos, Recency in Recent), as radio rows; in List, Ascending
-//!   and Descending; NAME ORDER with Natural and Alphabetical, and Case-sensitive names; Folders
-//!   first; then Make default and Reset to default sort, each shown only while it would do
-//!   something. A row runs at once and the menu stays open, with its checks updated. Choosing
-//!   the checked field turns sorting off: Unsorted has no row.
-//! - **The keyboard**: the menu opens on its first row. While it is open it takes every key
-//!   ([`Holds::Popover`]); Escape or a press outside closes it and gives the button the
-//!   keyboard back. A Columns column's buttons are no focus stops (C2's slot), so there the
-//!   view gets it back instead: GTK leaves it on the header's button.
-//! - **The direction button** reverses the column's sort, named "Ascending — click to reverse"
-//!   or "Descending — click to reverse", and is insensitive while the column is unsorted or in
-//!   device order, named for why.
-//! - **List's label**: while the sort has no visible column of its own, or Name sorts in a
-//!   special name order, the button shows "Sort: Extension ↑" in place of its icon, and is
-//!   named so (`sync_list_sort_menu`).
-//!
-//! - **List's headings** ([`headings`]): Name, Size, Type and Modified sort, the sorted one
-//!   showing its direction; a click reverses the sorted heading and sorts another ascending.
-//!
-//! The menu closes when another folder or view shows, or the keyboard leaves it, as GTK's
-//! goes with its pane.
-
 mod controls;
 pub(crate) mod headings;
 mod menu;
@@ -55,8 +22,6 @@ pub(crate) use controls::{column, direction_and_menu, list_menu, recent_directio
 /// The sort controls' state: the open menu, if any, and the words.
 pub(crate) struct Sort {
     open: Option<Open>,
-    /// Where the keyboard goes once the menu closed, when not its button: a Columns column's
-    /// buttons take no focus.
     refocus: Option<&'static str>,
     labels: Labels,
 }
@@ -113,7 +78,6 @@ impl Labels {
         }
     }
 
-    /// A field's name, GTK's `field_label`: Name's for Unsorted, which has no row.
     fn field(&self, key: SortKey) -> &str {
         menu::FIELDS
             .iter()
@@ -131,8 +95,6 @@ pub(crate) struct Opener {
     pub(crate) in_columns: bool,
 }
 
-/// Opens the menu under its button with the keyboard on its first row, or closes it when it
-/// is open there.
 pub(crate) fn toggle(app: &mut App, opener: Opener, tx: &mut Tx) {
     if app
         .sort
@@ -179,8 +141,6 @@ impl Sort {
     }
 }
 
-/// The menu closes when the keyboard leaves it, or when another folder or view shows; the
-/// keyboard goes back to the Columns view after it closed there. True when anything changed.
 fn follow(app: &mut App, tx: &mut Tx) -> bool {
     if let Some(key) = app.sort.refocus.take() {
         tx.focus_when_shown(key, true);

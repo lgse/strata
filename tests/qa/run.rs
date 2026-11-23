@@ -19,8 +19,6 @@ use crate::{
 const STATE_SETTLE_TIMEOUT: Duration = Duration::from_secs(5);
 const STATE_SETTLE_INTERVAL: Duration = Duration::from_millis(250);
 
-/// `errors` are the harness's own problems and fail a run even when it is `known_bug`;
-/// `failures` are the scenario's.
 #[derive(Default)]
 pub(crate) struct Outcome {
     pub(crate) errors: Vec<String>,

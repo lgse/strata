@@ -1,11 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Window-scoped mount prompts and device action dialogs: C26's [`MountPrompts`] for GIO
-//! `ask-password` and `ask-question` signals, the "Forget saved password?" confirmation before
-//! locking an encrypted volume, the "Unlocking volume" progress modal, and the release progress
-//! and "Safe to remove" overlay (`src/ui/browser/location/dialogs.rs`, `unlock_progress.rs`,
-//! `src/ui/window/device_lock.rs`, `device_release/overlay.rs`).
-
 use std::{
     cell::Cell,
     rc::Rc,
@@ -97,8 +91,6 @@ pub(crate) struct UnlockProgressOverlay {
     on_hide: Option<Box<dyn FnOnce()>>,
 }
 
-/// Compact progress modal shown while unmounting, ejecting or locking a device, transitioning
-/// into the "Safe to remove" notice once removable media is safe to unplug.
 pub(crate) struct ReleaseProgressOverlay {
     pub(crate) id: u64,
     pub(crate) title: String,
@@ -265,8 +257,6 @@ pub(crate) fn update_release_overlay_body(app: &mut App, id: u64, body: String) 
     }
 }
 
-/// Turns an open release progress modal into "Safe to remove", matching GTK's `show_safe_to_remove`.
-/// Returns `true` if the overlay was showing and transitioned in place.
 pub(crate) fn show_release_safe_to_remove(app: &mut App, id: u64, display_name: &str) -> bool {
     let Some(overlay) = app.mount_prompts.release_overlay.as_mut() else {
         return false;

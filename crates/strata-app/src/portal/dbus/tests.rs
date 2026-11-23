@@ -58,8 +58,6 @@ fn params(options: Variant) -> CallParams {
     unpack_call(&call(handle(HANDLE), "", "".to_variant(), options)).expect("well-formed call")
 }
 
-/// What a request shows: its title, its accept label, whether it is modal, the folder it opens
-/// on and its kind.
 fn shown(request: &ChooserRequest) -> (&str, &str, bool, &std::path::Path, &ChooserKind) {
     (
         request.title.as_str(),

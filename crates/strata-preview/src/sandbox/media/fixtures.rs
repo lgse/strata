@@ -13,8 +13,6 @@ pub fn stream_to(header: Header, end: u64) -> Result<Session, String> {
     stream_with_tone(header, end, None)
 }
 
-/// A fixture stream whose interleaved 48 kHz stereo S16LE PCM carries a sine wave at
-/// `frequency_hz`, for verifying live spectrum analysis and ballistics end-to-end.
 pub fn stream_tone(header: Header, frequency_hz: f32) -> Result<Session, String> {
     stream_with_tone(header, header.duration_us, Some(frequency_hz))
 }
@@ -75,8 +73,6 @@ fn sine_pcm(byte_len: usize, frequency_hz: f32, sample_index: &mut u64) -> Vec<u
     out
 }
 
-/// A session whose decoder dies before producing a header, as a seek past the
-/// end of a truncated file does.
 pub fn failing_stream() -> Result<Session, String> {
     let slot = WorkerSlot::acquire().ok_or("Media previews are busy (four active players)")?;
     let slot = Arc::new(slot);

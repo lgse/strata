@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The planner, as GTK's `completion/tests.rs` tests it (ported with it), and the bar's
-//! suggestions on the offscreen host: a typed path lists its folders, and the window losing
-//! its activation closes them and keeps the typed text.
-
 use std::{fs, path::Path};
 
 use rune::{Key, KeyEvent, Mods, Tx};
@@ -147,8 +143,6 @@ fn the_matched_characters_are_whole_bytes() {
     assert_eq!(matched_bytes("docs/", 0), None);
 }
 
-/// A listing that finished after a newer one started leaves the newer one in flight, so a
-/// cancel still stops it.
 #[test]
 fn a_superseded_listing_finishing_keeps_the_newer_one_cancellable() {
     let context = PrivateContext::new();
@@ -224,8 +218,6 @@ fn a_typed_path_lists_its_folders() {
     });
 }
 
-/// The window losing its activation closes the suggestions and keeps the typed text, as GTK's
-/// `set_window_presence` does.
 #[test]
 fn the_window_losing_activation_closes_the_suggestions() {
     let name = "the_window_losing_activation_closes_the_suggestions";

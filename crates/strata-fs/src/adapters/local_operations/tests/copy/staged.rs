@@ -195,8 +195,6 @@ fn reusing_stage_inodes(before: (Op, &'static str, usize, Racer)) -> Quirks {
     }
 }
 
-/// Replaces the only file stage beneath `stage_root` with a folder,
-/// holding `copied.txt` with `foreign` contents when given.
 fn stage_swapped_for_a_folder(stage_root: PathBuf, foreign: Option<&'static [u8]>) -> Racer {
     Box::new(move || {
         let stage = only_stage(&stage_root);

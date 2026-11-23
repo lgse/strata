@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Shared RAW camera metadata detection, row formatting, sandboxed loading, and section rendering
-//! (`src/ui/raw_details.rs`), used by both the preview drawer (`crate::preview`) and single-file
-//! Properties (`crate::properties`).
-
 use std::path::{Path, PathBuf};
 
 use rune::{El, Tx, col, row, text};

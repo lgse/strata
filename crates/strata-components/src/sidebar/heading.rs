@@ -1,12 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The PINNED and DEVICES headings. In the full sidebar: the title, a rule filling the width,
-//! the count while collapsed, and a chevron at the right edge, which swaps between down and
-//! right rather than rotating. In the rail: the chevron alone, centred, with the section's
-//! name as its tooltip. Either way it is a button named after its section, with an expanded
-//! state and the count as its description: both the host's words ([`super::SidebarLabels`]). A click toggles the section without taking focus;
-//! from the keyboard it is a stop in the list, toggled by Enter or Space (and 10xer `l`).
-
 use rune::{El, KeyEvent, Side, Tx, el, icon, row, text};
 use strata_kit::icons::IconName;
 use strata_kit::slots::sidebar as slot;
@@ -37,8 +30,6 @@ pub(crate) fn heading<S: 'static>(
         .radius(look.kit.radius.md)
         .center_y()
         .focusable(true)
-        // A click toggles without moving focus (it stays in the files); the keyboard still
-        // stops here. `preserve_focus_on_press` keeps focus only off a focusable element.
         .keeps_text_selection()
         .hover(if ctx.state.dragging() {
             rune::Color::TRANSPARENT
@@ -91,9 +82,6 @@ fn heading_body<S>(
             .help(ctx.labels.heading(section))
             .help_side(Side::Right);
     }
-    // Wrap the chevron in the same trailing action slot as a device row's eject button so the
-    // section disclosure chevrons and device eject icons share one vertical centerline while
-    // staying clear of the vertical scrollbar and the 7 pt trailing resize grip.
     let chevron_slot = row()
         .key("chevron-slot")
         .size(ACTION_SLOT, ACTION_SLOT)

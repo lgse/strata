@@ -1,11 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! A virtual pointer (`zwlr_virtual_pointer_v1`) and keyboard (`zwp_virtual_keyboard_v1`).
-//!
-//! A headless sway started with `WLR_LIBINPUT_NO_DEVICES=1` has a seat with no devices, so no
-//! client gets pointer events or keyboard focus until a virtual device exists. sway routes
-//! these devices to Xwayland too, so they drive X11 clients as well.
-
 use std::io::Write;
 use std::os::fd::AsFd;
 use std::time::{Duration, Instant};
@@ -158,8 +152,6 @@ impl Input {
         Ok(())
     }
 
-    /// Moves in `steps` straight steps, flushing and pausing after each, so the compositor and
-    /// clients see a drag move rather than jump.
     pub fn path(
         &mut self,
         to: [f64; 2],

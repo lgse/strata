@@ -18,14 +18,8 @@ use crate::code_view::highlight::CodeBlocks;
 use crate::preview_drawer::CONTENT_MAX_WIDTH;
 use crate::scroll::BarLook;
 
-/// Heading sizes against the body text, levels 1 to 6: Strata's `document-heading-*` tags
-/// (`src/ui/virtual_preview/tags.rs`), weight 700. Component constants for now; a `document`
-/// slot is the candidate home for them once one is needed.
 pub const HEADING_SCALE: [f32; 6] = [1.6, 1.35, 1.18, 1.04, 1.04, 1.04];
 
-/// Strata's row geometry (`src/ui/virtual_preview/rows.rs`), in points: the side margins, a
-/// list level's indent, the space after a block and after a list block, the first row's top
-/// and the last row's bottom, and a gap unit's height.
 const SIDE: f32 = 16.0;
 const LIST_FIRST: f32 = 20.0;
 const LIST_STEP: f32 = 18.0;
@@ -46,8 +40,6 @@ fn list_indent(depth: Option<usize>) -> f32 {
     depth.map_or(0.0, |d| LIST_FIRST + d.min(32) as f32 * LIST_STEP)
 }
 
-/// The look a row reads, resolved once per build: `Copy` tokens only, so the row closures
-/// capture no `Look`.
 #[derive(Clone, Copy)]
 pub(crate) struct Paint {
     pub body: TextStyle,
@@ -150,8 +142,6 @@ pub struct DocumentLabels {
     pub loading_image: String,
     pub diagram: String,
     pub equation: String,
-    /// Fallback column header when a table has no header row or a ragged header; `{}` is the
-    /// 1-based column number.
     pub column: String,
     /// Accessible name of a column resize divider; `{}` is the column name.
     pub resize: String,
@@ -195,9 +185,6 @@ pub(crate) struct Ctx<S> {
     pub width: Option<f32>,
 }
 
-/// The rows around the visible ones that ask for code colours: the viewport and two of its
-/// heights either side, Rune's mounted window. Rows outside it (built for a copy, or not yet
-/// visible) draw plain, so a copy over the whole document never floods the highlighter.
 pub(crate) fn near(visible: &Range<usize>, i: usize) -> bool {
     let reach = (visible.len() * 2).max(8);
     i + reach >= visible.start && i < visible.end + reach
@@ -321,8 +308,6 @@ fn list_block(kind: &UnitKind) -> bool {
     )
 }
 
-/// The model's spans as Rune's: colour, weight, face and underline runs (split where they
-/// overlap, so each byte has every style over it), strikes and links.
 pub(crate) struct Styled {
     pub spans: Vec<RSpan>,
     pub strikes: Vec<(usize, usize, Option<Color>)>,
@@ -382,8 +367,6 @@ pub(crate) fn styled(spans: &[Span], p: &Paint) -> Styled {
     }
 }
 
-/// A selectable text with `styled` on it, wrapping or scrolling sideways on its own (D7),
-/// keyed `key`, with its links opening through the host.
 pub(crate) fn styled_text<S: 'static>(
     ctx: &Rc<Ctx<S>>,
     content: String,
@@ -402,8 +385,6 @@ pub(crate) fn styled_text<S: 'static>(
         .color(color)
         .selectable(true)
         .selection_color(p.selection);
-    // A link's id keys its element: `link-{n}` within its text, as a URI's slashes would
-    // read as a key path.
     let uris: Vec<std::sync::Arc<str>> = st.links.iter().map(|(_, u)| u.clone()).collect();
     for (n, (r, uri)) in st.links.into_iter().enumerate() {
         t = t.link(
@@ -418,8 +399,6 @@ pub(crate) fn styled_text<S: 'static>(
         let get_mut = ctx.get_mut;
         t = t.on_link(move |s: &mut S, id: &str, tx| {
             get_mut(s).clear_all_selected();
-            // Strata opens a link on a plain single click only: a Shift-click extends the
-            // selection, and a double-click's second click doesn't open it again.
             if tx.mods().shift {
                 return;
             }
@@ -461,9 +440,6 @@ fn unit_text<S: 'static>(
     )
 }
 
-/// A code block's row: its panel (rounded where the block starts and ends), its text
-/// coloured by C10a when the block is one unit and near the viewport, and on its first row,
-/// Copy code.
 fn code<S: 'static>(
     ctx: &Rc<Ctx<S>>,
     st: &DocumentState,
@@ -474,8 +450,6 @@ fn code<S: 'static>(
     let p = &ctx.paint;
     let (shown, _) = st.shown(i);
     let mut spans: Vec<RSpan> = Vec::new();
-    // Strata colours a block only when it is one unit: one split over 32 KiB, or around a
-    // line over 2 KiB, draws plain.
     if u.first
         && u.last
         && near(&st.visible, i)
@@ -565,9 +539,6 @@ fn block_code(st: &DocumentState, first: usize) -> String {
     out.strip_suffix('\n').map(str::to_owned).unwrap_or(out)
 }
 
-/// A Copy button pinned to the top right of its block: copies what `copy` reads from the
-/// state for `unit`, when pressed (not on every build), then shows its check and `label` (the
-/// copied form) until [`DocumentState::tick`] turns it back.
 fn copy_button<S: 'static>(
     ctx: &Rc<Ctx<S>>,
     unit: usize,
@@ -600,9 +571,6 @@ fn copy_button<S: 'static>(
         })
 }
 
-/// An image, diagram or display equation: its pixels at their size (no wider than the text
-/// column), a placeholder while loading, its alt text when it can't be drawn; a diagram and
-/// a display equation offer Copy source.
 fn media_el<S: 'static>(
     ctx: &Rc<Ctx<S>>,
     st: &DocumentState,

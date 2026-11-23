@@ -29,15 +29,8 @@ pub struct DirectoryRequest {
     pub id: RequestId,
     pub location: Location,
     pub batch_size: usize,
-    /// When true, entries arrive with size and modification time. Size/date sorts set it;
-    /// other sorts stream identity only and fill the visible window afterwards.
     pub include_metadata: bool,
-    /// Caps how many entries a single load will retain/render, bounding worst-case time and
-    /// memory on an adversarially large or unbounded directory.
     pub max_entries: usize,
-    /// Caps how long a single load may run before it is reported as truncated.
-    /// Complete camera Photos scans use `Duration::MAX` to disable the deadline;
-    /// their `max_entries` is `usize::MAX`. Bounded peeks retain finite limits.
     pub time_budget: Duration,
     pub background: bool,
 }
@@ -59,8 +52,6 @@ pub enum LocationValidationError {
     /// A chooser policy refusal, held as an English source message.
     Refused(&'static str),
     EmbeddedCredential,
-    /// Polkit refused an `admin://` operation, or its prompt was dismissed; GVfs reports both
-    /// as `PERMISSION_DENIED`.
     NotAuthorized,
     /// Already localized by [`backend_unavailable_message`].
     BackendUnavailable(String),
@@ -167,8 +158,6 @@ pub fn gio_backend_error_message(error: &glib::Error) -> String {
     crate::i18n::tr(reason)
 }
 
-/// GVfs' SMB backend reports rejected credentials as `G_IO_ERROR_FAILED` on
-/// some versions, preserving the distinction only in its message.
 pub fn describes_refused_credentials(message: &str) -> bool {
     let message = message.to_ascii_lowercase();
     [
@@ -184,9 +173,6 @@ pub fn describes_refused_credentials(message: &str) -> bool {
     .any(|reason| message.contains(reason))
 }
 
-/// [`gio_error_message`] for mount, unmount and eject failures. UDisks and
-/// eject(1) report a busy device as `G_IO_ERROR_FAILED`, with the cause only
-/// in the system's own text.
 pub fn gio_device_error_message(error: &glib::Error) -> String {
     if error.matches(gio::IOErrorEnum::Failed) && describes_busy_device(error.message()) {
         return crate::i18n::tr("The item is in use");
@@ -281,10 +267,6 @@ fn host_text(uri: &str) -> Option<&str> {
     }
 }
 
-/// Like `Uri::to_str`, but the host keeps the input's original spelling.
-/// GUri IDNA-encodes non-ASCII hosts on re-serialization, which turns gvfs
-/// device URIs (mtp device names may contain CJK) into `xn--` names that the
-/// gvfs backend cannot resolve.
 fn to_str_preserving_host(input: &str, uri: &glib::Uri) -> String {
     let normalized = uri.to_str().to_string();
     match (host_text(input), host_text(&normalized)) {
@@ -295,11 +277,6 @@ fn to_str_preserving_host(input: &str, uri: &glib::Uri) -> String {
     }
 }
 
-/// Removes URI user-info secrets while preserving the username separately.
-/// Path, query and fragment keep GIO's percent-encoding so non-UTF-8 names survive.
-/// The host is preserved verbatim from `input`: GUri re-serialization IDNA-encodes
-/// non-ASCII hosts (`mtp://OnePlus_一加_...` becomes `mtp://xn--...`), which gvfs
-/// backends cannot match to their device names (the location then never resolves).
 pub fn sanitize_uri_credentials(
     input: &str,
 ) -> Result<(String, Option<UriCredentials>), LocationValidationError> {
@@ -371,8 +348,6 @@ pub fn sanitize_failure_message(message: &str) -> String {
         .collect()
 }
 
-/// Rejects URI password and authentication-parameter fields, including encoded delimiters,
-/// and returns the URI in GIO's percent-encoded form.
 pub fn validate_uri_credentials(uri: &str) -> Result<String, LocationValidationError> {
     match sanitize_uri_credentials(uri)? {
         (_, Some(_)) => Err(LocationValidationError::EmbeddedCredential),
@@ -491,16 +466,8 @@ pub enum DirectoryEvent {
     },
     Finished {
         request_id: RequestId,
-        /// `true` if the load stopped short of covering the full directory, because it hit the
-        /// entry or time budget; already-emitted `Batch` entries are then a lower bound.
         truncated: bool,
-        /// Whether this location supports moving entries to Trash, resolved from an
-        /// entry in the directory. `None` when the location is empty or the capability
-        /// couldn't be answered; treated as "assume trashable" by consumers, since that
-        /// matches offering Trash and letting the operation itself fail if unsupported.
         can_trash: Option<bool>,
-        /// Whether entries here can be permanently deleted, resolved the same way as
-        /// `can_trash`. `None` carries the same "assume deletable" meaning.
         can_delete: Option<bool>,
     },
     /// Consumers must not present these partial values as a completed sort.
@@ -512,16 +479,10 @@ pub enum DirectoryEvent {
         /// Permissions keep the user out of a native folder that exists.
         denied: bool,
     },
-    /// Size/mtime arrivals for already-listed entries, positioned by the receiver
-    /// against stable locations. Zero or more chunks, then exactly one `MetadataFinished`
-    /// (dropping the `LoadHandle` first cancels the fill with no terminal event).
     MetadataFilled {
         request_id: RequestId,
         updates: Vec<MetadataUpdate>,
     },
-    /// Terminal outcome for a metadata fill: exactly one per fill, including empty fills.
-    /// Sorts wait for this event, never for a chunk, so a partial pass can never be
-    /// mistaken for a complete one.
     MetadataFinished {
         request_id: RequestId,
         outcome: MetadataOutcome,
@@ -538,13 +499,9 @@ pub enum MetadataOutcome {
     Unsupported,
     /// No trustworthy pass; rows keep placeholders and waiting sorts are abandoned.
     Failed,
-    /// The fill was dropped before finishing. Providers never emit this; owners synthesize
-    /// it when they discard a fill's handle while a sort still waits on it.
     Cancelled,
 }
 
-/// Fresh metadata for one listed entry. Fields may stay `Unknown`/`Unavailable`
-/// when the stat failed; the row keeps its placeholder for a later retry.
 #[derive(Clone, Debug)]
 pub struct MetadataUpdate {
     pub location: Location,
@@ -579,14 +536,10 @@ pub struct MetadataRequest {
 }
 
 pub trait FileSource {
-    /// Enforces a source's navigation boundary even on trusted internal/history routes.
-    /// This does not replace normal asynchronous location validation.
     fn allows_navigation(&self, _location: &Location) -> bool {
         true
     }
 
-    /// Applies source-specific visibility to entries found outside directory enumeration.
-    /// This runs on the caller's thread, including for indexed search results.
     fn allows_entry(&self, _entry: &FileEntry) -> bool {
         true
     }
@@ -602,8 +555,6 @@ pub trait FileSource {
 
     fn validate_location(&self, location: &Location) -> Result<(), LocationValidationError>;
 
-    /// Validates a location without blocking the caller. Providers should override this when
-    /// validation can involve network or removable-media I/O.
     fn validate_location_async(
         &self,
         location: Location,
@@ -618,9 +569,6 @@ pub trait FileSource {
         false
     }
 
-    /// Overrides must emit zero or more `MetadataFilled` chunks followed by exactly one
-    /// `MetadataFinished` terminal outcome, including for empty fills. Dropping the
-    /// returned `LoadHandle` aborts the fill without any terminal event.
     fn fill_metadata(
         &self,
         request: MetadataRequest,
@@ -685,10 +633,6 @@ pub trait FileSource {
         LoadHandle::new(|| {})
     }
 
-    /// Finds where the folder last seen at `departed` went by its `identity`: renamed in
-    /// place, or carried along by an ancestor renamed in place. Only the nearest existing
-    /// ancestor of `departed` is searched. Emits `None` when nothing matches or that
-    /// ancestor cannot be listed.
     fn find_by_identity(
         &self,
         _departed: Location,

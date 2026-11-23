@@ -1,11 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The header's `volume_monitor`: `tests/qa/volume_monitor.py` on the run's private session
-//! bus, which GIO's remote volume monitor module lists drives, volumes and mounts from,
-//! as it would from GVfs's udisks2 monitor. It starts before the application, whose volume
-//! monitor asks each remote monitor once whether it is there, and stops after it, since
-//! the module warns when its monitor leaves the bus.
-
 use std::{
     fs::File,
     io::{BufRead, BufReader},
@@ -26,9 +20,6 @@ pub(crate) const LOG: &str = "volume-monitor.log";
 pub(crate) const CALLS: &str = "volume-monitor.calls";
 const START_TIMEOUT: Duration = Duration::from_secs(30);
 
-/// Points GIO's remote volume monitor module at the folder holding only the test monitor's
-/// file. The module stays unloaded under `GIO_USE_VFS=local`, which every other run keeps, so
-/// this run's application starts on GIO's default VFS, as a desktop with GVfs does.
 pub(crate) fn prepare(command: &mut Command) {
     command
         .env_remove("GIO_USE_VFS")

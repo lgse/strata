@@ -1,32 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The gallery page for C4 ListTable: its scenes, demo state, view and key and poll hooks. Scene
-//! names start with `c4-` and end in `-light` or `-dark`.
-//!
-//! Work package: `docs/rune/work/phase-3-views/C4-list-table.md`.
-//!
-//! The page is a stand-in List pane over four fake folders: Documents (12 entries, one with a
-//! long name), Mixed (600 entries in six file types), Archive (100,000) and Empty. Its header
-//! holds the Columns button and labels showing what the host heard: the sort (`c4-sort`), the
-//! column layout and how many changes it heard (`c4-layout`), the widths (`c4-widths`) and the
-//! last intent (`c4-intent`). The page stands in for Strata's policy: it sorts on a sort
-//! intent (folders first), groups by its fake file types (Folder first, then A–Z, Other last),
-//! and keeps the layout and widths it hears. C24's autoscroll runs on the rows and the
-//! sideways scroll (the shield mounts in the root layer), and `c4-bars` shows both of the
-//! table's scroll bars in a pane narrower than its columns.
-//!
-//! | Key | Does |
-//! | --- | --- |
-//! | Ctrl+G | Group by file type, or stop |
-//! | Ctrl+E | Sort by Extension, which no column shows |
-//! | Ctrl+K | "Customize columns…": the columns menu on the headings |
-//! | Ctrl+1 | Switch the view away and back (the table leaves the view, then returns) |
-//! | F5 | Refresh |
-//!
-//! `STRATA_C4_BUDGET_WARMUP=1` makes the page's second poll wait 1.1 s of real time once, then
-//! print [`WARMED`] on stderr: c1's workaround for Rune's commit-budget line (Rune draft
-//! U-C1e-5), for `tests/c4.rs`'s budget run only.
-
 use std::cmp::Ordering;
 use std::sync::Arc;
 
@@ -257,8 +230,6 @@ fn mode_of(kind: EntryKind) -> &'static str {
     }
 }
 
-/// The page's columns: Strata's five, with its default widths and minimums
-/// (`src/ui/browser_modes/list_columns.rs`).
 pub fn columns() -> Vec<Column<Gallery>> {
     vec![
         Column::primary("name", "Name")
@@ -292,7 +263,6 @@ pub fn columns() -> Vec<Column<Gallery>> {
     ]
 }
 
-/// C4's demo state, held in `Gallery::c4`.
 pub struct Demo {
     pub folder: Folder,
     pub listing: ListSource,
@@ -317,9 +287,7 @@ pub struct Demo {
     pub last_layout: String,
     pub intent: String,
     pub polls: u32,
-    /// The window's autoscroll (C24), on the table's rows and its sideways scroll.
     pub auto: Autoscroll,
-    /// The rename editor (C5's own), in the Name cell of the row it renames.
     pub rename: RenameState,
 }
 
@@ -363,8 +331,6 @@ impl Demo {
     }
 }
 
-/// C1c's keys and C1d's marquee. The pointer comes with the page's first poll
-/// ([`install_pointer`]).
 fn install(controllers: &mut Controllers) {
     controllers.keyboard =
         Some(Box::<strata_components::collection::keyboard::Keyboard>::default());
@@ -373,10 +339,6 @@ fn install(controllers: &mut Controllers) {
     ));
 }
 
-/// C1b's pointer intent behind C24's autoscroll, which moves the rows and the table's sideways
-/// scroll (`ListTable::sideways_target`). The target reads the table's state through the
-/// page's accessor, so it is made once the gallery exists: on the page's first poll, which
-/// Rune runs before the frame's input.
 fn install_pointer(g: &mut Gallery) {
     let sideways = table().sideways_target(g);
     let d = &mut g.c4;
@@ -420,8 +382,6 @@ impl Demo {
             .unwrap_or_default()
     }
 
-    /// Sorts the listing by the page's field and direction, folders first (and by group when
-    /// grouped), names breaking ties ascending; then groups it.
     fn resort(&mut self) {
         let (field, dir, grouped) = (self.field, self.dir, self.grouped);
         let by_name =
@@ -497,7 +457,6 @@ impl Demo {
         self.last_layout = format!("{:?}", change.why);
     }
 
-    /// Opens C5's editor on `id`, the stem selected and the keyboard in it, as Strata opens it.
     pub fn begin_rename(&mut self, id: EntryId) {
         let Some(index) = self.listing.index_of(id) else {
             return;
@@ -593,8 +552,6 @@ fn sorted_selection(g: &mut Gallery, dark: bool) {
     d.coll.note_selection(&d.listing);
 }
 
-/// A row renaming, as F2 and a slow second click rename: the selected cursor entry, with C5's
-/// editor in its Name cell, the stem selected and the keyboard in the field.
 fn renaming(g: &mut Gallery, dark: bool) {
     let d = scene(g, dark, Folder::Documents);
     let _ = d.coll.selection.select_only(&d.listing, 4);
@@ -640,8 +597,6 @@ fn grouped_stuck(g: &mut Gallery, dark: bool) {
     let d = scene(g, dark, Folder::Mixed);
     d.grouped = true;
     d.resort();
-    // Folder, then Archive (gzip), then JPEG image from line 40: 6 pt into its header line,
-    // the rows below it, and its header stuck at the top.
     d.scroll_y = Some(40.0 * h + 6.0);
 }
 
@@ -655,8 +610,6 @@ fn hundred_k(g: &mut Gallery, dark: bool) {
     scene(g, dark, Folder::Archive);
 }
 
-/// A narrow pane over 600 rows, scrolled both ways, with both bars shown (`BarMode::Always`):
-/// the rows' bar at the pane's visible right edge, not the columns'.
 fn bars(g: &mut Gallery, dark: bool) {
     let h = strata_kit::slots::list::row_height(g.look());
     let d = scene(g, dark, Folder::Mixed);

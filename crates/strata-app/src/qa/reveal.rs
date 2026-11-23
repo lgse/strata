@@ -159,8 +159,6 @@ impl<H: Host> Rune<H> {
             } else {
                 (pane[1] - rect[1]).max(0)
             };
-            // Rune's offscreen wheel notch (40 pt) is smaller than GTK's page^(2/3) step,
-            // so scale clicks with the remaining travel to reach controls down tall pages.
             #[expect(
                 clippy::cast_sign_loss,
                 clippy::cast_possible_truncation,

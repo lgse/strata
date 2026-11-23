@@ -13,8 +13,6 @@ pub(in crate::adapters::local_operations) struct Replacing<'a> {
     pub(in crate::adapters::local_operations) on_replaced: OnReplaced<'a>,
 }
 
-/// `admin://` has no Trash to keep the original in, so a confirmed replace overwrites
-/// a file in place; a folder is never replaced there.
 async fn replace_as_administrator(
     (source, target): (gio::File, gio::File),
     move_source: bool,
@@ -62,8 +60,6 @@ async fn replace_as_administrator(
     Ok(Owed::default())
 }
 
-/// Replaces `target` with `source`; the original is removed only once the
-/// replacement is in place.
 pub(in crate::adapters::local_operations) async fn replace_owing(
     source: gio::File,
     target: gio::File,

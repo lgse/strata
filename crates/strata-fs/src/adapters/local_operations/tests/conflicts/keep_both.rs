@@ -77,8 +77,6 @@ struct LongName {
 }
 
 impl LongName {
-    /// Puts the item under `sources` and its namesake under `destination`,
-    /// giving the file that must hold the incoming contents afterwards.
     fn seed(&self, sources: &Path, destination: &Path) -> io::Result<PathBuf> {
         let source = sources.join(&self.name);
         fs::create_dir(sources)?;
@@ -287,9 +285,6 @@ impl Kind {
     }
 }
 
-/// A move renames within one volume, so its folder is numbered as one;
-/// copies cross volumes, and a folder is made in place where the mount
-/// is known to place none.
 #[derive(Clone, Copy, PartialEq)]
 enum Way {
     Moved,
@@ -297,8 +292,6 @@ enum Way {
     InPlace,
 }
 
-/// An item pasted where `taken` names exist; where a stage cannot be
-/// placed, it is copied out to a name another program takes first.
 struct Numbered {
     name: &'static str,
     kind: Kind,
@@ -401,8 +394,6 @@ impl Numbered {
         Ok((existing, quirks))
     }
 
-    /// Installs the quirks over the root a move renames within, or over the
-    /// destination a copy crosses into from its own volume.
     fn install(&self, root: &Path, quirks: Quirks) -> (Option<FsQuirks>, FsQuirks) {
         let moving = self.way == Way::Moved;
         let sources =

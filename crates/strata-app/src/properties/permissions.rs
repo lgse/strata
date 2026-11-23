@@ -1,10 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The Permissions editor in Properties (`PermissionEditor` and `request_permission_change` in
-//! `src/ui/browser/properties.rs`): symbolic + octal mode, owner/group identities, nine
-//! `r`/`w`/`x` toggle buttons, the `+x` checkbox on files, optimistic updates, and rollback with
-//! a stacked error dialog on failure.
-
 use gio::prelude::*;
 use rune::Tx;
 use strata_core::i18n::tr;

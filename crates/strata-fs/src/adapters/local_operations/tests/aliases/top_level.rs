@@ -79,8 +79,6 @@ fn check_case_pairs_pasted(
 fn top_level_items_a_destination_takes_for_an_earlier_one_are_numbered_and_reported()
 -> Result<(), Box<dyn Error>> {
     let _serial = serial()?;
-    // Multigrain times, so a move reads its just-written sources only to
-    // copy them, not again to compare them.
     let _kernel = KernelGuard::set(Some((6, 13, 0)));
     let mounts: [(&str, Preset); 3] = [
         ("casefolded ext4", casefolded_ext4),
@@ -127,8 +125,6 @@ fn expect_later_spellings(
 fn smb_without_posix_extensions_numbers_case_pairs_without_looking_up_the_later_spelling()
 -> Result<(), Box<dyn Error>> {
     let _serial = serial()?;
-    // The cifs client turns server inode numbers off for the whole mount once
-    // it looks a folder up under a second spelling.
     let later = ["docs", "makefile", "project/notes"];
     for (preset, numbered) in [(Quirks::cifs as Preset, true), (Quirks::cifs_posix, false)] {
         let (_root, source, destination) = source_and_destination()?;

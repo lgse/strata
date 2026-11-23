@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The open dialog is the one on top. Settings draws its messages inside itself, so while
-//! "Reset all keybinds?" is open the snapshot names it, as GTK's names the message over its
-//! Settings layer (the owner's ruling of 2026-11-17 on lgse/strata#2572).
-
 use serde_json::json;
 use strata_qa::Remembered;
 
@@ -46,8 +42,6 @@ fn a_message_over_settings_is_the_open_dialog() {
     );
 }
 
-/// `dialog_button` presses the message over Settings, the dialog on top: its Reset resets the
-/// shown table and closes it, and Settings stays open beneath.
 #[test]
 fn a_dialog_button_presses_the_message_over_settings() {
     staged_after(

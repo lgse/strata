@@ -52,8 +52,6 @@ const GL_LIBRARIES: [&str; 9] = [
     "libGLX_indirect.so.0",
 ];
 
-/// Resolves a helper tool the way the sandbox's `PATH` does. The sandbox root
-/// is mounted at its host path, so the host file is the one helpers run.
 pub fn sandbox_tool(name: &str) -> Option<PathBuf> {
     use std::os::unix::fs::PermissionsExt;
     runtime::current()

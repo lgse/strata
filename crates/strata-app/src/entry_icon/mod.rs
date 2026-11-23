@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! File-type icon resolution for Rune views (`entry_icon` and `icon_for_name` in
-//! `src/ui/browser/entry.rs`): Catppuccin VSCode icons for code/config files and Strata's
-//! Lucide category icons for documents, media, archives, keys, executables, and folders.
-
 use std::{collections::HashMap, sync::OnceLock};
 
 use strata_core::model::FileEntry;
@@ -75,8 +71,6 @@ static FILENAME_AFFIX_PATTERNS: &[(&str, &str, &str)] = &[
     ("", ".lock", COG),
 ];
 
-/// Fallback extension groups checked when `catppuccin::icon_for_lowercased_extension` has no
-/// upstream association, matching `icon_for_name` in `src/ui/browser/entry.rs`.
 static EXTENSION_GROUPS: &[(&[&str], &str)] = &[
     (
         &[
@@ -312,7 +306,6 @@ fn fallback_extension_icon(extension: &str) -> Option<&'static str> {
     extension_icon_map().get(extension).copied()
 }
 
-/// Catalog icon key for `entry`, matching `entry_icon` in `src/ui/browser/entry.rs`.
 pub(crate) fn entry_icon(entry: &FileEntry) -> &'static str {
     if entry.is_broken_symbolic_link() {
         return X;
@@ -326,8 +319,6 @@ pub(crate) fn entry_icon(entry: &FileEntry) -> &'static str {
     icon_for_name(&entry.display_name)
 }
 
-/// Catalog icon key for a file named `name`, matching `icon_for_name` in
-/// `src/ui/browser/entry.rs`.
 pub(crate) fn icon_for_name(name: &str) -> &'static str {
     if !name.bytes().any(|b| b.is_ascii_uppercase()) {
         return icon_for_lowercased_name(name, name);

@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Live click-activation modes per browser view (`PreferenceManager::click_activation` in
-//! `src/ui/preferences/input_settings.rs` and `ClickActivation::default_for` in
-//! `src/ui/browser_modes.rs`).
-
 use strata_components::collection::pointer::{ClickCount, ClickModes};
 use strata_desktop::settings::Preferences;
 
@@ -47,7 +43,6 @@ pub(crate) fn one_click_files(modes: ClickModes) -> bool {
     modes.files == ClickCount::One
 }
 
-/// File choosers always require two clicks to accept a file (`src/ui/browser_modes/clicks.rs`).
 pub(crate) fn for_chooser(mut modes: ClickModes, chooser: bool) -> ClickModes {
     if chooser {
         modes.files = ClickCount::Two;

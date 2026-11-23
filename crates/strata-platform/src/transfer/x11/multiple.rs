@@ -1,14 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! ICCCM 2.6.2 `MULTIPLE`: one request for several targets at once, each into its own
-//! property. The requestor names the pairs (target, property) in an `ATOM_PAIR` property;
-//! the owner writes each target into its property, sets a pair's property to `None` where it
-//! refuses that target, and answers with one `SelectionNotify`. Clipboard managers take a
-//! selection this way when its owner hands it over (`SAVE_TARGETS`, see `handoff`).
-//!
-//! A pair's data larger than one chunk goes by INCR, each on its own property, as a single
-//! request's does.
-
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -53,12 +44,8 @@ impl Multi {
     }
 }
 
-/// The most pairs one `MULTIPLE` request may name. A request can carry up to 32k, and each
-/// distinct target costs a round trip for its name; more is refused whole.
 pub(super) const MAX_PAIRS: usize = 1024;
 
-/// How long a `MULTIPLE` request waits for its lazy writers: then the pairs still waiting are
-/// refused and the rest answered, as long as a source write may wait for its reader.
 const WAIT: Duration = WRITE_IDLE;
 
 /// The targets the pairs ask for, each once, in the order first asked.
@@ -91,8 +78,6 @@ pub(super) fn answered_pairs(pairs: &[(Atom, Atom)], refused: &[bool]) -> Vec<u3
 impl Actor {
     /// A `MULTIPLE` request for a selection we hold as `id` with `spec`.
     pub(super) fn multiple(&mut self, req: Request, id: SourceId, spec: SourceSpec, time: u32) {
-        // An obsolete requestor names no property, and MULTIPLE can't work without one. A
-        // property named MULTIPLE is fine: gsd-clipboard and xfsettingsd ask into it.
         if req.obsolete {
             return self.notify(&req, NONE);
         }
@@ -174,9 +159,6 @@ impl Actor {
             pairs,
             deadline: Instant::now() + WAIT,
         });
-        // One worker per distinct lazy type, however many pairs ask for it (so at most the
-        // copy's lazy types): a writer that never returns holds its own worker only, the
-        // others answer, and the request is answered by its deadline.
         for (target, writer) in lazy {
             let mailbox = self.mailbox.clone();
             let spawned = std::thread::Builder::new()
@@ -192,8 +174,6 @@ impl Actor {
         self.settle_if_done(key);
     }
 
-    /// A writer of `MULTIPLE` request `key` finished: every pair asking for `target` has its
-    /// answer.
     pub(super) fn multi_ready(&mut self, key: u64, target: Atom, bytes: Option<Arc<[u8]>>) {
         let Some(m) = self.multis.iter_mut().find(|m| m.key == key) else {
             return;
@@ -205,8 +185,6 @@ impl Actor {
         self.settle_if_done(key);
     }
 
-    /// The `MULTIPLE` requests whose deadline passed: their pairs still waiting are refused,
-    /// and they are answered.
     pub(super) fn expire_multis(&mut self, now: Instant) {
         let late: Vec<u64> = self
             .multis

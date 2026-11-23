@@ -1,15 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The window: Strata's header over the parts registered in its slots, and what the window
-//! keeps for itself.
-//!
-//! The header is the one strata-components' X1 demo draws
-//! (`crates/strata-gallery/src/scenes/x1/shell.rs`). Each of its five actions runs a command
-//! of the registry ([`crate::commands`]) and is inert until a part registers that command;
-//! the window buttons go to the window manager. The window's keys are the registry's too.
-//! Everything else is a part: [`crate::slots`] says where each slot is and what a part gets
-//! from the shell. Each tab has a browser and a state of each part of its own ([`tabs`]).
-
 use std::{path::Path, rc::Rc};
 
 use rune::{Cx, El, Tx, col, row};
@@ -70,8 +60,6 @@ pub(crate) use presence::window_shown;
 pub(crate) use siblings::{share_settings, window_id, window_later};
 use tabs::{Here, Tabs};
 
-/// The window buttons' accessible names, translated once: the language changes only on
-/// restart. The header's actions name their keys, so they are named at each run of the view.
 struct Labels {
     window: HeaderLabels,
 }
@@ -124,11 +112,7 @@ pub(crate) struct Window {
     /// What the key catalog reads of the settings at each press and label.
     keys: Rc<Live>,
     labels: Labels,
-    /// How many of the browser's events, and of the rows they copied, `apply_queued` has
-    /// seen, for its trace line.
     applied: (u64, u64),
-    /// The window's decoded thumbnails, which every view that draws them reads, each through
-    /// a viewer of its own ([`crate::thumbnails`] has the render pool, one per process).
     thumbnails: ThumbnailStore,
     /// The store's place in the process's budget ([`thumbnail_budget`]).
     _thumbnail_share: thumbnail_budget::Share,
@@ -143,8 +127,6 @@ pub(crate) struct Window {
     _power_monitor: Option<PowerMonitorGuard>,
     /// Whether a modal layer was open at the last poll ([`grab`]).
     grab: grab::Grab,
-    /// The window's size in points, as its last layout left it: what a chooser it opens is
-    /// sized against.
     size: (f32, f32),
 }
 
@@ -152,8 +134,6 @@ pub(crate) struct Window {
 /// immediately, and larger tails avoid repeated O(k) virtual-list key scans (Rune #203).
 const RUNE_TAIL_PUBLISH_CHUNK: usize = 131_072;
 
-/// A browser over the local file source, as `src/ui/window/launch.rs` builds one, with the
-/// saved sort and hidden-files choice.
 fn browser_for(saved: &strata_desktop::settings::Preferences) -> Rc<Browser> {
     let browser = Browser::with_preferences(Rc::new(LocalFileSource), sort_preferences(saved));
     browser.set_publication_chunks(RUNE_TAIL_PUBLISH_CHUNK, RUNE_TAIL_PUBLISH_CHUNK);
@@ -169,11 +149,6 @@ pub(super) struct TabAttach<'a> {
     pub(super) presence: strata_fs::app::Presence,
 }
 
-/// Puts a tab's browser under its parts: it serves the view the tab shows, every part's
-/// listener and the window's hear its events for tab `key`, the saved settings follow its
-/// sort and hidden-files choice, and its folders open in their saved sorts. Returns whether
-/// it groups by file type for the view. Before the first load, so that its cursor lands on
-/// the first row a grouped view shows (`rebuild.rs` in `src/ui/browser_modes`).
 fn attach(
     ctx: TabAttach<'_>,
     (browser, parts): (&Rc<Browser>, Registry<'static, App>),
@@ -195,10 +170,7 @@ fn attach(
         });
     });
     let queue = ctx.events.later();
-    // Operations report items one by one: item colours and icons follow on the window even when
-    // the tab that ran the operation is hidden, and `apply_queued` commits once a batch.
     browser.observe(move |event| follow_item_customizations(event, &queue));
-    // Before the first folder opens, so it opens in its saved sort (A10's).
     ctx.folder_views.follow_sorts(browser, setup.settings);
     sync_browser_freshness(
         browser,
@@ -272,8 +244,6 @@ fn follow_item_customizations(event: &BrowserEvent, queue: &Later<App>) {
     }
 }
 
-/// The window's own share of an event: the columns or the active one changed, so the window
-/// may show another location. It listens after the parts.
 fn hear(event: &BrowserEvent, _: &Browser, heard: &mut Heard<'_, App>) {
     let moved = matches!(
         event,
@@ -287,7 +257,6 @@ fn hear(event: &BrowserEvent, _: &Browser, heard: &mut Heard<'_, App>) {
     if moved {
         heard.then(App::retitle);
     }
-    // A sort chosen in a remembered folder is kept for it (A10's).
     if let BrowserEvent::FolderSortChosen {
         location,
         sort_key,
@@ -306,12 +275,6 @@ fn hear(event: &BrowserEvent, _: &Browser, heard: &mut Heard<'_, App>) {
     }
 }
 
-/// Readies a state for the new native window it moves into, after a refused close
-/// (`crate::host::windowed`, "Refused closes"): the window counts as on screen again, as a
-/// new window does until Rune says otherwise (the closing one was hidden first), and as
-/// without the keyboard until Rune's first focus event gives it: the new window is created
-/// with no activation token, so on Wayland it may map without the focus, and Rune reports
-/// no loss of a focus it never had. It takes its title on the next poll.
 pub(crate) fn reopened(app: &mut App) {
     app.window.on_screen = true;
     app.window.active = false;
@@ -331,8 +294,6 @@ fn retitle_now(app: &mut App, tx: &mut Tx) {
     app.retitle(tx);
 }
 
-/// Whether the saved "Group by file type" asks other than what the shown tab's browser was
-/// mounted with: another tab changed it while this one was hidden.
 fn grouping_changed(app: &App) -> bool {
     shown_view(app).is_some_and(|view| {
         let wanted = preferences(app).group_by_type && view.supports_type_grouping;
@@ -341,9 +302,6 @@ fn grouping_changed(app: &App) -> bool {
 }
 
 impl App {
-    /// A browser over the local file source, as `src/ui/window/launch.rs` builds one, with
-    /// the saved sort and hidden-files choice, every registered part, and every event queued
-    /// for [`apply_queued`].
     pub(crate) fn new(ui: &UiThread, csd: Csd, settings: Saved) -> Self {
         Self::over(PARTS, ui, csd, settings)
     }
@@ -371,8 +329,6 @@ impl App {
         app
     }
 
-    /// The window over the table `parts`: the registered parts, or a test's made-up ones. The
-    /// state of every registered part is built either way, and only the table's hooks run.
     pub(crate) fn over(
         parts: &'static [Entry<App>],
         _ui: &UiThread,
@@ -413,10 +369,6 @@ impl App {
         self.browser.navigate(location);
     }
 
-    /// Starts the window from `initial`: an explicit directory opens in one tab and leaves
-    /// `tabs.toml` alone; a plain launch restores its saved session or opens the default folder,
-    /// and persists its tabs (`tabs::session`); a later launch with no argument does the same,
-    /// as GTK's `present`; a window on an argument opens it and leaves `tabs.toml` alone.
     pub(crate) fn start(&mut self, initial: launch::Initial) {
         match initial {
             launch::Initial::Explicit(location) => self.open(location),
@@ -429,9 +381,6 @@ impl App {
         }
     }
 
-    /// Names the window for the shown tab's location, or the one it waits on. False when it
-    /// has not changed. A chooser keeps its request's title, which its window takes here: the
-    /// host opens it under a fixed one.
     pub(super) fn retitle(&mut self, tx: &mut Tx) -> bool {
         let location = tabs::located(self, self.window.here.key);
         if location == self.window.location {
@@ -460,8 +409,6 @@ impl App {
 }
 
 impl App {
-    /// Returns `true` once after a non-empty `EntriesReplaced` arrived so the host lets Rune
-    /// paint the first visible rows before dispatching staged tail chunks.
     pub(crate) fn take_yield_paint(&self) -> bool {
         self.window.events.take_yield_paint()
     }
@@ -481,8 +428,6 @@ impl App {
     }
 }
 
-/// Whether each hidden tab has run nothing since it was hidden: everything queued for it is
-/// held, dropped for a rebuild, or still waits ([`tabs::Held::accounted`]).
 #[cfg(feature = "qa")]
 pub(crate) fn hidden_tabs(app: &App) -> impl Iterator<Item = (TabKey, bool)> {
     let events = &app.window.events;
@@ -512,16 +457,6 @@ impl App {
     }
 }
 
-/// The saved settings as they are now, and the way to change one:
-/// `shell::saved(app).change(|settings| …)` changes the values and queues the save of what
-/// changed. Call it from a handler or a queued update, never from a listener. A part calls
-/// `change` and `preferences` and nothing else of [`Saved`].
-///
-/// The save's result is heard when GLib is next pumped and the queue applied. After a change
-/// made in a handler that is the `poll` that follows. After one made in a queued update it
-/// is the next pump, whenever that comes: the update ran after its pump had asked GLib what
-/// to wait for. Nothing is lost on disk; until the result is heard the keys count as
-/// unsaved, and a change made meanwhile writes them again.
 pub(crate) fn saved(app: &mut App) -> &mut Saved {
     &mut app.window.settings
 }
@@ -567,8 +502,6 @@ pub(crate) fn change_customization(
     refresh_worn(app);
 }
 
-/// The GTK window's rule (`refresh_title` in `src/ui/window/composition/tabs.rs`): the shown
-/// tab's name, then the application's.
 fn title_for(location: Option<&Location>) -> String {
     location.map_or_else(
         || "Strata".to_owned(),
@@ -580,8 +513,6 @@ pub(crate) fn csd_of(app: &mut App) -> &mut Csd {
     &mut app.window.csd
 }
 
-/// Binds `blur` to `app`, detaching any previous native-window handle and syncing the current
-/// frosted-glass state.
 pub(crate) fn bind_backdrop_blur(app: &mut App, blur: BackdropBlur) {
     app.window.backdrop_blur.detach();
     blur.set_enabled(app.look.transparency.frosted_glass);
@@ -598,8 +529,6 @@ pub(crate) fn backdrop_blur_enabled(app: &App) -> bool {
     app.window.backdrop_blur.is_enabled()
 }
 
-/// The store and the pool as the saved settings set them: thumbnails on or off, and the
-/// number of workers (`thumbnail_workers`, which GTK hands the pool the same way).
 fn thumbnail_store(saved: &strata_desktop::settings::Preferences) -> ThumbnailStore {
     strata_preview::sandbox::browser::set_worker_limit(saved.thumbnail_workers);
     let mut store = ThumbnailStore::new(Settings::default().budget(thumbnail_budget::share()));
@@ -755,30 +684,10 @@ pub(crate) fn thumbnails(app: &App) -> &ThumbnailStore {
     &app.window.thumbnails
 }
 
-/// The view that is shown, as the parts that work in it see it: the rename editor, a context
-/// menu, the QA backend.
 pub(crate) fn shown_view(app: &App) -> Option<&'static View<App>> {
     app.window.here.parts.shown()
 }
 
-/// Shows the view that answers to `mode` in place of the one shown, while the window is open,
-/// as GTK's `set_view_mode` switches (`src/ui/browser/view_modes.rs`). False when that view
-/// is shown already, or none answers to it.
-///
-/// - What the view that leaves changed goes to the browser, and a visual range ends
-///   (`leave_visual`).
-/// - A view whose child column follows the selection ([`View::returns`]) is shown again as
-///   GTK's `rebuild_columns_view` does: a child the selection no longer holds closes, before
-///   the rebuild, and the lone selected folder opens as the child after it, while the view
-///   mirrors.
-/// - The browser groups by file type for the view now shown, as at start.
-/// - The view is rebuilt from the browser ([`events::replay`]) through its own
-///   [`View::apply`], and hears the browser from then on. The rebuild gives it the keyboard,
-///   as a listing it is given does.
-/// - Every active part follows the view now shown ([`Part::switched`](crate::slots::Part)):
-///   the location bar names the folder it shows.
-///
-/// The caller saves the mode and ends what is open across the switch, the rename editor.
 pub(crate) fn show_view(app: &mut App, mode: &str, tx: &mut Tx) -> bool {
     let mut parts = app.window.here.parts;
     if !parts.show(mode) {
@@ -811,11 +720,6 @@ pub(crate) fn show_view(app: &mut App, mode: &str, tx: &mut Tx) -> bool {
     true
 }
 
-/// The browser groups by file type for `view` as the saved setting asks, and `view` is
-/// rebuilt from the browser ([`events::replay`]) through its own [`View::apply`]. What the
-/// rebuild shows is the browser's, so the parts catch up with it as after queued events: the
-/// cursor it shows is no move of the view's, and Columns' child does not follow it (GTK's
-/// views mirror from `FocusChanged`, which no rebuild raises; finding lgse/strata#2437).
 fn rebuild(app: &mut App, view: &View<App>, tx: &mut Tx) {
     let parts = app.window.here.parts;
     for part in parts.active() {
@@ -831,9 +735,6 @@ fn rebuild(app: &mut App, view: &View<App>, tx: &mut Tx) {
     }
 }
 
-/// The browser serves `view`: it groups by file type as the saved setting asks and the view
-/// supports, and rechecks the columns the view shows ([`View::rechecks`]). Returns whether it
-/// groups.
 fn mount(
     browser: &Rc<Browser>,
     view: &View<App>,
@@ -849,16 +750,10 @@ fn mount(
     grouped
 }
 
-/// The saved "Group by file type" changed: the view shown follows it, as GTK's List view
-/// rebuilds its pane when the setting changes (`sync_type_grouping` in
-/// `src/ui/browser_modes/rebuild.rs`). The browser groups for it, and it is rebuilt from the
-/// browser.
 pub(crate) fn regroup(app: &mut App, tx: &mut Tx) {
     let Some(view) = shown_view(app) else {
         return;
     };
-    // The view shown goes on hearing the browser here, unlike in `show_view`: what is queued
-    // lands first, so none of it lands again over the rebuild.
     settle(app, tx);
     rebuild(app, view, tx);
     settle(app, tx);
@@ -875,9 +770,6 @@ pub(crate) fn known_id(app: &App, location: &Location) -> Option<EntryId> {
     app.window.ids.known(location)
 }
 
-/// The keyboard leaves the shown view at its start, as Left in the first column asks: the
-/// sidebar takes it. False when there is no sidebar, or none that can take it, and the
-/// keyboard stays where it is.
 pub(crate) fn leave_view_at_start(app: &App, tx: &mut Tx) -> bool {
     let Some(key) = app
         .window
@@ -892,9 +784,6 @@ pub(crate) fn leave_view_at_start(app: &App, tx: &mut Tx) -> bool {
     true
 }
 
-/// How much of the files' area the sidebar holds back beyond what it draws: its full width
-/// less its rail's while it is railed ([`crate::slots::Sidebar::held_back`]), and nothing with
-/// no sidebar.
 pub(crate) fn sidebar_held_back(app: &App) -> f32 {
     app.window
         .here
@@ -903,14 +792,10 @@ pub(crate) fn sidebar_held_back(app: &App) -> f32 {
         .map_or(0.0, |sidebar| (sidebar.held_back)(app))
 }
 
-/// The key of the shown view's element that takes the keyboard: where a field or a menu
-/// gives it back.
 pub(crate) fn view_focus(app: &App) -> Option<&'static str> {
     shown_view(app).map(|view| view.focus)
 }
 
-/// The scroll viewports of the shown view's listing, as key paths: each column's in Columns,
-/// the one viewport of Icons and List, whether it shows the folder or the filter's results.
 pub(crate) fn listing_viewports(app: &App) -> Vec<String> {
     match view_focus(app) {
         Some(crate::columns::VIEW) => app.columns.listing_viewports(),
@@ -929,9 +814,6 @@ fn on_window_action(app: &mut App, action: WindowAction, tx: &mut Tx) {
     tracing::debug!(?action, ?outcome, "window button");
 }
 
-/// Closes the window, unless one of GTK's close guards refuses it: then the guard says why and
-/// the window stays ([`close_guard`]). The Close buttons and closing the last tab come here; a
-/// close the window manager asks for is refused by the windowed host.
 pub(crate) fn close_window(app: &mut App, tx: &mut Tx) {
     let last = crate::host::windowed::is_last_window(window_id(app));
     if let Some(refusal) = close_guard::refusal(app, last) {
@@ -942,9 +824,6 @@ pub(crate) fn close_window(app: &mut App, tx: &mut Tx) {
     tracing::debug!(?outcome, "window closed");
 }
 
-/// One of the header's five actions: the key its element ends with, its icon, its face, and
-/// the command a press runs (`commands::run`). What the command does is whichever part
-/// registers it; until one does the button is drawn and inert.
 struct Button {
     key: &'static str,
     icon: fn(&App) -> IconName,
@@ -953,8 +832,6 @@ struct Button {
     command: &'static str,
 }
 
-/// What a header action shows assistive technology, with its keys as bound now: GTK's names
-/// (`Header::new` in `src/ui/window/composition/layout.rs`).
 pub(crate) struct Face {
     pub(crate) name: String,
     /// The tooltip, which is also the description, where it is not the name.
@@ -990,7 +867,6 @@ const TRAILING: [Button; 4] = [
     Button {
         key: NEW_TAB,
         icon: |_| IconName::Plus,
-        // GTK names it plainly; only its tooltip names the keys.
         face: |_| Face {
             tooltip: Some(with_keys(
                 "New tab (%{keys})",
@@ -1041,8 +917,6 @@ fn configured_window_buttons(app: &App) -> WindowButtons {
     }
 }
 
-/// The window buttons the header shows, of those the window manager can work: no Close
-/// while the tab strip shows, which takes it.
 fn window_buttons(app: &App) -> WindowButtons {
     let buttons = configured_window_buttons(app);
     WindowButtons {
@@ -1051,8 +925,6 @@ fn window_buttons(app: &App) -> WindowButtons {
     }
 }
 
-/// Whether the tab strip shows: then it holds New tab and the window's Close, which the
-/// header leaves out, as GTK's `refresh_chrome` moves them.
 fn strip_shows(app: &App) -> bool {
     let strip = app.window.here.parts.strip();
     strip.is_some_and(|strip| (strip.shows)(app))
@@ -1073,9 +945,6 @@ fn strip_close(app: &App, chrome: &WindowChrome) -> Option<El> {
     Some(buttons::on_return("window-close".to_owned(), close))
 }
 
-/// The key of the header's last element, after which GTK's `child_focus(TabForward)` in the
-/// header finds nothing (`TopBarNavigation::move_focus`): the last window button shown, else
-/// the last action.
 pub(crate) fn header_last(app: &App) -> String {
     if app.browser.is_chooser_mode() {
         return "header-chooser-close".to_owned();
@@ -1216,8 +1085,6 @@ fn built(app: &App, slot: Slot, frame: &mut Frame<'_, App>) -> Vec<El> {
 }
 
 impl Placed {
-    /// Asks every active part for its element, in the order [`Slot`] declares the slots and,
-    /// within one, in the order the parts are registered: the layer is filled in that order.
     fn build(app: &App, chrome: &WindowChrome, frame: &mut Frame<'_, App>) -> Self {
         let close = strip_close(app, chrome);
         let strip = app.window.here.parts.strip();
@@ -1255,12 +1122,6 @@ fn body(app: &App, sidebar: Option<El>, files: Option<El>) -> El {
             }
             tx.live_only();
         });
-    // The same keyed wrappers with a sidebar or without one, so the view keeps its place in
-    // the tree when the sidebar comes or goes: a view whose path changed would be mounted
-    // anew, and lose its scroll and focus. Beside the sidebar the files take what it leaves.
-    // The sidebar paints its own `bg_deep`, and each file view (`columns-host`, `single::body`,
-    // `ListTable`'s backdrop, `preview-slot`) paints its own surface once so translucent surfaces
-    // never double-blend.
     let mut files_col = col()
         .key("body-files")
         .grow(1.0)
@@ -1296,8 +1157,6 @@ pub(crate) fn view(app: &App, cx: &mut Cx<App>) -> El {
     let chrome = app.chrome();
     let placed = Placed::build(app, &chrome, frame);
     let bar = csd::header(bar(app, &chrome, placed.location), &app.window.csd, csd_of);
-    // Keyed by the tab: Rune keeps a scroll offset by the element's path, so a tab shown in
-    // another's place starts from its own (`tabs`).
     let tab = col()
         .key(format!("tab-{}", app.window.here.key.0))
         .w_full()
@@ -1319,8 +1178,6 @@ pub(crate) fn view(app: &App, cx: &mut Cx<App>) -> El {
         csd_of,
     );
     rune_kit::root(window, layer)
-        // What the focused element and those around it left of a key, ahead of Rune's own
-        // focus navigation. The root takes no focus and no press for it.
         .on_key(commands::from_element)
         .on_layout(record_window_size)
         // The window's zoom wheel, for what no scroll view holds (`appearance::wheel`).
@@ -1343,9 +1200,6 @@ fn record_window_size(app: &mut App, [_, _, width, height]: [f32; 4]) {
     app.window.size = (width, height);
 }
 
-/// Rune's `poll` hook: what the browser's observers queued, then each part's own timers,
-/// then whatever those queued: a part's poll may ask a service that answers at once, and
-/// nothing is left in the queue for a frame that may not come.
 pub(crate) fn poll(app: &mut App, clock: f64, tx: &mut Tx) -> bool {
     let mut ran = settle(app, tx);
     folder_views::poll(app, clock, tx);
@@ -1360,8 +1214,6 @@ pub(crate) fn poll(app: &mut App, clock: f64, tx: &mut Tx) -> bool {
     ran
 }
 
-/// Hands the browser what the parts changed. A host calls it before it lets GLib dispatch, so
-/// what the browser's events say of its cursor and selection is never older than the view's.
 pub(crate) fn publish(app: &mut App) {
     let parts = app.window.here.parts;
     for part in parts.active() {
@@ -1369,9 +1221,6 @@ pub(crate) fn publish(app: &mut App) {
     }
 }
 
-/// Brings the two sides in step: what the parts changed goes to the browser, what the
-/// browser's observers queued goes to the parts, and what that left a part to say (a cursor
-/// the view was waiting to place) goes to the browser. Returns whether the view has to run.
 pub(crate) fn settle(app: &mut App, tx: &mut Tx) -> bool {
     publish(app);
     let changed = apply_queued(app, tx);
@@ -1379,8 +1228,6 @@ pub(crate) fn settle(app: &mut App, tx: &mut Tx) -> bool {
     changed
 }
 
-/// Applies what the browser's observers queued while GLib dispatched, or while a handler
-/// called the browser.
 fn apply_queued(app: &mut App, tx: &mut Tx) -> bool {
     let window = &mut app.window;
     if window.events.is_empty() {
@@ -1396,8 +1243,6 @@ fn apply_queued(app: &mut App, tx: &mut Tx) -> bool {
     let mut changed = false;
     while let Some(queued) = app.window.events.pop() {
         match queued.tab {
-            // A hidden tab's: held until it is shown. Its browser may have changed what its
-            // tab is named.
             Some(tab) if tab != app.window.here.key => {
                 changed |= app.window.tabs.hold(tab, queued);
             }
@@ -1417,8 +1262,6 @@ fn apply_queued(app: &mut App, tx: &mut Tx) -> bool {
     changed
 }
 
-/// The registered parts, with the view that is shown: what the command registry reads each
-/// part's commands and its hold on the keyboard from.
 pub(crate) fn parts(app: &App) -> Registry<'static, App> {
     app.window.here.parts
 }
@@ -1430,17 +1273,12 @@ pub(crate) fn modal_open(app: &App) -> bool {
         .any(|part| matches!((part.keyboard)(app), Some(Holds::Modal { .. })))
 }
 
-/// The settings file to log a saved keymap's unusable entries against, for the process's
-/// first window only: GTK logs them once, when its preference manager first builds the
-/// tables.
 fn first_window_reports() -> Option<std::path::PathBuf> {
     static REPORTED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
     let first = !REPORTED.swap(true, std::sync::atomic::Ordering::Relaxed);
     first.then(strata_desktop::settings::settings_path)
 }
 
-/// What the key catalog reads of the settings, brought up to the saved values as they are
-/// now: the GTK application reads its preference manager at each press and each label.
 pub(crate) fn live_keys(app: &App) -> &Live {
     let live = &app.window.keys;
     live.follow(app.window.settings.preferences());

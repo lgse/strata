@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The client for `strata-test-peer` (`tests/support/strata-test-peer/`): typed requests over
-//! its JSON-line protocol.
-
 use std::cell::Cell;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
@@ -24,8 +21,6 @@ pub struct Peer {
     events_from: Cell<usize>,
 }
 
-/// The peer binary: `STRATA_TEST_PEER`, else the one cargo built beside the test binary
-/// (`target/<profile>/strata-test-peer`; `mise run test-platform` builds it first).
 fn binary() -> PathBuf {
     if let Some(p) = std::env::var_os("STRATA_TEST_PEER").filter(|v| !v.is_empty()) {
         return p.into();
@@ -112,8 +107,6 @@ impl Peer {
         event
     }
 
-    /// Whether an event passing `pred` came from line `mark` on, waiting up to `wait`. For
-    /// what must not happen (a cancelled drag's drop): it doesn't move `wait_event`'s place.
     #[cfg_attr(
         not(any(feature = "dnd", feature = "clipboard")),
         expect(dead_code, reason = "only P1's and P2's session tests use it")
@@ -134,8 +127,6 @@ impl Peer {
         }
     }
 
-    /// The first event from line `mark` on that passes `pred`, waiting for it, without
-    /// moving `wait_event`'s place: for events that may come in any order.
     #[cfg_attr(
         not(feature = "dnd"),
         expect(dead_code, reason = "only P1's session tests, behind dnd, use it")
@@ -153,8 +144,6 @@ impl Peer {
         self.proc.line_count()
     }
 
-    /// Whether, from line `mark` on, the peer's last pointer event is an enter or a motion,
-    /// waiting up to `wait` for one: the pointer reached its window after `mark`.
     pub fn pointer_since(&self, mark: usize, wait: Duration) -> bool {
         let deadline = Instant::now() + wait;
         loop {
@@ -192,7 +181,6 @@ impl Peer {
         })
     }
 
-    /// Wayland: an `xdg_activation_v1` token for the peer's focused window (P8).
     #[cfg_attr(
         not(feature = "single-instance"),
         expect(
@@ -350,14 +338,10 @@ impl Peer {
         });
     }
 
-    /// Accept drops of the first of `mimes` offered, with any of `actions`, `preferred` first;
-    /// no `mimes` refuses them.
     pub fn accept_drops(&self, mimes: &[&str], actions: &[Action], preferred: Action) {
         self.accept_drops_with(mimes, actions, preferred, false, None);
     }
 
-    /// [`Peer::accept_drops`], reading every one of `mimes` offered when `read_all`, and
-    /// settling a drop left on ask with `ask_answer`.
     pub fn accept_drops_with(
         &self,
         mimes: &[&str],

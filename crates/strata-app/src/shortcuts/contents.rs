@@ -1,14 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! What the shortcut reference lists in the default map: GTK's tables, ported from
-//! `src/ui/shortcut_reference.rs` with the rows, their order and their words unchanged. Each
-//! table and function keeps the name of the GTK item it copies. A change to one of them on `main` comes here by
-//! hand: `tests.rs` holds every listed catalog command to a row, as GTK's
-//! `every_listed_binding_has_its_own_row_in_its_maps` does, so a command added to the catalog
-//! fails here until it has one. The 10xer map's sections are [A11]'s, with its mode.
-//!
-//! [A11]: ../../../../docs/rune/parity/packages/A11.md
-
 use strata_desktop::keys::{
     Keys::{self, Any, One},
     Modifiers,
@@ -30,8 +21,6 @@ pub(crate) struct Section {
     pub(crate) rows: Vec<Shortcut>,
 }
 
-/// `Shortcut`: a row's keys, the template that places them, its action and what the action
-/// names.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct Shortcut {
     pub(crate) keys: Keys,
@@ -78,8 +67,6 @@ pub(super) const fn within(context: &'static str, keys: Keys, action: &'static s
     }
 }
 
-/// `reference_sections` for the window: 10xer mode's sections or the default map's, with the
-/// rows the active keymap binds, in the sections that keep one.
 pub(crate) fn sections(mode: Mode, tenxer: bool) -> Vec<Section> {
     let mut sections = match tenxer {
         true => super::tenxer::tenxer_sections(mode),

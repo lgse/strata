@@ -1,21 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The `columns.*` slot tokens that ColumnsView (C2) reads: its column headers, the line
-//! between columns, its width caption, the wash over the column a file drag would drop into,
-//! and the rows' size badge.
-//!
-//! Work package: C2, `docs/rune/work/phase-3-views/C2-columns-view.md`, and its follow-up C2b (the
-//! badge, the title's weight). C2 owns this file: add tokens beside these, following
-//! `slots/mod.rs`. Keep their names, since slot names are API.
-//!
-//! The defaults are Strata's (`src/style.css`, `upstream/main` 35ee677ab): `.column-header`,
-//! `.active-column .column-header`, `.column-resize-handle`, `.columns > .drop-destination
-//! .column-drop-veil` and `.file-size`. The colours come from the Kit, as K1 maps Strata's:
-//! `@strata_accent` is `bg_accent`, `@strata_border` `std_border`, `@strata_surface`
-//! `surface_raised`. `columns.header.height` follows `frame.bar` and `frame.inset` by default
-//! (as `tabs.tab.height` does) so column, pane and preview headers stay aligned; every other
-//! token here keeps its own default.
-
 use rune::{Color, TextStyle};
 
 use crate::look::Look;
@@ -41,8 +25,6 @@ pub struct Columns {
     pub badge_inset: Option<f32>,
 }
 
-/// A column header's height: `columns.header.height`, else a bar's height plus the frame inset
-/// above and below, matching the window, pane and preview headers.
 pub fn header_height(look: &Look) -> f32 {
     look.slots
         .columns
@@ -55,20 +37,14 @@ pub fn header_inset(look: &Look) -> f32 {
     look.slots.columns.header_inset.unwrap_or(12.0)
 }
 
-/// The accent band along the top of the active column's header: `columns.header.indicator`,
-/// else 3.
 pub fn header_indicator(look: &Look) -> f32 {
     look.slots.columns.header_indicator.unwrap_or(3.0)
 }
 
-/// An inactive column's title colour as a share of the accent: `columns.header.title_opacity`,
-/// else 0.58. The active column's title takes the text colour.
 pub fn header_title_opacity(look: &Look) -> f32 {
     look.slots.columns.header_title_opacity.unwrap_or(0.58)
 }
 
-/// The header title's font weight: `columns.header.title_weight`, else 700 (Strata's bold;
-/// the kit's type scale stops at medium).
 pub fn header_title_weight(look: &Look) -> f32 {
     look.slots.columns.header_title_weight.unwrap_or(700.0)
 }
@@ -89,8 +65,6 @@ pub fn header_fill(look: &Look) -> Color {
         .unwrap_or(look.kit.c.surface_raised)
 }
 
-/// The line along a column's trailing edge, which its resize edge sits on, and under its
-/// header: `columns.edge.width`, else 1.
 pub fn edge_width(look: &Look) -> f32 {
     look.slots.columns.edge_width.unwrap_or(1.0)
 }
@@ -100,8 +74,6 @@ pub fn edge_opacity(look: &Look) -> f32 {
     look.slots.columns.edge_opacity.unwrap_or(0.6)
 }
 
-/// The wash over the column a held file drag would drop into, as a share of the accent:
-/// `columns.drop.opacity`, else 0.18.
 pub fn drop_opacity(look: &Look) -> f32 {
     look.slots.columns.drop_opacity.unwrap_or(0.18)
 }
@@ -111,8 +83,6 @@ pub fn drop_ring(look: &Look) -> f32 {
     look.slots.columns.drop_ring.unwrap_or(2.0)
 }
 
-/// The border of the "Column width" caption over a column's edge: `columns.caption.border`,
-/// else 0, as Strata's `.resize-caption` draws none.
 pub fn caption_border(look: &Look) -> f32 {
     look.slots.columns.caption_border.unwrap_or(0.0)
 }
@@ -127,8 +97,6 @@ pub fn badge_pad(look: &Look) -> f32 {
     look.slots.columns.badge_pad.unwrap_or(7.0)
 }
 
-/// The size badge's gap above and below it, inside its row: `columns.badge.inset`, else 2 (as
-/// Strata's chip sits inside its row's highlight).
 pub fn badge_inset(look: &Look) -> f32 {
     look.slots.columns.badge_inset.unwrap_or(2.0)
 }

@@ -1,12 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Where tiles sit: the grid's [`Lines`] rule and its [`CollectionGeometry`], pure maths over
-//! every entry, mounted or not.
-//!
-//! A row holds N tiles, N from the viewport width and the narrowest cell, at most the column
-//! cap; the row's width less the grid's side padding is shared equally, as GTK's GridView
-//! shares it. Tile `i` is in row `i / N`, column `i % N`.
-
 use crate::collection::element::Lines;
 use crate::contract::{CollectionGeometry, Direction, IndexRanges, Point, Rect};
 
@@ -15,9 +8,7 @@ use super::metrics::TileMetrics;
 #[cfg(test)]
 mod tests;
 
-/// The grid's packing rule for the collection element (C1e): tiles a line from the width.
-///
-/// Used by: C3, C20d.
+/// The grid's packing rule for the collection element: tiles a line from the width.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct GridLines {
     metrics: TileMetrics,
@@ -59,15 +50,6 @@ impl Lines for GridLines {
 }
 
 /// `len` tiles, `per` to a row of cells `cell_w` by `row_h`, starting `pad` from the left.
-///
-/// - **Up** moves a row up. **Down** moves a row down, or to the last tile when the row below
-///   is a shorter last row with no tile under this one, as GTK's GridView does
-///   (`gtk_grid_view_move_focus_along`); from the last row there is none.
-/// - **Left** and **Right** stay in the row: C1c's `wrap_rows` crosses a row's end, as Strata's
-///   Icons view does.
-/// - **Page** is the rows that fit minus one, times the tiles a row.
-///
-/// Used by: C3 (through [`GridLines`]), C1c, C1d, C21.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct IconsGeometry {
     /// How many tiles there are.

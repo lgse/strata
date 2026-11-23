@@ -1,22 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Extracting archives, retrying encrypted archives with a password, and revealing created or
-//! extracted archive items once their destination lists them (`src/ui/browser/archive.rs`,
-//! `events/operations.rs`, `events/reveal.rs`).
-//!
-//! - **What starts extraction.** Activating an archive in any view (`BrowserEvent::ExtractRequested`)
-//!   or choosing the entry menu's "Extract here" row (`extract`). Archives without a local path do
-//!   nothing; an archive with no parent directory opens a danger dialog (`Cannot extract`).
-//! - **Password retry** ([`view`]). Password-capable formats record `(entry, destination)` before
-//!   calling `Browser::extract`. When `OperationFailed` carries a structured [`PasswordFailure`],
-//!   [`on_operation_failed`] intercepts it before the generic error dialog and opens (or reopens)
-//!   the **Extract** password dialog, marking `Invalid password` when [`PasswordFailure::Incorrect`].
-//! - **Destination reveal.** Both compression ([`crate::compress`]) and extraction funnel their
-//!   completion follow-ups through [`Archive`], keeping foreground and docked destination state
-//!   disjoint and clearing abandoned `Extract to` targets on cancellation or failure.
-//! - **Extract to.** The `extract-to` menu row opens the floating chooser
-//!   ([`crate::chooser::floating`]), whose answer calls [`extract_to_chosen`].
-
 #[cfg(test)]
 mod tests;
 mod view;
@@ -118,8 +101,6 @@ impl Part for Archive {
 
     const COMMANDS: &'static [Action<App>] = &[
         Action::new("extract", extract_here),
-        // Opens the floating chooser (`crate::chooser::floating`), which calls
-        // `extract_to_chosen` with the folder chosen.
         Action::new("extract-to", crate::chooser::floating::extract_to),
     ];
 }
@@ -190,8 +171,6 @@ pub(crate) fn extract_entry_to(
     shell::settle(app, tx);
 }
 
-/// Starts extraction into `destination` chosen in the `Extract to` picker, navigating there once
-/// the archive finishes extracting (`show_extract_to_dialog` in `src/ui/browser/archive.rs`).
 pub(crate) fn extract_to_chosen(
     app: &mut App,
     entry: FileEntry,
@@ -212,8 +191,6 @@ pub(crate) fn prepare_compression(app: &mut App, destination: Location) {
     app.archive.pending_select.clear();
 }
 
-/// Moves the foreground compression's destination out when `Browser::background_file_operation`
-/// docks it (`src/ui/browser/progress/context.rs`).
 pub(crate) fn take_pending_destination(app: &mut App) -> Option<Location> {
     app.archive.pending_navigate = None;
     app.archive.pending_destination.take()
@@ -228,8 +205,6 @@ pub(crate) fn abandon_follow_ups(app: &mut App) {
     archive.pending_navigate = None;
 }
 
-/// Intercepts foreground `OperationFailed` when a password-capable archive can prompt (or
-/// reprompt) for its password instead of showing `Unable to complete operation`.
 pub(crate) fn on_operation_failed(
     app: &mut App,
     password_failure: Option<PasswordFailure>,
@@ -474,8 +449,6 @@ fn reload_destination(app: &mut App, destination: Location, tx: &mut Tx) -> bool
     true
 }
 
-/// `show_archive_result` (`src/ui/browser/events/reveal.rs`): selects the extracted item only
-/// when its destination is the active folder, keeping an ancestor extract from stealing focus.
 fn show_archive_result(
     app: &mut App,
     destination: Option<Location>,

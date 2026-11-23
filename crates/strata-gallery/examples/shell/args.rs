@@ -53,8 +53,6 @@ impl Options {
         Ok(options)
     }
 
-    /// The overrides file: the flag's, else `$XDG_CONFIG_HOME/strata/overrides.toml`
-    /// (`~/.config` when unset or not absolute, as the XDG spec says), else none.
     pub fn overrides_path(&self) -> Option<PathBuf> {
         if let Some(path) = &self.overrides {
             return Some(path.clone());
@@ -74,14 +72,9 @@ impl Options {
 /// What a launch hands the running shell.
 pub struct LaunchArgs {
     pub paths: Vec<OsString>,
-    /// The flags that apply only when the shell starts, which a launch forwarded to a running
-    /// one can't change.
     pub startup_only: Vec<&'static str>,
 }
 
-/// A launch's paths, and the startup-only flags it gave, from its whole command line (the
-/// program's name first). A launch whose flags don't parse (another client of the same app id)
-/// opens what isn't a flag.
 pub fn launch(argv: &[OsString]) -> LaunchArgs {
     let rest = argv.iter().skip(1).cloned();
     match Options::parse(rest) {
@@ -109,10 +102,6 @@ pub fn launch(argv: &[OsString]) -> LaunchArgs {
     }
 }
 
-/// Whether `arg` is a URI (`sftp://host/dir`, `trash:///`, `file:///tmp`), which a window
-/// shows as given, rather than a path to resolve against the launch's working directory: a
-/// scheme of a letter then letters, digits, `+`, `-` or `.`, two characters at least (so a
-/// path never matches), then `:`.
 pub fn is_uri(arg: &OsStr) -> bool {
     let Some(arg) = arg.to_str() else {
         return false;

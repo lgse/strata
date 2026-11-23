@@ -53,8 +53,6 @@ impl Browser {
         self.state.borrow().column_preferences(depth)
     }
 
-    /// The presentation groups listings by file type, which orders the rows it shows
-    /// and so where a load's automatic cursor lands.
     pub fn set_type_grouping(&self, grouped: bool) {
         self.state.borrow_mut().set_type_grouping(grouped);
     }
@@ -159,8 +157,6 @@ impl Browser {
         self.selection_or_descended()
     }
 
-    /// Entries a copy/cut acts on: the active selection, or the folder that
-    /// was descended into when the focused column selected nothing yet.
     pub fn transfer_entries(&self) -> Vec<FileEntry> {
         self.selection_or_descended()
     }

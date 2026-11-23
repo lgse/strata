@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The shell over a made-up table of parts, one in every slot: where each lands in the tree,
-//! where the keyboard goes when it leaves the view and comes back, the order the shell calls
-//! the parts in, and how what a service says reaches the window.
-
 use std::cell::{Cell, RefCell};
 
 use rune::{El, Key, KeyEvent, Mods, Tx, el};
@@ -71,8 +67,6 @@ made! {
     Other = "other",
 }
 
-/// The element a made-up part leaves in the tree, keyed with its name. It has a size, so it
-/// can take the keyboard.
 fn placed<P: Made>(_: &App, _: &mut Frame<'_, App>) -> Option<El> {
     let key = format!("made-{}", P::NAME);
     Some(el().key(key).w(40.0).h(20.0).focusable(true))
@@ -143,8 +137,6 @@ fn sidebar() -> Entry<App> {
     }))
 }
 
-/// A part in every slot, and two where a slot takes several, registered against the order
-/// of the slots so that the order seen is the shell's and not the table's.
 fn every_slot() -> Vec<Entry<App>> {
     vec![
         part::<Dialog>(Place::Dialogs(floated::<Dialog>)),
@@ -163,8 +155,6 @@ fn every_slot() -> Vec<Entry<App>> {
     ]
 }
 
-/// Two views and a menu: `files` shown at start, and `other`, answering to the mode
-/// `other`, which says what it is rebuilt with.
 fn two_views() -> Vec<Entry<App>> {
     let other = View {
         apply: |_, change, _| {
@@ -192,8 +182,6 @@ fn change_name(change: &Change) -> &'static str {
     }
 }
 
-/// A view and a tab strip that shows while [`STRIP_SHOWS`] says so, with what the shell hands
-/// it then.
 fn a_view_and_a_strip() -> Vec<Entry<App>> {
     let strip = Strip {
         build: |_, close, _| Some(rune::row().key("made-tabs").children(close)),
@@ -218,8 +206,6 @@ fn hosted(name: &str, parts: fn() -> Vec<Entry<App>>, run: impl FnOnce(Offscreen
 /// The shell's own two regions, as it keys them.
 const REGIONS: [&str; 2] = ["header", "body"];
 
-/// The made-up parts' keys and the shell's regions as the accessibility tree has them, in its
-/// order, each with those of them it is inside of.
 fn made(node: &Value, inside: &[String], found: &mut Vec<String>) {
     let ours = |key: &&str| key.starts_with("made-") || REGIONS.contains(key);
     let key = node["key"].as_str().filter(ours);
@@ -309,8 +295,6 @@ fn keys_in(node: &Value, within: &str) -> Vec<String> {
     keys
 }
 
-/// While the tab strip shows, it holds the window's Close and the header leaves out New tab
-/// and Close, as GTK's `refresh_chrome` moves them; while it does not, the header has both.
 #[test]
 fn a_strip_that_shows_takes_new_tab_and_close_from_the_header() {
     hosted(
@@ -342,8 +326,6 @@ fn a_strip_that_shows_takes_new_tab_and_close_from_the_header() {
     );
 }
 
-/// Which window buttons are mounted in the header (`[minimize, maximize, close]`) and whether the
-/// tab strip mounts `window-close`.
 fn mounted_window_buttons(host: &Offscreen) -> ([bool; 3], bool) {
     let tree = host.tree();
     let header = keys_in(&tree, "header");
@@ -584,9 +566,6 @@ fn the_shell_calls_the_parts_in_the_order_they_are_registered() {
     );
 }
 
-/// The offscreen host dispatches GLib itself and then applies the queue. The windowed host is
-/// not run here: it applies the same queue after every dispatch (`host::windowed::pump`), and
-/// its GLib loop reaches Rune's with `AppHandle::update_if`.
 #[test]
 fn what_a_services_callback_queues_reaches_the_window_within_one_turn() {
     hosted(
@@ -595,8 +574,6 @@ fn what_a_services_callback_queues_reaches_the_window_within_one_turn() {
         |mut host| {
             while host.turn() {}
             noted();
-            // A part keeps the handle `Setup` gave it. A service calls back inside GLib's
-            // dispatch, as the browser's observer is called.
             let later = host.app().later();
             glib::idle_add_local_once(move || {
                 later.then(|_: &mut App, tx: &mut Tx| {
@@ -642,8 +619,6 @@ fn what_a_service_answers_at_once_from_a_parts_poll_is_applied_in_that_poll() {
     );
 }
 
-/// GTK logs a saved keymap's unusable entries once, as its preference manager first builds
-/// the tables; here the process's first window does, and no later one.
 #[test]
 fn only_the_first_window_logs_the_saved_keymap() {
     let test = "shell::tests::only_the_first_window_logs_the_saved_keymap";
@@ -656,9 +631,6 @@ fn only_the_first_window_logs_the_saved_keymap() {
     });
 }
 
-/// Another view shown while the window is open is rebuilt from what the browser holds, column
-/// by column, takes the slot and the browser's events from the view it replaces, and every
-/// part is told. The view shown already, or a mode no view answers to, changes nothing.
 #[test]
 fn a_view_shown_later_is_rebuilt_from_the_browser_and_hears_it_from_then_on() {
     hosted(
@@ -751,8 +723,6 @@ fn assert_tooltip_card(host: &mut Offscreen, expected_radius: f32, ctx: &str) {
     assert!(card.border[3] > 0.0, "{ctx}: faint visible border");
 }
 
-/// Hovering a tooltipped control renders with GTK's dark surface, faint border, and
-/// updates its corner radii live when Corner roundness changes, in both dark and light themes.
 #[test]
 fn hover_tooltip_applies_gtk_styling_and_live_corner_roundness() {
     let light_id = strata_kit::theme::bundled()

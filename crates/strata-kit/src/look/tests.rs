@@ -48,8 +48,6 @@ fn a_tile_takes_the_smallest_thumbnail_class_that_covers_it() {
     assert!(ThumbnailSteps::new(vec![0.0, 128.0]).is_none());
 }
 
-/// Rune draws streamed thumbnails with no mipmaps, so a class more than twice its draw
-/// aliases: every tile on Strata's ladder, and a 16 pt list icon, at the usual scales.
 #[test]
 fn strata_thumbnails_are_never_held_at_more_than_twice_their_drawn_size() {
     let look = Look::fallback(true);

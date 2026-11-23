@@ -20,8 +20,6 @@ impl CreatedCopyRoot {
     }
 }
 
-/// The folder is made without the copy's cancellable: GIO and GVfs can report
-/// a cancel after making it, which would leave it behind.
 pub(super) async fn make_copy_folder(
     target: &gio::File,
     cancellable: &gio::Cancellable,

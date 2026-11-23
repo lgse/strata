@@ -67,8 +67,6 @@ fn scale_down_never_enlarges() {
 
 #[test]
 fn a_wheel_turned_away_zooms_in_and_a_notch_back_returns() {
-    // Rune's `WheelEvent::dy` is positive when content moves down: a wheel turned away from the
-    // user, which zooms in, as in browsers and Strata's PDF preview.
     assert!(
         wheel_factor(40.0) > 1.0,
         "a wheel turned away (dy > 0) zooms in"
@@ -79,8 +77,6 @@ fn a_wheel_turned_away_zooms_in_and_a_notch_back_returns() {
 
 #[test]
 fn zooming_a_scrolled_column_keeps_the_anchor_in_place() {
-    // A column scrolled 100 down, the pointer 50 below its top: the content point under the
-    // pointer is 150 in. Doubled, it is 300 in, so the column scrolls to 250.
     assert!(near(zoom_about_scroll(100.0, 50.0, 2.0), 250.0));
     assert!(near(zoom_about_scroll(250.0, 50.0, 0.5), 100.0));
 }
@@ -371,7 +367,6 @@ struct App {
     interaction: Interaction,
     /// A file drag source on the viewport, as Strata's preview picture has.
     drag_source: bool,
-    /// Presses heard around the viewport (C13's click to play).
     outer_presses: u32,
     reports: Vec<ZoomReport>,
     outer_wheels: u32,
@@ -406,8 +401,6 @@ fn view(s: &App, cx: &mut Cx<App>) -> El {
         .size(400.0, 300.0)
         .on_press(|s: &mut App| s.outer_presses += 1)
         .child(viewport.build(&s.look, cx));
-    // In a window off macOS, this `on_magnify` around a Full viewport would take its Ctrl+wheel
-    // (module docs); headless, Ctrl+wheel always goes to `on_wheel`.
     el().key("root")
         .size(400.0, 300.0)
         .on_wheel(|s: &mut App, _e, _tx| {
@@ -502,8 +495,6 @@ fn pixels_update_in_place_without_running_the_view() {
 #[test]
 fn panning_by_drag_and_wheel_skips_the_view() {
     let mut rt = runtime(Interaction::Full, false);
-    // Debug builds re-run the view after a late live-only event to check it; this test counts
-    // the runs, as Rune's README says to.
     rt.check_live_only(false);
     rt.update(|s, _| {
         s.view.zoom_to(1.0, None);
@@ -599,8 +590,6 @@ fn a_pinch_zooms_on_macos_and_reaches_the_app_elsewhere() {
     }
 }
 
-/// Holds off macOS in a window too: the viewport attaches no `on_magnify` there, so Rune
-/// doesn't turn the Ctrl+wheel into a pinch, and `on_wheel` sees Shift.
 #[test]
 fn ctrl_shift_wheel_is_left_to_the_app() {
     let mut rt = runtime(Interaction::Full, false);
@@ -649,8 +638,6 @@ fn rescale_with_no_input(interaction: Interaction) {
         assert!(value.contains("\"50%\""), "the image reads 50%");
     }
 
-    // 1:1 panned to a corner: 1600 × 1000 points at 1×, 800 × 500 at 2×, so the pan's reach
-    // falls from (600, 350) to (200, 100).
     let mut rt = runtime(interaction, false);
     rt.update(|s, _| {
         s.view.set_mode(Mode::Actual);
@@ -684,9 +671,6 @@ fn a_scale_change_alone_resyncs_a_fixed_viewport() {
     rescale_with_no_input(Interaction::Fixed);
 }
 
-/// 2× for a single frame, then back to 1×: the second change still resyncs. With one rescale
-/// key for every scale, the element mounted for 2× is still in the tree when 1× asks for it, so
-/// Rune keeps it, it reports no fresh layout, and the state stays at 2×.
 fn rescale_round_trip(interaction: Interaction) {
     let mut rt = runtime(interaction, false);
     rt.set_viewport((400.0, 300.0), 2.0);
@@ -720,8 +704,6 @@ fn pans_pass_rune_s_live_only_check() {
         s.view.zoom_to(1.0, None);
     });
     settle(&mut rt);
-    // Each step is held past the check's quarter second, so Rune re-runs the view after each
-    // live-only event and compares it with what's on screen.
     rt.pointer_move(200.0, 150.0);
     rt.pointer_down(200.0, 150.0);
     settle(&mut rt);
@@ -789,8 +771,6 @@ fn scrolling_past_a_viewport_runs_no_view() {
     rt.check_live_only(false);
     settle(&mut rt);
     let before = SCROLL_VIEWS.with(Cell::get);
-    // The viewport moves with the scroll, so its layout handler hears every step, but its size
-    // stays: nothing the view reads changes.
     rt.pointer_move(200.0, 150.0);
     for _ in 0..10 {
         rt.wheel_event(WheelEvent::new(0.0, -20.0).at(200.0, 150.0));

@@ -52,8 +52,6 @@ fn held_modifiers_join_every_press_until_they_are_released() {
     assert!(!pressed.mods.ctrl);
 }
 
-/// The `layout` step's mechanism for a host with no display: what the runner's `keymap` step
-/// sets is what later key names are read under, by their place on a US keyboard.
 #[test]
 fn a_layout_changes_what_a_key_name_types_and_the_us_layout_restores_it() {
     let mut keyboard = Keyboard::default();
@@ -91,8 +89,6 @@ fn a_layout_that_does_not_compile_leaves_the_keyboard_as_it_was() {
     assert_eq!(typed.key, Key::Text("о".to_owned()));
 }
 
-/// `inline_renaming/tone-mark-escape-before-rename`, under the manifest's `cn-altgr-pinyin`:
-/// AltGr+1 is the macron dead key, and AltGr+3 the caron's.
 #[test]
 fn a_dead_key_types_nothing_until_a_letter_completes_it_and_escape_after_one_is_still_escape() {
     let mut keyboard = Keyboard::default();

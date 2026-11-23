@@ -23,8 +23,6 @@ fn isolated(name: &str, settings: Option<&str>, run: impl FnOnce()) {
     });
 }
 
-/// The result of a save the writer has finished, polled by hand: delivering it needs no
-/// executor and no dispatch. (`writer::settle` itself iterates GLib's default context.)
 fn finished(save: PendingSave) -> FinishedSave {
     writer::settle();
     let mut finished = pin!(save.finished());
@@ -37,8 +35,6 @@ fn finished(save: PendingSave) -> FinishedSave {
     }
 }
 
-/// A file that reads without repair. One that lacks these two is salvaged entry by entry,
-/// and every value salvage filled in is then saved with the first change.
 const COMPLETE: &str = "mode = \"theme\"\ntheme = \"azure-glow\"\n";
 
 fn saved_table() -> toml::Table {
@@ -285,9 +281,6 @@ fn a_start_up_repair_is_no_change_and_is_saved_with_the_next_one() {
     );
 }
 
-/// A file without `mode` does not read whole: it is salvaged entry by entry, and what
-/// salvage filled in counts as repaired. The first change then saves every value the file
-/// lacked, beside the one that changed. The GTK application has always done so.
 #[test]
 fn a_salvaged_file_is_saved_with_every_value_loading_filled_in() {
     isolated(

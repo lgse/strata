@@ -1,36 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The offscreen host with the browser window and, while one is open, the floating
-//! destination chooser it opened (`crate::chooser::floating`): two toplevels, as GTK's
-//! `Copy to`, `Move to` and `Extract to` windows stand beside the browser.
-//!
-//! The steps read one tree: the chooser's nodes stand beside the browser's, under a root of
-//! their own ([`Snapshot::with_toplevel`]), so a target `within` the chooser's toplevel finds
-//! them, while the window the steps act on stays the browser. The chooser is in front: keys
-//! go to it and the focus is its own. It stands to the right of the browser on the virtual
-//! screen ([`FLOATING_X`]), so a pointer aimed at one of its nodes goes to it.
-//!
-//! Each window is an `Rc<Staged>` cloned before a step acts on it: a step that answers the
-//! chooser closes it, and the clone keeps it alive until the step returns.
-//!
-//! # Windows a launch opens
-//!
-//! The QA process is the primary on the runner's private session bus, as the GTK application's
-//! QA process is its GApplication's (`crate::application`, claimed as a service, so that its
-//! own launch opens nothing: its folder is the run's). A `launch` step's `strata-rune` hands its
-//! arguments over and exits, and each argument becomes a browser window here, offscreen like the
-//! first, sharing its settings, as `crate::host::windowed` opens a real one (A21). Their trees
-//! stand beside the browser's under roots of their own (`window-2`, `window-3`…), behind it:
-//! the steps act on the run's window, which keeps the keys, the pointer and the focus, while a
-//! target `within` another's toplevel (`other_window`, `some_window`) finds its nodes, and an
-//! `activate` aimed at one presses it there.
-//!
-//! A launch's window takes the activation, as a window GTK presents does on the runner's Xvfb:
-//! the windows open before it lose the window focus (`Runtime::window_focus`), so the run's
-//! window reports it lost the keyboard to its parts (the location bar dismisses its
-//! suggestions) and its browsers' presence turns `Visible`. Keys still go to the run's window,
-//! or to the floating chooser in front of it: what the steps send is routed as before.
-
 use std::{
     cell::{Cell, RefCell},
     rc::Rc,
@@ -55,16 +24,10 @@ use crate::{
 
 /// The root path of the floating chooser's tree, beside the browser's `window`.
 const FLOATING_ROOT: &str = "floating";
-/// Where the floating chooser's corner stands on the virtual screen: right of any browser
-/// window the scenarios size.
 const FLOATING_X: i16 = 8000;
 
-/// The longest a pause waits while a launch's windows are open beside the browser: their
-/// timers are not the browser's, which is what a pause waits on.
 const OTHERS_PAUSE: Duration = Duration::from_millis(20);
 
-/// The windows' trees merged, kept while none changes: the browser's, a launch's windows' and
-/// the chooser's, in that order.
 struct Merged {
     parts: Vec<Rc<Snapshot>>,
     both: Rc<Snapshot>,
@@ -91,7 +54,6 @@ struct Launched {
 pub(super) struct Windows {
     main: Rc<Staged>,
     log: InputLog,
-    /// The browser window's size, which GTK sizes the chooser against.
     parent_size: (i32, i32),
     floating: RefCell<Option<Toplevel>>,
     keymap: RefCell<Option<Keymap>>,
@@ -164,8 +126,6 @@ impl Windows {
         launched.iter().map(|open| open.staged.clone()).collect()
     }
 
-    /// Opens a browser window for each launch the bus handed over since the last look. True
-    /// when any opened.
     fn open_launched(&self) -> bool {
         let asked = application::take();
         let opened = !asked.is_empty();
@@ -239,8 +199,6 @@ impl Windows {
         true
     }
 
-    /// One turn of every window, opening a chooser the browser asked for and the windows a
-    /// launch asked for on the way.
     fn turn_all(&self) -> bool {
         let mut worked = self.main.turn();
         for launched in self.launched() {
@@ -343,8 +301,6 @@ impl Host for Windows {
         self.main.replaced_since(entry, since)
     }
 
-    /// The chooser answers into the browser, which may then ask for another: each settles,
-    /// the browser after the chooser.
     async fn settle(&self) {
         self.open_launched();
         if let Some(floating) = self.floating() {

@@ -4,8 +4,6 @@ use super::*;
 
 const FIVE: [&str; 5] = ["a", "b", "c", "d", "e"];
 
-/// How a batch is limited, the sizes of the five moved files, and what
-/// their barriers see.
 type BatchRow = (&'static str, Limits, [usize; 5], Vec<Seen>);
 
 fn check_owed_batches(
@@ -204,8 +202,6 @@ fn cancelling_a_move_closes_its_pending_batch() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-/// Copies started across racers before each source opens, and whether the
-/// first saw a second start while it waited.
 struct Overlap {
     started: Arc<AtomicUsize>,
     parallel: Arc<AtomicBool>,
@@ -219,8 +215,6 @@ impl Overlap {
         }
     }
 
-    /// The first of `count` racers waits up to `wait` for a second copy to
-    /// start, as only parallel copies can.
     fn racers(&self, count: usize, wait: Duration) -> Vec<Before> {
         let (started, parallel) = (self.started.clone(), self.parallel.clone());
         let first: Racer = Box::new(move || {
@@ -247,8 +241,6 @@ impl Overlap {
     }
 }
 
-/// The last progress as completed files, total files, transferred bytes,
-/// and total bytes.
 fn last_progress(events: &[OperationEvent]) -> Option<(usize, Option<usize>, u64, Option<u64>)> {
     events.iter().rev().find_map(|event| match event {
         OperationEvent::TransferProgress {
@@ -328,8 +320,6 @@ fn check_spinning_disks(
     Ok(())
 }
 
-/// Every source but `changed` went, every copy is whole, and only `changed`
-/// is reported kept, as changed, or moved while it remained.
 fn assert_kept_only_the_changed_source(
     layout: &Layout,
     moved: &Moved,
@@ -364,8 +354,6 @@ fn assert_kept_only_the_changed_source(
 fn many_moved_files_share_a_barrier_and_are_copied_in_parallel_unless_a_disk_spins()
 -> Result<(), Box<dyn Error>> {
     let _serial = serial()?;
-    // The last item makes the batch due, which still closes as the device
-    // flush shows.
     let _limits = LimitsGuard::set(Limits {
         items: 12,
         ..NO_LIMITS
@@ -389,8 +377,6 @@ fn link_files(sources: &Path, names: &[&str]) -> io::Result<()> {
     Ok(())
 }
 
-/// Makes `names` beneath `sources` folders whose files are each one file
-/// under every folder.
 fn link_folders(sources: &Path, names: &[&str]) -> io::Result<()> {
     for name in names {
         fs::create_dir(sources.join(name))?;
@@ -560,16 +546,12 @@ fn check_failed_bulk_barrier(id: u64, items: usize) -> Result<(), Box<dyn Error>
 #[test]
 fn a_failed_barrier_stops_a_bulk_move() -> Result<(), Box<dyn Error>> {
     let _serial = serial()?;
-    // Enough files for the bulk path, whose first barrier fails: the last,
-    // or the first of several.
     for (id, items) in (460..).zip([usize::MAX, 3]) {
         check_failed_bulk_barrier(id, items)?;
     }
     Ok(())
 }
 
-/// Before the barrier, puts a foreign file at the name of the original the
-/// replacing move set aside in `destination`.
 fn foreign_file_at_the_original(destination: PathBuf, foreign: PathBuf) -> Racer {
     Box::new(move || {
         let originals = fs::read_dir(&destination)

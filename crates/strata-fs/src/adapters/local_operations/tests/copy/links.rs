@@ -81,8 +81,6 @@ fn exfat_fuse_without_udev() -> Quirks {
     }
 }
 
-/// As a share with POSIX extensions refuses a target past 1003 UTF-16
-/// units, and any disk that is full.
 fn cifs_posix_refusing_links_for_space() -> Quirks {
     Quirks {
         symlinks: Support::Rejected(Errno::NOSPC),
@@ -174,8 +172,6 @@ fn links_inside_a_copied_folder_are_left_out_where_the_destination_cannot_hold_t
     Ok(())
 }
 
-/// A source folder whose `link` and `sub/link` point at `a.txt`, and an
-/// empty `disk` to copy it onto.
 fn linked_folder(root: &Path) -> io::Result<(PathBuf, PathBuf)> {
     let source = root.join("source");
     let disk = root.join("disk");
@@ -266,8 +262,6 @@ fn selected_links_the_destination_cannot_hold_are_left_out_and_the_paste_goes_on
         replacing,
         asked,
     };
-    // vfat has no links, cifs refuses the first one it is asked for, ntfs3
-    // refuses each link's target, and the last mounts every name for a link.
     let targets = ntfs3_refusing_targets_as_invalid;
     let (invalid, illegal) = (
         ext4_refusing_link_names_as_invalid,
@@ -362,8 +356,6 @@ fn assert_links_left_off(disk: &Path, replacing: bool, label: &str) -> io::Resul
     Ok(())
 }
 
-/// A move keeps the links at the source and moves only the file; a copy
-/// reports the links it left out of the destination.
 fn assert_selected_links_reported(
     events: &[OperationEvent],
     row: &SelectedLinks,
@@ -423,8 +415,6 @@ fn malformed() -> &'static OsStr {
     <OsStr as std::os::unix::ffi::OsStrExt>::from_bytes(b"x\xffy")
 }
 
-/// A mount, and whether the paste moves or replaces a `bad` link already
-/// at the destination.
 type Malformed = (&'static str, Preset, bool, bool);
 
 fn check_malformed_targets(

@@ -5,8 +5,6 @@ use crate::model::{FolderSort, Location, SortDirection, SortKey, ViewPreferences
 use super::{ColumnState, FolderSortResolver, LoadState, NavigationState, sort_entries};
 
 impl ColumnState {
-    /// A hidden cursor entry hands the cursor and a single fill to its nearest
-    /// visible neighbour, preferring the entries after it.
     fn move_cursor_off_hidden(&mut self) {
         let Some(selected) = self
             .selected
@@ -65,8 +63,6 @@ impl NavigationState {
             })
     }
 
-    /// `kept` is the column's preferences before a rebuild of the same path,
-    /// whose sort survives when its folder's sort is not remembered.
     pub(super) fn initial_preferences(
         &self,
         location: &Location,
@@ -85,8 +81,6 @@ impl NavigationState {
         preferences
     }
 
-    /// What a column's preferences become after its folder's sort or the
-    /// application-wide folders-first choice changed. Recent keeps its fixed order.
     pub fn synchronized_preferences(&self, depth: usize) -> Option<ViewPreferences> {
         let column = self.columns.get(depth)?;
         let mut preferences = column.preferences;
@@ -104,9 +98,6 @@ impl NavigationState {
         Some(preferences)
     }
 
-    /// For a column still loading with nothing listed yet: its load sorts with
-    /// these once it finishes. Listed entries need a sort, because later
-    /// batches merge into them in order.
     pub fn set_loading_column_preferences(
         &mut self,
         depth: usize,

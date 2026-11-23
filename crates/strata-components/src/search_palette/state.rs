@@ -15,8 +15,6 @@ use super::model::{Follow, Model, Phase};
 use crate::contract::Point;
 use crate::scroll::{Bar, ScrollFeed};
 
-/// What a call into the palette changed, and the intents it raised for the host to route as
-/// it routes the palette's own.
 #[must_use = "route the intents as the palette's own"]
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Polled {
@@ -39,9 +37,6 @@ impl Polled {
     }
 }
 
-/// The palette's intent handler as the latest view built it. Rows are memoised, so a row
-/// kept since an earlier answer would otherwise call the handler of the view that built it.
-/// Type-erased, as the state isn't generic over the app's.
 #[derive(Clone, Default)]
 pub(crate) struct HandlerSlot(Rc<RefCell<Option<Rc<dyn Any>>>>);
 
@@ -61,34 +56,19 @@ impl std::fmt::Debug for HandlerSlot {
     }
 }
 
-/// The palette's state: the mode it is open in, the field's text, the results and the
-/// highlight. The host keeps one per window and hands the palette an accessor to it.
-///
-/// The host calls [`PaletteState::tick`] from its poll every frame, and
-/// [`PaletteState::deliver`] with each [`Answer`] to a [`PaletteIntent::Query`].
 #[derive(Debug, Default)]
 pub struct PaletteState {
     mode: Option<PaletteMode>,
-    /// The field's text, caret and focus. The field binds it; a host reads it, and changes it
-    /// only through the methods here.
     pub edit: TextEdit,
     model: Model,
     pub(crate) bar: Bar,
     /// The list's scroll position as it last reported it.
     pub(crate) feed: ScrollFeed,
-    /// The offset at the last tick, and whether the user is scrolling the list: it moved
-    /// between the last two ticks, and not because the palette asked (a fling or a wheel's
-    /// motion in flight), which a batch's reveal leaves alone (Strata's
-    /// `interaction_revision`).
     settled: Cell<f32>,
     moving: Cell<bool>,
-    /// The palette asked for a scroll (an arrow's or an answer's reveal) and the list hasn't
-    /// come to rest since: its motion is the palette's, not the user's (review round 3, B2).
     own_scroll: Cell<bool>,
     /// The palette's key as the latest view built it, for the scroll requests an answer makes.
     pub(crate) key: RefCell<String>,
-    /// Where focus goes when a result opens, as the latest view built it
-    /// ([`super::SearchPalette::return_focus_on_open`]).
     pub(crate) return_to: RefCell<Option<String>>,
     pub(crate) handler: HandlerSlot,
 }
@@ -153,8 +133,6 @@ impl PaletteState {
         self.model.announced()
     }
 
-    /// Opens in `mode` with an empty query, and asks for it. On an open palette it switches
-    /// mode and starts over.
     pub fn open(&mut self, mode: PaletteMode) -> Polled {
         self.model.reset();
         self.edit = TextEdit::new("");
@@ -165,8 +143,6 @@ impl PaletteState {
         out
     }
 
-    /// Ctrl+K and Ctrl+Shift+K: closes an open palette, whatever its mode (Strata), else opens
-    /// it in `mode`.
     pub fn toggle(&mut self, mode: PaletteMode) -> Polled {
         if self.is_open() {
             self.close_by(By::Toggle)
@@ -191,8 +167,6 @@ impl PaletteState {
         out
     }
 
-    /// Sets the query to `text`, the caret at its end, and asks for it: a host opening on a
-    /// query, or a scene.
     pub fn set_query(&mut self, text: &str) -> Polled {
         if !self.is_open() {
             return Polled::default();
@@ -201,13 +175,6 @@ impl PaletteState {
         self.edited()
     }
 
-    /// An answer to a [`PaletteIntent::Query`]. One for another generation, after the palette
-    /// closed, or while nothing can be searched, is dropped.
-    ///
-    /// `tx` scrolls the list in the commit that draws the answer, as Strata's `restore_scroll`
-    /// does: a new query goes back to the top; until the user moves the highlight, the list
-    /// keeps its offset, so better results a batch puts above the first row show; after,
-    /// the highlighted row stays in view. Call it from the host's poll (or any handler).
     pub fn deliver(&mut self, answer: Answer, tx: &mut Tx) -> Polled {
         let Some(mode) = &self.mode else {
             return Polled::default();
@@ -217,12 +184,6 @@ impl PaletteState {
         };
         let key = self.key.borrow();
         let results = super::results_key(&key);
-        // Reveals only: "just far enough", and a wheel or a fling wins over them (Rune), so a
-        // batch never undoes the user's scroll. Rows are keyed by place, so keeping the offset
-        // takes no request at all.
-        // A batch's reveal is the palette's own scroll: the next ticks don't take it for the
-        // user scrolling (review round 3, B2). A new query's top needs no mark: after it, only an
-        // arrow (which marks its own) makes the next batch reveal.
         let own = match follow {
             Follow::Reveal(_) => !self.moving.get(),
             Follow::Top | Follow::Stay | Follow::Keep => false,
@@ -242,21 +203,14 @@ impl PaletteState {
         Polled::changed()
     }
 
-    /// The palette asked for a scroll of its own (an arrow's reveal): the next ticks don't take
-    /// the list's motion for the user scrolling until it comes to rest.
     pub(crate) fn mark_own_scroll(&self) {
         self.own_scroll.set(true);
     }
 
-    /// The query `generation` failed: the shown results go and the body says `message`, until
-    /// the next edit or a later answer for the same query. False for another generation, a
-    /// closed palette or one that can't search.
     pub fn fail(&mut self, generation: u64, message: impl Into<String>) -> bool {
         self.is_open() && self.model.fail(generation, message.into())
     }
 
-    /// Nothing can be searched (Strata: no local search locations): the body says `message`
-    /// and the field takes no text until the palette closes.
     pub fn unavailable(&mut self, message: impl Into<String>) -> bool {
         if !self.is_open() {
             return false;
@@ -342,10 +296,6 @@ impl PaletteState {
         self.finish(intent, By::Open, tx)
     }
 
-    /// Closes after a result opened, focusing the host's
-    /// [`super::SearchPalette::return_focus_on_open`] once shown: focus the closing change puts
-    /// outside the modal stays there, and `Tx::focus_when_shown` waits if the target view is still
-    /// mounting or loading.
     fn finish(&mut self, intent: PaletteIntent, by: By, tx: &mut Tx) -> Polled {
         let mut out = Polled::changed();
         out.push(intent);

@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The demo host, headless: its window keys and its springs. (What crosses processes is in
-//! `tests/x2.rs`, under W3.)
-
 use std::path::PathBuf;
 
 use rune::{Env, Runtime};
@@ -43,9 +40,6 @@ fn run_until(rt: &mut Runtime<Win>, t: f64) {
     }
 }
 
-/// Every target a binder finds by key must be keyed apart: no element in any tab's window
-/// repeats a key among its siblings (Rune renames a repeat `key#dup1`), the inactive panes
-/// kept for a running drag included.
 #[test]
 fn no_key_repeats_in_any_tab_or_with_every_pane_kept() {
     let mut rt = mount("keys");
@@ -74,8 +68,6 @@ fn no_key_repeats_in_any_tab_or_with_every_pane_kept() {
     assert!(!keys.iter().any(|k| k.contains("#dup")), "{keys:?}");
 }
 
-/// Steps a resting window: a frame only at each wake it asked for, none in between, until the
-/// clock passes `until` or nothing more is asked.
 fn rest(rt: &mut Runtime<Win>, until: f64) {
     for _ in 0..200 {
         let Some(deadline) = rt.wake_deadline() else {
@@ -89,18 +81,12 @@ fn rest(rt: &mut Runtime<Win>, until: f64) {
     }
 }
 
-/// A hover change at time `t`: the window rests until then (stepping only its own wakes),
-/// then `change` runs, as a zone's hover handler would, and the window draws one frame (the
-/// highlight changed) and polls.
 fn hovered_at(rt: &mut Runtime<Win>, t: f64, change: impl FnOnce(&mut Win)) {
     rest(rt, t);
     change(&mut rt.state);
     rt.frame((t - rt.state.clock).max(0.001));
 }
 
-/// operations/drag-and-drop: "Holding a file drag over a folder row or sidebar row for 750 ms
-/// navigates there"; leaving first cancels it. The host's spring, in a window at rest: it
-/// polls only at the wakes the host asked for, and when a hover changes.
 #[test]
 fn a_folder_row_springs_open_after_750_ms_and_a_leave_cancels_it() {
     let mut rt = mount("spring-row");
@@ -153,8 +139,6 @@ fn a_sidebar_row_springs_open_its_place() {
     );
 }
 
-/// trash: "Dropping files onto the sidebar Trash row moves them to Trash"; "Web addresses
-/// dropped on the sidebar Trash row, alone or with files, are refused".
 #[test]
 fn the_trash_takes_files_and_refuses_web_addresses() {
     let both = DropActions::COPY | DropActions::MOVE;
@@ -188,8 +172,6 @@ fn columns(rt: &Runtime<Win>) -> Vec<PathBuf> {
     listings.0.iter().map(|l| l.folder.clone()).collect()
 }
 
-/// P1 keeps a drag's source mounted until the drag ends: while a drag from Columns' second
-/// column runs, a spring on a sibling folder, a crumb jump and a Close leave that column be.
 #[test]
 fn a_running_drag_keeps_its_source_column() {
     let mut rt = mount("source-column");
@@ -198,7 +180,6 @@ fn a_running_drag_keeps_its_source_column() {
     rt.update(|w, tx| w.navigate(TabId(1), &docs, tx));
     rt.frame(1.0 / 60.0);
     assert_eq!(columns(&rt), [root.clone(), docs.clone()]);
-    // A drag of Reports, in the Documents column (P1 can't start one headless).
     let reports = rt.state.ids.of(&docs.join("Reports"));
     rt.state.out = Some(Out {
         tab: TabId(1),

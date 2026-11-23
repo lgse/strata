@@ -1,22 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Dragging the built-in places and the pins into a new order, as the GTK sidebar saves it
-//! (`reorder_place`, `reorder_pinned_place` and `reorder_pinned_into` in
-//! `src/ui/window/sidebar_reorder.rs` and `sidebar_pins.rs`): the places into the saved
-//! `sidebar_order`, the pins into GTK's bookmarks file through the store both interfaces share.
-//! A fix there has to be carried here until the GTK sidebar is deleted.
-//!
-//! C8 reports where a drop landed as GTK's sidebar takes it ([`Landing`]), and the move follows
-//! GTK's rule for each target, which is not the same as moving the row among those shown: the
-//! saved order and the bookmarks file hold rows the sidebar does not show (hidden places, pins
-//! of a user folder), and both files are shared with GTK Strata, and the second with every GTK
-//! application.
-//!
-//! - **A place** dropped on a row goes before or after it; in the gap between two rows, after
-//!   the row above; in the gap above the first, before it (GTK's place gaps).
-//! - **A pin** dropped on a pin goes before or after it; in a gap, before the pin after the gap,
-//!   else after the one before it (`pin_gap_index`).
-
 use strata_components::sidebar::{ItemId, Landing};
 use strata_core::model::Location;
 use strata_fs::adapters::bookmarks;
@@ -46,8 +29,6 @@ pub(super) fn reorder_places(
     true
 }
 
-/// `reorder_pinned_places`: the pin at `source` next to the one at `target`. False when
-/// nothing moved.
 pub(super) fn reorder_pinned_places(
     places: &mut Vec<(Location, String)>,
     source: usize,
@@ -69,8 +50,6 @@ pub(super) fn reorder_pinned_places(
     true
 }
 
-/// GTK's target for a place dropped at `landing` among the places shown: the row it goes
-/// next to, and whether after it.
 pub(super) fn place_target(landing: Landing) -> (usize, bool) {
     match landing {
         Landing::Row { index, after } => (index, after),
@@ -79,9 +58,6 @@ pub(super) fn place_target(landing: Landing) -> (usize, bool) {
     }
 }
 
-/// `pin_gap_index`: where a gap between `after` and `before`, as the sidebar showed them, is in
-/// the pins as they are now. None when both of its neighbours were unpinned elsewhere, so a
-/// drop cannot land somewhere unrelated.
 pub(super) fn pin_gap_index(
     places: &[(Location, String)],
     (after, before): (Option<&Location>, Option<&Location>),
@@ -95,8 +71,6 @@ pub(super) fn pin_gap_index(
     }
 }
 
-/// `move_pinned_place`: the pin at `source` to the insertion point `index`, counted before it
-/// moves. False when nothing moved.
 pub(super) fn move_pinned_place(
     places: &mut Vec<(Location, String)>,
     source: usize,
@@ -112,8 +86,6 @@ pub(super) fn move_pinned_place(
     true
 }
 
-/// The pin at `source` dropped at `landing` among the pins `shown`, in the pins as they are now.
-/// False when nothing moved.
 pub(super) fn move_pin_in(
     places: &mut Vec<(Location, String)>,
     source: &Location,
@@ -163,9 +135,6 @@ pub(super) fn move_place(app: &mut App, from: usize, landing: Landing) {
     relist(app);
 }
 
-/// The pin at `from` among those listed was dropped at `landing`: the bookmarks file follows,
-/// and the sidebar hears it from the store. The pins are matched by location in the file as it
-/// is then, as GTK merges into the shared file and never into a window's copy.
 pub(super) fn move_pin(app: &App, from: usize, landing: Landing) {
     let shown: Vec<Location> = app
         .sidebar

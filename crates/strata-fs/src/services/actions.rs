@@ -156,8 +156,6 @@ impl ActionCatalog {
             .collect()
     }
 
-    /// The action at `index` in the order Settings lists them, disabled ones
-    /// included, when it is enabled, runnable and accepts every input.
     pub fn listed(&self, index: usize, inputs: &[ActionInput]) -> Option<Rc<ActionHandle>> {
         self.actions
             .get(index)

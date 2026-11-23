@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The number field's element: a spin button holding a text box frame with −, the number,
-//! its unit and +.
-
 use std::rc::Rc;
 
 use rune::{
@@ -22,13 +19,6 @@ type Menu<S> = Rc<dyn Fn(&mut S, Point, &mut Tx) -> bool>;
 /// Reports a step's or commit's new value, when it moved.
 type Tell<S> = Rc<dyn Fn(&mut S, Option<f64>, &mut Tx)>;
 
-/// A number field over a [`NumberFieldState`] the host holds: − before the number and +
-/// after it, as Strata's spin buttons, with the unit between the number and +.
-///
-/// It reports a value through [`NumberField::on_change`] only when it commits one: a step
-/// (−, +, Up, Down, Page Up, Page Down, Ctrl+Home, Ctrl+End, the wheel, an assistive
-/// increment), Return, or the field losing the keyboard, which the host's poll notices
-/// through [`NumberField::poll`].
 pub struct NumberField<S> {
     key: String,
     get: Get<S>,
@@ -40,9 +30,6 @@ pub struct NumberField<S> {
 }
 
 impl<S: 'static> NumberField<S> {
-    /// The field keyed `key` (the spin button) over the state `get` and `get_mut` reach. Its
-    /// text field is keyed `<key>-input`, and its steppers `<key>-decrease` and
-    /// `<key>-increase`.
     pub fn new(key: impl Into<String>, get: Get<S>, get_mut: GetMut<S>) -> Self {
         NumberField {
             key: key.into(),
@@ -78,20 +65,11 @@ impl<S: 'static> NumberField<S> {
         self
     }
 
-    /// The field's text menu: its right-click, Menu key and Shift+F10, at the window point
-    /// Rune gives. The host opens C21's `FieldMenu` there and returns whether it opened; while
-    /// it is open, losing the keyboard to it commits nothing. The host calls
-    /// `NumberFieldState::hold(false)` from the menu's `on_close`, and `edited` from its
-    /// `on_change`. Without it the field asks for Rune's own menu, which Linux doesn't show
-    /// (U-C21-1).
     pub fn on_menu(mut self, f: impl Fn(&mut S, Point, &mut Tx) -> bool + 'static) -> Self {
         self.menu = Some(Rc::new(f));
         self
     }
 
-    /// Commits the text when the field has lost the keyboard: call it from the host's poll
-    /// every frame (Rune has no focus-change hook, upstream #106). True when it changed the
-    /// state.
     pub fn poll(&self, s: &mut S, tx: &mut Tx) -> bool {
         let Some(moved) = (self.get_mut)(s).blurred() else {
             return false;
@@ -228,8 +206,6 @@ impl<S: 'static> NumberField<S> {
             });
         }
 
-        // The spin button assistive technology steps; the field inside it has the keyboard
-        // (a text field can't take the role itself: Rune draft U-C20a-1).
         let mut spin = el()
             .key(self.key.clone())
             .role("spinbutton")
@@ -261,8 +237,6 @@ impl<S: 'static> NumberField<S> {
         })
     }
 
-    /// − or +: hidden from assistive technology, which steps the spin button itself, and
-    /// never focused, as GTK's are. Insensitive at its end.
     fn stepper(&self, look: &Look, up: bool, at_end: bool, tell: Tell<S>) -> El {
         let k = &look.kit;
         let height = field_height(look);
@@ -318,10 +292,6 @@ fn field_height(look: &Look) -> f32 {
     (look.frame.control + look.space.md).max(32.0)
 }
 
-/// The keys a focused field steps on, as GTK's spin button: Up and Down a step, Page Up and
-/// Down a page, Ctrl+Home and Ctrl+Page Down the minimum, Ctrl+End and Ctrl+Page Up the
-/// maximum, and Return commits the text. `None` for keys the editor keeps (plain Home and
-/// End move the caret); `Some` with the new value when it moved.
 pub(super) fn key_step(st: &mut NumberFieldState, e: &KeyEvent) -> Option<Option<f64>> {
     let m = e.mods;
     if m.shift || m.alt || m.logo {

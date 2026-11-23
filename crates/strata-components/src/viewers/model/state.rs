@@ -1,16 +1,10 @@
 // SPDX-License-Identifier: MIT
 
-//! The model view's state: the file, the camera, the load and render stages, and the picture's
-//! viewport. The host renders; this only holds what the view shows and decides which presses
-//! count.
-
 use std::f32::consts::{PI, TAU};
 
 use crate::viewers::layout::Position;
 use crate::viewers::viewport::{Mode, ViewportState, ZoomReport};
 
-/// One of the four camera presets, named by where the camera stands: +X right, −Y front, +Z up
-/// (Strata's `ModelView`).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub enum CameraView {
     /// Where every file starts.
@@ -39,8 +33,6 @@ impl CameraView {
         }
     }
 
-    /// `step` presses of Next (negative: Previous). Next turns the camera clockwise seen from
-    /// above: Front left, Back left, Back right, Front right, then Front left again.
     pub fn step(self, step: i32) -> CameraView {
         let i = (self.index() as i32 - step.rem_euclid(4)).rem_euclid(4);
         CameraView::ALL[i as usize]
@@ -56,17 +48,12 @@ impl CameraView {
         }
     }
 
-    /// Where the indicator's dot sits, as a clockwise angle in radians from the right, in screen
-    /// space (y down) seen from above: Front left is lower left.
     pub fn angle(self) -> f32 {
         let [x, y, _] = self.direction();
         (-y).atan2(x)
     }
 }
 
-/// What the file is: a mesh the host renders per camera view, or a picture saved in the file
-/// (a 3MF's one embedded PNG, a FreeCAD thumbnail, a G-code slicer thumbnail), which once
-/// loaded shows alone, with no camera controls, indicator or badges.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub enum ModelKind {
     #[default]
@@ -74,8 +61,6 @@ pub enum ModelKind {
     Embedded,
 }
 
-/// Where a load or a render stands, for the drawer's spinner (Strata's `ModelPreviewStage`, and
-/// the "Loading preview…" it starts with).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Stage {
     Loading,
@@ -110,16 +95,12 @@ pub struct Mesh {
 pub struct ModelFile {
     /// The display name.
     pub name: String,
-    /// The extension as the name has it ("stl"): the format badge shows it in upper case until
-    /// the mesh's own format is known.
     pub extension: String,
     /// Its place among the model files around it, if the host counts one.
     pub position: Option<Position>,
     pub kind: ModelKind,
 }
 
-/// The words the model view shows and assistive technology reads. Strata passes translated
-/// text; the defaults are Strata's English.
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub struct ModelLabels {
@@ -193,10 +174,6 @@ pub(crate) fn grouped(n: usize) -> String {
     out
 }
 
-/// The model view's state. The host keeps one per preview and drives it as its loads and
-/// renders report: [`ModelState::open`] for a new file, then [`ModelState::progress`],
-/// [`ModelState::image`], [`ModelState::view_failed`] or [`ModelState::load_failed`]. A camera
-/// button calls [`ModelState::step`], which says which view to render next.
 #[derive(Debug)]
 pub struct ModelState {
     /// The picture's viewport (Fit for a mesh, ScaleDown for an embedded picture).
@@ -209,8 +186,6 @@ pub struct ModelState {
     shown: CameraView,
     /// The indicator's angle, unwrapped, so each turn takes the shorter way round.
     angle: f32,
-    /// No camera button has turned the camera since the file opened: the indicator lands at its
-    /// angle rather than sweeping there (Strata builds a fresh indicator per file).
     fresh: bool,
     /// Some while a first load or a view render runs.
     stage: Option<Stage>,
@@ -253,9 +228,6 @@ impl ModelState {
         }
     }
 
-    /// A new file: back to Front left, and loading. The camera and the indicator start over at
-    /// once: the indicator lands at Front left rather than sweeping from the last file's view
-    /// ([`ModelState::fresh`]).
     pub fn open(&mut self, file: ModelFile) {
         let mode = match file.kind {
             ModelKind::Mesh => Mode::Fit,
@@ -279,9 +251,6 @@ impl ModelState {
         self.set_stage(Some(stage));
     }
 
-    /// The picture arrived: the host has set its `Pixels`, `content_px` big. A mesh render
-    /// says which view it shows and what the mesh is; an embedded picture passes `None`.
-    /// Returns the viewport's report, if its level changed.
     pub fn image(&mut self, content_px: [f32; 2], mesh: Option<Mesh>) -> Option<ZoomReport> {
         self.has_image = true;
         if let Some(mesh) = mesh {
@@ -295,9 +264,6 @@ impl ModelState {
         self.viewport.set_content(Some(content_px))
     }
 
-    /// A view render or a decode failed after the first picture: the picture stays, the
-    /// indicator goes back to its view, and the error shows under the controls. A camera button
-    /// tries again.
     pub fn view_failed(&mut self, message: impl Into<String>) {
         if !self.has_image {
             self.load_failed(message);
@@ -314,9 +280,6 @@ impl ModelState {
         self.set_stage(None);
     }
 
-    /// A camera button: `step` is +1 for Next, −1 for Previous. Before the first picture, and
-    /// while a render runs, a press does nothing (`None`). Otherwise the camera turns, a render
-    /// starts, and this returns the view to render.
     pub fn step(&mut self, step: i32) -> Option<CameraView> {
         if !self.can_step() || self.stage.is_some() {
             return None;
@@ -363,8 +326,6 @@ impl ModelState {
         self.angle
     }
 
-    /// No camera button has turned the camera since the file opened: the indicator shows its
-    /// angle at once, with no sweep.
     pub fn fresh(&self) -> bool {
         self.fresh
     }
@@ -412,8 +373,6 @@ impl ModelState {
         self.triangles.map(self.labels.triangles)
     }
 
-    /// The spinner's label while something loads: the drawer's header shows it
-    /// ([`HostedPreview::busy`](crate::preview_drawer::HostedPreview::busy)).
     pub fn busy(&self) -> Option<&str> {
         self.busy.as_deref()
     }

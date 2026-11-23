@@ -1,15 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Perf on the work package's fixtures: the 50,000-line Rust file (`tests/fixtures/code`)
-//! opened, jumped to its end and scrolled, with the real highlighter thread colouring it; and
-//! a 5,000-line script edited in the editor. `#[ignore]`d; run with the `perf` profile and
-//! Rune's commit budget, one at a time:
-//!
-//! ```sh
-//! RUNE_COMMIT_BUDGET_MS=8 cargo test --profile perf -p strata-components --lib \
-//!     code_view::tests::perf -- --ignored --test-threads=1 --nocapture
-//! ```
-
 use std::cell::Cell as StdCell;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -242,8 +232,6 @@ fn editor_view(h: &Ed, _cx: &mut Cx<Ed>) -> El {
     CodeEditor::new(|h: &Ed| &h.editor, |h: &mut Ed| &mut h.editor).build(h, &h.look)
 }
 
-/// A keystroke's frame in the middle of the 5,000-line script, and the frame its colours
-/// land in (budget: 16.7 ms at p95).
 #[test]
 #[ignore = "perf: run with --profile perf (see the module docs)"]
 fn a_5000_line_script_edit() {

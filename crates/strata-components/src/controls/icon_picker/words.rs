@@ -2,14 +2,11 @@
 
 //! What the picker says: its names, its status and its empty state, as data.
 
-/// The picker's words. The defaults are English; a host passes its own translations.
-///
-/// Used by: hosts.
+/// The picker's words.
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub struct PickerWords {
-    /// The grid's accessible name while it shows a category ("Icon", "Emoji"); a tab's own
-    /// name follows it ("Emoji, Animals & Nature").
+    /// The grid's accessible name while it shows a category ("Icon", "Emoji").
     pub grid: String,
     /// The search field's name and placeholder.
     pub field: String,

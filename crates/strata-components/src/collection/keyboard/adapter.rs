@@ -1,7 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The keyboard machine on C1e's seam: [`Keyboard`] is the collection's `KeyController`.
-
 use std::rc::Rc;
 
 use super::machine::{KeyMachine, Outcome, Surface};
@@ -14,52 +12,15 @@ use crate::collection::element::{
 use crate::collection::selection::{Changed, Selection};
 use crate::contract::{CollectionGeometry, EntrySource};
 
-/// What a 10xer selection key in an empty folder sends the host, as `Intent::Other`: the host
-/// flashes `Nothing to select` (C18). Downcast the intent's value to this type.
-///
-/// Used by: C18, hosts.
+/// What a 10xer selection key in an empty folder sends the host, as `Intent::Other`: the host flashes `Nothing to select`.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub struct NothingToSelect;
 
-/// What `Intent::Other` holds when a Select key left the cursor where it was, with
-/// [`KeySettings::reselects_in_place`]: test for it with `downcast_ref::<Rested>()`.
-///
-/// Used by: C2.
+/// What `Intent::Other` holds when a Select key left the cursor where it was, with `KeySettings::reselects_in_place`.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub struct Rested;
 
-/// Keyboard navigation as the collection's keyboard controller: install it in
-/// `CollectionState::controllers.keyboard`, pass [`KeySettings`] with `Collection::settings`,
-/// and keep a clone of its [`KeyHandle`] for the 10xer range and queued commands.
-///
-/// ```ignore
-/// state.controllers.keyboard = Some(Box::new(Keyboard::new(handle.clone())));
-/// Collection::new(/* … */).settings(KeySettings::tenxer())
-/// ```
-///
-/// What it sends the element:
-///
-/// | Machine | Element |
-/// | --- | --- |
-/// | [`Outcome::Reveal`] | `Effect::Reveal` |
-/// | [`Outcome::Activate`] | `Intent::Activate` with `Activation::Key` |
-/// | [`Outcome::Edge`] | `Intent::Edge` |
-/// | [`Outcome::NothingToSelect`] | `Intent::Other` holding [`NothingToSelect`] |
-/// | [`Outcome::Rested`] | `Intent::Other` holding [`Rested`] |
-/// | [`Outcome::Keyboard`] | `Effect::KeyboardMode(true)` |
-///
-/// A key that moves the cursor turns keyboard mode on in the element itself. Ctrl+A and
-/// Escape, which move none, say so with [`Outcome::Keyboard`], and a queued command that moves
-/// the cursor (from [`KeyHandle::run`], at `tick`) does too. The adapter sends at most one
-/// `KeyboardMode` an input, and only with a selection change or a cursor move, which commit
-/// the view anyway, so the mode costs no extra commit. A primary press ends a 10xer range
-/// (`pointer_seen`); a folder change (`reset`) drops the range, the type-ahead prefix and any
-/// queued commands.
-///
-/// **Type-ahead needs the collection's clock** (`Collection::clock`): its timeout compares the
-/// keys' times, and without a clock every key comes at 0, so a prefix never times out.
-///
-/// Used by: hosts, C2, C3, C4.
+/// Keyboard navigation as the collection's keyboard controller.
 #[derive(Debug, Default)]
 pub struct Keyboard {
     machine: KeyMachine,
@@ -123,7 +84,6 @@ impl KeyController for Keyboard {
     }
 }
 
-/// C1e's `Ctx` as the machine's surface.
 struct CtxSurface<'c, 'a> {
     cx: &'c mut Ctx<'a>,
     defaults: &'c KeySettings,

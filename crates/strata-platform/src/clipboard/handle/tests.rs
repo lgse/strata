@@ -48,8 +48,6 @@ fn queued_changes_reach_on_change_in_order_once_each() {
 
 #[test]
 fn a_change_heard_inside_on_change_waits_for_the_next_job() {
-    // A callback that copies can make the platform report again; that goes to the queue,
-    // never into the running callback.
     let me: Rc<RefCell<Option<Clipboard<S>>>> = Rc::default();
     let inner = me.clone();
     let clip = Clipboard::<S>::new().on_change(move |s, c, _| {

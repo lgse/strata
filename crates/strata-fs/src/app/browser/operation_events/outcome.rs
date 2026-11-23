@@ -225,8 +225,6 @@ impl Browser {
         self.refresh_unmonitored_operation_locations(context, None);
     }
 
-    /// An unmonitored folder shows what a restore put back, or failed to,
-    /// only after a reload.
     fn refresh_unmonitored_restore_locations(
         self: &Rc<Self>,
         context: &OperationContext,

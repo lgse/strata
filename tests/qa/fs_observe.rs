@@ -288,8 +288,6 @@ impl FsCheck {
                 pin_times(&path, fixture_time);
                 Ok(())
             }
-            // PIL's buffered save writes a file this small in one write; written in
-            // pieces, the listing would see it grow and replace its row.
             FsKind::Image(image) => {
                 let parent = path.parent().unwrap_or(root);
                 let name = path

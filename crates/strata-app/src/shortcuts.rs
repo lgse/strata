@@ -1,29 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The shortcut reference, F1: C19's [`ShortcutReference`] over the window, listing the
-//! default map's shortcuts as GTK's reference lists them (`src/ui/shortcut_reference.rs`,
-//! `src/ui/shortcut_footer/`).
-//!
-//! - **Opening and closing.** F1, as the keymap binds it, opens it from anywhere but an
-//!   inline rename: GTK reads it at `input_owner` (`footer_key`), past an open rename. The
-//!   footer's Shortcuts button toggles it too ([`crate::footer`]). F1 again, Escape or a click
-//!   on the backdrop closes it, and the keyboard goes back to what had it.
-//! - **Its keys.** While it is open it is a modal layer with a text field: every key is the
-//!   panel's, and no window command runs, Ctrl+, among them. Its area keys and F1 are the
-//!   keymap's ([`data::panel_keys`]).
-//! - **What it lists.** The shown view's navigation, then files and selection, search and
-//!   tools, preview media and the custom actions a user bound, with the keys the keymap binds
-//!   now: a saved keymap shows its keys, and a row with no key is left out. The rows are
-//!   rebuilt when the keymap, the view, "Type to search" or the language changes.
-//!
-//! - **In 10xer mode** it lists 10xer's sections instead ([`tenxer`]), and a typed `~`
-//!   toggles it too, as the 10xer map binds it.
-//!
-//! Left out, with what brings each back: the portal chooser's rows, 10xer's among them,
-//! [A20]'s.
-//!
-//! [A20]: ../../../docs/rune/parity/packages/A20.md
-
 use std::rc::Rc;
 
 use rune::{El, Tx};
@@ -53,8 +29,6 @@ pub(crate) struct Shortcuts {
     built: Option<Built>,
 }
 
-/// What the rows depend on beside the tables: GTK rebuilds them on a keymap revision and
-/// on "Type to search", and builds them for the view and in the language shown.
 #[derive(Clone)]
 struct Built {
     keymap: Rc<Keymap>,
@@ -109,7 +83,6 @@ impl Part for Shortcuts {
         ])];
 }
 
-/// GTK's `preview_and_footer_owner` reads the footer's keys only while no inline edit is open.
 fn outside_rename(_: &App, at: &Situation) -> bool {
     at.holds() != Some(Holds::Edit)
 }
@@ -139,7 +112,6 @@ fn refresh(app: &mut App) -> bool {
     true
 }
 
-/// The shown view, as GTK's `BrowserMode` names it.
 fn mode(app: &App) -> Mode {
     let shows = |mode: &str| shell::shown_view(app).is_some_and(|view| (view.shows)(mode));
     if shows("icons") {

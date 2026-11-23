@@ -413,8 +413,6 @@ fn a_claimed_name_swapped_for_a_pipe_fails_without_waiting() -> Result<(), Box<d
             ..Quirks::nfs3()
         },
     );
-    // Without a reader a blocking open waits for ever, so a reader comes
-    // after a while to let the test end.
     let (done, finished) = std::sync::mpsc::channel::<()>();
     let rescue = thread::spawn(move || {
         if finished.recv_timeout(Duration::from_secs(5)).is_ok() {
@@ -992,9 +990,6 @@ fn names_of_a_linked_file_on_an_smb_share_are_opened_one_at_a_time() -> Result<(
     use std::sync::{OnceLock, atomic::Ordering};
     type Reader = Box<dyn Fn() -> Vec<Call> + Send + Sync>;
     let _serial = ASYNC_MAIN_CONTEXT_DEFAULT.lock()?;
-    // Two workers copy both names: the destination keeps no links, or the
-    // client shows a link count of 1, as it does for files it listed. The
-    // first name opened stays open until the other was looked at.
     let rows: [(&str, bool, Preset); 2] = [
         ("no links at the destination", false, Quirks::vfat),
         ("listed link count", true, Quirks::default),

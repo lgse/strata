@@ -1,17 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The folders Ctrl+Shift+K jumps to: GTK's `VisitRecorder` and `install_history_recorder`
-//! (`src/ui/window/composition/search.rs`), which record each local folder a column of the
-//! browser finished listing into strata-fs's [`NavigationHistory`].
-//!
-//! A column's folder waits from its `ColumnAdded` until its `LoadFinished`, and a failed
-//! load leaves it waiting, so a later retry that lists it records the visit. A reset or a
-//! truncation forgets what it drops. Only a folder with a local path is recorded.
-//!
-//! The browser's observer only copies each event ([`Visit::of`]) and queues it; the part
-//! records it as the queue is applied, so a hidden tab's visits are recorded when the tab is
-//! next shown, where GTK records them as they finish.
-
 use std::path::PathBuf;
 
 use strata_core::model::Location;

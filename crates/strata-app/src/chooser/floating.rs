@@ -1,15 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The floating destination chooser that the entry menu's "Copy to…", "Move to…" and
-//! "Extract to…" open (`present_destination_chooser` in `src/ui/chooser/destination.rs`,
-//! `show_transfer_dialog` in `src/ui/browser/transfer/destination_dialog.rs` and
-//! `show_extract_to_dialog` in `src/ui/browser/archive.rs`).
-//!
-//! The window asking for one queues a [`FloatingRequest`] here. The host takes it ([`take`])
-//! and opens the chooser as a toplevel of its own, over an `App` of its own: the folder chooser
-//! of the portal, choosing one existing folder. Its answer comes back through the asking
-//! window's [`Later`], which then transfers or extracts into the folder chosen.
-
 #[cfg(test)]
 mod tests;
 
@@ -50,10 +40,7 @@ pub(crate) struct FloatingRequest {
 #[derive(Default)]
 pub(crate) struct Floating {
     pending: Option<FloatingRequest>,
-    /// A chooser is open over the window: GTK keeps one per window (`DestinationLease`).
     open: bool,
-    /// Asked for again while open: the host brings the open one forward, as GTK's
-    /// `DestinationLease::acquire` presents it.
     raise: bool,
     opened: u64,
 }
@@ -85,8 +72,6 @@ pub(crate) fn take(app: &mut App) -> Option<FloatingRequest> {
     app.chooser.floating.pending.take()
 }
 
-/// Whether the window asked again for the chooser it has open, since the last call: the host
-/// brings it forward.
 pub(crate) fn take_raise(app: &mut App) -> bool {
     std::mem::take(&mut app.chooser.floating.raise)
 }
@@ -227,7 +212,6 @@ fn chosen_folder(result: Result<SelectedResult, PortalError>) -> Option<PathBuf>
     gio::prelude::FileExt::path(&gio::File::for_uri(&uri))
 }
 
-/// Accepts an existing folder only (`existing_folder` in `src/ui/browser/destination.rs`).
 fn existing_folder(path: &Path) -> PendingValidation {
     let path = path.to_path_buf();
     Box::pin(async move {

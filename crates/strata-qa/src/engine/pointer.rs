@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The pointer sequences: moving, clicking, dragging and turning the wheel, with the gaps
-//! the application needs between the events.
-
 use std::time::{Duration, Instant};
 
 use serde_json::json;
@@ -60,9 +57,6 @@ impl<B: Backend> Scope<'_, B> {
         Ok((coordinate(x)?, coordinate(y)?))
     }
 
-    /// A point a scroller clips is wheeled into view first, so the pointer lands on the
-    /// target. A `left_bound` aim is never scrolled: it deliberately aims at the visible
-    /// part of a clipped target.
     pub(super) async fn aim(&self, aim: &Aimed<'_>) -> Result<(i16, i16), String> {
         let mut scrolls = 0;
         loop {
@@ -147,9 +141,6 @@ impl<B: Backend> Scope<'_, B> {
         Ok(None)
     }
 
-    /// Turns the wheel over the scroller clipping `point` on `located`, with the wheel a user
-    /// would turn: Shift for a horizontal strip such as Columns or the breadcrumbs. False when
-    /// nothing clips it or the scroller would not move, so the caller aims where the target is.
     async fn scroll_onto_screen(
         &self,
         located: &Located<B::Node>,
@@ -261,8 +252,6 @@ impl<B: Backend> Scope<'_, B> {
         result
     }
 
-    /// Only the last release of a multi-click settles; a frame between the
-    /// clicks could push them out of the double-click window.
     async fn tap_button(&self, number: u8, hold: Duration, last: bool) -> Result<(), String> {
         let backend = self.backend;
         backend.button(number, true).await?;
@@ -356,7 +345,6 @@ impl<B: Backend> Scope<'_, B> {
         result
     }
 
-    /// Crosses in even steps so GTK passes its drag threshold and the drop site sees the hover.
     pub(super) async fn drag(
         &self,
         ends: &DragEnds<'_>,
@@ -369,8 +357,6 @@ impl<B: Backend> Scope<'_, B> {
             let start = self.locate(ends.from, ends.from_at, Aim::Point).await?;
             (start, self.locate(ends.to, ends.to_at, Aim::Point).await?)
         } else {
-            // Read both boxes only after both lookups, so a target a listing refresh moved
-            // is aimed where it is now.
             self.find(ends.from, None, Aim::DragOrigin).await?;
             let end = self.locate(ends.to, ends.to_at, Aim::Point).await?;
             (self.locate(ends.from, None, Aim::DragOrigin).await?, end)

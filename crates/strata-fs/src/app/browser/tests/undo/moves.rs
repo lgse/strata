@@ -323,9 +323,6 @@ fn an_item_whose_move_left_entries_behind_is_excluded_from_the_move_undo() {
         Location::local("/fixture/zeta"),
         Location::local("/fixture/alpha"),
     );
-    // An entry the move left in the project, the project itself, a link left
-    // out whole, which never moved, and entries left in two items, which are
-    // named in the order they moved.
     let cases = [
         LeftBehind {
             left: &["/fixture/project/notes.txt"],

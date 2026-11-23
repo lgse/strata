@@ -1,20 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! P3's session tests: the `csd` example window under headless sway, borderless on X11
-//! (Xwayland) and on Wayland, moving from its header, resizing from its edges where it can,
-//! and its buttons reaching the window manager.
-//!
-//! The window floats (a `for_window` rule), because sway resizes only floating windows on a
-//! client's request. sway is wlroots: its X11 window manager doesn't grab the pointer, so the
-//! X11 resize works here whatever mutter and KWin do (a hand test, still pending).
-//!
-//! Feature map: `app/window`, "dragging … header moves the window and dragging a window edge
-//! resizes it", and "Minimize minimizes the window and Close closes it": Close on both backends,
-//! Minimise as far as the request reaching the window manager (sway minimises nothing).
-//! Maximise is a hand test: floating sway ignores it, so only the request is checked.
-//!
-//! Work package: P3, `docs/rune/work/phase-1-leaves/P3-client-side-decorations.md`.
-
 use std::time::{Duration, Instant};
 
 use serde_json::Value;
@@ -26,9 +11,6 @@ use crate::support::{Display, Options, Proc, Session, Window, example, timeout};
 
 const APP_ID: &str = "strata-csd-example";
 
-/// A session whose sway floats the example, and gives windows its default borders back (W3's
-/// config turns them off): a title bar for a window that asks for server-side decorations,
-/// and `csd` for one that draws its own.
 fn session() -> Session {
     Session::with(Options {
         sway_config: format!(
@@ -48,9 +30,6 @@ struct App {
     xid: Option<u32>,
 }
 
-/// Opens the example with `args` and waits until it is linked to its window (on X11 that
-/// includes the first read of its state and the window manager's capabilities), floating, and
-/// laid out at sway's size.
 fn open(s: &Session, display: Display, args: &[&str]) -> (App, Window) {
     let mut cmd = s.command(example("csd"), display);
     cmd.args(args);
@@ -83,10 +62,6 @@ fn wait_rect(s: &Session, pid: u32, what: &str, pred: impl Fn(&Window) -> bool) 
     s.wait_window_where(what, |w| w.pid == pid && pred(w))
 }
 
-/// Presses at `from`, moves to `to` with the button held, and releases.
-///
-/// The pointer moves twice first and settles: a press right after a floating window maps or
-/// resizes can go nowhere (docs/rune/testing.md, "Point, then press, after a relayout").
 fn drag(s: &Session, from: (f64, f64), to: (f64, f64)) {
     let input = s.input();
     input.pointer_move((from.0 + 1.0, from.1));
@@ -116,9 +91,6 @@ fn button(app: &Proc, window: &Window, key: &str) -> (f64, f64) {
     )
 }
 
-/// sway's own tree node for the window: its `border` says who draws the frame. Right after a
-/// window maps and floats, sway's tree can still say `none` for a window it frames: wait
-/// until it says something else.
 fn border(s: &Session, pid: u32) -> String {
     let deadline = Instant::now() + timeout();
     loop {
@@ -150,8 +122,6 @@ fn node(s: &Session, pid: u32) -> Option<Value> {
     find(&s.tree(), pid).cloned()
 }
 
-/// The geometry sway gives the window's container (`rect`): what the window manager did,
-/// whether or not the X client has caught up with it yet (see [`followed`]).
 fn wm_rect(s: &Session, pid: u32) -> [f64; 4] {
     let r = node(s, pid).map(|n| n["rect"].clone()).unwrap_or_default();
     let at = |k: &str| r[k].as_f64().unwrap_or(0.0);
@@ -171,8 +141,6 @@ fn wait_wm_rect(s: &Session, pid: u32, what: &str, pred: impl Fn([f64; 4]) -> bo
     }
 }
 
-/// A resize from an edge or a corner: its name, where to press (fractions of the window), how
-/// far the pointer goes, and how x, y, width and height change.
 type Resize = (&'static str, (f64, f64), (f64, f64), [f64; 4]);
 
 /// Every resize from an edge or a corner, 40 points outward.
@@ -187,8 +155,6 @@ const EDGES: [Resize; 8] = [
     ("nw", (0.0, 0.0), (-40.0, -40.0), [-40.0, -40.0, 40.0, 40.0]),
 ];
 
-/// A point 3 points inside the window at fractions (fx, fy) of it: on a side's 6-point band,
-/// or a corner's 12-point one.
 fn inside(window: &Window, (fx, fy): (f64, f64)) -> (f64, f64) {
     let c = window.content;
     let x = c.x
@@ -212,17 +178,6 @@ fn inside(window: &Window, (fx, fy): (f64, f64)) -> (f64, f64) {
     (x, y)
 }
 
-/// Whether the window followed a drag of `by` points with a change of `moved`: the same way, at
-/// least half as far, and no further than the pointer went; no change where `by` is 0.
-///
-/// sway starts a move or resize a step or two into the drag, so the window follows a little
-/// less far than the pointer went ((76, 57) for (80, 60) here).
-///
-/// The resize test reads sway's container geometry, not the client's: under Xwayland the
-/// client can stay short of the size sway gave it (seen: a left edge moved by 38 while the
-/// client grew by only 6 or 26; W3's "floating windows" trap, where sway's configure doesn't
-/// always reach an X11 client). That is between wlroots and Xwayland; this module's part ends
-/// once the window manager has taken the resize.
 fn followed(moved: f64, by: f64) -> bool {
     if by == 0.0 {
         moved.abs() <= 3.0
@@ -233,9 +188,6 @@ fn followed(moved: f64, by: f64) -> bool {
     }
 }
 
-/// Each edge and corner on a fresh window, so one resize's aftermath can't move the next
-/// one's bands: after a resize under Xwayland the app can stay a step short of sway's size
-/// (see [`followed`]), which would leave a band a few points off the edge sway reports.
 #[test]
 #[ignore = "needs a private session: mise run test-platform"]
 fn x11_window_resizes_from_each_edge() {
@@ -253,8 +205,6 @@ fn x11_window_resizes_from_each_edge() {
         let x = Observer::new(&s);
         let from = inside(&window, at);
         drag(&s, from, (from.0 + by.0, from.1 + by.1));
-        // EWMH: the pointer on the root window, the direction, the left button, and 1 for a
-        // request from an application. sway's layout points are root pixels at scale 1.
         let xid = app.xid.expect("the window's X id");
         let sent = x
             .message("_NET_WM_MOVERESIZE", xid, timeout())
@@ -430,8 +380,6 @@ fn x11_buttons_reach_the_window_manager() {
     );
 }
 
-/// Close goes through Rune on every backend: the window leaves sway's tree and the app, whose
-/// only window it was, exits.
 fn close_closes(display: Display) {
     let s = session();
     let (mut app, window) = open(&s, display, &[]);
@@ -491,8 +439,6 @@ fn x11_full_screen_puts_the_bands_away() {
         });
 }
 
-/// Wayland under `Auto`: borderless, with no resize, minimise or window menu until Rune ships
-/// drafts U6–U8 (not filed). The edges take no press, and Minimise answers its gap.
 #[test]
 #[ignore = "needs a private session: mise run test-platform"]
 fn wayland_window_is_borderless_without_resize_minimise_or_menu() {

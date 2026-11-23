@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Behavioural tests for archive extraction, password retry, abandoned `Extract to` cleanup, and
-//! compression conflict choices (`super`, `crate::compress`).
-
 use std::path::{Path, PathBuf};
 
 use rune::{Key, KeyEvent, Mods, Tx};
@@ -346,8 +343,6 @@ fn extract_to_chosen_selects_result_in_same_or_different_folder_across_reset() {
             let other_tar = folder.path().join("other.tar");
             write_single_file_tar(&same_tar, "same_dir.txt", b"in root\n");
             write_single_file_tar(&other_tar, "into_docs.txt", b"in documents\n");
-            // Seed another alphabetically earlier file in documents so LoadSelection::FirstEntry
-            // would pick "00_first.txt" if Reset wiped pending_select.
             std::fs::write(folder.path().join("documents/00_first.txt"), "earlier\n")
                 .expect("seed earlier file");
             open_fixture(&mut host, folder.path());
@@ -395,8 +390,6 @@ fn background_completion_from_another_folder_navigates_and_unrelated_reset_clear
             let documents = folder.path().join("documents");
             open_fixture(&mut host, &documents);
 
-            // Docked compression finishing in root while viewing documents navigates back and
-            // selects zzz_docked.zip instead of LoadSelection::FirstEntry ("00_earlier.txt").
             let root = Location::local(folder.path());
             let dest = root.clone();
             host.runtime().update(move |app: &mut App, tx: &mut Tx| {

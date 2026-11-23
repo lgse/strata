@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The demo's stand-in for Strata's file side: entry ids by path, listings read from disk,
-//! the volume lookup and the transfers (logged; with `--apply`, done, inside `--root` only).
-
 use std::collections::HashMap;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -14,8 +11,6 @@ use strata_components::contract::{EntryId, EntryKind, ListEntry, ListSource};
 /// The next entry id, for every [`Ids`] in the process.
 static NEXT_ID: AtomicU64 = AtomicU64::new(1);
 
-/// Entry ids by path, for one window (or its peek): an id lives for the process and is never
-/// reused (W1), so the ids come from one counter for the whole process.
 #[derive(Default)]
 pub struct Ids {
     by_path: HashMap<PathBuf, EntryId>,
@@ -96,8 +91,6 @@ pub fn volume(root: &Path, sources: &[PathBuf], dest: &Path) -> VolumeRelation {
     }
 }
 
-/// Whether a drop of `sources` into `dest` would do nothing: an item into its own folder, a
-/// folder into itself or into one of its descendants (Strata's guard).
 pub fn no_op(sources: &[PathBuf], dest: &Path) -> bool {
     !sources.is_empty()
         && sources
@@ -105,10 +98,6 @@ pub fn no_op(sources: &[PathBuf], dest: &Path) -> bool {
             .all(|s| s.parent() == Some(dest) || dest.starts_with(s))
 }
 
-/// Copies or moves `sources` into `dest`, each under a name not taken. Refuses the whole
-/// drop if any source or the destination is outside `root`, before touching anything. A link
-/// is moved or copied as the link (never followed out of the root), and nothing is created
-/// over an existing entry (a dangling link included). The names written, or why nothing was.
 pub fn apply(
     root: &Path,
     sources: &[PathBuf],
@@ -152,8 +141,6 @@ pub fn apply(
     Ok(written)
 }
 
-/// `src` with its folder resolved but not itself (a dragged link is the link), if it is there
-/// and inside `root`.
 fn inside(root: &Path, src: &Path) -> Result<PathBuf, String> {
     let outside = || format!("{} is outside the root", src.display());
     let name = src.file_name().ok_or_else(outside)?;
@@ -170,8 +157,6 @@ fn inside(root: &Path, src: &Path) -> Result<PathBuf, String> {
     Ok(src)
 }
 
-/// Makes an entry in `dest` with `make`, under `name` or the first "name (n)" free: `make`
-/// creates it exclusively, failing with `AlreadyExists` only when the name is taken.
 fn place(
     dest: &Path,
     name: &str,
@@ -191,8 +176,6 @@ fn place(
     Err(io::Error::other("no free name"))
 }
 
-/// An error below the entry `place` made: never "the name is taken", which would have it
-/// try another name over a half-made entry.
 fn below(e: io::Error) -> io::Error {
     if e.kind() == io::ErrorKind::AlreadyExists {
         io::Error::other(e)
@@ -230,14 +213,9 @@ fn copy_all(from: &Path, to: &Path) -> io::Result<()> {
     }
 }
 
-/// Moves `from` to `to`, which must not exist, never replacing an entry there. Only another
-/// device (EXDEV) copies and removes instead; any other failure (EACCES, say) leaves `from`
-/// where it was and nothing at `to`.
 fn move_all(from: &Path, to: &Path) -> io::Result<()> {
     let across = |e: &io::Error| e.kind() == io::ErrorKind::CrossesDevices;
     if from.symlink_metadata()?.file_type().is_dir() {
-        // Reserve the name with an empty folder of our own, which `rename` replaces (it only
-        // replaces an empty folder).
         std::fs::create_dir(to)?;
         return match std::fs::rename(from, to) {
             Ok(()) => Ok(()),
@@ -263,10 +241,6 @@ fn move_all(from: &Path, to: &Path) -> io::Result<()> {
     }
 }
 
-/// Moves the file or link `from` to `to` (which must not exist) on another device: copies it,
-/// then removes the source. A source that can't be removed (its folder is read-only, say)
-/// stays, so the copy is removed again, as the hard-link path removes its link. (A folder's
-/// copy stays: `remove_dir_all` may have removed part of the source by then.)
 fn copy_then_remove(from: &Path, to: &Path) -> io::Result<()> {
     copy_all(from, to)?;
     std::fs::remove_file(from).or_else(|e| {

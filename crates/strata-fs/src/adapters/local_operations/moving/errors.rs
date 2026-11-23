@@ -28,8 +28,6 @@ pub(in crate::adapters::local_operations) fn placement_error_kind(
     }
 }
 
-/// A placement failure as a complete message about `name`, using `template`
-/// (with `%{name}` and `%{error}`) unless the failure has its own sentence.
 pub(in crate::adapters::local_operations) fn placement_failure(
     error: PlaceError,
     name: &str,

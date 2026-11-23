@@ -5,31 +5,20 @@
 use std::borrow::Cow;
 use std::sync::Arc;
 
-/// A cell shows at most this many bytes of its first line, then "…" (Strata's
-/// `TABLE_CELL_DISPLAY_BYTES`). Copying keeps the whole text.
 pub const CELL_DISPLAY_BYTES: usize = 512;
 
 /// Strata's title cut: a column title shows this many characters, then "…".
 pub const TITLE_DISPLAY_CHARS: usize = 128;
 
-/// One worksheet, or a CSV or TSV file: Strata's `TableData` with the sheet's name. Cells are
-/// the text Strata's reader gives (calamine's string conversion for workbooks), rows may be
-/// ragged, and nothing here parses or recalculates.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Sheet {
     pub name: Arc<str>,
     pub rows: Vec<Vec<String>>,
-    /// The first row holds the column titles (Strata's rule for CSV, TSV and workbooks, when
-    /// that row has a cell): it shows in the header and never sorts.
     pub header: bool,
-    /// Strata's reader stopped at its value, text or column budget: the grid says so above
-    /// the rows.
     pub truncated: bool,
 }
 
 impl Sheet {
-    /// A sheet whose first row is the titles, unless that row is empty: then, as in Strata,
-    /// there is no title row and every row sorts.
     pub fn new(name: impl Into<Arc<str>>, rows: Vec<Vec<String>>) -> Sheet {
         Sheet {
             name: name.into(),
@@ -82,9 +71,6 @@ pub fn column_letters(mut j: usize) -> String {
     String::from_utf8(out).expect("ASCII letters")
 }
 
-/// What a cell shows, and whether it was cut: its first line, at most
-/// [`CELL_DISPLAY_BYTES`] of it (on a character boundary), ending in "…" when anything was
-/// left out. Rows are one line high (deviation D5), so a later line shows only as the "…".
 pub(crate) fn shown(text: &str) -> (Cow<'_, str>, bool) {
     let (line, more_lines) = first_line(text);
     if line.len() <= CELL_DISPLAY_BYTES && !more_lines {
@@ -97,8 +83,6 @@ pub(crate) fn shown(text: &str) -> (Cow<'_, str>, bool) {
     (Cow::Owned(format!("{}…", &line[..end])), true)
 }
 
-/// What a column title shows: its first line, cut at [`TITLE_DISPLAY_CHARS`] characters,
-/// marked with "…" when anything was left out.
 pub(crate) fn title_shown(text: &str) -> Cow<'_, str> {
     let (line, more_lines) = first_line(text);
     match line.char_indices().nth(TITLE_DISPLAY_CHARS) {
@@ -108,8 +92,6 @@ pub(crate) fn title_shown(text: &str) -> Cow<'_, str> {
     }
 }
 
-/// A text's first line, without its line ending, and whether more lines follow. One line
-/// ending at the very end starts no line of its own.
 fn first_line(text: &str) -> (&str, bool) {
     let body = text
         .strip_suffix("\r\n")

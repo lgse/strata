@@ -1,12 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Unit tests for the highlighter.
-//!
-//! Colours are checked against syntect's own highlighter (`HighlightState` with
-//! `RangedHighlightIterator`) over a full parse, so they also check that colouring by scope
-//! stack class gives syntect's colours. Most tests drive the worker on the test thread
-//! through [`Pump`], so they are deterministic; a few run the real thread.
-
 mod perf;
 
 use std::ops::Range;
@@ -52,9 +45,6 @@ fn dark() -> Arc<Theme> {
 
 type Runs = Vec<(Range<usize>, Color)>;
 
-/// syntect's own colours for every line of `text`, after a full parse, as runs that join
-/// where they touch, with default-coloured text left out. Lines longer than `long_line`
-/// are skipped as the highlighter skips them: plain, with the state carried over.
 pub(super) fn reference(
     text: &str,
     syntax: &SyntaxReference,
@@ -161,9 +151,6 @@ impl Pump {
         did
     }
 
-    /// Everything queued, to the end of every pass.
-    /// Everything queued, to the end of every pass. Requests only come from the test
-    /// thread, so none arrives while a step runs.
     fn run(&mut self) {
         loop {
             self.requests();
@@ -422,8 +409,6 @@ fn lines_draw_plain_until_their_colours_land() {
 
 // Edits (S4's workaround 1).
 
-/// Applies `new` to an editable document that has every line cached, runs the thread to the
-/// end of the background pass, and checks every line against a full parse of `new`.
 fn edit_and_check(
     pump: &mut Pump,
     doc: &mut CodeDoc,
@@ -864,8 +849,6 @@ fn closing_a_text_stops_its_pass() {
 
 // The thread.
 
-/// Waits up to `WAIT` for `cond`: the thread wakes the window just after sending replies, so
-/// a wake can land just after `settle` returns.
 fn eventually(cond: impl Fn() -> bool) -> bool {
     let deadline = std::time::Instant::now() + WAIT;
     while !cond() {
@@ -890,8 +873,6 @@ fn the_thread_wakes_the_window_and_an_idle_text_stays_idle() {
     assert!(doc.settle(WAIT));
     assert!(eventually(|| wakes.load(Ordering::SeqCst) > 0));
     assert!(doc.line_spans(0).is_some_and(|s| !s.is_empty()));
-    // The thread wakes the window after sending its replies, so the last wake can land just
-    // after `settle` returns.
     std::thread::sleep(Duration::from_millis(50));
     let after = wakes.load(Ordering::SeqCst);
     std::thread::sleep(Duration::from_millis(50));
@@ -1036,8 +1017,6 @@ fn text_spans_are_offset_into_the_whole_text() {
     }
     let got = runs_of(&doc.text_spans(0..doc.line_count()));
     assert_eq!(got, want);
-    // Default-coloured text (the variable `s`) gets no span, and touching runs of one colour
-    // are joined.
     let s_at = text.find("let s").expect("let") + 4;
     assert!(got.iter().all(|(r, _)| !r.contains(&s_at)));
     assert!(!got.is_empty());
@@ -1049,8 +1028,6 @@ fn text_spans_are_offset_into_the_whole_text() {
 
 #[test]
 fn text_spans_stop_below_runes_span_limit() {
-    // About 2,000 coloured numbers a line (the commas between them draw as text), so 40
-    // lines hold well over the limit.
     let line = format!("x = [{}]\n", "1,".repeat(2000));
     let text = line.repeat(40);
     let mut pump = Pump::new(light());
@@ -1065,9 +1042,6 @@ fn text_spans_stop_below_runes_span_limit() {
     assert_eq!(doc.text_spans(0..40).len(), MAX_SPANS);
 }
 
-/// K1's done-when, "the syntect themes colour the S4 fixtures": the look's syntect theme
-/// (strata-kit's `SCOPES`) gives each fixture's first 200 lines the colours of the roles
-/// they hold.
 #[test]
 fn the_look_theme_colours_the_s4_fixtures_by_role() {
     use strata_kit::theme::syntax::Role;
@@ -1151,8 +1125,6 @@ fn a_waker_set_after_the_thread_starts_is_used() {
     assert!(eventually(|| woke.lock().is_ok_and(|b| *b)));
 }
 
-/// A grammar the random-edit test runs on, with lines and line prefixes that open and close
-/// capture contexts (heredocs, fences, strings, comments).
 struct Lang {
     name: &'static str,
     fixture: &'static str,
@@ -1187,9 +1159,6 @@ const LANGS: [Lang; 3] = [
     },
 ];
 
-/// Seeds the committed random-edit test runs, per grammar and mode. Some gave wrong lines
-/// before the fixes they now guard (review rounds 1 and 2); sweep more locally by running
-/// `random_edit_run` over a range.
 const RANDOM_RUNS: &[(usize, Mode, u64)] = &[
     (0, Mode::Editable, 1),
     (0, Mode::Editable, 2),
@@ -1207,10 +1176,6 @@ fn wrong_exact_line(doc: &CodeDoc, text: &str, name: &str) -> Option<usize> {
     })
 }
 
-/// One seed of random edits on `lang` in `mode`: up to three queued before any work,
-/// viewports in between, then a random amount of work, sometimes the whole pass with the host
-/// not polling before the next edit. After every poll, no line marked exact may be wrong;
-/// every few rounds the pass runs out and every line must match a full parse.
 fn random_edit_run(seed: u64, lang: &Lang, mode: Mode) -> Result<(), String> {
     let mut text = head(lang.fixture, 250);
     let mut pump = Pump::new(light());
@@ -1345,8 +1310,6 @@ fn an_edit_before_the_host_saw_a_pass_end_still_drops_that_pass_stale_lines() {
             .mode(Mode::Editable),
     );
     all_lines(&mut pump, &mut doc);
-    // Edit 1 opens a string at line 10: every line below changes. Its pass ends and sends
-    // `Settled`, but the host doesn't poll before the next edit.
     let one = replace_line(&text, 10, |l| format!("\"{l}"));
     doc.edit(one.as_str().into(), LineEdit::diff(&text, &one), 0..60);
     pump.run();
@@ -1367,8 +1330,6 @@ fn an_edit_before_the_host_saw_a_pass_end_still_drops_that_pass_stale_lines() {
 
 #[test]
 fn an_insert_above_a_pass_the_host_never_saw_end_drops_its_stale_lines() {
-    // Pass 1 runs to the end (or converges mid-text) unseen; edit 2 inserts lines above it
-    // and converges at once: the lines the insert shifted under the old `from` are stale.
     let text = quote_script(300);
     for (k, at, closes) in [
         (5, 0, false),
@@ -1513,8 +1474,6 @@ fn lines_in_view_are_never_evicted() {
     pump.run();
     doc.poll();
     assert!(doc.line_spans(2000).is_some());
-    // Scroll far, then straight back before the far lines land: the view is cached, so
-    // nothing is asked, but it is still the view.
     doc.show(6000..10500);
     doc.show(2000..2080);
     pump.run();
@@ -1577,8 +1536,6 @@ fn show_does_not_ask_again_for_lines_on_their_way() {
 fn a_page_of_blocks_over_the_cache_size_is_asked_for_once() {
     let mut pump = Pump::new(light());
     let mut blocks = pump.blocks();
-    // 160 blocks of about 34 KiB, over the 4 MiB cache. Their lines are over the long-line
-    // cap, so the thread skips them and the test stays quick.
     let codes: Vec<String> = (0..160)
         .map(|i| {
             format!(
@@ -1628,8 +1585,6 @@ fn the_block_cache_trims_to_its_cap_at_each_poll_and_stays_under_its_ceiling_wit
         "{} bytes",
         blocks.cached_bytes()
     );
-    // A host that asks and never polls: no trims, but the ceiling holds, and blocks past it
-    // are plain rather than pending.
     let mut pump = Pump::new(light());
     let blocks = pump.blocks();
     for i in 0..1200 {
@@ -1665,8 +1620,6 @@ fn the_block_cache_stays_under_its_ceiling_when_misses_wait() {
 
 #[test]
 fn a_build_over_the_ceiling_comes_to_rest() {
-    // A host that rebuilds whenever `poll` says colours changed, over one document whose
-    // blocks (each under rune-kit's 32 KiB cut) total more than the 16 MiB ceiling.
     let mut pump = Pump::new(light());
     let mut blocks = pump.blocks();
     let codes: Vec<String> = (0..600)
@@ -1735,8 +1688,6 @@ fn a_block_is_coloured_up_to_the_32_kib_cut_and_asked_once() {
     assert!(blocks.cached_bytes() <= cut + 96);
 }
 
-/// A block of about 30 KB, under rune-kit's 32 KiB cut: a comment line the thread colours,
-/// then one line past the long-line cap, which it skips, so the tests stay quick.
 fn view_block(tag: &str, i: usize) -> String {
     format!("// {tag} {i}\n{}\n", "q".repeat(30_000))
 }
@@ -1750,8 +1701,6 @@ fn build_view(blocks: &CodeBlocks, codes: &[String]) -> usize {
         .count()
 }
 
-/// Builds `views` each frame, as a host does, until `poll` has nothing new. The number of
-/// builds and the blocks that drew plain in the last one.
 fn build_until_rest(
     pump: &mut Pump,
     blocks: &mut CodeBlocks,
@@ -1863,8 +1812,6 @@ fn the_thread_drops_block_jobs_the_cache_has_dropped() {
 
 #[test]
 fn a_theme_that_lands_during_a_wait_reaches_runes_cache() {
-    // Headless runs wait on misses and never poll: a theme switch landing during a wait must
-    // still change the hook's key, or rune-kit keeps the old theme's answers.
     let h = Highlighter::new(light());
     let mut blocks = h.blocks();
     blocks.wait_on_miss(Some(WAIT));
@@ -1935,8 +1882,6 @@ fn one_key(_: &str, _: &str) -> u64 {
 
 #[test]
 fn two_blocks_with_one_key_on_screen_come_to_rest() {
-    // Review 5, SF1: each asked for the other's entry, so every landing replaced the other
-    // and asked again, and a host rebuilding on `poll` never came to rest.
     let mut pump = Pump::new(light());
     let mut blocks = pump.blocks();
     blocks.key_with(one_key);
@@ -1965,8 +1910,6 @@ fn a_reply_for_a_block_that_lost_its_key_is_ignored() {
     let mut blocks = pump.blocks();
     blocks.key_with(first_byte_key);
     let (a, b, c) = ("a_one(1);\n", "a_two(\"s\");\n", "c();\n");
-    // One build asks for `c` and `a`; `c` lands and bumps the epoch, then `a` finishes too,
-    // its reply still on the channel.
     blocks.highlight(Some("rust"), c);
     blocks.highlight(Some("rust"), a);
     pump.requests();
@@ -1987,8 +1930,6 @@ fn a_reply_for_a_block_that_lost_its_key_is_ignored() {
     assert_eq!(highlight_runs(&got), block_reference("rust", b, &light()));
 }
 
-/// Builds `view` each frame, with `polls` landings polled before each build, until a build
-/// lands nothing. The builds, and whether it came to rest within `max`.
 fn build_polling(
     pump: &mut Pump,
     blocks: &mut CodeBlocks,
@@ -2017,9 +1958,6 @@ fn build_polling(
 
 #[test]
 fn three_polls_between_builds_over_the_cap_come_to_rest() {
-    // Review 5, SF2: Rune's resting wake polls, then the frame polls, then the view builds.
-    // Each poll that landed something moved the build marks, so the blocks the last build
-    // asked for fell out of the last two builds and were trimmed while on screen.
     let mut pump = Pump::new(light());
     let mut blocks = pump.blocks();
     let view: Vec<String> = (0..200).map(|i| view_block("a", i)).collect();
@@ -2041,8 +1979,6 @@ fn two_polls_between_builds_over_the_cap_come_to_rest() {
 
 #[test]
 fn a_block_from_the_last_build_outlives_one_trim() {
-    // Review 5, SF3: a block asked for in either of the last two builds is never trimmed,
-    // so a document left for one build keeps its colours; the next trim takes it.
     let mut pump = Pump::new(light());
     let mut blocks = pump.blocks();
     let x: Vec<String> = (0..160).map(|i| view_block("x", i)).collect();
@@ -2078,13 +2014,9 @@ fn n_log_n_bound(n: usize) -> u64 {
 
 #[test]
 fn misses_and_trims_cost_n_log_n() {
-    // Review 5, SF5: each miss summed the current build's bytes over every entry, and each
-    // trim looked for the oldest entry once per entry it dropped, both on the UI thread.
     let n = 5000;
     let mut pump = Pump::new(light());
     let mut blocks = pump.blocks();
-    // 5000 blocks of about 1 KiB, over the 4 MiB cap, in a language the thread answers at
-    // once.
     let codes: Vec<String> = (0..n)
         .map(|i| format!("// {i}\n{}\n", "x".repeat(1024)))
         .collect();
@@ -2115,9 +2047,6 @@ fn misses_and_trims_cost_n_log_n() {
 
 #[test]
 fn tiny_blocks_count_their_entries_against_the_cap() {
-    // Review 5, SF6: the cap counted code bytes only, so 50,000 blocks of a few bytes stayed
-    // under it whatever their entries, tokens and keys cost. Each entry now counts 96 bytes
-    // more, as rune-kit's hook cache does.
     let mut pump = Pump::new(light());
     let mut blocks = pump.blocks();
     for i in 0..50_000 {
@@ -2140,11 +2069,6 @@ fn tiny_blocks_count_their_entries_against_the_cap() {
 
 #[test]
 fn a_build_past_the_ceiling_evicts_the_old_document_in_n_log_n() {
-    // Review 1 of C11 on SF5: the first test stayed under the 16 MiB ceiling, so the miss
-    // path's eviction (and its running total) went untested. Here an old document of about
-    // 15 MB from an earlier build is still cached when a new build of about 12 MB arrives:
-    // its misses go past the ceiling and must evict the old blocks, never refuse new ones,
-    // and stay n log n however many misses there are.
     let mut pump = Pump::new(light());
     let mut blocks = pump.blocks();
     let old: Vec<String> = (0..500)

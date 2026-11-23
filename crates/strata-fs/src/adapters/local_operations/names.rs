@@ -39,8 +39,6 @@ pub(super) fn parse_copy_suffix(stem: &OsStr) -> (&OsStr, Option<u64>) {
     (stem, None)
 }
 
-/// The folder's rules' name first, then the names each rule that changes it gives alone, then
-/// such rules together, fewest first, each where it is a new name.
 pub(super) fn stricter_names(
     name: &OsStr,
     rules: &NameProfile,
@@ -79,9 +77,6 @@ pub(super) fn may_be_refused(name: &OsStr) -> bool {
     fix::fix_name(name, &strictest, false).cause.is_some()
 }
 
-/// Keep Both's names: "name (1)", or one past the number it has, with a
-/// file's last extension kept, wrapping past the largest number, and each
-/// cut to fit `limit`.
 pub(super) fn numbered_names(
     name: &OsStr,
     is_directory: bool,
@@ -167,8 +162,6 @@ impl Taken {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum Key {
     Exact,
-    /// As a filesystem that may take two names for one does, and where a
-    /// folder's casefolding is unknown.
     Folded,
 }
 
@@ -185,8 +178,6 @@ pub(super) struct PlanEntry<'a> {
     pub name: &'a OsStr,
     pub is_directory: bool,
     pub fixing: bool,
-    /// Whether the entry is numbered where an earlier one has its name, as
-    /// one of a paste's items from different folders may.
     pub repeatable: bool,
 }
 
@@ -196,9 +187,6 @@ pub(super) struct Planned {
     pub cause: Option<RenameCause>,
 }
 
-/// Fixed names, kept names a folding mount takes for an earlier kept one, and repeated names are
-/// numbered past the kept names in the byte order of the names they come from, so the plan
-/// depends only on the entries.
 pub(super) fn plan_names(
     entries: &[PlanEntry<'_>],
     profile: &NameProfile,

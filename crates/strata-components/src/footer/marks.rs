@@ -1,32 +1,16 @@
 // SPDX-License-Identifier: MIT
 
-//! The footer's marks: the pill the `10X` tag and the clipboard badge share, the `filter:` and
-//! `search:` marks, the search hit under the cursor, and the `VISUAL` and `UNSET` range marks.
-
 use rune::{El, TextStyle, row, text};
 use strata_kit::look::Look;
 
-/// The pill's fill and border: the accent at these opacities, as Strata's `.tenxer-tag`,
-/// `.shortcut-footer-paste` and `.shortcut-footer-chord-pill` draw them (`src/style.css`:
-/// `alpha(@strata_accent, 0.14)` and a 1 px `alpha(@strata_accent, 0.4)` border). No Kit or
-/// strata-kit token holds them; C18's chord pill shares [`pill`].
 pub const PILL_FILL_ALPHA: f32 = 0.14;
 pub const PILL_BORDER_ALPHA: f32 = 0.4;
 
-/// Strata's pill base radius (`border-radius: 999px` in `src/style.css`): squares off at 0 %
-/// roundness and stays a full pill (`height / 2`) at every positive roundness (`strata_kit::shape`).
 const PILL_BASE_RADIUS: f32 = 999.0;
 /// Strata's pill font weight (`font-weight: bold`) and letter spacing (`letter-spacing: 0.5px`).
 const PILL_WEIGHT: f32 = 700.0;
 const PILL_TRACKING: f32 = 0.5;
 
-/// Strata's footer pill around `words`: the accent on a faint accent tint with a fainter accent
-/// border, scaled by the look's corner roundness (`.tenxer-tag`). The `10X` tag, the clipboard
-/// badge and C18's chord pill share it at `look.frame.control` height, so showing any of them
-/// leaves the footer's height alone. The words are hidden from assistive technology: the caller
-/// names the pill.
-///
-/// Used by: the footer; C18's chord pill; hosts drawing a pill beside them.
 pub fn pill(look: &Look, words: &str) -> El {
     let k = &look.kit;
     let accent = k.c.text_accent;
@@ -52,9 +36,6 @@ pub fn pill(look: &Look, words: &str) -> El {
         )
 }
 
-/// A mark the footer shows while a filter or a search is open: `filter: …` or `search: …`.
-/// Strata shows it in 10xer mode, which hides the pane's own filter field, and for a subfolder
-/// search in either map; which is the host's.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum FilterMark {
     /// A filter of the folder's own items (10xer `f`).
@@ -90,8 +71,6 @@ pub(super) fn clipboard(look: &Look, key: String, words: &str, description: &str
         .description(description.to_owned())
 }
 
-/// The `filter:` or `search:` mark, in the footer's text colour, cut short past
-/// [`MARK_MAX_CHARS`] characters' width (Strata's 40), with the query as its description.
 pub(super) fn filter(look: &Look, key: String, words: String, query: &str) -> El {
     let k = &look.kit;
     text(words)
@@ -103,21 +82,11 @@ pub(super) fn filter(look: &Look, key: String, words: String, query: &str) -> El
         .description(query.to_owned())
 }
 
-/// The longest a filter mark draws before its ellipsis, in characters (Strata's
-/// `set_max_width_chars(40)`), and the longest folder part of a hit (60).
 pub const MARK_MAX_CHARS: usize = 40;
 pub const HIT_FOLDER_MAX_CHARS: usize = 60;
-/// The hit's name keeps at least this many characters before it truncates
-/// (`CurrentHit::NAME_MIN_CHARS`).
 pub const HIT_NAME_MIN_CHARS: usize = 32;
-/// A character's width as a share of the font size, to turn Strata's character widths into
-/// points: about a monospace advance (JetBrains Mono's is 0.6 em).
 const CHAR_WIDTH: f32 = 0.6;
 
-/// The search hit under the cursor, as a path relative to the searched folder: the folder part
-/// gives way to an ellipsis before the name does, which truncates in its middle. Both in
-/// `text_muted` (Strata's `.shortcut-footer-chord-hint`). Assistive technology reads the path as
-/// a label, not a live region: it changes with every cursor move.
 pub(super) fn hit(look: &Look, key: String, path: &str) -> El {
     let k = &look.kit;
     let font = k.ty.small;
@@ -156,8 +125,6 @@ pub(super) fn hit(look: &Look, key: String, path: &str) -> El {
     )
 }
 
-/// The `VISUAL` or `UNSET` mark of an active 10xer range, in the footer's text colour, named
-/// "Visual select" or "Visual unset".
 pub(super) fn range(look: &Look, key: String, words: &str, name: &str) -> El {
     let k = &look.kit;
     text(words.to_owned())

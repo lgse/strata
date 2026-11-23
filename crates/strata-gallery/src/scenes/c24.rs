@@ -1,36 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The gallery page for C24 Scroll extras: its scenes, demo state, view and key and poll hooks.
-//! Scene names start with `c24-` and end in `-light` or `-dark`.
-//!
-//! Work package: `docs/rune/work/phase-1-leaves/C24-scroll-extras.md`.
-//!
-//! Four panes, one at a time:
-//!
-//! - **List**: a 10,000-entry collection (every tenth a folder) with List's overlay scroll bar
-//!   and middle-click autoscroll in front of C1b's pointer intent, with C1c's keys and C1d's
-//!   marquee installed. The header shows the last intent (`c24-intent`), the last back or
-//!   forward button (`c24-history`), the autoscroll's state (`c24-status`), a stand-in for an
-//!   armed 10xer chord (`c24-chord`) and a filter field (`c24-filter`).
-//! - **Nested**: three 1,000-entry collections in a sideways strip, as Columns lays them out:
-//!   each with a column's bar, the strip with its own, one autoscroll for the window.
-//! - **Bars**: a plain viewport that scrolls both ways, with the app-wide bar on each axis and
-//!   autoscroll on both.
-//! - **Panel**: a stand-in sidebar (`c24-sidebar`, a plain scroll viewport) beside the list, and
-//!   a stand-in Sort by panel (`c24-panel`, opened and closed by `c24-panel-button`) with C24's
-//!   [`OutsideWheel`] outside it: a wheel tick outside closes it and scrolls the list under the
-//!   pointer, and nothing over the sidebar or header.
-//!
-//! | Key | Does |
-//! | --- | --- |
-//! | Alt+Left | Go to another folder (List): the autoscroll in the one left stops |
-//! | Ctrl+H | Hide or show the list: hiding it stops its autoscroll |
-//! | g | Arm the stand-in 10xer chord; Escape (or an Escape that stops autoscroll) cancels it |
-//!
-//! `STRATA_C24_BUDGET_WARMUP=1` makes the page's second poll wait 1.1 s of real time once,
-//! then print [`WARMED`], as C1e's page does for Rune's once-a-second budget lines (Rune draft
-//! U-C1e-5). Only `tests/c24.rs`'s budget run sets it.
-
 use rune::{
     Cx, Drag, El, Key, KeyEvent, PointerButton, ScrollPos, TextEdit, Tx, col, row, text, text_input,
 };
@@ -89,7 +58,6 @@ pub struct Column {
     pub bar: Bar,
 }
 
-/// C24's demo state, held in `Gallery::c24`.
 pub struct Demo {
     pub pane: Pane,
     pub listing: ListSource,
@@ -110,7 +78,6 @@ pub struct Demo {
     pub stopped: String,
     pub chord: bool,
     pub filter: TextEdit,
-    /// C5's rename editor (the `c24-rename` scene): a text field inside the listing.
     pub rename: RenameState,
     pub clock: f64,
     pub hidden: bool,
@@ -149,7 +116,6 @@ fn entries(n: u64, first_id: u64, prefix: &str) -> Vec<ListEntry> {
         .collect()
 }
 
-/// C1b's pointer intent behind C24's autoscroll, C1c's keys and C1d's marquee.
 fn install(c: &mut Controllers, auto: &Autoscroll, scope: &str, feed: &ScrollFeed) {
     c.pointer = Some(Box::new(AutoscrollPointer::new(
         Some(Box::new(
@@ -262,8 +228,6 @@ impl Demo {
         };
     }
 
-    /// Alt+Left: another folder. `enter` resets the controllers, which stops the list's
-    /// autoscroll.
     fn go(&mut self, tx: &mut Tx) {
         use strata_components::collection::selection::Listing;
         self.folder = 1 - self.folder;
@@ -330,9 +294,6 @@ fn bars(g: &mut Gallery, dark: bool) {
     }
 }
 
-/// C5's rename editor open on a folder's row (`item folder 00010`, `row-11`): a text field
-/// inside the listing, where Strata's `is_text_target` keeps a middle click from starting
-/// autoscroll, and where the row under it would open in a new tab.
 fn rename(g: &mut Gallery, dark: bool) {
     scene(g, dark, Pane::List);
     let _ = g.c24.rename.begin(
@@ -344,7 +305,6 @@ fn rename(g: &mut Gallery, dark: bool) {
     );
 }
 
-/// C5's editor on the list's rows.
 fn rename_editor() -> RenameEditor<Gallery> {
     RenameEditor::new(
         |g: &Gallery| &g.c24.rename,
@@ -358,8 +318,6 @@ fn reduced(g: &mut Gallery, dark: bool) {
     g.look.animations = false;
 }
 
-/// Golden scenes: each gets an accessibility and a PNG golden. Each calls
-/// `g.open("c24", dark)`, then fills in `g.c24`.
 pub const SCENES: &[Scene] = &[
     ("c24-ten-k-light", |g| ten_k(g, false)),
     ("c24-ten-k-dark", |g| ten_k(g, true)),
@@ -385,8 +343,6 @@ pub const REVIEW: &[Scene] = &[
     ("c24-rename-dark", |g| rename(g, true)),
 ];
 
-/// The controllers' settings, from the look: the page passes them each time it builds or ticks
-/// a collection.
 pub type Settings = (MarqueeSettings, AutoscrollSettings);
 
 pub fn settings(g: &Gallery) -> Settings {
@@ -617,8 +573,6 @@ pub fn view(g: &Gallery, cx: &mut Cx<Gallery>) -> El {
         .key("c24-page")
         .w_full()
         .h_full()
-        // The page's main region, not a button: Rune reads a plain group with a press or drag
-        // handler as one, and this one hears only the back and forward buttons.
         .role("main")
         .pointer_buttons([PointerButton::Back, PointerButton::Forward])
         .on_drag(
@@ -661,8 +615,6 @@ pub const PANEL_SCRIM: &str = "c24-panel-scrim";
 /// The stand-in sidebar's key.
 pub const SIDEBAR: &str = "c24-sidebar";
 
-/// The stand-in panel's outside: a tick over the list scrolls the list; anywhere else (the
-/// sidebar, the header) it only closes the panel.
 fn outside_wheel() -> OutsideWheel<Gallery> {
     OutsideWheel::new(|g: &mut Gallery, _| g.c24.panel = false).listings(|g: &Gallery, at| {
         if g.c24.coll.viewport().contains(at) {
@@ -749,8 +701,6 @@ fn panel_view(g: &Gallery) -> El {
     )
 }
 
-/// Keys no focused element took while this page is open: shortcuts, and keys with nothing
-/// focused. True consumes the key; false lets the gallery's Escape go back to the index.
 pub fn on_key(g: &mut Gallery, key: &KeyEvent, tx: &mut Tx) -> bool {
     let d = &mut g.c24;
     match &key.key {
@@ -780,7 +730,6 @@ pub fn poll(g: &mut Gallery, t: f64, tx: &mut Tx) -> bool {
         eprintln!("{WARMED}");
     }
     let mut changed = false;
-    // C5's poll: the edit ends on a blur, or its row leaving the view or the listing.
     if d.rename.is_open() {
         changed |= d.rename.tick(SCOPE, &d.listing, &d.coll).changed;
     }

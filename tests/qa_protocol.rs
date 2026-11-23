@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! `strata-rune --qa <directory>` as the QA runner starts it: the protocol over the
-//! process's own stdin and stdout. It needs no display.
-
 #![cfg(feature = "qa")]
 
 use std::{

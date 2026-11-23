@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The adapter on C1e's seam: what [`Keyboard`] reads from a `Ctx` and sends back to the
-//! element. Each test names the bullet whose path through the element it carries.
-
 use std::rc::Rc;
 
 use rune::{Key, KeyEvent, Mods, PointerButton};
@@ -40,8 +37,6 @@ impl Host {
         }
     }
 
-    /// Runs `f` with a fresh `Ctx`, as the element does for one input, and returns its flow and
-    /// effects.
     fn with(&mut self, f: impl FnOnce(&mut Ctx<'_>) -> Flow) -> (Flow, Vec<Effect>) {
         let mut cx = Ctx::new(&self.src, &self.geo, Rect::default(), 0.0, &mut self.sel)
             .with_settings(self.settings.clone());
@@ -127,8 +122,6 @@ fn nothing_to_select_reaches_the_host_as_its_own_type() {
 
 #[test]
 fn the_host_settings_choose_the_map() {
-    // browser/selection/keyboard-navigation: With Type to search off, `h`, `j`, `k`, and `l` act as Left, Down, Up, and Right in every view and the file chooser.
-    // browser/selection/keyboard-navigation: With Type to search on, `h`, `j`, `k`, and `l` pressed in the file list start a search instead of moving.
     let mut on = Host::new(None);
     let mut k = Keyboard::default();
     on.sel.select_only(&on.src, 2);
@@ -212,7 +205,6 @@ fn a_press_ends_a_range_and_a_folder_change_resets() {
 
 #[test]
 fn reset_drops_the_type_ahead_prefix() {
-    // C1c scope: type-ahead finds by a typed prefix, with a timeout.
     let names = ["bat", "bee", "cat"];
     let mut h = Host::new(Some(KeySettings::default().letters(Letters::TypeAhead)));
     h.src = source(&names);
@@ -229,8 +221,6 @@ fn reset_drops_the_type_ahead_prefix() {
 
 #[test]
 fn ctrl_a_and_escape_turn_keyboard_mode_on_once() {
-    // browser/selection: With no transient UI open, Escape clears the active pane's selection and keeps the keyboard cursor and directory.
-    // Neither moves the cursor, so the element wouldn't turn keyboard mode on by itself.
     let mut h = Host::new(None);
     let mut k = Keyboard::default();
     h.sel.select_only(&h.src, 3);

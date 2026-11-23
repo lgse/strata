@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Asynchronous folder picker via the XDG Desktop Portal (`org.freedesktop.portal.FileChooser`),
-//! replacing GTK's `gtk::FileDialog::select_folder` for custom-action import and export.
-
 use std::{
     cell::RefCell,
     collections::HashMap,
@@ -28,10 +25,6 @@ const CALL_TIMEOUT_MSEC: i32 = 15_000;
 
 static NEXT_TOKEN: AtomicU64 = AtomicU64::new(1);
 
-/// Asks the desktop portal to pick a single folder without blocking the UI thread.
-///
-/// Returns `Ok(Some(path))` on acceptance, `Ok(None)` when cancelled, or `Err(message)` if the
-/// portal call fails.
 pub(super) async fn select_folder(title: String) -> Result<Option<PathBuf>, String> {
     let connection = gio::bus_get_future(gio::BusType::Session)
         .await

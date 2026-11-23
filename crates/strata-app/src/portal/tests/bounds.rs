@@ -1,7 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The bounds on what an untrusted caller may send (GTK's `untrusted_request_inputs_are_bounded`).
-
 use std::path::Path;
 
 use super::{boolean_choice, filter};

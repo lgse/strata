@@ -1,19 +1,10 @@
 // SPDX-License-Identifier: MIT
 
-//! The footer's item and selection count, by Strata's rules (`src/ui/shortcut_footer/status.rs`
-//! at lgse/strata `upstream/main`), with every word, plural and size as data.
-
 use std::fmt;
 use std::rc::Rc;
 
-/// Up to this many selected entries the count lists the folders, the files and the selected
-/// files' size; past it, only how many are selected (Strata's `DETAILED_SELECTION`). The host
-/// reads per-entry details only up to it.
 pub const DETAILED_SELECTION: usize = 64;
 
-/// What the footer counts: the active listing, its selection and a filter over it.
-///
-/// Used by: hosts, through [`summary`].
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Listing {
     /// Every entry the listing shows.
@@ -32,16 +23,11 @@ pub struct Listing {
 pub struct Selected {
     /// How many entries are selected.
     pub count: usize,
-    /// What they are, read only up to [`DETAILED_SELECTION`] selected entries. `None` past it
-    /// (or while unknown): the count then names the selection without a size.
     pub details: Option<SelectionDetails>,
     /// The sole selected entry, when `count == 1` and the host names it instead of counting.
     pub single: Option<SingleSelection>,
 }
 
-/// The one selected entry, when a selection holds a single item and is not the whole listing.
-/// Shown as `<name>` (with `<size>` for a file, and ` — <modified>` when the host supplies a
-/// non-empty date, as Strata does in Columns and Icons views).
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct SingleSelection {
     pub name: String,
@@ -51,8 +37,6 @@ pub struct SingleSelection {
     pub modified: Option<String>,
 }
 
-/// The selected entries' kinds and the selected files' known sizes. A symlink to a file counts
-/// with its target's size, as the size column shows it (the host's).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct SelectionDetails {
     pub files: usize,
@@ -68,8 +52,6 @@ pub struct SelectionDetails {
 pub struct FilterCounts {
     pub files: usize,
     pub folders: usize,
-    /// Whether the results are on screen. While a typed query's search hasn't reported back
-    /// they aren't, and the count keeps describing the directory.
     pub displayed: bool,
 }
 
@@ -111,8 +93,6 @@ pub struct CountWords {
     pub selection_description: Template,
     /// A size: "64 MB".
     pub size: Rc<dyn Fn(u64) -> String>,
-    /// The size after a selection: " (64 MB)", " (3 B known; size incomplete)",
-    /// " (size unavailable)".
     pub size_known: Template,
     pub size_incomplete: Template,
     pub size_unavailable: String,
@@ -177,8 +157,6 @@ impl Default for CountWords {
     }
 }
 
-/// A byte count in decimal units, as GLib's `g_format_size` writes it in English: "3 B",
-/// "1.5 kB", "64.0 MB". Hosts pass their own (Strata's `i18n::file_size`).
 pub fn decimal_size(bytes: u64) -> String {
     const UNITS: [&str; 6] = ["kB", "MB", "GB", "TB", "PB", "EB"];
     if bytes < 1000 {
@@ -193,22 +171,6 @@ pub fn decimal_size(bytes: u64) -> String {
     format!("{value:.1} {}", UNITS[unit])
 }
 
-/// The footer's count for `listing`, by Strata's rules:
-///
-/// - A filter whose results are displayed counts its results ("1 item", "0 items"), with their
-///   file and folder breakdown as the description, whatever is selected among them.
-/// - Otherwise, with nothing selected, "N items", described by the breakdown.
-/// - With every entry selected: the listing's folders and files, "1 folder, 2 files selected",
-///   with no size.
-/// - With more than [`DETAILED_SELECTION`] selected (or no details): "N items selected".
-/// - With one entry selected and [`Selected::single`] provided: `<name>` with `<size>` for a
-///   file and ` — <modified>` when a non-empty date is supplied (Columns and Icons views).
-/// - Otherwise the selection's folders and files, with the selected files' size: all known
-///   " (64 MB)", some " (3 B known; size incomplete)", none " (size unavailable)". Folder
-///   contents are never counted.
-/// - A selection's description: "S of N items selected." and the size note.
-///
-/// Used by: hosts (Strata's footer).
 pub fn summary(listing: &Listing, words: &CountWords) -> Count {
     if let Some(filter) = listing.filter.filter(|f| f.displayed) {
         return Count {

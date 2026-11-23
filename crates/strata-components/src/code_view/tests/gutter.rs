@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Behavioral tests for whole-line gutter click/drag selection, Shift+click range extension,
-//! chunked and wrapped lines, viewport-edge auto-scroll, zero-commit invariants, and external
-//! selection clear reconciliation.
-
 use std::cell::Cell;
 use std::rc::Rc;
 
@@ -118,8 +114,6 @@ fn gutter_click_focuses_selects_whole_line_empty_line_and_chunked_continuation()
     let clip = clipboard::memory();
     rt.use_clipboard(&clip);
 
-    // 1. Clicking line 0 in the gutter focuses CodeView automatically, uses the transparent
-    //    sentinel (no row text node selected -> uniform single-paint highlight), and Ctrl+C copies it.
     let gx = gutter_x(&rt);
     let y0 = row_center_y(&rt, 0);
     rt.pointer_move(gx, y0);

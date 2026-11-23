@@ -203,7 +203,6 @@ fn apply(
     }
 }
 
-/// GTK bookmarks may contain non-UTF-8 labels.
 pub fn parse_pinned_places(contents: &[u8]) -> Pins {
     let mut places = Vec::new();
     for line in contents.split(|byte| *byte == b'\n') {

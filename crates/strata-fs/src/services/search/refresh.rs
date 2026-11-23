@@ -49,9 +49,6 @@ impl RefreshTarget {
         shown && !overrides.matched(path, true).is_ignore()
     }
 
-    /// Whether an index walk of `root` lists the entries of `directory`. A flat walk lists
-    /// only `root`; a recursive one skips what `build_index` prunes: excluded and generated
-    /// folders, hidden ones unless `hidden`, and folders at `MAX_INDEX_DEPTH` or deeper.
     fn walk_lists_directory(&self, index: &SharedIndex, root: &Path, directory: &Path) -> bool {
         if !self.recursive {
             return directory == root;
@@ -79,8 +76,6 @@ impl RefreshTarget {
 pub enum RenameScope {
     /// Every index with a root at, above or below either path.
     Related,
-    /// Only indexes with a root at or below `from`, which move to `to`. Callers rescan
-    /// the folder that held the entry themselves, so a plain file rename coalesces.
     Moved,
 }
 
@@ -162,8 +157,6 @@ pub fn refresh_search_indexes_for_directory(directory: &Path) {
 pub(super) enum RefreshMode {
     /// The roots may have changed: cancel a running walk and start over at once.
     Restart,
-    /// The same roots changed on disk: let a running walk publish, then walk once more,
-    /// at most once per `MIN_REFRESH_INTERVAL`.
     Coalesce,
 }
 
@@ -295,8 +288,6 @@ fn refresh_index(index: &Arc<SharedIndex>) {
     }
 }
 
-/// Sleeps until `MIN_REFRESH_INTERVAL` after the previous walk started, unless a
-/// `RefreshMode::Restart` ends the wait. False once the index retired.
 fn wait_out_refresh_interval(index: &SharedIndex) -> bool {
     const SLICE: Duration = Duration::from_millis(20);
     loop {

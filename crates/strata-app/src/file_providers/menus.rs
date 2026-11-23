@@ -1,10 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Provider sections on the open context menu: building labelled provider groups from
-//! [`MenuAction`] trees, refreshing the live [`MenuModel`] while preserving open submenu
-//! navigation across branch renames and sibling changes, and keeping each leaf's latest
-//! `context` token in place (`src/ui/file_providers/menus.rs`).
-
 use std::{
     collections::{BTreeMap, HashMap},
     path::PathBuf,
@@ -57,8 +52,6 @@ impl OpenMenu {
         sections
     }
 
-    /// Updates leaf `context` tokens and, when presentation changed, splices the updated
-    /// provider sections into `state` while retaining open submenu navigation.
     pub(super) fn refresh(
         &mut self,
         state: &mut ContextMenuState,

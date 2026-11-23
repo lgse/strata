@@ -40,8 +40,6 @@ fn labels_under(snapshot: &Snapshot, key: &str) -> Vec<String> {
         .collect()
 }
 
-/// A menu item says its text; a search option says its name and folder, in the order drawn; a
-/// shortcut its name does not say stays out, as does a text inside a button in an option.
 #[test]
 fn presents_the_texts_a_one_leaf_control_says_under_it() {
     let row = [0.0, 0.0, 200.0, 28.0];
@@ -130,8 +128,6 @@ fn presents_the_texts_a_one_leaf_control_says_under_it() {
     }
 }
 
-/// A control the snapshot already holds children under, such as an entry row with its
-/// presented name, gets no second label.
 #[test]
 fn leaves_a_control_with_children_as_it_is() {
     let elements = vec![

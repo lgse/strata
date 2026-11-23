@@ -1,50 +1,7 @@
 // SPDX-License-Identifier: MIT
 
-//! The catalog generator `build.rs` runs (`#[path]`-included there): SVG sources in, the Rust
-//! source of [`super::catalog`]'s arrays out. It lives here so the crate's tests can check what
-//! it accepts and what it makes; the library itself never compiles it.
-//!
-//! Each source becomes a `rune::Icon`: the elements inside its `<svg>`, with the root's paint
-//! attributes moved to a group, as Rune's icon bodies have no `<svg>`. Three arrays hold every
-//! icon, sorted by name, so a lookup by name is a binary search:
-//!
-//! - `LUCIDE`: Strata's Theme colors. Catppuccin colours become `currentColor`, with Strata's
-//!   15 % fill on unfilled shapes, so they take the element's colour.
-//! - `MOCHA` and `LATTE`: Strata's Brand colors, each Catppuccin colour resolved in that
-//!   flavour. Rune draws a body that names its own colours in them.
-//!
-//! The Lucide and repository icons are the same in all three; Strata's tint placeholders in
-//! them become `currentColor`.
-//!
-//! # What a source may hold
-//!
-//! A source outside these lists fails the build with its file's name, so a refresh can't
-//! change what the catalogs draw without someone looking:
-//!
-//! - a name of lowercase ASCII letters, digits, `-` and `_`, starting with a letter;
-//! - one root `<svg>` with a `0 0 s s` viewBox, `xmlns`, `width`, `height` and paint
-//!   attributes ([`PAINT`]), and only whitespace and comments outside it: no XML
-//!   declaration, doctype or trailing markup;
-//! - the elements in [`ELEMENTS`], with the attributes in [`ATTRIBUTES`]: no `style`, no
-//!   `class`, no `href`, no `<use>`, `<image>`, `<style>` or `<script>`;
-//! - no text between tags (none of these elements holds any) and no `&`: no entity or
-//!   character references, in text or in attribute values;
-//! - paint (`fill`, `stroke`, `stop-color`) that is `none`, `currentColor`, a reference inside
-//!   the file (`url(#id)`) and, by folder: Strata's tint placeholders in `lucide/` (and its
-//!   white in `strata-check-on-primary`), or Catppuccin's `var(--vscode-ctp-<colour>)` in
-//!   `catppuccin/`, plus the raw colours in [`CATPPUCCIN_OWN_COLOURS`]. No named colours.
-//!
-//! Rune's single-colour rasterizer honours `stroke-miterlimit` on elements and groups, and
-//! ignores `stroke-dasharray` and `clip-path`. Those two are still allowed, as Brand colours
-//! draw them through resvg, and the Theme-colours bodies that hold them are listed in
-//! `icons/README.md` (Rune draft U-K3-3).
-//!
-//! std only, deterministic: sorted output, no paths, times or hash order.
-
 use std::fmt::Write as _;
 
-// build.rs includes this file by `#[path]`, which would look for `tests.rs` beside it, so the
-// path is spelt out: the same file from the crate and from build.rs (and rustfmt).
 #[cfg(test)]
 #[path = "generate/tests.rs"]
 mod tests;
@@ -61,12 +18,8 @@ pub enum Kind {
 /// Strata's tint placeholders in its Lucide SVGs (`recolor_icon_source` in `src/assets.rs`).
 const TINTS: [&str; 3] = ["#8bc9eb", "#22d3ee", "#2e3436"];
 
-/// The one Lucide icon drawn in white: Strata's check on an accent fill. Its consumer tints
-/// it with an on-accent colour, so here it takes `currentColor` like the rest.
 const ON_ACCENT: (&str, &str) = ("strata-check-on-primary", "#ffffff");
 
-/// Raw colours Strata's Catppuccin sources hold outside `var()`: a white clip path that
-/// paints nothing, and a gradient's white stop. Both keep their colour in every catalog.
 const CATPPUCCIN_OWN_COLOURS: [(&str, &str); 2] = [
     ("strata-ctp-humans", "#fff"),
     ("strata-ctp-poetry-lock", "#fff"),
@@ -110,8 +63,6 @@ const LATTE: [(&str, &str); 16] = [
     ("overlay1", "#8c8fa1"),
 ];
 
-/// Strata's fill for the folder and, under Theme colors, for a Catppuccin icon's unfilled
-/// shapes: its own colour at 15 %.
 const FAINT_FILL: &str = r#"fill="currentColor" fill-opacity="0.15""#;
 
 /// Root attributes that paint, and move to the wrapping group.
@@ -262,8 +213,6 @@ fn strip_comments(svg: &str) -> String {
     out
 }
 
-/// The viewBox side, as written, and the body: the root's children, wrapped in a group with
-/// its paint attributes.
 fn parse(svg: &str) -> Result<(String, String), String> {
     let open = svg.find("<svg").ok_or("no <svg>")?;
     let head_end = open + svg[open..].find('>').ok_or("an unclosed <svg>")?;
@@ -271,8 +220,6 @@ fn parse(svg: &str) -> Result<(String, String), String> {
     if close < head_end {
         return Err("an empty <svg>".into());
     }
-    // Comments are already gone, so a prolog, a doctype (with its entities) or trailing
-    // markup is all that could sit here.
     let outside = [&svg[..open], &svg[close + "</svg>".len()..]];
     if let Some(stray) = outside.iter().find(|s| !s.trim().is_empty()) {
         return Err(format!("`{}` outside the <svg>", stray.trim()));

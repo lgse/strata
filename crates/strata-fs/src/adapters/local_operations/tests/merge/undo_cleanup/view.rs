@@ -4,8 +4,6 @@ use crate::app::{Browser, BrowserEvent};
 
 use super::*;
 
-/// Lists local folders, watching them only when `watched`, as where no
-/// folder monitor is available.
 struct Listing {
     watched: bool,
 }
@@ -123,8 +121,6 @@ fn a_merge_undo_drops_from_view_only_what_it_removed() {
     );
 }
 
-/// Whether undo fails an item, the merge ran in the background, and the
-/// folder is watched.
 #[derive(Clone, Copy)]
 struct Viewed {
     failing: bool,
@@ -179,8 +175,6 @@ fn write_viewed_merge(source: &Path, folder: &Path) -> io::Result<()> {
     )
 }
 
-/// Merges `source/folder` into `folder`, changes two of its items, and
-/// browses it until it lists the merge.
 fn merge_and_browse(
     (browser, events): (&Rc<Browser>, &Events),
     case: Viewed,
@@ -255,8 +249,6 @@ fn check_viewed_undo(case: Viewed, sandbox: &Path) -> Result<Option<String>, Box
     )?;
     assert!(!folder.join("new.txt").exists(), "{row}");
     let expected = ["a.txt", "b.txt", "c.txt", "d.txt"];
-    // A monitor may still be reporting what the undo changed, and a
-    // folder without one reloads.
     let behind = pump_until(&row, &|| listed_names(&browser) == expected)
         .is_err()
         .then(|| format!("{row}: the folder lists {:?}", listed_names(&browser)));

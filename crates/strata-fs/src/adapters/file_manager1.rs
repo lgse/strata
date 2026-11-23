@@ -1,10 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! `org.freedesktop.FileManager1`, the interface browsers and GTK/GNOME apps
-//! call for "Open file location". Those callers talk to the well-known bus
-//! name directly instead of going through `xdg-open` and `mimeapps.list`, so
-//! without this Strata is skipped even when it owns `inode/directory`.
-
 use crate::model::Location;
 
 use super::{location_for_file, reveal_target_for_file};
@@ -28,8 +23,6 @@ const INTERFACE_XML: &str = r#"<node>
   </interface>
 </node>"#;
 
-/// One window to open: the directory to browse, the entries to select inside
-/// it, and whether the caller asked for their properties.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RevealRequest {
     pub directory: Location,
@@ -64,8 +57,6 @@ impl Method {
     }
 }
 
-/// Claims the well-known name on `connection` and answers reveal calls with
-/// `handler`, once per directory the call named.
 pub fn export_file_manager(
     connection: &gio::DBusConnection,
     handler: impl Fn(RevealRequest) + 'static,
@@ -101,10 +92,6 @@ pub fn export_file_manager(
     Ok(())
 }
 
-/// Groups the named URIs into one request per directory, keeping the order
-/// the caller listed them in so the first URI opens the first window. The
-/// Rune interface serves the interface through strata-platform and groups its
-/// calls here too.
 pub fn reveal_requests(method: Method, uris: &[String]) -> Vec<RevealRequest> {
     let mut requests: Vec<RevealRequest> = Vec::new();
     for uri in uris {

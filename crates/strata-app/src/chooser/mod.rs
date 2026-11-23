@@ -1,13 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Portal and floating file chooser parts (`src/ui/chooser/`):
-//!
-//! - [`Chooser`] (`Place::Footer`) mounts `ChooserDetails` + `ChooserActions` below the window
-//!   footer when `App` runs a chooser request, observes `BrowserEvent::OpenRequested` and
-//!   selection changes for `Name` auto-fill, and registers chooser-specific shortcuts.
-//! - [`ChooserDialog`] (`Place::Dialogs`) mounts the Save overwrite confirmation and PNG image
-//!   conversion consent dialogs on C15's [`StrataDialog`].
-
 pub(crate) mod accept;
 pub(crate) mod download;
 pub(crate) mod floating;
@@ -109,9 +101,6 @@ impl Chooser {
         }
     }
 
-    /// Ends the destination check that the accept numbered `generation` started. False when
-    /// the request has finished or a later accept took over, which the check's result then
-    /// leaves alone.
     pub(crate) fn end_check(&mut self, generation: u64) -> bool {
         let Some(active) = self.active.as_mut() else {
             return false;
@@ -259,8 +248,6 @@ pub(crate) fn cancel(app: &mut App, tx: &mut Tx) -> bool {
     accept::cancel(app, tx)
 }
 
-/// Return on the focused entry of a chooser, before the browser opens it
-/// ([`confirm_key_activation`]). False outside a chooser or when the browser should open it.
 pub(crate) fn confirms_focused(app: &mut App, tx: &mut Tx) -> bool {
     if !app.browser.is_chooser_mode() {
         return false;
@@ -271,8 +258,6 @@ pub(crate) fn confirms_focused(app: &mut App, tx: &mut Tx) -> bool {
     confirm_key_activation(app, (depth, position), Activation::Key, tx)
 }
 
-/// Refills `Name` when clicking an already-selected file row in `SaveFile` mode
-/// (`install_filename_selection_click` in `src/ui/chooser/state.rs`).
 pub(crate) fn clicked_entry_in_chooser(app: &mut App) {
     if shell::preferences(app).tenxer_mode {
         return;
@@ -292,8 +277,6 @@ pub(crate) fn clicked_entry_in_chooser(app: &mut App) {
     state::update_selected_filename(app);
 }
 
-/// Makes the entry the load put the cursor on a selection of its own, so a click on it reads as
-/// a click on a selected row.
 fn commit_load_cursor(app: &mut App) {
     if filter::targets::selected(app).is_some() || !app.browser.selection_is_load_cursor() {
         return;
@@ -306,9 +289,6 @@ fn commit_load_cursor(app: &mut App) {
     app.browser.set_selection(depth, &selected, Some(position));
 }
 
-/// Intercepts `Activation::Key` on a file in chooser mode BEFORE `activate_focused_in_place` /
-/// `activate_focused` collapses a multi-selection (`chooser_confirm` in
-/// `src/ui/window/keyboard/chooser.rs`).
 pub(crate) fn confirm_key_activation(
     app: &mut App,
     (depth, position): (usize, usize),

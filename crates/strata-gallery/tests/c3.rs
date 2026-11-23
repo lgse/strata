@@ -1,10 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! C3's page in process: what the accessibility tree doesn't show. Tooltips (a pointer resting
-//! for the page's 900 ms) and hover aren't in the tree; held thumbnails across a zoom need the
-//! store; the paths X2 finds tiles by need the element tree. Each test names the bullets it checks; the scripts in `tests/scripts/c3/`
-//! and `strata-components`' `icons_grid` tests check the rest.
-
 #[expect(
     dead_code,
     reason = "c3 uses only the gallery command and the scripts folder"
@@ -77,8 +72,6 @@ mod c3 {
         run(rt, 0.1);
     }
 
-    /// A point on the blank card space between tile `id`'s frame and its name: 2 pt under
-    /// the frame's drawn bottom, centred under it (the caption gap is 4 pt).
     fn under_frame(rt: &Runtime<Gallery>, id: u64) -> (f32, f32) {
         let [x, y, w, h] = element(rt, &format!("row-{id}/icon"))
             .unwrap_or_else(|| panic!("no tile {id}"))
@@ -124,11 +117,6 @@ mod c3 {
 
     const LONG: &str = "2026-10-07-release-candidate-build-final-v3-with-a-very-long-tail.tar.gz";
 
-    /// icons: "Resting the pointer about a second (900 ms) on a card whose name is
-    /// middle-ellipsized shows the full name in a tooltip", "A name that fits in its two caption
-    /// lines shows no tooltip", "The tooltip appears only over the card's thumbnail or caption,
-    /// not its padding" and "Over the caption, only the name's text box and the details text
-    /// count".
     #[test]
     fn a_cut_name_rests_into_a_tooltip_over_its_frame_name_and_details_only() {
         let mut rt = mount("c3-default-light");
@@ -149,8 +137,6 @@ mod c3 {
         assert_eq!(rest_on(&mut rt, "row-7/label"), None, "beach.jpg fits");
     }
 
-    /// icons: "Resting the pointer about a second (900 ms)…": the page's delay, not Rune's
-    /// 0.5 s, holds it back.
     #[test]
     fn the_tooltip_waits_for_the_pages_delay() {
         let mut rt = mount("c3-default-light");
@@ -162,8 +148,6 @@ mod c3 {
         assert!(rt.help_tooltip().is_some(), "shown past 0.9 s");
     }
 
-    /// icons: "After a rename commits, the tooltip shows the new name; while the rename field
-    /// is open, none appears."
     #[test]
     fn a_tile_being_renamed_has_no_tooltip_and_a_renamed_one_shows_its_new_name() {
         let mut rt = mount("c3-default-light");
@@ -183,9 +167,6 @@ mod c3 {
         assert_eq!(rest_on(&mut rt, "row-11/label").as_deref(), Some(renamed));
     }
 
-    /// rename: the editor in a tile's caption takes the keyboard. A field that grows from no
-    /// width of its own, as C5's does, gets one from the tile: Rune gives the keyboard to no
-    /// field it cannot show.
     #[test]
     fn a_rename_field_in_a_tile_takes_the_keyboard() {
         let rt = mount("c3-renaming-light");
@@ -205,8 +186,6 @@ mod c3 {
         assert_eq!(rt.help_tooltip(), None);
     }
 
-    /// icons: "Hover feedback appears only over a tile's thumbnail and caption, not the gutters
-    /// between tiles."
     #[test]
     fn hover_lights_the_frame_or_the_name_and_not_the_cards_blank_space() {
         let mut rt = mount("c3-default-light");
@@ -227,9 +206,6 @@ mod c3 {
         assert_eq!(hover(&rt, "row-13/icon"), 0.0);
     }
 
-    /// icons: "Moving the slider scales existing thumbnails in place without flashing generic
-    /// icons." A size step keeps every landed image held, its icon hidden, until the new
-    /// step's image replaces it.
     #[test]
     fn a_size_step_keeps_landed_thumbnails_drawn_while_the_new_step_loads() {
         let mut rt = mount("c3-default-light");
@@ -264,8 +240,6 @@ mod c3 {
         );
     }
 
-    /// view-modes (folder-views, the host's part): a size the host changes itself (another
-    /// folder's, a slider) lays out at once, and the cursor tile stays in view.
     #[test]
     fn a_size_the_host_sets_keeps_the_cursor_tile_in_view() {
         let mut rt = mount("c3-default-light");
@@ -281,7 +255,6 @@ mod c3 {
         assert!(h > 0.0 && y >= page.visible[1], "the cursor tile shows");
     }
 
-    /// X2's drop zones: a folder tile's path follows the grid's count a row.
     #[test]
     fn a_tiles_path_finds_it_at_any_width() {
         let mut rt = mount("c3-default-light");
@@ -305,9 +278,6 @@ mod c3 {
         assert!(finds(&rt, &narrow), "{narrow}");
     }
 
-    /// pointer-intent: "In Icons, the gutter beside the thumbnail inside a card is blank space
-    /// for marquee." A drag from the blank card space under an unselected tile's frame draws a
-    /// band (two columns by two rows here), not a file drag.
     #[test]
     fn a_drag_from_a_cards_blank_space_draws_a_band() {
         let mut rt = mount("c3-default-light");
@@ -321,8 +291,6 @@ mod c3 {
         );
     }
 
-    /// The grid draws each tile where its hit geometry says, a short last row included (its
-    /// cells share the row with empty filler cells): a press lands on the tile drawn there.
     #[test]
     fn every_tile_is_drawn_centred_in_its_geometry_rect() {
         let rt = mount("c3-short-rows-light");
@@ -341,9 +309,6 @@ mod c3 {
         }
     }
 
-    /// thumbnail-size: "The size steps through 32, 36, 40, 44, 48, 56, 64, 72, 80, 96, 112,
-    /// 128, 144, 160, 192, 224, and 256 px." From 32, sixteen steps up land on each size in
-    /// turn, a seventeenth stays at 256, and sixteen down walk back the same sizes.
     #[test]
     fn a_step_at_a_time_walks_strata_s_whole_ladder_both_ways() {
         const LADDER: [f32; 17] = [
@@ -367,8 +332,6 @@ mod c3 {
         assert_eq!(&sizes[18..], &down[..], "down");
     }
 
-    /// A size step that keeps the count a row (one tile a row here) still moves every row: a
-    /// cursor tile that showed stays in view, as a reflow keeps it.
     #[test]
     fn a_size_step_that_keeps_the_count_keeps_the_cursor_tile_in_view() {
         let mut rt = mount("c3-narrow-light");
@@ -388,8 +351,6 @@ mod c3 {
         );
     }
 
-    /// Turning thumbnails off draws every tile with its icon alone, and on again with its
-    /// image: the tile builds again on each (C25's `version` changes with the switch).
     #[test]
     fn thumbnails_off_and_on_rebuild_the_tiles() {
         let mut rt = mount("c3-default-light");
@@ -407,9 +368,6 @@ mod c3 {
         assert!(thumb(&rt), "the image part again");
     }
 
-    /// A cut tile and a dragged tile draw faded (`collection.cut.opacity`,
-    /// `collection.drag.opacity`), the whole tile, its frame and name with it; an unmarked tile
-    /// beside them doesn't.
     #[test]
     fn cut_and_dragged_tiles_draw_faded() {
         let rt = mount("c3-marks-light");
@@ -441,10 +399,6 @@ mod c3 {
         }
     }
 
-    /// pointer-intent: "On an unselected entry, a drag from blank row space beside the filename
-    /// starts a marquee", and "a drag from the … rendered filename starts a file drag": 2 pt
-    /// left of `beach.jpg`'s drawn name box a drag draws a band; 2 pt inside it, it drags the
-    /// file. The name's hit box is its drawn box, neither the cell's width nor narrower.
     #[test]
     fn beside_a_short_name_is_blank_space_and_its_drawn_box_is_the_name() {
         for (dx, band) in [(-2.0f32, true), (2.0, false)] {
@@ -467,9 +421,6 @@ mod c3 {
         }
     }
 
-    /// icons: "Over the caption, only the name's text box and the details text count": a rest
-    /// 2 pt beside a cut name's drawn box, or beside the details text, shows no tooltip; 2 pt
-    /// inside either, it does.
     #[test]
     fn a_rest_beside_a_cut_names_box_or_its_details_shows_no_tooltip() {
         let mut rt = mount("c3-default-light");
@@ -489,9 +440,6 @@ mod c3 {
         }
     }
 
-    /// browser/scrolling: "Scrollbars fade in on hover or scrolling and stay hidden at rest; the
-    /// trough strengthens on hover and while dragging." On the grid (C24b): its bar is hidden at
-    /// rest, shows as the grid scrolls, and its thumb drags the grid.
     #[test]
     fn the_grids_bar_shows_as_it_scrolls_and_its_thumb_drags_it() {
         let mut rt = mount("c3-default-light");

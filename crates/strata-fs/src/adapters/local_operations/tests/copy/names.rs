@@ -21,8 +21,6 @@ fn renamed(folder: &Path, events: &[OperationEvent]) -> Vec<Renamed> {
     renamed_beneath(folder, &followed_report(events))
 }
 
-/// Two folders whose names clash once FAT fixes them, a FAT `stick` that
-/// already holds device names, and more than eight files for a bulk copy.
 struct FatPaste {
     one: PathBuf,
     two: PathBuf,
@@ -284,8 +282,6 @@ type CopyTree = fn(
 
 const COPIES: [(&str, CopyTree); 2] = [("engine", engine_copy), ("GIO", gio_copy)];
 
-/// Copies `source` to `target` through `copy`, returning the renames it
-/// reported.
 fn copy_tree(
     copy: CopyTree,
     source: &Path,
@@ -323,8 +319,6 @@ fn a_gio_copy_that_fails_reports_the_fixed_name_of_a_folder_it_made() -> Result<
     Ok(())
 }
 
-/// Names FAT must fix or tell apart, among more siblings than GIO lists
-/// in one batch.
 fn fat_family_source(source: &Path) -> io::Result<()> {
     fs::create_dir_all(source)?;
     fs::write(source.join("a?.txt"), b"question")?;
@@ -457,8 +451,6 @@ fn a_copy_into_a_case_sensitive_folder_keeps_a_cut_name_apart_by_case_only()
     Ok(())
 }
 
-/// A mount with Windows rules, the name copied there as a file or a
-/// folder, and what it is saved as and why.
 struct WindowsName<'a> {
     preset: &'static str,
     quirks: Preset,

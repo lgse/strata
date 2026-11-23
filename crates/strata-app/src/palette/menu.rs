@@ -1,16 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! A result's menu (`show_result_menu` in `src/ui/search/results.rs`): a right-click on a
-//! result opens it at the pointer, with one row, "Open containing folder", described by its
-//! key and insensitive for a path with no folder. It reveals the result as Alt+Return does.
-//!
-//! It is a part of its own, in the dialogs' slot after the palette, so that it draws over the
-//! palette and holds the keyboard for a menu ([`Holds::Menu`]) while the palette holds it for
-//! its layer: the menus' part sits in the overlays, under every dialog. Escape or a press
-//! outside closes it, and the keyboard goes back to the palette's field with the result still
-//! highlighted. GTK leaves it on its layer instead, where the next character typed is lost
-//! (finding lgse/strata#2468, `oracle`).
-
 use std::{path::Path, rc::Rc};
 
 use rune::{El, Tx};
@@ -69,7 +58,6 @@ fn build(app: &App, frame: &mut Frame<'_, App>) -> Option<El> {
         |app: &App| &app.palette.menu,
         |app: &mut App| &mut app.palette.menu,
     )
-    // GTK's menu box has no name of its own.
     .name(String::new())
     .on_intent(chosen)
     .build(app, &app.look, frame.layer);

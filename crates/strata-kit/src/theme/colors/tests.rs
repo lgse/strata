@@ -23,8 +23,6 @@ fn theme_on(background: &str) -> Theme {
     }
 }
 
-/// settings/themes: "A theme is filed under Light when its background's relative luminance
-/// exceeds 0.4, including backgrounds written as `rgb()` or `#fff`."
 #[test]
 fn the_light_filter_reads_the_background_in_any_form() {
     for light in ["#fff", "rgb(255, 255, 255)", "#e0e0e0"] {
@@ -35,8 +33,6 @@ fn the_light_filter_reads_the_background_in_any_form() {
     }
 }
 
-/// settings/themes: "A theme gets Mocha file icons when its background's (299R + 587G +
-/// 114B) ÷ 1000 is below 128, otherwise Latte."
 #[test]
 fn a_dark_background_is_below_128_by_strata_weights() {
     assert!(theme_on("#7f7f7f").dark_background());

@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! A quick move off a viewer: the next file's load replaces an image or a rendered document
-//! in the same frame that Rune still holds the old view's first layout report. The report
-//! lands in the preview's spare state (`viewer::Detached`), and nothing panics.
-
 use rune::{Key, Mods, Tx};
 use strata_core::model::{FileEntry, Location};
 use strata_fs::services::{DocumentLayout, DocumentUnit, DocumentUnitKind, PreviewContent};

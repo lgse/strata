@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Destination transfer collision sorting, explanations, and step-by-step resolution through
-//! [`crate::conflict_dialog`], matching `src/ui/browser/transfer/collisions.rs`.
-
 use strata_core::{
     i18n::{join_sentences, tr},
     model::Location,

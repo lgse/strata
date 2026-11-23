@@ -1,26 +1,11 @@
 // SPDX-License-Identifier: MIT
 
-//! Collection geometry: where each entry sits, by index, so marquee hit-testing, keyboard moves
-//! and keyboard context-menu anchors work over rows that aren't mounted.
-//!
-//! Every value is in points, in content coordinates: the origin is the top-left of the scroll
-//! content, before scrolling. A component computes a content point from a window point as
-//! window point − the viewport's window origin + the scroll offset. To anchor a popup, go the
-//! other way: add the viewport's window origin and subtract the scroll offset
-//! ([`Rect::offset`]).
-//!
-//! Don't take content coordinates from Rune's `on_drag` on the content stack. On a
-//! `.virtualize` stack it reports a y rebased to the mounted rows: a press at viewport y = 40
-//! with the list scrolled 28,800 pt reports y = 2034, not 28,840.
-
 use std::ops::Range;
 
 #[cfg(test)]
 mod tests;
 
 /// A point in content coordinates.
-///
-/// Used by: C1b, C1d, C1e, C2, C3, C4.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Point {
     /// Points from the left edge.
@@ -42,10 +27,7 @@ impl From<(f32, f32)> for Point {
     }
 }
 
-/// A rectangle in content coordinates: its top-left corner and its size. Rune has no rect
-/// type, and reports layouts as `[x, y, w, h]`, which converts both ways.
-///
-/// Used by: C1b, C1d, C1e, C2, C3, C4, C5 (the label rect), C21 (the keyboard anchor).
+/// A rectangle in content coordinates: its top-left corner and its size.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Rect {
     /// The left edge.
@@ -64,8 +46,7 @@ impl Rect {
         Self { x, y, w, h }
     }
 
-    /// The rect between two corners in any order, as a band dragged up or left from its press
-    /// spans. Its size is never negative.
+    /// The rect between two corners in any order, as a band dragged up or left from its press spans.
     pub fn from_corners(a: Point, b: Point) -> Self {
         Self {
             x: a.x.min(b.x),
@@ -134,8 +115,6 @@ impl From<Rect> for [f32; 4] {
 }
 
 /// A direction to move the cursor in.
-///
-/// Used by: C1c, C2, C3.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Direction {
     /// Towards the top.
@@ -149,11 +128,6 @@ pub enum Direction {
 }
 
 /// A set of entry indices, as ascending, disjoint, non-adjacent ranges.
-///
-/// [`CollectionGeometry::range_in`] returns one: in a grid, a band over two columns of several
-/// rows covers indices that aren't contiguous, so a single `Range` can't hold them.
-///
-/// Used by: C1d, C1e, C2, C3, C4, C25 (the visible range).
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct IndexRanges(Vec<Range<usize>>);
 
@@ -164,7 +138,6 @@ impl IndexRanges {
     }
 
     /// Adds `range`, which must start at or after the start of every range added before it.
-    /// An empty range is ignored, and one that touches or overlaps the last merges with it.
     pub fn push(&mut self, range: Range<usize>) {
         if range.is_empty() {
             return;
@@ -215,13 +188,6 @@ impl From<Range<usize>> for IndexRanges {
 }
 
 /// Where a collection's entries sit, by index: pure maths over every entry, mounted or not.
-///
-/// The list uses [`UniformRows`]. The icons grid (C3) and anything with uneven rows (C4's
-/// sticky group headers) implement it themselves. Indices are those of the view's
-/// `EntrySource`, and every method expects `index` below its length.
-///
-/// Used by: C1b (`index_at`), C1c (`neighbor`, `page_step`), C1d (`range_in`), C1e, C2, C3
-/// (implements it), C4, C21 (`rect_of` the cursor, for the keyboard menu anchor).
 pub trait CollectionGeometry {
     /// The entry's rect.
     fn rect_of(&self, index: usize) -> Rect;
@@ -229,29 +195,17 @@ pub trait CollectionGeometry {
     /// The entry under `point`, if any.
     fn index_at(&self, point: Point) -> Option<usize>;
 
-    /// The entries whose rects share area with `rect`, which may have any sign of size. A
-    /// zero-width or zero-height rect is a line or a point, and takes the entries it lies in.
+    /// The entries whose rects share area with `rect`, which may have any sign of size.
     fn range_in(&self, rect: Rect) -> IndexRanges;
 
-    /// The entry next to `index` in `direction`, or `None` at an edge. Implementations don't
-    /// wrap; crossing into another collection (the next column) is the view's call.
+    /// The entry next to `index` in `direction`, or `None` at an edge.
     fn neighbor(&self, index: usize, direction: Direction) -> Option<usize>;
 
-    /// How many entries Page Up and Page Down move by: the whole rows that fit in the viewport
-    /// minus one, so a row of overlap stays in view across the jump, and at least 1. A grid
-    /// moves by that many rows' worth of entries.
-    ///
-    /// Strata pages this way (`rows_per_page` in `src/ui/scrolling.rs`, line 512 at 35ee677ab).
+    /// How many entries Page Up and Page Down move by.
     fn page_step(&self) -> usize;
 }
 
 /// Equal-height rows stacked from the top, as the list view and each Columns column draw them.
-///
-/// The element must draw every row at exactly `row_height`, or hit-testing over unmounted
-/// rows drifts from what is drawn. Row `i` spans `[top + i·row_height, top + (i+1)·row_height)`
-/// and `[0, width)`. Left and Right have no neighbours.
-///
-/// Used by: the tests of C1a, C1b, C1c, C1d and C1e, and C1e, C2 (one per column), C14b.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct UniformRows {
     /// How many rows there are.
@@ -313,8 +267,6 @@ impl UniformRows {
         (f64::from(y) - f64::from(self.top)) / f64::from(self.row_height)
     }
 
-    /// A fractional row number clamped to `0..=len` and truncated to a whole row. NaN (from a
-    /// NaN coordinate) clamps to 0.
     fn clamp_row(&self, row: f64) -> usize {
         if row.is_nan() || row <= 0.0 {
             0
@@ -375,8 +327,6 @@ impl CollectionGeometry for UniformRows {
                 .index_at(Point::new(0.0, r.y))
                 .map_or_else(IndexRanges::new, |i| (i..i + 1).into());
         }
-        // Rows i with top(i) < bottom and bottom(i) > top: floor of the band's top row to the
-        // ceiling of its bottom row, so a band ending exactly on a row edge leaves that row out.
         let inset = self.inset_y.max(0.0);
         let first = self.clamp_row(self.row_at(r.y + inset).floor());
         let end = self.clamp_row(self.row_at(r.bottom() - inset).ceil());

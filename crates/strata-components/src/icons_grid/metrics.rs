@@ -1,12 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! A tile's sizes, from the look and the tile size: pure arithmetic over tokens.
-//!
-//! After Strata's `icons_cell.rs` and `.icons-card*` rules (lgse/strata `upstream/main`
-//! 35ee677ab): a fixed thumbnail slot inside a padded frame, then a gap, a two-line name and one
-//! details line, inside a padded card with a margin around it. Strata reserves a fixed height
-//! for the name and the details, so nothing a tile shows changes its size.
-
 use std::hash::{Hash, Hasher};
 
 use rune::TextStyle;
@@ -22,13 +15,9 @@ pub const MIN_CARD: f32 = 116.0;
 /// The space Strata leaves between cards across a row (`ICONS_CARD_SPACING`), in points.
 pub const COLUMN_SPACING: f32 = 4.0;
 
-/// Text whose average glyph advance stands in for Pango's approximate character width, which
-/// sizes Strata's caption (`preferred_caption_width`).
 const SAMPLE: &str = "abcdefghijklmnopqrstuvwxyz";
 
 /// A tile's sizes, in points.
-///
-/// Used by: C3, C20d, hosts (an anchor inside a tile).
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[non_exhaustive]
 pub struct TileMetrics {
@@ -60,8 +49,7 @@ pub struct TileMetrics {
     pub details_font: TextStyle,
     /// The details line's height (0 without details).
     pub details_line: f32,
-    /// The narrowest cell: a card no narrower than its frame, its caption's characters and
-    /// [`MIN_CARD`], and the space between cards.
+    /// The narrowest cell: a card no narrower than its frame, its caption's characters and `MIN_CARD`.
     pub min_cell: f32,
     /// A tile's height: every line of the grid is this tall.
     pub height: f32,
@@ -70,8 +58,7 @@ pub struct TileMetrics {
 }
 
 impl TileMetrics {
-    /// A tile of `size` points (held to the look's ladder), its name over at most `lines`
-    /// lines (0: none), with a details line or not.
+    /// A tile of `size` points (held to the look's ladder), its name over at most `lines` lines (0.
     pub fn new(look: &Look, size: f32, lines: usize, details: bool) -> Self {
         let kit = &look.kit;
         let size = if size.is_finite() {
@@ -156,14 +143,12 @@ impl TileMetrics {
         }
     }
 
-    /// The width a name wraps at, in a cell `cell_w` wide: the card's inner width less the
-    /// name box's padding.
+    /// The width a name wraps at, in a cell `cell_w` wide: the card's inner width less the name box's padding.
     pub fn caption_width(&self, cell_w: f32) -> f32 {
         (cell_w - 2.0 * (self.margin + self.card_x + self.caption_pad)).max(1.0)
     }
 
-    /// The frame's rect in a cell `cell_w` wide, in the cell's points: centred, at the top
-    /// of the card.
+    /// The frame's rect in a cell `cell_w` wide, in the cell's points: centred, at the top of the card.
     pub fn frame_rect(&self, cell_w: f32) -> Rect {
         Rect::new(
             (cell_w - self.frame) / 2.0,

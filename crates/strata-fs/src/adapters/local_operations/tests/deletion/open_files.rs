@@ -166,8 +166,6 @@ fn still_open_reason(holding: Holding, mount: &str) -> String {
     }
 }
 
-/// The delete waited out the mount's whole budget, kept the folder with
-/// only the leftover, and named why.
 fn assert_stays_open(
     events: &[OperationEvent],
     (holding, mount): (Holding, &str),
@@ -435,8 +433,6 @@ enum Hidden {
 
 const EARLIER: &str = ".__smbfile_silly1";
 
-/// Leaves a hidden name in `folder` as `hidden` says: another program's
-/// leftover of an open file unlinked there, or an ordinary file named alike.
 fn plant_hidden(hidden: Hidden, folder: &Path, holds: &Holds) -> Result<(), Box<dyn Error>> {
     if let Hidden::NamedLikeOne = hidden {
         fs::create_dir(folder)?;
@@ -475,8 +471,6 @@ fn unlinked_names(scope: &FsQuirks) -> Vec<OsString> {
         .collect()
 }
 
-/// The delete unlinked no leftover, finishing once the file closed or
-/// leaving the leftovers alone in the folder.
 fn assert_leftovers_spared(
     events: &[OperationEvent],
     (folder, hidden_names): (&Path, &[String]),

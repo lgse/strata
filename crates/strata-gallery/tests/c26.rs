@@ -1,14 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! C26's prompts in process: what scripts can't drive. End process answers as the backend does
-//! (a shorter list, in place), a withdrawn request closes its prompt unanswered, and a fake
-//! `gio::MountOperation` round-trips through P9's GLib bridge into the real prompts.
-//!
-//! The binding below is test-only: the owner ruled that the real one lives in Strata (see
-//! `strata_components::mount_prompts`). It is the reference Strata's follows. `show-processes`
-//! isn't emitted here: its pids come in a `GArray`, which safe Rust can't build or read, so
-//! that mapping is covered as plain data (`mount_prompts::tests`).
-
 mod c26 {
     use std::cell::RefCell;
     use std::io::{ErrorKind, Read};
@@ -144,17 +135,12 @@ mod c26 {
         static OP: RefCell<Option<gio::MountOperation>> = const { RefCell::new(None) };
     }
 
-    /// The reference binding: each prompt signal asks the app through the bridge, and the
-    /// answer sets the operation's properties and replies. `aborted` drops the pending asks,
-    /// which withdraws their requests.
     fn bind(asker: Asker<MountRequest, MountResponse>, replies: Emitter<Reply>) -> Keep {
         let op = gio::MountOperation::new();
         let pending: Rc<RefCell<Vec<LocalTask>>> = Rc::default();
         let password = {
             let (asker, pending) = (asker.clone(), pending.clone());
             op.connect_ask_password(move |op, message, user, domain, flags| {
-                // GMountOperation's own handler runs last and replies Unhandled from an idle on
-                // the default context: stop it, as Strata stopped GTK's dialog.
                 op.stop_signal_emission_by_name("ask-password");
                 let has = |f| flags.contains(f);
                 let request = PasswordRequest {
@@ -228,8 +214,6 @@ mod c26 {
             use gio::MountOperationResult::{Aborted, Handled};
             match answer.await {
                 Some(MountResponse::Password(c)) => {
-                    // The operation is reused across retries: an earlier Anonymous answer
-                    // would still stand (Strata's `apply_mount_credentials`).
                     op.set_anonymous(false);
                     if let Some(user) = &c.user {
                         op.set_username(Some(user));
@@ -276,9 +260,6 @@ mod c26 {
     /// The host's side, as Strata's poll does it.
     fn poll(s: &mut App, _: f64, _: &mut Tx) -> bool {
         let mut changed = false;
-        // Withdrawal first: a binding that replaces a request asks the new one before it drops
-        // the old, so a withdrawal seen here comes with its replacement in the drain below,
-        // and the prompt updates in place instead of closing for a frame.
         if s.prompt.ticket().is_some_and(Request::is_withdrawn) {
             let _ = s.prompt.withdraw();
             changed = true;
@@ -313,12 +294,6 @@ mod c26 {
     }
 
     impl App {
-        /// Emits `signal` on the fake operation, on the GLib thread, as a backend would.
-        ///
-        /// Then runs what is ready on the global default context: GMountOperation's own
-        /// handlers queue their `Unhandled` reply there (`g_idle_add`), and the bridge's loop
-        /// runs a context of its own, so without this a binding that didn't stop them would
-        /// pass.
         fn emit(&mut self, emit: fn(&gio::MountOperation)) {
             self.emits.push(self.glib.spawn(move || async move {
                 OP.with_borrow(|op| emit(op.as_ref().expect("the operation is bound")));
@@ -387,8 +362,6 @@ mod c26 {
         keys(rt).iter().any(|k| k == dialog)
     }
 
-    /// Answers one `ask-password` on the operation: `form` sets the choices, then the password
-    /// is typed and Return pressed, or, with none, Connect is clicked. Returns the reply.
     fn sign_in(
         rt: &mut Runtime<App>,
         wakes: &Receiver<()>,
@@ -437,8 +410,6 @@ mod c26 {
         rt.poll = Some(poll);
         rt.frame(0.0);
 
-        // Sign in on one operation, as GIO reuses it across retries: Anonymous, then
-        // credentials with each storage choice, so a setting one answer leaves behind shows.
         let anonymous = sign_in(&mut rt, &wakes, None, |form| form.anonymous = true);
         assert_eq!(
             anonymous,
@@ -530,9 +501,6 @@ mod c26 {
         );
     }
 
-    /// Runs `body` in a child copy of this test binary, where GIO stays local and every bus
-    /// address points at a socket this process listens on, as P9's tests do. Fails if the
-    /// child fails, ran no test, or connected to either bus.
     fn isolated(name: &str, body: fn()) {
         if std::env::var_os(CHILD).is_some() {
             body();
@@ -618,8 +586,6 @@ mod c26 {
         format!("unix:path={}", path.display())
     }
 
-    /// A directory under the target's scratch space, removed on drop. Its name is short, as
-    /// the stand-in bus sockets inside it must fit a socket address (108 bytes).
     struct Scratch(PathBuf);
 
     impl Scratch {

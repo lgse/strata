@@ -1,30 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Prints the desktop's settings and every change to them, as JSON lines on stdout (the
-//! `settings` feature).
-//!
-//! `--no-window` runs a [`Watcher`] alone, prints what its sink hears, and exits when stdin
-//! closes:
-//!
-//! - `{"ev":"snapshot","settings":{…}}` once, first;
-//! - `{"ev":"changed","key":"text-scaling-factor","settings":{…}}` for each change;
-//! - `{"ev":"fallback","kind":"no-portal","key":null,"detail":"…"}` the first time each
-//!   fallback happens.
-//!
-//! By default it opens a window that shows the values, fed by `settings::follow`. It logs
-//! `{"ev":"landed"}` each time an update `follow` posts runs on Rune's loop (just before it
-//! stores the value), `{"ev":"view","settings":{…}}` each time the view runs, and `ready` and
-//! `frame`.
-//!
-//! `--first-answer-ms N` and `--timeout-ms N` set the watcher's [`Options`] (defaults 100 and
-//! 10000); the window ignores them, since `follow` takes the defaults.
-//!
-//! `cargo run -p strata-platform --example settings --features settings` reads the desktop's
-//! portal. The session tests run it on a private bus only (`tests/session/p5.rs`).
-//!
-//! [`Watcher`]: strata_platform::settings::Watcher
-//! [`Options`]: strata_platform::settings::Options
-
 #[cfg(feature = "settings")]
 mod demo {
     use std::io::{BufRead, Write};

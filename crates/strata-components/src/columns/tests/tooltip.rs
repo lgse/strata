@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Behavioral hover-tooltip tests for [`ColumnsView`]: host-provided tooltips, truncated-name
-//! fallback when no tooltip text is given, live updates via `tooltip_version`, and suppression
-//! while renaming, dragging, or anchored by a folder peek.
-
 use std::borrow::Cow;
 
 use rune::{Cx, El, Env, Runtime, Tx, col, el};

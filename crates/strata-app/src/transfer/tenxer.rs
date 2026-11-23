@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! 10xer's transfers: `p` and `P` paste with Keep Both or Replace focused on a conflict, and
-//! `m:` and `c:` move or copy into a picked folder without going there
-//! (`src/ui/browser/file_commands.rs`, `src/ui/browser/transfer.rs`).
-
 use rune::Tx;
 use strata_core::model::Location;
 
@@ -12,8 +8,6 @@ use super::{
 };
 use crate::{App, clipboard, commands::On, conflict_dialog::ConflictFocus, shell};
 
-/// `BrowserView::paste_preferring`: pastes with `focus` as the default conflict button, calling
-/// `on_empty` when the clipboard offers no files.
 pub(crate) fn paste_preferring(
     app: &mut App,
     focus: ConflictFocus,
@@ -35,8 +29,6 @@ pub(crate) fn paste_preferring(
     }
 }
 
-/// `ViewState::start_transfer_in_place`: moves or copies `sources` into `destination` without
-/// going there, with Keep Both focused on a conflict.
 pub(crate) fn start_in_place_transfer(
     app: &mut App,
     destination: Location,

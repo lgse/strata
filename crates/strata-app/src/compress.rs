@@ -1,37 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The Compress dialog and starting compression: GTK's `show_compress_dialog` and
-//! `start_compression` (`src/ui/browser/archive.rs`), built on C15's [`StrataDialog`].
-//!
-//! - **What opens it.** The `compress` command: the entry menu's "Compress…" row, acting on
-//!   the selection when the row's entry is in it or on the entry alone, and a key bound to
-//!   [`ACTIONS_COMPRESS`] in the default map at `direct_commands` (`src/ui/window/keyboard/direct.rs`).
-//!   Every entry needs a local path; otherwise nothing opens.
-//! - **The dialog** ([`view`]). "Compress 1 item" (or the item count) with the entries' kind
-//!   summary under it; **Archive name**, starting on the single entry's name or `"archive"`
-//!   selected; **Format** (`ZIP`, `7Z`, `TAR.GZ`, `TAR` toggle buttons); and **Protection**
-//!   (`No password`, `Password protected` toggle buttons, shown while the format supports a
-//!   password, with **Password** and **Confirm password** fields under `Password protected`).
-//!   Once the name or a password field differs from its starting value, backdrop clicks leave
-//!   the dialog open; Escape, Cancel and the close button always close it.
-//! - **Validation.** Editing **Archive name** updates its basename error live
-//!   (`name_field_error`). Confirming strips a trailing extension matching the chosen format
-//!   (`normalized_archive_name`), checks `validate_basename` (keeping the dialog open and
-//!   focusing **Archive name** on refusal), and checks that a requested password is non-empty
-//!   and matches **Confirm password** (stacking a danger error dialog over Compress when not).
-//! - **Starting compression.** `archive_name_taken` probes the destination off the UI thread
-//!   (`strata_fs::adapters::probes::presence`). When the name is free, `Browser::compress`
-//!   starts with `TransferConflict::FailIfExists`; on a collision, `ask_to_replace_archive`
-//!   prompts with **Replace**, **Keep Both**, or **Cancel** via [`crate::conflict_dialog`], and
-//!   [`crate::archive`] reveals the created archive once `BrowserEvent::ArchiveCompleted` arrives.
-//!
-//! Left out for [A11]:
-//!
-//! - **10xer's `;` -> `c` chord** and its shortcut feedback banner (`Nothing to compress`,
-//!   `Can't compress these items`), [A11]'s.
-//!
-//! [A11]: ../../../docs/rune/parity/packages/A11.md
-
 #[cfg(test)]
 mod tests;
 mod view;
@@ -133,8 +101,6 @@ impl Form {
     }
 }
 
-/// A validation error stacked over the Compress dialog (`Password required`, `Passwords do not
-/// match`).
 struct Notice {
     title: String,
     message: String,
@@ -193,7 +159,6 @@ fn normalized_archive_name(name: &str, format: ArchiveFormat) -> String {
         .to_owned()
 }
 
-/// `entry_kind_summary` (`src/ui/browser/entry.rs`).
 fn entry_kind_summary(entries: &[FileEntry]) -> String {
     let directories = entries
         .iter()
@@ -226,7 +191,6 @@ pub(crate) enum CompressAttempt {
     Started,
 }
 
-/// `BrowserView::compress_targets` (`src/ui/browser/file_commands.rs`) for 10xer's `; c` chord.
 pub(crate) fn open_for_focus(app: &mut App) -> CompressAttempt {
     let entries = tenxer::command_targets(app);
     if entries.is_empty() {
@@ -251,8 +215,6 @@ fn compress(app: &mut App, call: &Call<'_>, _: &mut Tx) -> Outcome {
     {
         open(app, entries);
     }
-    // `direct_commands` stops propagation on `ACTIONS_COMPRESS` even when nothing or a
-    // non-local item is selected (`src/ui/window/keyboard/files.rs`).
     Outcome::Ran
 }
 

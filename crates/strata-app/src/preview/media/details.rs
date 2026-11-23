@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! A video's badges come from the sandboxed metadata probe and the caption files beside it
-//! (GTK's `src/ui/preview/video/details.rs`). The probe runs off the UI thread 50 ms after
-//! the file shows, so a quick move starts none, and its answer reaches Rune through `Later`.
-
 use std::{path::Path, time::Duration};
 
 use rune::Tx;
@@ -16,7 +12,6 @@ use strata_preview::sandbox::{
 
 use crate::{App, slots::Later};
 
-/// The wait before the probe (GTK's `LOAD_SETTLE`).
 const LOAD_SETTLE: Duration = Duration::from_millis(50);
 const SIDECAR_EXTENSIONS: [&str; 5] = ["srt", "vtt", "ass", "ssa", "sub"];
 const SIDECAR_SCAN_LIMIT: usize = 5_000;

@@ -1,12 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Headless tests of the bridge: GIO on the bridge thread, answers on a `rune::Runtime`'s loop.
-//!
-//! Each test re-runs itself in a child copy of this binary (see [`isolated`]) with GIO kept off
-//! every D-Bus bus, because GIO reaches the session bus (and starts gvfsd) unless
-//! `GIO_USE_VFS=local` is in its environment, and a test can't set that in-process without
-//! `unsafe`.
-
 use std::io::{ErrorKind, Read};
 use std::os::unix::fs::PermissionsExt;
 use std::os::unix::net::UnixListener;
@@ -47,9 +40,6 @@ const DEADLINE: Duration = Duration::from_secs(5);
 /// How long the child copy of a test may run before it is killed.
 const CHILD_DEADLINE: Duration = Duration::from_secs(30);
 
-/// Runs `body` in a child copy of this test binary, where GIO stays local and every bus address
-/// points at a socket this process listens on. Fails if the child fails, ran no test, or
-/// connected to either bus.
 fn isolated(name: &str, body: fn()) {
     if std::env::var_os(CHILD).is_some() {
         body();
@@ -137,8 +127,6 @@ fn bus_address(path: &Path) -> String {
     format!("unix:path={}", path.display())
 }
 
-/// A directory removed on drop. Its name is short, as the stand-in bus sockets inside it must
-/// fit a socket address (108 bytes).
 struct Scratch(PathBuf);
 
 impl Scratch {
@@ -425,9 +413,6 @@ fn poll_mount(s: &mut Mount, _: f64, _: &mut Tx) -> bool {
     changed
 }
 
-/// A `gio::MountOperation` on the bridge whose `ask-password` handler asks the app, as C26's
-/// binding does. The test plays GIO's part and emits `ask-password` itself. Returns what the app
-/// was asked and the replies the operation made.
 fn ask_for_a_password(answer: Option<&str>) -> (Vec<String>, Vec<Reply>) {
     let (waker, wakes) = waker();
     let bridge = GlibThread::start(waker).expect("the bridge starts");

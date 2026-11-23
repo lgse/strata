@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! What a drop reads: with [`DropTarget::read_next`], one type at a time, as the target
-//! chooses from what it read so far; and why a read failed, past the read's bound.
-
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex, PoisonError};
@@ -43,8 +40,6 @@ fn view(s: &R, _: &mut Cx<R>) -> El {
         .child(s.dnd.drop_target(el().size(100.0, 60.0), "zone", target()))
 }
 
-/// Another client's side of the drag: answers each read at once from `answers`, and records
-/// what was read, in order.
 struct Port {
     answers: HashMap<&'static str, Result<Vec<u8>, ReadError>>,
     read: Arc<Mutex<Vec<String>>>,
@@ -73,8 +68,6 @@ impl InPort for Port {
     fn finish(&self, _: Option<DragAction>) {}
 }
 
-/// Drops a drag offering every listed type on the target, answering as `answers` says, runs
-/// its reads to the end, and returns what was read and what the target heard.
 fn drop_with(
     answers: HashMap<&'static str, Result<Vec<u8>, ReadError>>,
 ) -> (Vec<String>, Vec<DropData>) {
@@ -130,9 +123,6 @@ fn run_posted(rt: &mut Runtime<R>, jobs: &Arc<Mutex<Vec<Job>>>) -> bool {
     ran
 }
 
-/// A target that reads one type at a time reads the next only while the last was no use,
-/// never a type it has read, and hears why a read failed: a read past its bound is
-/// [`ReadError::TooLarge`], which the target can report.
 #[test]
 fn a_drop_reads_one_type_at_a_time_as_the_target_chooses() {
     let second = (LISTED[1], Ok(b"second".to_vec()));

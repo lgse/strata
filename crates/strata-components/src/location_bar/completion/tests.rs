@@ -158,8 +158,6 @@ fn tab_during_a_listing_waits_for_it() {
 
 #[test]
 fn a_tab_that_relists_carries_the_rest_to_the_new_listing() {
-    // Shown, then Tab completes, Down relists (the text changed): the Enter behind it moves to
-    // the new listing.
     let mut c = showing("/home/demo/", &["Desktop", "Documents"]);
     let q = c.request("/home/demo/Mu");
     for cmd in [Command::Complete, Command::Down, Command::Activate] {

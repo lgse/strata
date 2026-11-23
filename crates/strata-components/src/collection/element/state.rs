@@ -22,19 +22,11 @@ pub enum DropOver {
     Background,
 }
 
-/// One collection's state: its selection, its controllers, and what the element records about
-/// its viewport (where it shows, how far it is scrolled, which rows are visible).
-///
-/// The host keeps one per collection (a list, a grid, one Columns column) for the life of the
-/// view, and hands it to the element by accessor. A folder change resets it with
-/// [`CollectionState::enter`] rather than replacing it, so the scroll offset the element
-/// follows stays the same value.
-///
-/// Used by: hosts, C2 (one per column), C3, C4, C14b, C18, C21.
+/// One collection's state: its selection, its controllers.
 pub struct CollectionState {
-    /// The selection, cursor and anchor (C1a).
+    /// The selection, cursor and anchor.
     pub selection: Selection,
-    /// The controllers input is routed to (C1b, C1c, C1d).
+    /// The controllers input is routed to.
     pub controllers: Controllers,
     pub(super) viewport: Rect,
     pub(super) scroll: Live<f32>,
@@ -42,33 +34,20 @@ pub struct CollectionState {
     pub(super) scroll_layer: Live<[f32; 2]>,
     pub(super) visible: Range<usize>,
     pub(super) drop: Option<DropOver>,
-    /// The zone (a folder row or the background) a drag is over that refuses it: its moves
-    /// still reach the drag-over hook, but draw no drop highlight.
     pub(super) drop_refused: Option<DropOver>,
-    /// Whether that refused drag offers files: only a file drag drives the hook (autoscroll
-    /// follows file drags only).
     pub(super) drop_refused_files: bool,
     pub(super) hover_live: bool,
     /// The entry under the pointer at its last move over the collection (the rest hook's).
     pub(super) rest_under: Option<EntryId>,
-    /// The entry the pointer last arrived on by moving, unless a press ended or the host held
-    /// rest reports since: the only row whose rest report counts.
     pub(super) rest_entered: Option<EntryId>,
     pub(super) keyboard: bool,
     pub(super) active: bool,
     pub(super) layout: u64,
     pub(super) pending: Option<Position>,
-    /// The scroll offset `enter` asked for while a restore waits: a scroll away from it is the
-    /// person's, and cancels the restore.
     pub(super) pending_offset: f32,
-    /// How many entries a line holds, as the last build or layout worked it out: a cell so the
-    /// view (which reads the state) can record it, and sync, reveal and the visible range
-    /// agree with what it built.
     pub(super) per_line: Cell<usize>,
     /// The row height, as last laid out.
     pub(super) row_height: f32,
-    /// The pointer gesture in progress belongs to the collection (its press landed in the
-    /// viewport), with what the press was over.
     pub(super) gesture: Option<Hit>,
     /// The selection as last announced: its revision, how many were selected and of how many.
     pub(super) announced: (u64, usize, usize),
@@ -82,21 +61,10 @@ pub struct CollectionState {
     pub(super) laid_out: bool,
     /// The stuck header's offset, `[0, dy]`: up by as much as the next header pushes it.
     pub(super) stuck_offset: Live<[f32; 2]>,
-    /// The first line Rune last reported visible: the one whose group's header sticks. Rune
-    /// reports it from the layout it is drawing, which the recorded scroll offset can trail.
     pub(super) top_line: Cell<Option<usize>>,
-    /// The header part's rect in window points, as last laid out (`Collection::header`): a
-    /// press on its blank space is on empty space, at the viewport's top. A cell, so a build
-    /// with no header clears it.
     pub(super) header: Cell<Rect>,
-    /// A press on the header's blank space held back until it travels past the threshold
-    /// (`Collection::header_defers_press`).
     pub(super) deferred: Option<super::seam::PointerInput>,
-    /// A press on an external marquee origin (`Collection::origin_drag`) waiting to cross the
-    /// drag threshold.
     pub(crate) origin_press: Option<(Point, rune::Mods)>,
-    /// Reveals move only this collection's viewport
-    /// ([`CollectionState::set_own_viewport_reveals`]).
     pub(super) own_viewport_reveals: bool,
 }
 
@@ -172,28 +140,17 @@ impl CollectionState {
         self.scroll.get()
     }
 
-    /// The scroll offset as a live value, which follows a scroll in the same frame with no view
-    /// commit: an overlay drawn in viewport coordinates (C1d's band, C24's marker) rides it.
+    /// The scroll offset as a live value, which follows a scroll in the same frame with no view commit.
     pub fn scroll_live(&self) -> Live<f32> {
         self.scroll.clone()
     }
 
-    /// The entries in the viewport, as last reported: what thumbnails load first (C25).
-    ///
-    /// Rune reports the rows a commit laid out on the frame after it, so for one frame after
-    /// a reflow (a grid's width) or a regroup this is the range before it (Rune draft
-    /// [U-C1f-5]). It is a priority hint, and catches up on its own.
-    ///
-    /// [U-C1f-5]: crate::collection::element#rune-drafts-not-filed
+    /// The entries in the viewport, as last reported: what thumbnails load first.
     pub fn visible_range(&self) -> Range<usize> {
         self.visible.clone()
     }
 
-    /// Whether any of the line holding entry `index` of `len` is in the viewport: the line's
-    /// place by the last build's layout, against the scroll as it is now. Unlike
-    /// [`CollectionState::visible_range`], which Rune reports a frame after a commit, it follows
-    /// a change to the listing at once: an entry listed above moves the line down a line with
-    /// it. False before the first build has laid a row out.
+    /// Whether any of the line holding entry `index` of `len` is in the viewport.
     pub fn shows_entry(&self, index: usize, len: usize) -> bool {
         let h = self.row_height;
         if h <= 0.0 || index >= len {
@@ -204,9 +161,6 @@ impl CollectionState {
         top < offset + self.viewport.h && top + h > offset
     }
 
-    /// The lines of `count` the viewport shows by its own last layout and the scroll as it is
-    /// now, or None before a layout has given it a height and its rows a height: what Rune's
-    /// `on_visible_rows` reports, for where that report is stale (Rune packet entry 101).
     pub(super) fn lines_in_view(&self, count: usize) -> Option<Range<usize>> {
         let h = self.row_height;
         if h <= 0.0 || self.viewport.h <= 0.0 || count == 0 {
@@ -231,8 +185,7 @@ impl CollectionState {
         )
     }
 
-    /// `rect`, in content coordinates, as window points: where a popup anchored to an entry
-    /// opens (C21).
+    /// `rect`, in content coordinates, as window points: where a popup anchored to an entry opens.
     pub fn content_to_window(&self, rect: Rect) -> Rect {
         rect.offset(self.viewport.x, self.viewport.y - self.scroll.get())
     }
@@ -242,8 +195,7 @@ impl CollectionState {
         self.drop
     }
 
-    /// Whether keyboard mode is on: the last input that moved the cursor was a key. The cursor
-    /// outline shows only then, and row hover waits for the pointer to move.
+    /// Whether keyboard mode is on: the last input that moved the cursor was a key.
     pub fn keyboard_mode(&self) -> bool {
         self.keyboard
     }
@@ -253,8 +205,7 @@ impl CollectionState {
         self.hover_live
     }
 
-    /// How many entries each line holds, as the last build or layout worked it out: 1 for a
-    /// list, the tiles a row for a grid (C3's count, for C25's `Viewport::per_line`).
+    /// How many entries each line holds, as the last build or layout worked it out: 1 for a list, the tiles a row for a grid.
     pub fn per_line(&self) -> usize {
         self.per_line.get()
     }
@@ -264,8 +215,6 @@ impl CollectionState {
         self.layout
     }
 
-    /// The text the live status line reads now: the last announced selection, worded by
-    /// `wording`.
     pub(super) fn announcement(&self) -> super::Announcement {
         super::Announcement {
             selected: self.announced.1,
@@ -280,9 +229,7 @@ impl CollectionState {
 
     // Setting what the host decides.
 
-    /// Sets the layout key: the view mode and anything that changes wrapping (an icons grid's
-    /// width). A remembered scroll offset comes back only in the layout it was measured in. A
-    /// new layout (a view switch) cancels a restore that waits for its listing.
+    /// Sets the layout key: the view mode and anything that changes wrapping (an icons grid's width).
     pub fn set_layout_key(&mut self, layout: u64) {
         if layout != self.layout {
             self.pending = None;
@@ -290,20 +237,12 @@ impl CollectionState {
         self.layout = layout;
     }
 
-    /// Sets where a hovering drag would drop, for a binder that hears hovers itself (X2's
-    /// system shim). Rune's binder sets it through the rows' drop zones.
+    /// Sets where a hovering drag would drop, for a binder that hears hovers itself.
     pub fn set_drop_over(&mut self, drop: Option<DropOver>) {
         self.drop = drop;
     }
 
-    /// Sets the groups the entries draw in, each under a header line, the top group's header
-    /// stuck at the top of the viewport (C4's file-type groups; see [`Groups`]). Empty groups
-    /// (the default) draw the entries ungrouped.
-    ///
-    /// The groups belong to the listing: set them whenever it changes, before
-    /// [`CollectionState::enter`] or [`CollectionState::sync`] with it, so the restore and the
-    /// reveal those make place the cursor among the new header lines. Groups that don't cover
-    /// the listing (their lengths don't add up to its length) draw it ungrouped.
+    /// Sets the groups the entries draw in, each under a header line, the top group's header stuck at the top of the viewport.
     pub fn set_groups(&mut self, groups: Groups) {
         self.groups = groups;
     }
@@ -313,34 +252,23 @@ impl CollectionState {
         &self.groups
     }
 
-    /// Shows the cursor or not: in Columns, only the column holding the keyboard cursor
-    /// shows it (C2).
+    /// Shows the cursor or not: in Columns, only the column holding the keyboard cursor shows it.
     pub fn set_active(&mut self, active: bool) {
         self.active = active;
     }
 
-    /// Holds rest reports ([`Collection::rest`](super::Collection::rest)) until the pointer
-    /// next arrives on a row: call it when a drag that didn't start in this collection ends
-    /// (a sidebar row, a tab, another pane, a system drag from P1 or X2). A drag dropped on a
-    /// folder then never peeks it. The collection does this itself when one of its own
-    /// presses ends, and when a drop lands on one of its folder rows, which it also records as
-    /// the row under the pointer (a system drag moves the pointer there unseen).
+    /// Holds rest reports (`Collection::rest`) until the pointer next arrives on a row.
     pub fn hold_rest(&mut self) {
         self.rest_entered = None;
     }
 
-    /// Records keyboard navigation that moved the cursor from outside the element's own key
-    /// handling (a page shortcut): keyboard mode turns on, and row hover waits for the pointer
-    /// to move.
+    /// Records keyboard navigation that moved the cursor from outside the element's own key handling (a page shortcut).
     pub fn keyboard_moved(&mut self) {
         self.keyboard = true;
         self.hover_live = false;
     }
 
-    /// Takes the selection's current state as the one the live status line reads out, if an
-    /// operation changed it since the last time (its revision moved on). The element does this
-    /// after every input and in [`CollectionState::sync`] and [`CollectionState::enter`]; a
-    /// host that changes the selection itself (a Select All shortcut) calls it after.
+    /// Takes the selection's current state as the one the live status line reads out.
     pub fn note_selection(&mut self, source: &dyn EntrySource) {
         let revision = self.selection.revision();
         if revision != self.announced.0 {
@@ -355,12 +283,7 @@ impl CollectionState {
         self.selection.before_removal(before, gone);
     }
 
-    /// Brings the collection in step with `source` after it changed: [`Selection::sync`], then
-    /// the cursor row keeps its place on screen (`Tx::keep_on_screen`). When the listing is
-    /// complete and a restore waits for it, the restore applies now instead. While a marquee
-    /// band is open, the status line waits for it to end.
-    ///
-    /// `scope` is the collection's key, as given to the element.
+    /// Brings the collection in step with `source` after it changed.
     pub fn sync(
         &mut self,
         scope: &str,
@@ -377,18 +300,12 @@ impl CollectionState {
         }
         let changed = self.selection.sync(source, rule);
         if let Some(index) = self.selection.cursor_index(source) {
-            // Rune holds a virtual row by its key: in a grid, the line the cursor's cell sits
-            // in now. When the change moved the cell to another line, that line's key is new,
-            // Rune finds no drawn rect to hold, and lets it go.
             tx.keep_on_screen(line_path(scope, source, index, self.per_line.get()));
         }
         self.note_unless_banding(source);
         changed
     }
 
-    /// [`CollectionState::note_selection`], unless a marquee band is open: the status line
-    /// reads a band's count once its gesture ends (the element notes it then), not a count a
-    /// listing change makes mid-band.
     fn note_unless_banding(&mut self, source: &dyn EntrySource) {
         let banding = self
             .controllers
@@ -405,8 +322,6 @@ impl CollectionState {
         LineMap::new(self.per_line.get(), Some(&self.groups), len)
     }
 
-    /// Whether the line holding entry `index` shows whole in the viewport, as last laid out,
-    /// and clear of a stuck group header (which covers the viewport's top line).
     fn shows_line(&self, index: usize, len: usize) -> bool {
         let h = self.row_height;
         if h <= 0.0 {
@@ -419,9 +334,6 @@ impl CollectionState {
         top >= offset + covered && top + h <= offset + self.viewport.h
     }
 
-    /// Takes `per` entries a line from now on. When that differs from before and there is a
-    /// cursor, scrolls the cursor into view on `tx`: a reflow moves every entry to another
-    /// line, and the lines' keys with them. True when the count changed.
     pub(super) fn reflow_to(
         &self,
         scope: &str,
@@ -440,19 +352,12 @@ impl CollectionState {
         true
     }
 
-    /// Keeps every reveal of an entry (a key, a placed cursor, a reflow, a restore) to this
-    /// collection's own viewport, as one instant scroll worked out from the geometry (where
-    /// [`CollectionState::reveal`] would land), rather than a reveal request: Rune applies a
-    /// reveal request to the nearest sideways viewport around the collection too, at once
-    /// (Rune draft U-C2-4). For a collection inside a sideways strip that scrolls itself to
-    /// it, on a glide of its own (C2's columns). Off by default.
+    /// Keeps every reveal of an entry (a key, a placed cursor, a reflow, a restore) to this collection's own viewport.
     pub fn set_own_viewport_reveals(&mut self, on: bool) {
         self.own_viewport_reveals = on;
     }
 
-    /// Scrolls the entry at `index` into view, mounted or not, just far enough. In a grouped
-    /// collection it lands clear of the stuck header: going up, the line above it (another
-    /// entry, or its group's header) shows under the stuck header.
+    /// Scrolls the entry at `index` into view, mounted or not, just far enough.
     pub fn reveal(&self, scope: &str, source: &dyn EntrySource, index: usize, tx: &mut Tx) {
         if index >= source.len() {
             return;
@@ -468,19 +373,12 @@ impl CollectionState {
             return;
         }
         let map = self.line_map(source.len());
-        // Rune runs a transaction's reveals in order, each from where the one before left the
-        // view (`runtime/frame.rs`): the line above comes to the top when the entry is above,
-        // and the entry to the bottom when it is below; neither moves a view showing both.
         if let Some(above) = map.key_above(source, index) {
             tx.scroll_into_view_in(scope.to_owned(), above);
         }
         tx.scroll_into_view_in(scope.to_owned(), map.line_key(source, map.line_of(index)));
     }
 
-    /// [`CollectionState::reveal`] as one instant scroll worked out from the geometry, to the
-    /// same place (going up, at the top clear of any stuck header; going down, the entry at the
-    /// bottom; where it stands when it shows): for a view a glide is moving, which a reveal
-    /// request would keep moving (C1d's S-B, a key during a band's edge scroll).
     pub(super) fn reveal_instant(
         &self,
         scope: &str,
@@ -497,8 +395,6 @@ impl CollectionState {
         tx.scroll_to_instant(viewport_path(scope), 0.0, target);
     }
 
-    /// The scroll offset that brings `index` into view on this collection's viewport alone,
-    /// clear of any stuck group header, or `None` when it already shows.
     fn reveal_offset(&self, len: usize, index: usize) -> Option<f32> {
         let h = self.row_height;
         let map = self.line_map(len);
@@ -516,32 +412,14 @@ impl CollectionState {
 
     // Position restore.
 
-    /// The position to remember for this folder as it is left: the selection's, with the
-    /// scroll offset in the current layout.
+    /// The position to remember for this folder as it is left: the selection's, with the scroll offset in the current layout.
     pub fn position(&self, source: &dyn EntrySource) -> Position {
         self.selection
             .position(source)
             .with_scroll(ScrollMemo::new(self.layout, self.scroll.get()))
     }
 
-    /// Shows a folder: `source` is its listing as it stands (`listing` says whether it is
-    /// complete), and `position` what was remembered for it, if anything.
-    ///
-    /// With a position, the selection, cursor and anchor come back. The scroll offset comes
-    /// back if it was measured in the current layout; otherwise the cursor scrolls into view.
-    /// While the listing loads, the restore waits for [`CollectionState::sync`] with a
-    /// complete listing; a press, a key or a scroll in the collection before then cancels it,
-    /// and so does a new layout key.
-    ///
-    /// Either way, the controllers' gestures (an open marquee) and keyboard mode end, and the
-    /// view moves only by instant scrolls (an offset, an instant reveal, or the top), each of
-    /// which stops a glide in progress: a controller's `reset`, which has no [`Ctx`], never
-    /// leaves an auto-scroll glide running.
-    ///
-    /// [`Ctx`]: super::Ctx
-    ///
-    /// With none, the selection clears and the view starts at the top. Picking an entry
-    /// (the folder you came from, the first entry) is the host's policy.
+    /// Shows a folder: `source` is its listing as it stands (`listing` says whether it is complete).
     pub fn enter(
         &mut self,
         scope: &str,
@@ -589,14 +467,7 @@ impl CollectionState {
         self.pending = None;
     }
 
-    /// Ends the pointer's gesture: the press held, the click run and a rename a click left
-    /// pending. The next press is a run's first, as after a press elsewhere. A host calls it
-    /// when a modal layer opens over the collection, as GTK's modal layer ends the gesture under it.
-    ///
-    /// A marquee in progress and the keyboard's state are left as they are: the marquee's
-    /// reset drops its band without touching the selection, which would keep the band's half
-    /// of a selection with no band to finish it, and the keyboard's would end a 10xer range
-    /// and drop queued commands, which a dialog does not end on GTK.
+    /// Ends the pointer's gesture: the press held, the click run and a rename a click left pending.
     pub fn end_gestures(&mut self) {
         self.gesture = None;
         self.origin_press = None;
@@ -617,9 +488,6 @@ impl CollectionState {
         match position.scroll.and_then(|m| m.offset_for(self.layout)) {
             Some(offset) => tx.scroll_to_instant(viewport_path(scope), 0.0, offset),
             None => match self.selection.cursor_index(source) {
-                // Instant either way, and either way a scroll request, which stops a glide in
-                // progress: the reveal when the row is out of view, else a scroll to where the
-                // view is (a reveal that has nowhere to go might leave a glide running).
                 Some(index) if self.shows_line(index, source.len()) => {
                     tx.scroll_to_instant(viewport_path(scope), 0.0, self.scroll.get());
                 }

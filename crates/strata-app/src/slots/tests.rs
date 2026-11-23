@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The registry over made-up parts: what is refused, who is in a slot, which view is shown,
-//! and the order the parts hear the browser in.
-
 use std::{any::TypeId, rc::Rc};
 
 use rune::{El, Env, Runtime, el};
@@ -51,8 +48,6 @@ made! {
     Menu = "menu",
 }
 
-/// A listener that queues one line for each change of the hidden-files choice: who heard it,
-/// and what the choice was.
 fn listen<P: Made>(_: &Setup<'_>) -> Option<Listener<Log>> {
     Some(Box::new(|event, _, heard| {
         if let BrowserEvent::HiddenToggled { show_hidden } = event {
@@ -127,8 +122,6 @@ const OPEN_TWICE: &[Action<Log>] = &[
     Action::new("open", nothing_done),
 ];
 
-/// A menu row or a button runs the first command of its name, so a second one registered
-/// where both parts are active would never run. Two views are shown one at a time.
 #[test]
 fn a_command_registered_twice_is_refused_unless_by_two_views() {
     let with = |entry: Entry<Log>, commands| Entry { commands, ..entry };
@@ -304,8 +297,6 @@ fn a_window_with_no_view_registered_shows_none() {
     assert!(registry.shown().is_none());
 }
 
-/// The registry's listeners on a new browser's observer, as the shell puts them, with the
-/// queue they fill.
 fn observed(entries: &'static [Entry<Log>]) -> (Rc<Browser>, Inbox<Log>) {
     let (browser, inbox, _) = observed_with(Registry::new(entries, "columns"));
     (browser, inbox)
@@ -329,8 +320,6 @@ fn observed_with(registry: Registry<'static, Log>) -> (Rc<Browser>, Inbox<Log>, 
     (browser, inbox, shown)
 }
 
-/// Applies everything `inbox` holds to a new log. Returns the log, and what each update said
-/// of whether the view has to run.
 fn applied(inbox: &Inbox<Log>) -> (Log, Vec<bool>) {
     let mut runtime = Runtime::new(Log::new(), |_, _| el(), (64.0, 64.0), Env::new(true, 1.0));
     let mut asks_for_a_view = Vec::new();
@@ -342,8 +331,6 @@ fn applied(inbox: &Inbox<Log>) -> (Log, Vec<bool>) {
     (runtime.state, asks_for_a_view)
 }
 
-/// What the parts of `entries` logged after the browser changed its hidden-files choice
-/// twice.
 fn heard_by(entries: &'static [Entry<Log>]) -> Log {
     let (browser, inbox) = observed(entries);
 
@@ -414,9 +401,6 @@ fn what_a_service_queues_waits_its_turn_among_the_browsers_events() {
     assert!(inbox.is_empty());
 }
 
-/// Another view shown while the window is open is the one that hears the browser from then
-/// on, and the one it replaces hears nothing more. A mode no view answers to, or the view's
-/// own, changes nothing.
 #[test]
 fn the_view_shown_later_hears_the_browser_in_place_of_the_one_it_replaces() {
     let entries = table(vec![view::<Columns>(), view::<Icons>(), overlay::<Menu>()]);
@@ -444,8 +428,6 @@ fn the_view_shown_later_hears_the_browser_in_place_of_the_one_it_replaces() {
     );
 }
 
-/// What a process-wide service holds of a window's queue says whether the window has work: a
-/// queued update until it is applied, and nothing once the window's queue has gone.
 #[test]
 fn a_weak_way_into_a_queue_says_whether_it_holds_an_update() {
     let inbox = Inbox::<Log>::new();
@@ -469,9 +451,6 @@ fn a_weak_way_into_a_queue_says_whether_it_holds_an_update() {
     assert!(!weak.is_pending(), "a queue that has gone");
 }
 
-/// Inline directory publications (no staged tail chunks) must not trigger a mid-batch
-/// `yield_paint`, whereas staged publications (> `STAGE_INLINE_LIMIT`) yield right after the
-/// initial chunk and stay cleared once `LoadFinished` arrives.
 #[test]
 fn yield_paint_only_triggers_for_staged_publications_and_clears_on_load_finished() {
     crate::test_support::in_own_process(

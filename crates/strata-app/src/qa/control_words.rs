@@ -1,17 +1,8 @@
 // SPDX-License-Identifier: MIT
 
-//! The words inside a control that Rune hears as one thing, as the QA backend presents them.
-//!
-//! Since Rune `7a707454` (anomalyco/rune#1115, after #1099) the accessibility tree leaves out
-//! a text inside a checkbox, radio button, switch, tab, menu item or option when the control's
-//! name already says its words, as Chromium makes such a control's content one leaf. GTK keeps
-//! them: each of these rows holds a `gtk::Label` (`role: "label"`), which shared scenarios aim
-//! at, such as the language menu's autonyms and the search palette's names and folders. The
-//! snapshot presents each such text as a `label` under its control, as the tree held it at
-//! Rune `631e8a67`, without changing what assistive technology hears.
-//!
-//! Buttons and links are left as they are: the tree made them one leaf before, and the snapshot
-//! presents the labels a scenario needs under them on its own (`label_archive_text_buttons`).
+//! Re-exposes text inside leaf controls as `label` nodes in QA snapshots because Rune omits
+//! redundant text nodes inside checkboxes, radios, switches, tabs, menu items, and options
+//! ([anomalyco/rune#1115](https://github.com/anomalyco/rune/issues/1115)).
 
 use rune::ElementInfo;
 use strata_qa::Rect;
@@ -69,8 +60,6 @@ fn bounds(element: &ElementInfo) -> Rect {
     }
 }
 
-/// The one-leaf control `element` is drawn in, if a nearer focusable element, button or link
-/// does not hold it first.
 fn control_of<'a>(elements: &'a [ElementInfo], element: &ElementInfo) -> Option<&'a ElementInfo> {
     let mut at = element.parent.and_then(|parent| elements.get(parent));
     while let Some(ancestor) = at {
@@ -112,8 +101,6 @@ impl Words {
         Self(words)
     }
 
-    /// Presents the words under each one-leaf control that has no children in the snapshot and
-    /// whose name says them: the texts the tree left out.
     pub(super) fn present(&self, snapshot: &mut Snapshot) {
         for index in 0..snapshot.len() {
             let Some(control) = snapshot.at(index) else {

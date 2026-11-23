@@ -295,8 +295,6 @@ pub(super) fn names(dir: &Path) -> io::Result<Vec<String>> {
     Ok(names)
 }
 
-/// Where inode numbers are not trusted, a file born within one birth-time tick
-/// of `than` passes for it.
 fn wait_for_a_later_birth_time(probe: &Path, than: &fs::Metadata) {
     let Ok(born) = than.created() else {
         return;
@@ -427,9 +425,6 @@ fn a_later_change_time(path: &Path, than: &Path, seconds: u64) -> io::Result<boo
     }
 }
 
-/// Sets the times of each file beneath `root` again from outside the seam,
-/// as Samba does once the SMB client's deferred close of a file it wrote
-/// reaches it: only the change time moves.
 fn land_deferred_closes(root: &Path) -> io::Result<()> {
     for entry in fs::read_dir(root)? {
         let path = entry?.path();
@@ -655,8 +650,6 @@ fn pump_until_transfer(events: &RefCell<Vec<OperationEvent>>) {
             "timed out waiting for the transfer to finish: {:?}",
             events.borrow()
         );
-        // Own the default context for the whole wait. Releasing it between
-        // polls lets a GIO copy worker run a progress callback inline.
         glib::MainContext::default().iteration(true);
     }
 }
@@ -756,8 +749,6 @@ fn rename(path: &Path, new_name: &str) -> Vec<OperationEvent> {
     })
 }
 
-/// Cancels from the main thread the first time a racer runs, holding that racer's worker
-/// until then, as a user's cancel lands while the worker is inside an item.
 #[derive(Clone, Default)]
 struct CancelFromMain(Arc<(std::sync::Mutex<Option<bool>>, std::sync::Condvar)>);
 

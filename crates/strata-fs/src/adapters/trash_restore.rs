@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Treats Trash metadata as untrusted and confines restores to the physical
-//! trash entry's volume.
-
 #[cfg(test)]
 mod tests;
 

@@ -1,15 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Perf tests on the S4 fixtures (`tests/fixtures/code/`), against S4's budgets: a viewport
-//! within 8 ms at p95 (the reading N = 64 is sized for), and an edit's foreground within
-//! 2 ms. They time the engine on the test thread, which is the work the highlighter thread
-//! does. `#[ignore]`d; run them with the `perf` profile, one at a time:
-//!
-//! ```sh
-//! CARGO_BUILD_JOBS=8 cargo test --profile perf -p strata-components --lib \
-//!     code_view::highlight::tests::perf -- --ignored --test-threads=1 --nocapture
-//! ```
-
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -83,8 +73,6 @@ fn viewport(name: &str) {
     let mut rng = Rng(0x9e37_79b9_7f4a_7c15);
     let mut times = Vec::with_capacity(POSITIONS);
     for i in 0..POSITIONS {
-        // The worst case: a viewport starting just before the next checkpoint, so the
-        // resume parses N - 1 lines before it. The last position is the file's end.
         let start = if i + 1 == POSITIONS {
             lines - window
         } else {
@@ -374,10 +362,6 @@ fn viewport_through_the_thread() {
     );
 }
 
-/// The UI thread's side of the block cache (review 5, SF5): one build asking `n` blocks, then
-/// the trims at the next bumps once the host has moved to a small document. The blocks name a
-/// language with no grammar, so the thread answers them at once and only the cache's own work
-/// is timed.
 fn block_cache_costs(n: usize, block: impl Fn(usize) -> String) {
     let mut pump = super::Pump::new(light());
     let mut blocks = pump.blocks();
@@ -418,8 +402,6 @@ fn block_cache_trims_and_misses() {
     block_cache_costs(80_000, |i| format!("f({i});\n"));
 }
 
-/// A build of `new` blocks of 8 KiB while an older document of `old` blocks of 30 KiB is
-/// still cached: together past the 16 MiB ceiling, so its misses evict on the way.
 fn past_the_ceiling(old: usize, new: usize) {
     let mut pump = super::Pump::new(light());
     let mut blocks = pump.blocks();

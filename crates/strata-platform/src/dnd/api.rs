@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! What a drag carries, what a drop offers and delivers, and the source and target an app
-//! attaches to its elements.
-
 use std::any::Any;
 use std::fmt;
 use std::rc::Rc;
@@ -98,9 +95,6 @@ impl FromIterator<DragAction> for Actions {
 /// The plain-text types [`DragItem::text`] offers.
 pub const TEXT_TYPES: [&str; 2] = ["text/plain;charset=utf-8", "text/plain"];
 
-/// What a drag carries: MIME types, each with its bytes (made lazily, only when a target
-/// asks), the actions it allows, its icon, and an in-process payload for targets in this
-/// process. Mirrors Rune's `DragItem`, with any MIME type.
 #[derive(Clone)]
 pub struct DragItem {
     pub(crate) types: Vec<(String, Writer)>,
@@ -131,8 +125,6 @@ impl DragItem {
         self.with(mime.into(), Writer::bytes(bytes))
     }
 
-    /// Offers `mime`, made by `make` on a worker thread the first time a target asks for it,
-    /// and kept for the drag's life (targets ask again).
     pub fn lazy(
         self,
         mime: impl Into<String>,
@@ -154,8 +146,6 @@ impl DragItem {
         self.data(mime::URI_LIST, mime::encode_uri_list(uris))
     }
 
-    /// The actions the drag allows (copy alone by default). Ctrl, Shift or both at the start
-    /// narrow them: see [`super::negotiate`].
     pub fn actions(mut self, actions: impl Into<Actions>) -> Self {
         self.actions = actions.into();
         self
@@ -166,8 +156,6 @@ impl DragItem {
         self
     }
 
-    /// A typed payload for targets in this process ([`DropTarget::local`]), which get it
-    /// instead of reading the serialized types. It stays on the UI thread.
     pub fn local<T: Any>(mut self, payload: T) -> Self {
         self.local = Some(Rc::new(payload));
         self
@@ -193,7 +181,6 @@ impl DragItem {
         self
     }
 
-    /// P0's source for these types, plus `extra` (the in-process token).
     pub(crate) fn spec(&self, extra: Option<&str>) -> SourceSpec {
         let spec = self
             .types
@@ -222,14 +209,9 @@ impl fmt::Debug for DragItem {
 pub struct DropOffer {
     /// Its MIME types, the in-process token left out.
     pub mimes: Vec<String>,
-    /// The actions the source allows. Empty until the source says (Wayland tells it just
-    /// after the drag enters).
     pub actions: Actions,
     /// The drag comes from this process and carries a typed payload.
     pub local: bool,
-    /// The modifiers held, where they can be known: X11 always; Wayland only for a drag from
-    /// this process (as they were at its start). A drag from another client on Wayland
-    /// reports none: its action is the compositor's.
     pub mods: Option<Mods>,
     /// A number for this drag, new each time a drag enters a window.
     pub serial: u64,
@@ -238,14 +220,10 @@ pub struct DropOffer {
 }
 
 impl DropOffer {
-    /// Whether the drag offers `mime`, or that type with parameters when `mime` names none
-    /// ([`mime::names`]).
     pub fn offers(&self, mime: &str) -> bool {
         self.offered(mime).is_some()
     }
 
-    /// The type the drag offers that `mime` names: `mime` itself if offered, else the first
-    /// offered type with parameters that it names ([`mime::names`]). What a read asks for.
     pub fn offered(&self, mime: &str) -> Option<&str> {
         let exact = self.mimes.iter().find(|m| *m == mime);
         exact
@@ -262,8 +240,6 @@ impl DropOffer {
     }
 }
 
-/// Where a drag is or dropped: in the target element's own points (from where it was last
-/// drawn), and in the window's.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct DropPoint {
     pub x: f32,
@@ -377,9 +353,6 @@ pub(crate) type StartFn<S> = Rc<dyn Fn(&mut S, &mut Tx)>;
 pub(crate) type EndFn<S> = Rc<dyn Fn(&mut S, DragOutcome, &mut Tx)>;
 pub(crate) type InnerDragFn<S> = Rc<dyn Fn(&mut S, &mut rune::Drag, &mut Tx)>;
 
-/// A drag source: what the element's drag carries, read once the pointer crosses the
-/// threshold, and how the drag ended. Mirrors Rune's `drag_out`, `on_drag_start` and
-/// `on_drag_end`.
 pub struct DragSource<S> {
     pub(crate) item: ItemFn<S>,
     pub(crate) on_start: Option<StartFn<S>>,
@@ -404,8 +377,6 @@ impl<S> Clone for DragSource<S> {
 pub const DRAG_THRESHOLD: f32 = 8.0;
 
 impl<S: 'static> DragSource<S> {
-    /// `item` runs once the pointer has travelled the threshold from the press, with the
-    /// modifiers held then; `None` keeps the press a press.
     pub fn new(item: impl Fn(&S, Mods) -> Option<DragItem> + 'static) -> Self {
         DragSource {
             item: Rc::new(item),
@@ -421,22 +392,16 @@ impl<S: 'static> DragSource<S> {
         self
     }
 
-    /// How the drag ended: `Copied`, `Moved`, `Linked`, or `Cancelled` (dropped nowhere that
-    /// took it, cancelled, or the platform failed).
     pub fn on_end(mut self, f: impl Fn(&mut S, DragOutcome, &mut Tx) + 'static) -> Self {
         self.on_end = Some(Rc::new(f));
         self
     }
 
-    /// The element's own `on_drag`, which hears every phase that isn't the system drag's:
-    /// the press, moves before the threshold, and a release before it.
     pub fn on_drag(mut self, f: impl Fn(&mut S, &mut rune::Drag, &mut Tx) + 'static) -> Self {
         self.inner = Some(Rc::new(f));
         self
     }
 
-    /// The travel from the press that starts the drag, in points (8 by default, Rune's on
-    /// Linux; the desktop's comes from P5's settings).
     pub fn threshold(mut self, points: f32) -> Self {
         self.threshold = points;
         self
@@ -453,15 +418,6 @@ pub(crate) type ActionAtFn<S> =
 pub(crate) type AskFn<S> = Rc<dyn Fn(&mut S, DropData, AskReply, &mut Tx)>;
 pub(crate) type NextReadFn = Rc<dyn Fn(&DropData) -> Option<String>>;
 
-/// A drop target: the MIME types it reads, and its callbacks. Mirrors Rune's
-/// `on_drop_files`, `on_drop_hover`, `on_drop_move` and `on_drop_rejected`, for any type.
-///
-/// The target under the drag is the innermost element with a target that takes it. A
-/// target takes a drag that offers one of its types, or (with [`DropTarget::local`]) one
-/// from this process carrying a payload of its type, unless its [`DropTarget::action`]
-/// refuses it. A target that doesn't take the drag passes it to the target around it,
-/// unless it has [`DropTarget::on_reject`]: then it stops the drag and shows
-/// [`Hover::Rejecting`].
 pub struct DropTarget<S> {
     pub(crate) mimes: Vec<String>,
     pub(crate) read_all: bool,
@@ -515,8 +471,6 @@ impl<S: 'static> DropTarget<S> {
         }
     }
 
-    /// The types it takes, most wanted first. A drop reads the first one offered, or with
-    /// [`DropTarget::read_all`] every one offered.
     pub fn mime_types<M: AsRef<str>>(mut self, preference: &[M]) -> Self {
         self.mimes = preference.iter().map(|m| m.as_ref().to_owned()).collect();
         self
@@ -528,26 +482,16 @@ impl<S: 'static> DropTarget<S> {
         self
     }
 
-    /// At the drop, read one type at a time, as `next` chooses: given what was read so far
-    /// (none at first; [`DropData::failed`] says why a read failed), the offered type to
-    /// read next, or `None` to deliver the drop. A type the drag does not offer, or one read
-    /// already, delivers it too. For a target that uses one type of several and falls back
-    /// on another only when that one is no use, so it reads no more than it needs. Overrides
-    /// [`DropTarget::read_all`].
     pub fn read_next(mut self, next: impl Fn(&DropData) -> Option<String> + 'static) -> Self {
         self.next = Some(Rc::new(next));
         self
     }
 
-    /// Read these types while the drag hovers, before the drop: they arrive in
-    /// [`DropOffer::peeked`] through `on_hover`.
     pub fn peek<M: AsRef<str>>(mut self, mimes: &[M]) -> Self {
         self.peek = mimes.iter().map(|m| m.as_ref().to_owned()).collect();
         self
     }
 
-    /// Takes drags from this process carrying a payload of type `T` ([`DragItem::local`]),
-    /// which [`DropData::local`] then gives, with nothing read.
     pub fn local<T: Any>(mut self) -> Self {
         self.local = Some(std::any::TypeId::of::<T>());
         self
@@ -558,25 +502,16 @@ impl<S: 'static> DropTarget<S> {
         self
     }
 
-    /// Follows a drag over the target, on every motion, in the target's own points: one it
-    /// takes, and, if the target has [`DropTarget::on_reject`], one it refuses (so a view can
-    /// autoscroll under any drag, as a file manager's does).
     pub fn on_move(mut self, f: impl Fn(&mut S, DropPoint, &mut Tx) + 'static) -> Self {
         self.on_move = Some(Rc::new(f));
         self
     }
 
-    /// Hears a drop the target refuses, and makes it stop drags it refuses instead of
-    /// passing them on.
     pub fn on_reject(mut self, f: impl Fn(&mut S, &DropOffer, &mut Tx) + 'static) -> Self {
         self.on_reject = Some(Rc::new(f));
         self
     }
 
-    /// Which action a drop here takes, asked on every motion and at the drop, with the
-    /// modifiers when known. `None` refuses the drag. It wins over the modifier rule; without
-    /// it, the rule in [`super::negotiate`] decides. An action the source doesn't allow is
-    /// ignored, and the rule decides.
     pub fn action(
         mut self,
         f: impl Fn(&S, &DropOffer, Option<Mods>) -> Option<DragAction> + 'static,
@@ -585,10 +520,6 @@ impl<S: 'static> DropTarget<S> {
         self
     }
 
-    /// [`DropTarget::action`], told where the drag is: in the target's own points (from where
-    /// it was last drawn) and the window's, as [`DropTarget::on_move`] is told just after. For
-    /// a target that routes a drop by point, whose action depends on what is under the drag.
-    /// It replaces `action`.
     pub fn action_at(
         mut self,
         f: impl Fn(&S, &DropOffer, Option<Mods>, DropPoint) -> Option<DragAction> + 'static,
@@ -597,8 +528,6 @@ impl<S: 'static> DropTarget<S> {
         self
     }
 
-    /// Hears a drop whose action is ask, with its data read: answer with the action the
-    /// user picks. Without it, an ask drop takes the rule's action.
     pub fn on_ask(mut self, f: impl Fn(&mut S, DropData, AskReply, &mut Tx) + 'static) -> Self {
         self.on_ask = Some(Rc::new(f));
         self
@@ -648,8 +577,6 @@ pub struct Status {
 /// A failed drag-and-drop call.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Error {
-    /// This platform or session has no route for it: libwayland < 1.23, no data device, not
-    /// Wayland or X11.
     Unsupported(String),
     /// The window isn't attached ([`super::Dnd::attach`]), or the substrate was shut down.
     NotAttached,

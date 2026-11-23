@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Position restore: the cursor, selection and scroll position remembered per folder, so
-//! returning to a folder (or refreshing it) puts them back.
-
 use std::collections::HashMap;
 use std::hash::Hash;
 
@@ -11,13 +8,7 @@ use crate::contract::EntryId;
 #[cfg(test)]
 mod tests;
 
-/// One folder's remembered position: [`Selection::position`](super::Selection::position)
-/// when it was left, plus the element's scroll position.
-///
-/// Everything but the scroll offset is by entry id, so it carries between views: a folder
-/// left in Icons comes back in List with the same entries selected.
-///
-/// Used by: C1e (position restore), C18 (the selection before a filter), hosts.
+/// One folder's remembered position: `Selection::position` when it was left, plus the element's scroll position.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Position {
     /// The cursor's entry.
@@ -48,16 +39,9 @@ impl Position {
 }
 
 /// A scroll offset and the layout it was measured in.
-///
-/// An offset means different things per view, and an icons grid of another width wraps
-/// differently, so the offset comes back only in the same layout. Otherwise the element
-/// scrolls the cursor into view instead.
-///
-/// Used by: C1e, C3 (its layout key folds in the grid width).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ScrollMemo {
-    /// The layout the offset belongs to, as the element names it: an opaque key that folds
-    /// in the view mode and anything that changes wrapping (an icons grid's width).
+    /// The layout the offset belongs to, as the element names it.
     pub layout: u64,
     /// The vertical scroll offset, in points.
     pub offset: f32,
@@ -76,12 +60,6 @@ impl ScrollMemo {
 }
 
 /// Remembered positions per folder key, for the folders most recently left.
-///
-/// It holds at most [`capacity`](Self::capacity) folders and
-/// [`id_budget`](Self::id_budget) selected ids in all. Remembering past either limit forgets
-/// the folders left longest ago first. Recalling a folder doesn't count as leaving it.
-///
-/// Used by: C1e, hosts (one per pane or window).
 #[derive(Clone, Debug)]
 pub struct RestoreMemory<K> {
     capacity: usize,
@@ -120,11 +98,7 @@ impl<K: Eq + Hash> RestoreMemory<K> {
         }
     }
 
-    /// Remembers `position` for the folder `key`, as the folder left most recently, and
-    /// forgets the folders left longest ago until both limits hold.
-    ///
-    /// Returns false, keeping nothing for `key`, when the position alone holds more ids than
-    /// the budget.
+    /// Remembers `position` for the folder `key`, as the folder left most recently.
     pub fn remember(&mut self, key: K, position: Position) -> bool {
         self.forget(&key);
         let count = position.id_count();
@@ -178,8 +152,7 @@ impl<K: Eq + Hash> RestoreMemory<K> {
         self.ids
     }
 
-    /// Appends every [`EntryId`] referenced by a remembered folder position (cursor, anchor,
-    /// and selected entries) into `out`.
+    /// Appends every `EntryId` referenced by a remembered folder position (cursor, anchor, and selected entries) into `out`.
     pub fn collect_ids(&self, out: &mut impl Extend<EntryId>) {
         for (_, position) in self.folders.values() {
             if let Some(id) = position.cursor {
@@ -193,8 +166,6 @@ impl<K: Eq + Hash> RestoreMemory<K> {
     }
 
     fn forget_oldest(&mut self) {
-        // A linear scan: a memory holds about a hundred folders, and this runs once per
-        // folder left. Stamps are unique, so the oldest stamp names one folder.
         let Some(oldest) = self.folders.values().map(|(left, _)| *left).min() else {
             return;
         };

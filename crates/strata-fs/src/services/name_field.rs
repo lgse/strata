@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The rules of a field a name is typed into: what an inline rename selects when it opens,
-//! and what it says of the text as it changes. Every interface asks them here, so a name is
-//! selected and refused alike in each.
-
 #[cfg(test)]
 mod tests;
 
@@ -20,8 +16,6 @@ pub enum Naming {
     Single,
 }
 
-/// Where a rename's first selection ends, counted in characters from the start of `name`:
-/// before the last dot, unless that dot leads the name, and at the end of a name without one.
 pub fn rename_stem_end(name: &str) -> i32 {
     let end = name
         .rfind('.')

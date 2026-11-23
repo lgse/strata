@@ -1,12 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Strata's bundled themes: `themes/catalog.toml`, compiled in and read once.
-//!
-//! As Strata's `builtins()` (`src/ui/theme/library.rs` at lgse/strata 35ee677ab): each
-//! entry's dim text is lifted to the contrast floors body text carries (4.5:1 on the
-//! background, then 3:1 on the surface), stopping at the first step that passes so it stays
-//! dimmer than text, and the list is sorted by lowercase name.
-
 use std::sync::OnceLock;
 
 use toml::de::DeValue;

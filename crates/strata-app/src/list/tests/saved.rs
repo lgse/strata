@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! What the List view saves of its columns, in the `settings.toml` the Rune window shares
-//! with the installed GTK application.
-
 use std::{path::PathBuf, time::Duration};
 
 use strata_components::list_table::{
@@ -27,9 +24,6 @@ fn saved_text() -> String {
     std::fs::read_to_string(settings_file()).expect("settings")
 }
 
-/// Opening a folder, resizing the window, scrolling and leaving rewrites nothing: neither the
-/// columns, which the person did not touch, nor anything else the GTK application reads from
-/// the same file.
 #[test]
 fn an_untouched_list_window_writes_nothing() {
     hosted_in(
@@ -51,9 +45,6 @@ fn an_untouched_list_window_writes_nothing() {
     );
 }
 
-/// A layout and widths the person made are saved through the settings' rules, and a window
-/// that starts over the file reads back what this one keeps: the same order, the same hidden
-/// standard columns, the same opted-in optional columns, and the same widths.
 #[test]
 fn the_columns_saved_read_back_as_the_window_keeps_them() {
     hosted_in(
@@ -122,9 +113,6 @@ fn the_columns_saved_read_back_as_the_window_keeps_them() {
     );
 }
 
-/// Optional columns saved by GTK round-trip through Rune's layout and widths, and Reset
-/// clears `list_column_order`, `list_hidden_columns`, and `list_shown_columns` while hiding
-/// optional columns again.
 #[test]
 fn optional_columns_round_trip_and_reset_clears_opt_ins() {
     let gtk_saved = "list_column_order = [\"name\", \"duration\", \"mode\", \"size\", \"type\", \

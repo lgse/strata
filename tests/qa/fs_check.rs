@@ -84,8 +84,6 @@ pub(crate) struct ReplaceLines {
 pub(crate) struct FsStep {
     pub(crate) fs: FsCheck,
     pub(crate) timeout_ms: Option<u64>,
-    /// Once the check holds, it must go on holding this long, for a negative check of a
-    /// write that would land later.
     pub(crate) hold_ms: Option<u64>,
     pub(crate) message: Option<String>,
 }
@@ -304,8 +302,6 @@ pub(crate) struct FsState {
     pub(crate) mtimes: BTreeMap<String, u128>,
 }
 
-/// Resolves links in the parent but not the last component, so neither `..` nor a
-/// linked directory reaches outside.
 pub(crate) fn contained(path: &Path, roots: &[PathBuf]) -> Result<(), String> {
     let outside = || format!("{} lies outside the run's directories", path.display());
     let name = path

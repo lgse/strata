@@ -49,7 +49,6 @@ impl<B: Backend> Scope<'_, B> {
                 }
                 Ok(Err(_)) => {}
             }
-            // GTK never reports `checked` for a toggle button, so re-click while the menu is shut.
             let open = self
                 .locate_now(target, None, Aim::Point)
                 .is_ok_and(|located| {
@@ -67,8 +66,6 @@ impl<B: Backend> Scope<'_, B> {
         }
     }
 
-    /// Waits until the target's box is the same at three polls running, and keeps the box
-    /// under the target's own spelling and under `name`.
     pub async fn settle_target(
         &self,
         target: &Target,

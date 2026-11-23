@@ -62,8 +62,6 @@ fn ciopfs() -> Quirks {
     }
 }
 
-/// Writes each item under `root` with its own path as contents, or as a folder holding
-/// `inside` when its name ends with `folders`.
 fn write_items(root: &Path, items: &[&str], folders: &str) -> io::Result<()> {
     for item in items {
         let path = root.join(item);

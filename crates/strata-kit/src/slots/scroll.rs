@@ -1,26 +1,10 @@
 // SPDX-License-Identifier: MIT
 
-//! The `scroll.*` slot tokens that C24's overlay scroll bar and its autoscroll anchor read.
-//!
-//! Work package: C24, `docs/rune/work/phase-1-leaves/C24-scroll-extras.md`. C24 owns this file:
-//! add tokens beside these, following `slots/mod.rs`. Keep their names, since slot names are
-//! API.
-//!
-//! The defaults are Strata's (`src/style.css`, `upstream/main` 35ee677ab): the app-wide bar
-//! (`scrollbar`), the wider Icons and List bar (`.mode-icons` / `.mode-list
-//! .browser-listing-scroll`), a Columns column's inset (`.directory-column scrollbar`), the
-//! column strip's sideways bar (`.mode-scroll scrollbar.horizontal`) and the autoscroll anchor
-//! (`.autoscroll-anchor`). No core token matches those sizes, so they default here; the
-//! colours come from the Kit (`@strata_accent` is K1's `bg_accent`, `@strata_border` its
-//! `std_border`, `@strata_surface` its `surface_raised`).
-
 use rune::Color;
 
 use crate::look::Look;
 use crate::tokens::Token;
 
-/// The scroll bar's and the autoscroll anchor's slot tokens. `None` takes the default each
-/// reader names.
 #[derive(Clone, Debug, Default)]
 #[non_exhaustive]
 pub struct Scroll {
@@ -86,8 +70,6 @@ pub fn trough_opacity(look: &Look) -> f32 {
     look.slots.scroll.trough_opacity.unwrap_or(0.25)
 }
 
-/// The app-wide trough's opacity under the pointer or while dragged:
-/// `scroll.trough.hover_opacity`, else 0.45.
 pub fn trough_hover_opacity(look: &Look) -> f32 {
     look.slots.scroll.trough_hover_opacity.unwrap_or(0.45)
 }
@@ -107,14 +89,10 @@ pub fn listing_trough_opacity(look: &Look) -> f32 {
     look.slots.scroll.listing_trough_opacity.unwrap_or(0.08)
 }
 
-/// The Icons and List trough's opacity under the pointer or while dragged:
-/// `scroll.listing.hover_opacity`, else 0.12.
 pub fn listing_hover_opacity(look: &Look) -> f32 {
     look.slots.scroll.listing_hover_opacity.unwrap_or(0.12)
 }
 
-/// The Icons thumb's gap from the trough's ends: `scroll.listing.end_inset`, else 4. List's
-/// bar has none.
 pub fn listing_end_inset(look: &Look) -> f32 {
     look.slots.scroll.listing_end_inset.unwrap_or(4.0)
 }
@@ -134,14 +112,10 @@ pub fn strip_margin(look: &Look) -> f32 {
     look.slots.scroll.strip_margin.unwrap_or(3.0)
 }
 
-/// The width of the ring inside the column strip's trough (Strata's `box-shadow: inset 0 0 0
-/// 1px`): `scroll.strip.ring_width`, else 1.
 pub fn strip_ring_width(look: &Look) -> f32 {
     look.slots.scroll.strip_ring_width.unwrap_or(1.0)
 }
 
-/// The opacity of the ring inside the column strip's trough: `scroll.strip.ring_opacity`,
-/// else 0.45.
 pub fn strip_ring_opacity(look: &Look) -> f32 {
     look.slots.scroll.strip_ring_opacity.unwrap_or(0.45)
 }
@@ -156,8 +130,6 @@ pub fn trough_radius(look: &Look) -> f32 {
     look.slots.scroll.trough_radius.unwrap_or(2.0)
 }
 
-/// The app-wide thumb's corner radius: `scroll.thumb.radius`, else 2. The Icons and List thumb
-/// is fully rounded (Strata's `999px`) whatever this says.
 pub fn thumb_radius(look: &Look) -> f32 {
     look.slots.scroll.thumb_radius.unwrap_or(2.0)
 }
@@ -167,8 +139,6 @@ pub fn anchor_border_width(look: &Look) -> f32 {
     look.slots.scroll.anchor_border_width.unwrap_or(1.0)
 }
 
-/// How far down the autoscroll anchor's shadow falls: `scroll.anchor.shadow_offset`, else 1
-/// (Strata's `box-shadow: 0 1px 4px`).
 pub fn anchor_shadow_offset(look: &Look) -> f32 {
     look.slots.scroll.anchor_shadow_offset.unwrap_or(1.0)
 }

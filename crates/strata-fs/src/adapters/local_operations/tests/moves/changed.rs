@@ -61,8 +61,6 @@ fn a_move_keeps_source_entries_changed_or_added_after_their_copy() -> Result<(),
     Ok(())
 }
 
-/// A file `db` rewritten as its own move reads it: in a moved folder, with
-/// another name in it, or selected itself.
 struct WrittenDuring {
     kind: &'static str,
     rewrites: usize,
@@ -191,8 +189,6 @@ fn a_file_written_during_its_own_move_stays_at_the_source() -> Result<(), Box<dy
     Ok(())
 }
 
-/// The second name of a linked pair is rewritten once the deletion is
-/// under way, with the first name's times put back.
 struct LinkedRewrite {
     deleting: Arc<AtomicBool>,
     checked: Arc<AtomicUsize>,
@@ -249,8 +245,6 @@ impl LinkedRewrite {
     }
 }
 
-/// Makes `folder` hold a linked pair with settled times, or says why this
-/// base cannot run the row.
 fn linked_pair(
     folder: &Path,
     numbers_go: bool,
@@ -367,8 +361,6 @@ fn a_rewrite_that_keeps_the_size_and_times_is_kept_at_the_source() -> Result<(),
         fs::write(&changed, b"b1")?;
         let path = changed.clone();
         let probe = root.path().join("probe");
-        // After the copy, as the deletion opens the folder: only the change
-        // time tells.
         let racer: Racer = Box::new(move || {
             let before = fs::metadata(&path).expect("stat the source");
             wait_for_a_later_change_time(&probe, &before);

@@ -1,16 +1,11 @@
 // SPDX-License-Identifier: MIT
 
-//! A paste's names and guards: Strata's numbering, the own-folder rules, Keep Both, and
-//! nothing written outside the root or read in from outside it.
-
 use std::os::unix::fs::{PermissionsExt, symlink};
 use std::path::{Path, PathBuf};
 
 use super::{paste, paste_image};
 use crate::adapter::{After, Board};
 
-/// A fresh `root` (with folders `a` and `b`) and an `outside` beside it, under the gallery's
-/// target directory (never the desktop's /tmp).
 fn fixture(name: &str) -> (PathBuf, PathBuf) {
     let base = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../../target/tmp/x3-fsys")

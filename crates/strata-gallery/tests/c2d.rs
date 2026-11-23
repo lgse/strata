@@ -1,11 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! C2d on C2's page: the six key behaviours where the Columns view now does what Strata's
-//! GTK view does (slice decision 17, `docs/rune/slice/V8-read-path-parity.md`), and a
-//! seventh the slice's V9 found, Left in a column with no cursor. Each test names the GTK
-//! code it follows, where a script can't see the result: the cursor, the anchor and what the
-//! view tells its host.
-
 mod c2d {
     use rune::{ElementInfo, Env, Key, KeyEvent, Mods, Runtime};
     use strata_components::columns::keys;
@@ -14,8 +8,6 @@ mod c2d {
 
     const DT: f64 = 1.0 / 60.0;
 
-    /// The three-columns scene: Home, Documents (open from Home, active, its cursor on
-    /// Reports) and Reports (open from Documents, with no cursor).
     fn three_columns() -> Runtime<Gallery> {
         let f = scenes::all_scenes()
             .into_iter()
@@ -108,9 +100,6 @@ mod c2d {
 
     #[test]
     fn return_on_the_folder_whose_column_is_open_enters_it_on_its_first_entry() {
-        // browser/view-modes/columns. `Browser::activate_focused` ends in `focus_child`
-        // (`crates/strata-fs/src/app/browser/activation.rs`): the open column takes the
-        // keyboard with the cursor on its first entry when it has none.
         let mut rt = three_columns();
         focus_column(&mut rt, 1);
         assert_eq!(cursor(&rt, 1), Some(id("Documents", "Reports")));
@@ -141,9 +130,6 @@ mod c2d {
 
     #[test]
     fn left_in_a_column_with_no_cursor_goes_back_to_its_folder() {
-        // browser/view-modes/columns. Left is `Browser::focus_parent` in Columns
-        // (`navigate_left` in `src/ui/browser/view_navigation.rs`), whether or not the active
-        // column has a cursor: a click on a folder gives its column the keyboard and none.
         let mut rt = three_columns();
         focus_column(&mut rt, 2);
         assert_eq!(cursor(&rt, 2), None);
@@ -159,9 +145,6 @@ mod c2d {
 
     #[test]
     fn an_arrow_at_the_lists_end_selects_the_cursors_entry_alone() {
-        // browser/selection. `Browser::move_selection` re-places the cursor whether or not
-        // it moved (`crates/strata-fs/src/app/navigation/cursor.rs`), which makes its entry
-        // the selection.
         let mut rt = three_columns();
         focus_column(&mut rt, 0);
         let (first, last) = (id("Home", "Documents"), id("Home", "report-final.pdf"));
@@ -191,10 +174,6 @@ mod c2d {
 
     #[test]
     fn a_key_that_leaves_the_cursor_in_place_still_reports_the_cursor() {
-        // browser/view-modes/columns. `Browser::page_along` and `move_selection` raise
-        // `FocusChanged` for the unchanged position, which is what the GTK views mirror from
-        // (`on_focus_changed` in `src/ui/browser/events/selection.rs`). The page's stand-in
-        // editor closes when the view reports the cursor or the selection.
         for stays in [Key::Home, Key::PageUp, Key::Up] {
             let mut rt = three_columns();
             focus_column(&mut rt, 0);
@@ -212,9 +191,6 @@ mod c2d {
 
     #[test]
     fn ctrl_a_takes_the_cursor_to_the_last_entry_and_the_anchor_stays() {
-        // browser/selection. In Columns Ctrl+A selects through GTK's selection model, and
-        // `SelectionSync` reports the newest selected row as the cursor
-        // (`src/ui/browser/columns/append/models.rs`); `set_selection` keeps the anchor.
         let mut rt = three_columns();
         focus_column(&mut rt, 0);
         key(&mut rt, Key::Home);
@@ -226,8 +202,6 @@ mod c2d {
 
         assert_eq!(selected(&rt, 0).len(), 13);
         assert_eq!(cursor(&rt, 0), Some(id("Home", "report-final.pdf")));
-        // A plain arrow moves from the last entry, and a Shift arrow ranges from the old
-        // anchor to the entry before the last.
         press(&mut rt, Key::Up, shift());
         let ranged = selected(&rt, 0);
         assert_eq!(ranged.len(), 11, "{ranged:?}");
@@ -237,9 +211,6 @@ mod c2d {
 
     #[test]
     fn left_and_right_between_open_columns_tell_the_host_which_column_has_the_keyboard() {
-        // browser/view-modes/columns. `Browser::focus_parent` and `focus_child` raise
-        // `FocusChanged` for the column the keyboard lands in, so the GTK views mirror its
-        // cursor; the view has to say so, since no cursor moved in the column it left.
         let mut rt = three_columns();
         focus_column(&mut rt, 1);
 
@@ -260,14 +231,8 @@ mod c2d {
 
     #[test]
     fn right_opens_the_cursors_folder_when_the_open_column_is_another_folders() {
-        // browser/view-modes/columns. `Browser::enter_focused_directory`
-        // (`crates/strata-fs/src/app/browser/activation.rs`): a folder that is not the open
-        // child is descended into, in the open column's place; a file enters the column
-        // that is open.
         let mut rt = three_columns();
         focus_column(&mut rt, 0);
-        // The cursor leaves Documents for Pictures; this page mirrors nothing, so
-        // Documents' column stays open.
         key(&mut rt, Key::Down);
         assert_eq!(cursor(&rt, 0), Some(id("Home", "Pictures")));
         assert_eq!(path(&rt), "Home/Documents/Reports");

@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Data control: the selection heard and written without focus or a serial.
-//! `ext_data_control_v1` (the standard) and `zwlr_data_control_v1` (wlroots before 0.19) carry
-//! the same events, so one macro writes the handlers for both.
-
 use wayland_client::globals::GlobalList;
 use wayland_client::protocol::wl_seat::WlSeat;
 use wayland_client::{Connection, Dispatch, Proxy, QueueHandle, event_created_child};
@@ -118,8 +114,6 @@ impl Control {
         }
     }
 
-    /// A test switch: commits a protocol error (`invalid_offer`, an offer after
-    /// `set_selection`), which ends the connection.
     pub(super) fn provoke_protocol_error(&self, qh: &QueueHandle<State>) {
         match self {
             Control::Ext(m, d) => {

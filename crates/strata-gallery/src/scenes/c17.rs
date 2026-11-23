@@ -1,31 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The gallery page for C17 SearchPalette: its scenes, demo state, view and key and poll hooks.
-//! Scene names start with `c17-` and end in `-light` or `-dark`.
-//!
-//! Work package: `docs/rune/work/phase-2-composites/C17-search-palette.md`.
-//!
-//! The page draws a stand-in window: a header with a search button (`c17-search`), a focusable
-//! file list (`c17-files`, where an opened result's focus lands) and a `c17-log` line naming
-//! the last thing the host did, which scripts read. The demo plays Strata's part:
-//!
-//! - Ctrl+K toggles search and Ctrl+Shift+K the folder jump (the window's key map);
-//! - a fake index of about 200 paths under `/home/demo`, searched on a fake worker on the
-//!   virtual clock: each query's results arrive in three batches 0.05, 0.15 and 0.3 s after it,
-//!   each holding what a walk a third, two thirds and all the way through has found, ranked by
-//!   W1's `fuzzy` (name matches first), at most 100, the last batch done. An empty query only
-//!   ends the spinner at 0.3 s. The worker answers superseded queries too, so the palette's
-//!   own stale check is what scripts see. The worker asks for a wake at its next answer, so a
-//!   window at rest still gets it;
-//! - a fake folder history for the jump, answered at once;
-//! - fake thumbnails for images through a C25 store, rendered 0.1 s after they are asked for;
-//! - a stand-in for the result menu C21 will give (`c17-menu`, a nested modal with "Open
-//!   containing folder").
-//!
-//! The demo's switches stand in for a slow walk (`slow`: answers 30 s late), a walk that never
-//! finishes (`hold`), one that stopped early (`partial`) and no search locations
-//! (`unavailable`).
-
 use std::collections::HashMap;
 use std::time::Duration;
 
@@ -60,7 +34,6 @@ const RENDER: f64 = 0.1;
 /// The most results a query shows (Strata's cap).
 const CAP: usize = 100;
 
-/// C17's demo state, held in `Gallery::c17`.
 pub struct Demo {
     pub palette: PaletteState,
     /// The fake index, in walk order: absolute paths, folders ending in `/`.
@@ -223,8 +196,6 @@ fn name_of(path: &str) -> &str {
         .unwrap_or(path)
 }
 
-/// `path` as a result, matched against `query`; `None` when it doesn't match. The rank is
-/// the name's score, then the path's below every name match.
 fn matched(path: &str, query: &str) -> Option<(i64, PaletteItem)> {
     let folder = path.ends_with('/');
     let full = path.trim_end_matches('/');
@@ -277,8 +248,6 @@ fn thumb_key(path: &str) -> ThumbKey {
     ThumbKey::new(h)
 }
 
-/// The best `CAP` matches of `query` among `paths`, best first, then by name and path
-/// (Strata's tie order).
 fn rank<'a>(paths: impl Iterator<Item = &'a String>, query: &str) -> Vec<PaletteItem> {
     let mut hits: Vec<(i64, PaletteItem)> = paths.filter_map(|p| matched(p, query)).collect();
     hits.sort_by(|(ra, a), (rb, b)| {
@@ -296,8 +265,6 @@ impl Demo {
             .is_some_and(|m| m.kind == ResultKind::Folders)
     }
 
-    /// Answers `q`: the jump at once, as Strata's history search does, the index on the fake
-    /// worker.
     fn schedule(&mut self, q: PaletteQuery, tx: &mut Tx) {
         let late = if self.slow { SLOW } else { 0.0 };
         let query = q.text.trim().to_owned();
@@ -377,8 +344,6 @@ impl Demo {
         changed
     }
 
-    /// Asks for a wake at the fake workers' next due answer: a window at rest polls only at
-    /// the wakes it asked for.
     fn wake(&self, tx: &mut Tx) {
         let next = self
             .worker
@@ -568,8 +533,6 @@ macro_rules! scenes {
     };
 }
 
-/// Golden scenes: each gets an accessibility and a PNG golden. Each calls
-/// `g.open("c17", dark)`, then fills in `g.c17`.
 pub const SCENES: &[Scene] = scenes![
     "c17-idle" => idle,
     "c17-loading" => loading,
@@ -619,8 +582,6 @@ pub fn view(g: &Gallery, cx: &mut Cx<Gallery>) -> El {
     rune_kit::root(window(g, look), layer)
 }
 
-/// The stand-in for the result menu C21 will give: one item, in a modal of its own over the
-/// palette's.
 fn result_menu(g: &Gallery, look: &Look) -> Option<El> {
     let (id, at) = g.c17.menu.clone()?;
     let k = &look.kit;
@@ -715,8 +676,6 @@ fn window(g: &Gallery, look: &Look) -> El {
         )
 }
 
-/// Keys no focused element took while this page is open: Ctrl+K and Ctrl+Shift+K, the
-/// window's key map. True consumes the key.
 pub fn on_key(g: &mut Gallery, key: &KeyEvent, tx: &mut Tx) -> bool {
     let chord = |c: &str| Chord::parse(c).is_ok_and(|c| c.matches_tx(key, tx));
     if chord("mod+k") {
@@ -731,8 +690,6 @@ pub fn on_key(g: &mut Gallery, key: &KeyEvent, tx: &mut Tx) -> bool {
     key.key == Key::Escape && (g.c17.palette.is_open() || g.c17.menu.is_some())
 }
 
-/// Runs at the start of every frame while this page is open, with the clock in seconds: the
-/// palette's tick, the fake worker's due answers and the thumbnails. True when state changed.
 pub fn poll(g: &mut Gallery, t: f64, tx: &mut Tx) -> bool {
     let d = &mut g.c17;
     d.now = t;

@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Undo and redo through their keys, on the window the crate registers, in temporary
-//! folders: what `inline_renaming`'s `rename-and-undo-restores` and `rename-moves-into-path`
-//! press after their rename, with the rename asked of the browser directly.
-
 use std::{collections::HashSet, path::Path};
 
 use rune::{Key, KeyEvent, Mods};
@@ -71,8 +67,6 @@ fn entry(app: &App, name: &str) -> strata_core::model::FileEntry {
     entries.pop().expect("the entry")
 }
 
-/// `rename-and-undo-restores`: Ctrl+Z puts the old name back, and both redo keys of the
-/// catalog rename it again.
 #[test]
 fn a_rename_is_undone_by_its_key_and_redone_by_either_of_redos() {
     hosted(
@@ -99,8 +93,6 @@ fn a_rename_is_undone_by_its_key_and_redone_by_either_of_redos() {
     );
 }
 
-/// `rename-moves-into-path/columns-file` up to its undo: the typed path `notes/todo.txt` moves
-/// the item into a folder it makes.
 fn moved_into_notes(host: &mut Offscreen, folder: &Path) {
     let parent = Location::local(folder);
     act(host, |app| {
@@ -121,8 +113,6 @@ fn undo_now(host: &mut Offscreen) -> Option<Outcome> {
     outcome
 }
 
-/// `rename-moves-into-path/columns-file`: Ctrl+Z checks the disk, moves the item back and
-/// takes the folder the move made away.
 #[test]
 fn a_move_into_a_folder_it_made_is_undone_after_the_check() {
     hosted(
@@ -140,9 +130,6 @@ fn a_move_into_a_folder_it_made_is_undone_after_the_check() {
     );
 }
 
-/// An item now where the undo would put the moved one back opens the conflict prompt: Escape
-/// leaves both files and the history entry intact, and Replace on the next undo restores the
-/// moved file and removes the group's folder.
 #[test]
 fn an_undo_with_an_item_in_the_way_prompts_dismisses_and_replaces() {
     hosted(

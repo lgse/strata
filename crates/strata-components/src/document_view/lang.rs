@@ -1,11 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Strata's code-block language ids, as its document layout normalises them (sourceview's
-//! language ids: `python3`, `c-sharp`, `typescript-jsx`…), to the tokens C10a's grammar
-//! lookup takes (a file extension or a grammar name). Anything else passes through, so a
-//! fence's own token (`rs`, `bash`) works too. Every id Strata gives finds a grammar except
-//! `vala`, which two-face's set lacks: those blocks draw plain.
-
 /// The grammar token for `id`.
 pub fn grammar_token(id: &str) -> &str {
     match id {

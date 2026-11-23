@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The store and its queue: eviction order, the budget, what is protected, request order
-//! after scrolling each way, cancellation, failures, stops, the on/off switch, relocation,
-//! steps and pruning; and in a headless runtime, that thumbnails land with no view run.
-
 mod perf;
 mod runtime;
 
@@ -56,8 +52,6 @@ fn image(step: Step) -> Outcome {
     }
 }
 
-/// Pops every request, in order, completing each with an image at its step. A queue that
-/// doesn't drain within 10,000 requests fails the test.
 fn serve(st: &mut ThumbnailStore, now: f64) -> Vec<usize> {
     let mut order = Vec::new();
     while let Some(r) = st.pop(now) {
@@ -187,13 +181,6 @@ fn check_counts(st: &ThumbnailStore, op: usize) {
     );
 }
 
-/// A fixed pseudo-random run of `ops` operations from `seed`: syncs on two viewers, pops,
-/// results of every kind, new steps, relocations, toggles, requeues and new budgets. After
-/// each, the bookkeeping matches a count from scratch, the bytes stay in budget unless the
-/// protected images alone are over it, and no image protected before the operation and still
-/// is was evicted by it. Every 50 operations the view stands still: everything out comes back,
-/// the queue drains in a bounded number of requests, and every wanted key is held at the step
-/// it is wanted at.
 fn fuzz(seed: u64, ops: usize) {
     let mut rng = seed;
     let mut next = |m: u64| {
@@ -260,8 +247,6 @@ fn fuzz(seed: u64, ops: usize) {
                     st.set_enabled(next(2) == 0);
                 }
                 1 => {
-                    // Replaces what the target held by design: not an eviction. Targets include
-                    // keys no viewer shows (400..500).
                     relocated = st.relocate(key(next(400) as usize), key(next(500) as usize));
                 }
                 2 => st.requeue_stopped(),
@@ -295,10 +280,6 @@ fn fuzz(seed: u64, ops: usize) {
             }
         }
         if op % 50 == 49 {
-            // Still, at the real budget and the same time: a poll takes work before the old
-            // results come back, then the queue drains. Ranking again from scratch (and with
-            // the budget's deferrals forgotten) must then find nothing that would land: a key
-            // that would is one the still view never asks for.
             st.set_enabled(true);
             out.extend(std::iter::from_fn(|| st.pop(now)).map(|r| r.ticket));
             for t in out.drain(..) {
@@ -405,8 +386,6 @@ fn rows_on_screen_are_never_evicted_and_win_over_the_budget() {
     );
     assert!((0..10).all(|i| ready(&st, i)));
     assert_eq!(st.stats().bytes, 10 * 64);
-    // Scrolled by one: the previous sync's rows stay protected for a sync (a grid's rows
-    // come a frame late after a reflow, U-C1f-5), so nothing shown last time goes yet.
     st.sync(v, &src, view(10..20));
     assert!(
         (0..10).all(|i| ready(&st, i)),
@@ -526,8 +505,6 @@ fn scrolling_away_cancels_pending_work_and_drops_its_late_result() {
 
 #[test]
 fn a_rebound_row_draws_only_its_own_entry() {
-    // A filter replaces the listing under the same rows: requests for entries gone from the
-    // viewer are cancelled, and each key's handles stay its own.
     let mut st = store(1 << 20);
     let mut src = source(100, &[]);
     let v = st.viewer();
@@ -540,8 +517,6 @@ fn a_rebound_row_draws_only_its_own_entry() {
         cancelled.iter().all(|i| i % 2 == 0),
         "only keys no longer near: {cancelled:?}"
     );
-    // Each result is as wide as its own entry's index says (1 to 8 px at the 8 px step), so
-    // a handle showing another entry's image would have another width.
     let tagged = |i: usize| {
         let w = 1 + (i % 8) as u32;
         Outcome::Ready {
@@ -811,8 +786,6 @@ fn pruning_keeps_handles_near_any_viewer_and_asks_for_one_build() {
     );
 }
 
-// Review round 1.
-
 /// The scans `pop` has made so far.
 fn scans(st: &ThumbnailStore) -> usize {
     st.inner.borrow().scans
@@ -867,8 +840,6 @@ fn a_result_dropped_for_the_budget_evicts_nothing() {
     st.complete(other.ticket, small(), 0.0);
     st.drop_viewer(b);
     st.complete(shown.ticket, small(), 0.0);
-    // The margin's 8 px image can't fit even with row 50 evicted: it is dropped, and row 50
-    // stays.
     assert_eq!(
         st.complete(margin.ticket, image(S8), 0.0),
         Landed::Dropped(Why::Budget)
@@ -998,9 +969,6 @@ fn a_step_change_alone_reaches_the_store() {
 
 #[test]
 fn a_4k_grid_at_the_default_budget_drains_its_queue() {
-    // C3 on a 4K screen at scale 2 with 72 pt tiles: 128 px classes, 26 a line and 15 lines
-    // (about 25 MiB at 64 KiB each), a 25% margin of 4 lines a side, and a budget that holds
-    // the screen and only part of the margin.
     let step = Step::new(128);
     let mut st = ThumbnailStore::new(Settings::default().budget(500 * 128 * 128 * 4));
     let src = source(5000, &[]);
@@ -1014,8 +982,6 @@ fn a_4k_grid_at_the_default_budget_drains_its_queue() {
     assert!(stats.bytes <= stats.budget);
     assert!(st.pop(0.0).is_none(), "and stays drained");
 }
-
-// Review round 2.
 
 #[test]
 fn a_request_out_at_an_old_step_is_asked_again_at_the_new_one() {
@@ -1143,8 +1109,6 @@ fn a_deferred_margin_loads_once_the_budget_grows() {
     );
 }
 
-// Review round 3.
-
 const S16: Step = Step::new(16);
 
 #[test]
@@ -1156,8 +1120,6 @@ fn a_still_view_loads_its_margin_after_a_zoom_out() {
     st.sync(v, &src, Viewport::new(40..48, S16));
     serve(&mut st, 0.0);
     st.set_step(v, &src, S4);
-    // A pool of 16 takes the screen's 4 px requests (and passes the margin, still gated by the
-    // 16 px images) before any lands; the view stands still.
     let mut out: Vec<Request> = Vec::new();
     for frame in 0..200 {
         let now = 1.0 + f64::from(frame) * 0.016;
@@ -1234,8 +1196,6 @@ fn a_margin_key_scrolled_on_screen_gives_back_its_margin_room() {
     st.complete(shown.ticket, image(S4), 0.0);
     let _margin = st.pop(0.0).expect("row 11, the margin ahead");
     assert!(st.pop(0.0).is_none(), "row 9 waits for room");
-    // Row 11 scrolls on screen while its request is out: it is no longer margin, and row 12
-    // (the new margin) fits beside it.
     st.sync(v, &src, view(11..12));
     assert_eq!(st.pop(0.0).map(|r| index(r.key)), Some(12));
 }
@@ -1326,9 +1286,6 @@ fn absurd_margins_and_steps_neither_panic_nor_overflow() {
     let _ = drain(&mut st, 0.0);
 }
 
-/// A dropped viewer's slot goes to the next viewer, fresh: however many viewers come and go,
-/// the list is no longer than the most alive at once, a reused slot carries no viewport over,
-/// and a late result for the dropped viewer's cancelled request is not held.
 #[test]
 fn a_dropped_viewers_slot_is_reused_fresh() {
     let mut st = store(1 << 20);
@@ -1366,9 +1323,6 @@ fn a_dropped_viewers_slot_is_reused_fresh() {
     assert_eq!(st.pop(0.3).map(|r| index(r.key)), Some(50));
 }
 
-/// The rule of a placeholder's opacity: a file dims where the view dims files, unless it is
-/// cut; a folder, a folder link, and every entry of a view that does not dim stay at full
-/// opacity; the slot token sets how faint.
 #[test]
 fn a_file_icon_dims_and_a_folder_or_cut_entry_does_not() {
     use crate::contract::{EntryKind, LinkTarget};

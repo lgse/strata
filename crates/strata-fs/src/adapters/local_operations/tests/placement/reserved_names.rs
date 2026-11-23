@@ -66,8 +66,6 @@ fn the_reserved_name_rung_never_clobbers_a_plain_creator() -> Result<(), Box<dyn
                 };
                 *outcome.lock().expect("racer outcome") = Some(created.is_err());
             });
-            // Files: before the reserving create, or before the rename over it.
-            // Folders: before the name check, or before the plain rename.
             let before = match (folder, early) {
                 (false, true) => (Op::Create, "target", 0, racer),
                 (false, false) => (Op::Rename, "target", 1, racer),

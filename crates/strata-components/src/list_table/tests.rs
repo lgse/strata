@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The table's rules as plain data: the layout and widths, the sizing rule, where a dragged
-//! heading drops, the sort a click asks for, hit regions and groups. `tests/runtime.rs` drives
-//! the table in a headless runtime.
-
 mod perf;
 mod runtime;
 mod tooltip;
@@ -27,8 +23,6 @@ fn ids(v: &[&str]) -> Vec<ColumnId> {
     v.iter().map(|s| id(s)).collect()
 }
 
-/// Strata's five columns, with its default widths and minimums
-/// (`src/ui/browser_modes/list_columns.rs`).
 fn strata() -> Vec<Column<()>> {
     let cell = |_: &(), _: &RowCx<'_>| Cell::text("");
     vec![
@@ -85,9 +79,6 @@ fn widths_of(r: &resolve::Resolved) -> Vec<(String, f32)> {
 
 // The layout.
 
-/// column-layout: "On load, duplicate columns are dropped and missing ones are appended in
-/// default order", and "A hand-edited `list_hidden_columns` that names `name` loads with Name
-/// shown" (the table's half: the host reads the file).
 #[test]
 fn a_saved_layout_drops_unknown_and_repeated_ids_appends_missing_ones_and_never_hides_name() {
     let layout = ColumnLayout::normalize(
@@ -138,9 +129,6 @@ fn moving_a_column_puts_it_before_its_target_or_after_the_last() {
 
 // The sizing rule.
 
-/// list: "Name takes the width left after the metadata columns until it is resized by hand;
-/// below the minimum widths the table scrolls horizontally" (the widths; `horizontal-scroll.json`
-/// checks that the wheel scrolls them sideways).
 #[test]
 fn the_fill_column_takes_what_the_others_leave_until_resized_and_overflows_below_its_width() {
     let layout = ColumnLayout::new(defaults());
@@ -172,8 +160,6 @@ fn the_fill_column_takes_what_the_others_leave_until_resized_and_overflows_below
     );
 }
 
-/// A saved width that isn't a finite number takes the default, and one past all reason the
-/// ceiling.
 #[test]
 fn a_saved_width_that_isnt_a_number_or_is_absurd_is_bounded() {
     let layout = ColumnLayout::new(defaults());
@@ -226,10 +212,6 @@ fn a_larger_text_size_widens_the_columns_by_its_factor() {
 
 // Reordering.
 
-/// column-layout: "Dragging Mode 180 px to the right and releasing gives the order Name, Size,
-/// Mode, Type, Modified" (the drop rule), "The line sits on the left edge of the heading the
-/// column would precede", "For a drop at the end, the line sits on the last heading's right
-/// edge", and "A drop on the column's current position shows no line and changes nothing".
 #[test]
 fn a_dragged_heading_drops_before_the_first_other_heading_whose_middle_is_right_of_it() {
     let layout = ColumnLayout::new(defaults());
@@ -270,8 +252,6 @@ fn a_dragged_heading_drops_before_the_first_other_heading_whose_middle_is_right_
 
 // Sorting.
 
-/// list: "Clicking the Name, Size, Type, or Modified heading sorts by that field ascending;
-/// clicking the current sort heading reverses it" (the direction a click asks for).
 #[test]
 fn a_click_asks_for_the_other_way_on_the_sorted_column_and_ascending_elsewhere() {
     let shown = SortShown {
@@ -291,9 +271,6 @@ fn a_click_asks_for_the_other_way_on_the_sorted_column_and_ascending_elsewhere()
 
 // Hit regions.
 
-/// pointer-intent: "List file drags start only on the icon or rendered filename, before and after
-/// selection. Unused Name space, row padding, and metadata columns remain marquee origins, even
-/// when Name is reordered."
 #[test]
 fn only_the_name_columns_icon_and_drawn_name_are_content_and_metadata_stays_gutter() {
     let look = Look::fallback(false);

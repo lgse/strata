@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! 10xer mode's key stage (`Stage::TenxerKeys`), mode toggle (`Ctrl+Shift+M`), Escape ladder,
-//! chord prefix triggers, and non-Latin layout cursor/range fallback
-//! (`src/ui/window/keyboard/tenxer.rs`, `items/tenxer_items.rs`, `files.rs`, `escape.rs`).
-
 use rune::{Key, KeyEvent, Mods, Tx};
 use strata_components::{
     collection::keyboard::{Command as Nav, RangeKind, Target, Vertical},
@@ -84,8 +80,6 @@ fn swallow_unclaimed_typing(_: &mut App, _: &Call<'_>, _: &mut Tx) -> Outcome {
 }
 
 fn toggle_mode(app: &mut App, _: &Call<'_>, tx: &mut Tx) -> Outcome {
-    // The chrome 10xer hides rebuilds the view around the listing; GTK's listing keeps the
-    // keyboard through the switch.
     let in_view = Situation::of(app, tx).in_view();
     let mut enabled = false;
     shell::saved(app).change(|settings| {
@@ -243,8 +237,6 @@ fn routes_typing_to_listing(in_view: bool, at: &Situation, press: &KeyPress) -> 
     !in_view && !at.within("preview") && filter::is_typing_key(press)
 }
 
-/// 10xer's Escape ladder (`src/ui/window/keyboard/escape.rs`): dismisses one interaction per
-/// press, and never closes a Miller column.
 fn escape_ladder(app: &mut App, tx: &mut Tx) {
     if crate::peek::close(app) {
         return;
@@ -266,8 +258,6 @@ fn escape_in_search(app: &mut App, tx: &mut Tx) -> bool {
         || filter::dismiss_search_only(app, tx)
 }
 
-/// A range over `f` results lives on those results, so it ends before the filter that shows
-/// them; a range over the listing ends after the find's highlight.
 fn escape_in_listing(app: &mut App, tx: &mut Tx) -> bool {
     end_results_range(app)
         || filter::dismiss_filter_only(app, tx)
@@ -277,8 +267,6 @@ fn escape_in_listing(app: &mut App, tx: &mut Tx) -> bool {
         || clear_selection(app)
 }
 
-/// A chooser's first row, selected as it loads, is not a selection to clear before Escape
-/// cancels the request (`clear_selection` in `src/ui/window/keyboard/escape.rs`).
 fn clear_selection(app: &App) -> bool {
     !crate::chooser::tenxer::keeps_load_cursor(app) && app.browser.clear_active_selection()
 }
@@ -288,7 +276,6 @@ fn end_results_range(app: &App) -> bool {
 }
 
 fn listing_keys(app: &mut App, press: &KeyPress, tx: &mut Tx) -> Option<Outcome> {
-    // `i` on a folder peeks it in Icons and List; on a file it is the preview's (A15's).
     if press.is(PREVIEW) && crate::peek::toggle_at_cursor(app) {
         return Some(Outcome::Ran);
     }
@@ -307,8 +294,6 @@ fn listing_keys(app: &mut App, press: &KeyPress, tx: &mut Tx) -> Option<Outcome>
     }
 }
 
-/// `tenxer_file_keys` (`src/ui/window/keyboard/files.rs`): file verbs and chord triggers on
-/// the focused listing.
 fn file_keys(app: &mut App, press: &KeyPress, tx: &mut Tx) -> Option<Outcome> {
     if press.is(HIDDEN_FILES) {
         return Some(commands::run(app, "hidden", On::Focus, tx));
@@ -475,8 +460,6 @@ fn step_direction(press: &KeyPress, icons: bool) -> Option<Direction> {
     }
 }
 
-/// Default-map keys of window commands that 10xer mode leaves unbound or binds to other keys
-/// (`claims_unbound_command` in `src/ui/window/keyboard/tenxer.rs`).
 fn claims_unbound_command(press: &KeyPress) -> bool {
     press.is(TAB_NEW)
         || [

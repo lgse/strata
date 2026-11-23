@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The trash flight: what flies, from where to where, with Strata's timings, and the flyers'
-//! elements on each side of the matched swap.
-
 use std::cell::Cell;
 
 use rune::{Beat, Easing, El, Icon, Sequence, Spring, el, icon};
@@ -62,15 +59,6 @@ impl Mode {
     }
 }
 
-// Strata draws each flyer per frame (`fly_to_trash.rs`, `style.css`):
-// - into the target, opacity `1 − p³`, and from p = 0.58 a 180 ms
-//   `cubic-bezier(0.2, 0.9, 0.3, 1.2)` transition to scale 0.42, cut off at landing;
-// - out of it, opacity `1 − (1 − p)³`, and from p = 0.08 the same transition from 0.42 to 1;
-// - up off rows, scale 0.85, banked to 1.25 from p = 0.12 by a 160 ms
-//   `cubic-bezier(0.18, 0.9, 0.25, 1.35)` transition, retargeted to 1.35 at p = 0.82, and
-//   opacity `1 − ((p − 0.65) / 0.35)²` from p = 0.65.
-// A beat has one easing for both its opacity and its scale, so where the two curves differ the
-// beats sample them every 15–20 ms with straight segments between.
 const EASE_IN_CUBIC: Easing = Easing::cubic(0.32, 0.0, 0.67, 0.0);
 const INBOUND: &[Beat] = &[
     Beat::new(0.0),
@@ -129,11 +117,6 @@ const RELEASE: &[Beat] = &[
 ];
 const LIN: Easing = Easing::LINEAR;
 
-/// A flight to start with [`Effects::fly`](super::Effects::fly).
-///
-/// Each leg names a row side by key (a key, or a key path such as C1e's
-/// `part_path(scope, id, ICON)`), with the icon that flies. A key whose rect is wider than tall
-/// is taken as a row: the flyer meets it at its leading square, where a row's icon sits.
 #[derive(Clone, Debug)]
 pub struct Flight {
     pub(super) mode: Mode,
@@ -158,7 +141,6 @@ impl Flight {
         }
     }
 
-    /// Icons fly from `sources` into `target` (C8's `trash_target_key`), which then pulses.
     pub fn into_target(
         target: impl Into<String>,
         sources: impl IntoIterator<Item = (String, &'static Icon)>,
@@ -166,9 +148,6 @@ impl Flight {
         Self::new(Mode::Inbound, target, sources)
     }
 
-    /// Icons fly out of `target` onto the rows `destinations` name, which pulses as they leave.
-    /// The rows must be mounted when the flight starts: keep them hidden
-    /// (`RowMarks::vanished`) until [`Event::Landed`].
     pub fn out_of_target(
         target: impl Into<String>,
         destinations: impl IntoIterator<Item = (String, &'static Icon)>,
@@ -184,15 +163,11 @@ impl Flight {
         Self::new(Mode::Release, target, sources)
     }
 
-    /// The scroll viewport the target shows in (C8's sidebar list): a target scrolled out of
-    /// it flies nothing.
     pub fn target_in(mut self, viewport: impl Into<String>) -> Self {
         self.target_in = Some(viewport.into());
         self
     }
 
-    /// The scroll viewport the rows show in (C1e's `viewport_path`): rows outside it fly
-    /// nothing, as rows outside the window never do.
     pub fn rows_in(mut self, viewport: impl Into<String>) -> Self {
         self.rows_in = Some(viewport.into());
         self
@@ -203,18 +178,19 @@ impl Flight {
 pub(super) struct LegRun {
     pub row: String,
     pub icon: &'static Icon,
-    /// The flyer's rect as the launch side drew it: set by the view while the flight mounts
-    /// (a view reads layout and the tick doesn't), `None` for a leg that couldn't launch.
     pub seen: Cell<Option<[f32; 4]>>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(super) enum Phase {
     /// The launch side mounts; the flight flips at the first tick after a view drew it.
-    Mount { ticks: u8 },
-    /// Flying since `t0`: the landing side is mounted until it lands (at the tick in
-    /// `landed`), then the target's pulse plays out.
-    Fly { t0: f64, landed: Option<f64> },
+    Mount {
+        ticks: u8,
+    },
+    Fly {
+        t0: f64,
+        landed: Option<f64>,
+    },
 }
 
 pub(super) struct FlightRun {
@@ -229,8 +205,6 @@ pub(super) struct FlightRun {
     pub flying: Vec<usize>,
     /// A view has drawn the launch side (set by the layer).
     pub viewed: Cell<bool>,
-    /// The target showed when a view last drew this flight (set by the layer): one gone at
-    /// its pulse takes none, so it can't play when the target comes back.
     pub target_seen: Cell<bool>,
     /// The target's pulse this flight started, spent when it ends.
     pub pulse: Option<u32>,
@@ -278,22 +252,16 @@ impl FlightRun {
         }
     }
 
-    /// Ends this flight's pulse, if it is still the target's latest: the target then keeps its
-    /// wrapper but stops replaying the pulse each time it mounts.
     pub fn spend_pulse(&self, pulses: &mut Pulses) {
         if let Some(n) = self.pulse {
             pulses.spend(&self.target, n);
         }
     }
 
-    /// One tick at `now`: pushes this flight's events, lowers `next` to its next deadline,
-    /// sets `animate` when a flight swaps onto its flyers, and says whether it plays on.
     pub fn step(&mut self, now: f64, tick: &mut FlightTick<'_>) -> bool {
         const EPS: f64 = 1e-6;
         let due = |next: &mut Option<f64>, at: f64| *next = Some(next.map_or(at, |n| n.min(at)));
         match self.phase {
-            // Until the layer has drawn the launch side (a host that starts a flight and ticks in
-            // one poll ticks before its view runs), or for 3 ticks with no layer at all.
             Phase::Mount { ticks } if !self.viewed.get() && ticks < 3 => {
                 self.phase = Phase::Mount { ticks: ticks + 1 };
                 due(tick.next, now);
@@ -305,8 +273,6 @@ impl FlightRun {
                     .filter(|&i| self.legs[i].seen.get().is_some())
                     .collect();
                 if self.flying.is_empty() {
-                    // Nothing flies (no layer, reduced motion, every leg or the target out of
-                    // sight): a restore's rows still show at Landed.
                     tick.events.push(Event::Landed(self.id));
                     tick.events.push(Event::Done(self.id));
                     return false;
@@ -365,8 +331,6 @@ pub(super) fn spring(mode: Mode, k: usize) -> Spring {
     Spring::new((mode.travel() + stagger(k)) as f32, 0.0)
 }
 
-/// Where a flyer of size `size` meets `rect`: its middle, or for a row (wider than tall) its
-/// leading square.
 pub(super) fn meet(rect: [f32; 4], size: [f32; 2]) -> [f32; 4] {
     let [x, y, w, h] = rect;
     let (cx, cy) = if w > h * 1.5 {
@@ -416,8 +380,6 @@ pub(super) fn launch(id: EffectId, i: usize, look: &Look, ic: &'static Icon, rec
         .child(glyph(look, ic, rect))
 }
 
-/// The landing side of leg `i`, flyer `k` of the flight: the icon where it lands, which Rune
-/// flies there from the launch side, fading and shrinking as Strata's do.
 pub(super) fn flyer(
     id: EffectId,
     i: usize,

@@ -8,9 +8,6 @@ use std::time::Duration;
 
 type Make = Box<dyn FnOnce() -> Vec<u8> + Send>;
 
-/// One MIME type's data for a source. A lazy writer runs only when a reader asks for its type,
-/// once, on a worker thread; its bytes are kept for the life of the source, because readers ask
-/// again (Nautilus asked six times for one paste in S2).
 #[derive(Clone)]
 pub struct Writer(Arc<Inner>);
 
@@ -36,9 +33,6 @@ impl Writer {
         }))
     }
 
-    /// The bytes, running the writer if no one has yet. A second caller waits for the first
-    /// run rather than starting its own. None if the writer panicked. Blocks: call it off the
-    /// UI thread.
     pub(crate) fn get(&self) -> Option<Arc<[u8]>> {
         self.0
             .bytes

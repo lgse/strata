@@ -24,8 +24,6 @@ async fn run(
     }
 }
 
-/// Moves items back where they came from. `operation` ends after everything that reports
-/// progress has gone.
 struct UndoMove {
     settling: Settling,
     restored_paths: Vec<PathBuf>,

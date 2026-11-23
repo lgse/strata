@@ -41,8 +41,6 @@ struct OperationContext {
     location_changes: LocationChanges,
 }
 
-/// Per-request state for publishing path changes as each item lands, even
-/// after a later operation superseded this one.
 struct LocationChanges {
     deleting: bool,
     moving: bool,

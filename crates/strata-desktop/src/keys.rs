@@ -1,13 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Keys without a toolkit: the catalog of shortcuts, the tables that resolve them, and the
-//! normalized [`KeyPress`] a handler matches. See `docs/keyboard-shortcuts.md`.
-//!
-//! An interface reads its own key events and builds each [`KeyPress`] once: the GTK
-//! application from a GDK event, through [`normalize`], in `src/ui/keys`; the Rune interface
-//! with [`KeyPress::from_parts`]. What a key's name, character and case are comes from the
-//! interface's key library, through [`Backend`].
-
 mod active;
 mod alias;
 mod backend;
@@ -49,8 +41,6 @@ pub const SHORTCUT_MODIFIERS: Modifiers = Modifiers::CONTROL_MASK
     .union(Modifiers::SHIFT_MASK)
     .union(Modifiers::SUPER_MASK);
 
-/// Editing shortcuts of `gtk::Text` and `gtk::TextView`, with the widget action
-/// each runs.
 pub const TEXT_EDITING: [(Command, &str); 6] = [
     (bindings::COPY, "clipboard.copy"),
     (bindings::CUT, "clipboard.cut"),
@@ -60,10 +50,6 @@ pub const TEXT_EDITING: [(Command, &str); 6] = [
     (bindings::REDO, "text.redo"),
 ];
 
-/// Commands the window's direct stage runs from a key a user binds to them in
-/// a map whose own stages leave them out: 10xer verbs, chord steps and paging
-/// in the default map, and default-map verbs in 10xer. Neither table binds
-/// them by default.
 pub const DIRECT_IN_DEFAULT: [Command; 27] = [
     bindings::OPEN_WITH,
     bindings::MOVE_TO,
@@ -109,8 +95,6 @@ pub fn direct_commands(map: Map) -> &'static [Command] {
     }
 }
 
-/// The default map's custom action slots: slot N runs the Nth action in the
-/// order Settings → Actions lists them. Only the direct stage runs them.
 pub const CUSTOM_ACTIONS: [Command; 10] = [
     bindings::CUSTOM_ACTION_1,
     bindings::CUSTOM_ACTION_2,
@@ -131,8 +115,6 @@ pub fn custom_action_slot(command: Command) -> Option<usize> {
         .map(|index| index + 1)
 }
 
-/// A canonical key and its exact modifiers. Letters are lowercase with Shift
-/// explicit, a symbol names the symbol, and a digit means its digit-row position.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Binding {
     pub key: Key,
@@ -173,8 +155,6 @@ impl Binding {
         Self::new(key, Modifiers::CONTROL_MASK.union(Modifiers::ALT_MASK))
     }
 
-    /// Also matches while any of `modifiers` is held. Only navigation and
-    /// dismiss keys use this, where a handler accepts those modifiers.
     pub const fn ignoring(self, modifiers: Modifiers) -> Self {
         Self {
             ignored: self.ignored.union(modifiers),
@@ -190,16 +170,12 @@ impl Binding {
         self.modifiers
     }
 
-    /// The string for a menu item's `accel` attribute, and the one settings
-    /// files store.
     pub fn accelerator(self) -> glib::GString {
         backend::backend()
             .accelerator_name(self.key, self.modifiers)
             .into()
     }
 
-    /// The form a saved binding takes: a plain digit also matches with Shift,
-    /// which AZERTY needs to type digits, as chord digit steps do.
     pub fn normalized(self) -> Self {
         if self.modifiers.is_empty() && digit_value(self.key).is_some() {
             self.ignoring(Modifiers::SHIFT_MASK)
@@ -208,18 +184,11 @@ impl Binding {
         }
     }
 
-    /// Reads an accelerator such as `<Control>e`, the form [`Self::accelerator`]
-    /// writes, as [`Self::normalized`]. As in GTK, a letter's case does not
-    /// matter and Shift is written out (`<Shift>g`). A digit means its digit-row
-    /// position and a keypad key the main key it acts as. Only Ctrl, Alt, Shift
-    /// and Super may be held.
     pub fn parse(accelerator: &str) -> Option<Self> {
         let (key, modifiers) = backend::backend().accelerator_parse(accelerator)?;
         Self::canonical(key, modifiers)
     }
 
-    /// The saved form of `key` with `modifiers`, as [`Self::parse`] reads it,
-    /// or `None` when a keymap cannot hold it.
     fn canonical(key: Key, mut modifiers: Modifiers) -> Option<Self> {
         if !SHORTCUT_MODIFIERS.contains(modifiers)
             || key.keysym() == 0
@@ -244,8 +213,6 @@ impl Binding {
     }
 }
 
-/// What a press can be compared with: a fixed [`Binding`], or a [`Command`]
-/// resolved through the active map.
 pub trait Match {
     fn matches(&self, press: &KeyPress) -> bool;
 }
@@ -257,9 +224,6 @@ impl<T: Match + ?Sized> Match for &T {
 }
 
 impl Match for Binding {
-    /// Compares modifiers exactly apart from those the binding ignores, with
-    /// the key the user pressed, or with the canonical key an alias reads as
-    /// when the binding is on that key, as Tab's completion is.
     fn matches(&self, press: &KeyPress) -> bool {
         self.matches_pressed(press)
             || (press.aliased() && self.key == press.key && self.matches_read(press))
@@ -313,9 +277,6 @@ pub struct KeyPress {
 }
 
 impl KeyPress {
-    /// Whether the press is `key`: a binding, or any of a command's bindings
-    /// in the active map. A structural command compares the key the press
-    /// reads as; anything else compares the key as pressed.
     pub fn is(&self, key: impl Match) -> bool {
         key.matches(self)
     }
@@ -324,9 +285,6 @@ impl KeyPress {
         keys.iter().any(|key| key.matches(self))
     }
 
-    /// The digit-row position (1–9, 0) or keypad digit when the press is in
-    /// `digits`. Held modifiers, Shift included, must match apart from those
-    /// the range ignores.
     pub fn digit_in(&self, digits: Digits) -> Option<u8> {
         let compared = SHORTCUT_MODIFIERS.difference(digits.ignored());
         self.digit.filter(|digit| {
@@ -334,9 +292,6 @@ impl KeyPress {
         })
     }
 
-    /// The plain letter **a**–**z** pressed, read through the Latin fallback
-    /// as bindings are, for a [`Letters`] slot. Any held modifier, Shift
-    /// included, makes it no letter.
     pub fn letter(&self) -> Option<char> {
         let (key, modifiers) = self.physical_key();
         let letter = key.to_unicode().filter(char::is_ascii_lowercase)?;
@@ -345,8 +300,6 @@ impl KeyPress {
             .then_some(letter)
     }
 
-    /// The typed character, for typing consumers only. Nothing is typed while
-    /// Ctrl, Alt or Super is held.
     pub fn text(&self) -> Option<char> {
         if self
             .state
@@ -363,9 +316,6 @@ impl KeyPress {
         self.modifier
     }
 
-    /// The held Ctrl, Alt, Shift and Super, including Shift that typed a symbol.
-    /// For policies that depend on what is held rather than on a binding. An
-    /// alias holds what its canonical key does.
     pub fn modifiers(&self) -> Modifiers {
         if self.alias.is_some() {
             self.shortcut_modifiers
@@ -374,27 +324,18 @@ impl KeyPress {
         }
     }
 
-    /// The modifier this key itself holds, empty for other keys. GDK reports
-    /// the state from before the event, without it.
     pub fn modifier_key(&self) -> Modifiers {
         modifier_of(self.typed)
     }
 
-    /// Whether the key came from another layout or the US-QWERTY table, which
-    /// GTK's own bindings may not recognize.
     pub fn used_fallback(&self) -> bool {
         self.fallback
     }
 
-    /// Whether the key is a user alternate of a structural command, read as
-    /// that command's canonical key.
     pub fn aliased(&self) -> bool {
         self.alias.is_some()
     }
 
-    /// The key as pressed, in the form a keymap saves and loads it: the
-    /// binding a shortcut capture records, or `None` for a key a keymap
-    /// cannot hold. A keypad digit is its digit-row key.
     pub fn binding(&self) -> Option<Binding> {
         // Tab numbers read Shift on the digit row by position, not as the
         // symbol it types.
@@ -407,8 +348,6 @@ impl KeyPress {
         Binding::canonical(key, modifiers)
     }
 
-    /// The digit binding a digit-row press with Ctrl, Alt or Super also
-    /// matches, whatever the layout types there: AZERTY's Ctrl+& is Ctrl+1.
     pub fn digit_position(&self) -> Option<Binding> {
         self.digit
             .filter(|_| {
@@ -419,8 +358,6 @@ impl KeyPress {
             .map(|digit| Binding::new(DIGITS[usize::from(digit)], self.state))
     }
 
-    /// The press without a plain printable alias such as **j** for ↓, for
-    /// surfaces that never read **h j k l** as arrows.
     pub fn untyped(self) -> Self {
         if !self.alias.is_some_and(|alias| alias.typed) {
             return self;
@@ -454,8 +391,6 @@ impl KeyPress {
             })
     }
 
-    /// A press from signal arguments alone, as emitted without a GDK event. It
-    /// reads as a US-QWERTY press; tests build presses this way.
     pub fn from_signal(keyval: Key, keycode: u32, state: Modifiers) -> Self {
         normalize(&Event::synthetic(keyval, keycode, state), |_| {
             None::<(u32, u32, Key)>
@@ -465,8 +400,6 @@ impl KeyPress {
 
 #[derive(Clone, Copy, Debug)]
 pub struct Event {
-    /// `KeyEvent::match_()`: Caps Lock ignored, consumed modifiers removed,
-    /// letters lowercase with Shift.
     pub matched: (Key, Modifiers),
     pub typed: Key,
     pub state: Modifiers,
@@ -594,8 +527,6 @@ fn types_beyond_ascii(key: Key) -> bool {
             .is_some_and(|character| !character.is_ascii() && !character.is_control())
 }
 
-/// Keypad keys act as the main keys they share a label with. Num Lock digits
-/// stay keypad keys and count through `digit_in()`.
 pub fn main_key(key: Key) -> Key {
     match key {
         Key::KP_Enter => Key::Return,
@@ -653,11 +584,6 @@ pub fn digit_value(key: Key) -> Option<u8> {
         .map(|digit| digit as u8)
 }
 
-/// GDK keycodes are evdev codes plus 8 on X11 and Wayland; 10–19 are the digit
-/// row, which counts by position at level 0 or 1. GDK reports no AltGr
-/// modifier, so at a higher level the row counts only a digit it types.
-/// Elsewhere a key counts as the digit it types at level 0 or 1, such as the
-/// Hungarian 0 left of 1.
 fn position_digit(keycode: u32, typed: Key, level: u32) -> Option<u8> {
     match keycode {
         10..=19 if level <= 1 => Some(((keycode - 9) % 10) as u8),

@@ -1,25 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! `open-in-window`: a folder opened in a new window of the process, as GTK's window action
-//! `open-window-at` runs `open_in_new_window` (`src/ui/window/composition/tabs.rs`), which
-//! presents a window on the location as a launch's argument does
-//! (`present_location_window` in `src/ui/window/open_argument.rs`). It takes the same places
-//! as `open-in-tab` (`crate::tab_strip::open`):
-//!
-//! - **On a place** (a crumb's or a folder row's Shift or Ctrl middle click): its location.
-//! - **On a row** (the entry menu's Open In → New Window): a window for each folder the menu
-//!   acts on (`open_entries_in_action` in `src/ui/browser/context_menu/item_menu.rs`). A file
-//!   among them opens nothing.
-//! - **Shift+Enter**, from the listing and not from a field (`opens_focused_in_new` in
-//!   `src/ui/window/keyboard/items.rs`): the result under the results' cursor, else the
-//!   cursor's entry. A folder opens in a new window; a file opens as Enter opens it.
-//!
-//! A chooser opens no window on any of them: GTK's `open-window-at` is a browser window's
-//! action, which a chooser's window has none of, and `open_focused_in_new` declines there.
-//!
-//! The window is asked for through the process's queue (`application::ask_for_window`), which
-//! the windowed host and the QA host open from, so it leaves `tabs.toml` alone.
-
 use rune::{El, Tx};
 use strata_core::model::FileEntry;
 use strata_desktop::keys::{Modifiers, bindings::OPEN_IN_NEW_WINDOW};
@@ -55,8 +35,6 @@ fn listing_of_a_browser(app: &App, at: &Situation) -> bool {
 }
 
 fn opened(app: &mut App, call: &Call<'_>, tx: &mut Tx) -> Outcome {
-    // GTK's `open-window-at` is a browser window's action, which a chooser has none of: a
-    // row's middle click there finds it unavailable (`columns/rows/click.rs`).
     if app.browser.is_chooser_mode() {
         return Outcome::Declined;
     }
@@ -89,7 +67,6 @@ fn open_focused(app: &mut App, tx: &mut Tx) -> Outcome {
             app.browser.open_location(file.location);
             Outcome::Ran
         }
-        // GTK's `open_focused_in_new` always stops the key once an entry is focused.
         Some(Focused::Entry(_)) => {
             commands::run(app, "activate", On::Focus, tx);
             Outcome::Ran

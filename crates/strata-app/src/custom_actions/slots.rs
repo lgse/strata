@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Default-map custom-action slots (`CUSTOM_ACTIONS` 1..10 in `src/ui/window/keyboard/direct.rs`
-//! and `src/ui/window/keyboard/files.rs`) and numbered target helpers for 10xer chords
-//! (`src/ui/browser/file_commands.rs`).
-
 use std::{path::PathBuf, rc::Rc};
 
 use rune::Tx;
@@ -125,8 +121,6 @@ pub(super) const COMMANDS: &[Action<App>] = &[
         .when(in_listing)]),
 ];
 
-/// `item_view_has_focus` in `src/ui/window/keyboard/files.rs`, outside 10xer mode and any
-/// text field, the filter's included.
 fn in_listing(app: &App, at: &Situation) -> bool {
     !shell::preferences(app).tenxer_mode && !at.text() && at.in_view()
 }

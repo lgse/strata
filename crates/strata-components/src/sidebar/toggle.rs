@@ -13,10 +13,6 @@ use super::intent::SidebarIntent;
 use super::state::SidebarState;
 use super::{DEFAULT_KEY, Emit};
 
-/// The sidebar toggle: its accessible name is constant, "Toggle sidebar (Ctrl+B)", so
-/// assistive technology and tests find it at every step, and its tooltip names the next step,
-/// such as "Hide sidebar (Ctrl+B)". The shortcut is the host's (Ctrl+N in 10xer mode).
-/// Keyed `<key>-toggle`.
 pub struct WidthToggle<'a, S> {
     key: String,
     state: &'a SidebarState,

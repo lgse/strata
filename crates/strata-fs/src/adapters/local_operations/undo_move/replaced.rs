@@ -41,8 +41,6 @@ impl ReplacedMoves {
     }
 }
 
-/// A failed undo stays on top of the history, so an original that is gone for good must
-/// not stop the items from moving back: a failed batch is looked up item by item.
 async fn staged_originals(
     originals: &HashMap<Location, ItemIdentity>,
     cancellable: &gio::Cancellable,

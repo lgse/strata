@@ -15,9 +15,6 @@ fn rejecting_rename_flags(errno: Errno) -> Quirks {
 fn restore_without_rename_flags_never_replaces_a_racing_destination() -> Result<(), Box<dyn Error>>
 {
     let _serial = ASYNC_MAIN_CONTEXT_DEFAULT.lock()?;
-    // The name is taken just before the step that would take it: the
-    // fallback rung, or the copy made where nothing can place the item,
-    // whose barrier is opened before it writes.
     let rows: [(Preset, Option<(Op, &str)>); 4] = [
         (Quirks::without_rename_flags, None),
         (|| rejecting_rename_flags(Errno::NOSYS), None),

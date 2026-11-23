@@ -1,31 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The keys the GTK window's dispatcher reads after a view's or a field's own have left them
-//! (`src/ui/window/keyboard/items.rs` and `commands.rs`): Escape at three stages, and Enter
-//! at the items. Each reads the press through the keymap's aliases (`commands::read`), so a
-//! structural alias such as `o` for Enter or Ctrl+[ for Escape acts as the key it stands for,
-//! where the view's and the editor's own keys read the key alone.
-//!
-//! - **`inline_editing`**, for an Escape while a rename is open: the rename ends
-//!   (`cancel_rename`). The editor takes a plain Escape itself; an alias reaches the stage.
-//! - **`dismissal`**, for an Escape anywhere outside text: an open preview closes and returns
-//!   the keyboard to the shown view, else the peek closes, else the active column's selection
-//!   clears (`dismiss_preview_or_selection`). With no preview open, an Escape on a header
-//!   button clears the selection and leaves the keyboard on the button.
-//! - **`item_navigation`**, for an Escape that reaches the listing with nothing to clear: the
-//!   browser's `escape()` (`directory_enter_or_escape`), which closes the deepest column. In
-//!   Columns that is the column the keyboard was in; in Icons and List it is one the view does
-//!   not show, which the next folder opened in place no longer finds behind it.
-//! - **`item_navigation`**, for an Enter that reaches the listing: the cursor's entry opens
-//!   (`activate_focused`). The view takes a plain Return itself; an alias reaches the stage.
-//!
-//! The view's own Escape clears a selection while it has the keyboard, and leaves an Escape
-//! with nothing selected to the stages after it; the `dismissal` stage is asked ahead of it,
-//! as on GTK, and clears the same selection through the browser.
-//!
-//! The commands are registered by the menus' part (`menus.rs`), this package's: nothing of
-//! them is drawn or kept.
-
 use rune::Tx;
 use strata_desktop::keys::bindings::{
     ENTER, ENTER_ANY_SHIFT, ESCAPE, ESCAPE_ANY, ESCAPE_ANY_SHIFT,
@@ -43,8 +17,6 @@ fn rename_cancelled(app: &mut App, _: &Call<'_>, tx: &mut Tx) -> Outcome {
     Outcome::Ran
 }
 
-/// `dismiss_preview_or_selection`: the preview drawer, the peek, else the active column's
-/// selection.
 fn dismissed(app: &mut App, _: &Call<'_>, tx: &mut Tx) -> Outcome {
     if crate::preview::dismiss_escape(app, tx) {
         return Outcome::Ran;
@@ -63,8 +35,6 @@ fn escaped(app: &mut App, _: &Call<'_>, _: &mut Tx) -> Outcome {
     Outcome::Ran
 }
 
-/// `directory_enter_or_escape`'s Enter: the cursor's entry opens, in a child column in
-/// Columns and in place in a view that shows one folder (`BrowserView::activate_focused`).
 fn activated(app: &mut App, _: &Call<'_>, tx: &mut Tx) -> Outcome {
     if crate::chooser::confirms_focused(app, tx) {
         return Outcome::Ran;

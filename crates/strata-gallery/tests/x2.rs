@@ -1,16 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! X2's session tests: the drag-and-drop wiring demo (`examples/dnd_wiring/`) against W3's
-//! peer in a private headless sway, on Wayland and X11 (`mise run test-platform x2::`).
-//!
-//! Each test starts the demo on a fixture folder made in the session's private runtime
-//! directory, finds its targets with the demo's `locate` command (window points from
-//! `Cx::window_layout`), and drags with the session's virtual pointer. What the demo did
-//! comes back as its JSON lines (`transfer`, `drag-end`, `spring`, …), and what the peer got
-//! as its events.
-//!
-//! Work package: X2, `docs/rune/work/phase-4-integration/X2-dnd-wiring.md`.
-
 #[path = "../../strata-platform/tests/support/mod.rs"]
 #[expect(
     dead_code,
@@ -38,8 +27,6 @@ mod x2 {
     const GNOME: &str = "x-special/gnome-copied-files";
     const KDE: &str = "application/x-kde-cutselection";
 
-    /// The fixture: folders with a file each, a long folder for autoscroll, `usb` (another
-    /// volume to the demo), `pinned`.
     fn fixture(s: &Session) -> PathBuf {
         let root = s.runtime_dir().join("root");
         for d in [
@@ -224,8 +211,6 @@ mod x2 {
                         }
                     }
                 }
-                // Settled: the same rects a moment later (a pane just shown lays out again, and
-                // a grid reflows to its width).
                 if out.len() == what.len() {
                     if last.as_ref() == Some(&out) {
                         return out;
@@ -250,8 +235,6 @@ mod x2 {
             (r[0] + r[2] * fx, r[1] + r[3] * fy)
         }
 
-        /// Gives window `key` keyboard focus through sway and waits until the app has heard it
-        /// settle (a click that focuses an unfocused Xwayland window can lose its press).
         pub fn focus(&self, s: &Session, key: &str) {
             let w = self.window(s, key);
             if !w.focused {
@@ -323,9 +306,6 @@ mod x2 {
         (peer, w)
     }
 
-    /// Presses on `at` in the demo's window `key`, focused first, and waits for the press to
-    /// reach a collection. After a relayout a first motion can reach no surface (W3's traps),
-    /// so a press that doesn't arrive is released and tried again.
     fn press(s: &Session, demo: &Demo, key: &str, at: (f64, f64)) -> usize {
         demo.focus(s, key);
         for _ in 0..5 {
@@ -378,8 +358,6 @@ mod x2 {
             .path(((from.0 + to.0) / 2.0, (from.1 + to.1) / 2.0));
         demo.wait(mark, "the drag starting", |v| v["ev"] == "drag-start");
         s.input().path(to);
-        // A motion after arriving, then time for the target to answer the compositor (a
-        // window of this app picks its target in its next update).
         std::thread::sleep(Duration::from_millis(200));
         s.input().path((to.0 + 1.0, to.1));
         std::thread::sleep(Duration::from_millis(250));
@@ -397,10 +375,6 @@ mod x2 {
 
     // ---- Drag out ----
 
-    /// operations/drag-and-drop: "Dragged items are offered as a GDK file list and a
-    /// `text/uri-list`, so other applications can receive them" (the three formats Strata's
-    /// port offers instead), from Columns, List and Icons in turn; the outcome reaches the
-    /// demo; the dragged rows are drawn faded while the drag runs, and not after it.
     fn drag_out_from_each_view(display: Display) {
         let s = Session::start();
         let demo = Demo::start(&s, display, false, false);
@@ -443,8 +417,6 @@ mod x2 {
         demo.quit();
     }
 
-    /// The next `n` drops the peer reads, by type: their text and action (they finish in any
-    /// order on X11).
     fn dropped_on_peer(peer: &Peer, n: usize) -> HashMap<String, (Option<String>, Option<Action>)> {
         let mut out = HashMap::new();
         for _ in 0..n {
@@ -477,8 +449,6 @@ mod x2 {
 
     // ---- Drop in ----
 
-    /// Presses on the peer's window, focused first through sway, and waits until the peer has
-    /// the press.
     fn press_on_peer(s: &Session, peer: &Peer, window: &Window) {
         let w = s.wait_window_where("the peer's window", |w| w.id == window.id);
         if !w.focused {
@@ -509,8 +479,6 @@ mod x2 {
         });
     }
 
-    /// A drag from the peer offering `offers`, moved to `path` (each point in turn, the last
-    /// held `hold`), then dropped there. The demo's line count before it.
     fn drag_from_peer(
         s: &Session,
         peer: &Peer,
@@ -544,9 +512,6 @@ mod x2 {
 
     const BOTH: [Action; 2] = [Action::Copy, Action::Move];
 
-    /// Says a test ran nothing, on stderr past libtest's capture (which takes only `print!`
-    /// and `eprint!`), so it shows in every run. libtest has no "skipped" result: the test
-    /// still reports ok, and this line is what says it didn't run (docs/rune/testing.md).
     fn skip(test: &str, why: &str) {
         use std::io::Write;
         // One write on the locked handle, so a parallel test's output can't split the line.
@@ -554,8 +519,6 @@ mod x2 {
         let _ = std::io::stderr().lock().write_all(line.as_bytes());
     }
 
-    /// One drop from the peer onto `target` in the demo's main window: the demo's `transfer`
-    /// line for it, or None when nothing was transferred within 3 seconds of the release.
     fn drop_on(
         s: &Session,
         demo: &Demo,
@@ -588,18 +551,6 @@ mod x2 {
         })
     }
 
-    /// operations/drag-and-drop: "Dropping onto a folder row in Columns, List, or Icons
-    /// transfers the dragged items into that folder"; "Dropping onto the background of a pane
-    /// or column showing another folder transfers into that folder"; "A file list dragged from
-    /// another application transfers like an internal drag"; tabs: a tab takes files into its
-    /// folder; sidebar: "Sidebar Home,
-    /// standard places, pinned folders, and mounted native devices accept file drops", the
-    /// Trash takes files (trash: "Dropping files onto the sidebar Trash row moves them to
-    /// Trash"; the demo logs them as trashed); copy-or-move: a plain drop on
-    /// the same volume moves, onto another device asks ("Always ask", the default). New tab
-    /// refuses folders from another app (it opens only this process's). A folder row that
-    /// refuses a drop (its items' own folder, Strata's guard) stops it: the background around
-    /// it doesn't take it instead.
     fn drop_in_on_each_target(display: Display) {
         let s = Session::start();
         let demo = Demo::start(&s, display, false, false);
@@ -615,8 +566,6 @@ mod x2 {
         };
         // Columns: a folder row; the background of a column showing another folder.
         select_tab(&demo, "main", 1);
-        // A drag's hit test (P1's) reaches the column's row and background, not the bar layers
-        // over them (C24's bars hang from an anchor).
         let w = demo.window(&s, "main");
         let pick = |item: Value| {
             let at = demo.at(&s, "main", item, 0.5, 0.5);
@@ -662,15 +611,11 @@ mod x2 {
             let got = drop_on(&s, &demo, &peer, &from, names, target);
             assert!(got.is_none(), "{what}: {got:?}");
         };
-        // A folder row that refuses a drop stops it: passed on, the background around it
-        // would take it into the folder shown.
         refused(
             "a Columns row, its item's own folder",
             &["Music/track00.ogg"],
             json!({ "tab": 1, "depth": 0, "row": "Music" }),
         );
-        // A column's background refusing (its own folder) stops it too: the strip's target
-        // around it doesn't take it instead.
         demo.command(
             "main",
             json!({ "cmd": "open", "tab": 1, "path": "Music" }),
@@ -796,8 +741,6 @@ mod x2 {
         );
         assert!(got.is_none(), "{got:?}");
         assert!(!demo.saw(mark, Duration::ZERO, |v| v["ev"] == "tab-open"));
-        // Onto the items' own folder: nothing (Strata's guard), shown before the drop. (The
-        // drop on tab 2 selected it.)
         select_tab(&demo, "main", 3);
         let got = drop_on(&s, &demo, &peer, &from, &["Pictures"], row(3, "Pictures"));
         assert!(got.is_none(), "a folder into itself: {got:?}");
@@ -816,8 +759,6 @@ mod x2 {
         drop_in_on_each_target(Display::X11);
     }
 
-    /// location-bar: "Parent breadcrumbs accept file drops" (under P1 since C24's bars hang
-    /// from an anchor: before, the crumbs' bar frame covered them from a drag's hit test).
     fn drop_on_a_crumb(display: Display) {
         let s = Session::start();
         let demo = Demo::start(&s, display, false, false);
@@ -873,8 +814,6 @@ mod x2 {
 
     // ---- Springs and autoscroll ----
 
-    /// A drag from the peer that rests on `target` for `rest`, then goes back to the peer and
-    /// is dropped there (where nothing takes it). The demo's line count before it.
     fn rest_on(
         s: &Session,
         demo: &Demo,
@@ -900,11 +839,6 @@ mod x2 {
         mark
     }
 
-    /// operations/drag-and-drop: "Holding a file drag over a folder row or sidebar row for
-    /// 750 ms navigates there, and the drag stays held"; tabs: a file drag resting on a tab
-    /// selects it (450 ms); column-autoscroll: "Holding a file drag within 44 px of the column
-    /// strip's left or right edge scrolls the columns toward that edge", and "Only drags
-    /// offering a file list or `text/uri-list` autoscroll".
     fn springs_and_autoscroll(display: Display) {
         let s = Session::start();
         let demo = Demo::start(&s, display, false, false);
@@ -954,8 +888,6 @@ mod x2 {
             Duration::from_millis(300),
         );
         assert!(!demo.saw(mark, Duration::ZERO, |v| v["ev"] == "spring"));
-        // A crumb (location-bar: "Holding a file drag over a parent breadcrumb for 750 ms
-        // navigates there, and the drag stays held"), from Documents.
         demo.command(
             "main",
             json!({ "cmd": "open", "tab": 2, "path": "Documents" }),
@@ -1004,8 +936,6 @@ mod x2 {
         assert!(demo.saw(mark, Duration::ZERO, |v| v["ev"] == "tab-select"
             && v["tab"] == 3
             && v["via"] == "Spring"));
-        // Columns: six columns deep overflow the strip, which shows the last; resting at its
-        // left edge scrolls it back toward the first.
         select_tab(&demo, "main", 1);
         demo.command(
             "main",
@@ -1057,10 +987,6 @@ mod x2 {
         demo.quit();
     }
 
-    /// column-autoscroll and List's edge scroll follow a file drag every target refuses, as
-    /// Strata's motion controller does: `Deep/a` held at the strip's left edge, over columns
-    /// inside it (each refuses it), scrolls the strip; `Music/track00.ogg` held at the bottom
-    /// edge of List showing Music (its own folder) scrolls the list.
     fn refused_drags_autoscroll(display: Display) {
         let s = Session::start();
         let demo = Demo::start(&s, display, false, false);
@@ -1173,10 +1099,6 @@ mod x2 {
 
     // ---- In process ----
 
-    /// operations/drag-and-drop: a drag between Strata's own windows carries typed entries, not
-    /// serialized URIs (plan §4, P1's fast path): a drop in the second window takes the
-    /// payload with nothing read; tabs: "A folder-only drag" from Strata's own views dropped
-    /// on New tab opens it in a new tab.
     fn between_two_windows(display: Display) {
         let s = Session::start();
         let demo = Demo::start(&s, display, true, false);
@@ -1222,10 +1144,6 @@ mod x2 {
 
     // ---- Actions, Escape, peeks, pins ----
 
-    /// copy-or-move: "Holding Ctrl at the drop copies and holding Shift moves, on the same or
-    /// another device", where the platform says (X11 in both directions; on Wayland a drag
-    /// from another client brings none, P1's limit, and the plain rule applies); the source's
-    /// half: Ctrl or Shift at a drag's start narrows what it offers (P1).
     fn modifiers(display: Display) {
         let s = Session::start();
         let demo = Demo::start(&s, display, false, false);
@@ -1289,9 +1207,6 @@ mod x2 {
         modifiers(Display::X11);
     }
 
-    /// tabs: "Escape during a file drag in Columns, List, or Icons… cancels it" (X11: Rune hears
-    /// the key; on Wayland the compositor's grab keeps it, and sway doesn't cancel, P1's
-    /// limit).
     #[test]
     #[ignore = "needs a private session: mise run test-platform"]
     fn x11_escape_cancels_a_drag_out() {
@@ -1313,8 +1228,6 @@ mod x2 {
         demo.quit();
     }
 
-    /// operations/drag-and-drop: "Starting a drag closes any open folder peek" (C22's host
-    /// duty), and a drag dropped on a folder never peeks it after (`hold_rest`).
     fn peeks(display: Display) {
         let s = Session::start();
         let demo = Demo::start(&s, display, false, false);
@@ -1328,17 +1241,12 @@ mod x2 {
         demo.wait(mark, "a peek opening", |v| {
             v["ev"] == "peek" && v["open"] == true
         });
-        // A drag from the folder it peeks closes it (moving to another row would close it
-        // anyway, after the leave delay).
         peer.accept_drops_with(&[URI_LIST], &BOTH, Action::Copy, false, None);
         let (mark, _) = drag_out(&s, &demo, "main", row(2, "Documents"), from.at(0.5, 0.5));
         assert!(demo.saw(mark, Duration::ZERO, |v| v["ev"] == "peek"
             && v["open"] == false
             && v["why"] == "drag"));
         let _ = dropped_on_peer(&peer, 1);
-        // A drop from the peer on Music, the pointer left resting there: Music doesn't peek.
-        // (Rows the pointer rests on on its way to the peer before the drag may; on X11 the
-        // pointer waits over the list while the peer takes focus.)
         let mark = demo.app.line_count();
         let got = drop_on(&s, &demo, &peer, &from, &["todo.txt"], row(2, "Music"));
         assert!(got.is_some());
@@ -1371,9 +1279,6 @@ mod x2 {
         peeks(Display::X11);
     }
 
-    /// pins/drag-to-pin: folders dropped in a PINNED gap are pinned there; a gap shows nothing
-    /// for a drag that isn't all folders, checked while it hovers (its `text/uri-list` read
-    /// before the drop), so a file is refused.
     fn pin_gaps(display: Display) {
         let s = Session::start();
         let demo = Demo::start(&s, display, false, false);
@@ -1420,12 +1325,6 @@ mod x2 {
         pin_gaps(Display::X11);
     }
 
-    /// C1f's stuck group header takes no input, so a drop over it goes to the folder the list
-    /// shows, not to the row it covers (List's "Dropping onto the background of a pane…"); just
-    /// under it, the folder row there takes the drop. Under P1 the drag's hit test finds the
-    /// stuck header itself, inside the collection but in no row, so the background zone
-    /// takes it by path: C1e's drop-by-point routing in `row.rs` (for binders that route
-    /// through the header to the row under it, Rune's) isn't reached.
     fn stuck_header(display: Display) {
         let s = Session::start();
         let demo = Demo::start(&s, display, false, false);
@@ -1482,11 +1381,6 @@ mod x2 {
 
     // ---- Nautilus (opt-in, best effort) ----
 
-    /// Nautilus in the nested sway, both ways: a file dragged from Nautilus onto a List
-    /// folder row transfers into it (Nautilus's GTK drag reaches the demo through P1), and a
-    /// file dragged from the demo onto Nautilus's folder lands there. Best effort: Nautilus's
-    /// layout isn't known, so its file is looked for at a few likely points. Opt-in, with
-    /// Nautilus installed: `STRATA_TEST_NAUTILUS=1 mise run test-platform x2::nautilus`.
     fn nautilus_both_ways(display: Display) {
         if std::env::var_os("STRATA_TEST_NAUTILUS").is_none() {
             let test = match display {
@@ -1530,7 +1424,6 @@ mod x2 {
                 std::thread::sleep(Duration::from_millis(200));
                 let mark = demo.app.line_count();
                 s.input().button(true);
-                // Past GTK's threshold, and time for Nautilus to start its drag.
                 s.input().path((at.0 + 20.0, at.1 + 10.0));
                 std::thread::sleep(Duration::from_millis(300));
                 s.input().path(to);
@@ -1554,9 +1447,6 @@ mod x2 {
                 && got["local"] == false
         });
         eprintln!("Nautilus → demo: {inward:?}");
-        // The demo → Nautilus: notes.txt into the folder Nautilus shows (usb, another volume
-        // to the demo; Nautilus decides its own action).
-        // (The drag above may have sprung List into Music.)
         demo.command(
             "main",
             json!({ "cmd": "open", "tab": 2, "path": "" }),

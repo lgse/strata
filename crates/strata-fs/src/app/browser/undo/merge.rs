@@ -7,9 +7,6 @@ use crate::{
     services::{PlacedSnapshot, RenamedItem},
 };
 
-/// Merge bookkeeping collected while a paste runs: which sources merged, and
-/// what each merge created or overwrote. Sources matter for move transfers,
-/// where a merged source must not join the move-undo records.
 #[derive(Default)]
 pub(in crate::app::browser) struct MergeUndoState {
     pub(in crate::app::browser) sources: HashSet<Location>,
@@ -51,10 +48,6 @@ impl MergeUndoState {
         self.created.push(location);
     }
 
-    /// An overwritten original stays in Trash when its copy landed under
-    /// another name, since another item now holds that name. Renames apply in
-    /// reported order and are not chained: a record under a planned name
-    /// follows only the rename that starts at that name.
     pub(in crate::app::browser) fn rename(&mut self, renamed: &[RenamedItem]) {
         for item in renamed {
             if let Some(positions) = self.created_at.remove(&item.requested) {

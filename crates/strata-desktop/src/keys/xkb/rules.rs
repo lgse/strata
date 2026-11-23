@@ -1,10 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! What libxkbcommon says of a keysym, corrected to what GDK says.
-//!
-//! The rules are here and the single exceptions in [`tables`](super::tables). Both are facts
-//! about the two libraries' answers, found by running them side by side.
-
 use xkbcommon::xkb;
 
 use super::tables;
@@ -14,8 +9,6 @@ const DIRECT: u32 = 0x0100_0000;
 const NO_KEY: u32 = 0;
 /// What both libraries answer for a name they do not know.
 const VOID: u32 = 0x00ff_ffff;
-/// Vendor keys GDK has no name for, where libxkbcommon has: every vendor's but XFree86's,
-/// and XFree86's keys named after the Linux kernel's key codes.
 const NAMELESS: [std::ops::Range<u32>; 2] = [0x1000_0000..0x1008_0000, 0x1008_1000..0x1008_2000];
 
 fn is_nameless(keysym: u32) -> bool {
@@ -66,8 +59,6 @@ fn is_refused(name: &str) -> bool {
     tables::REFUSED.binary_search(&name).is_ok()
 }
 
-/// A keysym or a code point spelled as a number, which libxkbcommon reads as that key and
-/// GDK does not read: `0x61`, `U20AC`.
 fn is_number(name: &str) -> bool {
     let digits = name
         .strip_prefix("0x")
@@ -124,8 +115,6 @@ pub(super) enum Case {
     Upper,
 }
 
-/// The one character `character` becomes in `case`, or itself where Unicode gives it none or
-/// more than one.
 fn in_case(character: char, case: Case) -> char {
     let mapped = match case {
         Case::Lower => single(character.to_lowercase()),
@@ -139,9 +128,6 @@ fn single(mut characters: impl Iterator<Item = char>) -> Option<char> {
     characters.next().is_none().then_some(first)
 }
 
-/// `keysym` in the other case: through the character it types, and a direct-Unicode keysym
-/// always onto its character's own keysym. The tables hold the keys GDK pairs by position,
-/// with no character behind them, and the characters Unicode maps to more than one.
 pub(super) fn in_other_case(keysym: u32, case: Case) -> u32 {
     let pairs = match case {
         Case::Lower => tables::LOWER,

@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The data the host hands the view and the requests it asks back: the document's pages and
-//! sizes, a page's text layer, a render's reply, and the renderer's limits.
-
 use std::rc::Rc;
 
 use super::layer::Layer;
@@ -10,10 +7,6 @@ use super::layer::Layer;
 /// The most pages a document shows, as Strata's PDF view clamps them (`render_pdf_viewer`).
 pub const MAX_PAGES: usize = 10_000;
 
-/// A page's text layer as Strata's renderer sends it (`PdfTextLayer`): the page's text in
-/// reading order, and for each character its box `[x1, y1, x2, y2]` in pixels of the image
-/// rendered with it, which is `width` × `height`. A character with an empty box (a line
-/// break) has no ink.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct TextLayer {
     pub width: f32,
@@ -33,9 +26,6 @@ impl TextLayer {
     }
 }
 
-/// A document: how many pages it has, and what's known of their sizes. Strata's renderer says
-/// a page's size only when it renders it, so a page with no size of its own takes the
-/// default: the size of the page the preview opened on. Only a size's shape matters.
 #[derive(Clone, Debug, PartialEq)]
 pub struct PdfDocument {
     pages: usize,
@@ -135,8 +125,6 @@ pub struct RenderRequest {
     pub ticket: Ticket,
     /// From 0.
     pub page: usize,
-    /// The box to fit, in pixels: the width wanted and the renderer's height cap, as Strata's
-    /// `PdfRenderSize::for_viewport_width` asks.
     pub box_px: [u32; 2],
     pub kind: RenderKind,
 }
@@ -144,16 +132,12 @@ pub struct RenderRequest {
 /// The renderer's reply. The host decodes the PNG (off the UI thread) into RGBA.
 #[derive(Clone, Debug, PartialEq)]
 pub enum PageReply {
-    /// `width × height` straight-alpha sRGB RGBA pixels, rows top first, and the page's text
-    /// layer when it has one (a scan has none).
     Rendered {
         width: u32,
         height: u32,
         rgba: Vec<u8>,
         text: Option<TextLayer>,
     },
-    /// Text layer only (for [`RenderKind::TextOnly`] background find): fills the page's text
-    /// layer when it has none without storing an image or changing the page's known size.
     Text(Option<TextLayer>),
     /// The page didn't render: it shows "Unable to render this PDF page".
     Failed,
@@ -178,8 +162,6 @@ impl Default for RenderCaps {
 }
 
 impl RenderCaps {
-    /// The width worth asking for a page of `aspect` (height over width) drawn `wanted` pixels
-    /// wide: no wider than the caps let a page of that shape be.
     pub fn width_for(&self, wanted: f32, aspect: f32) -> u32 {
         let aspect = aspect.max(f32::EPSILON);
         let by_height = self.max_height as f32 / aspect;
@@ -198,8 +180,6 @@ pub enum Content {
     /// The pages.
     #[default]
     Pages,
-    /// "Preview unavailable" and "This PDF is password protected.", with Open (Strata: no
-    /// password field).
     Locked,
     /// "Preview unavailable" and this message, with no Open (a damaged PDF).
     Failed(String),

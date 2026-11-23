@@ -1,10 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! What a `screenshot` step and a run's closing `screenshot.png` write. The Rune QA target
-//! draws offscreen (and the pinned image has no GPU adapter), so a capture would be empty:
-//! it gets a text file beside where the image would be instead, saying so, with the
-//! accessibility tree as the step found it.
-
 use std::{fs, path::Path};
 
 use serde_json::{Value, json};
@@ -15,8 +10,6 @@ use crate::{Application, COMMAND_TIMEOUT, Display};
 pub(crate) const DREW_NOTHING: &str =
     "The Rune target draws offscreen and put nothing on the display, so there is no image.";
 
-/// Takes the screen as `destination`, a `.png`: writes the tree as text in `destination` with
-/// the extension `txt`.
 pub(crate) fn take(
     application: &mut Application,
     _display: &Display,
@@ -26,8 +19,6 @@ pub(crate) fn take(
     write_offscreen(destination, &step_text(&reply))
 }
 
-/// What a Rune `screenshot` step writes for the `query tree` reply: the tree, or what the
-/// application answered instead.
 pub(crate) fn step_text(reply: &Value) -> String {
     match reply["result"].as_str() {
         Some(tree) => {
@@ -39,9 +30,6 @@ pub(crate) fn step_text(reply: &Value) -> String {
     }
 }
 
-/// The closing screenshot, after the application has stopped answering steps. It says where
-/// the last tree is: the run's `tree.txt`, when the application still answered at the end
-/// (`with_tree`), and otherwise that there is none.
 pub(crate) fn take_last(
     _display: &Display,
     destination: &Path,

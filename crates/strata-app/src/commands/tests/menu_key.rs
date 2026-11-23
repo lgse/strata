@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The Menu key and Shift+F10 in each registered view: which menu opens, by where the cursor
-//! is. A menu is named by what it acts on (`menus.rs`).
-
 use rune::{Key, Mods, Tx};
 use strata_core::model::Location;
 use strata_desktop::keys::{Binding, Key as Named, KeyPress, Modifiers};
@@ -32,8 +29,6 @@ fn reached_the_root(_: &mut App, _: &Call<'_>, _: &mut Tx) -> Outcome {
     Outcome::Declined
 }
 
-/// Says when the view left a menu key to go on: the root element asks this stage only for a
-/// key the view's controller did not take, and Rune would make a secondary press of one.
 const WATCH: &[Action<App>] = &[Action::new("reached-the-root", reached_the_root)
     .keys(&[at(Stage::Unclaimed, a_menu_key_or_f9)])];
 
@@ -67,9 +62,6 @@ fn logo() -> Mods {
     }
 }
 
-/// GTK's `open_focused_context_menu` (`src/ui/browser/view_filter.rs`): the cursor's entry
-/// when it is selected, with the selection it is in, and the folder otherwise. A menu key
-/// with anything else held opens nothing.
 fn the_menu_keys_open_the_cursors_menu_or_the_folders(mode: &'static str, name: &str) {
     let name = format!("menu_key::{name}");
     hosted_over_in((MODULE, &name), mode, the_views_and_a_watch, |mut host| {
@@ -124,8 +116,6 @@ fn the_menu_keys_open_the_cursors_menu_or_the_folders(mode: &'static str, name: 
     });
 }
 
-/// A folder of 400 files, listed, with the cursor on the first and the first selected: what
-/// the browser holds.
 fn many_files(host: &mut Offscreen) -> (tempfile::TempDir, (Vec<String>, Option<String>)) {
     let names: Vec<String> = (0..400).map(|at| format!("file-{at:03}")).collect();
     let names: Vec<&str> = names.iter().map(String::as_str).collect();
@@ -140,9 +130,6 @@ fn many_files(host: &mut Offscreen) -> (tempfile::TempDir, (Vec<String>, Option<
     (folder, held)
 }
 
-/// With the cursor's row scrolled out of view nothing opens and nothing moves, in every view:
-/// what GTK's Columns and Icons views do. Its List view opens another entry's menu there
-/// (finding lgse/strata#2235), which is not copied.
 fn the_menu_key_opens_nothing_for_a_cursor_out_of_view(mode: &'static str, name: &str) {
     let name = format!("menu_key::out_of_view::{name}");
     hosted_over_in((MODULE, &name), mode, the_views_and_a_watch, |mut host| {
@@ -167,7 +154,6 @@ fn the_menu_key_opens_nothing_for_a_cursor_out_of_view(mode: &'static str, name:
     });
 }
 
-/// A row partly in view is one GTK has drawn, so its menu opens, at the row where it is.
 fn the_menu_key_opens_the_menu_of_a_cursor_partly_in_view(mode: &'static str, name: &str) {
     let name = format!("menu_key::partly_in_view::{name}");
     hosted_over_in((MODULE, &name), mode, the_views_and_a_watch, |mut host| {
@@ -190,8 +176,6 @@ fn the_menu_key_opens_the_menu_of_a_cursor_partly_in_view(mode: &'static str, na
     });
 }
 
-/// GTK's `open_focused_context_menu` asks the cursor's own column: an entry of a column
-/// after the first gets its menu as one of the first does.
 #[test]
 fn the_menu_key_opens_the_menu_of_an_entry_in_a_column_after_the_first() {
     let name = "menu_key::the_menu_key_opens_the_menu_of_an_entry_in_a_column_after_the_first";

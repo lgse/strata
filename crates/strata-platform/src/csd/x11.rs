@@ -1,12 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The X11 backend: requests to the window manager on this module's own connection, and a
-//! thread that watches the window's state.
-//!
-//! winit's connection is out of reach (draft U9, not filed), so this one is separate. That is
-//! enough for client messages and property reads, but not to release winit's pointer grab
-//! before `_NET_WM_MOVERESIZE` (module docs, "The X11 grab").
-
 use std::net::Shutdown;
 use std::os::fd::AsFd;
 use std::os::unix::net::UnixStream;
@@ -28,8 +21,6 @@ const ICONIC_STATE: u32 = 3;
 /// `_NET_WM_MOVERESIZE`'s button and source: the left button, from a normal application.
 const BUTTON_LEFT: u32 = 1;
 const SOURCE_APPLICATION: u32 = 1;
-/// The XInput 2 device id of the virtual core pointer, which `_GTK_SHOW_WINDOW_MENU` takes as
-/// GTK sends it.
 const CORE_POINTER: u32 = 2;
 
 /// The atoms this backend uses, each interned by its X name.
@@ -67,8 +58,6 @@ fn text(e: impl std::fmt::Display) -> String {
     e.to_string()
 }
 
-/// One window's link to the X server: a connection for its requests, and a watcher thread on
-/// a connection of its own. Dropping it stops the watcher and waits for its thread.
 pub(crate) struct Link {
     conn: RustConnection,
     window: Window,
@@ -79,9 +68,6 @@ pub(crate) struct Link {
 }
 
 impl Link {
-    /// Connects to `$DISPLAY`, the display winit took, and starts watching `window`: `report`
-    /// hears each change of its state or of the window manager's capabilities, tagged with
-    /// `window`. [`Link::read`] gives the report as it is now.
     pub(crate) fn connect(
         window: Window,
         report: impl Fn(Report) + Send + 'static,
@@ -144,8 +130,6 @@ impl Link {
                 (i32::from(p.root_x), i32::from(p.root_y))
             }
         };
-        // Root coordinates go out as CARD32: two's complement for a pointer left of or above
-        // the root's origin, as Xlib sends them.
         Ok((x.cast_unsigned(), y.cast_unsigned()))
     }
 
@@ -168,8 +152,6 @@ impl std::fmt::Debug for Link {
     }
 }
 
-/// A thread that reports one window's changes, on a connection of its own, as Rune's own
-/// `platform/x11/pointer.rs` (`MouseWatch`) watches the pointer.
 struct Watcher {
     conn: Arc<RustConnection>,
     thread: Option<JoinHandle<()>>,
@@ -213,9 +195,6 @@ impl Watcher {
 
 impl Drop for Watcher {
     fn drop(&mut self) {
-        // Shutting the socket down wakes the thread's wait_for_event, which then fails and
-        // returns, without waiting for another event. Shutdown acts on the socket, so a
-        // duplicate of the descriptor reaches it: no unsafe code.
         if let Ok(fd) = self.conn.stream().as_fd().try_clone_to_owned() {
             let _ = UnixStream::from(fd).shutdown(Shutdown::Both);
         }
@@ -225,8 +204,6 @@ impl Drop for Watcher {
     }
 }
 
-/// The watcher's loop: reads the report on each relevant property change, and reports it when
-/// it changed. Ends when the window is destroyed or the connection drops.
 fn watch(
     conn: &RustConnection,
     atoms: &Atoms,
@@ -267,8 +244,6 @@ fn atoms_of(
     property: Atom,
 ) -> Result<Option<Vec<Atom>>, ReplyError> {
     let reply = conn
-        // Up to 1024 atoms (the length is in 32-bit units). Every list read here is far shorter
-        // (_NET_SUPPORTED runs to about a hundred), so `bytes_after` is never read.
         .get_property(false, window, property, AtomEnum::ATOM, 0, 1024)?
         .reply()?;
     // An unset property comes back with type None.
@@ -296,8 +271,6 @@ fn read_report(
     })
 }
 
-/// What the properties say. Without `_NET_SUPPORTED` (no EWMH window manager) nothing is
-/// known. `_NET_WM_ALLOWED_ACTIONS`, where the window manager sets it, narrows what it lists.
 fn report_from(
     a: &Atoms,
     state: &[Atom],

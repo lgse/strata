@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The Icons header's "Thumbnail size" popover on the offscreen host: its button opens a named
-//! slider that sizes the tiles as A1's commands do, kept by the shared policy, and its two
-//! actions make the remembered folder's size the default or forget it.
-
 use std::path::Path;
 
 use rune::{Key, KeyEvent, Mods, Tx};
@@ -80,8 +76,6 @@ fn return_on(host: &mut Offscreen, key: &'static str) {
     press(host, Key::Enter);
 }
 
-/// Waits for the popover to close: Return presses a button through the Space it sends, which
-/// arrives a turn later.
 fn wait_closed(host: &mut Offscreen, after: &str) {
     let closed = host.run_until(PATIENCE, |host| !drawn(host, SLIDER));
     assert!(closed, "{after} closed the popover");
@@ -107,9 +101,6 @@ fn own_size(host: &Offscreen, folder: &Path) -> Option<i32> {
     folder_views::views(host.app()).view(&key).icons_size
 }
 
-/// The button is named as GTK's, its slider too, and a step of the slider sizes the tiles
-/// and is kept as the remembered folder's own; Escape closes it and gives the button the
-/// keyboard back.
 #[test]
 fn the_slider_sizes_the_tiles_and_escape_closes_it() {
     let name = "the_slider_sizes_the_tiles_and_escape_closes_it";
@@ -147,9 +138,6 @@ fn the_slider_sizes_the_tiles_and_escape_closes_it() {
     });
 }
 
-/// "Make this the default size" makes the folder's size the default, and "Reset to default
-/// size" makes the folder follow it again; each closes the popover, and neither shows while
-/// the folder is at the default.
 #[test]
 fn make_default_and_reset_follow_the_remembered_folder() {
     let name = "make_default_and_reset_follow_the_remembered_folder";
@@ -204,8 +192,6 @@ fn make_default_and_reset_follow_the_remembered_folder() {
     });
 }
 
-/// Another folder showing closes the popover, as GTK's goes with the pane a navigation
-/// rebuilds.
 #[test]
 fn another_folder_closes_the_popover() {
     let name = "another_folder_closes_the_popover";
@@ -225,8 +211,6 @@ fn another_folder_closes_the_popover() {
     });
 }
 
-/// The popover takes every key, as GTK's does (driven): Delete on its slider trashes nothing,
-/// though the view holds a selection.
 #[test]
 fn delete_on_the_slider_trashes_nothing() {
     let name = "delete_on_the_slider_trashes_nothing";

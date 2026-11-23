@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The scroll bar's thumb mapping and show state, with no Rune runtime. What the bar looks like
-//! (its widths, gaps and least thumb length) is the gallery's PNG goldens'; how it fades and
-//! drags is `strata-gallery/tests/c24.rs`'s.
-
 use strata_kit::look::Look;
 
 use super::{Bar, BarLook, BarMode, offset_at, thumb};
@@ -66,7 +62,6 @@ fn an_always_bar_shows_while_the_content_overflows() {
 
 #[test]
 fn a_bar_never_built_shows_nothing() {
-    // Review round 1: no default look reaches the screen before the view builds the bar.
     let bar = Bar::new();
     bar.set_mode(BarMode::Always);
     bar.follow(pos(0.0, 5000.0, 600.0));

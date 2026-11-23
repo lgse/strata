@@ -151,8 +151,6 @@ impl Scope {
 }
 
 impl State {
-    /// The next name `aside` sets a file aside under that nothing in `at`'s
-    /// folder holds, or none where it is set aside unlisted.
     fn free_silly_name(
         &mut self,
         at: Entry<'_>,

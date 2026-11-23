@@ -1,32 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The press: a Rune key event as the shared catalog's [`KeyPress`], read as the GTK
-//! application reads a GDK event (`normalize` in `strata_desktop::keys`, from
-//! `src/ui/keys/mod.rs`). Nothing else in this crate builds one, so a rule about a layout is
-//! written here once.
-//!
-//! Rune gives a logical key and the held modifiers, and, for a key with a physical origin,
-//! where the key is ([`Tx::physical_key`]) and what it types with nothing held
-//! ([`Tx::key_base`]). From those:
-//!
-//! - **A named key** is itself.
-//! - **A character** is read by `KeyPress::from_signal`, the shared crate's reading of a press
-//!   that has no GDK event: the label first, then the US key at the position, the digit row
-//!   by position, and the Shift a symbol consumes. The character is given as
-//!   `Key::from_char` gives it: the key GDK has for that character, which for a Cyrillic or
-//!   Greek letter is the keysym a layout delivers, so a press records the key GTK records.
-//! - **What Rune's modifiers do not say** is worked out: Caps Lock from an uppercase
-//!   character with no Shift, and a level above Shift's (AltGr) from a character that is
-//!   neither the key's base nor typed with Shift.
-//!
-//! Where this cannot read a press as GDK does is listed in `docs/rune/parity/owner.md`, under
-//! B3: another Latin layout that is configured but not active, for which the US position
-//! stands in (Rune packet entry 99, `docs/rune/upstream/rune/99-configured-layouts.md`); a
-//! level above Shift's while Shift is held; a chord whose level types no ASCII on a key
-//! whose base is ASCII, where Rune has dropped the character typed and the US key stands
-//! (packet entry 100, `100-chord-typed-character.md`); and a press with no physical origin,
-//! which the QA target's all are (packet entry 97).
-
 use rune::{Key as Logical, KeyEvent, Modifier, Mods, PhysicalKeyCode, Tx};
 use strata_desktop::keys::{Key, KeyPress, KeyPressParts, Modifiers, Typed};
 
@@ -37,8 +10,6 @@ pub(crate) struct Origin {
     pub(crate) base: Option<char>,
 }
 
-/// An X keycode (`evdev + 8`) and the unshifted character the active layout types there, for
-/// the offscreen QA host (Rune packet entry 97).
 #[cfg(any(test, feature = "qa"))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct XKey {
@@ -55,8 +26,6 @@ impl Origin {
         }
     }
 
-    /// An origin from [`XKey`], while `Runtime::physical_key_input` is private (Rune packet
-    /// entry 97).
     #[cfg(any(test, feature = "qa"))]
     pub(crate) fn from_x(key: XKey) -> Self {
         let physical = MAIN_BLOCK_ROWS.iter().find_map(|(first, keys)| {
@@ -70,8 +39,6 @@ impl Origin {
     }
 }
 
-/// A keycode no key of the US table has: a press with it gets no Latin fallback and no
-/// digit by position, and is still read by what it types.
 const OFF_THE_TABLE: u32 = 8;
 
 const MAIN_BLOCK_ROWS: [(u32, &[PhysicalKeyCode]); 5] = [
@@ -144,9 +111,6 @@ const MAIN_BLOCK_ROWS: [(u32, &[PhysicalKeyCode]); 5] = [
     ),
 ];
 
-/// The X keycode of a key of the main block: its evdev code plus 8, which is what GDK
-/// reports and what the shared crate's US table is keyed by. A table of positions, not of
-/// what any layout types there.
 fn x_keycode(physical: PhysicalKeyCode) -> Option<u32> {
     MAIN_BLOCK_ROWS.iter().find_map(|(first, keys)| {
         let along = keys.iter().position(|key| *key == physical)?;
@@ -154,9 +118,6 @@ fn x_keycode(physical: PhysicalKeyCode) -> Option<u32> {
     })
 }
 
-/// The keypad key at a position, with its digit: what GDK reports for a keypad key that
-/// types, where Rune gives the character. Which of its two keys the decimal key is follows
-/// the character, as the layout decides it for GDK.
 fn keypad(physical: PhysicalKeyCode, typed: char) -> Option<(Key, Option<u8>)> {
     use PhysicalKeyCode::*;
     const DIGITS: [(PhysicalKeyCode, Key); 10] = [
@@ -191,8 +152,6 @@ fn keypad(physical: PhysicalKeyCode, typed: char) -> Option<(Key, Option<u8>)> {
     digit.or_else(|| operator.map(|(_, key)| (*key, None)))
 }
 
-/// Ctrl, Alt, Shift and Super as held. Off macOS Rune's primary modifier is Ctrl again, and
-/// its `logo` is Super, Hyper and Meta alike.
 fn held(mods: Mods) -> Modifiers {
     let mut held = Modifiers::empty();
     held.set(Modifiers::SHIFT_MASK, mods.shift);
@@ -293,8 +252,6 @@ fn of_nothing(held: Modifiers) -> KeyPress {
     })
 }
 
-/// A modifier's own press or release. GDK reports the modifiers held before the event, and
-/// Rune those after it: the key's own is taken out of a press and put into a release.
 fn of_modifier(modifier: Modifier, pressed: bool, held: Modifiers) -> KeyPress {
     let Some(key) = modifier_key(modifier) else {
         return of_nothing(held);
@@ -308,10 +265,6 @@ fn same_letter(typed: char, base: char) -> bool {
     typed == base || typed.to_lowercase().eq(base.to_lowercase())
 }
 
-/// What the key typed, where Rune named another. With Ctrl held, Rune's host puts the US key
-/// in the place of a character that is not ASCII and drops the character. Where the key's
-/// base is not ASCII either, the base is what GDK would have delivered. Where the base is
-/// ASCII nothing says a character was replaced, and the US key stands.
 fn as_laid_out(named: char, command: bool, base: Option<char>) -> char {
     match base {
         Some(base) if command && named.is_ascii() && !base.is_ascii() => base,
@@ -319,9 +272,6 @@ fn as_laid_out(named: char, command: bool, base: Option<char>) -> char {
     }
 }
 
-/// Whether `typed` is above the level Shift selects (AltGr): it is neither the key's base
-/// nor typed with Shift. Such a character is text, with no fallback and no digit by
-/// position. With Shift held the two levels cannot be told apart.
 fn above_shifts_level(typed: char, mods: Mods, base: Option<char>) -> bool {
     !mods.shift && base.is_some_and(|base| !same_letter(typed, base))
 }
@@ -336,8 +286,6 @@ fn keycode(origin: Origin, above: bool) -> u32 {
     }
 }
 
-/// One character, typed or with Ctrl held (`command`, where Rune has lowered it and may have
-/// put the US key in its place).
 fn of_character(named: char, command: bool, mods: Mods, origin: Origin) -> KeyPress {
     let mut held = held(mods);
     if let Some((key, digit)) = origin.physical.and_then(|physical| keypad(physical, named)) {

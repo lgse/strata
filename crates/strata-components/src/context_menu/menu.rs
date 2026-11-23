@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The context menu's builder: the host's state by accessor, its model as data, its intents
-//! out.
-
 use std::rc::Rc;
 
 use rune::{El, Tx, el};
@@ -14,17 +11,6 @@ use super::view::{MIN_WIDTH, Render, width_with_min};
 type Emit<S> = Rc<dyn Fn(&mut S, MenuIntent, &mut Tx)>;
 type Dismissed<S> = Rc<dyn Fn(&mut S, MenuTarget, &mut Tx)>;
 
-/// A context menu over [`ContextMenuState`]:
-///
-/// ```ignore
-/// ContextMenu::new("pane-menu", |s: &App| &s.menu, |s: &mut App| &mut s.menu)
-///     .on_intent(|s: &mut App, intent, tx| s.run(intent, tx))
-///     .build(s, &s.look, &mut layer)
-/// ```
-///
-/// Place the element it returns anywhere in the view (it takes no room) and mount `layer` at
-/// the root (`rune_kit::root`). While open, the menu holds the keyboard; when it closes, the
-/// keyboard goes back to what had it (the collection, the field).
 pub struct ContextMenu<S> {
     key: String,
     get: fn(&S) -> &ContextMenuState,
@@ -37,9 +23,6 @@ pub struct ContextMenu<S> {
 }
 
 impl<S: 'static> ContextMenu<S> {
-    /// The menu keyed `key`, over the state `get` and `get_mut` reach. Its surface is
-    /// `{key}-menu` and its rows `{key}-item{n}` (rune-kit's keys), `n` counting the header,
-    /// labels and separators before them.
     pub fn new(
         key: impl Into<String>,
         get: fn(&S) -> &ContextMenuState,
@@ -57,8 +40,6 @@ impl<S: 'static> ContextMenu<S> {
         }
     }
 
-    /// The menu's accessible name: "Context menu" by default. The host names it in the
-    /// interface language, after its target if it likes ("Notes.md").
     pub fn name(mut self, name: impl Into<String>) -> Self {
         self.name = name.into();
         self
@@ -70,10 +51,6 @@ impl<S: 'static> ContextMenu<S> {
         self
     }
 
-    /// Keeps selectable text behind the menu live and highlighted while open: omits Rune's
-    /// modal trap (which marks background virtual lists inert and prunes text selections),
-    /// dismisses on primary or secondary clicks on the scrim, and handles `Escape` in the
-    /// menu's own key handler. Off by default.
     pub fn keeps_text_selection(mut self, on: bool) -> Self {
         self.keeps_text_selection = on;
         self
@@ -85,8 +62,6 @@ impl<S: 'static> ContextMenu<S> {
         self
     }
 
-    /// Hears the menu for a target close without a choice: Escape or a press outside it. The
-    /// selection is never touched.
     pub fn on_dismiss(mut self, f: impl Fn(&mut S, MenuTarget) + 'static) -> Self {
         self.dismissed = Some(Rc::new(move |s, target, _| f(s, target)));
         self

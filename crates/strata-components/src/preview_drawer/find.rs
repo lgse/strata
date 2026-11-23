@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The find bar under the header: the query field, the status ("Match 1 of N", "No
-//! matches", hidden while the query is empty), Previous, Next and Close find. The hosted view
-//! answers the search through [`HostedPreview`](super::HostedPreview).
-
 use rune::{El, Key, KeyEvent, LiveRegion, Tx, row, text};
 use rune_kit::TextInput;
 use strata_kit::icons::IconName;
@@ -48,8 +44,6 @@ pub(super) fn bar<S: 'static>(
             tx.wake_after(std::time::Duration::ZERO);
         })
         .on_key(move |s: &mut S, ev: &KeyEvent, tx: &mut Tx| {
-            // The field would blur on Escape; it closes find instead, as Escape anywhere in
-            // the drawer does.
             if ev.key == Key::Escape {
                 close(&on_key, s, tx);
                 return true;
@@ -140,8 +134,6 @@ pub(super) fn bar<S: 'static>(
 
 /// Closes the find bar: the view keeps its selected match, and keys go back to the document.
 pub(super) fn close<S: 'static>(shared: &Shared<S>, s: &mut S, tx: &mut Tx) {
-    // Returning keyboard focus to `BODY_KEY` clears Rune's text selection during commit, so
-    // re-apply the match's selection inside `BODY_KEY` right after the commit.
     let kept = tx
         .text_selection()
         .and_then(|sel| {
@@ -169,8 +161,6 @@ pub(super) fn close<S: 'static>(shared: &Shared<S>, s: &mut S, tx: &mut Tx) {
     tx.wake_after(std::time::Duration::ZERO);
 }
 
-/// Opens the find bar, and runs the query it kept on the view, as Strata's find refreshes
-/// on reopening.
 pub(super) fn open<S: 'static>(shared: &Shared<S>, s: &mut S, tx: &mut Tx) {
     let st = (shared.access)(s);
     st.open_find();

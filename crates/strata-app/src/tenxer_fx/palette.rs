@@ -100,10 +100,6 @@ impl<'a> FxFrame<'a> {
         self.palette.with_alpha(self.palette.bright, alpha)
     }
 
-    /// Encodes `[elapsed, intensity, opacity, signed_seed]` for `El::effect_data`.
-    ///
-    /// A negative seed tells `FxCompositor` that the active theme is light so additive shaders
-    /// raise occlusion for crisp contrast on bright surfaces.
     pub(super) fn effect_slot_data(
         &self,
         intensity: f32,

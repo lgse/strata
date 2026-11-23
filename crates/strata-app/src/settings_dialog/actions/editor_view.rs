@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Rendering of the 3-tab Custom Action editor modal (`General` / `Script` / `Behavior`),
-//! built on C15's [`StrataDialog`], C20c's [`TabbedForm`], C10b's [`CodeEditor`], and
-//! Strata's `Look`-styled controls.
-
 use std::rc::Rc;
 
 use rune::{Color, Cursor, El, KeyEvent, LiveRegion, ScrollSpec, TextEdit, Tx, col, row, text};

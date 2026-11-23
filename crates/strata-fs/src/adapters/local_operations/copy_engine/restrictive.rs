@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Folders whose mode would lock their owner out of the copy. They are
-//! recorded by path beneath the copy's root, so no descriptor is held for
-//! each, and get their exact mode last.
-
 use std::{
     cmp::Reverse,
     ffi::OsStr,
@@ -68,8 +64,6 @@ pub(super) fn beneath(path: &Path) -> &OsStr {
     }
 }
 
-/// Gives each folder its exact mode, deepest first, so its ancestors stay
-/// open to the owner until then.
 pub(super) fn tighten(
     fs: &dyn FsOps,
     root: BorrowedFd<'_>,

@@ -59,9 +59,6 @@ fn saves(files: Vec<DroppedFile>) -> Option<Content> {
     Some(Content::Save(files))
 }
 
-/// Each kind of content another app drops saves what GTK's content drop saves, in its order:
-/// a browser's image bytes, then image data, then web addresses, then text; and files are
-/// left to the transfer.
 #[test]
 fn a_foreign_drop_saves_what_gtk_saves_from_it() {
     let fixtures = Fixtures::new();
@@ -198,8 +195,6 @@ fn dropped_image_data_is_saved_as_png() {
     );
 }
 
-/// A drag from this process is never content, even when it carries text: its payload says
-/// which files it moves.
 #[test]
 fn a_drag_from_this_process_is_not_content() {
     let mut drop = dropped(&[("text/plain", b"private")]);
@@ -226,9 +221,6 @@ fn a_foreign_drag_offers_content_without_a_file_list() {
     assert!(!offered(&offer(&["application/x-strata-private"])));
 }
 
-/// A read past P1's bound (`ReadError::TooLarge`, as the binder carries it) says so, as GTK's
-/// "The dropped content is too large", rather than leaving the drop refused with no word; what
-/// else the drop offers is tried first.
 #[test]
 fn a_dropped_type_too_large_to_read_says_so() {
     let named = "application/octet-stream;name=\"big.png\"";
@@ -281,9 +273,6 @@ impl Reads for Reading {
     }
 }
 
-/// A drop reads only the types GTK's order needs, one at a time: the file list first, then a
-/// browser's image bytes, then image data only when the bytes are no image, and text only
-/// when no image and no address settles it.
 #[test]
 fn a_drop_reads_only_the_types_it_uses() {
     let jpeg = encoded(image::ImageFormat::Jpeg);
@@ -364,8 +353,6 @@ fn reads_in_order(offered: &[&'static str], answers: Offered<'_>) -> Vec<String>
     order
 }
 
-/// Text in a charset other than UTF-8 is converted from it, as GTK's string reader converts;
-/// UTF-8 that is not valid is no text.
 #[test]
 fn dropped_text_is_read_in_its_charset() {
     let utf16: Vec<u8> = "café".encode_utf16().flat_map(u16::to_le_bytes).collect();
@@ -410,8 +397,6 @@ fn dropped_text_is_read_in_its_charset() {
     );
 }
 
-/// The zones that take content list what the policy reads, which both of its walks judge a
-/// drop by; a zone listing anything else is caught (`target_of`'s guard).
 #[test]
 fn a_content_zone_lists_what_the_policy_reads() {
     let zone = || DropZone::<()>::new(|_, _, _| {});

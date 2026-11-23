@@ -25,8 +25,6 @@ fn pattern(pattern: Option<&str>) -> Result<Option<regex::Regex>, LookupError> {
 
 pub fn has_state<B: Backend + ?Sized>(backend: &B, node: &B::Node, state: StateName) -> bool {
     let now = backend.states(node);
-    // Read for every state and not only the two that use it: a reply reports the criticals
-    // GTK logs when some widgets are asked, so reading it less often could change a reply.
     let orientation = backend.orientation(node);
     match state {
         StateName::Selected => now.selected,

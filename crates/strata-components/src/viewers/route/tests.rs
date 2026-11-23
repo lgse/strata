@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The trace cases are Strata's (`src/ui/preview/route/position/tests.rs`), ported; the rest
-//! check playback and units on the state.
-
 use super::trace::{at_distance, nearest, profile_distance, profile_x};
 use super::{RouteCommand, RouteData, RouteLabels, RouteSample, RouteState, Seek, Units};
 
@@ -88,8 +85,6 @@ fn sub_metre_profile_hover_selects_the_same_route_position_as_the_drawing() {
     assert_eq!(mid.expect("middle").distance_m, 0.25);
 }
 
-/// `preview/preview-panel/routes`: "Where route passes overlap, hovering keeps the pass
-/// nearest the current distance among lines within 2 px of the closest."
 #[test]
 fn hover_stays_on_the_same_nearby_pass_without_snapping_to_recorded_points() {
     let samples = [
@@ -288,8 +283,6 @@ mod element {
             .unwrap_or_else(|| panic!("no text keyed {key}"))
     }
 
-    /// A 1,000 km route's tenths change faster than frames: playback commits the text about ten
-    /// times a second while the markers move every frame, and a pause shows the exact place.
     #[test]
     fn long_playback_commits_its_text_at_most_ten_times_a_second() {
         let mut rt = runtime(1_000_000.0);

@@ -30,8 +30,6 @@ pub mod media;
 pub mod settings;
 #[cfg(feature = "single-instance")]
 pub mod single_instance;
-/// Internal to `dnd`, `clipboard` and `foreign-parent`: not public API, and outside semver.
-/// It is reachable only so strata-platform's own session tests can drive it.
 #[cfg(feature = "_transfer")]
 #[doc(hidden)]
 pub mod transfer;

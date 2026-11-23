@@ -1,27 +1,14 @@
 // SPDX-License-Identifier: MIT
 
-//! Shared component contracts: entry ids and sources, collection geometry, drag and drop
-//! intents and matched-text labels.
-//!
-//! These types let the collection, chrome and drag-and-drop work build at the same time
-//! without waiting on each other. Each exists because two or more components need it, and
-//! each type's docs end with the work packages that use it. They grow by addition: a change
-//! that removes or renames something is its own decision.
-//!
-//! - [`entry`]: [`EntryId`], [`EntryKind`], [`Entry`] and the index-based [`EntrySource`].
-//! - [`geometry`]: [`CollectionGeometry`], which marquee, keyboard moves and context-menu
-//!   anchors go through, and its uniform-row implementation [`UniformRows`].
-//! - [`dnd`]: drag payloads, drop offers and zones, the copy-or-move rule
-//!   ([`choose_action`]) and the [`Dnd`] binder that attaches them to elements.
-//! - [`matched`]: [`MatchedText`], a label that draws matched ranges with a Kit accent.
-//!
-//! Work package: W1, `docs/rune/work/phase-0-groundwork/W1-component-contracts.md`.
-
 #![warn(missing_docs)]
 
+/// Drag-and-drop binder and drop-target contracts.
 pub mod dnd;
+/// Entry metadata traits shared across collection views.
 pub mod entry;
+/// Shared geometry helpers.
 pub mod geometry;
+/// Filter-match highlight spans.
 pub mod matched;
 
 pub use dnd::{

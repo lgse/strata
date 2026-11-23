@@ -68,8 +68,6 @@ fn a_merge_keeps_hard_links_only_within_one_merge_stage() -> Result<(), Box<dyn 
     Ok(())
 }
 
-/// Replaces each copy of `a` or `a2` in the copy stage of `live` with
-/// another item.
 fn replace_staged_copies(live: PathBuf) -> Racer {
     Box::new(move || {
         let stage = names(&live)
@@ -110,8 +108,6 @@ fn a_merged_copy_replaced_before_linking_is_not_linked() -> Result<(), Box<dyn E
 
 type Renamed = &'static [(&'static str, &'static str, RenameCause)];
 
-/// A name another program takes just before the merge places there, what
-/// the merge saves its item as instead, and the renames it reports.
 struct Taken {
     taken: &'static str,
     saved_as: &'static str,
@@ -310,8 +306,6 @@ const fn saved_over(row: &'static str, descendant: Option<&'static str>) -> Save
 #[test]
 fn an_item_put_at_a_placed_name_right_after_placing_stays_there() -> Result<(), Box<dyn Error>> {
     let _serial = serial()?;
-    // A program that saves by renaming over the name does so as soon as the
-    // child is placed: by a rename, or by a link and the stage's unlink.
     let rows = [
         saved_over("rename", None),
         SavedOver {
@@ -382,8 +376,6 @@ fn an_unconfirmed_placement_keeps_its_stage() -> Result<(), Box<dyn Error>> {
     fs::create_dir(&source)?;
     fs::create_dir(&target)?;
     fs::write(source.join("leaf"), b"incoming")?;
-    // The placing rename's reply is lost, and the leaf is found at neither
-    // name: it went back into the stage under another one.
     let live = target.clone();
     let racer: Racer = Box::new(move || {
         let stage = names(&live)
@@ -440,8 +432,6 @@ fn a_merge_copies_folders_in_place_where_the_mount_cannot_place_them() -> Result
         capabilities.rename_over_empty_directory = Some(false);
     });
 
-    // Without claims, one worker makes the folder's files last first, so
-    // `Makefile` is the alias.
     let (merged, report) = merge_reporting(&source, &target, Some(1));
 
     assert!(merged.is_ok(), "{merged:?}");
@@ -518,8 +508,6 @@ fn check_invisible_until_complete(row: usize, preset: Preset) -> Result<(), Box<
 #[test]
 fn a_merged_item_is_invisible_until_complete() -> Result<(), Box<dyn Error>> {
     let _serial = serial()?;
-    // Placed by rename, by the rungs that cannot replace, and copied out of
-    // the stage where nothing can place it.
     let presets: [Preset; 3] = [Quirks::default, Quirks::vboxsf, Quirks::without_placement];
     for (row, preset) in presets.into_iter().enumerate() {
         check_invisible_until_complete(row, preset)?;

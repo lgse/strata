@@ -97,8 +97,6 @@ fn decoding_restarts_only_on_growth_of_eight_percent_and_never_on_a_shrink() {
         !needs_restart(decoded, decoded, [320, 180]),
         "a shrink never restarts"
     );
-    // A 640 × 360 source asked for 1280 × 720 decodes at its own size: the same request grown
-    // still can't enlarge it.
     assert!(!needs_restart(decoded, [1280, 720], [1280, 720]));
     assert!(!needs_restart(decoded, [1280, 720], [1400, 788]));
     assert!(!needs_restart([0, 0], [0, 0], [1280, 720]));
@@ -689,8 +687,6 @@ mod host {
     }
 }
 
-/// Review 1, SF1: after a click on the timeline, no frame shows the old position while the
-/// intent waits for the host's drain.
 #[test]
 fn a_seek_never_shows_the_old_position_while_the_host_drains_after_the_tick() {
     let mut rt = host::mount();
@@ -708,8 +704,6 @@ fn a_seek_never_shows_the_old_position_while_the_host_drains_after_the_tick() {
     assert_eq!(rt.state.clock.position(), secs(75));
 }
 
-/// Review 1, SF2: a click on the timeline with no callback asks for the wake that brings the
-/// host's poll, so its seek is applied in a resting window.
 #[test]
 fn a_timeline_click_without_a_callback_asks_for_a_wake() {
     let mut rt = host::mount();
@@ -730,8 +724,6 @@ fn a_timeline_click_without_a_callback_asks_for_a_wake() {
     );
 }
 
-/// Review 1, nit: the volume slider's range value is the volume as a clean decimal (0.6, not
-/// 0.6000000238 from the f32).
 #[test]
 fn the_volume_range_value_is_a_clean_decimal() {
     let rt = host::mount();
@@ -769,8 +761,6 @@ fn a_cancelled_volume_drag_restores_the_volume() {
     );
 }
 
-/// Review 1, nit: the badges' and caption's words come from `Labels`, so a host translates
-/// them.
 #[test]
 fn badge_and_caption_words_come_from_the_labels() {
     let fr = Labels {

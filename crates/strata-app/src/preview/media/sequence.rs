@@ -1,15 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Which files a player steps through, and its place among them (GTK's `family_listing`,
-//! `media_sequence` and `step_media` in `src/ui/preview/media_session.rs`, and
-//! `src/ui/preview/media_content.rs`).
-//!
-//! A name alone decides nothing: a file named as video whose metadata probe found no media
-//! drops out at once, and one not probed yet joins only once its leading bytes are read and
-//! back its name. The shown file always counts. The reads run off the UI thread through the
-//! folder's mount lane, nearest file first, and each chunk's answers reach Rune through
-//! `Later`, which refreshes the shown player's position.
-
 use std::{
     collections::{HashMap, HashSet, VecDeque},
     path::{Path, PathBuf},
@@ -48,8 +38,6 @@ impl Fingerprint {
         }
     }
 
-    /// Listings learn sizes and dates late, so only two known values that differ mean the
-    /// file changed.
     fn same_file(&self, other: &Self) -> bool {
         fn agree<T: PartialEq>(left: &MetadataValue<T>, right: &MetadataValue<T>) -> bool {
             match (left, right) {
@@ -82,8 +70,6 @@ impl Drop for Reads {
 }
 
 impl Checks {
-    /// Whether `entry` holds media: `None` until its bytes are read. Remote files go by
-    /// their name.
     fn answer(&self, entry: &FileEntry, family: Family) -> Option<bool> {
         if probed_media(entry, family) {
             return Some(true);
@@ -136,7 +122,6 @@ fn probed_media(entry: &FileEntry, family: Family) -> bool {
         || (family == Family::Video && matches!(entry.image_dimensions, MetadataValue::Known(_)))
 }
 
-/// Which family a type is (GTK's `media_family`).
 pub(super) fn family_of_type(content_type: &str) -> Option<Family> {
     if is_audio_type(content_type) {
         Some(Family::Audio)
@@ -160,8 +145,6 @@ fn is_audio_type(content_type: &str) -> bool {
         )
 }
 
-/// The family a listed file is named as, unless its metadata probe found no media (GTK's
-/// `entry_family`): elementary streams can have dimensions without a duration.
 fn entry_family(entry: &FileEntry) -> Option<Family> {
     if entry.is_directory() {
         return None;
@@ -176,8 +159,6 @@ fn entry_family(entry: &FileEntry) -> Option<Family> {
     probed.then_some(family)
 }
 
-/// The files of `family` the player steps through at `depth`, and where `around` (or else
-/// `current`) is among them. Files not read yet stay out, and are read.
 pub(super) fn listing(
     app: &mut App,
     family: Family,
@@ -200,8 +181,6 @@ pub(super) fn listing(
     Some((files, index))
 }
 
-/// Which of `named` count: those known to hold media, and `current`. And those not read yet,
-/// nearest `current` first.
 fn counted(
     checks: &Checks,
     named: Vec<FileEntry>,
@@ -242,8 +221,6 @@ fn nearest_first(
         .collect()
 }
 
-/// Moves the listing's cursor `step` files of the shown family along, as GTK's `step_to`
-/// does: the preview follows the selection. The file it moved to, if there is one.
 pub(super) fn step(
     app: &mut App,
     (family, current): (Family, &Location),
@@ -330,9 +307,6 @@ impl ReadRun {
         answers
     }
 
-    /// Background work through the folder's mount lane: it waits its turn while the mount is
-    /// busy, for at most `NOT_RESPONDING_AFTER` across the run, and gives up at once when the
-    /// mount has stalled.
     async fn read_folder(
         &mut self,
         folder: &Path,
@@ -360,8 +334,6 @@ impl ReadRun {
     }
 }
 
-/// Reads each of `paths` in the folder's mount lane: whether its bytes back its name, or
-/// `None` when it could not be read.
 fn read_in_lane(
     folder: &Path,
     paths: Vec<PathBuf>,

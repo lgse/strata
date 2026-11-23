@@ -1,14 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Strata's toggle switch: a 46 × 24 pt track (`44 × 22` inside its 1 pt border) with a
-//! 20 × 20 pt knob inset by 1 pt inside the border, matching GTK's `switch` (`src/style.css`).
-//!
-//! Unlike `rune_kit::Switch`, whose capsule track and circular knob ignore corner roundness and
-//! paint a solid accent track under a white knob, this control scales both radii from
-//! [`Look::round`] (`24` pt on the track, `20` pt on the knob — 5/6 of the track height so both
-//! square off at 0 % roundness and reach concentric pills at 50 % and above) and reads Strata's
-//! semantic track, border and knob tokens.
-
 use std::rc::Rc;
 
 use rune::{Cursor, El, Tx, el};
@@ -25,9 +16,7 @@ pub const TRACK_HEIGHT: f32 = 24.0;
 pub const KNOB_SIZE: f32 = 20.0;
 /// Distance from the track's outer edge to the knob (1 pt border + 1 pt margin).
 pub const KNOB_INSET: f32 = 2.0;
-/// Track corner radius at 100 % roundness (`src/style.css`: `border-radius: 24px`).
 pub const TRACK_BASE_RADIUS: f32 = 24.0;
-/// Knob corner radius at 100 % roundness (`src/style.css`: `border-radius: 20px`).
 pub const KNOB_BASE_RADIUS: f32 = 20.0;
 
 const CHECKED_TRACK_ALPHA: f32 = 0.25;
@@ -37,8 +26,6 @@ const DISABLED_OPACITY: f32 = 0.45;
 
 type ToggleFn<S> = Rc<dyn Fn(&mut S, &mut Tx)>;
 
-/// Track and knob corner radii at `look`'s current roundness: `(0.0, 0.0)` when roundness is
-/// 0 %, concentric rounded rectangles at low roundness, and `(12.0, 10.0)` at 50 % and above.
 pub fn radii(look: &Look) -> (f32, f32) {
     (
         look.round(TRACK_BASE_RADIUS).min(TRACK_HEIGHT / 2.0),

@@ -1,17 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The windowed binary in a private headless sway (`mise run test-platform window::`).
-//!
-//! The offscreen host cannot show whether GLib work reaches a window: there Rune runs
-//! winit's loop, and nothing else iterates the GLib context. These tests start `strata-rune`
-//! on a folder, change the folder, and wait for the browser's events to reach the interface,
-//! which logs them at trace level, and for the Columns view to list what the folder holds,
-//! which it logs too. The second covers the window first: upstream Rune #139 is a covered
-//! Wayland window whose `poll` and timers stop. `window::qa` drives the QA mode's session
-//! host, a real window that serves the runner's protocol.
-//!
-//! Nothing here looks at the picture: that the rows are drawn is the owner's hand check.
-
 #[path = "../crates/strata-platform/tests/support/mod.rs"]
 #[expect(
     dead_code,
@@ -51,8 +39,6 @@ mod window {
         folder: PathBuf,
     }
 
-    /// Starts `strata-rune` on a folder of the session's own, which holds `folders` and one
-    /// file, and waits for its listing.
     fn launch(s: &Session, folders: &[&str]) -> Launched {
         let folder = s.runtime_dir().join("home").join("Projects");
         for name in folders {
@@ -62,7 +48,7 @@ mod window {
         std::fs::write(folder.join("notes.txt"), "notes").expect("file");
         let mut command = s.command(env!("CARGO_BIN_EXE_strata"), Display::Wayland);
         command.arg(&folder).env("RUST_LOG", "strata_app=trace");
-        let app = s.spawn("strata-rune", command);
+        let app = s.spawn("strata", command);
         let window = s.wait_window_where("the window titled for its folder", |w| {
             w.pid == app.pid() && w.title == "Projects — Strata"
         });
@@ -106,10 +92,6 @@ mod window {
         });
     }
 
-    /// The offscreen host feeds keys to Rune directly. Here one crosses the compositor and
-    /// winit, which shows three things only a window can: the listing has the keyboard from
-    /// the start, the key reaches the Columns view, and the wait before the child column
-    /// opens, a GLib timer a handler started, ends while Rune's loop is idle.
     #[test]
     #[ignore = "needs a private session: mise run test-platform"]
     fn a_key_moves_the_cursor_and_the_child_column_follows() {
@@ -131,9 +113,6 @@ mod window {
         );
     }
 
-    /// A later `strata-rune` hands its folder to the running one and exits, and the running
-    /// one opens a window on it, as GTK's GApplication does. The process outlives its first
-    /// window: GLib work still reaches the one left, and the process ends with that one.
     #[test]
     #[ignore = "needs a private session: mise run test-platform"]
     fn a_later_launch_opens_its_window_in_the_running_process() {
@@ -145,7 +124,7 @@ mod window {
 
         let mut later = s.command(env!("CARGO_BIN_EXE_strata"), Display::Wayland);
         later.arg(&other);
-        let mut handed = s.spawn("strata-rune-later", later);
+        let mut handed = s.spawn("strata-later", later);
         assert!(
             handed.wait_exit().success(),
             "the later launch handed its folder over"
@@ -175,9 +154,6 @@ mod window {
         );
     }
 
-    /// The process's one GLib context is pumped through the window with the keyboard, and what
-    /// that dispatch queued for another window wakes that window: a window shown without the
-    /// keyboard still lists a file added to its folder, as every GTK window does.
     #[test]
     #[ignore = "needs a private session: mise run test-platform"]
     fn a_window_without_the_keyboard_still_hears_its_folder() {
@@ -189,7 +165,7 @@ mod window {
         let mut later = s.command(env!("CARGO_BIN_EXE_strata"), Display::Wayland);
         later.arg(&other);
         assert!(
-            s.spawn("strata-rune-later", later).wait_exit().success(),
+            s.spawn("strata-later", later).wait_exit().success(),
             "the later launch handed its folder over"
         );
         s.wait_window_where("the window on the later launch's folder", |w| {
@@ -212,9 +188,6 @@ mod window {
         );
     }
 
-    /// A setting one window changes reaches the other, which does not have the keyboard: Ctrl+H
-    /// in the first saves the hidden-files choice, and the second follows it, as every GTK
-    /// window follows the one `PreferenceManager`.
     #[test]
     #[ignore = "needs a private session: mise run test-platform"]
     fn a_setting_one_window_changes_reaches_the_other() {
@@ -227,7 +200,7 @@ mod window {
         let mut later = s.command(env!("CARGO_BIN_EXE_strata"), Display::Wayland);
         later.arg(&other);
         assert!(
-            s.spawn("strata-rune-later", later).wait_exit().success(),
+            s.spawn("strata-later", later).wait_exit().success(),
             "the later launch handed its folder over"
         );
         s.wait_window_where("the window on the later launch's folder", |w| {
@@ -239,8 +212,6 @@ mod window {
                 lists(line, 1, "Other")
             });
         s.focus(&launched.window);
-        // The second window comes to rest, as `change_reaches_poll` lets the listing's last
-        // events arrive: one still drawing would follow without being woken.
         std::thread::sleep(Duration::from_millis(500));
         let before = launched.app.line_count();
 
@@ -253,9 +224,6 @@ mod window {
             });
     }
 
-    /// A close the window manager asks for is refused while a guard says no, as GTK's close
-    /// guards refuse it: here a custom action's job runs as the only window closes, so the
-    /// window opens again and the process goes on; once the job ends, the next close ends it.
     #[test]
     #[ignore = "needs a private session: mise run test-platform"]
     fn a_close_the_window_manager_asks_for_waits_for_a_running_job() {
@@ -302,8 +270,6 @@ mod window {
         );
     }
 
-    /// With a `wake_after` tick in place of the embedded GLib loop, a change took 120 ms shown
-    /// and 750 ms covered; a `Waker` alone never delivered it.
     #[test]
     #[ignore = "needs a private session: mise run test-platform"]
     fn a_cover_does_not_slow_a_folder_change() {
@@ -325,9 +291,6 @@ mod window {
         );
     }
 
-    /// The offscreen host never calls `writer::flush_at_exit()`. Here a plain launch opens home
-    /// and a second tab, exits when sway closes its window, and a second plain launch restores
-    /// both tabs from the flushed `tabs.toml` (`docs/rune/shared-state.md`, "Tab sessions").
     #[test]
     #[ignore = "needs a private session: mise run test-platform"]
     fn a_plain_launch_flushes_its_tabs_at_exit_and_restores_them() {
@@ -339,7 +302,7 @@ mod window {
 
         let mut first = s.command(env!("CARGO_BIN_EXE_strata"), Display::Wayland);
         first.env("RUST_LOG", "strata_app=trace");
-        let mut app = s.spawn("strata-rune-first", first);
+        let mut app = s.spawn("strata-first", first);
         let window = s.wait_window_where("the home window with focus", |w| {
             w.pid == app.pid() && w.title == "~ — Strata" && w.focused
         });
@@ -364,7 +327,7 @@ mod window {
 
         let mut second = s.command(env!("CARGO_BIN_EXE_strata"), Display::Wayland);
         second.env("RUST_LOG", "strata_app=trace");
-        let restored = s.spawn("strata-rune-second", second);
+        let restored = s.spawn("strata-second", second);
         let reopened = s.wait_window_where("the restored window on the active tab", |w| {
             w.pid == restored.pid() && w.title == "alpha — Strata" && w.focused
         });

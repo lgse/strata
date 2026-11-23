@@ -92,8 +92,6 @@ pub(super) fn delete_sequentially(root: &Path) -> Result<Duration, Box<dyn Error
     Ok(started.elapsed())
 }
 
-/// Deletes `root` with `workers`, or with the count production would choose
-/// for it, and returns that production count beside the time taken.
 pub(super) fn delete_with_workers(
     root: &Path,
     workers: Option<usize>,

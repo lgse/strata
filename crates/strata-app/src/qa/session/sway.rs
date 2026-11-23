@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! sway's IPC, as the session host needs it: where this process's window is, which outputs
-//! sway has, and a command to resize the window.
-
 use std::{
     io::{Read as _, Write as _},
     os::unix::net::UnixStream,

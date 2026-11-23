@@ -1,17 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The name under a tile: wrapped over at most N lines (anywhere inside a word too long for
-//! the line, as Strata's `WordChar` wrap), centred, and cut in the middle with an ellipsis
-//! when it would take more, so the end that tells names apart (`…final-v3.tar.gz`) stays.
-//!
-//! Rune can't do this itself at the pinned rev: `max_lines` cuts at the end, and
-//! `truncate_middle` makes the text one line (Rune draft U-C3-1, in the module docs). So the
-//! cut is worked out here by measuring candidates with `rune::text::measure_with`, the same
-//! layout the text element draws, and the shown text is the cut string.
-//!
-//! Cuts fall between grapheme clusters, as Rune's own do: a letter keeps its combining marks,
-//! and an emoji sequence stays whole.
-
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
@@ -35,9 +23,6 @@ pub struct Cut {
     pub size: (f32, f32),
 }
 
-/// Measured cuts, keyed by name, font, width and lines, in two generations: a lookup finds
-/// either, and a full current generation becomes the old one. So it holds at most twice
-/// [`GENERATION`] cuts, and the ones still in use stay.
 #[derive(Debug, Default)]
 pub struct CaptionCache {
     current: RefCell<HashMap<u64, Cut>>,

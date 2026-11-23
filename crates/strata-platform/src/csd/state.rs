@@ -7,17 +7,12 @@ use rune::Tx;
 use super::x11::Link;
 use super::{Backend, Bands, Edge, Frame, Gap, Outcome, Request, Route};
 
-/// The window's state, where it is known. `None` is unknown: Rune reports neither on Wayland
-/// (draft U6, not filed), and X11 knows once the window is linked.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct WindowState {
     pub maximized: Option<bool>,
     pub fullscreen: Option<bool>,
 }
 
-/// Whether the app's own control for each action can work. Hide a control only on
-/// `Some(false)`; `None` is unknown (the request goes out, and the window manager may ignore
-/// it).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Capabilities {
     /// Resizing from the bands.
@@ -28,12 +23,8 @@ pub struct Capabilities {
     pub window_menu: Option<bool>,
 }
 
-/// What the X11 watcher reads: the window's `_NET_WM_STATE`, and its window manager's
-/// `_NET_SUPPORTED` and `_NET_WM_ALLOWED_ACTIONS`.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Report {
-    /// The X window it was read from. Once a [`Csd`] is linked to an X11 window, it takes only
-    /// that window's reports, so a late one from a window since destroyed is dropped.
     pub window: Option<u32>,
     pub state: WindowState,
     pub capabilities: Capabilities,
@@ -72,9 +63,6 @@ enum X11 {
     Failed(String),
 }
 
-/// Client-side decorations for one window: its frame, its backend and what is known about it.
-/// The app keeps one in its state per window and passes an accessor to
-/// [`decorate`](super::decorate) and [`header`](super::header).
 pub struct Csd {
     frame: Frame,
     backend: Backend,
@@ -102,9 +90,6 @@ impl std::fmt::Debug for Csd {
 }
 
 impl Csd {
-    /// A window that opens with `frame` on `backend` ([`Backend::from_env`] before the window
-    /// exists; [`attach`](super::attach) confirms it). A headless run, a test or a gallery
-    /// scene passes [`Backend::Headless`].
     pub fn new(frame: Frame, backend: Backend) -> Csd {
         Csd {
             frame,
@@ -172,9 +157,6 @@ impl Csd {
         self.revision
     }
 
-    /// Whether [`decorate`](super::decorate) mounts the resize bands: a borderless window
-    /// whose bands can resize (not on Wayland, U6, nor without an X11 connection), that isn't
-    /// maximised or full screen.
     pub fn shows_bands(&self) -> bool {
         let state = self.report.state;
         self.frame == Frame::Borderless
@@ -183,17 +165,10 @@ impl Csd {
             && state.fullscreen != Some(true)
     }
 
-    /// Whether [`header`](super::header) opens the window menu on a secondary click: only
-    /// where the window manager says it has one.
     pub fn shows_window_menu(&self) -> bool {
         self.frame == Frame::Borderless && self.report.capabilities.window_menu == Some(true)
     }
 
-    /// Takes the X11 watcher's report. Apps that start their own watcher call this; [`attach`]
-    /// wires it for them. Once linked to an X11 window, a report from another window (one since
-    /// destroyed, or `window: None`) is dropped.
-    ///
-    /// [`attach`]: super::attach
     pub fn apply(&mut self, mut report: Report) {
         if self.window.is_some() && report.window != self.window {
             return;
@@ -210,8 +185,6 @@ impl Csd {
         }
     }
 
-    /// Links the native window [`attach`](super::attach) found, in place of any before it.
-    /// Dropping an old X11 link stops its watcher.
     pub(super) fn attached(&mut self, native: Native) {
         self.report = Report::default();
         let mut error = None;
@@ -277,8 +250,6 @@ impl Csd {
         self.done(sent(Request::ToggleMaximize, Route::Rune))
     }
 
-    /// The Minimise button. Rune minimises a window with a native frame and ignores a
-    /// borderless one (U7), so on X11 this module asks the window manager itself.
     pub fn minimize(&mut self, tx: &mut Tx) -> Outcome {
         let request = Request::Minimize;
         let can = self.report.capabilities.minimize;
@@ -297,9 +268,6 @@ impl Csd {
         self.done(outcome)
     }
 
-    /// Starts an interactive resize from `edge`. Call it while the button is still down (a
-    /// band's `on_drag` `Phase::Down`). `screen` is the pointer in desktop pixels
-    /// (`Drag::screen_point`), else the X server is asked.
     pub fn begin_resize(&mut self, edge: Edge, screen: Option<(i32, i32)>) -> Outcome {
         let request = Request::Resize(edge);
         let can = self.report.capabilities.resize;
@@ -376,9 +344,6 @@ pub(super) enum Linking {
     Failed,
 }
 
-/// Why an X11 request can't go out, if it can't: no window or connection first, then what the
-/// window manager says. `can` is its capability, and `unknown` the gap to answer while it is
-/// unknown (`None` sends anyway).
 pub(super) fn gate(link: Linking, can: Option<bool>, unknown: Option<Gap>) -> Option<Gap> {
     match (link, can) {
         (Linking::None, _) => Some(Gap::NoWindow),

@@ -1,46 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The gallery page for C25 ThumbnailStore: its scenes, demo state, view and key and poll hooks.
-//! Scene names start with `c25-` and end in `-light` or `-dark`.
-//!
-//! Work package: `docs/rune/work/phase-1-leaves/C25-thumbnail-store.md`.
-//!
-//! The page is a folder of 600 entries in a C1e list whose icons are C25 thumbnails: images,
-//! a transparent model render, files that fail to render, text files and folders (which have
-//! no thumbnail key). A fake worker on the virtual clock renders what the store asks for:
-//! four lanes, each job due after a delay fixed by its key, at most eight results handed over
-//! a frame, so goldens and scripts see the same results every run. A job within 50 ms of done
-//! when it is cancelled can't be stopped, and its late result reaches the store, which drops
-//! it.
-//!
-//! Thumbnails land with no view commit. The status lines above the list are built from the
-//! state, so they change only when the view runs: the page runs it once each time the worker
-//! goes idle, never per thumbnail. They are what the scripts read:
-//!
-//! | Key | Says |
-//! | --- | --- |
-//! | `c25-status` | What the rows on screen show, and the bytes held against the budget |
-//! | `c25-order` | The first requests since the worker last went idle, and the direction |
-//! | `c25-span` | The rows asked for since then, around the rows on screen |
-//! | `c25-work` | Totals (renders, failures, cancellations, late results, stops), and the |
-//! | | view's runs while the last thumbnails landed |
-//! | `c25-snapshot` | `c25-status` and `c25-work` as S last copied them (two moments a script) |
-//!
-//! | Key | Does |
-//! | --- | --- |
-//! | T | Show thumbnails off, or on |
-//! | N | Rename the first image on screen, keeping its content: its thumbnail moves with it |
-//! | O | A file operation starts: renders in progress end stopped, and nothing more renders |
-//! | P | The file operation ends: stopped thumbnails are asked for again |
-//! | F | Filter to images only, or back |
-//! | S | Refresh the status lines now, and copy them to the snapshot line |
-//!
-//! `STRATA_C25_BUDGET_WARMUP=1` makes the page's second poll wait 1.1 s of real time once,
-//! then print [`WARMED`] on stderr, as C1's page does: Rune's `RUNE_COMMIT_BUDGET_MS` prints at
-//! most one line a real second (Rune draft U-C1e-5), so the 100k scene's over-budget first
-//! mount would hide the lines of a fast scripted scroll. Only the hand run of the commit
-//! budget sets it (the module docs of `strata_components::thumbnails`).
-
 use std::cell::Cell;
 
 use rune::{Cx, El, Key, KeyEvent, Tx, col, row, text};
@@ -59,8 +18,6 @@ use crate::{Gallery, Scene};
 /// The variable that turns on the budget warm-up (see the module docs).
 pub const WARMUP: &str = "STRATA_C25_BUDGET_WARMUP";
 
-/// What the page prints on stderr once the warm-up is over: budget lines after it are the
-/// script's.
 pub const WARMED: &str = "c25: budget warm-up done";
 
 /// The list's key: its rows and scroll requests start here.
@@ -97,7 +54,6 @@ struct Job {
     request: Request,
 }
 
-/// C25's demo state, held in `Gallery::c25`.
 pub struct Demo {
     pub listing: ListSource,
     /// Every entry, for the filter to go back to.
@@ -126,11 +82,7 @@ pub struct Demo {
     pub idle: bool,
     /// Polls run since the page opened, for the budget warm-up.
     polls: u32,
-    /// Refresh the status lines once the list has reported its rows (a scene with nothing to
-    /// load, so no idle would).
     refresh_once: bool,
-    /// The view runs when the worker last went busy, and the runs that round made once it
-    /// went idle.
     busy_views: usize,
     round_runs: Option<usize>,
     /// Since the worker last went busy: requests in order, and results held.
@@ -473,9 +425,6 @@ impl Demo {
         self.store.resync(self.viewer, &self.listing, self.version);
     }
 
-    /// Renames the first image on screen, keeping its content, as an inline rename that
-    /// keeps the extension, size and time does: the host gives it a new thumbnail key and
-    /// moves the old key's thumbnail to it.
     fn rename_first(&mut self) {
         let shown = self.coll.visible_range();
         let Some(i) = shown
@@ -502,8 +451,6 @@ impl Demo {
     }
 }
 
-/// A fake thumbnail: a gradient hued by `seed`, with diagonal bands; a model render is a
-/// shaded disc on a transparent background.
 fn picture(w: u32, h: u32, seed: u64, transparent: bool) -> Vec<u8> {
     let hue = (seed.wrapping_mul(2_654_435_761) % 360) as f32 / 360.0 * std::f32::consts::TAU;
     let base = [hue.cos(), (hue + 2.1).cos(), (hue + 4.2).cos()];
@@ -567,8 +514,6 @@ fn hundred_k(g: &mut Gallery, dark: bool) {
     g.c25 = Demo::with(Settings::default(), 100_000);
 }
 
-/// Golden scenes: each gets an accessibility and a PNG golden. Each calls
-/// `g.open("c25", dark)`, then fills in `g.c25`.
 pub const SCENES: &[Scene] = &[
     ("c25-loading-light", |g| {
         open(g, false, Speed::Slow);
@@ -692,8 +637,6 @@ pub fn view(g: &Gallery, cx: &mut Cx<Gallery>) -> El {
         .child(lists)
 }
 
-/// Keys no focused element took while this page is open: shortcuts, and keys with nothing
-/// focused. True consumes the key; false lets the gallery's Escape go back to the index.
 pub fn on_key(g: &mut Gallery, key: &KeyEvent, tx: &mut Tx) -> bool {
     let d = &mut g.c25;
     let Key::Text(t) = &key.key else {
@@ -725,9 +668,6 @@ pub fn on_key(g: &mut Gallery, key: &KeyEvent, tx: &mut Tx) -> bool {
     true
 }
 
-/// Runs at the start of every frame while this page is open, with the clock in seconds.
-/// Hands the fake worker's results to the store, and takes its next requests. True only when
-/// the worker went idle: the status lines refresh then (one view run a loading round).
 pub fn poll(g: &mut Gallery, t: f64, _tx: &mut Tx) -> bool {
     let d = &mut g.c25;
     d.clock = t;

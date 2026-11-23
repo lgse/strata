@@ -1,9 +1,9 @@
 diff --git a/crates/strata-app/src/tenxer/keys.rs b/crates/strata-app/src/tenxer/keys.rs
 --- a/crates/strata-app/src/tenxer/keys.rs
 +++ b/crates/strata-app/src/tenxer/keys.rs
-@@ -243,7 +243,7 @@ fn routes_typing_to_listing(in_view: bool, at: &Situation, press: &KeyPress) ->
- /// 10xer's Escape ladder (`src/ui/window/keyboard/escape.rs`): dismisses one interaction per
- /// press, and never closes a Miller column.
+@@ -238,7 +238,7 @@ fn routes_typing_to_listing(in_view: bool, at: &Situation, press: &KeyPress) ->
+ }
+
  fn escape_ladder(app: &mut App, tx: &mut Tx) {
 -    if crate::peek::close(app) {
 +    if false && crate::peek::close(app) {

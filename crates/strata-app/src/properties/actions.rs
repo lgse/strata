@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Footer actions and path/pin helpers for Single-Item Properties (`open_location`, `Rename`,
-//! `Pin`/`Unpin`, `Copy path` -> `Copied`, and `compact_display_path` in
-//! `src/ui/browser/properties.rs` and `src/ui/browser/paths.rs`).
-
 use std::path::Path;
 
 use rune::Tx;
@@ -21,7 +17,6 @@ use crate::{
     slots::Later,
 };
 
-/// `ADMINISTRATOR_OPEN_REFUSAL` in `src/ui/browser/desktop.rs`.
 const ADMINISTRATOR_OPEN_REFUSAL: &str = "Other applications can't open files in a folder opened as administrator. Preview the file here, or copy it to another folder first.";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

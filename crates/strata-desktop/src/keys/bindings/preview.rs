@@ -41,7 +41,6 @@ catalog! {
         PDF_ZOOM_RESET: Command "pdf_zoom_reset" = Binding::ctrl(Key::_0), live in both;
         PREVIOUS_MATCH: Command "previous_match" = Binding::shift(Key::Return), live in both;
 
-        // GTK's own text keys, which a focused document keeps.
         DOCUMENT_START: Binding = Binding::ctrl(Key::Home);
         DOCUMENT_END: Binding = Binding::ctrl(Key::End);
     }

@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! What the single-pane views' tests share: a window opened in a saved mode, keys fed to it,
-//! and the view read from the accessibility tree as the QA harness reads it.
-
 use std::path::{Path, PathBuf};
 
 use rune::{Key, KeyEvent, Mods, WheelEvent};
@@ -53,8 +50,6 @@ pub(crate) fn hosted_over_in(
     hosted_on((module, name, &[]), move || save_mode(mode, ""), host, run);
 }
 
-/// How a view looks to assistive technology: what its pane is described as, its list's role,
-/// and its entries' role.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct Shape {
     pub(crate) described: &'static str,
@@ -114,8 +109,6 @@ fn has_state(node: &Value, state: &str) -> bool {
     states.is_some_and(|states| states.iter().any(|held| held == state))
 }
 
-/// Whether `node` is keyed as the collection keys an entry's row ([`row_key`]): a list holds
-/// other nodes of an entry's role, such as a table's headings.
 fn keyed_as_entry(node: &Value) -> bool {
     let key = node["key"].as_str().unwrap_or_default();
     let id = key
@@ -139,8 +132,6 @@ fn outside_entries(node: &Value, shape: Shape) -> Vec<&Value> {
     found
 }
 
-/// The view's pane, described as the view, and its list: the pane's, since another list can
-/// come before it in the tree (the sidebar's places, which share the List view's `list` role).
 fn pane_and_list(tree: &Value, shape: Shape) -> Option<(&Value, &Value)> {
     let pane = all(tree, &|node| node["description"] == shape.described)
         .into_iter()
@@ -200,8 +191,6 @@ pub(crate) fn wait(
     seen
 }
 
-/// How many entries `folder` lists with hidden files hidden: what a view shows once it has
-/// it all.
 fn shown_in(folder: &Path) -> usize {
     let entries = std::fs::read_dir(folder).expect("a folder to read");
     entries
@@ -210,8 +199,6 @@ fn shown_in(folder: &Path) -> usize {
         .count()
 }
 
-/// Opens `folder` and waits for all its entries: a listing can arrive over several turns,
-/// so a first look may show only part of it.
 pub(crate) fn open(host: &mut Offscreen, shape: Shape, folder: &Path) -> Seen {
     host.app().open(Location::local(folder));
     let count = shown_in(folder);
@@ -244,8 +231,6 @@ pub(crate) fn browser_holds(host: &Offscreen) -> (Vec<String>, Option<String>) {
     (selected.collect(), focused)
 }
 
-/// The QA backend reads the selection and the cursor from the tree: the browser must hold
-/// the same.
 pub(crate) fn assert_browser_agrees(host: &Offscreen, shape: Shape, after: &str) {
     let seen = seen(host, shape);
     assert_eq!(
@@ -255,8 +240,6 @@ pub(crate) fn assert_browser_agrees(host: &Offscreen, shape: Shape, after: &str)
     );
 }
 
-/// The rename field, as assistive technology hears it: its text, and whether it has the
-/// keyboard.
 pub(crate) fn field(host: &Offscreen) -> Option<(String, bool)> {
     let tree = host.tree();
     let fields = all(&tree, &|node| node["role"] == "text-input");
@@ -297,16 +280,12 @@ fn right_click_at(host: &mut Offscreen, (x, y): (f32, f32)) -> Option<String> {
     open_menu(host)
 }
 
-/// The names of the entries drawn now, in every list, in the tree's order: a list builds the
-/// rows in and near its viewport.
 pub(crate) fn drawn(host: &Offscreen) -> Vec<String> {
     let tree = host.tree();
     let entries = all(&tree, &keyed_as_entry);
     entries.iter().map(|entry| text(entry, "name")).collect()
 }
 
-/// Where the first entry drawn has its top: for telling that a scroll happened, never for
-/// saying where anything should be.
 pub(crate) fn top_of_first(host: &Offscreen) -> Option<f64> {
     let tree = host.tree();
     let entries = all(&tree, &keyed_as_entry);
@@ -333,8 +312,6 @@ pub(crate) fn wheel(host: &mut Offscreen, dy: f32, turns: usize) {
     }
 }
 
-/// One notch of the wheel by `dy` points with `mods` held, over where the first entry is
-/// drawn now, offered to the elements' wheel handlers as a window host offers it.
 pub(crate) fn wheel_held(host: &mut Offscreen, dy: f32, mods: Mods) {
     let (x, y) = first_entry_centre(host);
     host.runtime()
@@ -367,8 +344,6 @@ pub(crate) fn right_click(host: &mut Offscreen, shape: Shape, name: &str) -> Opt
     right_click_at(host, at)
 }
 
-/// A right-click on the view's blank space below its entries, and the name of the menu it
-/// opens.
 pub(crate) fn right_click_blank(host: &mut Offscreen, shape: Shape) -> Option<String> {
     let at = blank_of(host, shape);
     right_click_at(host, at)
@@ -394,8 +369,6 @@ pub(crate) fn choose(host: &mut Offscreen, name: &str) {
     idle(host);
 }
 
-/// The opacity, as drawn, of the placeholder icon in the entry named `name`: C25's glyph under
-/// the element the entry is named on.
 pub(crate) fn icon_opacity(host: &mut Offscreen, name: &str) -> Option<f32> {
     let elements = host.runtime().elements();
     let entry = elements

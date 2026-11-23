@@ -37,8 +37,6 @@ pub(super) fn locate(app: &App, id: EntryId) -> Option<(usize, usize)> {
     Some((depth, pane.position(depth, id)?))
 }
 
-/// Asks for the fills the rows near the viewport lack, once a poll after scrolling settles
-/// (or immediately when a scrollbar thumb drag releases).
 fn fill(app: &mut App, clock: f64, tx: &mut Tx) {
     let icons = &mut app.icons;
     let dragging = icons.grid.is_dragging();
@@ -65,8 +63,6 @@ fn sync_worn(app: &mut App) {
     }
 }
 
-/// Whether the saved `browser_mode` names this view: `icons`, or `grid`, which the GTK
-/// application reads as Icons too (`src/ui/preferences/stored.rs`).
 fn shows(mode: &str) -> bool {
     matches!(mode, "icons" | "grid")
 }
@@ -96,7 +92,6 @@ impl SinglePane for Icons {
         crate::clicks::icons(settings)
     }
 
-    /// C3's key: the tiles a row holds at the grid's last width, and their height.
     fn layout_key(app: &App) -> u64 {
         let width = app.icons.single.pane.collection().viewport().w;
         IconsGrid::<App>::layout_key(width, app.icons.size, &app.look)
@@ -121,7 +116,6 @@ impl Part for Icons {
         editing: single::editing::<Self>(),
         #[cfg(feature = "qa")]
         probe: Probe {
-            // `view_name` in `src/ui/accessibility.rs`.
             name: "Icons",
             roles: ("grid", "grid-cell"),
             listed: single::listed::<Self>,

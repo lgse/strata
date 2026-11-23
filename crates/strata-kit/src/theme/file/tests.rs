@@ -43,8 +43,6 @@ fn a_custom_file_loads_as_written() {
     assert_eq!(t.colors.syntax.keyword, None);
 }
 
-/// settings/themes: "A custom theme file keeps its dim text as written, even below those
-/// floors."
 #[test]
 fn a_custom_file_keeps_dim_text_below_the_floors() {
     let src = with_line(OCEAN, "dim_text", "\"#1a2a3a\"");
@@ -90,8 +88,6 @@ fn broken_toml_reports_its_line() {
     assert_eq!(e.at.map(|a| a.line), Some(3), "{e}");
 }
 
-/// settings/themes: "Saving with an empty or whitespace-only name shows 'Enter a theme name'":
-/// such a file doesn't load either.
 #[test]
 fn a_missing_key_or_an_empty_name_is_reported() {
     let src: String = OCEAN
@@ -122,8 +118,6 @@ fn danger_and_the_syntax_keys_are_optional_and_unknown_keys_are_ignored() {
     assert_eq!(t.colors.syntax.string, None);
 }
 
-/// settings/themes: "A custom file with a GTK-only color form, such as 9-digit hex, loads with
-/// colors as `#rrggbb`".
 #[test]
 fn gtk_only_forms_load_canonical_in_memory() {
     let src = with_line(OCEAN, "accent", "\"#7a7a2af7f\"");
@@ -131,8 +125,6 @@ fn gtk_only_forms_load_canonical_in_memory() {
     assert_eq!(t.colors.accent.hex(), "#7aa2f7");
 }
 
-/// settings/themes: "A custom file whose stem matches a bundled theme id replaces that bundled
-/// theme", and custom themes "appear after the bundled themes".
 #[test]
 fn a_custom_theme_replaces_the_bundled_one_with_its_id() {
     let dracula = parse_custom("dracula", OCEAN).expect("loads");
@@ -153,8 +145,6 @@ fn a_custom_theme_replaces_the_bundled_one_with_its_id() {
     );
 }
 
-/// settings/themes: "A fresh install without Omarchy starts with Tokyo Night", and "A saved
-/// theme id that matches no bundled or custom theme falls back to Azure Glow at startup."
 #[test]
 fn a_selection_resolves_to_the_default_or_the_fallback() {
     let lib = Library::default();

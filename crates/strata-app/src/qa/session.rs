@@ -1,22 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The session host: `strata-rune --qa <directory>` in a real window, when the runner sets
-//! `STRATA_QA_WINDOW=1` in a sway session (H4, `docs/rune/parity/packages/H4.md`). It serves
-//! the same protocol as the offscreen host, for the runs that need what only a compositor
-//! has: window focus, the system clipboard, drags between processes.
-//!
-//! Rune runs the window's loop on the main thread and owns the application state there. The
-//! session runs on a thread of its own: it reads the tree from the frames the window draws,
-//! reaches the state through `AppHandle::update_if` ([`link`]), and sends input through
-//! Wayland's virtual keyboard and pointer ([`devices`]), so it crosses the compositor and
-//! winit as a user's does. After each input it waits until Rune has dispatched it, then for
-//! the frame that shows it.
-//!
-//! It runs only in a private, headless sway, and refuses any other session before the window
-//! opens ([`guard`]): every output headless, and nothing it reaches the compositor or the bus
-//! through in the desktop's runtime directory. The session bus it expects is the runner's
-//! private one, or none.
-
 mod clipboard;
 mod devices;
 mod guard;
@@ -67,18 +50,9 @@ use crate::{
 
 /// What the runner sets to have the QA mode open a real window.
 const VARIABLE: &str = "STRATA_QA_WINDOW";
-/// How long a settle waits for the frame after a change. The GTK harness waits this long.
 const SETTLE_LIMIT: Duration = Duration::from_millis(250);
-/// How long the session waits for Rune to dispatch input it sent: input the window does not
-/// get, a motion outside it say, is not waited for longer.
 const DISPATCH_LIMIT: Duration = Duration::from_millis(500);
 const DISPATCH_POLL: Duration = Duration::from_millis(2);
-/// How long a motion is given while a drag runs that this window does not follow through its
-/// pointer: one it started, or one the runner started from another client's window (the
-/// foreign drag source), with a press outside this one.
-/// Under the compositor's drag grab a motion reaches the data device, not the pointer, so Rune
-/// records no input for it and [`DISPATCH_LIMIT`] would run out at every step; a drag paced so
-/// slowly rests on each folder it crosses past the 750 ms spring, and opens it.
 const DRAG_MOTION_PACE: Duration = Duration::from_millis(16);
 /// How long the window may take to show in the admitted sway.
 const WINDOW_LIMIT: Duration = Duration::from_secs(30);
@@ -108,8 +82,6 @@ impl Target {
         }
     }
 
-    /// Readies the window for the steps, as the offscreen QA host does: no animations, so a
-    /// column that closes leaves the tree at once, and its replacements counted.
     fn prepare(&self) -> Result<(), String> {
         let root = self.root.clone();
         self.link.change(move |app| {
@@ -119,8 +91,6 @@ impl Target {
     }
 }
 
-/// The replacements of the window whose tree is read under `root`: `app`'s, watched from the
-/// first call. Runs on the windows' thread.
 fn replacements_of(root: &str, app: &App) -> Rc<Replacements> {
     REPLACEMENTS.with(|watched| {
         Rc::clone(
@@ -171,12 +141,12 @@ fn start(target: Target, protocol: File, log: InputLog, admitted: Admitted) {
                     let commands = strata_qa::command_lines();
                     block_on(&backend, strata_qa::serve(&backend, protocol, commands));
                 }
-                Err(error) => eprintln!("strata-rune: the session host: {error}"),
+                Err(error) => eprintln!("strata: the session host: {error}"),
             }
             link.quit();
         });
     if let Err(error) = spawned {
-        eprintln!("strata-rune: cannot start the QA session: {error}");
+        eprintln!("strata: cannot start the QA session: {error}");
     }
 }
 
@@ -206,8 +176,6 @@ impl Wake for Unpark {
     }
 }
 
-/// Runs the session on this thread. Its steps block while they wait; the window's loop runs
-/// on its own meanwhile.
 fn block_on<H: Host>(backend: &Rune<H>, session: impl Future<Output = ()>) {
     let waker = Waker::from(Arc::new(Unpark(std::thread::current())));
     let mut context = Context::from_waker(&waker);
@@ -229,19 +197,13 @@ pub(super) struct Session {
     held: RefCell<Vec<Modifier>>,
     /// The last snapshot read, with its window's root and its frame's serial.
     seen: RefCell<Option<(String, u64, Rc<Snapshot>)>>,
-    /// The private Wayland client owning the clipboard from `clipboard_set`, kept alive until
-    /// replaced or closed by `clipboard`.
     clipboard: RefCell<Option<clipboard::ClipboardOwner>>,
-    /// A button is held that was pressed outside this window, on another client: the drag the
-    /// runner starts from the foreign drag source (`presses_elsewhere`).
     held_elsewhere: Cell<bool>,
 }
 
 impl Session {
     fn connect(target: Target, log: InputLog, admitted: Admitted) -> Result<Self, String> {
         let Admitted { sway, screen } = admitted;
-        // The window is on `WAYLAND_DISPLAY`: once the admitted sway lists it, the two are one
-        // compositor, and the devices made on `WAYLAND_DISPLAY` are that sway's.
         own_window(&sway)?;
         let devices = Devices::connect(screen)?;
         target.prepare()?;
@@ -272,8 +234,6 @@ impl Session {
         Ok(())
     }
 
-    /// Waits up to [`DISPATCH_LIMIT`] for `App::clipboard` to hear the selection change after
-    /// `before` and finish any asynchronous file-offer read (`has_files` / `may_paste`).
     fn wait_clipboard_settled(&self, before: u64) {
         let deadline = Instant::now() + DISPATCH_LIMIT;
         while Instant::now() < deadline {
@@ -284,16 +244,13 @@ impl Session {
                 Ok(true) => return,
                 Ok(false) => std::thread::sleep(DISPATCH_POLL),
                 Err(error) => {
-                    eprintln!("strata-rune: the session host: clipboard_set: {error}");
+                    eprintln!("strata: the session host: clipboard_set: {error}");
                     return;
                 }
             }
         }
     }
 
-    /// Waits until Rune has dispatched input from after the last event the devices sent, for
-    /// [`DISPATCH_LIMIT`] at most, and says so when it runs out: `what` names the input.
-    /// Returns whether it did.
     fn dispatched(&self, what: &str) -> bool {
         let sent = self.devices.last_sent();
         let deadline = Instant::now() + DISPATCH_LIMIT;
@@ -302,13 +259,13 @@ impl Session {
                 Ok(Some(at)) if at >= sent => return true,
                 Ok(_) => std::thread::sleep(DISPATCH_POLL),
                 Err(error) => {
-                    eprintln!("strata-rune: the session host: {what}: {error}");
+                    eprintln!("strata: the session host: {what}: {error}");
                     return false;
                 }
             }
         }
         eprintln!(
-            "strata-rune: the session host: the window had not taken {what} after {} ms",
+            "strata: the session host: the window had not taken {what} after {} ms",
             DISPATCH_LIMIT.as_millis()
         );
         false
@@ -321,8 +278,6 @@ impl Session {
             .unwrap_or(false)
     }
 
-    /// Sends `send`'s input, then waits for Rune to take it and for the frame after. Input
-    /// that sent no event, the release of no modifier say, is waited for no longer.
     async fn input(
         &self,
         what: &str,
@@ -346,8 +301,6 @@ impl Session {
         self.devices.key(modifier_key(modifier), pressed)
     }
 
-    /// Presses and releases `key` with `with` held around it, and Shift when the key needs it
-    /// and it is not held already.
     fn tap(&self, name: &str, key: UsKey, with: &[Modifier]) -> Result<(), String> {
         let shifted =
             self.held.borrow().contains(&Modifier::Shift) || with.contains(&Modifier::Shift);
@@ -382,10 +335,6 @@ fn keymap_is_us(keymap: &Keymap) -> Result<(), String> {
     }
 }
 
-/// Whether a press at `at` lands outside this window, shown at `window`: on another client,
-/// such as the foreign drag source the runner drags from. A press inside it is the window's,
-/// however slow the window is to take it, and `taken` waits for it. When sway does not say
-/// where the window is, a press the window never took (`taken` false) is another client's.
 fn presses_elsewhere(
     window: Option<sway::Area>,
     at: (i16, i16),
@@ -447,20 +396,18 @@ impl Host for Session {
         self.link().ask(replaced).unwrap_or_default()
     }
 
-    /// Has the window commit a change, so it draws, and waits for that frame. A change that
-    /// draws nothing new still draws a frame; one that never comes ends the wait at the limit.
     async fn settle(&self) {
         let before = self.link().frames.serial();
         let drawn = match self.link().change(|_| ()) {
             Ok(()) => self.link().frames.wait_past(before, SETTLE_LIMIT),
             Err(error) => {
-                eprintln!("strata-rune: the session host: a settle: {error}");
+                eprintln!("strata: the session host: a settle: {error}");
                 return;
             }
         };
         if !drawn {
             eprintln!(
-                "strata-rune: the session host: the window drew no frame within {} ms of a settle",
+                "strata: the session host: the window drew no frame within {} ms of a settle",
                 SETTLE_LIMIT.as_millis()
             );
         }
@@ -526,7 +473,7 @@ impl Host for Session {
             Ok(())
         });
         if let Err(error) = released.await {
-            eprintln!("strata-rune: releasing the modifiers: {error}");
+            eprintln!("strata: releasing the modifiers: {error}");
         }
     }
 
@@ -574,8 +521,6 @@ impl Host for Session {
         self.log.button(at, number, pressed);
         let direction = if pressed { "press" } else { "release" };
         let what = format!("the {direction} of button {number}");
-        // Another client's press, or the release ending the drag it started: this window's
-        // pointer hears neither, so neither is waited for.
         let elsewhere = if pressed {
             presses_elsewhere(window, at, || self.dispatched(&what))
         } else {
@@ -589,8 +534,6 @@ impl Host for Session {
         Ok(())
     }
 
-    /// A click at the middle of the element: an assistive client's click needs the
-    /// accessibility bus, which the session's processes do not reach.
     fn activate(&self, target: &Activated) -> bool {
         let (Some(bounds), Ok(window)) = (target.bounds, self.window()) else {
             return false;

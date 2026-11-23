@@ -1,13 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Each golden scene rendered headless (`--snap --scale 1`) against
-//! `tests/golden/png/<id>/<scene>.png`.
-//!
-//! A pixel is off when its largest channel differs by more than [`CHANNEL_TOLERANCE`], the
-//! "visible" threshold of rune-kit's gallery diff (`scripts/kit-diff.py` at the pinned rev).
-//! No off pixel is allowed. A failure writes the fresh render and an amplified difference
-//! image next to each other for review.
-
 use std::collections::BTreeSet;
 use std::fs::File;
 use std::io::BufReader;
@@ -57,8 +49,6 @@ fn one(id: &str, name: &str, dark: bool, mode: Mode) -> Result<(), String> {
     ]);
     cmd.args(["--theme", if dark { "dark" } else { "light" }]);
     let stderr = support::run(cmd)?;
-    // Blessing keeps a golden that still matches within the tolerance, so a render on another
-    // adapter doesn't churn every PNG.
     let bless = || {
         let bytes = std::fs::read(&fresh).map_err(|e| format!("no render: {e}"))?;
         support::write(&golden, &bytes);
@@ -106,8 +96,6 @@ fn one(id: &str, name: &str, dark: bool, mode: Mode) -> Result<(), String> {
     ))
 }
 
-/// The number of off pixels, and a heat map: each pixel's largest channel difference ×4, in
-/// red on black.
 fn compare(want: &[u8], got: &[u8]) -> (usize, Vec<u8>) {
     let mut off = 0;
     let mut heat = Vec::with_capacity(got.len());
@@ -159,9 +147,6 @@ fn decode(path: &Path) -> Result<(u32, u32, Vec<u8>), String> {
     Ok((info.width, info.height, rgba))
 }
 
-/// The PNG run and the in-process mount end on the same clock, so the open page's `poll` has run
-/// as often for the PNG golden as for the a11y golden. `--tree` takes the same timeline as
-/// `--snap`.
 #[test]
 fn the_png_render_ends_on_the_mounts_clock() {
     let scene = support::page("gallery").scenes[0];
@@ -182,8 +167,6 @@ fn the_png_render_ends_on_the_mounts_clock() {
     let text = std::fs::read_to_string(&tree).expect("tree written");
     let snap: serde_json::Value = serde_json::from_str(&text).expect("tree parses");
     let snap_clock = snap["anim_t"].as_f64().expect("anim_t in the tree");
-    // The two sums of 1/60 round differently in the last bits; a frame more or less on either
-    // side would put them 1/60 apart.
     let same_frame = |a: f64, b: f64| (a - b).abs() < 1e-9;
     assert!(
         same_frame(snap_clock, mount_clock),

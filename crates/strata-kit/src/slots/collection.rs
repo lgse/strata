@@ -1,19 +1,10 @@
 // SPDX-License-Identifier: MIT
 
-//! The `collection.*` slot tokens (for example `collection.row`) that the collection element
-//! reads, and the views built on it through it.
-//!
-//! Work package: C1e, `docs/rune/work/phase-2-composites/C1e-collection-element.md`. W1c added the
-//! first tokens so C1e can land against them. C1e owns this file: add tokens beside them,
-//! following `slots/mod.rs`. Keep their names, since slot names are API.
-
 use rune::Color;
 
 use crate::look::Look;
 use crate::tokens::Token;
 
-/// The collection element's slot tokens. `None` inherits, or takes the default its reader
-/// names.
 #[derive(Clone, Debug, Default)]
 #[non_exhaustive]
 pub struct Collection {
@@ -25,18 +16,10 @@ pub struct Collection {
     pub peek_fill: Option<Color>,
 }
 
-/// A row's horizontal margin inside the list, on each side: `collection.row.inset`, else 5.
-/// That is Strata's `.file-list row` margin (`src/style.css`, `upstream/main` 35ee677ab), which
-/// no core token matches.
-///
-/// Used by: C1e (and C2, C3, C4 through it).
 pub fn row_inset(look: &Look) -> f32 {
     look.slots.collection.row_inset.unwrap_or(5.0)
 }
 
-/// A row's corner radius: `collection.row.radius`, else `radius.md`.
-///
-/// Used by: C1e (and C2, C3, C4 through it).
 pub fn row_radius(look: &Look) -> f32 {
     look.slots
         .collection
@@ -44,35 +27,18 @@ pub fn row_radius(look: &Look) -> f32 {
         .unwrap_or(look.kit.radius.md)
 }
 
-/// The opacity of a cut entry's row, 0 to 1: `collection.cut.opacity`, else Strata's 0.65.
-///
-/// Used by: C1e (and C2, C3, C4 through it).
 pub fn cut_opacity(look: &Look) -> f32 {
     look.slots.collection.cut_opacity.unwrap_or(0.65)
 }
 
-/// The opacity of a row being dragged, 0 to 1: `collection.drag.opacity`, else Strata's 0.48.
-///
-/// Used by: C1e (and C2, C3, C4 through it).
 pub fn drag_opacity(look: &Look) -> f32 {
     look.slots.collection.drag_opacity.unwrap_or(0.48)
 }
 
-/// The opacity of a file's icon beside a folder's, 0 to 1: `collection.file_icon.opacity`, else
-/// Strata's 0.72 (`FILE_ICON_OPACITY` in `src/ui/browser_modes/icons_card.rs`, and the Columns
-/// rows' `set_base_opacity` in `src/ui/browser/columns/rows/bind.rs`). A view that dims file
-/// icons reads it; Strata's List rows do not dim them.
-///
-/// Used by: C25's icon slot (C2 through it), C3.
 pub fn file_icon_opacity(look: &Look) -> f32 {
     look.slots.collection.file_icon_opacity.unwrap_or(0.72)
 }
 
-/// The fill of the row a folder peek is open from: `collection.peek.fill`, else the accent at
-/// Strata's 0.15 of its own opacity (`.peek-open .file-list .file-row.peek-anchor`,
-/// `src/style.css`). A selected row keeps the selection's fill.
-///
-/// Used by: C1e (and C22 through it).
 pub fn peek_fill(look: &Look) -> Color {
     look.slots.collection.peek_fill.unwrap_or_else(|| {
         let accent = look.kit.c.bg_accent;

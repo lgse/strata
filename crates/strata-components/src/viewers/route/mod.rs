@@ -1,54 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The route view (`preview/preview-panel/routes`): the route picture Strata's helper draws, a
-//! marker that plays along it and along the elevation profile, the profile itself drawn with
-//! `canvas` shapes ([`plot`]), and the details, badges and controls of the shared player layout.
-//!
-//! ```ignore
-//! RouteView::new(&s.route, |s: &mut App| &mut s.route, |s: &mut App| &mut s.route.viewport)
-//!     .key("route")
-//!     .pixels(&s.route_png)
-//!     .build(&s.look, cx)
-//! // and in the app's poll:
-//! changed |= s.route.tick(clock, tx);
-//! ```
-//!
-//! # What it does
-//!
-//! - **Showing a route.** An image named "Route preview"; the file name under the position
-//!   eyebrow; badges for the format, the distance and, for a timed route, the duration. With
-//!   recorded heights, an "Elevation profile" image headed "Elevation" and its range.
-//! - **Playback.** The play button (or the host's media key, [`RouteState::command`]) moves the
-//!   marker along the route and the profile over 15 s, at a steady ground-distance pace, and
-//!   stops at the end; play then starts again from the start. Seeks pause and move the marker.
-//!   The control row shows the marker's distance on the left and the total on the right, and
-//!   both pictures' accessible description is the marker's distance.
-//! - **Hover.** The pointer moving over either picture pauses playback and moves both markers
-//!   to the point it picks; where passes overlap, the pass nearest the marker's distance among
-//!   lines within 2 px of the closest ([`trace::nearest`]). Only an explicit play resumes.
-//! - **Units** follow the host's preference ([`RouteState::set_units`]), without resetting
-//!   playback. The view has no unit selector.
-//!
-//! What stays in Strata: which files are routes, the parser and its limits and messages, the
-//! media key bindings, and pausing when the file changes or the preview closes or hides.
-//!
-//! # No commit per frame
-//!
-//! The markers ride `Live` offsets that [`RouteState::tick`] and the hover set, so playback and
-//! hover draw without re-running the view. They commit only when the text shown changes (the
-//! distance, to a tenth; the height, to a metre; the play button), and during playback at most
-//! every [`state::TEXT_INTERVAL`] (about 10 Hz): on a long route the tenths change faster than
-//! frames. Whatever stops playback commits the exact text at once. Strata resets both images'
-//! description on every frame (its known gap); here it changes with the committed text. A
-//! `LiveText` label would follow every frame with no commit, but one anywhere in the window
-//! turns off Rune's virtual-window fast path for the listing beside the drawer (Rune draft
-//! U-C1f-6). A hover follows the pointer, not a clock, and commits each change of text.
-//!
-//! # Two accessors
-//!
-//! As the model view: C14a's viewport takes a plain `fn` accessor, so the host passes the route
-//! picture's too.
-
 mod plot;
 mod state;
 pub mod trace;
@@ -72,8 +23,6 @@ pub use state::{
 };
 pub use trace::RouteSample;
 
-/// The route view: `RouteView::new(&s.route, access, viewport) … .build(look, cx)`. It fills
-/// its parent.
 pub struct RouteView<'a, S> {
     state: &'a RouteState,
     access: fn(&mut S) -> &mut RouteState,
@@ -99,9 +48,6 @@ impl<'a, S: 'static> RouteView<'a, S> {
         }
     }
 
-    /// The view's key ("route" unless set). Its parts are `<key>-picture`, `<key>-profile`,
-    /// `<key>-play`, `<key>-elapsed`, `<key>-total`, `<key>-height`, `<key>-range`,
-    /// `<key>-format`, `<key>-distance`, `<key>-duration`, `<key>-title` and `<key>-eyebrow`.
     pub fn key(mut self, key: impl Into<String>) -> Self {
         self.key = key.into();
         self

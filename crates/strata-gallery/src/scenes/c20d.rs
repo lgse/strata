@@ -1,25 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The gallery page for C20d IconPicker: its scenes, demo state, view and key and poll hooks. Scene
-//! names start with `c20d-` and end in `-light` or `-dark`.
-//!
-//! Work package: `docs/rune/work/phase-4-integration/C20d-icon-picker.md`.
-//!
-//! Three layouts:
-//!
-//! - **Customize** stands in for Strata's Customize dialog (a C15 modal): a preview of the
-//!   item's icon, Strata's 16 bundled icons inline (no search, tooltips, the current one
-//!   marked), and "Choose Emoji…", which opens the bundled emoji in a popover. Escape with the
-//!   popover open closes only the popover; the next closes the dialog. Strata's dialog, its
-//!   colours and its Clear and Done policy are Strata's; this page keeps a log line
-//!   (`c20d-log`) and a preview (`c20d-preview`) so scripts can read what was chosen.
-//! - **Catalog** shows K3's catalog by name, searchable, inline and behind "Choose Icon…".
-//! - **All** (review only) is the icons and the emoji in one inline picker.
-//!
-//! Emoji draw from the system's colour emoji font, which CI lacks and whose art moves between
-//! versions, so scenes that draw emoji are review scenes: their scripts end on accessibility
-//! trees, which no font changes.
-
 use std::rc::Rc;
 
 use rune::{Cx, El, KeyEvent, Tx, col, icon, row, text};
@@ -36,8 +16,6 @@ use strata_kit::look::Look;
 
 use crate::{Gallery, Scene};
 
-/// Strata's 16 customize choices (`CUSTOMIZATION_CHOICES`, `src/assets.rs` at lgse/strata
-/// `upstream/main`): each icon's catalog name and its label.
 pub const CHOICES: [(&str, &str); 16] = [
     ("strata-file-text", "Documents"),
     ("strata-download", "Downloads"),
@@ -75,16 +53,13 @@ pub enum Which {
     All,
 }
 
-/// C20d's demo state, held in `Gallery::c20d`.
 pub struct Demo {
     pub layout: Layout,
     /// Strata's 16 icons, inline in the Customize stand-in.
     pub icons: IconPickerState,
     /// The bundled emoji, behind "Choose Emoji…".
     pub emoji: IconPickerState,
-    /// K3's catalog, inline.
     pub catalog: IconPickerState,
-    /// K3's catalog, behind "Choose Icon…".
     pub catalog_popover: IconPickerState,
     /// The icons and the emoji in one picker (review).
     pub all: IconPickerState,
@@ -197,8 +172,6 @@ pub fn strata_icons() -> PickerSource {
     )
 }
 
-/// Golden scenes: each gets an accessibility and a PNG golden. Each calls
-/// `g.open("c20d", dark)`, then fills in `g.c20d`. None draws an emoji.
 pub const SCENES: &[Scene] = &[
     ("c20d-icons-light", |g| g.open("c20d", false)),
     ("c20d-icons-dark", |g| g.open("c20d", true)),
@@ -299,7 +272,6 @@ pub fn icons() -> IconPicker<Gallery> {
         .on_choose(|g: &mut Gallery, c, _| chose(g, c))
 }
 
-/// A searchable picker for `w`, with C21's text menu on its field.
 pub fn picker(w: Which) -> IconPicker<Gallery> {
     let (key, get, get_mut, grid, popover): (&str, Get, GetMut, &str, &str) = match w {
         Which::Emoji => (
@@ -342,7 +314,6 @@ pub fn picker(w: Which) -> IconPicker<Gallery> {
         })
 }
 
-/// C21's text menu on the pickers' search fields.
 fn field_menu() -> FieldMenu<Gallery, Which> {
     FieldMenu::new(
         "c20d-field-menu",
@@ -481,8 +452,6 @@ pub fn view(g: &Gallery, cx: &mut Cx<Gallery>) -> El {
         Layout::Catalog => catalog_layout(g, &mut layer),
         Layout::All => picker(Which::All).build(g, look),
     };
-    // Built last, so its layer sits over the popovers: an open popover's modal keeps what
-    // comes after it in the tree, the menu its field opens included.
     let menu = field_menu().build(g, look, &mut layer);
     let log = text(if g.c20d.log.is_empty() {
         "\u{2014}".to_owned()
@@ -509,15 +478,10 @@ pub fn view(g: &Gallery, cx: &mut Cx<Gallery>) -> El {
     )
 }
 
-/// Keys no focused element took while this page is open: shortcuts, and keys with nothing
-/// focused. True consumes the key; false lets the gallery's Escape go back to the index.
 pub fn on_key(_g: &mut Gallery, _key: &KeyEvent, _tx: &mut Tx) -> bool {
     false
 }
 
-/// Runs at the start of every frame while this page is open, with the clock in seconds.
-/// Reports a popover a press outside closed, runs the grids' controllers, and closes the field
-/// menu if its field went. True when state changed.
 pub fn poll(g: &mut Gallery, _t: f64, tx: &mut Tx) -> bool {
     let mut changed = icons().poll(g, tx);
     for w in [

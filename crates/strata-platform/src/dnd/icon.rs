@@ -1,19 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! A drag's picture: an image, or a snapshot of a view rendered headless.
-//!
-//! Rune's live-frame element snapshot is `pub(crate)` (draft U1, not filed), so a snapshot
-//! here is a second `Runtime` over a state the app supplies, rendered with Rune's public
-//! render API (`render::Gpu::headless`, `Renderer`, `Offscreen`), as S2 measured (Q7): pixel
-//! for pixel what `--snap` draws, once sRGB blending is on. It runs on a worker thread, so a
-//! cold GPU (150–250 ms in S2) never stalls the UI: the drag starts at once with an empty
-//! icon, and the picture lands when it is ready. That GPU device is a second one beside the
-//! window's; on a machine with two GPUs it may be another adapter.
-//!
-//! The worker is one thread for the process, and [`stop`] joins it at `dnd::shutdown`: a render
-//! still running when the process exits dies as the GPU driver is torn down under it (a
-//! SIGSEGV in a session test, before this was so).
-
 use std::fmt;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::mpsc::{self, Sender};
@@ -23,8 +9,6 @@ use std::thread::JoinHandle;
 use rune::render::{Gpu, OFFSCREEN_FORMAT, Offscreen, Renderer};
 use rune::{Cx, El, Env, Runtime};
 
-/// Straight (not premultiplied) sRGB RGBA pixels, `scale` pixels per point, with the point
-/// under the pointer.
 #[derive(Clone, PartialEq)]
 pub struct DragImage {
     pub(crate) rgba: Arc<[u8]>,
@@ -35,8 +19,6 @@ pub struct DragImage {
 }
 
 impl DragImage {
-    /// `rgba` is `width × height` straight RGBA pixels at scale 1, with the pointer at its
-    /// centre. None if the sizes don't match.
     pub fn new(rgba: impl Into<Arc<[u8]>>, width: u32, height: u32) -> Option<DragImage> {
         let rgba = rgba.into();
         let len = usize::try_from(u64::from(width) * u64::from(height) * 4).ok()?;
@@ -49,8 +31,6 @@ impl DragImage {
         })
     }
 
-    /// Pixels per point (2 for an image drawn for a scale-2 display). The hotspot keeps its
-    /// place on the picture.
     pub fn scale(mut self, scale: f32) -> Self {
         if scale > 0.0 {
             self.hotspot = (
@@ -112,10 +92,6 @@ impl DragIcon {
         DragIcon(IconKind::Image(image))
     }
 
-    /// `view` over `state`, laid out at `size` points and drawn at `scale`, with the pointer
-    /// at its centre: an element snapshot, built from a copy of the element's state (no
-    /// hover or press, unless the copy has them). The target clears to transparent, so a root
-    /// without a fill floats cleanly over other windows.
     pub fn snapshot<T: Send + 'static>(
         state: T,
         view: fn(&T, &mut Cx<T>) -> El,
@@ -178,8 +154,6 @@ struct Worker {
 
 static WORKER: Mutex<Option<Worker>> = Mutex::new(None);
 
-/// Produces `icon`'s picture and hands it to `done`: an image at once, a snapshot on the
-/// worker thread. `done` may run on either.
 pub(crate) fn produce_later(icon: DragIcon, done: Delivery) -> Result<(), String> {
     if let IconKind::Image(i) = &icon.0 {
         done(Some(i.clone()));
@@ -205,8 +179,6 @@ pub(crate) fn produce_later(icon: DragIcon, done: Delivery) -> Result<(), String
         .map_err(|_| "the icon worker stopped".to_owned())
 }
 
-/// Stops the worker and waits for the render under way, if any, to end. On the UI thread,
-/// before the event loop ends.
 pub(crate) fn stop() {
     let worker = WORKER.lock().unwrap_or_else(PoisonError::into_inner).take();
     if let Some(Worker { jobs, thread }) = worker {
@@ -247,21 +219,14 @@ fn render<T: 'static>(
         (w, h),
     );
     let mut enc = gpu.device.create_command_encoder(&Default::default());
-    // Clear to transparent rather than `rt.clear_color()` (which forces alpha = 1.0 on an
-    // opaque Runtime and would paint a solid black square behind unfilled drag icons).
     renderer.draw(&mut enc, &target.view, [0.0; 4]);
     target.copy(&mut enc);
     renderer.submit(&gpu.queue, enc);
     let mut px = target.read(&gpu.device);
-    // Non-sRGB targets with `srgb_blend` hold premultiplied sRGB pixels; convert back to
-    // straight RGBA so `DragImage`'s contract holds and `bgra_premultiplied` does not
-    // premultiply a second time.
     unpremultiply_srgb(&mut px);
     DragImage::new(px, w, h).map(|i| i.scale(scale))
 }
 
-/// Straight sRGB RGBA from premultiplied sRGB RGBA (the pixels a non-sRGB target with
-/// `srgb_blend` holds).
 pub(crate) fn unpremultiply_srgb(rgba: &mut [u8]) {
     for p in rgba.as_chunks_mut::<4>().0 {
         let a = u32::from(p[3]);
@@ -275,8 +240,6 @@ pub(crate) fn unpremultiply_srgb(rgba: &mut [u8]) {
     }
 }
 
-/// Premultiplied BGRA (`wl_shm` ARGB8888 and a 32-bit X visual, little-endian) from straight
-/// RGBA.
 pub(crate) fn bgra_premultiplied(rgba: &[u8]) -> Vec<u8> {
     let mut out = rgba.to_vec();
     for p in out.as_chunks_mut::<4>().0 {
@@ -290,10 +253,6 @@ pub(crate) fn bgra_premultiplied(rgba: &[u8]) -> Vec<u8> {
     out
 }
 
-/// `image` as a buffer for an integer buffer `scale`: premultiplied BGRA, padded with clear
-/// pixels to a size the scale divides (a `wl_surface` raises `invalid_size` otherwise, and
-/// on winit's display that would end winit's connection), and the hotspot in the surface's
-/// logical pixels. (width, height, pixels, hotspot)
 pub(crate) fn buffer_for(image: &DragImage, scale: u32) -> (u32, u32, Vec<u8>, (i32, i32)) {
     let scale = scale.max(1);
     let pad = |n: u32| n.div_ceil(scale) * scale;

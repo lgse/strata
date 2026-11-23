@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! C21's unit tests, in a headless runtime where they touch Rune: what opens, where the
-//! keyboard goes, what a choice reports, and what the field menu does to its field.
-
 use rune::clipboard::MemoryClipboard;
 use rune::runtime::ElementInfo;
 use rune::{Cx, El, Env, Key, KeyEvent, Mods, Runtime, TextEdit, col, row, text_input};
@@ -217,17 +214,6 @@ fn secondary(rt: &mut Runtime<Host>, key: &str) {
     step(rt);
 }
 
-/// Header (2 lines), Open, Open With… (insensitive), an empty section, Send to (Desktop,
-/// Mail), Copy, then a labelled section: Move to Trash, Permanently delete.
-///
-/// | key | row |
-/// | --- | --- |
-/// | m-item3 | Open |
-/// | m-item4 | Open With… |
-/// | m-item6 | Send to (submenu m-item6-sub-item0 Desktop, -item1 Mail) |
-/// | m-item7 | Copy |
-/// | m-item10 | Move to Trash |
-/// | m-item11 | Permanently delete |
 fn model() -> MenuModel {
     MenuModel::new()
         .header_line("Notes.md")
@@ -295,8 +281,6 @@ fn item_at_counts_visible_items_across_sections_and_into_submenus() {
 
 #[test]
 fn an_empty_section_draws_no_separator_or_label() {
-    // browser/context-menu: "Actions hidden for the current target leave no empty group or
-    // doubled separator."
     let rt = opened();
     let separators: Vec<String> = rt
         .elements()
@@ -412,8 +396,6 @@ fn model_with_header(first: &str) -> MenuModel {
 
 #[test]
 fn up_and_down_skip_insensitive_rows_and_wrap_home_and_end_jump() {
-    // browser/context-menu: "Up and Down move between enabled actions, skipping separators
-    // and wrapping at either end; Home and End jump to the first and last action."
     let mut rt = opened();
     key(&mut rt, Key::Down);
     assert_eq!(focused(&rt).as_deref(), Some("m-item6"), "past Open With…");
@@ -447,8 +429,6 @@ fn enter_and_space_run_the_focused_action_close_the_menu_and_return_focus() {
 
 #[test]
 fn escape_closes_the_menu_and_returns_focus_to_what_opened_it() {
-    // browser/context-menu: "Escape closes the menu, keeps the selection, and returns focus to
-    // the entry or pane that opened it."
     let mut rt = opened();
     key(&mut rt, Key::Down);
     key(&mut rt, Key::Escape);
@@ -498,9 +478,6 @@ fn a_click_on_a_row_runs_it() {
 
 #[test]
 fn a_release_without_a_press_on_a_row_runs_nothing() {
-    // browser/context-menu: "A button release that reaches an item or background menu, or
-    // its submenus, before any press inside it is ignored." and "Pressing the secondary
-    // button, moving onto a menu row, and releasing does not run the row".
     let mut rt = opened();
     let [x, y, w, h] = live(&rt, "m-item7").unwrap().rect;
     rt.pointer_up(x + w / 2.0, y + h / 2.0);
@@ -522,9 +499,6 @@ fn a_release_without_a_press_on_a_row_runs_nothing() {
 
 #[test]
 fn right_opens_a_submenu_with_its_first_action_focused_and_left_returns_to_its_row() {
-    // browser/context-menu: "On a submenu row such as Actions or Send to…, Right, Space, or
-    // Enter opens the submenu with its first action focused." and "Left in a submenu closes
-    // only the submenu and refocuses its row; Up and Down then move within the parent menu."
     for open in [Key::Right, Key::Enter, Key::Text(" ".into())] {
         let mut rt = opened();
         key(&mut rt, Key::Down);
@@ -594,8 +568,6 @@ fn a_click_opens_a_submenu_and_leaves_the_parents_rows_clickable() {
 
 #[test]
 fn layer_order_is_runekits() {
-    // The surfaces are found by the order rune-kit pushes them (view.rs): the top menu gets
-    // its name and the submenu Strata's corners. If a Rune bump moves them, this fails.
     let mut rt = opened();
     key(&mut rt, Key::Down);
     key(&mut rt, Key::Right);
@@ -623,9 +595,6 @@ fn listing(n: u64) -> ListSource {
 
 #[test]
 fn the_keyboard_anchor_is_the_selected_cursors_edge_else_the_panes_centre() {
-    // browser/context-menu: "A keyboard-opened item menu anchors to the entry, not the
-    // pointer: its right edge in Columns and Icons, its center in List." and "With nothing
-    // selected, Menu or Shift+F10 opens the active pane's background menu."
     let src = listing(20);
     let rows = UniformRows::new(20, 30.0, 300.0);
     let visible = Rect::new(0.0, 0.0, 300.0, 200.0);
@@ -673,8 +642,6 @@ fn a_cursor_out_of_view_is_revealed_and_the_menu_opens_where_it_lands() {
 
 #[test]
 fn menu_and_shift_f10_open_with_or_without_super_and_other_chords_open_nothing() {
-    // browser/context-menu: "Ctrl+Shift+F10, Shift+Menu, and Ctrl+Menu open no menu." and
-    // "Menu or Shift+F10 with Hyper or Meta held opens the menu as without them."
     let ev = |key, m: Mods| KeyEvent { key, mods: m };
     let none = Mods::default();
     let shift = Mods {
@@ -751,8 +718,6 @@ fn names(v: &[(&str, bool)]) -> Vec<(String, bool)> {
 
 #[test]
 fn a_right_click_on_a_field_opens_the_text_menu_with_nothing_selected() {
-    // browser/context-menu: "Right-click menus in text inputs use the same surface, border,
-    // corners, font, and separators as file menus".
     let (mut rt, _) = with_clipboard(Some("pasted"));
     secondary(&mut rt, "field");
     assert_eq!(rt.state.fields.field(), Some(0));
@@ -774,8 +739,6 @@ fn a_right_click_on_a_field_opens_the_text_menu_with_nothing_selected() {
 
 #[test]
 fn menu_and_shift_f10_in_a_focused_field_open_its_text_menu() {
-    // browser/context-menu: "While a text input has focus, Menu and Shift+F10 open the
-    // input's text-editing menu instead of a file menu."
     for (k, m) in [
         (Key::ContextMenu, Mods::default()),
         (
@@ -1022,8 +985,6 @@ fn an_empty_fields_menu_has_select_all_insensitive() {
 
 #[test]
 fn an_anchor_past_the_viewports_side_is_held_inside_it() {
-    // Rows wider than the viewport (a scrolled List): the right edge is off to the side, so
-    // the menu opens at the viewport's edge instead.
     let src = listing(20);
     let rows = UniformRows::new(20, 30.0, 500.0);
     let visible = Rect::new(0.0, 0.0, 300.0, 200.0);
@@ -1042,8 +1003,6 @@ fn an_anchor_past_the_viewports_side_is_held_inside_it() {
 
 #[test]
 fn paste_into_a_field_rune_never_edited_keeps_one_line() {
-    // The field was never focused or typed in. Rune's focus sync gives every mounted field its
-    // line mode when the menu takes the keyboard, so `TextEdit::paste` drops the line break.
     let (mut rt, _) = with_clipboard(Some("two\nlines"));
     secondary(&mut rt, "field");
     tap(&mut rt, "f-item2");
@@ -1053,9 +1012,6 @@ fn paste_into_a_field_rune_never_edited_keeps_one_line() {
 
 #[test]
 fn a_held_menu_key_opens_one_menu() {
-    // The menu takes the keyboard on the first press, so repeats reach it, not the collection;
-    // but a host whose policy opens no menu for a target leaves the keyboard on the collection,
-    // where a held key would ask again on every repeat.
     use crate::collection::element::{Ctx, Effect, KeyController, KeyInput};
     let src = listing(5);
     let rows = UniformRows::new(5, 30.0, 300.0);
@@ -1101,8 +1057,6 @@ fn a_paste_lands_only_in_the_edit_it_was_asked_for() {
 
 #[test]
 fn chords_in_a_field_follow_runes_rule_shift_menu_opens_super_menu_doesnt() {
-    // A field's Menu key is Rune's (`context_menu_key`), which hands it to the field's own
-    // `on_secondary_press`: plain or with Shift, never with Ctrl, Alt or Super.
     for (mods, opens) in [
         (
             Mods {
@@ -1137,9 +1091,6 @@ fn chords_in_a_field_follow_runes_rule_shift_menu_opens_super_menu_doesnt() {
 
 #[test]
 fn the_collections_menu_chords_that_open_nothing_stop_at_menu_keys() {
-    // Passed on, Rune would hand them to the collection's own secondary press at its
-    // bottom-left, which opens nothing only because that point is on the viewport's bottom
-    // edge, outside it. Taken here, nothing behind them depends on that.
     use crate::collection::element::{Ctx, Flow, KeyController, KeyInput};
     let src = listing(5);
     let rows = UniformRows::new(5, 30.0, 300.0);
@@ -1191,9 +1142,6 @@ fn the_collections_menu_chords_that_open_nothing_stop_at_menu_keys() {
 
 #[test]
 fn a_model_update_that_replaces_a_row_in_place_keeps_the_keyboard_on_its_action() {
-    // browser/context-menu: "focus stays there while Open With lookup finishes". Rows are
-    // keyed by position (U-C21-5), so this holds when the lookup replaces Open With… where it
-    // was; a row added above the focused one gives the focus to another (see update_model).
     let mut rt = opened();
     key(&mut rt, Key::Down);
     assert_eq!(focused(&rt).as_deref(), Some("m-item6"));
@@ -1211,17 +1159,6 @@ fn a_model_update_that_replaces_a_row_in_place_keeps_the_keyboard_on_its_action(
     );
 }
 
-// --- Review round 2 ---
-
-/// Open, Send to ▸ (Desktop, More ▸ (X, Y), Mail), Copy: a submenu two levels in, its rows
-/// sensitive when `enabled`.
-///
-/// | key | row |
-/// | --- | --- |
-/// | m-item0 | Open |
-/// | m-item1 | Send to (m-item1-sub-item0 Desktop, -item1 More, -item2 Mail) |
-/// | m-item1-sub-item1-sub-item0, -item1 | X, Y |
-/// | m-item2 | Copy |
 fn nested(enabled: bool) -> MenuModel {
     MenuModel::new().section(Section::new([
         Item::new("open", "Open"),
@@ -1261,8 +1198,6 @@ fn opened_with(m: MenuModel) -> Runtime<Host> {
 
 #[test]
 fn right_on_a_submenu_with_no_sensitive_row_opens_it_and_keeps_the_keyboard_on_its_row() {
-    // SF-B: the Tab that moves the keyboard into a submenu would find no row there, and Rune's
-    // Tab would leave the menu's chain for the top level's first row.
     let mut rt = opened_with(nested(false));
     key(&mut rt, Key::Down);
     key(&mut rt, Key::Right);
@@ -1435,8 +1370,6 @@ fn a_read_only_fields_menu_only_copies_and_selects() {
 
 #[test]
 fn a_clipboard_read_for_an_earlier_menu_is_dropped() {
-    // The first menu's read is out when a second menu opens (the host opened it without a
-    // read, as a scene does): the empty answer is the first menu's, not this one's.
     let (mut rt, _) = with_clipboard(None);
     rt.update(|s, tx| {
         fields(s).open(s, 0, Point::new(10.0, 10.0), tx);
@@ -1449,8 +1382,6 @@ fn a_clipboard_read_for_an_earlier_menu_is_dropped() {
 
 #[test]
 fn a_right_click_outside_an_open_menu_leaves_it_open_on_its_target() {
-    // Bullet 184 is not met: the scrim takes no secondary press (U-C21-6), so the menu
-    // neither retargets nor closes.
     let mut rt = opened();
     rt.secondary_down(W - 10.0, H - 10.0);
     step(&mut rt);
@@ -1486,8 +1417,6 @@ fn a_model_update_keeps_the_opening_width_locked_until_reopened_or_rescaled() {
     });
     assert_eq!((first, calls), (310.0, 1));
 
-    // Replacing the open menu's model (e.g. Open With lookup finishing) reuses the locked width
-    // instead of re-measuring and snapping.
     st.update_model(MenuModel::new().section(Section::new([Item::new("a", "Short")])));
     let after_update = st.resolve_width(13.0, 310.0, || {
         calls += 1;
@@ -1665,8 +1594,6 @@ fn stale_submenu_scroll_bars_are_drained_on_sibling_switch_and_model_truncation(
     let _sub2_bar = st.scroll_bar(2);
     assert_eq!(st.scroll_bar_count(), 3);
 
-    // Switching to sibling submenu `[1]` shares common prefix 0, so submenu bars past depth 0
-    // are drained and released while the top-level bar stays intact.
     assert!(st.open_submenu(&[1]));
     assert_eq!(st.scroll_bar_count(), 1);
     let _sibling_bar = st.scroll_bar(1);
@@ -1886,8 +1813,6 @@ fn keeps_text_selection_menu_traps_f6_shift_escape_and_disabled_page_scroll() {
     rt.frame(0.0);
     tick(&mut rt);
 
-    // 1. F6 / Shift+F6 must not cycle focus out of an enabled non-modal menu; Shift+Escape closes
-    //    it while repeated Escape does not.
     let enabled_model = MenuModel::new().section(Section::new([Item::new("copy", "Copy")]));
     rt.update(|s, tx| {
         s.menu.open(
@@ -1936,8 +1861,6 @@ fn keeps_text_selection_menu_traps_f6_shift_escape_and_disabled_page_scroll() {
     assert!(!rt.state.menu.is_open(), "Shift+Escape dismisses menu");
     assert_eq!(rt.state.dismissed, 1);
 
-    // 2. All-disabled non-modal menu: surface takes focus directly and swallows PageDown/End so
-    //    the background scroller does not scroll behind the open menu.
     let disabled_model = MenuModel::new().section(Section::new([
         Item::new("copy", "Copy").enabled(false),
         Item::new("select-all", "Select All").enabled(false),

@@ -1,26 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Shows icons from the system's icon themes (the `icon-theme` feature), and prints what each
-//! lookup found.
-//!
-//! Each `--icon VALUE` is a `.desktop` file (its `Icon=` is read), an absolute image path, or
-//! an `Icon=` value such as `firefox`; by default `firefox` and `org.gnome.Nautilus`. The
-//! lookup starts in `--icon-theme NAME` (default hicolor) at `--icon-size N` points (default
-//! 48) and `--icon-scale S` (default 1). Rune's own flags pass through, so render without a
-//! window with
-//!
-//! ```sh
-//! cargo run -p strata-platform --example icon-theme --features icon-theme -- \
-//!     --icon-theme HighContrast --snap icons.png
-//! ```
-//!
-//! For each icon it prints `value: state path WxH (theme, symbolic)` before the first frame;
-//! setup waits for the lookups (up to 5 s) so a `--snap` shows them decoded.
-//!
-//! `--time` prints lookup timings against the system themes instead, and opens nothing: the
-//! first lookup in the theme (reading its chain's indexes and directories), a warm lookup, a
-//! revalidation with nothing changed, and `IconLoader::load` returning a shared handle.
-
 #[cfg(feature = "icon-theme")]
 mod demo {
     use std::sync::{Arc, OnceLock};

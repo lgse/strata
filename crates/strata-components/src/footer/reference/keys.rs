@@ -1,14 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The keys inside the reference's panel.
-//!
-//! Rune hands a focused text field's keys to its `on_input_key`, then its editor, then the
-//! window's `on_key`, never to the field's ancestors (probe P1). Keys on other focused elements
-//! reach the panel content's `on_key` before focus navigation. So the search field routes its
-//! own keys, and the content routes the categories' and the results'. Both take every key the
-//! panel doesn't use (bar Tab and Escape, which Rune's modal handles), so no browsing shortcut
-//! runs under the reference.
-
 use std::rc::Rc;
 
 use rune::{Chord, Key, KeyEvent, Mods, Tx};
@@ -16,8 +7,6 @@ use rune::{Chord, Key, KeyEvent, Mods, Tx};
 use super::search::Lines;
 use super::state::{ReferenceKeys, ReferenceState};
 
-/// What the key handlers need: the state's accessor, the keys, the element keys and the lines
-/// on screen.
 pub(super) struct Route<S> {
     pub get_mut: fn(&mut S) -> &mut ReferenceState,
     pub keys: ReferenceKeys,
@@ -42,8 +31,6 @@ fn any(chords: &[Chord], ev: &KeyEvent, tx: &Tx) -> bool {
     chords.iter().any(|c| c.matches_tx(ev, tx))
 }
 
-/// Sends `key` through the window's routing on the next frame: the category group's own
-/// arrows, for the keys that stand for them.
 fn send(tx: &mut Tx, key: Key, shift: bool) {
     tx.send_key(KeyEvent {
         key,
@@ -55,8 +42,6 @@ fn send(tx: &mut Tx, key: Key, shift: bool) {
 }
 
 impl<S: 'static> Route<S> {
-    /// Where focus is, for the panel's handler: never the search field, whose keys go to
-    /// [`Route::field_key`] (probe P1).
     fn area(&self, tx: &Tx) -> Area {
         match tx.focused() {
             Some(f) if f == self.results => Area::Results,
@@ -65,8 +50,6 @@ impl<S: 'static> Route<S> {
         }
     }
 
-    /// Moves focus to `to`, one of the panel's three stops (search, the chosen category, the
-    /// results), with its ring.
     fn focus(&self, from: Area, to: Area, tx: &mut Tx) {
         if from == to {
             return;
@@ -95,10 +78,6 @@ impl<S: 'static> Route<S> {
         true
     }
 
-    /// Scrolls the results for Up and Down (with Shift too, as Strata's `scroll_motion` ignores
-    /// it), Page Up and Page Down; from the results also `j`, `k`, Left, Right, Home and End
-    /// (`results`). True when `ev` is one of them. A line step reveals the next line out of view
-    /// (Rune has no line scroll: draft U-C19-1).
     fn scroll(&self, s: &mut S, ev: &KeyEvent, tx: &mut Tx, results: bool) -> bool {
         let m = ev.mods;
         if m.cmd || m.ctrl || m.alt || m.logo {
@@ -131,8 +110,6 @@ impl<S: 'static> Route<S> {
         true
     }
 
-    /// The search field's keys, before its editor. False lets the editor (or Rune's focus
-    /// navigation and modal) have the key; true takes it.
     pub fn field_key(&self, s: &mut S, ev: &KeyEvent, tx: &mut Tx) -> bool {
         // `~` typed closes; a key that reads as `~` only through the layout types itself.
         if self.keys.toggles_typed(ev) || ev.key == Key::Escape {
@@ -173,10 +150,6 @@ impl<S: 'static> Route<S> {
         }
     }
 
-    /// The categories' keys: false leaves the focus group's arrows, Home and End and the
-    /// press keys (Space, Enter) to Rune; `h j k l`, and the arrows, Home and End with Shift
-    /// (Strata's `category_step` ignores Shift, Rune's focus group doesn't), go as the plain
-    /// arrows. Everything else is taken.
     fn category_key(&self, ev: &KeyEvent, tx: &mut Tx) -> bool {
         let m = ev.mods;
         if m.cmd || m.ctrl || m.alt || m.logo {
@@ -212,15 +185,6 @@ fn tab(ev: &KeyEvent) -> bool {
     ev.key == Key::Tab && !(m.cmd || m.ctrl || m.alt || m.logo)
 }
 
-/// Whether the search field's editor edits with `ev`: typing (AltGr's characters included), the
-/// copy, cut, undo, redo and select-all chords (Shift only with `z`: Rune's editor takes
-/// Ctrl+Shift+Z alone), and the caret and word keys. Everything else, an unused Ctrl, Alt or
-/// Super chord among them (Ctrl+Shift+A is Strata's Unselect all; Alt+Space the window menu's),
-/// is taken before it reaches the window
-/// (`app/shortcut-reference`: "…reaches nothing else: Ctrl+, opens no Settings"). Ctrl+V is
-/// taken too: Rune reads the clipboard into the focused field before it routes the key
-/// (`window/events.rs`, `runtime/input/physical.rs` at the pin), so a Ctrl+V that reaches the
-/// field is one no paste followed, and the editor has no use for it.
 pub(super) fn edits(ev: &KeyEvent) -> bool {
     let m = ev.mods;
     if tab(ev) {

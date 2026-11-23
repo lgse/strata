@@ -1,7 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The Appearance settings page (`src/ui/settings/theme.rs`).
-
 use std::rc::Rc;
 
 use rune::{Color, Cursor, El, ScrollSpec, Tx, col, el, icon, row, text};

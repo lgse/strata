@@ -1,13 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! What a `BrowserEvent` changed in the listings, read for a view's listener
-//! ([`crate::slots`]). It belongs to the contract, not to a view: a change here is a
-//! `contract` change.
-//!
-//! It is copied here, while the browser still holds exactly that: by the time the queue is
-//! applied, later events may have moved its entries on. So a change carries its rows, and the
-//! browser's cursor and selection as they stood.
-
 use std::ops::Range;
 
 use strata_components::contract::EntryId;
@@ -24,8 +16,6 @@ use crate::{
 pub(crate) struct Marks {
     pub(crate) cursor: Option<EntryId>,
     pub(crate) selected: Vec<EntryId>,
-    /// Where a Shift range starts. The browser keeps it by location, so it outlives a reload
-    /// as GTK's does (finding lgse/strata#2354).
     pub(crate) anchor: Option<EntryId>,
     /// The selection is the cursor a load placed, which the user has not chosen.
     pub(crate) provisional: bool,
@@ -37,13 +27,9 @@ pub(crate) struct Added {
     pub(crate) depth: usize,
     pub(crate) location: Location,
     pub(crate) show_hidden: bool,
-    /// The browser made it the active column, as opening a folder does and mirroring one
-    /// does not.
     pub(crate) active: bool,
     /// Whether the browser groups its folder by file type, and under which preferences.
     pub(crate) grouping: Option<ViewPreferences>,
-    /// The browser will reveal an entry in it (`BrowserColumnSnapshot::reveal_pending`): a
-    /// remembered position does not come back over it.
     pub(crate) reveal: bool,
 }
 
@@ -72,9 +58,6 @@ pub(crate) enum Change {
         len: usize,
         /// A sibling's `Added` at `len` follows at once.
         replacing: bool,
-        /// The browser's active column once the others closed: what a single-pane view shows
-        /// then, as GTK's rebuilds its pane (`ColumnsTruncated` in
-        /// `src/ui/browser_modes/events.rs`).
         active: Option<usize>,
     },
     Added(Added),
@@ -113,8 +96,6 @@ pub(crate) enum Change {
         reveal: bool,
         landed: Option<Landed>,
     },
-    /// One of the browser's operations gave an entry another location, and so another id.
-    /// It comes before the listing shows it: what the view holds by the old id moves first.
     Moved {
         from: EntryId,
         to: EntryId,
@@ -128,8 +109,6 @@ pub(crate) struct Read {
     pub(crate) copied: u64,
 }
 
-/// Reads out of `browser` what `event` changed in the listings. Call it from a listener,
-/// inside the browser's observer.
 pub(crate) fn read(event: &BrowserEvent, browser: &Browser, ids: &Ids) -> Read {
     let mut reader = Reader {
         browser,
@@ -144,13 +123,6 @@ pub(crate) fn read(event: &BrowserEvent, browser: &Browser, ids: &Ids) -> Read {
     }
 }
 
-/// What the browser shows now, as the changes that bring a view that heard none of its events
-/// to it: every column the browser holds, with its rows, its load, its cursor and selection,
-/// and the active column's cursor shown. The view that becomes shown is rebuilt from it, as
-/// GTK rebuilds a view it switches to from the browser's snapshots (`rebuild_columns_from` and
-/// `prepare_pane` in `src/ui`). Each column says the browser reveals an entry in it, so a
-/// single pane's remembered position does not come back over the browser's cursor. GTK
-/// restores one for a folder still loading at the switch; this does not.
 pub(crate) fn replay(browser: &Browser, ids: &Ids) -> Read {
     let mut reader = Reader {
         browser,
@@ -237,10 +209,6 @@ impl Reader<'_> {
             anchor: browser
                 .selection_anchor_position(depth)
                 .and_then(|position| self.id_at(depth, position)),
-            // A selection that is no fill is the cursor a load placed. Every column keeps
-            // its own, after another column is made active too, where
-            // `Browser::selection_is_load_cursor` says so of the active column only
-            // (finding lgse/strata#2386).
             provisional: !positions.is_empty() && browser.filled_entries(depth).is_empty(),
         }
     }
@@ -263,8 +231,6 @@ impl Reader<'_> {
             .show_hidden
     }
 
-    /// Whether the browser groups column `depth`'s folder by file type, and under which
-    /// preferences: read with the event, so a column never follows a later folder's.
     fn grouping(&self, depth: usize) -> Option<ViewPreferences> {
         let browser = self.browser;
         let grouped = browser.shows_type_groups(depth);
@@ -303,8 +269,6 @@ impl Reader<'_> {
         });
     }
 
-    /// Column `depth` as the browser holds it: opened, listed as far as it has been, and
-    /// finished or failed if its load is.
     fn replay_column(&mut self, depth: usize, snapshot: BrowserColumnSnapshot) {
         self.changes.push(Change::Added(Added {
             depth,
@@ -352,9 +316,6 @@ impl Reader<'_> {
         }
     }
 
-    /// The event that gives an entry another id within the same folder. A move into another
-    /// folder removes the entry from one listing and adds it to another, rather than carrying a
-    /// selection range inside one listing. False when `event` is not `ItemRelocated`.
     fn read_moved(&mut self, event: &BrowserEvent) -> bool {
         let BrowserEvent::ItemRelocated { from, to, .. } = event else {
             return false;
@@ -417,8 +378,6 @@ impl Reader<'_> {
                     .collect();
                 self.edited(*depth, Edit::Insert(insertions));
             }
-            // The browser holds the whole listing by now and publishes it in parts: only the
-            // first `count` entries are out.
             BrowserEvent::EntriesReplaced { depth, count } => {
                 let rows = self.range(*depth, 0..*count);
                 self.edited(*depth, Edit::Replace(rows));
@@ -507,18 +466,6 @@ impl Reader<'_> {
                 let reveal = *take_focus || self.browser.active_depth() == Some(*depth);
                 self.selection(*depth, reveal, None);
             }
-            // Ignored on purpose:
-            // - The rename answers are the rename editor's (`crate::rename`).
-            // - `SelectionSynced` answers a selection the adapter itself wrote.
-            // - `ColumnReloading` comes before the column is emptied; `ColumnReloaded` is
-            //   the one that changes what shows.
-            // - `NavigationStarting` asks a view to save what it shows; the slice restores
-            //   no scroll position.
-            // - `EntryCreated` is New Folder's and New File's, which the slice leaves out.
-            // - `NavigationRejected`, `ColumnNotResponding`, the peek, preview, open and
-            //   extract requests, folder counts, sort choices and every transfer, deletion
-            //   and restore event belong to interface the slice leaves out
-            //   (`docs/rune/slice/README.md`, "Scope").
             _ => {}
         }
     }

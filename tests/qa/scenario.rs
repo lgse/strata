@@ -37,8 +37,6 @@ const MODES: [(&str, &str); 3] = [("columns", "Columns"), ("icons", "Icons"), ("
 /// Set by `./scripts/qa.sh` when scenarios are named, so a `skip` scenario still runs.
 const NAMED: &str = "STRATA_QA_NAMED";
 
-/// Where a scenario run executes: offscreen (the default) or in a real window on a private
-/// headless sway compositor (`session`).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub(crate) enum Host {
@@ -229,8 +227,6 @@ fn unit_tests() -> Vec<harness::Test> {
         .collect()
 }
 
-/// The tests of `files`. `named` is set when scenarios were named, so a `skip` scenario
-/// still runs.
 pub(crate) fn plan(files: &[PathBuf], named: bool) -> Vec<harness::Test> {
     let mut tests = unit_tests();
     for path in files {
@@ -580,8 +576,6 @@ pub(crate) fn one_line(text: &str) -> bool {
     !text.trim().is_empty() && !text.contains(LINE_BREAKS)
 }
 
-/// The `qa-quality` rubric's score, 0 to 100: `100 * (coverage - 1) / 4 * P / 32`
-/// rounded half up, where `P = 3(impact - 1) + 3(criticality - 1) + 2(diagnostic - 1)`.
 fn quality_score(quality: &Quality) -> u8 {
     let rating = |value: u8| u32::from(value) - 1;
     let points = 3 * rating(quality.impact)

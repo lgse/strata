@@ -10,29 +10,6 @@ use crate::collection::element::KeyInput;
 use crate::contract::Direction;
 
 /// Which chords run which commands, and which other keys act as an arrow.
-///
-/// [`KeyMap::default_map`] and [`KeyMap::tenxer`] are Strata's shipped tables
-/// (`src/ui/keys/bindings/navigation.rs` and `tenxer.rs` at `upstream/main` 35ee677ab). A host
-/// changes them as its users rebind keys: [`KeyMap::bind`], [`KeyMap::unbind`],
-/// [`KeyMap::alias`]. Checking a binding against the rest of the table (Strata's refused and
-/// noted keys) is the host's.
-///
-/// Keys match with [`KeyInput::matches`]: Rune's layout-aware chords, so a letter follows the
-/// key's label under the active layout and a key that types a non-Latin character falls back
-/// to the US key in its place. Modifiers match exactly, except those a binding tolerates
-/// ([`KeyMap::bind_tolerating`]), as Strata's matchers do (`src/ui/window/keyboard/items.rs`):
-/// in the default map, Shift+Up and Shift+Down extend with Ctrl, Alt or Super held too, the
-/// page keys ignore Super, and Escape ignores Shift. Ctrl+Up and Ctrl+Down tolerate nothing,
-/// so with Alt or Super they don't jump, and with Shift they extend. A binding of the exact
-/// chord always wins over a tolerated match, so a host that rebinds Shift+Escape or
-/// Ctrl+Shift+Up gets its own command, and [`KeyMap::unbind_chord`] removes tolerated matches
-/// too.
-///
-/// Bindings apply whatever [`Letters`] says. An alias stands in for an arrow, as `h j k l` do
-/// in the default map; one on a plain printable key (no Ctrl, Alt or Super) applies only with
-/// [`Letters::Arrows`], and only without modifiers, so Shift+J doesn't extend.
-///
-/// Used by: C19 (the shortcut reference), C20 (keyboard settings), and hosts.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct KeyMap {
     bindings: Vec<Binding>,
@@ -40,24 +17,19 @@ pub struct KeyMap {
 }
 
 /// One binding: a chord, the modifiers it matches with or without, and its command.
-///
-/// Used by: C19, C20 (through [`KeyMap::bindings`]).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Binding {
     /// The chord, as labels show it.
     pub chord: Chord,
     /// Modifiers that may also be held: Strata's `ignoring(..)`.
     pub tolerates: Vec<ChordMod>,
-    /// Chords with tolerated modifiers that no longer match: what [`KeyMap::unbind_chord`]
-    /// took off this binding.
+    /// Chords with tolerated modifiers that no longer match: what `KeyMap::unbind_chord` took off this binding.
     pub excludes: Vec<Chord>,
     /// What it runs.
     pub command: Command,
 }
 
 impl Binding {
-    /// The chord with each combination of tolerated modifiers held too, the chord itself
-    /// left out, and without the excluded ones.
     fn variants(&self) -> impl Iterator<Item = Chord> + '_ {
         let n = self.tolerates.len();
         (1..1u32 << n)
@@ -84,8 +56,6 @@ impl KeyMap {
     /// Strata's default map, in every view and the file chooser. `h j k l` alias the arrows.
     pub fn default_map() -> Self {
         let mut map = Self::new();
-        // Strata's `selection_navigation`: Shift+Up and Shift+Down extend even with Ctrl, Alt
-        // or Super held; Shift+Left and Shift+Right are GTK's, with no extra modifiers.
         const EXTENDS: [ChordMod; 3] = [ChordMod::Ctrl, ChordMod::Alt, ChordMod::Super];
         for d in DIRECTIONS {
             let k = arrow(d);
@@ -128,10 +98,7 @@ impl KeyMap {
         map
     }
 
-    /// Strata's 10xer map. Every move keeps the selection; `h j k l` are bindings of their own,
-    /// so they move whatever [`Letters`] says. Escape is left to the host's Escape ladder
-    /// (filter, find highlights, range, preview, then the selection), which ends a range with
-    /// [`KeyHandle::end_range`](super::KeyHandle::end_range).
+    /// Strata's 10xer map.
     pub fn tenxer() -> Self {
         let mut map = Self::new();
         for d in DIRECTIONS {
@@ -177,8 +144,7 @@ impl KeyMap {
         map
     }
 
-    /// Binds `chord` to `command`, after any binding it already has. A chord bound twice runs
-    /// its first command.
+    /// Binds `chord` to `command`, after any binding it already has.
     pub fn bind(&mut self, chord: Chord, command: Command) -> &mut Self {
         self.bind_tolerating(chord, &[], command)
     }
@@ -205,9 +171,7 @@ impl KeyMap {
         self
     }
 
-    /// Removes the binding of `chord`, whatever it runs: a binding of exactly that chord goes,
-    /// and a binding that matched it only through a tolerated modifier (Super+Page Down, for
-    /// Page Down tolerating Super) stops matching it, and keeps its other chords.
+    /// Removes the binding of `chord`, whatever it runs.
     pub fn unbind_chord(&mut self, chord: Chord) -> &mut Self {
         self.bindings.retain(|b| !same(&b.chord, &chord));
         for b in &mut self.bindings {
@@ -218,8 +182,7 @@ impl KeyMap {
         self
     }
 
-    /// Makes `chord` act as the plain key `arrow` (an arrow, or any key the map binds plainly):
-    /// it runs what that key is bound to.
+    /// Makes `chord` act as the plain key `arrow` (an arrow, or any key the map binds plainly).
     pub fn alias(&mut self, chord: Chord, arrow: ChordKey) -> &mut Self {
         self.aliases.push((chord, arrow));
         self
@@ -252,11 +215,6 @@ impl KeyMap {
         &self.bindings
     }
 
-    /// The command `input` runs.
-    ///
-    /// A binding of the exact chord wins over one that matches only through a tolerated
-    /// modifier, wherever each sits in the table: binding Shift+Escape to another command
-    /// takes it from Escape, which tolerates Shift.
     pub(super) fn lookup(&self, input: &KeyInput<'_>, letters: Letters) -> Option<Command> {
         let exact = self.bindings.iter().find(|b| input.matches(&b.chord));
         let tolerated = || {
@@ -317,8 +275,6 @@ const fn ctrl(key: ChordKey) -> Chord {
     Chord::new(key).with(ChordMod::Ctrl)
 }
 
-/// Whether `chord` is a plain printable key: one that types in a text field, and that
-/// type-to-search claims.
 fn typed(chord: &Chord) -> bool {
     let held = [
         ChordMod::Primary,

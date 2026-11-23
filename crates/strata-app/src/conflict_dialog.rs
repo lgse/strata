@@ -1,19 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Destination and replay conflict prompt on C15's [`StrataDialog`], matching GTK's
-//! `src/ui/browser/transfer/conflict_dialog.rs` and shared collision helpers from
-//! `collisions.rs` and `paths.rs`.
-//!
-//! Both destination transfers ([`crate::transfer`]) and move undo/redo replays ([`crate::undo`])
-//! open prompts here:
-//! - **Footer order:** `[Cancel, Skip?, Keep Both?, Merge?, Replace?]`, with `Replace` as the
-//!   danger primary button when offered and no default button so Return activates only the
-//!   focused control (`activate_focused_button`).
-//! - **Initial focus:** `Keep Both` when `focus == KeepBoth` or when `Replace` is absent, else
-//!   `Replace`, else `Cancel` when neither is offered.
-//! - **Dismissal (`Cancel`, `Escape`, `Close dialog`, backdrop):** abandons the operation
-//!   without calling `on_choice` and returns keyboard focus to the listing.
-
 use std::{ffi::OsStr, path::Path, rc::Rc};
 
 use rune::El;
@@ -72,8 +58,6 @@ impl ConflictPrompt {
     }
 }
 
-/// Splits the collisions an Apply to All answer covers from those that still need their own
-/// prompt, such as a file meeting a folder after Replace.
 pub(crate) fn covered_by_answer<T>(
     remaining: Vec<T>,
     conflict: TransferConflict,
@@ -170,8 +154,6 @@ pub(crate) fn prompt(
     prompt_with_icon(app, IconName::Copy, prompt, on_choice);
 }
 
-/// Opens a conflict prompt with `icon` in its header box (`ask_to_replace_archive` uses
-/// [`IconName::Archive`]).
 pub(crate) fn prompt_with_icon(
     app: &mut App,
     icon: IconName,

@@ -13,26 +13,16 @@ use zbus::OwnedVariant;
 
 use super::launch::{Activation, Launch};
 
-/// One thing the primary is asked to do. Everything in it comes from another process on the
-/// session bus, so treat paths, URIs and arguments as untrusted input.
 #[derive(Debug)]
 pub enum Event {
     /// A launch: this process's own (unless `Options::service`), or a later one forwarded.
     CommandLine(CommandLine),
-    /// `Activate`: bring the app forward, as a launcher does for a running app with no
-    /// arguments.
     Activate(Activation),
-    /// `Open`: open these URIs. `hint` is GApplication's (empty from
-    /// `org.freedesktop.Application`).
     Open {
         uris: Vec<String>,
         hint: String,
         activation: Activation,
     },
-    /// `ActivateAction`, or `org.gtk.Actions.Activate`: run the app's action `name`, one of
-    /// `Options::actions`. As GLib reads them: several `ActivateAction` parameters arrive
-    /// packed in one tuple, and `org.gtk.Actions.Activate` passes its first. `org.gtk.Actions`
-    /// lists no actions, so a GApplication forwarder offers none.
     Action {
         name: String,
         parameter: Option<OwnedVariant>,
@@ -42,8 +32,6 @@ pub enum Event {
     Reveal(Reveal),
 }
 
-/// An `org.freedesktop.FileManager1` call: what to show, as the caller sent it. Grouping the
-/// URIs into windows, selecting, mounting and showing properties are the app's policy.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Reveal {
     pub method: RevealMethod,
@@ -63,8 +51,6 @@ pub enum RevealMethod {
     ItemProperties,
 }
 
-/// What a forwarded launch's primary sends back, in order: lines for its stdout or stderr,
-/// then its exit status.
 #[derive(Debug)]
 pub(super) enum Out {
     Print(String),
@@ -74,16 +60,11 @@ pub(super) enum Out {
 
 #[derive(Debug)]
 enum Reply {
-    /// This process's own launch: prints go to its own stdout and stderr, and the status
-    /// waits in `Primary::exit_status`.
     Local(Arc<AtomicI32>),
     /// A forwarded launch, waiting for its answer on the bus thread.
     Remote(UnboundedSender<Out>),
 }
 
-/// A launch's command line, and its answer. The launch's process waits until this is dropped
-/// (or [`CommandLine::exit`]), then exits with the status set, 0 unless changed. Text printed
-/// before that reaches its stdout or stderr first.
 #[derive(Debug)]
 pub struct CommandLine {
     launch: Launch,
@@ -108,8 +89,6 @@ impl CommandLine {
         }
     }
 
-    /// A launch nobody waits on, for a test of what handles [`Event::CommandLine`]: its
-    /// answer and its output go nowhere.
     #[cfg(any(test, feature = "test-support"))]
     pub fn unanswered(launch: Launch) -> CommandLine {
         CommandLine {
@@ -142,8 +121,6 @@ impl CommandLine {
         matches!(self.reply, Some(Reply::Remote(_)))
     }
 
-    /// Writes `text` to the launch's stdout, as it is (add the newline). A closed stdout is
-    /// ignored.
     pub fn print(&self, text: &str) {
         self.send(Out::Print(text.to_owned()));
     }

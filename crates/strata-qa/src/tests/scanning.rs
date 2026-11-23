@@ -123,8 +123,6 @@ fn hidden_and_undrawn_nodes_are_left_out_of_the_snapshot() {
     );
 }
 
-/// The snapshot names the other windows that are drawn, such as a floating chooser, by their
-/// titles, and leaves out the window it reads and a window not drawn.
 #[test]
 fn the_other_drawn_windows_are_named_by_their_titles() {
     let mut fake = Fake::new();
@@ -294,8 +292,6 @@ fn a_search_results_list_inside_a_dialog_is_no_filters_results() {
     assert_eq!(observation.matches(None), ["notes"]);
 }
 
-/// The open dialog is the one on top: on a toolkit that draws a message inside a dialog, the
-/// innermost; elsewhere the first, which a dialog beside it does not displace.
 #[test]
 fn the_open_dialog_is_the_innermost_where_the_toolkit_nests_them() {
     let opened = |nests: bool| {
@@ -321,8 +317,6 @@ fn the_open_dialog_is_the_innermost_where_the_toolkit_nests_them() {
     assert_eq!(opened(false).as_deref(), Some("Settings"));
 }
 
-/// Among messages drawn side by side inside a dialog, the one on top is the last drawn; a live
-/// error line, an `alert` inside a dialog, is no dialog of its own and leaves it as it is.
 #[test]
 fn the_dialog_on_top_is_the_last_drawn_and_an_error_line_is_none() {
     let opened = |nests: bool| {

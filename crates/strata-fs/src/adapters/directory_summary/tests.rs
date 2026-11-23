@@ -123,9 +123,6 @@ fn directory_summary_treats_a_directory_removed_before_measurement_as_truncated_
     std::fs::write(vanishing.join("inner.txt"), b"content")
         .expect("the directory fixture file should be written");
 
-    // Capture the directory's FileInfo the way the parent-level enumeration in
-    // `summarize_directory_with_budget` would, then remove it from under that handle. This models a
-    // directory that changes or disappears between being observed and being measured.
     let file = gio::File::for_path(&vanishing);
     let context = PrivateContext::new();
     let info = context
@@ -175,8 +172,6 @@ fn aborting_a_directory_measurement_stops_it_mid_flight() {
             .expect("the directory fixture file should be written");
     }
 
-    // `spawn_local` and manual `iteration()` polling (unlike `block_on`) require this thread to
-    // own the context, hence the explicit acquire via `with_thread_default` below.
     let context = PrivateContext::new();
     let (progress_before_abort, progress_after_abort) = context
         .with_thread_default(|| {

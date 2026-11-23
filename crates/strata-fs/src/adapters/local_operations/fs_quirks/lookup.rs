@@ -30,8 +30,6 @@ pub fn on_fd<T>(
     }
 }
 
-/// A data call that moves bytes from `source` into `target`, which fails
-/// with `EXDEV` across scopes as it does across mounts.
 pub fn between(
     op: Op,
     source: BorrowedFd<'_>,
@@ -114,9 +112,6 @@ pub fn recreated(path: &Path) {
     }
 }
 
-/// Whether a row that sends the malformed `name` as it is to the filesystem holding `root` is
-/// skipped there: a FUSE daemon gets what a preset over it passes on, and exfat-fuse writes an
-/// overlong `/` into its volume as a real one.
 pub fn skips_malformed_name_on_fuse(root: &Path, name: &OsStr) -> bool {
     let skipped = name.to_str().is_none()
         && rustix::fs::statfs(root).is_ok_and(|stat| stat.f_type == FUSE_SUPER_MAGIC);
@@ -126,9 +121,6 @@ pub fn skips_malformed_name_on_fuse(root: &Path, name: &OsStr) -> bool {
     skipped
 }
 
-/// Makes whatever is at `path` report another inode number until it is
-/// unlinked, as libfuse without `use_ino` and cifs without server inode
-/// numbers do once the kernel evicts an entry.
 pub fn renumbered(path: &Path) {
     renumber(path);
 }
@@ -216,8 +208,6 @@ pub fn same_scope(left: &Option<Arc<Scope>>, right: &Option<Arc<Scope>>) -> bool
     }
 }
 
-/// Runs `scoped` as `op` naming `at` in the scope of its folder, or
-/// `system` where no scope holds it.
 pub fn at_entry<T>(
     at: Entry<'_>,
     op: Op,

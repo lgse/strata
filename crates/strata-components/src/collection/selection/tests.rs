@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! One test per feature-map Behavior bullet this layer decides. Each names its bullet. Ids are
-//! the entries' first indices, so `[2, 3]` reads as "the third and fourth entries as first
-//! listed".
-
 use super::*;
 use crate::contract::{EntryKind, ListEntry, ListSource};
 
@@ -41,8 +37,6 @@ fn remove(s: &mut ListSource, gone: &[u64]) {
     s.retain(|e| !gone.contains(&e.id.get()));
 }
 
-/// Deletes the entries with the given ids the way a host does: tells the selection first,
-/// removes them, then syncs with `rule`.
 fn delete(sel: &mut Selection, s: &mut ListSource, gone: &[u64], rule: CursorGone) -> Changed {
     sel.before_removal(s, |id| gone.contains(&id.get()));
     remove(s, gone);
@@ -106,8 +100,6 @@ fn extend_after_auto_select_ranges_from_the_loaded_entry() {
 
 #[test]
 fn select_only_re_anchors_extension() {
-    // browser/selection: A click re-anchors Shift+Down and Shift+Up, so keyboard extension continues from the clicked entry.
-    // browser/selection: In List and Icons, a plain arrow or `h`/`j`/`k`/`l` move that changes the selection moves the range anchor.
     let s = listing(8);
     let mut sel = Selection::new();
     sel.select_only(&s, 1);
@@ -132,9 +124,6 @@ fn toggle_and_extend_move_the_cursor() {
 
 #[test]
 fn extend_to_grows_and_shrinks_around_a_fixed_anchor() {
-    // browser/selection: Shift+Up and Shift+Down extend the selection by one entry from the range anchor.
-    // browser/selection: Shift+Page Up and Shift+Page Down extend or shrink the selection by one page from the range anchor.
-    // browser/selection: In Columns, Shift+Home and Shift+End extend from the range anchor to the first or last entry
     let s = listing(10);
     let mut sel = Selection::new();
     sel.select_only(&s, 4);
@@ -165,9 +154,6 @@ fn extend_with_no_anchor_starts_at_the_target() {
 
 #[test]
 fn clear_keeps_the_anchor_for_the_next_shift_click() {
-    // Strata's Escape (`clear_active_selection`) and empty-space press (`unselect_all`) leave
-    // the anchor, so a Shift+click after either ranges from it (finding lgse/strata#2551). The
-    // keyboard's Shift+arrow starts at the cursor instead: `keyboard::tests` holds that.
     let s = listing(8);
     let mut sel = Selection::new();
     sel.select_only(&s, 1);
@@ -181,8 +167,6 @@ fn clear_keeps_the_anchor_for_the_next_shift_click() {
 
 #[test]
 fn select_only_then_extend_selects_through_the_anchor() {
-    // browser/selection: In List, Icons, and Columns, plain Home, End, Page Up, and Page Down move the range anchor to the new cursor. Shift+Home after End selects every entry.
-    // browser/selection: After Home, Shift+Down selects the first two entries.
     let s = listing(7);
     let mut sel = Selection::new();
     sel.select_only(&s, 2);
@@ -196,8 +180,6 @@ fn select_only_then_extend_selects_through_the_anchor() {
 
 #[test]
 fn select_all_selects_every_listed_entry() {
-    // Ctrl+A selects every listed entry (which column is focused is C2's). Ruling 1: the
-    // cursor and the anchor stay.
     let s = listing(5);
     let mut sel = Selection::new();
     sel.select_only(&s, 3);
@@ -216,9 +198,6 @@ fn select_all_selects_every_listed_entry() {
 
 #[test]
 fn select_all_leaves_entries_listed_later_unselected() {
-    // browser/selection: With hidden files off, Ctrl+A in Icons, List, and the chooser leaves hidden entries unselected.
-    // The host lists only visible entries, so Ctrl+A takes those. Showing hidden files later
-    // lists more entries, which stay unselected, as does any entry a live update adds.
     let mut s = listing(4);
     let mut sel = Selection::new();
     sel.select_all(&s);
@@ -249,9 +228,6 @@ fn move_cursor_keeps_the_selection() {
 
 #[test]
 fn clear_empties_the_selection_and_keeps_the_cursor() {
-    // browser/selection: A plain press on blank pane space clears the selection before the drag intent is known.
-    // browser/selection: With no transient UI open, Escape clears the active pane's selection and keeps the keyboard cursor and directory.
-    // browser/selection: Enter after Escape opens the folder under the keyboard cursor.
     let s = listing(6);
     let mut sel = Selection::new();
     sel.select_only(&s, 2);
@@ -279,8 +255,6 @@ fn clear_with_nothing_selected_reports_no_change() {
 
 #[test]
 fn sync_drops_gone_ids_and_keeps_the_rest() {
-    // browser/selection: F5 or the pane Refresh button keeps a multi-selection; entries gone from disk are dropped.
-    // browser/view-modes/position-restore: In Icons and List, these reloads keep the cursor row, selection, and scroll offset
     let mut s = listing(8);
     let mut sel = Selection::new();
     sel.select_only(&s, 1);
@@ -295,8 +269,6 @@ fn sync_drops_gone_ids_and_keeps_the_rest() {
 
 #[test]
 fn loading_sync_holds_ids_until_complete() {
-    // browser/selection: F5 or the pane Refresh button keeps a multi-selection; entries gone from disk are dropped.
-    // browser/view-modes/position-restore: In Icons and List, these reloads keep the cursor row, selection, and scroll offset
     let mut s = listing(8);
     let mut sel = Selection::new();
     sel.select_only(&s, 2);
@@ -328,8 +300,6 @@ fn delete_moves_the_cursor_to_the_next_survivor_else_the_previous() {
     delete(&mut sel, &mut s, &[3, 4], CursorGone::NeighborSelected);
     assert_eq!((cursor(&sel), selected(&sel, &s)), (Some(1), vec![1]));
 
-    // A Shift range deleted whole: the next survivor is the entry after it, not the one now
-    // at the cursor's old index.
     let mut s = listing(12);
     let mut sel = Selection::new();
     sel.select_only(&s, 2);
@@ -418,7 +388,6 @@ fn cursor_past_the_end_moves_back() {
 
 #[test]
 fn a_move_out_leaves_the_neighbour_the_cursor_unselected() {
-    // finding lgse/strata#2546: after a move out of the folder, GTK's list view gives the row beside the one that went the keyboard, and selects nothing.
     let mut s = listing(5);
     let mut sel = Selection::new();
     sel.select_only(&s, 4);
@@ -442,8 +411,6 @@ fn cursor_gone_clear_leaves_no_cursor() {
 
 #[test]
 fn reorder_keeps_cursor_anchor_and_selection_by_id() {
-    // integration/10xer-mode/file-verbs: A keyboard sort keeps the cursor on the same item and leaves other Miller columns in their order.
-    // integration/10xer-mode/file-verbs: After `, n`, `, l`, or `, c`, the cursor stays on the same item.
     let mut s = listing(10);
     let mut sel = Selection::new();
     sel.select_only(&s, 2);
@@ -482,8 +449,6 @@ fn relocate_keeps_selection_and_cursor() {
 
 #[test]
 fn targets_are_the_fill_else_the_cursor() {
-    // integration/10xer-mode/file-verbs: `y`, `x`, `d`, `c c`, and `c n` act on the focused pane's fill, or its cursor item when nothing is filled.
-    // integration/10xer-mode/file-verbs: In an empty folder, `y`, `x`, `d`, and `r` flash `Nothing to yank`
     let s = listing(5);
     let mut sel = Selection::new();
     assert_eq!(sel.targets(&s), Targets::Nothing);
@@ -524,8 +489,6 @@ fn selected_ids_never_include_an_unselected_cursor() {
 
 #[test]
 fn no_op_operations_leave_the_revision() {
-    // What C1e relies on to announce only real changes. (The 10xer `; N` recheck compares
-    // targets, which is the host's: a cursor move bumps the revision without changing them.)
     let s = listing(6);
     let mut sel = Selection::new();
     sel.select_only(&s, 1);
@@ -557,9 +520,6 @@ fn invert_flips_every_listed_entry() {
 
 #[test]
 fn invert_over_a_load_s_pick_selects_every_entry() {
-    // A load's pick is no fill: 10xer Ctrl+R straight after a load selects every entry, as
-    // the shared browser's `replace_visible` does (lgse/strata#2625, seed 0x20 of
-    // `tenxer v7`).
     let s = listing(4);
     let mut sel = Selection::new();
     sel.auto_select(&s, 0);
@@ -590,9 +550,6 @@ fn remove_range_unselects_from_the_anchor() {
 
 #[test]
 fn space_inside_a_range_flips_the_cursor_and_the_flip_holds() {
-    // integration/10xer-mode: `v` starts a range from the cursor and `V` starts an unselect range
-    // The feature map has no bullet for Space inside a range yet. Strata's own test says "a
-    // toggled item stays flipped as the range grows" (src/app/navigation/tests/visual.rs).
     let s = listing(6);
     let mut sel = Selection::new();
     sel.select_only(&s, 5);
@@ -619,8 +576,6 @@ fn space_inside_a_range_flips_the_cursor_and_the_flip_holds() {
         [0, 2, 3, 5],
         "the flip holds as the range grows"
     );
-    // As in Strata, the flip applies over the whole walked result: once the range no longer
-    // covers entry 1, flipping its unselected state selects it.
     sel.extend_to(&s, 2, Extend::Add);
     assert_eq!(selected(&sel, &s), [1, 2, 3, 5]);
     assert_eq!(sel.len(), 4);
@@ -685,9 +640,6 @@ fn discard_provisional_then_toggle_adds_the_cursor() {
 
 #[test]
 fn band_modes_apply_to_the_selection_at_press() {
-    // browser/selection/marquee: A plain marquee replaces the selection with the entries under the band.
-    // browser/selection/marquee: A Ctrl-marquee toggles each crossed entry relative to the selection at press.
-    // browser/selection/marquee: A Shift-marquee adds the crossed entries to the selection at press.
     let s = listing(10);
     let mut sel = Selection::new();
     let press = |sel: &mut Selection| {
@@ -738,9 +690,6 @@ fn cancel_band_restores_the_selection_at_press() {
 
 #[test]
 fn position_round_trips_cursor_anchor_and_selection() {
-    // browser/view-modes/position-restore: In Icons and List, returning to one of the last 128 folders left restores its selection, cursor, range anchor, and scroll position after loading.
-    // browser/view-modes/position-restore: Pressing Down after a restore moves from the restored row, not the first row.
-    // browser/view-modes/position-restore: Selection, cursor, and anchor carry between Icons and List
     let s = listing(8);
     let mut sel = Selection::new();
     sel.select_only(&s, 2);
@@ -768,9 +717,6 @@ fn position_round_trips_cursor_anchor_and_selection() {
 
 #[test]
 fn restore_drops_entries_gone_since() {
-    // browser/view-modes/position-restore: In Icons and List, returning to one of the last 128 folders left restores its selection, cursor, range anchor, and scroll position after loading.
-    // Design: restoring matches entries by location, not row number, so a deleted entry is
-    // never selected. Decision 5: a cursor deleted since goes to the neighbour at its index.
     let mut s = listing(8);
     let mut sel = Selection::new();
     sel.select_only(&s, 3);
@@ -786,9 +732,6 @@ fn restore_drops_entries_gone_since() {
 
 #[test]
 fn filter_round_trip_through_position() {
-    // browser/search/filter: Escape on a focused result closes the filter and shows the full listing at once. Focus goes to the directory's cursor row, with the directory's own selection.
-    // (The model side; C18 owns the bullet.)
-    // Decision 4: the filter bar saves the position before filtering and restores it.
     let mut s = listing(6);
     let mut sel = Selection::new();
     sel.select_only(&s, 1);
@@ -902,16 +845,12 @@ fn relocate_onto_a_held_id_keeps_the_count_in_release() {
 
 #[test]
 fn removal_hint_lasts_through_loading_and_ends_at_a_complete_sync() {
-    // browser/selection: Deleting the focused entry, in Strata or externally, focuses the next visible entry, else the previous visible one, and the preview follows.
-    // A delete whose listing comes back through a loading sync still takes the next survivor.
     let mut s = listing(10);
     let mut sel = Selection::new();
     sel.select_only(&s, 6);
     delete_through_loading(&mut sel, &mut s, &[2, 3, 4, 5, 6]);
     assert_eq!(cursor(&sel), Some(7));
 
-    // A delete that never lands: the host's next sync uses the record up, so a later reload
-    // that drops the cursor's entry takes the reload rule (the entry now at its old index).
     let mut s = listing(12);
     let mut sel = Selection::new();
     sel.select_only(&s, 8);
@@ -964,14 +903,10 @@ fn holds_checks_base_live_overlay_and_flips_without_consulting_source() {
     assert!(sel.holds(id(1)));
     assert!(!sel.holds(id(99)));
 
-    // Mutating the source before `sync` changes its length and indices; `holds` reads only the
-    // copied ids and never touches the unsynced source.
     s.replace(vec![entry(0), entry(99), entry(2), entry(3)]);
     assert!(sel.holds(id(1)));
     assert!(!sel.holds(id(99)));
 
-    // An entry in `base` that `toggle_in_run` flipped off is unselected (`!contains`), yet still
-    // held in `base`/`flips` as `relocate` checks.
     let s2 = listing(3);
     let mut sel2 = Selection::new();
     sel2.select_only(&s2, 2);

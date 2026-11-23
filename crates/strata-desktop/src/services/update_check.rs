@@ -31,10 +31,6 @@ const CONNECTION_TEST_URL: &str = "https://api.github.com/rate_limit";
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 /// Minimum interval between automatic checks against the same channel.
 const CHECK_INTERVAL: Duration = Duration::from_secs(6 * 60 * 60);
-/// How many of the most recent releases (final and prerelease) the preview
-/// feed enumerates. Only ever used to find a release *newer* than the
-/// installed one, so a bounded page is safe: an update this page cannot
-/// reach is older than one it can.
 const PREVIEW_PAGE_SIZE: u32 = 30;
 /// GitHub's largest page.
 const RELEASE_LIST_PAGE_SIZE: u32 = 100;
@@ -54,9 +50,6 @@ impl BuildKind {
     }
 }
 
-/// Everything the update/rollback dialogs need to identify and describe a
-/// release before installing it: what build it is, its exact tag and
-/// display version, where it was published, and its rendered notes.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ReleaseMetadata {
     /// The full, prerelease-bearing version for display, e.g. `0.5.0-rc.1`.
@@ -161,17 +154,6 @@ pub fn test_connection() -> Result<(), NetworkError> {
         .map_err(|error| NetworkError::from_ureq(&error))
 }
 
-/// Converts a GitHub API release into [`release_channel`]'s pure
-/// representation. This is the only place `update_check` interprets
-/// `ReleaseResponse`'s wire shape.
-///
-/// Returns `None` when `tag_name` does not match the tag grammar --
-/// [`Version::parse`] is the sole authority on that, so a malformed release
-/// is dropped here rather than reaching any eligibility check.
-///
-/// `download_url` is `None` when no asset matches [`archive_name`] for this
-/// architecture; `is_eligible` treats that the same as a draft, since an
-/// update the user cannot install must never be offered.
 fn to_release_summary(release: &ReleaseResponse) -> Option<ReleaseSummary> {
     let version = Version::parse(&release.tag_name)?;
     let archive = archive_name(&version.to_string());
@@ -191,8 +173,6 @@ fn to_release_summary(release: &ReleaseResponse) -> Option<ReleaseSummary> {
     })
 }
 
-/// Renders a [`ReleaseSummary`] into the display-ready shape the settings
-/// dialogs consume.
 fn release_metadata(release: &ReleaseSummary) -> ReleaseMetadata {
     ReleaseMetadata {
         version: release.version.to_string(),
@@ -208,14 +188,6 @@ fn release_metadata(release: &ReleaseSummary) -> ReleaseMetadata {
     }
 }
 
-/// Fetches the single newest final release from GitHub's `/releases/latest`,
-/// which itself never returns a draft or prerelease.
-///
-/// Kept as its own function, deliberately never enumerating the full release
-/// list: this is the strongest form of channel isolation, since prerelease
-/// data for a Stable user never even enters the process. Its result is still
-/// additionally run through [`is_eligible`] by [`select_update`] -- both
-/// checks are required, per issue #61's stated redundancy requirement.
 fn fetch_stable(etag: Option<&str>) -> ChannelFetch {
     match request_json_conditional::<ReleaseResponse>(&format!("{API_ROOT}/latest"), etag) {
         Ok(Some((release, etag))) => ChannelFetch::Fetched {
@@ -231,12 +203,6 @@ fn fetch_stable(etag: Option<&str>) -> ChannelFetch {
     }
 }
 
-/// Fetches the most recent releases, final and prerelease alike, for the
-/// preview channel.
-///
-/// Kept as its own function rather than reused for [`Channel::Stable`]: a
-/// Stable user's code path must call [`fetch_stable`] instead, never this,
-/// so prerelease metadata never reaches that path at all.
 fn fetch_preview(etag: Option<&str>) -> ChannelFetch {
     match request_json_conditional::<Vec<ReleaseResponse>>(
         &format!("{API_ROOT}?per_page={PREVIEW_PAGE_SIZE}"),
@@ -258,9 +224,6 @@ fn fetch_commit(tag: &str) -> Option<String> {
         .map(|commit| commit.sha)
 }
 
-/// Fills in the commit the update dialog displays, off the GTK thread.
-/// Kept out of [`release_metadata`] so that every selection step stays
-/// pure and network-free.
 fn resolve_commit(release: &mut ReleaseMetadata) {
     release.commit = fetch_commit(&release.tag);
 }
@@ -301,8 +264,6 @@ fn unix_seconds_now() -> u64 {
         .unwrap_or(0)
 }
 
-/// The installed tag's notes, or when GitHub last had no release for it. An entry for
-/// a missing release has no `notes`, so older versions that require them refetch.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 struct CachedReleaseNotes {
     tag: String,
@@ -408,10 +369,6 @@ enum ChannelFetch {
     Failed(ureq::Error),
 }
 
-/// Builds the `UpdateCheck` for an eligible release, or `UpToDate` in the
-/// defensive case where it has no installable asset -- which should be
-/// unreachable, since every caller of this function has already filtered
-/// through [`is_eligible`], but this avoids ever unwrapping the `Option`.
 fn available_check(release: &ReleaseSummary) -> UpdateCheck {
     match install_request(release) {
         Some(install) => UpdateCheck::Available {
@@ -454,8 +411,6 @@ fn release_choices(channel: Channel, releases: &[ReleaseResponse]) -> Vec<Releas
         .collect()
 }
 
-/// Unlike the update check, Stable also enumerates every release: GitHub has
-/// no final-only listing, so [`is_eligible`] alone drops the prereleases.
 fn fetch_release_choices(channel: Channel) -> Result<Vec<ReleaseChoice>, String> {
     signed_release_pages(|page| {
         request_json::<Vec<ReleaseResponse>>(&format!(
@@ -466,8 +421,6 @@ fn fetch_release_choices(channel: Channel) -> Result<Vec<ReleaseChoice>, String>
     .map_err(|error| request_error_message(&error))
 }
 
-/// Pages through releases, newest first, until a page ends on a release
-/// published before signed manifests existed: everything after it is older still.
 fn signed_release_pages<E>(
     mut fetch_page: impl FnMut(u32) -> Result<Vec<ReleaseResponse>, E>,
 ) -> Result<Vec<ReleaseResponse>, E> {
@@ -486,20 +439,12 @@ fn signed_release_pages<E>(
     Ok(releases)
 }
 
-/// The pure selection step of [`check_for_updates`], split out so it can be
-/// exercised against fixtures with no network involved. Delegates every
-/// eligibility and ordering judgement to [`best_update`].
 fn select_update(
     channel: Channel,
     installed: &Version,
     releases: &[ReleaseSummary],
 ) -> UpdateCheck {
     let candidate = if channel == Channel::Stable && installed.build_kind() != BuildKind::Stable {
-        // Selecting Stable while running a prerelease is an explicit channel
-        // transition, so offer the newest final release even when that is a
-        // semantic downgrade. Keeping this in the ordinary update result lets
-        // Settings present one channel-aware status/action card instead of a
-        // separate, competing rollback flow.
         rollback_target(releases).filter(|release| release.version != *installed)
     } else {
         best_update(channel, installed, releases)
@@ -773,8 +718,6 @@ fn release_page_url(tag: &str) -> String {
     format!("{RELEASES_URL}/tag/{tag}")
 }
 
-/// Checks the applicable release source off the GTK thread.
-/// `force` bypasses the cache interval for in-place update checks.
 pub fn check_for_updates(
     channel: Channel,
     installed: Version,
@@ -801,7 +744,6 @@ pub fn check_for_updates(
     receiver
 }
 
-/// Lists the releases `channel` lets the user install, off the GTK thread.
 pub fn fetch_releases(channel: Channel) -> Receiver<Result<Vec<ReleaseChoice>, String>> {
     let (sender, receiver) = mpsc::channel();
     let spawned = std::thread::Builder::new()
@@ -813,7 +755,6 @@ pub fn fetch_releases(channel: Channel) -> Receiver<Result<Vec<ReleaseChoice>, S
     receiver
 }
 
-/// Resolves the source commit of a picked release, off the GTK thread.
 pub fn resolve_release_commit(mut release: ReleaseMetadata) -> Receiver<ReleaseMetadata> {
     let (sender, receiver) = mpsc::channel();
     let spawned = std::thread::Builder::new()
@@ -826,8 +767,6 @@ pub fn resolve_release_commit(mut release: ReleaseMetadata) -> Receiver<ReleaseM
     receiver
 }
 
-/// Fetches the release whose tag exactly matches `tag`, e.g.
-/// [`crate::build_info::RELEASE_TAG`].
 pub fn fetch_release_notes(tag: &'static str) -> Receiver<ReleaseNotes> {
     let (sender, receiver) = mpsc::channel();
     let spawned = std::thread::Builder::new()

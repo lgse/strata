@@ -1,59 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Converting a user stylesheet (`~/.config/strata/style.css`) into override rows.
-//!
-//! [`migrate_css`] is a pure function: Strata reads the stylesheet on first launch, writes
-//! [`Migration::toml`] to `overrides.toml`, lists [`Migration::unconverted`] in a one-time
-//! notice, and leaves the stylesheet in place.
-//!
-//! # What converts
-//!
-//! A declaration converts only where a token stands for exactly what it styled: a selector
-//! whose token styles the same elements and nothing more, checked against Strata's
-//! `src/style.css` and the code that sets its classes (lgse/strata `upstream/main` 35ee677ab,
-//! line numbers there), and a plain colour.
-//!
-//! | Selector | Property | Token | Strata's rule |
-//! | --- | --- | --- | --- |
-//! | `.sidebar-row.active` | `background`, `background-color` | `sidebar.selected.fill` | 2378: `alpha(@strata_accent, 0.18)` |
-//! | `.sidebar-row.active image` | `color` | `sidebar.selected.icon` | 2386: `@strata_accent` |
-//!
-//! Strata sets `.active` on the current row's button of every kind, places, pins and device
-//! rows, in the full sidebar and the rail alike (`set_sidebar_row_active` in
-//! `src/ui/window/sidebar_rows.rs`), and the user stylesheet's priority beats the
-//! `.sidebar-device.active > .sidebar-row` rule that clears a device row's own fill. C8 fills
-//! and tints the current row of every kind from these two slots, and nothing else.
-//!
-//! Colours convert from the forms a theme file takes ([`Rgba8::parse`]), from Strata's
-//! `@strata_*` colours, as references to the tokens K1 maps each onto ([`STRATA_COLORS`]), and
-//! from `alpha()` of either, so a converted colour keeps following the theme. Within a
-//! selector list, each selector converts on its own. As in CSS, the later declaration for a
-//! token wins: when it doesn't convert, the earlier converted one is dropped too, and both
-//! are listed.
-//!
-//! Near matches are listed with their own reason ([`Reason::Wider`]), because their token
-//! styles more than the selector did (ruling B4):
-//!
-//! - `.file-list row` margins and radius (`collection.row.inset`, `.radius`): Strata sets
-//!   `.file-list` on Miller columns, folder peek and inline search only, where List uses
-//!   `.file-list-mode`, and the collection slots style every view's rows;
-//! - `.sidebar-row:hover` (`sidebar.hover.fill`): the slot fills the sidebar's headings too,
-//!   which Strata styles separately.
-//!
-//! Others are left out because their token isn't the same thing:
-//!
-//! - `min-height` on `.file-row`, `.list-row` or `.sidebar-row`: a minimum, where `row.*` and
-//!   the row slots are fixed heights that K2 grows with the text size;
-//! - the `.file-row > *` and `.list-row > *` margins: Content density's pad, which sizes the
-//!   rows when K2 builds the look, so an override after it wouldn't regrow them;
-//! - `window { background }`: `color.bg_base` is the file columns' fill too;
-//! - `.search-result` and `.browser-tab`: no slot holds their fills or padding yet.
-//!
-//! Everything else is listed as unconverted with its location and a [`Reason`]: other
-//! selectors (including `.sidebar-shell` from Strata's own documentation), other properties,
-//! `shade()`, `mix()`, `lighter()`, `!important`, `@define-color` (a theme colour belongs in a
-//! custom theme) and every other at-rule.
-
 use std::fmt;
 use std::ops::Range;
 
@@ -67,12 +13,7 @@ mod tests;
 /// What [`migrate_css`] made of a stylesheet.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Migration {
-    /// The override file: one row per token, in the registry's order, each with the line it
-    /// came from. Empty when nothing converted.
     pub toml: String,
-    /// How many rows the file has, one per token. A later declaration for the same token
-    /// replaces the earlier row, as the later one wins in CSS; a later one that doesn't
-    /// convert removes it, and both are listed.
     pub converted: usize,
     /// Everything that didn't convert, in the order it appears.
     pub unconverted: Vec<Unconverted>,
@@ -102,8 +43,6 @@ pub enum Reason {
     Value,
     /// The token this selector would set also styles elements the selector doesn't.
     Wider,
-    /// It converted, but a later declaration for the same token didn't, and in CSS the later
-    /// one wins.
     Superseded,
     /// `@define-color` redefines a theme colour.
     DefineColor,
@@ -169,8 +108,6 @@ impl Prop {
     }
 }
 
-/// The selectors that convert: each with a colour property and the token it sets. See the
-/// table in the module docs.
 const RULES: &[(&str, Prop, &str)] = &[
     (
         ".sidebar-row.active",
@@ -184,8 +121,6 @@ const RULES: &[(&str, Prop, &str)] = &[
     ),
 ];
 
-/// Near matches whose token styles more than the selector did, so they don't convert
-/// (ruling B4): listed so they get their own reason.
 const WIDER: &[(&str, Prop, &str)] = &[
     (".file-list row", Prop::Margin, "collection.row.inset"),
     (".file-list row", Prop::Radius, "collection.row.radius"),
@@ -248,8 +183,6 @@ pub fn migrate_css(css: &str) -> Migration {
     out.finish()
 }
 
-/// A converted row: the token, its value as TOML writes it, and the declaration it came
-/// from, which is listed if a later one supersedes it.
 struct Converted {
     token: &'static Token,
     value: String,
@@ -275,8 +208,6 @@ impl Out<'_> {
         });
     }
 
-    /// Converts a declaration: it replaces an earlier one for the same token, as the later
-    /// declaration wins in CSS.
     fn set(&mut self, name: &'static str, value: String, at: usize, selector: &str, decl: &str) {
         let token = tokens::find(name).expect("RULES names registry tokens");
         self.rows.retain(|r| r.token.name() != name);
@@ -289,8 +220,6 @@ impl Out<'_> {
         });
     }
 
-    /// A declaration for `name` that doesn't convert: in CSS it wins over an earlier one that
-    /// did, so that row goes too, and is listed.
     fn supersede(&mut self, name: &str) {
         if let Some(i) = self.rows.iter().position(|r| r.token.name() == name) {
             let r = self.rows.remove(i);
@@ -367,8 +296,6 @@ impl Out<'_> {
     }
 }
 
-/// Strata's stylesheet colours (`@define-color strata_*` in `src/ui/theme/generated_css.rs`,
-/// and `@strata_glow`) and the token K1 maps each theme colour onto (`theme/map.rs`).
 pub(super) const STRATA_COLORS: &[(&str, &str)] = &[
     ("strata_bg", "color.bg_base"),
     ("strata_surface", "color.bg_deep"),
@@ -382,8 +309,6 @@ pub(super) const STRATA_COLORS: &[(&str, &str)] = &[
     ("strata_glow", "glow.color"),
 ];
 
-/// A colour value as the override file writes it: a literal's hex, a reference to the token
-/// a `@strata_*` colour maps onto, or `alpha()` of either.
 fn color(value: &str) -> Option<String> {
     let v = value.trim();
     let alpha_args = v
@@ -411,8 +336,6 @@ fn operand(v: &str) -> Option<String> {
     }
 }
 
-/// `css` with every comment written over in spaces, keeping line breaks, so offsets still
-/// point into the original.
 fn strip_comments(css: &str) -> String {
     let mut b = css.as_bytes().to_vec();
     let mut i = 0;
@@ -484,8 +407,6 @@ fn block_end(b: &[u8], from: usize) -> Option<(usize, bool)> {
     None
 }
 
-/// `text[range]` split on `sep` outside quotes and parentheses: each part's start and its
-/// text with white space collapsed, empty parts left out.
 fn split(text: &str, range: Range<usize>, sep: u8) -> Vec<(usize, String)> {
     let b = text.as_bytes();
     let mut parts = Vec::new();

@@ -1,24 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The gallery page for C22 Folder peek: its scenes, demo state, view and key and poll hooks. Scene
-//! names start with `c22-` and end in `-light` or `-dark`.
-//!
-//! Work package: `docs/rune/work/phase-1-leaves/C22-folder-peek.md`.
-//!
-//! A Home folder in three views: List (C4's ListTable), Icons (a C1e grid stand-in until C3's
-//! IconsGrid lands) and Columns (C2's ColumnsView, which never peeks). Resting the pointer on a
-//! folder in List or Icons peeks it; the page stands in for Strata's lister, answering on the
-//! virtual clock (Slow after 2 s, Locked with an error, Archive capped at 64 entries). The
-//! header line `c22-heard` says what the host last heard.
-//!
-//! | Key | Does |
-//! | --- | --- |
-//! | Ctrl+1, Ctrl+2, Ctrl+3 | List, Icons, Columns |
-//! | Ctrl+P | Folder peeking on or off |
-//! | Ctrl+M | A stand-in menu, its scrim over the window |
-//! | `i` | The keyboard peek at the cursor's folder (Strata's 10xer `i`) |
-//! | Escape | Closes an open peek first |
-
 use std::ops::Range;
 use std::time::Duration;
 
@@ -58,7 +39,6 @@ pub const ICONS: &str = "c22-icons";
 /// The Columns strip's key.
 pub const COLUMNS: &str = "c22-columns";
 
-/// The Icons tile size, C3's default.
 const TILE: f32 = 64.0;
 
 /// How long the fake lister takes, and Slow's.
@@ -116,8 +96,6 @@ fn home() -> Vec<ListEntry> {
     home_with(0)
 }
 
-/// Home with `extra` more folders after its entries, for a list long enough to scroll its
-/// rows out of the mounted range.
 fn home_with(extra: usize) -> Vec<ListEntry> {
     HOME.iter()
         .map(|(id, name, folder)| {
@@ -223,14 +201,9 @@ pub struct Peeked {
     pub status: PeekStatus,
     pub rows: ListSource,
     pub more: Option<More>,
-    /// The peek it lists ([`PeekTarget::serial`]).
-    ///
-    /// [`PeekTarget::serial`]: strata_components::folder_peek::PeekTarget::serial
     pub serial: u64,
 }
 
-/// A listing the fake lister is working on: for the peek `serial`, of folder `name`, due on
-/// the page's clock.
 #[derive(Debug)]
 pub struct Job {
     pub serial: u64,
@@ -262,7 +235,6 @@ impl ColumnSources for OneColumn {
     }
 }
 
-/// C22's demo state, held in `Gallery::c22`.
 pub struct Demo {
     pub mode: Mode,
     pub home: ListSource,
@@ -423,8 +395,6 @@ impl Demo {
         }
     }
 
-    /// Opens or closes the stand-in menu: the host's part of "rows under an overlay don't
-    /// peek".
     fn show_menu(&mut self, on: bool, tx: &mut Tx) {
         self.menu = on;
         let change = self.peek.set_covered(on);
@@ -451,7 +421,6 @@ pub fn peek() -> FolderPeek<Gallery> {
         |g: &Gallery| g.look(),
     )
     .thumbnails(|g: &Gallery| &g.c22.store)
-    // The pane, which C4's sideways scroll is narrower than when its columns don't fit.
     .bounds(|g: &Gallery| g.c22.pane_rect)
     .on_change(|g: &mut Gallery, change, tx| g.c22.relist(change, tx))
     .on_open(|g: &mut Gallery, target, _| {
@@ -518,7 +487,6 @@ fn icons_base(_: &Gallery) -> Collection<Gallery> {
     peek().rows(base)
 }
 
-/// C3's IconsGrid over Home.
 fn grid() -> IconsGrid<Gallery> {
     IconsGrid::new(
         ICONS,
@@ -598,8 +566,6 @@ fn icons(g: &mut Gallery, dark: bool) {
     start(g, dark).mode = Mode::Icons;
 }
 
-/// Golden scenes: each gets an accessibility and a PNG golden. Each calls
-/// `g.open("c22", dark)`, then fills in `g.c22`.
 pub const SCENES: &[Scene] = &[
     ("c22-list-light", |g| list(g, false)),
     ("c22-list-dark", |g| list(g, true)),
@@ -653,8 +619,6 @@ pub const REVIEW: &[Scene] = &[
     ("c22-long-dark", |g| long(g, true)),
 ];
 
-/// Something to drag from outside the collections (a sidebar row, a tab, another pane), for
-/// the host's part of "ending a drag cancels a pending peek".
 fn drag_source(g: &Gallery) -> El {
     let kit = g.kit();
     row()
@@ -789,8 +753,6 @@ pub fn on_key(g: &mut Gallery, key: &KeyEvent, tx: &mut Tx) -> bool {
     if let Some(m) = mode(key) {
         let d = &mut g.c22;
         d.mode = m;
-        // The host's part of "switching views closes the peek": a keyboard peek has no
-        // pointer leave to close it.
         if d.peek.close() {
             d.relist(Change::Closed, tx);
         }
@@ -807,8 +769,6 @@ pub fn on_key(g: &mut Gallery, key: &KeyEvent, tx: &mut Tx) -> bool {
         if d.peek.set_enabled(on) {
             d.relist(Change::Closed, tx);
         }
-        // The host's part of "turning it off cancels a pending peek, and on peeks nothing
-        // until the pointer arrives": a rest under way when peeking changed doesn't count.
         d.list.hold_rest();
         d.icons.hold_rest();
         return true;
@@ -861,8 +821,6 @@ fn picture(px: u32, seed: u64) -> Vec<u8> {
 pub fn poll(g: &mut Gallery, t: f64, tx: &mut Tx) -> bool {
     let mut changed = false;
     g.c22.clock = t;
-    // After the table's first layouts settle (its first width is the columns' alone): the
-    // placement is worked out once, as the peek opens.
     if let Some((name, origin)) = g.c22.open_at
         && t >= SCENE_OPEN
         && let Some(id) = g.c22.id_of(name)
@@ -881,8 +839,6 @@ pub fn poll(g: &mut Gallery, t: f64, tx: &mut Tx) -> bool {
     {
         tx.scroll_to_x(format!("{LIST}-scroll"), x);
     }
-    // Results come back in the order asked; one for a peek no longer open is dropped by its
-    // serial, as Strata's request ids drop a closed peek's batches.
     let due: Vec<Job> = {
         let (due, rest) = std::mem::take(&mut d.jobs)
             .into_iter()

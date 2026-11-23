@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Block-device facts read off the UI thread and kept until the volume monitor reports changes
-//! (`src/ui/window/devices/probe_cache.rs` and `held.rs`).
-
 use std::{
     cell::{OnceCell, RefCell},
     collections::{HashMap, HashSet},
@@ -40,8 +37,6 @@ thread_local! {
     static HELD: ProbeCache<bool> = ProbeCache::default();
 }
 
-/// Returns whether a block device is currently held exclusively (`O_EXCL` -> `EBUSY`), probed
-/// off the UI thread and cached until GIO reports device changes.
 pub(super) fn is_exclusively_held(unix_device: &str) -> bool {
     if cfg!(test) {
         return false;
@@ -49,8 +44,6 @@ pub(super) fn is_exclusively_held(unix_device: &str) -> bool {
     cached(&HELD, unix_device, block_device_is_exclusively_held)
 }
 
-/// Returns the cached fact for `unix_device`, or its default while the first background probe
-/// runs. When the probe changes the cached value, every open sidebar refreshes.
 pub(super) fn cached<T: Fact>(cache: Cache<T>, unix_device: &str, probe: fn(&str) -> T) -> T {
     if cfg!(test) {
         return T::default();

@@ -296,8 +296,6 @@ where
     .await
 }
 
-/// GLib calls a backend's rename without checking it has one, and GDummyFile, which serves
-/// `smb://` without a running GVfs, has none.
 async fn set_display_name(
     file: &gio::File,
     name: &str,
@@ -358,14 +356,10 @@ fn was_cancelled(error: &glib::Error) -> bool {
     error.matches(gio::IOErrorEnum::Cancelled)
 }
 
-/// A cancelled copy between local folders removes what it wrote, or fails; GIO's copies to or
-/// from other locations are not checked.
 fn undone_when_cancelled(source: &gio::File, target: &gio::File) -> bool {
     source.is_native() && target.is_native()
 }
 
-/// GLib checks the cancel only before it moves a local item to Trash, while a permanent delete
-/// can remove a file, or part of a folder, before it sees the cancel.
 fn deletion_undone_when_cancelled(location: &Location, permanent: bool) -> bool {
     location.native_path().is_some() && !permanent
 }
@@ -464,8 +458,6 @@ fn deletion_error_summary(errors: &[String], permanent: bool) -> String {
     )
 }
 
-/// The retry dialog offers the permanent delete, so an unsupported Trash
-/// needs no instruction here.
 fn deletion_error_message(name: &str, error: &TrashError) -> String {
     match error.failure {
         TrashFailure::Unsupported(_) => {

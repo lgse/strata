@@ -1,27 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Perf: 100,000 entries on C1e's element, with and without thumbnails landing.
-//!
-//! ```text
-//! cargo test --profile perf -p strata-components --lib thumbnails::tests::perf \
-//!     -- --ignored --nocapture
-//! ```
-//!
-//! A 900 pt window at scale 2, as C1e's perf test: the first frame, then 600 frames at
-//! 120 Hz, each scrolled 48 pt by the wheel. Three runs side by side: C1e's default icon, the
-//! thumbnail slot with nothing landing, and the slot with a worker landing up to 8 images a
-//! frame at the slot's step (64 px for 32 pt at scale 2). Each figure is the best of three.
-//! Then the store alone: `sync` for a 200-tile grid viewport stepping a line at a time, and
-//! `pop` plus `complete` for each request it makes.
-//!
-//! The bar (work package C25, plan §4 C25):
-//! - no view run while scrolling with thumbnails landing;
-//! - scroll frames at p50 and p95 within max(1.25 × the default icon's, + 0.5 ms), and none
-//!   over a 60 Hz frame (16.7 ms);
-//! - `sync` within 50 µs at p95, `pop` plus `complete` within 20 µs on average;
-//! - with 3,600 tiles on screen (a 4K grid), draining the queue is one pass (within 20 ms) and
-//!   an idle `pop` within 1 µs (174 µs before review round 1).
-
 use std::cell::Cell;
 use std::rc::Rc;
 use std::time::Instant;

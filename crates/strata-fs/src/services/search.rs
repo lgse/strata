@@ -42,10 +42,6 @@ const GENERATED_TREE_GLOBS: [&str; 14] = [
     "!**/__pycache__/",
 ];
 
-/// Bounds worst-case index memory on an adversarially large tree. Each retained `SearchItem`
-/// and its traversal-wide deduplication key store full path strings, so cost scales with path
-/// length, not just entry count: roughly 80-180 MB at this cap for typical paths, but up to
-/// ~2.5 GB for paths near `PATH_MAX`.
 const MAX_INDEX_ENTRIES: usize = 200_000;
 const MAX_INDEX_DEPTH: usize = 64;
 const INDEX_TIME_BUDGET: Duration = Duration::from_secs(10);
@@ -81,8 +77,6 @@ impl TraversalBudget {
     }
 }
 
-/// How far one index walk may go. The defaults keep local searches responsive and bound
-/// index memory; slow or network mounts may need more of both.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct SearchLimits {
     /// `None` walks until every root is exhausted.
@@ -585,8 +579,6 @@ pub fn index_folder_paths(
     )
 }
 
-/// Concurrent sessions share a snapshot until the last handle is dropped.
-/// Indexing and scoring run off the GTK thread.
 pub fn index_trees_with_exclusions(
     roots: Vec<PathBuf>,
     show_hidden: bool,

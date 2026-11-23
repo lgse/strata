@@ -1,17 +1,11 @@
 // SPDX-License-Identifier: MIT
 
-//! The crumbs of the folder the bar names, as GTK lays them out (`set_location`,
-//! `visible_crumbs`, `crumb_label`, `crumb_icon` and `ancestor_crumb_button` in
-//! `src/ui/browser/location/breadcrumbs.rs`).
-
 use std::path::Path;
 
 use strata_components::location_bar::{Crumb, Trail};
 use strata_core::model::Location;
 use strata_kit::icons::IconName;
 
-/// The trail for `location`, and the folder each crumb opens, in the trail's order. A
-/// crumb's id is its index in that list.
 pub(super) fn of(location: &Location, home: &Location) -> (Trail, Vec<Location>) {
     let folders = visible(location, home);
     let current = folders.len().saturating_sub(1);
@@ -32,8 +26,6 @@ fn visible(location: &Location, home: &Location) -> Vec<Location> {
     folders
 }
 
-/// Crumb `index`, with the lock before its label when it is an ancestor that is an
-/// administrator root (`ancestor_crumb_button`; the current folder's label has none).
 fn crumb(index: usize, folder: &Location, home: &Location, ancestor: bool) -> Crumb {
     let label = if folder == home {
         "~".to_owned()

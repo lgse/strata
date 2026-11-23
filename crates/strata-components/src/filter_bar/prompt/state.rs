@@ -11,13 +11,8 @@ use super::spec::{Arrows, PromptSpec};
 use crate::contract::Point;
 use crate::filter_bar::field::FocusWatch;
 
-/// One candidate under a prompt: a folder from the picker or the history.
-///
-/// Used by: hosts.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Candidate {
-    /// The host's id for it (its path): [`PromptIntent::Submit`] names the chosen one by it,
-    /// and a choice the user made survives later batches by it.
     pub id: String,
     /// What the row shows: the folder's name.
     pub label: String,
@@ -56,9 +51,6 @@ impl Candidate {
     }
 }
 
-/// A listing the prompt asked for ([`PromptIntent::Complete`]).
-///
-/// Used by: hosts.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CompletionQuery {
     /// Answer with this generation; an answer for an older one is dropped.
@@ -67,24 +59,15 @@ pub struct CompletionQuery {
     pub text: String,
 }
 
-/// An answer to a [`CompletionQuery`]: one batch. A search that streams sends several with
-/// the same generation, the last one `done`.
-///
-/// Used by: hosts.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Candidates {
     /// The query's generation.
     pub generation: u64,
     /// Every candidate so far, best first (each batch replaces the last).
     pub items: Vec<Candidate>,
-    /// The search finished: a submit waiting for it ([`PromptState::wait_until_settled`])
-    /// goes now.
     pub done: bool,
 }
 
-/// What closed a prompt.
-///
-/// Used by: hosts.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub enum By {
@@ -96,16 +79,9 @@ pub enum By {
     Replaced,
 }
 
-/// What a prompt asks of its host. Finding, filtering, searching, navigating, renaming and
-/// validating are the host's.
-///
-/// Used by: hosts.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum PromptIntent<K> {
-    /// The user edited the text: not when a prompt opens, closes, or the prompt writes it
-    /// (Tab's completion does tell, as Strata's does). `serial` names this text: a check
-    /// started for it answers with it.
     Edited {
         /// The prompt.
         kind: K,
@@ -114,8 +90,6 @@ pub enum PromptIntent<K> {
         /// The text's serial.
         serial: u64,
     },
-    /// List candidates for this text (a prompt with [`Arrows::Candidates`], on opening and
-    /// on each edit): answer with [`PromptState::deliver`]. The previous list stays until then.
     Complete {
         /// The prompt.
         kind: K,
@@ -124,17 +98,12 @@ pub enum PromptIntent<K> {
     },
     /// The listing asked for last is no longer wanted: the prompt closed or was replaced.
     CancelCompletion,
-    /// Up (`-1`) or Down (`1`) in a prompt with [`Arrows::Listing`]: move the listing's cursor
-    /// while the prompt keeps the keyboard.
     Step {
         /// The prompt.
         kind: K,
         /// The step.
         delta: i32,
     },
-    /// Enter (Shift+Enter too). The prompt stays open: the host closes it
-    /// ([`PromptState::close`]) once it acts, or keeps it open with a reason
-    /// ([`PromptState::refuse`]). An Enter an input method takes never arrives here.
     Submit {
         /// The prompt.
         kind: K,
@@ -144,9 +113,6 @@ pub enum PromptIntent<K> {
         chosen: Option<String>,
         /// Whether the user chose it (Up, Down), rather than the ranking's first.
         stepped: bool,
-        /// Whether the last listing asked for has finished (always, for prompts without
-        /// candidates). A host that must not act on a partial ranking calls
-        /// [`PromptState::wait_until_settled`]; the prompt submits again once it has.
         settled: bool,
         /// The text's serial, for [`PromptState::refuse`] and [`PromptState::show_hint`].
         serial: u64,
@@ -160,8 +126,6 @@ pub enum PromptIntent<K> {
         /// What closed it.
         by: By,
     },
-    /// A right-click, the Menu key or Shift+F10 on the field: the host's field menu (C21's
-    /// `FieldMenu::open`), at `at` in window points.
     FieldMenu {
         /// Where the menu opens.
         at: Point,
@@ -222,23 +186,13 @@ struct Open<K> {
     deferred: bool,
 }
 
-/// The footer prompt: which one is open (`K`, the host's kinds), its text, hint, candidates
-/// and the serial that names its text. The host keeps one per window.
-///
-/// The host calls [`PromptState::open`] from its keys (`/`, `f`, `g Space`, `r`),
-/// [`PromptState::tick`] each frame (a field that lost the keyboard closes the prompt), and
-/// [`PromptState::close`] once it acted on a [`PromptIntent::Submit`]. Leaving 10xer mode or
-/// closing the window closes it too.
 #[derive(Debug)]
 pub struct PromptState<K> {
-    /// The field's text, caret and focus. The prompt binds it; C21's `FieldMenu` edits it.
     pub edit: TextEdit,
     open: Option<Open<K>>,
     serial: u64,
     generation: u64,
     watch: FocusWatch,
-    /// The host keeps the prompt open while the field lacks the keyboard (the shortcut
-    /// reference has it).
     held: bool,
 }
 
@@ -271,8 +225,6 @@ impl<K: Copy + PartialEq + std::fmt::Debug + 'static> PromptState<K> {
         self.open.is_some()
     }
 
-    /// Whether the prompt's field has the keyboard: while it does, only its own keys act, and
-    /// every other key edits the text.
     pub fn focused(&self) -> bool {
         self.is_open() && self.edit.focused
     }
@@ -329,10 +281,6 @@ impl<K: Copy + PartialEq + std::fmt::Debug + 'static> PromptState<K> {
         self.open.as_ref().is_some_and(|o| o.pending)
     }
 
-    /// Opens prompt `kind` on `text` with the keyboard in it. Any open prompt closes first
-    /// ([`By::Replaced`]), and none of its text carries over. `select` selects a byte range
-    /// (`rename ›`'s stem); without it, the caret goes after the text, unselected, so typing
-    /// extends a pre-filled query. A prompt with candidates asks for them.
     pub fn open(
         &mut self,
         kind: K,
@@ -381,8 +329,6 @@ impl<K: Copy + PartialEq + std::fmt::Debug + 'static> PromptState<K> {
         out
     }
 
-    /// Closes the prompt and clears its text (no undo history stays): the host acted on a
-    /// submit, or left 10xer mode. The keyboard goes back to the listing (`focus_return`).
     pub fn close(&mut self) -> Polled<K> {
         let Some(old) = self.open.take() else {
             return Polled::default();
@@ -400,8 +346,6 @@ impl<K: Copy + PartialEq + std::fmt::Debug + 'static> PromptState<K> {
         out
     }
 
-    /// Shows `hint` beside the field (and as its description), while the text is still the
-    /// one `serial` names. False, changing nothing, for an older serial.
     pub fn show_hint(&mut self, serial: u64, hint: Option<String>) -> bool {
         match &mut self.open {
             Some(o) if serial == self.serial => {
@@ -412,10 +356,6 @@ impl<K: Copy + PartialEq + std::fmt::Debug + 'static> PromptState<K> {
         }
     }
 
-    /// Keeps the prompt open on a refused text, with `reason` as its hint and the field marked
-    /// invalid: a taken name, a name the location can't store. A check that answers after the
-    /// text changed, or after the prompt closed, names an older serial and changes nothing
-    /// (false): it must create or rename nothing either.
     pub fn refuse(&mut self, serial: u64, reason: impl Into<String>) -> bool {
         match &mut self.open {
             Some(o) if serial == self.serial => {
@@ -427,11 +367,6 @@ impl<K: Copy + PartialEq + std::fmt::Debug + 'static> PromptState<K> {
         }
     }
 
-    /// An answer to a [`PromptIntent::Complete`]. One for an older generation (every open,
-    /// close and edit starts a new one), with no prompt open, or for a prompt that lists no
-    /// candidates, is dropped. A choice the user made stays on its candidate while the
-    /// candidate is still listed; otherwise the first is chosen. A `done` answer releases a
-    /// submit waiting for it.
     pub fn deliver(&mut self, answer: Candidates) -> Polled<K> {
         let generation = self.generation;
         let serial = self.serial;
@@ -467,9 +402,6 @@ impl<K: Copy + PartialEq + std::fmt::Debug + 'static> PromptState<K> {
         out
     }
 
-    /// Holds the submit for text `serial` until the listing finishes, then sends it again with
-    /// `settled` (Strata's `when_settled`: an early Enter must not act on a partial ranking).
-    /// An edit drops it. False when nothing is pending: act now.
     pub fn wait_until_settled(&mut self, serial: u64) -> bool {
         match &mut self.open {
             Some(o) if serial == self.serial && o.pending => {
@@ -485,17 +417,10 @@ impl<K: Copy + PartialEq + std::fmt::Debug + 'static> PromptState<K> {
         self.held
     }
 
-    /// Keeps the prompt open while its field lacks the keyboard, or lets it close again: the
-    /// host holds it while the shortcut reference (F1, C19) has the keyboard, as Strata's
-    /// `abandoned` does. Released with the field still unfocused, the next tick closes it.
     pub fn hold_open(&mut self, on: bool) {
         self.held = on;
     }
 
-    /// One frame: a prompt whose field lost the keyboard (a clicked row, another pane) closes
-    /// ([`By::Blur`]), so its text never reaches a browsing command, unless the host holds it
-    /// open ([`PromptState::hold_open`]). Rune has no focus-change hook (Rune draft U-C6-3),
-    /// so this notices a frame later.
     pub fn tick(&mut self) -> Polled<K> {
         if self.open.is_none() || self.held || !self.watch.lost(self.edit.focused) {
             return Polled::default();
@@ -533,9 +458,6 @@ impl<K: Copy + PartialEq + std::fmt::Debug + 'static> PromptState<K> {
         out
     }
 
-    /// The user changed the text (Tab's write included): a new serial, the hint and refusal
-    /// go, a waiting submit is dropped, the user's choice is forgotten (Strata's
-    /// `forget_candidate_step`), and a prompt with candidates asks for a new listing.
     pub(crate) fn edited(&mut self) -> Polled<K> {
         let serial = self.serial + 1;
         let Some(o) = self.open.as_mut() else {
@@ -559,8 +481,6 @@ impl<K: Copy + PartialEq + std::fmt::Debug + 'static> PromptState<K> {
         out
     }
 
-    /// The text changed outside the field's own editing: C21's `FieldMenu` cut, pasted or
-    /// deleted (`FieldMenu::on_change`). The same as typing.
     pub fn text_edited(&mut self) -> Polled<K> {
         self.edited()
     }
@@ -599,7 +519,6 @@ impl<K: Copy + PartialEq + std::fmt::Debug + 'static> PromptState<K> {
                 let delta = if ev.key == Key::Up { -1 } else { 1 };
                 Some(self.step(delta))
             }
-            // Shift+Tab moves focus back, as GTK's does.
             Key::Tab
                 if bare
                     && !m.shift
@@ -618,8 +537,6 @@ impl<K: Copy + PartialEq + std::fmt::Debug + 'static> PromptState<K> {
         }
     }
 
-    /// A press on candidate `i`: it is chosen, and submitted at once, as Strata's
-    /// `row_activated` opens it.
     pub(crate) fn press_candidate(&mut self, i: usize) -> Polled<K> {
         let serial = self.serial;
         let text = self.edit.text.clone();

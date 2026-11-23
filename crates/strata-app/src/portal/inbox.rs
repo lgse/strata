@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! What the D-Bus service hears, queued for the host that opens the chooser windows. The
-//! service's handlers run inside GLib's dispatch, which a host reaches from its own turn, so
-//! they only queue here; the host takes the queue after the dispatch returns.
-
 use std::{
     cell::RefCell,
     collections::VecDeque,

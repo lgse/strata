@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The demo's window: a C1e list over one folder of `--root`, whose rows show the clipboard's
-//! marks, and C19's footer with the Files on clipboard badge. Ctrl+C, Ctrl+X and Ctrl+V go
-//! through [`FileClipboard`]; the paste is applied here (`fsys`), as Strata applies it.
-
 use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
 
@@ -92,8 +88,6 @@ impl Win {
             .collect()
     }
 
-    /// Where Ctrl+V pastes: the one folder explicitly selected (not a load's automatic pick),
-    /// else the folder shown (Strata's `paste_destination`).
     pub fn paste_destination(&self) -> PathBuf {
         let ids = self.coll.selection.selected_ids(&self.listing);
         if let [id] = ids.as_slice()
@@ -114,9 +108,6 @@ impl Win {
             .filter(|p| p.starts_with(&self.root) && p.is_dir())
     }
 
-    /// Shows `folder`, resolved, so that a link to a folder lists, marks and pastes under the
-    /// paths a paste reports: false if it is no folder inside the root, as a link out of it
-    /// is. Coming up from a child, that child is picked as a load's pick is.
     pub fn open(&mut self, folder: &Path, tx: &mut Tx) -> bool {
         let Some(folder) = self.folder_in_root(folder) else {
             return false;
@@ -186,8 +177,6 @@ impl Win {
         }
     }
 
-    /// Applies what a paste read, inside the root, then shows the destination with what was
-    /// pasted selected.
     fn pasted(&mut self, dest: &Path, paste: Paste, tx: &mut Tx) {
         let to = self.rel(dest);
         let (paths, moving) = match paste {
@@ -238,8 +227,6 @@ impl Win {
         for (name, kept_as) in &done.conflicts {
             log("conflict", json!({ "name": name, "kept_as": kept_as }));
         }
-        // A paste that failed partway still did what it did: its moves leave the cut, and the
-        // destination shows it.
         let failed = done
             .failed
             .as_ref()
@@ -313,8 +300,6 @@ impl Win {
     }
 }
 
-/// The window's keys the collection passes on: the clipboard's, and Alt+Up and Backspace to
-/// the parent folder.
 pub fn on_key(w: &mut Win, ev: &KeyEvent, tx: &mut Tx) -> bool {
     if COPY.matches_tx(ev, tx) {
         w.copy(false);

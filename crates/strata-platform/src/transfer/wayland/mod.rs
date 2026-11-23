@@ -1,19 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Wayland: protocols bound on winit's own display (shared), or on a connection of our own.
-//!
-//! **Shared** binds a second `wl_seat` (with its own `wl_pointer` and `wl_keyboard`, for input
-//! serials only, never input), `wl_data_device`, and data control if asked, in a queue of our
-//! own on winit's display. Rune exposes no display handle (draft U9, not filed), so it is
-//! recovered from the window's surface ([`display`]). The reader thread ([`reader`]) asks the
-//! UI thread for a turn, which runs [`Conn::dispatch`]: handlers run on the UI thread, where
-//! `WindowHandle::with_raw_handle` may be called. Any protocol error on these objects ends
-//! winit's connection with ours, so requests the protocols forbid are refused before they are
-//! sent.
-//!
-//! **Own** connects to `WAYLAND_DISPLAY` and binds data control alone: no surface, serial or
-//! focus needed, and it works on libwayland 1.22. Its thread dispatches by itself.
-
 mod control;
 mod display;
 mod echo;
@@ -92,8 +78,6 @@ struct Current {
 /// A drag in progress over this client.
 struct Drag {
     offer: DragOffer,
-    /// The app window it is over (its key), or None for a surface that is no window of the
-    /// app's (winit's decoration subsurfaces): those get no events.
     window: Option<String>,
 }
 
@@ -122,7 +106,6 @@ pub(crate) struct State {
     home: Home,
     windows: Arc<Windows>,
     seat: Option<WlSeat>,
-    /// For P1's drag icons, bound on winit's display only.
     compositor: Option<WlCompositor>,
     shm: Option<WlShm>,
     pointer: Option<WlPointer>,
@@ -132,7 +115,6 @@ pub(crate) struct State {
     control: Option<Control>,
     /// The newest key or button serial; a data-device write needs a recent one.
     latest_serial: Option<u32>,
-    /// The newest left-button press serial, for a drag (P1).
     press_serial: Option<u32>,
     /// This client has keyboard focus (our own `wl_keyboard` is entered).
     focused: bool,
@@ -148,9 +130,6 @@ pub(crate) struct State {
     dropped: Vec<DragOffer>,
     sources: HashMap<u64, Source>,
     events: Vec<Event>,
-    /// Room for the state of protocols other modules bind on this queue (P4's
-    /// `zxdg_importer_v2`): one value per type, which their own `Dispatch<_, _> for State`
-    /// impls reach through [`State::extension`].
     extensions: HashMap<TypeId, Box<dyn Any + Send>>,
 }
 
@@ -183,8 +162,6 @@ impl State {
         }
     }
 
-    /// The extension state of type `T`, made with `Default` on first use. For other modules'
-    /// handlers on this queue; see [`Conn::with_globals`].
     #[cfg_attr(
         not(any(feature = "dnd", feature = "foreign-parent", feature = "backdrop-blur")),
         expect(
@@ -251,8 +228,6 @@ impl State {
         });
     }
 
-    /// The key of the app window whose surface is `surface`. Only the pointers are compared:
-    /// the event's surface may be stale by now, so no request is ever sent on it.
     fn window_of(&self, surface: &WlSurface) -> Option<String> {
         let ptr = surface.id().as_ptr().cast::<c_void>();
         self.windows.find(|w| {
@@ -263,10 +238,6 @@ impl State {
         })
     }
 
-    /// The connection is dead: nothing is held or heard on it. owns() turns false for every
-    /// source, and no offer is left to read or finish: the selections, the drag over a window
-    /// and the dropped offers not yet finished all close (P0's review, S3), so a handle the
-    /// app still holds answers `Gone` instead of sending on a dead connection.
     fn forget_all(&mut self) {
         self.sources.clear();
         for (_, current) in self.selections.drain() {
@@ -295,9 +266,6 @@ impl State {
 
 /// One Wayland connection with our queue on it.
 pub(crate) struct Conn {
-    /// With the reader's clone, the only strong references to the backend: [`Conn::shutdown`]
-    /// drops it, on the UI thread, so a `Conn` dropped later (after `run` returns) makes no
-    /// libwayland call. The backend's own drop destroys its queue, which needs the display.
     queue: Mutex<Option<EventQueue<State>>>,
     /// The connection, weakly, and the thread that may use it (the UI thread, when shared).
     home: Home,
@@ -317,8 +285,6 @@ pub(crate) struct Conn {
 }
 
 impl Conn {
-    /// Binds on winit's display, found from `window`'s surface. Call it on the UI thread.
-    /// The reader's turns go to `windows`' turns.
     pub(crate) fn shared(
         window: &WindowHandle,
         windows: Arc<Windows>,
@@ -332,9 +298,6 @@ impl Conn {
         Conn::bind(Kind::Shared, conn, windows, subs, data_control)
     }
 
-    /// Connects to the compositor on a connection of our own, for data control alone.
-    /// `as_if_none`: a test switch that leaves the data-control globals unbound, as on a
-    /// compositor without them.
     pub(crate) fn own(
         subs: Subscribers,
         prefer: Prefer,
@@ -414,15 +377,10 @@ impl Conn {
                     conn,
                     gate.clone(),
                     move || {
-                        // Ask the UI thread to dispatch, through every attached window's app
-                        // with no turn outstanding (see `windows`), then wait for it with no
-                        // read intent held.
                         let before = gate.turns();
                         windows.post(|| {
                             let weak: Weak<Conn> = weak.clone();
                             Box::new(move || {
-                                // On the UI thread, where Turn runs it; refused anywhere else, and
-                                // the reader then waits for a turn that never comes: say so, once.
                                 if let Some(c) = weak.upgrade()
                                     && let Err(e) = c.dispatch()
                                 {
@@ -460,11 +418,7 @@ impl Conn {
         lock(&self.state).device.is_some()
     }
 
-    /// Runs the queued events' handlers and hands their events to subscribers. Shared: the
-    /// UI thread only, from the reader's turn or before reading a serial.
     pub(crate) fn dispatch(&self) -> Result<bool, Error> {
-        // Handlers call `WindowHandle::with_raw_handle` and parse events naming winit's
-        // objects: both only on the UI thread (see `reader`).
         if !self.home.here() {
             return Err(Error::Refused(ON_UI));
         }
@@ -474,8 +428,6 @@ impl Conn {
         Ok(any)
     }
 
-    /// Releases a reader waiting for a turn, so it asks again: the windows it asked through
-    /// may have closed since. A no-op when it isn't waiting.
     pub(crate) fn wake_reader(&self) {
         self.gate.turned();
     }
@@ -513,8 +465,6 @@ impl Conn {
         any
     }
 
-    /// A Turn ran off the UI thread, so nothing was dispatched and the reader waits for a turn
-    /// that never comes. Reported once, as a failure, since events stop.
     fn report_misrouted_turn(&self, e: Error) {
         if !self.misrouted.swap(true, Ordering::AcqRel) {
             self.subs.emit(vec![Event::Failed {
@@ -523,8 +473,6 @@ impl Conn {
         }
     }
 
-    /// The connection is dead: say so once, from whichever thread noticed first, and dispatch
-    /// no more.
     fn report_failure(&self, message: String) {
         if !self.failed.swap(true, Ordering::AcqRel) {
             lock(&self.state).forget_all();
@@ -532,10 +480,6 @@ impl Conn {
         }
     }
 
-    /// Runs `f` with the registry's globals and the queue, to bind a protocol P0 doesn't (P4's
-    /// `zxdg_importer_v2`, `backdrop-blur`'s effect managers). The module binding it implements
-    /// `Dispatch<I, U> for State` for its objects and keeps its state in [`State::extension`].
-    /// None after shutdown, or off the UI thread on winit's display.
     #[cfg_attr(
         not(any(feature = "dnd", feature = "foreign-parent", feature = "backdrop-blur")),
         expect(
@@ -555,8 +499,6 @@ impl Conn {
         Some(f(globals.as_ref()?, &self.qh, &mut state))
     }
 
-    /// A test switch: makes the compositor end this connection with a protocol error. Only
-    /// for a connection of our own (on winit's display it would end winit's too).
     pub(crate) fn provoke_protocol_error(&self) -> bool {
         if self.home.ui.is_some() {
             return false;
@@ -587,14 +529,10 @@ impl Conn {
         lock(&self.state).sources.contains_key(&source.get())
     }
 
-    /// Whether `source` was cancelled because the compositor dropped its data-device write
-    /// (see `echo`), rather than lost to another client.
     pub(crate) fn write_was_dropped(&self, source: SourceId) -> bool {
         lock(&self.state).echoes.was_dropped(source.get())
     }
 
-    /// Offers `spec` as `selection` on `route`. A data-device write uses the newest input
-    /// serial: call [`Conn::dispatch`] first so the event that triggered the copy is in.
     pub(crate) fn set_selection(
         &self,
         selection: Selection,
@@ -653,10 +591,6 @@ impl Conn {
         Ok(id)
     }
 
-    /// Gives up `source`'s selection, if it still holds it: the source is destroyed, which
-    /// clears the selection if the compositor still has it as the selection.
-    /// Subscribers hear [`Event::SourceCancelled`] at once. False if `source` no longer held
-    /// anything. A data-device clear uses the newest input serial, as a write does.
     pub(crate) fn clear_selection(&self, source: SourceId) -> Result<bool, Error> {
         if !self.home.here() {
             return Err(Error::Refused(ON_UI));
@@ -668,10 +602,6 @@ impl Conn {
         let Some(held) = state.sources.remove(&source.get()) else {
             return Ok(false);
         };
-        // Destroying the source clears the selection only while it still holds it. A data
-        // control set_selection(None) carries no serial, so it would also wipe a copy another
-        // app made since, which we haven't heard of yet. The data device's carries the newest
-        // serial, which the compositor refuses when another copy is newer.
         if let (SourceProxy::Device(_), Some(device), Some(serial)) =
             (&held.proxy, &state.device, state.latest_serial)
         {
@@ -684,8 +614,6 @@ impl Conn {
         Ok(true)
     }
 
-    /// Stops the reader, then destroys every object, on the UI thread for a shared
-    /// connection, before winit closes the display (S2, step 6).
     pub(crate) fn shutdown(&self) {
         if let Some(reader) = lock(&self.reader).take() {
             reader.stop();
@@ -742,7 +670,6 @@ impl Conn {
     }
 }
 
-/// What P1 (`dnd`) and `backdrop-blur` read of the queue's `wl_compositor`.
 #[cfg(any(feature = "dnd", feature = "backdrop-blur"))]
 impl State {
     pub(crate) fn compositor(&self) -> Option<&WlCompositor> {
@@ -750,8 +677,6 @@ impl State {
     }
 }
 
-/// What P1 (`dnd`) reads of the queue's state, from its own handlers on this queue and from
-/// [`Conn::with_globals`]. Read-only: P0's handlers keep these fields.
 #[cfg(feature = "dnd")]
 impl State {
     pub(crate) fn data_device_manager(&self) -> Option<&WlDataDeviceManager> {
@@ -774,7 +699,6 @@ impl State {
 
 #[cfg(any(feature = "dnd", feature = "foreign-parent", feature = "backdrop-blur"))]
 impl Conn {
-    /// Sends what was queued. Requests P1 and P4 make through [`Conn::with_globals`] need it.
     pub(crate) fn flush(&self) {
         self.home.flush();
     }
@@ -784,8 +708,6 @@ impl Conn {
         self.failed.load(Ordering::Acquire)
     }
 
-    /// Runs `f` with a proxy for `window`'s `wl_surface` on this connection, for that call
-    /// only. Winit's display only, on the UI thread.
     pub(crate) fn with_window_surface<R>(
         &self,
         window: &WindowHandle,
@@ -802,29 +724,8 @@ impl Conn {
     }
 }
 
-/// What P4 (`foreign-parent`) and `backdrop-blur` build on: a round trip, to learn at once
-/// whether the compositor destroyed an import or advertised blur capabilities.
 #[cfg(any(feature = "foreign-parent", feature = "backdrop-blur"))]
 impl Conn {
-    /// Sends what is queued, waits for the compositor to answer a `wl_display.sync`, and runs
-    /// every handler on the queue meanwhile, P0's included: their events reach subscribers as
-    /// [`Conn::dispatch`]'s do. Winit's display only, on the UI thread, never inside
-    /// [`Conn::with_globals`] (both lock the state).
-    ///
-    /// It blocks the UI thread for one round trip, **with no limit**: a compositor that stops
-    /// answering holds the UI thread until it answers or the connection ends. That is left
-    /// unbounded on purpose: such a compositor stalls winit's own frames and requests on the
-    /// same connection anyway, and a round trip given up midway would leave its import
-    /// half made, its answer due later.
-    ///
-    /// Only libwayland's own error ([`Failure::Dead`]) marks the connection dead. A full
-    /// socket buffer is waited out ([`BUSY_TRIES`] times, [`BUSY_WAIT`] each), then reported
-    /// as [`Error::Busy`] with the connection alive. So is an event this client couldn't parse
-    /// ([`Failure::Other`]), named as such.
-    ///
-    /// The reader thread may hold a read intent meanwhile: libwayland's read protocol lets two
-    /// threads prepare and read at once, and the reader never waits on the UI thread while it
-    /// holds one (see `reader`).
     pub(crate) fn roundtrip(&self) -> Result<(), Error> {
         if self.home.ui.is_none() {
             return Err(Error::Refused("a round trip is for winit's display"));
@@ -856,8 +757,6 @@ impl Conn {
                 match failure {
                     Some(Failure::Busy) if tries < BUSY_TRIES => {
                         tries += 1;
-                        // Wait until the compositor reads, then send the sync again: the
-                        // first one's answer, if it comes, is ignored.
                         if let Some(b) = &backend {
                             let _ = pipe::poll(&[(b.poll_fd(), libc::POLLOUT)], Some(BUSY_WAIT));
                         }
@@ -897,19 +796,10 @@ impl Conn {
 enum Failure {
     /// libwayland has an error: the connection is dead, for good.
     Dead(String),
-    /// The socket's buffer was full (`EAGAIN` on the flush): wait for the socket and try
-    /// again.
     Busy,
-    /// Anything else libwayland didn't keep, in practice `DispatchError::BadMessage` (an event
-    /// wayland-client couldn't parse): this round trip failed, and the connection lives on.
     Other(String),
 }
 
-/// `last_error` is the backend's: wayland-backend (0.3.17) keeps every I/O error of
-/// `wl_display_flush` and `wl_display_read_events` there except `EAGAIN`, which
-/// `blocking_dispatch` passes on as it is. `EINTR` included: libwayland counts it fatal in
-/// both, and wayland-client's `blocking_read` retries it in its own poll. So an I/O error
-/// with no last error is `EAGAIN` from the flush.
 #[cfg(any(feature = "foreign-parent", feature = "backdrop-blur"))]
 fn classify(e: &wayland_client::DispatchError, last_error: Option<String>) -> Failure {
     use std::io::ErrorKind;
@@ -974,7 +864,6 @@ impl Dispatch<WlCompositor, ()> for State {
     }
 }
 
-/// `format` events list the pixel formats; P1's icons use ARGB8888, which every `wl_shm` has.
 impl Dispatch<WlShm, ()> for State {
     fn event(
         _: &mut Self,
@@ -1021,8 +910,6 @@ impl Dispatch<WlSeat, ()> for State {
         if caps.contains(wl_seat::Capability::Pointer) && st.pointer.is_none() {
             st.pointer = Some(seat.get_pointer(qh, ()));
         }
-        // One keyboard per display: each bind makes the compositor send every keyboard of
-        // the client its keymap again, winit's too.
         if caps.contains(wl_seat::Capability::Keyboard) && st.keyboard.is_none() {
             st.keyboard = Some(seat.get_keyboard(qh, ()));
         }
@@ -1134,8 +1021,6 @@ impl Dispatch<WlDataDevice, ()> for State {
                 if st.drag.as_ref().is_some_and(|d| d.window.is_some()) {
                     st.events.push(Event::DragLeave);
                 }
-                // A dropped offer lives on until the app finishes it: the compositor sends
-                // leave right after the drop.
                 st.end_drag();
             }
             wl_data_device::Event::Drop => {
@@ -1207,9 +1092,6 @@ impl Dispatch<WlDataOffer, ()> for State {
                         });
                     }
                 } else if let Some(dropped) = st.dropped.iter().find(|o| o.is(&id)) {
-                    // A dropped offer outlives the `leave` that follows its drop, and the
-                    // compositor may still change its action (answering a set_actions sent
-                    // before the drop): `finish` must see that.
                     dropped.with_state(|s| s.on_action(a.bits()));
                 }
             }
@@ -1218,8 +1100,6 @@ impl Dispatch<WlDataOffer, ()> for State {
     }
 }
 
-/// The sync after a data-device write (see `echo`): a write with no echo before it was
-/// dropped, and its source is reported cancelled, as a lost selection is.
 impl Dispatch<WlCallback, u64> for State {
     fn event(
         st: &mut Self,

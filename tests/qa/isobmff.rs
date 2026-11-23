@@ -2,9 +2,6 @@
 
 use std::{fs::File, io::Read, path::Path};
 
-/// ImageMagick without an encoder for the requested format exits 0 and writes the
-/// input's format under the requested name, so these outputs must carry the brand.
-/// `.heif` names no codec, so it accepts `mif1`, the generic HEIF image brand.
 const ISOBMFF_BRANDS: &[(&str, &[&[u8; 4]])] = &[
     ("avif", &[b"avif", b"avis"]),
     ("heic", &[b"heic", b"heix"]),

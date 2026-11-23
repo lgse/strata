@@ -7,8 +7,6 @@ use rune::{TextEdit, Tx};
 use super::index::SearchIndex;
 use super::matching::{Matches, Prepared, normalized};
 
-/// How long a jumped-to row's highlight shows, in seconds: full for [`FLASH_HOLD`], faded out
-/// by this (OWNER ruling; Strata highlights nothing).
 pub const FLASH_FOR: f64 = 1.5;
 /// How long the highlight shows at full strength before it fades, in seconds.
 pub const FLASH_HOLD: f64 = 0.6;
@@ -30,8 +28,6 @@ pub struct SettingsSearchState {
     prepared: Option<Prepared>,
     /// The normalised query `matches` answer, and whether there is one.
     query: String,
-    /// The field's text as last searched: any change of it is a new query, as Strata's every
-    /// text change opens the best page again, even one that normalises the same.
     searched: String,
     matches: Option<Matches>,
     /// The index revision `matches` were found in.
@@ -73,7 +69,6 @@ impl SettingsSearchState {
         &self.field
     }
 
-    /// The field, for a C21 `FieldMenu`'s edits. Call [`super::SettingsSearch::refresh`] after.
     pub fn edit_mut(&mut self) -> &mut TextEdit {
         &mut self.field
     }
@@ -116,8 +111,6 @@ impl SettingsSearchState {
         self.prepared.as_ref()
     }
 
-    /// Search the field's text in `index` if it or the index changed since the last search:
-    /// what to store, found without changing anything (the host's state holds the index too).
     pub(super) fn plan(&self, index: &SearchIndex) -> Option<Refresh> {
         let query = normalized(&self.field.text);
         let fresh = self
@@ -176,8 +169,6 @@ impl SettingsSearchState {
         tx.wake_at(tx.clock() + FLASH_FOR);
     }
 
-    /// Drop a highlight that has shown for [`FLASH_FOR`], asking for a wake when it is due.
-    /// True when the view changes.
     pub(super) fn tick_flash(&mut self, now: f64, tx: &mut Tx) -> bool {
         let Some(flash) = &self.flash else {
             return false;

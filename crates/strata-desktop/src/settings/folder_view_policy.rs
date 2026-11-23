@@ -1,27 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! What the per-folder views keep beside the defaults in `settings.toml`: which folder is
-//! remembered, where a changed value is kept, and what a new default prunes. Both interfaces
-//! use it, by the owner's ruling of 2026-11-12 (`docs/rune/parity/owner.md`, B2): the GTK
-//! manager's methods in `src/ui/preferences/folder_view_settings.rs` wrap it with their store,
-//! bindings and saves, and `strata-app`'s `folder_views` with its own.
-//!
-//! The functions read and change [`Preferences`] and say what follows for the folders' views,
-//! without holding the views: a caller reads its store only for a folder this says is
-//! remembered, as the GTK manager loads its store only then. Saving `settings.toml` and
-//! scheduling the views' write stay the caller's.
-//!
-//! - **The gate.** A folder's view is read and written only while `remember_folder_views` is
-//!   on, and only for a location [`key_for_location`] keys ([`remembered_key`]).
-//! - **What is kept.** A size equal to the default is not stored, so the folder follows later
-//!   defaults; with folders' views off a changed size is the default ([`keep_icons_size`]).
-//! - **What a new default prunes.** A default changed while folders' views are remembered
-//!   drops the values that now equal it, and turning them back on drops those that came to
-//!   equal it meanwhile ([`Prune`]).
-//!
-//! The sort's policy is beside it, in [`super::folder_sort_policy`]; [`Prune`] prunes a sort
-//! when folders' views are remembered again.
-
 use crate::model::{Location, SortOptions};
 
 use super::{
@@ -33,8 +11,6 @@ use super::{
 #[cfg(test)]
 mod tests;
 
-/// The key `location`'s view is kept under: none while folders' views are not remembered,
-/// or for a location with no key.
 pub fn remembered_key(settings: &Preferences, location: &Location) -> Option<FolderKey> {
     if !settings.remember_folder_views {
         return None;
@@ -42,8 +18,6 @@ pub fn remembered_key(settings: &Preferences, location: &Location) -> Option<Fol
     key_for_location(location)
 }
 
-/// The size `location` shows at: its own, read through `own` only when it is remembered,
-/// else the default.
 pub fn icons_size_for(
     settings: &Preferences,
     location: Option<&Location>,
@@ -66,8 +40,6 @@ pub enum IconsSizeKept {
     Shown,
 }
 
-/// Where `size`, changed while `location` shows, is kept (`set_folder_icons_size`). It is
-/// held between 32 and 256.
 pub fn keep_icons_size(
     settings: &Preferences,
     location: Option<&Location>,
@@ -111,8 +83,6 @@ impl Prune {
     }
 }
 
-/// Sets the default size, held between 32 and 256 (`set_default_icons_size`): what to prune
-/// while folders' views are remembered.
 pub fn set_default_icons_size(settings: &mut Preferences, size: i32) -> Option<Prune> {
     let size = size.clamp(MIN_ICONS_THUMBNAIL_SIZE, MAX_ICONS_THUMBNAIL_SIZE);
     settings.icons_thumbnail_size = size;
@@ -121,8 +91,6 @@ pub fn set_default_icons_size(settings: &mut Preferences, size: i32) -> Option<P
         .then_some(Prune::IconsSize(size))
 }
 
-/// Turns folders' views on or off (`set_remember_folder_views`). Defaults changed while they
-/// were off can equal saved values, which are dropped when they are turned back on.
 pub fn set_remember_folder_views(settings: &mut Preferences, enabled: bool) -> Option<Prune> {
     settings.remember_folder_views = enabled;
     enabled.then(|| Prune::Defaults {

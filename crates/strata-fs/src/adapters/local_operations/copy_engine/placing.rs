@@ -18,8 +18,6 @@ pub(in crate::adapters::local_operations) struct Placing {
 }
 
 impl Placing {
-    /// Beneath `root`, `wanted` are the paths undo reverts; where the merge records all it
-    /// creates, `unwanted` are the overwritten paths undo leaves.
     pub(in crate::adapters::local_operations) fn new(
         root: PathBuf,
         wanted: HashSet<PathBuf>,

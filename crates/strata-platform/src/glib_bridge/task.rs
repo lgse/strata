@@ -21,11 +21,6 @@ pub enum TaskState {
     Stopped,
 }
 
-/// The output of a future run by [`Glib::spawn`], kept in app state and read in `poll`. The
-/// waker fires once when it lands or stops.
-///
-/// Dropping a pending task cancels it: its future is dropped on the GLib thread, which cancels
-/// the GIO call it awaits.
 #[must_use = "dropping a Task cancels it"]
 pub struct Task<T> {
     slot: Arc<Slot<T>>,
@@ -62,8 +57,6 @@ impl<T> Slot<T> {
     }
 }
 
-/// Carries a task's output to its [`Task`]. Dropped without delivering (the future panicked or
-/// was dropped at shutdown), it settles the task as stopped.
 pub(super) struct Delivery<T> {
     slot: Arc<Slot<T>>,
     waker: Waker,

@@ -8,8 +8,6 @@ fn parse(s: &str) -> String {
         .hex()
 }
 
-/// settings/themes: "A custom file with a GTK-only color form, such as 9-digit hex, loads with
-/// colors as `#rrggbb`, or `#rrggbbaa` when translucent".
 #[test]
 fn gtk_only_hex_forms_load_canonical() {
     assert_eq!(parse("#7a7a2af7f"), "#7aa2f7");
@@ -20,8 +18,6 @@ fn gtk_only_hex_forms_load_canonical() {
     assert_eq!(parse("#7aa2f780"), "#7aa2f780");
 }
 
-/// settings/themes: "A custom theme whose colors are written as `rgb()`, short hex, or color
-/// names keeps syntax colors in code previews": each form reads as the same colour.
 #[test]
 fn css_forms_name_the_same_colour() {
     for form in [
@@ -73,9 +69,6 @@ fn a_colour_reaches_rune_unchanged() {
     assert_eq!(c.hex(), "#7aa2f780");
 }
 
-/// settings/themes: "Loading a bundled theme whose catalog dim text misses those floors blends
-/// it toward its text color in 1/255 steps, stopping at the first that passes. Tokyo Night's
-/// #737aa2 loads as #767da6."
 #[test]
 fn readable_stops_at_the_first_step_that_passes_as_strata_does() {
     let hex = |s| Rgba8::parse(s).expect("parses");

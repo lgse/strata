@@ -1,24 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The gallery page for C21 Context menus: its scenes, demo state, view and key and poll
-//! hooks. Scene names start with `c21-` and end in `-light` or `-dark`.
-//!
-//! Work package: `docs/rune/work/phase-1-leaves/C21-context-menus.md`.
-//!
-//! The page is a stand-in pane over a fake Documents folder (40 entries), with a search field
-//! over it. The page plays Strata's part: it builds each menu's model from
-//! the target (an item, a multi-selection, the background), as Strata's policy would, and
-//! writes what it heard to the status line (`c21-status`).
-//!
-//! - A right-click on an entry or on empty space opens its menu at the press (C1b's intent).
-//! - Menu or Shift+F10 in the list opens it at the cursor's entry (C21's `MenuKeys` around
-//!   C1c's keyboard), or the background menu with the cursor unselected.
-//! - The search field has C21's text menu through its own `on_secondary_press`.
-//! - F2 (or a slow second click) opens C5's rename editor on the cursor's entry. Its own
-//!   secondary press sends `RenameIntent::FieldMenu { id, at }`, and the page answers it as a
-//!   host does: `RenameState::menu_opened` and the field menu, `menu_closed` from the menu's
-//!   `on_close`, and `FieldMenu::check` from the poll, so a menu whose edit ended closes.
-
 use rune::{Cx, El, Key, KeyEvent, TextEdit, Tx, col, row, text, text_input};
 use strata_components::collection::element::{Collection, CollectionState, Controllers, Intent};
 use strata_components::context_menu::{
@@ -42,11 +23,9 @@ pub const FIELD_MENU: &str = "c21-field-menu";
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Field {
     Search,
-    /// C5's rename editor, while an edit is open.
     Rename,
 }
 
-/// C21's demo state, held in `Gallery::c21`.
 pub struct Demo {
     pub listing: ListSource,
     pub coll: CollectionState,
@@ -54,7 +33,6 @@ pub struct Demo {
     pub menu: ContextMenuState,
     pub fields: FieldMenuState<Field>,
     pub search: TextEdit,
-    /// C5's editor's state.
     pub rename: RenameState,
     /// What the page heard last.
     pub status: String,
@@ -218,7 +196,6 @@ impl Demo {
         }
     }
 
-    /// The list asked for a menu (C1b's press, or C21's keys).
     fn heard(&mut self, intent: Intent) {
         if let Intent::ContextMenu { target, anchor } = intent {
             let target = target.map_or(MenuTarget::Background, MenuTarget::Entry);
@@ -250,7 +227,6 @@ impl Demo {
         );
     }
 
-    /// Opens C5's editor on entry `id` and reveals its row.
     fn begin_rename(&mut self, id: EntryId, tx: &mut Tx) {
         let Some(index) = self.listing.index_of(id) else {
             return;
@@ -261,7 +237,6 @@ impl Demo {
         let _ = polled.intents;
     }
 
-    /// What C5's editor asked, but its field menu: the status line says.
     fn renamed(&mut self, intent: &RenameIntent) {
         let old = self.name_of(intent.id());
         self.status = match intent {
@@ -462,7 +437,6 @@ fn collection() -> Collection<Gallery> {
     )
 }
 
-/// C5's editor. Its field menu is C21's: the host opens it for `RenameIntent::FieldMenu`.
 fn rename_editor() -> RenameEditor<Gallery> {
     RenameEditor::new(
         |g: &Gallery| &g.c21.rename,
@@ -517,7 +491,6 @@ fn field_menu() -> FieldMenu<Gallery, Field> {
         g.c21.status = format!("{f:?} now reads \"{text}\"");
     })
     .on_close(|g: &mut Gallery, f| {
-        // C5's `menu_closed`: the field losing the keyboard ends the edit again.
         if f == Field::Rename {
             let _ = g.c21.rename.menu_closed();
             g.c21.status = "The rename's field menu closed".to_owned();
@@ -590,8 +563,6 @@ pub fn view(g: &Gallery, cx: &mut Cx<Gallery>) -> El {
     rune_kit::root(page, layer)
 }
 
-/// F2: C5's editor on the cursor's entry, as Strata binds it (the field takes F2 itself
-/// while it has the keyboard).
 pub fn on_key(g: &mut Gallery, key: &KeyEvent, tx: &mut Tx) -> bool {
     let m = key.mods;
     let plain = !(m.ctrl || m.alt || m.shift || m.logo || m.cmd);
@@ -606,14 +577,12 @@ pub fn on_key(g: &mut Gallery, key: &KeyEvent, tx: &mut Tx) -> bool {
 
 pub fn poll(g: &mut Gallery, t: f64, tx: &mut Tx) -> bool {
     g.c21.clock = t;
-    // C5's poll: the edit ends on a blur, or its row leaving the view or the listing.
     let polled = g.c21.rename.tick(SCOPE, &g.c21.listing, &g.c21.coll);
     let mut changed = polled.changed;
     for intent in &polled.intents {
         g.c21.renamed(intent);
         changed = true;
     }
-    // A field menu whose field went (the edit ended) closes, and tells C5's `menu_closed`.
     changed |= field_menu().check(g);
     // The keyboard-anchor scene opens as MenuKeys opens, once the list has laid out.
     let vp = g.c21.coll.viewport();

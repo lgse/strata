@@ -22,8 +22,6 @@ impl Window for Fake {
 
 type Queued = Arc<Mutex<Vec<Box<dyn FnOnce() + Send>>>>;
 
-/// An app: its turns queue until [`App::run`], as `AppHandle::update_if`'s do. A closed app
-/// never runs them.
 #[derive(Clone)]
 struct App {
     window: Fake,
@@ -81,8 +79,6 @@ fn attached(apps: &[&App]) -> Arc<Windows<Fake>> {
     w
 }
 
-/// B1: the first window to attach closes; a round still reaches the other, and every round
-/// after it too, while the closed one holds the single turn it was given.
 #[test]
 fn a_round_reaches_a_live_window_after_the_first_closes() {
     let (first, second) = (App::new("first"), App::new("second"));
@@ -149,10 +145,6 @@ fn a_hidden_window_whose_turns_run_is_kept() {
     assert_eq!(w.len(), 2);
 }
 
-/// P4's review 2, should-fix A: Rune orders one app's updates, not one app's against
-/// another's, so the live window's app can run three rounds on its own wakes before the
-/// hidden window's app runs its first. The hidden window is set aside then, but its late turn
-/// brings it back, and the rounds after reach it again.
 #[test]
 fn a_hidden_window_whose_turn_runs_after_three_later_rounds_is_kept() {
     let (hidden, live) = (App::new("hidden"), App::new("live"));
@@ -172,8 +164,6 @@ fn a_hidden_window_whose_turn_runs_after_three_later_rounds_is_kept() {
     assert_eq!(hidden.queued(), 1);
 }
 
-/// The windows set aside are bounded: beyond [`DORMANT`] the oldest go, and a turn of theirs
-/// that runs after brings nothing back. The newest still come back.
 #[test]
 fn closed_windows_set_aside_beyond_the_bound_are_dropped() {
     let closed: Vec<App> = (0..=DORMANT)

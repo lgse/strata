@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! What GLib logged as a warning, a critical or an error, kept for the QA mode: each reply
-//! reports them, and a run fails on any. Both interfaces use it, since GIO stays under both.
-
 use std::sync::Mutex;
 
 static PENDING: Mutex<Vec<String>> = Mutex::new(Vec::new());

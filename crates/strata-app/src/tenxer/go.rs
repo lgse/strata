@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! 10xer's `g` chord targets (`gg`, `gf`, `g+`/`g-`, places and visible pins), ported from
-//! `src/ui/window/keyboard/chords.rs` and `src/ui/browser/file_commands.rs`.
-
 use std::{path::PathBuf, rc::Rc};
 
 use glib::UserDirectory;
@@ -162,8 +159,6 @@ pub(super) fn complete(app: &mut App, press: &KeyPress, tx: &mut Tx) -> bool {
     true
 }
 
-/// `open_checked` (`src/ui/window/launch.rs`): checks local folder existence before navigating,
-/// flashing `missing` if it is gone.
 fn open_checked(app: &mut App, location: Location, missing: String) {
     shell::publish(app);
     let browser: Rc<Browser> = app.browser.clone();

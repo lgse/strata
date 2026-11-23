@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Entry ids. strata-components names an entry by an `EntryId` that is unique across every
-//! column and never names another entry later; Strata names one by its `Location`. One table
-//! turns the second into the first, and keeps every pair for the life of the process.
-
 use std::{
     cell::RefCell,
     collections::{HashMap, HashSet},
@@ -77,18 +73,10 @@ struct Table {
     issued: u64,
 }
 
-/// The table. The shell makes one for the window and hands it to every part
-/// ([`super::Setup`]): a view's listener names the rows it copies with it, and its adapter the
-/// folder it shows.
-///
-/// A rename gives an entry a new location, and so a new id: `Browser` says which entry is
-/// selected after one, and the adapter writes that to the view.
 #[derive(Clone, Default)]
 pub(crate) struct Ids(Rc<RefCell<Table>>);
 
 impl Ids {
-    /// The id the entry at `location` has been given, if it has been: a reader that must not
-    /// issue one, such as the QA backend, asks this.
     #[cfg(feature = "qa")]
     pub(crate) fn known(&self, location: &Location) -> Option<EntryId> {
         self.0.borrow().by_location.get(location).copied()
@@ -107,8 +95,6 @@ impl Ids {
         f(&mut IdBatch { table: &mut table })
     }
 
-    /// Issues an id for a virtual row with no [`Location`] (such as an archive preview member),
-    /// unique across the process.
     pub(crate) fn fresh(&self) -> EntryId {
         let mut table = self.0.borrow_mut();
         table.issued += 1;
@@ -120,8 +106,6 @@ impl Ids {
         self.0.borrow().by_location.len()
     }
 
-    /// Drops cached `Location -> EntryId` mappings whose ids are not in `keep`, shrinking the
-    /// table while leaving the monotonic id counter untouched so dropped ids are never reused.
     pub(crate) fn retain_ids(&self, keep: &HashSet<EntryId>) -> usize {
         let mut table = self.0.borrow_mut();
         let before = table.by_location.len();

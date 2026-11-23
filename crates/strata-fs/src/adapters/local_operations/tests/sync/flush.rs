@@ -19,8 +19,6 @@ fn copy_request(id: u64, destination: &Path, sources: &[PathBuf]) -> PasteReques
     request(id, destination, items, false)
 }
 
-/// Pastes, dropping the operation right after the first event `cancel_on`
-/// matches is recorded.
 fn paste_cancelled_on(
     request: PasteRequest,
     cancel_on: impl Fn(&OperationEvent) -> bool + 'static,
@@ -44,8 +42,6 @@ fn paste_cancelled_on(
     (handle, events.take())
 }
 
-/// The transfer ended as `ended` allows, never as pasted, with the photo
-/// written and flushed to the device.
 fn assert_photo_flushed_unpasted(
     events: &[OperationEvent],
     ended: fn(Option<&OperationEvent>) -> bool,
@@ -75,8 +71,6 @@ fn warns_of_pending_writes(event: Option<&OperationEvent>) -> bool {
         if message.contains("writes may still be pending") && message.contains("wait for safe eject"))
 }
 
-/// Stops a transfer into `destination` with nothing done, as a failure
-/// reports it, and returns what it emitted.
 fn stop_with(
     destination: PathBuf,
     id: u64,

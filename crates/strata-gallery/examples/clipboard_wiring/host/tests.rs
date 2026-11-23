@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The demo host, headless: the clipboard keys reach it past the list, and where a paste
-//! goes. (What crosses processes is in `tests/x3.rs`, under W3.)
-
 use std::path::PathBuf;
 
 use rune::{Env, Key, KeyEvent, Mods, Runtime};
@@ -91,7 +88,6 @@ fn the_clipboard_keys_reach_the_host_past_the_focused_list() {
     );
     assert_eq!(rt.state.selected(), [rt.state.root.join("notes.txt")]);
     take_logged();
-    // With no compositor P2 isn't attached: each key reached the host, which asked P2.
     for (c, ev) in [
         ('c', "copy-error"),
         ('x', "copy-error"),
@@ -147,8 +143,6 @@ fn a_folder_reached_through_a_link_is_shown_resolved_and_a_link_out_of_the_root_
     std::os::unix::fs::symlink(&outside, root.join("out")).expect("a link out");
     rt.update(|w, tx| w.refresh(tx));
     rt.frame(0.1);
-    // Shown under the paths a paste reports moved (fsys resolves a source's folder), so a
-    // cut made here leaves the clipboard when it moves.
     click(&mut rt, "link");
     press(&mut rt, Key::Enter, Mods::default());
     assert_eq!(rt.state.folder, root.join("Documents"));

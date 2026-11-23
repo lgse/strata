@@ -1,15 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The `--qa --portal` host: the portal service on the session bus the runner provides, and
-//! one offscreen chooser per request it hears. It starts with no window, as the GTK backend's
-//! `Host::Portal` does: `adopt` waits for a chooser with the title, and the steps after it act
-//! on that chooser until it closes.
-//!
-//! The service's handlers only queue ([`PortalInbox`]); a turn of this host takes the queue
-//! after GLib's dispatch returns. Each chooser is an `Rc<Staged>` that a step clones before it
-//! acts, so a step that finishes the request, which closes the chooser, never drops the host
-//! it runs on.
-
 use std::{
     cell::{Cell, RefCell},
     rc::Rc,
@@ -37,7 +27,6 @@ use crate::{
     startup::{self, UiThread},
 };
 
-/// The QA runner's screen (Xvfb at 1440x900), which the GTK chooser sizes itself against.
 const SCREEN: (i32, i32) = (1440, 900);
 const NO_CHOOSER: &str = "no chooser window is open";
 

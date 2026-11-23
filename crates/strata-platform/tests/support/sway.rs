@@ -1,18 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! A nested headless sway, with Xwayland, and its IPC.
-//!
-//! Traps found by S1, S2 and S3 under headless sway (docs/rune/testing.md):
-//!
-//! - `/usr/bin/sway` may carry `cap_sys_nice` and go realtime. Where `RLIMIT_RTTIME` is 0 the
-//!   kernel kills it at once, so it starts as `setpriv --no-new-privs sway`, which drops the
-//!   file capability.
-//! - sway 1.9 refuses to start when it sees NVIDIA's kernel module (a container on an NVIDIA
-//!   host) unless given `--unsupported-gpu`; sway 1.12 accepts the flag too.
-//! - `swaybg_command -`: no background client.
-//! - Xwayland takes the next free display in the shared `/tmp/.X11-unix`; sway puts it in
-//!   `DISPLAY` for its children, so the harness asks sway for it.
-
 use std::fs::File;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
@@ -31,8 +18,6 @@ pub struct Sway {
 }
 
 impl Sway {
-    /// Starts sway and waits for its sockets (and Xwayland's display). `spawned` hears sway's
-    /// pid at once, so the watchdog knows it from the start.
     pub(super) fn start(
         dir: &Path,
         logs: &Path,
@@ -113,8 +98,6 @@ impl Sway {
         sway
     }
 
-    /// sway sets `DISPLAY` for what it runs once Xwayland's socket exists (at start, even when
-    /// Xwayland itself starts on first use), so ask a child of sway for it.
     fn x_display(&self, dir: &Path) -> String {
         let file = dir.join("display");
         self.command(&format!("exec printf %s \"$DISPLAY\" > {}", file.display()));

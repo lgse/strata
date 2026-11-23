@@ -1,38 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The clipboard wiring demo (X3): a C1e list over a real folder, whose Ctrl+C, Ctrl+X and
-//! Ctrl+V go through strata-platform's clipboard (P2) in the file managers' formats, with
-//! C19's Files on clipboard badge following the clipboard. `adapter.rs` is the glue an app
-//! copies as it is.
-//!
-//! ```text
-//! cargo run -p strata-gallery --example clipboard_wiring -- --root DIR [--apply] [--title T]
-//! ```
-//!
-//! - **Ctrl+C, Ctrl+X** on the selection: `x-special/gnome-copied-files`, `text/uri-list` and
-//!   `application/x-kde-cutselection`, no text, as Strata. Copied rows show the copy icon,
-//!   cut rows scissors and the cut fade. Another app's copy clears every mark.
-//! - **Ctrl+V** pastes into the one folder selected, else the folder shown: the files (moved
-//!   for a GNOME `cut`, a KDE flag `1`, or exactly what we cut), else an image as
-//!   `image.png`. A copy into its own folder takes `name (1).ext`; a cut there does nothing;
-//!   a name taken is kept beside (Keep Both, logged `conflict`). A cut's moved entries leave
-//!   the clipboard.
-//! - **The badge** shows while the clipboard holds a non-empty file list, from any app.
-//! - Enter or a double click opens a folder, a link to one shown as the folder it resolves to
-//!   (one out of `--root` doesn't open); Alt+Up and Backspace go up (not above `--root`).
-//! - Every paste is logged. `--apply` does it, inside `--root` only: a source or destination
-//!   outside it refuses the whole paste. One that fails partway stops there (`failed` in its
-//!   `paste` line) and keeps what it did: its moves still leave the cut.
-//!
-//! Test-only flag: `--as-if-no-data-control` makes P2 behave as on a compositor without
-//! data control (mutter): the data device, whose writes take the key's serial. For the
-//! session tests (`tests/x3.rs`); not for use.
-//!
-//! Commands arrive as JSON lines on stdin: `{"cmd":"open","path":rel}`,
-//! `{"cmd":"select","names":[…]}`, `{"cmd":"state"}`, `{"cmd":"release"}` (let go of our
-//! copy, Strata's unyank), `{"cmd":"quit"}`. What happens goes to stdout as JSON lines
-//! (`{"ev":…}`).
-
 mod adapter;
 mod fsys;
 mod host;
@@ -79,7 +46,6 @@ pub fn take_logged() -> Vec<Value> {
 
 static SHUT_DOWN: AtomicBool = AtomicBool::new(false);
 
-/// P2's shutdown, once: in `on_quit` and in the last (only) window's `on_close`.
 fn shutdown(why: &str) {
     if SHUT_DOWN.swap(true, Ordering::SeqCst) {
         return;

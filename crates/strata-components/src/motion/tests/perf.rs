@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Frame costs while the effects play, against a frame at rest (ignored; run in release:
-//! `cargo test -p strata-components --release --lib motion::tests::perf -- --ignored --nocapture`).
-
 use std::time::Instant;
 
 use super::*;

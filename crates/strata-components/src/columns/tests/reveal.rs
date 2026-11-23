@@ -1,10 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The strip's reveal with the look's animations off, in a host that leaves the system's
-//! reduced motion alone: Strata's own animations switch is not the desktop's reduced motion,
-//! and under Rune's reduced motion every glide lands at once anyway (`scroll_to_with` snaps), so
-//! only a host like this one shows the view choosing the instant scroll itself.
-
 use rune::{Cx, El, Env, Key, KeyEvent, Mods, Runtime, Tx, col};
 use strata_kit::look::Look;
 
@@ -79,8 +74,6 @@ fn view(s: &Host, _: &mut Cx<Host>) -> El {
     col().size(W, 400.0).child(view_of().build(s))
 }
 
-/// Three columns in a 500 pt strip, the first active, the strip at its start; the look's
-/// animations as `animations`, the system's reduced motion off.
 fn host(animations: bool) -> Runtime<Host> {
     let mut look = Look::fallback(false);
     look.animations = animations;
@@ -111,8 +104,6 @@ fn host(animations: bool) -> Runtime<Host> {
     rt
 }
 
-/// The strip's offset over the frames after column 2 becomes active (900 points of columns in
-/// a 500 point strip: the strip goes to 400).
 fn offsets_after_reveal(animations: bool) -> Vec<f32> {
     let mut rt = host(animations);
     assert_eq!(rt.state.columns.strip_offset(), 0.0);
@@ -130,8 +121,6 @@ fn offsets_after_reveal(animations: bool) -> Vec<f32> {
 
 #[test]
 fn with_animations_off_the_reveal_lands_at_once() {
-    // browser/view-modes/columns: A keyboard move reveals a column clipped by up to 4 px fully
-    // (with animations off, at once: the strip makes no glide).
     let off = offsets_after_reveal(false);
     assert_eq!(off[0], 400.0, "{off:?}");
     let on = offsets_after_reveal(true);
@@ -141,8 +130,6 @@ fn with_animations_off_the_reveal_lands_at_once() {
     );
 }
 
-/// The strip's offset after Down in a clipped third column that became active without a
-/// reveal, with the host's hook taking the key or leaving it to the column.
 fn offset_after_down(host_takes: bool) -> (f32, Option<EntryId>) {
     let mut rt = host(false);
     rt.update(|s, tx| {
@@ -168,8 +155,6 @@ fn offset_after_down(host_takes: bool) -> (f32, Option<EntryId>) {
     (rt.state.columns.strip_offset(), cursor)
 }
 
-/// Strata reveals a column when its cursor or the active column changes, not for a key
-/// (`reveal_column` in `strip_scroll.rs`), so a key the host's hook took leaves the strip.
 #[test]
 fn a_key_the_hosts_hook_took_moves_no_cursor_and_does_not_reveal_the_column() {
     let (offset, cursor) = offset_after_down(false);

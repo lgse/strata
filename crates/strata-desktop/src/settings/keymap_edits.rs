@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Edits Settings makes to [`KeymapOverrides`], and the start-up log of conflict findings
-//! for keys a saved file adds: `set_bindings`, `reset_binding`, `reset_map` and
-//! `report_findings` of `src/ui/preferences/keymap.rs`, shared between both interfaces.
-
 use std::{collections::BTreeMap, path::Path};
 
 use super::KeymapOverrides;
@@ -20,9 +16,6 @@ fn entries_mut(overrides: &mut KeymapOverrides, map: Map) -> &mut BTreeMap<Strin
 }
 
 impl KeymapOverrides {
-    /// Stores `bindings`, primary first, as `map`'s entry for `command`. Bindings are
-    /// normalized and deduplicated in order; the shipped bindings remove the override,
-    /// and an empty list unbinds the command.
     pub fn set_bindings(&mut self, map: Map, command: Command, bindings: Vec<Binding>) {
         let mut unique = Vec::with_capacity(bindings.len());
         for binding in bindings.into_iter().map(Binding::normalized) {
@@ -47,15 +40,11 @@ impl KeymapOverrides {
         entries_mut(self, map).remove(command.id());
     }
 
-    /// Restores every known command of `map`; entries for ids this version does not
-    /// know stay saved.
     pub fn reset_map(&mut self, map: Map) {
         entries_mut(self, map).retain(|id, _| Command::parse(id).is_none());
     }
 }
 
-/// Logs what the conflict checker finds about the keys the file's entries add. The
-/// entries still apply.
 pub fn report_keymap_conflicts(keymap: &Keymap, file: &Path, policy: Policy) {
     let file = file.display();
     for map in [Map::Default, Map::Tenxer] {

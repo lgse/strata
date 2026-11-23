@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Provider subprocess state machine, request tracking, badge aggregation, and outcome
-//! formatting (`src/ui/file_providers.rs`), decoupled from `App` via [`Effect`].
-
 use std::{
     collections::HashMap,
     sync::mpsc,

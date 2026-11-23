@@ -1,11 +1,7 @@
 // SPDX-License-Identifier: MIT
 
-//! Swatches as data: the rows the host passes (theme colours, recent colours) and the helper
-//! that keeps a recent-colours list.
-
 use super::value::Srgba;
 
-/// How many recent colours GTK's chooser keeps (`gtkcolorchooserwidget.c`, custom colours).
 pub const RECENT_MAX: usize = 8;
 
 /// One colour to pick, with its accessible name. Without a label it is named by its hex.
@@ -43,9 +39,6 @@ impl SwatchRow {
     }
 }
 
-/// Puts `color` first in `recent`, dropping an earlier copy of it and anything past `max`, as
-/// GTK's chooser keeps its custom colours. The host stores the list and calls this when a
-/// picker closes having changed its colour (`ColorPicker::on_close`).
 pub fn remember(recent: &mut Vec<Srgba>, color: Srgba, max: usize) {
     recent.retain(|&c| c != color);
     recent.insert(0, color);

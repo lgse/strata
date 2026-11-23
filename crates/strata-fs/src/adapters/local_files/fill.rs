@@ -436,8 +436,6 @@ fn apply_media_metadata(
         .unwrap_or(MetadataValue::Unavailable);
 }
 
-/// Icon details for one native file that has none cached; `Break` ends the fill with
-/// whether it finished in time.
 struct DetailProbe<'a> {
     path: &'a Path,
     cancellable: &'a gio::Cancellable,

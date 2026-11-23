@@ -1,26 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The gallery page for C5 InlineRenameEditor: its scenes, demo state, view and key and poll hooks.
-//! Scene names start with `c5-` and end in `-light` or `-dark`.
-//!
-//! The page is a host, as Strata will be: a C1e collection (C1b, C1c and C1d installed) of
-//! a fake folder, with the editor in its rename slot. F2 renames the cursor's entry, as does a
-//! slow second click on its name. The host's parts:
-//!
-//! - **The validator** ([`validate`]): a stand-in for Strata's `validate_basename` and
-//!   `TypedPath::parse`, with Strata's messages. **Remote** (Ctrl+T) makes the folder
-//!   non-local, where a `/` is refused instead of being a path.
-//! - **Tab**: a [`By::Next`] or [`By::Previous`] ending moves the cursor to the neighbour and
-//!   opens the editor there; at either end it only commits.
-//! - **The log** (`c5-log-0`, newest first, to `c5-log-2`): what the editor asked.
-//! - **The view mode** (`c5-mode`, Ctrl+2): a stand-in shortcut the host leaves alone while
-//!   the field has the keyboard (`RenameState::has_keyboard`), as Strata's Ctrl+1–3.
-//! - **Go to Downloads** (`c5-go`): navigation, which commits an open edit first.
-//! - **Search** (`c5-other`): another field, so the keyboard can move to it.
-//! - **List** (Ctrl+L): the same editor inside C4's ListTable, in its primary column.
-//!
-//! Work package: `docs/rune/work/phase-1-leaves/C5-inline-rename.md`.
-
 use rune::{Align, Cx, El, Key, KeyEvent, TextEdit, Tx, col, row, text, text_input};
 use rune_kit::{Button, ButtonVariant};
 use strata_components::collection::element::{Collection, CollectionState, Controllers, Intent};
@@ -40,7 +19,6 @@ pub const SCOPE: &str = "c5-files";
 /// The ListTable's key, for the `c5-list` scenes.
 pub const TABLE: &str = "c5-table";
 
-/// C5's demo state, held in `Gallery::c5`.
 pub struct Demo {
     pub listing: ListSource,
     pub coll: CollectionState,
@@ -57,7 +35,6 @@ pub struct Demo {
     pub other: TextEdit,
     /// The stand-in view mode, which Ctrl+2 toggles.
     pub mode: u8,
-    /// The editor in C4's ListTable instead of the plain collection.
     pub list: bool,
     pub table: ListTableState,
     pub layout: ColumnLayout,
@@ -144,8 +121,6 @@ fn downloads() -> Vec<ListEntry> {
         .collect()
 }
 
-/// The host's rules for a name: a stand-in for Strata's `validate_basename` and
-/// `TypedPath::parse`, with Strata's messages. Policy, not the editor's.
 pub fn validate(remote: bool, kind: EntryKind, name: &str) -> Option<String> {
     let says = |m: &str| Some(m.to_owned());
     if name.trim().is_empty() {
@@ -214,8 +189,6 @@ impl Demo {
         self.coll.reveal(self.scope(), &self.listing, index, tx);
     }
 
-    /// F2: renames the cursor's entry, unless the field has the keyboard (it took F2 then,
-    /// as Strata's does).
     fn rename_cursor(&mut self, tx: &mut Tx) {
         if self.rename.has_keyboard() {
             return;
@@ -282,8 +255,6 @@ impl Demo {
         self.begin(next_id, tx);
     }
 
-    /// Another folder: an open edit commits first, as Strata's click-away does (the blur
-    /// would come a frame after the listing changed).
     fn go(&mut self, tx: &mut Tx) {
         let polled = self.rename.commit(By::Host);
         self.heard_all(polled, tx);
@@ -459,8 +430,6 @@ fn remote(g: &mut Gallery, dark: bool) {
     editing(g, dark, 3, |d| d.remote = true);
 }
 
-/// Golden scenes: each gets an accessibility and a PNG golden. Each calls
-/// `g.open("c5", dark)`, then fills in `g.c5`.
 pub const SCENES: &[Scene] = &[
     ("c5-file-light", |g| file(g, false)),
     ("c5-file-dark", |g| file(g, true)),
@@ -577,8 +546,6 @@ pub fn view(g: &Gallery, cx: &mut Cx<Gallery>) -> El {
     rune_kit::root(page, layer)
 }
 
-/// Keys no focused element took while this page is open: shortcuts, and keys with nothing
-/// focused. True consumes the key; false lets the gallery's Escape go back to the index.
 pub fn on_key(g: &mut Gallery, key: &KeyEvent, tx: &mut Tx) -> bool {
     let d = &mut g.c5;
     // The field's keys are its own: the host's shortcuts wait while it has the keyboard.
@@ -597,8 +564,6 @@ pub fn on_key(g: &mut Gallery, key: &KeyEvent, tx: &mut Tx) -> bool {
     true
 }
 
-/// Runs at the start of every frame while this page is open, with the clock in seconds:
-/// the editor's tick, which hears a blur, a row scrolled out and the listing changing.
 pub fn poll(g: &mut Gallery, t: f64, tx: &mut Tx) -> bool {
     let d = &mut g.c5;
     d.clock = t;

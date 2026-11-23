@@ -36,8 +36,6 @@ fn write_letter_pdf(path: &Path, draw: impl FnOnce(&cairo::Context)) {
     surface.finish();
 }
 
-/// Renders `page_spec` through the sandbox helper and reads the PNG plus the
-/// named sidecar before removing every fixture file.
 fn render_pdf_page(
     path: PathBuf,
     page_spec: &str,

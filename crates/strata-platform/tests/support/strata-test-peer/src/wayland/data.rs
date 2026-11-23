@@ -1,10 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Selections through `wl_data_device` and data control, and drag and drop.
-//!
-//! Data control binds `ext_data_control_v1` where the compositor has it (wlroots 0.19 and
-//! later) and `zwlr_data_control_v1` otherwise (sway 1.9 on Ubuntu 24.04).
-
 use std::io::Read;
 use std::os::fd::{AsFd, BorrowedFd, OwnedFd};
 use std::sync::Mutex;
@@ -424,8 +419,6 @@ impl Dispatch<WlDataDevice, ()> for St {
     }
 }
 
-/// Reads a drop on a thread (every type it reads, in order), then finishes the offer and
-/// reports what arrived.
 fn read_drop(d: Drop, conn: Connection) {
     if d.mime.is_none() {
         d.offer.destroy();

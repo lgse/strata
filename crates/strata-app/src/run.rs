@@ -1,25 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Running a program: "Run this program?", the confirmation GTK asks before it starts an
-//! executable file (`confirm_run_program` in `src/ui/browser/desktop.rs`), and the start.
-//!
-//! - **What asks.** Opening a regular local executable file when no default application is
-//!   registered for its type ([`crate::open_with`] hands `BrowserEvent::OpenRequested` to
-//!   [`confirm`] once `resolve_default_application` finds none), and the entry menu's Run row,
-//!   shown for one regular executable entry (`entry_is_regular_executable`).
-//! - **The dialog.** GTK's message dialog on C15's [`StrataDialog`]: the Terminal icon in a
-//!   danger box, "Run this program?", the file's name under it, and why it asks. Cancel and
-//!   Run, with Run focused when it opens. Escape, a click outside, the close button and
-//!   Cancel run nothing. Return presses the focused button only. The keyboard goes back to the
-//!   listing when it closes.
-//! - **The start** (`run_program`). Regular binaries start in their own folder, with no input
-//!   and their output dropped, under the environment Strata was started with
-//!   (`child_environment::restore_command`); shell scripts (`.sh`) start in the resolved
-//!   terminal emulator ([`crate::terminal`]) with an exit-status prompt (`program_command`).
-//!   Each starts on a thread of its own, which then waits for it, so it never lingers as a
-//!   zombie (`spawn_reaped`). If it cannot start, "Unable to run program" says why, once the
-//!   thread has answered.
-
 use std::{
     ffi::OsStr,
     path::{Path, PathBuf},
@@ -141,9 +121,6 @@ fn failed(app: &mut App, detail: String) {
     error_dialog::show(app, Error::new(tr("Unable to run program"), detail));
 }
 
-/// `program_command` and `spawn_reaped`: the program (and, for `.sh` scripts, terminal
-/// resolution) starts on a thread of its own, which then waits for it; a start that fails
-/// comes back through `later`.
 fn start(path: PathBuf, later: Later<App>) {
     crate::terminal::spawn_reaped(
         later,
@@ -231,7 +208,6 @@ fn build(app: &App, frame: &mut Frame<'_, App>) -> Option<rune::El> {
     .secondary(tr("Cancel"), cancelled)
     .primary(tr("Run"), confirmed)
     .initial_focus(Focus::Primary)
-    // GTK's Return presses the focused button only: with nothing focused it runs nothing.
     .default_button(false)
     .close_label(tr("Close dialog"))
     .width(MESSAGE_WIDTH);

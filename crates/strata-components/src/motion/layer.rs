@@ -17,10 +17,6 @@ pub const LAYER: &str = "c23-motion";
 
 type GhostFn<S> = Rc<dyn Fn(&S, u64, &Look) -> El>;
 
-/// The overlay the effects draw in. Mount it as the last child of the view's root: it pins
-/// itself to the whole window, takes no input and is hidden from assistive technology.
-///
-/// Used by: hosts (Strata's window, the gallery).
 pub struct MotionLayer<S> {
     get: Rc<dyn Fn(&S) -> &Effects>,
     ghost: Option<GhostFn<S>>,
@@ -35,9 +31,6 @@ impl<S: 'static> MotionLayer<S> {
         }
     }
 
-    /// How a dissolving row looks, for the token its [`Dissolve`](super::Dissolve) row
-    /// carries: its icon, label and selection fill at the row's size, as the collection drew
-    /// it. Fragments are pieces of it. Without one, fragments are flat shards.
     pub fn ghost(mut self, f: impl Fn(&S, u64, &Look) -> El + 'static) -> Self {
         self.ghost = Some(Rc::new(f));
         self
@@ -57,8 +50,6 @@ impl<S: 'static> MotionLayer<S> {
         }
         let [w, h] = cx.layout_size(LAYER).unwrap_or([0.0, 0.0]);
         let window = [0.0, 0.0, w, h];
-        // Rune's own motion is off: a matched pair would cross-fade in place, and live values
-        // ignore it, so nothing draws and every effect ends at its next ticks.
         let reduced = cx.is_reduced_motion();
         let mut out = Drawn::default();
         for f in &fx.flights {
@@ -85,8 +76,6 @@ fn shows<S>(rect: [f32; 4], window: [f32; 4], within: Option<&str>, cx: &Cx<S>) 
     clip.and_then(|c| intersect(c, rect)).is_some()
 }
 
-/// Whether the middle of `rect` shows in the window and, when given, in `within`: a target
-/// scrolled out of its viewport, or off the window, takes no flight.
 fn target_shows<S>(rect: [f32; 4], window: [f32; 4], within: Option<&str>, cx: &Cx<S>) -> bool {
     let mid = [rect[0] + rect[2] / 2.0, rect[1] + rect[3] / 2.0, 0.0, 0.0];
     let inside = |c: [f32; 4]| {
@@ -111,8 +100,6 @@ fn intersect(a: [f32; 4], b: [f32; 4]) -> Option<[f32; 4]> {
 #[derive(Default)]
 struct Drawn {
     els: Vec<El>,
-    /// The targets whose ring is drawn: flights into one target share its latest pulse, and
-    /// so its ring's key.
     rung: Vec<String>,
 }
 
@@ -218,8 +205,6 @@ fn dissolve_view<S>(
     window: [f32; 4],
     reduced: bool,
 ) -> Option<El> {
-    // A key's first layout read is `None` until the commit's layout re-runs the view, so the
-    // plan follows every run while the fragments mount, and holds once they play.
     if matches!(d.phase, dissolve::Phase::Mount { .. }) || d.plan.borrow().is_none() {
         let clip = match &d.within {
             Some(key) => cx.window_layout(key).and_then(|v| intersect(window, v)),

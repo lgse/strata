@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The adapter's mappings, headless: what a drag of files offers, byte for byte, and how W1's
-//! actions and hovers map onto P1's.
-
 use strata_components::contract::EntryId;
 
 use super::*;
@@ -14,9 +11,6 @@ fn payload(uris: &[&str]) -> DragPayload {
     )
 }
 
-/// operations/drag-and-drop: dragged items are offered as a file list other applications read:
-/// `text/uri-list` (CRLF after each), GNOME's (`copy`, then each URI after a newline, none
-/// at the end) and KDE's cut flag (`0`), as GTK and P2's clipboard write them.
 #[test]
 fn the_three_file_formats_are_written_as_gtk_writes_them() {
     let uris = vec!["file:///a/b%20c.txt".to_owned(), "file:///d".to_owned()];
@@ -35,7 +29,6 @@ fn the_three_file_formats_are_written_as_gtk_writes_them() {
     assert!(!item.is_empty());
 }
 
-/// W1's actions map onto P1's one for one, both ways; ask goes to the source as a copy.
 #[test]
 fn actions_map_both_ways_and_ask_is_offered_as_a_copy() {
     let all = DropActions::COPY | DropActions::MOVE | DropActions::LINK;
@@ -66,8 +59,6 @@ fn hovers_map_onto_w1s() {
     assert_eq!(hover_of_p1(Hover::Left), DropHover::Left);
 }
 
-/// The sentinel's end report: a drag that left every target and reached none by the next
-/// tick ended (dropped, cancelled or gone); one that moved to another target didn't.
 #[test]
 fn a_drag_ends_when_it_leaves_every_target_until_the_next_tick() {
     struct S(u32);
@@ -88,9 +79,6 @@ fn a_drag_ends_when_it_leaves_every_target_until_the_next_tick() {
 }
 
 mod perf {
-    //! What the P1 binder costs a scrolling collection against Rune's: a report, not a bar
-    //! (`cargo test -p strata-gallery --profile perf --example dnd_wiring -- --ignored perf`).
-
     use std::cell::RefCell;
     use std::time::Instant;
 
@@ -130,8 +118,6 @@ mod perf {
         rune::col().size(600.0, 800.0).child(c.build(s))
     }
 
-    /// The frame times of 600 wheel steps over 100,000 entries, every fifth a folder (each
-    /// with a zone), p50 and p95 in ms.
     fn scroll(p1: bool) -> (f64, f64) {
         WIRING.with(|w| *w.borrow_mut() = Some(Wiring::new(strata_platform::dnd::Dnd::new())));
         let src = ListSource::new(

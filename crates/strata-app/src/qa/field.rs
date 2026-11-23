@@ -1,15 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! A text field as the engine reads one: its name, what it holds, and where its caret and
-//! its selection are.
-//!
-//! The protocol counts a field in characters, as AT-SPI's text interface does and the GTK
-//! harness reports. On the focused field Rune exposes the selection's anchor and caret in
-//! UTF-8 bytes of its text (`ElementInfo::edit_range`), which gives character offsets across
-//! any line. For an unfocused field Rune's tree reports a line and a count of the clusters it
-//! shaped on that line (`é` written as a letter and a combining accent is one cluster and two
-//! characters), turned into characters over the first line's grapheme clusters.
-
 use strata_qa::FieldState;
 use unicode_segmentation::UnicodeSegmentation;
 
@@ -65,9 +55,6 @@ fn ends(seen: &Seen, text: &str) -> Option<(i32, i32)> {
     }
 }
 
-/// What the field `seen` holds. `None` for a node that is no field, and for an unfocused field
-/// whose caret the tree does not place: one on a later line, or with too much text for Rune to
-/// report its lines.
 pub(super) fn state(seen: &Seen, focused: bool) -> Option<FieldState> {
     if !is_one(&seen.role) {
         return None;

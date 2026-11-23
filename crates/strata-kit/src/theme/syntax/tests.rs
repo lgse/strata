@@ -27,8 +27,6 @@ fn kinds(look: &crate::look::Look) -> [rune::Color; 5] {
     ]
 }
 
-/// settings/themes: "In a custom file, each `syntax_*` key overrides one role; an omitted key
-/// keeps its color derived from accent and text."
 #[test]
 fn an_omitted_syntax_colour_follows_the_accent_and_a_set_one_holds() {
     let plain = parse_custom("plain", NO_SYNTAX).expect("loads");
@@ -55,8 +53,6 @@ fn an_omitted_syntax_colour_follows_the_accent_and_a_set_one_holds() {
     }
 }
 
-/// settings/themes: "Comments use the dim text color"; functions and the rest draw as text,
-/// as GtkSourceView's identifier style does.
 #[test]
 fn comments_take_dim_text_and_unstyled_kinds_take_text() {
     let t = bundled_theme("gruvbox-dark-hard").expect("bundled");
@@ -91,8 +87,6 @@ fn a_theme_with_every_syntax_colour_uses_them_as_written() {
     assert_eq!(kinds(&t.look()), written);
 }
 
-/// A user's `syntax.*` override, applied after the theme, reaches the scope roles; the
-/// syntect theme built from them (K1b) then colours code with it.
 #[test]
 fn scope_roles_follow_the_finished_look() {
     use crate::theme::syntax::{Role, SCOPES};
@@ -144,9 +138,6 @@ mod syntect_theme {
         to_syntect(r.color(look))
     }
 
-    /// The most specific selector wins, along the scope and down the stack, as syntect
-    /// matches; a scope no selector names keeps the default foreground, the look's text, so
-    /// C10a gives it no span.
     #[test]
     fn the_most_specific_selector_wins_and_unlisted_scopes_draw_as_text() {
         let look = bundled_theme("catppuccin-mocha").expect("bundled").look();
@@ -196,8 +187,6 @@ mod syntect_theme {
             ),
             (&["source.diff", "markup.inserted.diff"], Role::Inserted),
             (&["source.rust", "entity.name.function.rust"], Role::Text),
-            // css.lang: a class selector is an identifier, an id selector a statement, and
-            // an attribute selector's name a type; html.lang's attribute names stay types.
             (
                 &[
                     "source.css",
@@ -241,8 +230,6 @@ mod syntect_theme {
                 ],
                 Role::Type,
             ),
-            // go.lang lists `func`, `type`, `struct`, `var`, `const` and `interface` as
-            // keywords, and `map` and `chan` as types.
             (
                 &["source.go", "storage.type.keyword.function.go"],
                 Role::Keyword,
@@ -270,8 +257,6 @@ mod syntect_theme {
         assert!(wrong.is_empty(), "{wrong:#?}");
     }
 
-    /// Every [`SCOPES`] row parses into a theme item: `syntect_theme` skips a selector that
-    /// doesn't parse rather than failing.
     #[test]
     fn every_scope_row_becomes_a_theme_item() {
         let look = bundled_theme("nord").expect("bundled").look();

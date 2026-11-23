@@ -1,30 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The gallery page for C14b Viewers and archive preview: its scenes, demo state, view and key and
-//! poll hooks. Scene names start with `c14b-` and end in `-light` or `-dark`.
-//!
-//! Work package: `docs/rune/work/phase-3-views/C14b-viewers.md`.
-//!
-//! Each viewer sits in C9's preview drawer beside a fake listing, so the header's busy spinner
-//! and the drawer's width are real. Renders, loads and unlocks are fake workers on the virtual
-//! clock: `poll` hands each result over once its time comes, so goldens and scripts see the same
-//! results every run.
-//!
-//! # Keys that stand in for the host
-//!
-//! Strata binds these, not the components; the page binds them so scripts can drive them:
-//!
-//! | Key | Stands in for |
-//! | --- | --- |
-//! | Ctrl+Alt+Space | The media play key: plays or pauses the route |
-//! | Ctrl+Alt+Left, Ctrl+Alt+Right | The media seek keys: 5 s of route playback back or on |
-//! | `u` | Settings → Units: metric or imperial |
-//! | `n` | Selecting the next model file in the listing |
-//! | `t` | Settings → Type to search: off makes `h j k l` move in the archive tree |
-//!
-//! Left at the archive's root, where Strata returns focus to the listing, shows that on the
-//! page's status line (`c14b-status`) instead.
-
 use std::collections::VecDeque;
 
 use rune::{Color, Cx, El, Key, KeyEvent, Pixels, Tx, col, text};
@@ -100,7 +75,6 @@ pub struct Idle;
 
 impl HostedPreview for Idle {}
 
-/// C14b's demo state, held in `Gallery::c14b`.
 #[derive(Default)]
 pub struct Demo {
     pub show: Show,
@@ -140,8 +114,6 @@ impl Demo {
         }
     }
 
-    /// Opens model file `file`, scheduling its first load from `now`; `image_at` is when its
-    /// picture lands, or never.
     fn open_model(&mut self, file: usize, image_at: Option<f64>) {
         let (name, kind) = MODELS[file];
         self.show = Show::Model;
@@ -362,8 +334,6 @@ fn route_point(g: &mut Gallery, dark: bool) {
     });
 }
 
-/// The ridge stretched to 1,000 km, so the distance's tenths change faster than frames: what
-/// playback's 10 Hz text commits are for (`viewers::route`).
 fn route_long(g: &mut Gallery, dark: bool) {
     let d = open(g, dark);
     let mut data = ridge();
@@ -402,8 +372,6 @@ fn locked(g: &mut Gallery, dark: bool) {
     d.show = Show::Locked;
 }
 
-/// Golden scenes: each gets an accessibility and a PNG golden. Each calls
-/// `g.open("c14b", dark)`, then fills in `g.c14b`.
 pub const SCENES: &[Scene] = &[
     ("c14b-image-light", |g| image_scene(g, false)),
     ("c14b-image-dark", |g| image_scene(g, true)),
@@ -588,9 +556,6 @@ fn unlock(g: &mut Gallery, password: String, _tx: &mut Tx) {
     }
 }
 
-/// Keys no focused element took while this page is open: shortcuts, and keys with nothing
-/// focused. True consumes the key; false lets the gallery's Escape go back to the index. The
-/// keys stand in for the host's (module docs).
 pub fn on_key(g: &mut Gallery, key: &KeyEvent, tx: &mut Tx) -> bool {
     let media = key.mods.ctrl && key.mods.alt;
     let d = &mut g.c14b;
@@ -630,8 +595,6 @@ pub fn on_key(g: &mut Gallery, key: &KeyEvent, tx: &mut Tx) -> bool {
     }
 }
 
-/// Runs at the start of every frame while this page is open, with the clock in seconds. Hands
-/// over the fake workers' results that are due, and plays the route. True when state changed.
 pub fn poll(g: &mut Gallery, t: f64, tx: &mut Tx) -> bool {
     g.c14b.now = t;
     if g.c14b.show == Show::None {
@@ -784,8 +747,6 @@ fn route_picture(samples: &[RouteSample]) -> Vec<u8> {
     out
 }
 
-/// A shaded box on the theme's surface, its lit faces turning with the camera: a stand-in for
-/// Strata's software render.
 fn render(view: CameraView, look: &Look) -> Vec<u8> {
     let k = &look.kit;
     let (bg, accent) = (k.c.bg_base, k.c.text_accent);
@@ -799,8 +760,6 @@ fn render(view: CameraView, look: &Look) -> Vec<u8> {
     };
     image(RENDER, RENDER, |x, y| {
         let (u, v) = (x as f32 / s - 0.5, y as f32 / s - 0.5);
-        // An isometric cube: a top rhombus centred 0.12 up, and two side faces hanging 0.3
-        // below its lower edges.
         let top = (u.abs() * 0.58 + (v + 0.12).abs()) < 0.2;
         let lower_edge = 0.08 - u.abs() * 0.58;
         let side = u.abs() < 0.345 && v >= lower_edge && v < lower_edge + 0.3;

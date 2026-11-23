@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! A committed rename whose new name sorts elsewhere shows its row there
-//! (`reveal_completed_rename`), in Columns and in a single pane: what
-//! `rename_visibility/committed-rename-stays-visible` checks before its view switch.
-
 use rune::{Key, KeyEvent, Mods};
 use serde_json::Value;
 use strata_core::model::Location;
@@ -50,8 +46,6 @@ fn shown_whole(host: &mut Offscreen, name: &str) -> bool {
     })
 }
 
-/// 80 entries, End to the last, F2, `a` over its name, Return: the row moves from the bottom
-/// to the top, and is shown there.
 fn renamed_to_the_top_is_shown(mode: &str) {
     let names: Vec<String> = (0..80).map(|i| format!("m-entry-{i:03}")).collect();
     let names: Vec<&str> = names.iter().map(String::as_str).collect();

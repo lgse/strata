@@ -1,25 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! P5's session tests: the `settings` example against a fake Settings portal on the session's
-//! private bus (`p5/fake_portal.rs`), served from this test process. Most need only the bus;
-//! the last two open the example's window under headless sway, to check that changes reach
-//! Rune's loop, also while another window covers it (upstream #139: a covered Wayland
-//! window's `poll` and timers stop).
-//!
-//! The fake connects with `Session::bus().address()` only. The no-bus test points
-//! `DBUS_SESSION_BUS_ADDRESS` at a socket that doesn't exist inside the session's own runtime
-//! directory, rather than unsetting it, so nothing can fall back to another bus.
-//!
-//! Feature map: `settings/themes/portal-text-scaling` ("changing `text-scaling-factor` while
-//! the window is open rescales it without a restart", as far as the change reaching the app;
-//! "only `text-scaling-factor` in `org.gnome.desktop.interface` with a floating-point value is
-//! applied"; "a factor of 0, below 0, NaN, or infinite leaves it unchanged"; "without a session
-//! bus, or when `ReadAll` fails, the value stays and a log records it"), and the double-click
-//! interval and animations switch that `browser/selection/click-modes` and the motion bullets
-//! read, as data.
-//!
-//! Work package: P5, `docs/rune/work/phase-1-leaves/P5-desktop-settings.md`.
-
 mod fake_portal;
 
 use std::time::{Duration, Instant};
@@ -236,8 +216,6 @@ fn follows_every_change() {
         Some(true.into())
     );
 
-    // Noise: another namespace, a key the module doesn't read, the value it already has, and
-    // unusable values (twice: one fallback line), then a real change that ends it.
     let noise_from = app.line_count();
     portal.emit(
         "org.example.other",
@@ -306,8 +284,6 @@ fn a_portal_that_cannot_start_gives_the_defaults_at_once() {
 #[ignore = "needs a private session: mise run test-platform"]
 fn no_session_bus_gives_the_defaults() {
     let s = bus_only();
-    // A socket that doesn't exist, in the session's own runtime directory: never unset, so
-    // nothing can fall back to another bus.
     let missing = s.runtime_dir().join("no-bus");
     assert!(!missing.exists());
     let mut cmd = s.command(example("settings"), Display::None);
@@ -331,8 +307,6 @@ fn cpu_ticks(pid: u32) -> u64 {
     fields[11].parse::<u64>().unwrap_or(0) + fields[12].parse::<u64>().unwrap_or(0)
 }
 
-/// The voluntary context switches of `pid`'s thread named `name` (as `/proc` shows it, at most
-/// 15 bytes): how often it went to sleep and was woken.
 fn thread_wakeups(pid: u32, name: &str) -> u64 {
     let tasks = std::fs::read_dir(format!("/proc/{pid}/task")).expect("the example's threads");
     for task in tasks.flatten() {
@@ -376,8 +350,6 @@ fn waits_without_polling() {
     assert_eq!(woken, 0, "the watcher woke {woken} times while idle");
 }
 
-/// The example without a window, started while `portal` delays its answers, once the read is
-/// in flight.
 fn watch_slow(s: &Session, portal: &FakePortal, args: &[&str]) -> Proc {
     portal.set_delay(Duration::from_millis(1500));
     let mut cmd = s.command(example("settings"), Display::None);
@@ -404,8 +376,6 @@ fn a_burst_of_changes_during_a_slow_read_still_lands() {
     let app = watch_slow(&s, &portal, &[]);
     let started = Instant::now();
 
-    // More than zbus queues per match rule (64) while the reply is outstanding, then one real
-    // change, stored before it is announced, so the reply holds it.
     for i in 0..100 {
         portal.emit(INTERFACE, "font-name", Variant::from(format!("Sans {i}")));
     }
@@ -496,8 +466,6 @@ fn follows_a_portal_that_starts_late_and_restarts() {
         v["ev"] == "fallback" && v["kind"] == "portal-lost"
     });
 
-    // Another portal process, under a new unique name, with one value changed: that one
-    // change arrives.
     let mut values = desktop();
     values[0] = (INTERFACE, "text-scaling-factor", Variant::F64(2.0));
     let second = FakePortal::start(s.bus().address(), &values, true);
@@ -585,8 +553,6 @@ fn last_settings(app: &Proc) -> Value {
         .unwrap_or(Value::Null)
 }
 
-/// A read that times out, then answers with drag-threshold 12 and changes it to 99 right
-/// after: the answer must not overwrite the change, whichever the watcher's loop sees first.
 #[test]
 #[ignore = "needs a private session: mise run test-platform"]
 fn a_late_answer_never_overwrites_a_later_change() {
@@ -619,8 +585,6 @@ fn a_late_answer_never_overwrites_a_later_change() {
     );
 }
 
-/// A portal that answers its late read and leaves at once is reported lost, whichever the
-/// watcher's loop sees first.
 #[test]
 #[ignore = "needs a private session: mise run test-platform"]
 fn a_portal_that_leaves_right_after_a_late_answer_is_lost() {
@@ -660,8 +624,6 @@ fn changes_during_a_slow_read_never_go_backwards() {
     let portal = FakePortal::start(s.bus().address(), &desktop(), true);
     let app = watch_slow(&s, &portal, &[]);
 
-    // Each is stored before it is announced; then one more is stored unannounced, so the
-    // answer holds a value no held change has.
     for i in 0..500 {
         portal.set(MOUSE, "drag-threshold", Variant::I32(100 + i));
     }
@@ -697,8 +659,6 @@ fn a_portal_replaced_during_a_read_is_read_again_after_it() {
     let app = watch_with(&s, &["--first-answer-ms", "0"]);
     wait_reads(&old, 1);
 
-    // A new portal takes the name while the first read is out; the old one stays on the bus
-    // and answers that read afterwards.
     let new = FakePortal::start(s.bus().address(), &replacement(), false);
     new.take_over();
     old.answer();
@@ -744,14 +704,10 @@ fn a_new_portal_replaces_a_read_that_never_answered() {
     assert_eq!(reads(&passing), 0, "{:?}", passing.calls());
 }
 
-/// The example's window under sway, fed by `settings::follow`; returns once its first frame is
-/// drawn, its view ran with the portal's values, and the snapshot's update ran on Rune's loop.
 fn window(s: &Session) -> Proc {
     let app = s.spawn("settings", s.command(example("settings"), Display::Wayland));
     app.wait_json("ready", |v| v["ev"] == "ready");
     app.wait_json("the first frame", |v| v["ev"] == "frame");
-    // The first view has them when the portal answered within the first-answer wait;
-    // otherwise a later one does, once the snapshot's update lands.
     let view = app.wait_json("a view with the portal's values", |v| {
         v["ev"] == "view"
             && v["settings"]["known"]
@@ -800,8 +756,6 @@ fn settle(app: &Proc, quiet: Duration) {
     }
 }
 
-/// The window, with the portal's answer held back until the window has drawn and gone quiet:
-/// `follow`'s snapshot then lands on a settled window. Returns the line after that update.
 fn window_with_late_answer(
     s: &Session,
     values: &[(&'static str, &'static str, Variant<'static>)],
@@ -838,8 +792,6 @@ fn a_snapshot_with_new_values_runs_the_view() {
 #[ignore = "needs a private session: mise run test-platform"]
 fn a_snapshot_that_changes_nothing_runs_no_view() {
     let s = Session::start();
-    // A portal with none of the keys: its snapshot is the defaults the window started with,
-    // so `follow`'s update returns false.
     let (app, after) = window_with_late_answer(&s, &[]);
 
     let views = events(&app, after, "view");

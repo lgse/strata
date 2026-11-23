@@ -1,11 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The text's display rows: one per line, and a line over [`CHUNK`] bytes split into rows of at
-//! most that, as Strata's large source preview splits it (`push_source_line_chunks` in
-//! `src/ui/virtual_preview/source.rs`): on character boundaries, with the last two rows of a
-//! line splitting its last 4 KiB about evenly. Rune draws a tab to the next four-column stop
-//! (measured at the pin), as Strata's `tab_width(4)` does, so rows draw their text as it is.
-
 use std::ops::Range;
 use std::sync::Arc;
 
@@ -34,8 +28,6 @@ pub(crate) struct Rows {
     line_starts: Vec<usize>,
     /// The most columns any row takes at least ([`floor_columns_of`]), tabs expanded.
     pub columns: usize,
-    /// The rows that draw widest by [`width_of`]'s estimate, widest first: a fallback face
-    /// (CJK, emoji) draws them wider than their columns, so the view measures these.
     pub widest: Vec<usize>,
 }
 
@@ -48,8 +40,6 @@ impl Rows {
         let mut line_starts = Vec::new();
         let mut at = 0;
         let len = text.len();
-        // A text ending in a line break has no empty line after it, as Strata's large source
-        // preview shows it (`split_inclusive`); an empty text is one empty line.
         while at < len || line_starts.is_empty() {
             let next = text[at..].find('\n').map_or(len, |i| at + i);
             let end = if text[..next].ends_with('\r') && next > at {
@@ -197,8 +187,6 @@ fn split(text: &str, start: usize, end: usize, line: usize, rows: &mut Vec<Row>)
     });
 }
 
-/// Whether `ch` is in a script the mono face draws (or a fallback draws one column wide):
-/// Latin, Greek, Cyrillic and their supplements.
 fn monospaced_script(ch: char) -> bool {
     matches!(ch,
         '\u{00A0}'..='\u{052F}' // Latin-1 to Cyrillic Supplement
@@ -212,8 +200,6 @@ fn monospaced_script(ch: char) -> bool {
     )
 }
 
-/// Whether `ch` is an Arabic letter, which joins its neighbours and draws narrower than a
-/// column.
 fn arabic(ch: char) -> bool {
     matches!(ch,
         '\u{0600}'..='\u{06FF}'
@@ -224,13 +210,6 @@ fn arabic(ch: char) -> bool {
     )
 }
 
-/// An estimate of how wide `s` draws, in columns of the mono face, generous on purpose: it
-/// only ranks rows for measuring, and the width itself is measured. ASCII and the scripts the
-/// mono face covers take a column; East Asian wide characters and emoji two
-/// (`unicode-width`); and so does any other character `unicode-width` rates one column,
-/// since a fallback face draws it (pictographs and dingbats such as ❤, Indic and other
-/// complex scripts: review 2 measured ❤ at 1.9 columns and क at 1.2). Combining marks take
-/// none; tabs run to the next [`TAB`] stop; control characters take one.
 pub(crate) fn width_of(s: &str) -> usize {
     use unicode_width::UnicodeWidthChar;
     s.chars().fold(0, |col, ch| {
@@ -247,9 +226,6 @@ pub(crate) fn width_of(s: &str) -> usize {
     })
 }
 
-/// The columns `s` takes at least, as the list's floor width: each character one column but
-/// combining marks and Arabic letters (which join and draw narrower), tabs to the next
-/// [`TAB`] stop. Rows that draw wider are measured ([`width_of`] ranks them).
 pub(crate) fn floor_columns_of(s: &str) -> usize {
     use unicode_width::UnicodeWidthChar;
     s.chars().fold(0, |col, ch| {

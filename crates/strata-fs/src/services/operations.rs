@@ -32,10 +32,6 @@ pub fn validate_basename(name: &str) -> Result<(), &'static str> {
     }
 }
 
-/// A name typed for an item, which may be a path relative to its folder:
-/// `docs/note.txt` puts the item in `docs`, `../note.txt` in the folder above,
-/// and a trailing `/` names a folder. `.` and `..` resolve as written, without
-/// looking at the filesystem, and the last part must be a name.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TypedPath {
     /// How many levels above the item's folder the path starts.
@@ -77,8 +73,6 @@ impl TypedPath {
         })
     }
 
-    /// The path for an item in `folder`, without climbing out of folders it
-    /// only enters again: `../user/x` in `/home/user` is just `x`.
     pub fn within(mut self, folder: &Location) -> Self {
         while self.up > 0 {
             let reentered = (1..self.up)
@@ -128,9 +122,6 @@ pub struct RenameRequest {
     pub new_name: String,
 }
 
-/// Moves an item to `path` below its folder, creating the folders that are
-/// missing. A `new_item` file named as a folder is replaced by that folder
-/// only while it is still empty.
 #[derive(Clone, Debug)]
 pub struct PlaceEntryRequest {
     pub id: OperationRequestId,
@@ -152,11 +143,6 @@ pub enum TransferConflict {
     FailIfExists,
     ReplaceExisting,
     KeepBoth,
-    /// Union of two folders into the existing destination. Incoming items
-    /// overwrite same-named destination items; destination-only items stay.
-    /// Overwritten originals are staged in Trash and written paths are
-    /// reported via [`OperationEvent::Merged`] so undo can restore the
-    /// pre-merge state without trashing the whole destination folder.
     Merge,
 }
 
@@ -266,17 +252,9 @@ impl fmt::Debug for PlacedSnapshot {
 #[derive(Clone, Debug)]
 pub struct UndoMergeRequest {
     pub id: OperationRequestId,
-    /// Paths the merge wrote fresh; undo moves them to Trash, or without
-    /// Trash deletes them as far as `placed` records them unchanged.
     pub created: Vec<Location>,
-    /// Paths whose originals went to Trash, or aside where Trash is
-    /// unavailable, before being overwritten; undo deletes the incoming copy
-    /// and restores an original from Trash.
     pub overwritten: Vec<Location>,
     pub originals: HashMap<Location, ItemIdentity>,
-    /// What the operation put at created and overwritten paths; an item
-    /// without one, or changed since, stays, and so does its original in
-    /// Trash.
     pub placed: HashMap<Location, PlacedSnapshot>,
 }
 
@@ -377,12 +355,8 @@ pub struct CancelledOperation {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum RenameCause {
-    /// The destination takes the name for another item's, as a
-    /// case-insensitive filesystem takes `makefile` for `Makefile`.
     Alias,
     Taken,
-    /// Characters, trailing dots or spaces, a reserved name or an encoding
-    /// the destination cannot store.
     Invalid,
     TooLong,
 }
@@ -445,8 +419,6 @@ pub struct TransferReport {
     pub skipped: Vec<SkippedItem>,
     pub kept: Vec<KeptItem>,
     pub kept_in_trash: Vec<KeptItem>,
-    /// The moved items, at their sources, that undo leaves out, as each
-    /// kept entries there.
     pub kept_out_of_undo: Vec<Location>,
 }
 
@@ -466,10 +438,6 @@ impl TransferReport {
         self.kept_out_of_undo.extend(other.kept_out_of_undo);
     }
 
-    /// Joins the entries of an item saved under one name after another, as
-    /// a fixed name that the destination then took for another's, into one
-    /// from the first name to the last, with the first cause, whatever order
-    /// they were reported in.
     pub fn follow_renames(&mut self) {
         let mut chains = Vec::<Option<RenamedItem>>::with_capacity(self.renamed.len());
         let mut by_start = HashMap::<Location, usize>::new();
@@ -527,8 +495,6 @@ pub enum OperationEvent {
     Renamed {
         request_id: OperationRequestId,
     },
-    /// An item reached its typed path. `placed` holds, outermost first, each
-    /// folder the placement made and then where the item ended up.
     EntryPlaced {
         request_id: OperationRequestId,
         placed: Vec<Location>,
@@ -544,19 +510,12 @@ pub enum OperationEvent {
         request_id: OperationRequestId,
         locations: Vec<Location>,
     },
-    /// One moved item landed at `to`, the destination the conflict policy
-    /// actually chose (Keep both and FAT names differ from the source name).
-    /// Reported per item, so a partial move still says what moved. `merged`
-    /// means `to` is an existing folder the item was merged into.
     ItemMoved {
         request_id: OperationRequestId,
         from: Location,
         to: Location,
         merged: bool,
     },
-    /// An operation moved the local item at `location` to Trash, including an
-    /// item a Replace or a cleanup displaced. `identity` survives the move, so
-    /// a restore can tell this item from another that left the same path.
     ItemTrashed {
         request_id: OperationRequestId,
         location: Location,
@@ -567,9 +526,6 @@ pub enum OperationEvent {
         location: Location,
         identity: ItemIdentity,
     },
-    /// A merge undo left the item at `location`, as it may have changed
-    /// since, so nothing of it is left to undo. A created item so kept still
-    /// counts as failed.
     ItemKept {
         request_id: OperationRequestId,
         location: Location,
@@ -581,12 +537,6 @@ pub enum OperationEvent {
         request_id: OperationRequestId,
         report: TransferReport,
     },
-    /// A folder merge finished (or staged its backups): `created` are paths
-    /// the merge wrote fresh, `overwritten` are paths whose originals now
-    /// sit in Trash, and `placed` what it put at them. Reported per merged
-    /// source so undo can rebuild the pre-merge state even after a partial
-    /// transfer. Where there is no Trash, a paste with a merge also reports
-    /// here only `placed` for each item it copied beside it.
     Merged {
         request_id: OperationRequestId,
         source: Location,
@@ -615,8 +565,6 @@ pub enum OperationEvent {
         total: usize,
         deleted_locations: Vec<Location>,
     },
-    /// Entries removed so far inside the items being deleted, which a single
-    /// large folder reports long before `DeleteProgress` counts it as done.
     DeleteEntriesRemoved {
         request_id: OperationRequestId,
         removed: usize,
@@ -634,9 +582,6 @@ pub enum OperationEvent {
     CompletedWithErrors {
         request_id: OperationRequestId,
         deleted_locations: Vec<Location>,
-        /// Entries that failed only because this location doesn't support
-        /// Trash, so a retry with `permanent: true` on just these would
-        /// likely succeed.
         retryable_locations: Vec<Location>,
         has_non_retryable_failures: bool,
         message: String,
@@ -715,8 +660,6 @@ pub trait OperationProvider {
         emit: Rc<dyn Fn(OperationEvent)>,
     ) -> LoadHandle;
     fn undo_copy(&self, request: UndoCopyRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle;
-    /// Reverts a merge: trashes what the merge created, deletes the incoming
-    /// copies at overwritten paths, and restores the staged originals.
     fn undo_merge(&self, request: UndoMergeRequest, emit: Rc<dyn Fn(OperationEvent)>)
     -> LoadHandle;
     fn delete(&self, request: DeleteRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle;

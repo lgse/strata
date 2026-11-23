@@ -1,21 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! P2's session tests: clipboard round-trips with the peer, on Wayland and X11, through the
-//! public `clipboard` API. The app side is `examples/clipboard.rs`.
-//!
-//! Each scope item runs on each route it applies to:
-//! - **W**: Wayland data control (sway's default);
-//! - **D**: Wayland `wl_data_device` on winit's display, on a compositor that seems to have
-//!   no data control (the test switch hides its globals), as mutter;
-//! - **X**: X11 selections;
-//! - **XW**: a Wayland window with no Wayland route (libwayland < 1.23 and a compositor with
-//!   no data control, both simulated), through Xwayland.
-//!
-//! D needs libwayland 1.23 or later (winit's display); on an older host its tests check only
-//! that the app reports no route there, and say so on stderr.
-//!
-//! Work package: P2, `docs/rune/work/phase-2-composites/P2-clipboard.md`.
-
 use std::time::{Duration, Instant};
 
 use serde_json::{Value, json};
@@ -69,8 +53,6 @@ impl B {
     }
 }
 
-/// The five types a file manager's cut offers, with an image: the GNOME and KDE formats made
-/// with P0's encoders from a path that isn't UTF-8, text, and `png_len` bytes of image.
 fn five(png_len: u64) -> Vec<Offer> {
     use std::ffi::OsStr;
     use std::os::unix::ffi::OsStrExt;
@@ -132,8 +114,6 @@ impl Demo {
         Demo::start_with(s, b.display(), b.args(), &[], Some(b))
     }
 
-    /// The app on `display`, with more of the session's environment from `also`. None, after
-    /// checking the app reports no route, for D on a libwayland without winit's display.
     fn start_with(
         s: &Session,
         display: Display,
@@ -245,8 +225,6 @@ impl Demo {
             .count()
     }
 
-    /// Waits until the writer of `mime` has run `n` times (its line may trail the read it
-    /// served), then checks it ran exactly `n` times.
     fn assert_writer_runs(&self, mime: &str, n: usize, why: &str) {
         let deadline = Instant::now() + timeout();
         while self.writer_runs(mime) < n && Instant::now() < deadline {
@@ -303,8 +281,6 @@ fn wait_targets(peer: &Peer, selection: Selection, via: Via, want: Option<&[Stri
     }
 }
 
-/// A peer with a mapped window, tiled beside the app's: the peer and its window. The app's
-/// window moved for it, so `demo` takes its new place and waits for the app's layout there.
 fn peer_beside(s: &Session, display: Display, demo: &mut Demo) -> (Peer, Window) {
     let peer = s.peer(display);
     peer.map("p2 peer");
@@ -329,8 +305,6 @@ fn peer_beside(s: &Session, display: Display, demo: &mut Demo) -> (Peer, Window)
 
 // ---- 1. Copies the peer reads ----
 
-/// Five types with lazy writers: listed, each read byte for byte, and each writer run once
-/// though the GNOME type is read twice.
 fn copy_offers_five_types(b: B) {
     let s = Session::start();
     let Some(demo) = Demo::start(&s, b) else {
@@ -382,7 +356,6 @@ fn x11_copy_offers_five_types_the_peer_reads() {
     copy_offers_five_types(B::X);
 }
 
-/// `Files` and `Content::text`: the peer reads what GTK writes, byte for byte.
 fn copy_files_writes_the_file_manager_formats(b: B) {
     let s = Session::start();
     let Some(demo) = Demo::start(&s, b) else {
@@ -499,8 +472,6 @@ fn x11_peer_offers_five_types_the_app_reads() {
     peer_offers_five_types(B::X);
 }
 
-/// X11 owners list targets that are no data type (GTK lists `SAVE_TARGETS`): they are left
-/// out of what the app hears is offered.
 #[test]
 #[ignore = "needs a private session: mise run test-platform"]
 fn x11_targets_that_are_no_data_type_are_left_out_of_offers() {
@@ -582,9 +553,6 @@ fn x11_large_image_both_ways_by_incr() {
 
 // ---- 4. Ownership loss ----
 
-/// The app copies, then the peer's window takes focus and the peer copies: the app hears its
-/// copy lost and, where the route hears unfocused, the peer's offer at once. On the data
-/// device the offer waits for the app's next focus.
 fn ownership_loss(b: B) {
     let s = Session::start();
     let Some(mut demo) = Demo::start(&s, b) else {
@@ -644,8 +612,6 @@ fn x11_hears_its_copy_lost_and_the_peers_offer() {
     ownership_loss(B::X);
 }
 
-/// On another workspace, where sway stops the window's frames, the app's state still hears
-/// the loss.
 #[test]
 #[ignore = "needs a private session: mise run test-platform"]
 fn wayland_a_window_on_another_workspace_hears_its_copy_lost() {
@@ -671,8 +637,6 @@ fn wayland_a_window_on_another_workspace_hears_its_copy_lost() {
 
 // ---- 5. Rune's own Tx::copy ----
 
-/// Rune's copy takes the clipboard from the app's own (lost as taken) and other apps read
-/// it; a copy here then takes it back.
 fn runes_copy_and_ours(b: B) {
     let s = Session::start();
     let Some(demo) = Demo::start(&s, b) else {
@@ -727,8 +691,6 @@ fn x11_runes_copy_takes_the_clipboard_and_ours_takes_it_back() {
 
 // ---- 6. Clearing ----
 
-/// A clear empties the selection the copy holds; a clear of a copy another app replaced
-/// leaves that app's copy alone.
 fn clearing(b: B) {
     let s = Session::start();
     let Some(demo) = Demo::start(&s, b) else {
@@ -793,9 +755,6 @@ fn x11_clear_empties_only_a_selection_the_copy_holds() {
     clearing(B::X);
 }
 
-/// Another app takes the clipboard while the app's clear is on its way (the app hasn't heard
-/// yet): the clear must leave the other app's copy alone. Data control on winit's display, so
-/// the app hears nothing while its UI thread is held.
 #[test]
 #[ignore = "needs a private session: mise run test-platform"]
 fn wayland_data_control_a_clear_racing_another_apps_copy_leaves_that_copy() {
@@ -825,8 +784,6 @@ fn wayland_data_control_a_clear_racing_another_apps_copy_leaves_that_copy() {
     demo.no_errors();
 }
 
-/// On X11 a copy waits a round trip for its timestamp: a clear meanwhile cancels the take, so
-/// the copy never holds and nobody is left offering it.
 #[test]
 #[ignore = "needs a private session: mise run test-platform"]
 fn x11_a_clear_before_the_copy_holds_cancels_it() {
@@ -856,8 +813,6 @@ fn x11_a_clear_before_the_copy_holds_cancels_it() {
 
 // ---- 7. The data device's serials ----
 
-/// A write with a serial older than the current selection's is dropped by the compositor:
-/// the copy is lost as refused. A real Ctrl+C in the window copies with the key's serial.
 #[test]
 #[ignore = "needs a private session: mise run test-platform"]
 fn wayland_data_device_a_stale_write_is_refused_and_ctrl_c_holds() {
@@ -897,9 +852,6 @@ fn wayland_data_device_a_stale_write_is_refused_and_ctrl_c_holds() {
     demo.no_errors();
 }
 
-/// A copy made while the app has no keyboard focus gets no echo and stays pending (wlroots).
-/// When another app then takes the clipboard, the copy was taken, not refused: only a write
-/// P0 judged dropped is refused.
 #[test]
 #[ignore = "needs a private session: mise run test-platform"]
 fn wayland_data_device_an_unfocused_copy_another_app_takes_is_lost_as_taken() {
@@ -1005,8 +957,6 @@ fn wayland_data_device_has_no_primary_selection() {
 
 // ---- 9. After the app exits (X11) ----
 
-/// With a clipboard manager running, quitting hands it every type (one MULTIPLE, the large
-/// image by INCR): another app reads them all after the app has gone.
 #[test]
 #[ignore = "needs a private session: mise run test-platform"]
 fn x11_a_clipboard_manager_keeps_every_type_after_the_app_exits() {
@@ -1040,12 +990,6 @@ fn x11_a_clipboard_manager_keeps_every_type_after_the_app_exits() {
     }
 }
 
-/// Without a manager the exit doesn't wait. A copy that asks not to be kept isn't handed
-/// over even with one.
-///
-/// sway's Xwayland window manager (wlroots' xwm) owns `CLIPBOARD_MANAGER` itself, and answers
-/// every hand-off at once without saving anything (its own comment calls it a race). So a
-/// peer takes the selection from it and exits, which leaves no manager at all.
 #[test]
 #[ignore = "needs a private session: mise run test-platform"]
 fn x11_without_a_manager_or_with_keep_off_nothing_is_handed_over() {
@@ -1084,8 +1028,6 @@ fn x11_without_a_manager_or_with_keep_off_nothing_is_handed_over() {
     );
 }
 
-/// A manager that never answers: the exit waits the copy's own wait (600 ms here), measured
-/// from the shutdown's start to its end, and no more.
 #[test]
 #[ignore = "needs a private session: mise run test-platform"]
 fn x11_a_silent_manager_holds_the_exit_only_as_long_as_the_copy_asked() {
@@ -1119,9 +1061,6 @@ fn threads_named(pid: u32, name: &str) -> usize {
         .unwrap_or(0)
 }
 
-/// A `MULTIPLE` request naming one lazy type 50 times, whose writer never returns, beside
-/// text: the writer runs on one worker, not one per pair, and the request is answered by its
-/// deadline, the stuck type refused and the text given.
 #[test]
 #[ignore = "needs a private session: mise run test-platform"]
 fn x11_multiple_runs_each_writer_once_and_answers_by_its_deadline() {
@@ -1160,8 +1099,6 @@ fn x11_multiple_runs_each_writer_once_and_answers_by_its_deadline() {
     );
 }
 
-/// A `MULTIPLE` request may name 1024 pairs; one with more is refused whole, as a request can
-/// carry 32k and each target costs the owner a round trip.
 #[test]
 #[ignore = "needs a private session: mise run test-platform"]
 fn x11_multiple_with_more_than_1024_pairs_is_refused() {
@@ -1287,8 +1224,6 @@ fn x11_a_read_right_after_a_copy_reads_the_copy() {
 
 // ---- 11. Teardown ----
 
-/// Quitting with a copy held and a large read in flight tears everything down before `run`
-/// returns, and the app exits cleanly.
 fn quit_mid_read(b: B) {
     let s = Session::start();
     let Some(demo) = Demo::start(&s, b) else {
@@ -1360,8 +1295,6 @@ fn x11_quit_mid_read_tears_down_cleanly() {
     quit_mid_read(B::X);
 }
 
-/// With drag and drop attached too, drag and drop's shutdown runs the clipboard's part: the
-/// hand-off to the clipboard manager.
 #[test]
 #[ignore = "needs a private session: mise run test-platform"]
 fn x11_drag_and_drops_shutdown_hands_the_clipboard_over_too() {
@@ -1388,8 +1321,6 @@ fn x11_drag_and_drops_shutdown_hands_the_clipboard_over_too() {
     );
 }
 
-/// `Tx::quit` alone: Rune runs `App::on_quit` before any window closes, and the shutdown there
-/// hands the clipboard over as an explicit one does.
 #[test]
 #[ignore = "needs a private session: mise run test-platform"]
 fn x11_on_quit_shuts_down_and_hands_the_clipboard_over() {
@@ -1424,8 +1355,6 @@ fn x11_on_quit_shuts_down_and_hands_the_clipboard_over() {
     );
 }
 
-/// The normal way out: the last window closes, `App::on_quit` runs in no window, and the
-/// shutdown in that window's `on_close` hands the clipboard over.
 #[test]
 #[ignore = "needs a private session: mise run test-platform"]
 fn x11_closing_the_last_window_shuts_down_and_hands_the_clipboard_over() {
@@ -1464,9 +1393,6 @@ fn x11_closing_the_last_window_shuts_down_and_hands_the_clipboard_over() {
     );
 }
 
-/// The X11 connection fails: the held copy is lost as failed, and the diagnostic reaches the
-/// app's handler, which may call the clipboard back (it asks for the status) while the app
-/// lives on.
 #[test]
 #[ignore = "needs a private session: mise run test-platform"]
 fn x11_a_failed_connection_loses_the_copy_and_the_diagnostic_may_call_back() {
@@ -1491,11 +1417,6 @@ fn x11_a_failed_connection_loses_the_copy_and_the_diagnostic_may_call_back() {
 
 // ---- 12. Through Xwayland (XW) ----
 
-/// libwayland < 1.23 and no data control, simulated: the app's clipboard goes through
-/// Xwayland. Its copy reaches an X11 peer and a Wayland peer, and it reads the Wayland peer's
-/// copy back. wlroots bridges the clipboard only while an Xwayland window has focus, so the
-/// X11 peer's window has it (see the module docs: wlroots never takes this route; mutter's
-/// bridge is a hand test).
 #[test]
 #[ignore = "needs a private session: mise run test-platform"]
 fn wayland_without_any_wayland_route_copies_and_pastes_through_xwayland() {
@@ -1576,9 +1497,6 @@ fn wayland_without_any_wayland_route_copies_and_pastes_through_xwayland() {
 
 // ---- 13. Nautilus (opt-in) ----
 
-/// Nautilus in the nested sway: a file it copies pastes into the app as files, and the app's
-/// cut pastes into Nautilus as a move. Opt-in, with Nautilus installed:
-/// `STRATA_TEST_NAUTILUS=1 mise run test-platform p2::nautilus`.
 fn nautilus_round_trip(display: Display) {
     if std::env::var_os("STRATA_TEST_NAUTILUS").is_none() {
         eprintln!("skipped: set STRATA_TEST_NAUTILUS=1 to run the Nautilus round trip");
@@ -1610,9 +1528,6 @@ fn nautilus_round_trip(display: Display) {
         .arg(&src);
     let nautilus = s.spawn("nautilus", cmd);
     let window = s.wait_window(nautilus.pid());
-    // Nautilus lists the folder some time after its window maps, and a copy before the
-    // selection settles names no file: select all, then copy, until a read finds the file
-    // (both keys are safe to repeat).
     let uri = mime::file_uri(&src.join("alpha.txt"));
     let deadline = Instant::now() + timeout() * 2;
     let files = loop {
@@ -1677,8 +1592,6 @@ fn nautilus_round_trip(display: Display) {
     std::thread::sleep(Duration::from_millis(1500));
     s.input().pointer_move(window.at(0.5, 0.5));
     s.input().key("ctrl+v");
-    // Once more if nothing moved: a paste before Nautilus listed the folder goes nowhere, and a
-    // second paste of a file already moved can't move it twice.
     let again = Instant::now() + Duration::from_secs(4);
     let mut pasted_again = false;
     let deadline = Instant::now() + timeout();

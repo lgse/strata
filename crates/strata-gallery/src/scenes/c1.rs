@@ -1,34 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The gallery page for C1e Collection element: its scenes, demo state, view and key and poll
-//! hooks. Scene names start with `c1-` and end in `-light` or `-dark`.
-//!
-//! Work package: `docs/rune/work/phase-2-composites/C1e-collection-element.md`.
-//!
-//! The page is a stand-in file pane over four fake folders: Documents (10 entries), Photos
-//! (2,000), Archive (100,000) and Empty. Its header shows the folder, the preview (the
-//! cursor's entry, as `on_cursor` reports it) and the last thing the host heard. Page keys
-//! stand in for the host's commands; the keyboard controller (C1c) moves the cursor. The
-//! header's intent label (`c1-intent`) shows the last intent the controllers sent; a
-//! `BeginRename` opens the rename slot, where Enter renames and Escape cancels.
-//!
-//!
-//! | Key | Does |
-//! | --- | --- |
-//! | F5, or the header's Refresh button | Refresh: re-list the folder from its "disk" |
-//! | Ctrl+I | A live update: three new entries appear at the top |
-//! | Delete | Delete the cursor's entry (the default map's rule: the neighbour is selected) |
-//! | Ctrl+Delete | Delete the last selected entry on "disk" only, as another app would |
-//! | Alt+Left, Alt+Right | Go to Documents, or to Photos, remembering where you were |
-//! | Ctrl+2 | Switch the layout key, as a view switch would |
-//!
-//! `STRATA_C1_BUDGET_WARMUP=1` makes the page's second poll (the first after the scene's
-//! mount) wait 1.1 s of real time once, then print [`WARMED`] on stderr. It is
-//! a workaround for Rune's `RUNE_COMMIT_BUDGET_MS`, which prints at most one line a real
-//! second and drops the count it left out (Rune draft U-C1e-5): the 100k scene's first mount
-//! is over budget, and its line would hide every over-budget commit of a fast scripted
-//! scroll. Only `tests/c1.rs`'s budget run sets it.
-
 use std::collections::HashMap;
 
 use rune::{Cx, El, Key, KeyEvent, TextEdit, Tx, col, row, text, text_input};
@@ -47,8 +18,6 @@ use crate::{Gallery, Scene};
 /// The variable that turns on the budget warm-up (see the module docs).
 pub const WARMUP: &str = "STRATA_C1_BUDGET_WARMUP";
 
-/// What the page prints on stderr once the warm-up is over: budget lines after it are the
-/// script's.
 pub const WARMED: &str = "c1: budget warm-up done";
 
 /// The collection's key: its rows' keys and scroll requests start here.
@@ -137,7 +106,6 @@ impl Folder {
     }
 }
 
-/// C1e's demo state, held in `Gallery::c1`.
 pub struct Demo {
     pub folder: Folder,
     pub listing: ListSource,
@@ -170,7 +138,6 @@ pub struct Demo {
     pub next_id: u64,
     /// Polls run since the page opened, for the budget warm-up.
     pub polls: u32,
-    /// C1f: the grouped folder a `c1-groups-*` scene shows instead (see [`Grouped`]).
     pub grouped: Option<Grouped>,
 }
 
@@ -206,14 +173,11 @@ impl Default for Demo {
     }
 }
 
-/// The controllers the page's collection routes to. Each work package installs its own on its
-/// own line; the blank lines between them keep the branches from colliding.
 fn install(controllers: &mut Controllers) {
     controllers.pointer = Some(Box::new(
         strata_components::collection::pointer::PointerIntent::new(),
     ));
 
-    // C1c: the default map; the page passes no KeySettings, so letters go on to the page.
     controllers.keyboard =
         Some(Box::<strata_components::collection::keyboard::Keyboard>::default());
 
@@ -367,9 +331,6 @@ impl Demo {
         self.refresh_preview();
     }
 
-    /// Hears an intent: records it for the status label, and opens the rename slot for
-    /// `BeginRename`. The intents are the controllers' (C1b's); the default click sends
-    /// `Clicked`.
     fn heard(&mut self, intent: Intent) {
         self.intent = match intent {
             Intent::Clicked { id } => format!("Clicked {}", self.name_of(Some(id))),
@@ -395,8 +356,6 @@ impl Demo {
         };
     }
 
-    /// Enter in the rename field: the entry takes the new name and keeps its id, as this host
-    /// promises.
     fn commit_rename(&mut self) {
         let Some(id) = self.renaming.take() else {
             return;
@@ -465,8 +424,6 @@ fn photos(g: &mut Gallery, dark: bool) {
     scene(g, dark, Folder::Photos);
 }
 
-/// Three entries selected from the anchor, and the cursor moved on by keyboard to an
-/// unselected one: the cursor outline shows.
 fn selection(g: &mut Gallery, dark: bool) {
     scene(g, dark, Folder::Documents);
     let d = &mut g.c1;
@@ -520,18 +477,12 @@ fn first_visit(g: &mut Gallery, dark: bool) {
     d.refresh_preview();
 }
 
-/// The marquee's settings on this page: its animations follow the look's (C1d's rule for
-/// hosts), so the edge scroll keeps its speed under reduced motion.
 fn marquee_settings(g: &Gallery) -> strata_components::collection::marquee::MarqueeSettings {
     let mut settings = strata_components::collection::marquee::MarqueeSettings::default();
     settings.animations = g.look().animations;
     settings
 }
 
-/// A Ctrl band held open from the empty space below the rows up into Music, with Receipts and
-/// Music selected before it: Music toggles off, the rows below it on, and Receipts stays. The
-/// band is begun as the element would, in the viewport's content coordinates (960 × 596 at
-/// the gallery's size).
 fn marquee(g: &mut Gallery, dark: bool) {
     use strata_components::contract::{Point, Rect, UniformRows};
     scene(g, dark, Folder::Documents);
@@ -574,7 +525,6 @@ pub const SCENES: &[Scene] = &[
     ("c1-rename-dark", |g| rename(g, true)),
     ("c1-marquee-light", |g| marquee(g, false)),
     ("c1-marquee-dark", |g| marquee(g, true)),
-    // C1f: group header lines (the grouped folder, at the end of this file).
     ("c1-groups-light", |g| groups(g, false)),
     ("c1-groups-dark", |g| groups(g, true)),
     ("c1-groups-stuck-light", |g| groups_stuck(g, false)),
@@ -612,8 +562,6 @@ pub fn collection() -> Collection<Gallery> {
     .marks(|g: &Gallery, id| g.c1.marks.get(&id).copied().unwrap_or_default())
     .rename(
         |g: &Gallery| g.c1.renaming,
-        // A stand-in until C5's editor lands: a plain field over the label. Rename rows aren't
-        // memoized, so it needs no version.
         Slot::pure(|g: &Gallery, rcx| {
             let kit = g.kit();
             row()
@@ -751,8 +699,6 @@ pub fn poll(g: &mut Gallery, t: f64, tx: &mut Tx) -> bool {
     d.clock = t;
     let mut changed = false;
     d.polls = d.polls.saturating_add(1);
-    // The second poll runs after the first commit (the scene's mount). Only the budget run
-    // sets the variable (see the module docs); without it this never sleeps.
     if d.polls == 2 && std::env::var_os(WARMUP).is_some_and(|v| !v.is_empty()) {
         std::thread::sleep(std::time::Duration::from_millis(1100));
         eprintln!("{WARMED}");
@@ -763,9 +709,6 @@ pub fn poll(g: &mut Gallery, t: f64, tx: &mut Tx) -> bool {
     }
     changed | collection().settings(marquee_settings(g)).tick(g, tx)
 }
-
-// C1f: group header lines. A folder of 600 entries in six file-type groups, with its own
-// state, collection and scenes, kept apart from the rest of the page.
 
 /// The grouped folder's collection key.
 pub const GROUPS_SCOPE: &str = "c1-groups";
@@ -780,8 +723,6 @@ const GROUPS: [(&str, &str, &str, usize); 6] = [
     ("Other", "file", "data-", 216),
 ];
 
-/// The grouped folder (`c1-groups-*`): its listing and its own collection state, which holds
-/// its groups.
 pub struct Grouped {
     pub listing: ListSource,
     pub coll: CollectionState,
@@ -835,13 +776,9 @@ fn groups(g: &mut Gallery, dark: bool) {
     d.coll.note_selection(&d.listing);
 }
 
-/// Scrolled to the end of Images: its header is stuck at the top, part pushed out by the
-/// Documents header coming up under it.
 fn groups_stuck(g: &mut Gallery, dark: bool) {
     let h = g.look().row.list;
     let d = grouped_scene(g, dark);
-    // Documents' header is line 8 + 166 + 2 = 176: the view starts 14 pt into line 175, so
-    // the stuck Images header shows only its last 12 pt.
     d.scroll_to = Some(175.0 * h + 14.0);
 }
 

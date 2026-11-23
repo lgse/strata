@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! In a headless runtime, on C1e's element: thumbnails land, change size and go with no
-//! view run and no commit beyond the scroll's own, and the icon slot draws what it should.
-
 use std::cell::Cell;
 use std::rc::Rc;
 
@@ -119,8 +116,6 @@ fn thumbs_drawn(rt: &Runtime<Host>) -> usize {
         .count()
 }
 
-/// Commits, view runs and rows built over 240 frames of scrolling, serving every request
-/// before each frame when `serve`.
 fn scroll(serve: bool) -> (u64, usize, usize, usize) {
     let mut rt = runtime(5000);
     let (c, v, b) = (rt.stats.commits, rt.state.views.get(), rt.state.built.get());
@@ -200,8 +195,6 @@ fn turning_thumbnails_off_builds_the_rows_once_as_icons_and_on_restores_them() {
     assert_eq!(rt.state.serve(), 0, "nothing on screen decodes again");
 }
 
-/// Each drawn element keyed `key`, by the row it is in, with its opacity as drawn (its row's
-/// included).
 fn opacities(rt: &Runtime<Host>, key: &str) -> Vec<(u64, f32)> {
     rt.elements()
         .iter()
@@ -216,8 +209,6 @@ fn opacities(rt: &Runtime<Host>, key: &str) -> Vec<(u64, f32)> {
         .collect()
 }
 
-/// Where the slot dims files, a file's placeholder icon draws at `collection.file_icon.opacity`
-/// and a folder's, or a cut file's, at full opacity; a landed thumbnail is never dimmed.
 #[test]
 fn a_dimmed_slot_dims_file_icons_but_no_folder_cut_entry_or_thumbnail() {
     let mut host = Host::new(20);
