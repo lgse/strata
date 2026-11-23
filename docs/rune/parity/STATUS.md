@@ -76,7 +76,7 @@ tracking moved here. The issues stay as an archive: each package file links its 
 | [E1](packages/E1.md) | Close the ledger | done | Every A and H package | Closed by owner approval via manual testing |
 | [E2](packages/E2.md) | Soak | done | E1, F4, F5 | Closed by owner approval via manual testing |
 | [E3](packages/E3.md) | Desktop hand checks | done | A19, A20, A21 | Closed by owner approval via manual testing |
-| [E4](packages/E4.md) | Retire GTK | done | E2, E3 | `refactor/2159-e4-retire-gtk` |
+| [E4](packages/E4.md) | Retire GTK | done | E2, E3 | [#2785](https://github.com/lgse/strata/pull/2785) |
 
 Pull requests are on `lgse/strata` and target `strata-next`; work in flight is in the open
 ones (`gh pr list -R lgse/strata --base strata-next`). A package whose dependencies are
