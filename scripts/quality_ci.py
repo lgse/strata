@@ -79,26 +79,21 @@ def test_source_key(repository):
 
 def build():
     BUNDLE.mkdir(parents=True, exist_ok=True)
-    # Build every workspace crate's tests and only strata-gallery's unit tests (goldens and
-    # scripts need a Vulkan GPU and run on demand via `mise run test-gallery`).
-    commands = (
-        ["cargo", "test", "--locked", "--workspace", "--exclude", "strata-gallery",
-         "--all-targets", "--all-features", "--no-run", "--message-format=json"],
-        ["cargo", "test", "--locked", "--package", "strata-gallery",
-         "--lib", "--bins", "--examples", "--all-features", "--no-run", "--message-format=json"],
-    )
+    command = [
+        "cargo", "test", "--locked", "--workspace",
+        "--all-targets", "--all-features", "--no-run", "--message-format=json",
+    ]
     artifacts = {}
-    for command in commands:
-        result = subprocess.run(command, cwd=ROOT, text=True, stdout=subprocess.PIPE)
-        for line in result.stdout.splitlines():
-            message = json.loads(line)
-            if message.get("reason") == "compiler-message":
-                print(message["message"].get("rendered", ""), end="", flush=True)
-            if message.get("reason") == "compiler-artifact" and message.get("profile", {}).get("test"):
-                executable = message.get("executable")
-                if executable:
-                    artifacts[executable] = message["target"]["name"]
-        result.check_returncode()
+    result = subprocess.run(command, cwd=ROOT, text=True, stdout=subprocess.PIPE)
+    for line in result.stdout.splitlines():
+        message = json.loads(line)
+        if message.get("reason") == "compiler-message":
+            print(message["message"].get("rendered", ""), end="", flush=True)
+        if message.get("reason") == "compiler-artifact" and message.get("profile", {}).get("test"):
+            executable = message.get("executable")
+            if executable:
+                artifacts[executable] = message["target"]["name"]
+    result.check_returncode()
     if not artifacts:
         raise ValueError("Cargo produced no test executables")
     durations = balancing_hints()

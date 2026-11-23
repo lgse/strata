@@ -247,9 +247,8 @@ class QualityCiTests(unittest.TestCase):
 
         with patch.object(quality.subprocess, "run", side_effect=run):
             quality.build()
-        self.assertEqual(len(commands), 2)
-        self.assertTrue({"--locked", "--workspace", "--exclude", "strata-gallery", "--all-targets", "--all-features", "--no-run"} <= set(commands[0]))
-        self.assertTrue({"--locked", "--package", "strata-gallery", "--lib", "--bins", "--examples", "--all-features", "--no-run"} <= set(commands[1]))
+        self.assertEqual(len(commands), 1)
+        self.assertTrue({"--locked", "--workspace", "--all-targets", "--all-features", "--no-run"} <= set(commands[0]))
         plan = json.loads(self.plan_path.read_text())
         self.assertEqual(plan["binaries"][0]["tests"], self.plan["binaries"][0]["tests"])
         self.assertEqual(plan["binaries"][0]["ignored"], ["ignored"])

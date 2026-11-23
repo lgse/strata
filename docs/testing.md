@@ -52,8 +52,7 @@ checks. Renew consent if the authorized scope changes, or run the required tests
 
 For native targeted Rust tests, both `mise run test [filter]` and
 `./scripts/test-headless.py [filter]` run headless across the unified workspace
-(`--workspace --exclude strata-gallery --all-targets --all-features`; `mise run
-test` also runs `strata-gallery`'s unit tests, and `mise run test-rune` is a
+(`--workspace --all-targets --all-features`; `mise run test-rune` is a
 compatibility alias). Use module/name filters:
 
 ```bash
@@ -202,9 +201,8 @@ filesystem lacks support.
 ### Rust quality shards
 
 CI's **Quality build and lint** job runs formatting and Clippy, then compiles
-the workspace test binaries once (`--workspace --exclude strata-gallery
---all-targets --all-features --no-run`, plus `strata-gallery`'s unit tests).
-It exports only test executables and a plan, not Cargo caches.
+the workspace test binaries once (`--workspace --all-targets --all-features
+--no-run`). It exports only test executables and a plan, not Cargo caches.
 `scripts/quality_ci.py` collects each libtest inventory (including explicitly
 ignored tests) and assigns every entry longest-first across four shards using
 the weights in `scripts/quality-durations.json`. Unknown tests receive a
@@ -582,22 +580,19 @@ and drop, foreign window parenting, and virtual input injection.
 and then with each individual feature enabled alone, ensuring no shim depends
 implicitly on another shim's optional crates.
 
-### Component gallery and goldens (`strata-gallery`)
+### Component gallery (`strata-gallery`)
 
-`crates/strata-gallery` hosts showcase pages, accessibility goldens, PNG goldens,
-and headless Rune input scripts for `strata-components`:
+`crates/strata-gallery` is an interactive showcase of `strata-components` pages
+and wiring examples (`dnd_wiring`, `clipboard_wiring`, `shell`):
 
 - Open interactively with `mise run gallery` (or `mise run gallery -- --scene <scene>`
   and `-- --list-scenes`).
-- `mise run test` runs only `strata-gallery`'s unit tests; the GPU-rendering
-  integration tests (PNG/a11y goldens and headless scripts) run on demand with
-  `mise run test-gallery [filter]` (for example `mise run test-gallery c1::`).
-- Rewrite goldens only deliberately with `mise run bless <page|scene|page/script>`,
-  and inspect every changed PNG diff before committing.
-- Golden files live under `tests/golden/{a11y,png,scripts}/<page>/` and scripts
-  under `tests/scripts/<page>/`. PNG goldens require a Vulkan adapter (lavapipe
-  or hardware GPU; `STRATA_VK_ICD` overrides selection) and fail on any pixel
-  differing by more than 24/255 in any channel.
+- `mise run test` runs `strata-gallery`'s headless unit and smoke tests
+  (`tests/gallery.rs` plus the unit tests in `src/` and `examples/`).
+- `mise run test-platform` runs `strata-gallery`'s `#[ignore]`d compositor
+  drag-and-drop (`x2`) and clipboard (`x3`) session tests.
+- Primary end-to-end UI and behavioral verification lives in the QA scenarios
+  (`tests/qa/scenarios/`, run via `./scripts/qa.sh`).
 
 Give each Git worktree its own `target/` directory rather than sharing one
 `CARGO_TARGET_DIR`, so dep-info paths never cause stale builds across worktrees.
