@@ -33,14 +33,34 @@ impl Scratch {
     pub(super) fn put(&self, path: &str, text: impl AsRef<[u8]>) {
         let path = self.0.join(path);
         let dir = path.parent().unwrap_or(&self.0);
+        // Record mtimes before writing: under coarse filesystem timestamp ticks, a write
+        // can reset a previously bumped directory back to the current tick, so advancing
+        // only `after + 1s` would repeat the cached stamp.
+        let mut to_bump = Vec::new();
+        let mut cursor = Some(dir);
+        while let Some(current) = cursor {
+            let before = std::fs::metadata(current).and_then(|m| m.modified()).ok();
+            let existed = before.is_some();
+            to_bump.push((current.to_path_buf(), before));
+            if existed || current == self.0 {
+                break;
+            }
+            cursor = current.parent();
+        }
         std::fs::create_dir_all(dir).unwrap_or_else(|e| panic!("{}: {e}", dir.display()));
         std::fs::write(&path, text).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
-        let handle = File::open(dir).unwrap_or_else(|e| panic!("{}: {e}", dir.display()));
-        let was = handle.metadata().and_then(|m| m.modified());
-        let was = was.unwrap_or_else(|e| panic!("{}: {e}", dir.display()));
-        handle
-            .set_modified(was + Duration::from_secs(1))
-            .unwrap_or_else(|e| panic!("{}: {e}", dir.display()));
+        for (target, before) in to_bump {
+            let handle =
+                File::open(&target).unwrap_or_else(|e| panic!("{}: {e}", target.display()));
+            let after = handle
+                .metadata()
+                .and_then(|m| m.modified())
+                .unwrap_or_else(|e| panic!("{}: {e}", target.display()));
+            let base = before.map_or(after, |was| after.max(was));
+            handle
+                .set_modified(base + Duration::from_secs(1))
+                .unwrap_or_else(|e| panic!("{}: {e}", target.display()));
+        }
     }
 }
 

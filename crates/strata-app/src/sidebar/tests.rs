@@ -12,7 +12,7 @@ use crate::{
     App,
     host::offscreen::Offscreen,
     test_support::{
-        PATIENCE, fixture, hosted, hosted_after,
+        PATIENCE, fixture, folder_of, hosted, hosted_after,
         view::{all, browser_holds, idle, press, shift, text},
     },
 };
@@ -75,6 +75,7 @@ fn wait_for_location(host: &mut Offscreen, folder: &Path) {
     let wanted = Location::local(folder);
     let reached = host.run_until(PATIENCE, |host| {
         host.app().browser().active_location() == Some(wanted.clone())
+            && host.app().browser().column_entry_counts(0).is_some()
     });
     assert!(
         reached,
@@ -650,7 +651,9 @@ fn the_arrows_move_along_the_header_and_down_returns_to_the_sidebar() {
         MODULE,
         "the_arrows_move_along_the_header_and_down_returns_to_the_sidebar",
         |mut host| {
-            let folder = fixture();
+            // Plain files keep `into_the_sidebar`'s Down press from opening a child column
+            // in the background while the test walks the location bar's crumbs.
+            let folder = folder_of(&["a.txt", "b.txt"]);
             opened(folder.path(), &mut host);
             shown(&mut host, "sidebar-place-home");
             into_the_sidebar(&mut host);

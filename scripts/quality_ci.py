@@ -77,22 +77,37 @@ def test_source_key(repository):
     return hashlib.sha256(json.dumps(inputs).encode()).hexdigest()
 
 
+def _collect_artifacts(stdout):
+    """Collects test executables and compiled binary executables from cargo's JSON stream."""
+    tests, bins = {}, {}
+    for line in stdout.splitlines():
+        message = json.loads(line)
+        if message.get("reason") == "compiler-message":
+            print(message["message"].get("rendered", ""), end="", flush=True)
+        if message.get("reason") != "compiler-artifact":
+            continue
+        executable = message.get("executable")
+        if not executable:
+            continue
+        target = message["target"]
+        if message.get("profile", {}).get("test"):
+            tests[executable] = target["name"]
+        elif "bin" in target.get("kind", []):
+            name = target["name"]
+            if name in bins and bins[name] != executable:
+                raise ValueError(f"Duplicate compiled binary target: {name}")
+            bins[name] = executable
+    return tests, bins
+
+
 def build():
     BUNDLE.mkdir(parents=True, exist_ok=True)
     command = [
         "cargo", "test", "--locked", "--workspace",
         "--all-targets", "--all-features", "--no-run", "--message-format=json",
     ]
-    artifacts = {}
     result = subprocess.run(command, cwd=ROOT, text=True, stdout=subprocess.PIPE)
-    for line in result.stdout.splitlines():
-        message = json.loads(line)
-        if message.get("reason") == "compiler-message":
-            print(message["message"].get("rendered", ""), end="", flush=True)
-        if message.get("reason") == "compiler-artifact" and message.get("profile", {}).get("test"):
-            executable = message.get("executable")
-            if executable:
-                artifacts[executable] = message["target"]["name"]
+    artifacts, compiled_bins = _collect_artifacts(result.stdout)
     result.check_returncode()
     if not artifacts:
         raise ValueError("Cargo produced no test executables")
@@ -105,15 +120,38 @@ def build():
         ignored = inventory(destination, ignored=True)
         binaries.append(dict(file=destination.name, target=target, sha256=digest(destination),
                              tests=tests, ignored=ignored, shards=partition(tests, durations)))
+    executables = []
+    for name, executable in sorted(compiled_bins.items()):
+        destination = BUNDLE / f"bin-{name}"
+        shutil.copy2(executable, destination)
+        executables.append(dict(file=destination.name, target=name, sha256=digest(destination)))
     plan = dict(version=1, commit=os.environ["STRATA_QUALITY_COMMIT"],
-                source_key=test_source_key(ROOT), image_key=image_key(ROOT), binaries=binaries)
+                source_key=test_source_key(ROOT), image_key=image_key(ROOT),
+                binaries=binaries, executables=executables)
     validate_plan(plan)
     (BUNDLE / "plan.json").write_text(json.dumps(plan, indent=2) + "\n")
+
+
+def _validate_executables(executables):
+    if not isinstance(executables, list):
+        raise ValueError("Invalid executables list")
+    files, targets = [], []
+    for item in executables:
+        name, target, sha = item.get("file", ""), item.get("target", ""), item.get("sha256", "")
+        if not re.fullmatch(r"bin-[A-Za-z0-9._-]+", name) or not re.fullmatch(r"[A-Za-z0-9._-]+", target):
+            raise ValueError("Invalid bundled executable entry")
+        if not isinstance(sha, str) or not sha:
+            raise ValueError("Missing bundled executable checksum")
+        files.append(name)
+        targets.append(target)
+    if len(files) != len(set(files)) or len(targets) != len(set(targets)):
+        raise ValueError("Duplicate bundled executable")
 
 
 def validate_plan(plan):
     if plan["version"] != 1 or not plan["binaries"]:
         raise ValueError("Unsupported or empty plan")
+    _validate_executables(plan.get("executables", []))
     files = []
     totals = [0] * SHARDS
     for binary in plan["binaries"]:
@@ -166,8 +204,21 @@ def private_display(display, command):
             "env", "-u", "WAYLAND_SOCKET", *PRIVATE_TEST_ENV, *command]
 
 
-def run_lane(lane, lanes, work, timings, log_path):
+def _bundled_bin_env(plan):
+    """Verifies bundled non-test executables and maps them to Cargo's CARGO_BIN_EXE_* env vars."""
+    bin_env = {}
+    for item in plan.get("executables", []):
+        executable = BUNDLE / item["file"]
+        if digest(executable) != item["sha256"]:
+            raise ValueError("Bundled executable checksum mismatch")
+        executable.chmod(0o755)
+        bin_env[f"CARGO_BIN_EXE_{item['target']}"] = str(executable)
+    return bin_env
+
+
+def run_lane(lane, lanes, work, options):
     """Run one lane's tests on displays no other lane uses; libtest must account for each batch."""
+    timings, log_path, bin_env = options["timings"], options["log_path"], options["bin_env"]
     started = time.monotonic()
     displays = iter(range(FIRST_DISPLAY + lane, sys.maxsize, lanes))
     measured = {}
@@ -176,11 +227,11 @@ def run_lane(lane, lanes, work, timings, log_path):
             if not tests:
                 continue
             command = [str(executable), "--exact", *tests, "--nocapture"]
-            environment = None
+            environment = {**os.environ, **bin_env} if (bin_env or timings) else None
             if timings:
                 # Stable libtest reports times only behind -Z; one thread avoids contention.
                 command.extend(TIMING_ARGS)
-                environment = {**os.environ, "RUSTC_BOOTSTRAP": "1"}
+                environment["RUSTC_BOOTSTRAP"] = "1"
             log.flush()
             offset = log.tell()
             code = subprocess.run(private_display(next(displays), command), cwd=ROOT,
@@ -218,6 +269,7 @@ def run(shard, lanes=1, timings=False):
             or plan["source_key"] != test_source_key(ROOT) or plan["image_key"] != image_key(ROOT)):
         raise ValueError("Bundle checkout or environment mismatch")
     started = time.monotonic()
+    bin_env = _bundled_bin_env(plan)
     report = dict(plan_sha256=digest(plan_path), shard=shard, binaries=[])
     hints = balancing_hints()
     work = [[] for _ in range(lanes)]
@@ -245,8 +297,16 @@ def run(shard, lanes=1, timings=False):
           f"output in {logs}", flush=True)
     failed, measured = [], {}
     with ThreadPoolExecutor(lanes) as pool:
-        futures = [pool.submit(run_lane, lane, lanes, tests, timings, REPORTS / f"shard-{shard}-lane-{lane}.log")
-                   for lane, tests in enumerate(work) if tests]
+        futures = [
+            pool.submit(
+                run_lane,
+                lane,
+                lanes,
+                tests,
+                dict(timings=timings, log_path=REPORTS / f"shard-{shard}-lane-{lane}.log", bin_env=bin_env),
+            )
+            for lane, tests in enumerate(work) if tests
+        ]
         for future in as_completed(futures):
             lane, passed, seconds, times = future.result()
             print(f"Shard {shard} lane {lane} {'passed' if passed else 'FAILED'} in {seconds:.1f}s", flush=True)

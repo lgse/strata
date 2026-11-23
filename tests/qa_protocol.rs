@@ -12,7 +12,9 @@ use serde_json::{Value, json};
 
 /// The binary with a home of its own and no display, bus or desktop to reach.
 fn binary(home: &Path) -> Command {
-    let mut command = Command::new(env!("CARGO_BIN_EXE_strata"));
+    let executable = std::env::var_os("CARGO_BIN_EXE_strata")
+        .unwrap_or_else(|| env!("CARGO_BIN_EXE_strata").into());
+    let mut command = Command::new(executable);
     command
         .env_clear()
         .env("PATH", std::env::var_os("PATH").unwrap_or_default())
