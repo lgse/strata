@@ -9,15 +9,6 @@ mod peers;
 #[path = "qa/harness.rs"]
 mod harness;
 
-#[path = "qa/allowances.rs"]
-mod allowances;
-
-#[path = "qa/allowance_tests.rs"]
-mod allowance_tests;
-
-#[path = "qa/baseline.rs"]
-mod baseline;
-
 #[path = "qa/drive.rs"]
 mod drive;
 
@@ -29,9 +20,6 @@ mod fs_check;
 
 #[path = "qa/fs_helpers.rs"]
 mod fs_helpers;
-
-#[path = "qa/fuzz.rs"]
-mod fuzz;
 
 #[path = "qa/input_method.rs"]
 mod input_method;
@@ -75,18 +63,6 @@ mod steps;
 #[path = "qa/target.rs"]
 mod target;
 
-#[path = "qa/parity.rs"]
-mod parity;
-
-#[path = "qa/parity_tests.rs"]
-mod parity_tests;
-
-#[path = "qa/twins.rs"]
-mod twins;
-
-#[path = "qa/twin_tests.rs"]
-mod twin_tests;
-
 #[path = "qa/unit_tests.rs"]
 mod unit_tests;
 
@@ -129,7 +105,6 @@ use process::{Bus, SPAWN, spawn, tail, terminate, wait_for_exit};
 use run::{Outcome, pretty, run_result, settled_state};
 use scenario::{Scenario, planned_tests};
 use steps::run_steps;
-use target::{RUNE_BINARY_VARIABLE, Target};
 use variables::{Places, Run, substitute, substitute_text, unescape, variables};
 use volume_monitor::VolumeMonitor;
 
@@ -149,13 +124,12 @@ const DISPLAY_TRIES: u32 = 256;
 const XVFB_START_TIMEOUT: Duration = Duration::from_secs(15);
 const DEFAULT_LAYOUT: &str = "us";
 const CONTROLLER_PANIC: &str = "the QA controller panicked";
-const RUNNER_COMMANDS: [&str; 24] = [
+const RUNNER_COMMANDS: [&str; 23] = [
     "layout",
     "fs",
     "increment",
     "slice",
     "screenshot",
-    "baseline",
     "stem",
     "parent",
     "flag",
@@ -177,7 +151,6 @@ const RUNNER_COMMANDS: [&str; 24] = [
 ];
 const NOTED_PLACEHOLDER: &str = "noted";
 const FFMPEG_TIMEOUT: Duration = Duration::from_secs(30);
-const CAPTURE_TIMEOUT: Duration = Duration::from_secs(15);
 /// `SESSION_BUS_CONFIG` in `scripts/headless/display.py`: no service directories, so
 /// nothing on the bus is D-Bus-activatable.
 const SESSION_BUS_CONFIG: &str = r#"<!DOCTYPE busconfig PUBLIC
@@ -241,14 +214,7 @@ fn shader_cache() -> Result<PathBuf, String> {
 }
 
 fn main() -> std::process::ExitCode {
-    let mut arguments = std::env::args().skip(1).peekable();
-    // `./scripts/qa-fuzz.sh`: the fuzz driver's commands, not a selection of scenarios. The
-    // option cannot be a test filter, so `cargo test fuzz` still selects tests by name.
-    if arguments.next_if(|first| first == fuzz::OPTION).is_some() {
-        announce_host_run();
-        return fuzz::main(arguments);
-    }
-    let arguments = match harness::Arguments::parse(arguments) {
+    let arguments = match harness::Arguments::parse(std::env::args().skip(1)) {
         Ok(arguments) => arguments,
         Err(error) => {
             eprintln!("error: {error}");
@@ -256,13 +222,7 @@ fn main() -> std::process::ExitCode {
         }
     };
     announce_host_run();
-    let plan = planned_tests();
-    if let Some(refusal) = plan.unrunnable(&arguments, Target::from_environment().ok()) {
-        eprintln!("error: {refusal}");
-        return std::process::ExitCode::from(harness::FAILED);
-    }
-    plan.announce(arguments.list || arguments.help);
-    let status = harness::run(plan.tests, &arguments);
+    let status = harness::run(planned_tests(), &arguments);
     drop(
         SHADER_CACHE
             .lock()
@@ -401,12 +361,7 @@ impl DisplayKind {
 }
 
 impl Display {
-    fn start(scratch: &Path, runtime: &Path) -> Result<Self, String> {
-        Self::start_as(DisplayKind::from_environment()?, scratch, runtime)
-    }
-
-    /// A display of the kind named, whatever `STRATA_QA_DISPLAY` says: a fuzz replay picks
-    /// its own, since one process replays on both targets and each has its host.
+    /// Starts the display server for this run: Xvfb or a private headless sway.
     fn start_as(kind: DisplayKind, scratch: &Path, runtime: &Path) -> Result<Self, String> {
         match kind {
             DisplayKind::X11 => Self::start_x11(scratch.join("xvfb.log")),
@@ -522,41 +477,6 @@ impl Display {
             Server::Wayland(_) => Err("keyboard layouts need the X11 display".to_owned()),
         }
     }
-
-    fn screenshot(&self, destination: &Path) -> Result<(), String> {
-        let mut child = match &self.kind {
-            Server::X11 { .. } => spawn(
-                Command::new("import")
-                    .args(["-display", &self.name, "-window", "root"])
-                    .arg(destination)
-                    .env_clear()
-                    .env("PATH", std::env::var_os("PATH").unwrap_or_default())
-                    .stdout(Stdio::null())
-                    .stderr(Stdio::null()),
-            )
-            .map_err(|error| format!("cannot run import: {error}"))?,
-            Server::Wayland(sway) => sway.screenshot(&self.name, destination)?,
-        };
-        let program = match &self.kind {
-            Server::X11 { .. } => "import",
-            Server::Wayland(_) => "grim",
-        };
-        let deadline = Instant::now() + CAPTURE_TIMEOUT;
-        loop {
-            match child.try_wait().map_err(|error| error.to_string())? {
-                Some(status) if status.success() => return Ok(()),
-                Some(status) => return Err(format!("{program} exited with {status}")),
-                None if Instant::now() >= deadline => {
-                    terminate(&mut child);
-                    return Err(format!(
-                        "{program} ran past {} s",
-                        CAPTURE_TIMEOUT.as_secs()
-                    ));
-                }
-                None => std::thread::sleep(POLL_INTERVAL),
-            }
-        }
-    }
 }
 
 impl Drop for Display {
@@ -566,8 +486,6 @@ impl Drop for Display {
 }
 
 struct Launch<'a> {
-    /// The binary a scenario run takes from `STRATA_QA_TARGET`; a fuzz replay names its own.
-    target: Target,
     manifest: &'a Manifest,
     home: &'a Path,
     fixture: &'a Path,
@@ -620,15 +538,9 @@ impl Launch<'_> {
         variables
     }
 
-    /// The binary of the target this run drives.
+    /// The binary this run drives.
     fn binary(&self) -> Result<String, String> {
-        let binary = self
-            .target
-            .binary(std::env::var_os(RUNE_BINARY_VARIABLE).as_deref())?;
-        binary
-            .into_os_string()
-            .into_string()
-            .map_err(|binary| format!("{} is not UTF-8", Path::new(&binary).display()))
+        Ok(target::binary().to_owned())
     }
 
     /// `program`, under `strace` when the run is part of a main-thread I/O audit.
@@ -961,7 +873,14 @@ fn execute(scenario: &Scenario, run: &Run, manifest: &Manifest) -> Outcome {
         Ok(audit) => audit,
         Err(error) => return failed_setup(format!("setup: {error}"), &mut fs_state),
     };
-    let display = match Display::start(scratch.path(), &runtime) {
+    let display_kind = match scenario.header.host(&run.variant) {
+        scenario::Host::Session => DisplayKind::Wayland,
+        scenario::Host::Offscreen => match DisplayKind::from_environment() {
+            Ok(kind) => kind,
+            Err(error) => return failed_setup(format!("setup: {error}"), &mut fs_state),
+        },
+    };
+    let display = match Display::start_as(display_kind, scratch.path(), &runtime) {
         Ok(display) => display,
         Err(error) => return failed_setup(format!("setup: {error}"), &mut fs_state),
     };
@@ -984,12 +903,7 @@ fn execute(scenario: &Scenario, run: &Run, manifest: &Manifest) -> Outcome {
         Ok(peers) => peers,
         Err(error) => return failed_setup(format!("setup: {error}"), &mut fs_state),
     };
-    let target = match Target::from_environment() {
-        Ok(target) => target,
-        Err(error) => return failed_setup(format!("launch: {error}"), &mut fs_state),
-    };
     let launch = Launch {
-        target,
         manifest,
         home: &home,
         fixture: fixture.path(),
@@ -1041,7 +955,6 @@ fn execute(scenario: &Scenario, run: &Run, manifest: &Manifest) -> Outcome {
             fixture: fixture.path(),
             fixture_time: fixture_time(manifest),
             screens: &scratch.path().join("screenshots"),
-            artifacts: &artifacts,
             launch: &launch,
         },
         &mut layout,

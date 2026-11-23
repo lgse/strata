@@ -20,16 +20,12 @@ class HeadlessRunnerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             tools = Path(directory)
             cargo = tools / "cargo"
-            # The GTK lane runs with no Wayland display and GDK on X11; the Rune lane names a
-            # Wayland socket that does not exist.
+            # Tests run headless with no X display, no Wayland socket, and an unconnectable Wayland display.
             cargo.write_text(
                 '#!/bin/sh\n'
                 '[ "$1" = test ] || exit 0\n'
                 '[ -z "${DISPLAY+x}" ] || exit 1\n'
-                'case " $* " in\n'
-                '  *" --workspace "*) [ -z "${WAYLAND_DISPLAY+x}" ] && [ "$GDK_BACKEND" = x11 ] || exit 1 ;;\n'
-                '  *) [ "$WAYLAND_DISPLAY" = strata-test-no-wayland ] && [ -z "${WAYLAND_SOCKET+x}" ] || exit 1 ;;\n'
-                'esac\n'
+                '[ "$WAYLAND_DISPLAY" = strata-test-no-wayland ] && [ -z "${WAYLAND_SOCKET+x}" ] || exit 1\n'
             )
             cargo.chmod(0o755)
             for name in ("cargo-deny", "typos"):
@@ -70,10 +66,9 @@ class HeadlessRunnerTests(unittest.TestCase):
         })
         self.assertEqual(environment["DISPLAY"], ":99")
         self.assertEqual(environment["HOME"], "/private/home")
-        self.assertNotIn("WAYLAND_DISPLAY", environment)
+        self.assertEqual(environment["WAYLAND_DISPLAY"], "strata-test-no-wayland")
         self.assertNotIn("GTK_MODULES", environment)
         self.assertNotIn("TMPDIR", environment)
-        self.assertEqual(environment["STRATA_REQUIRE_GTK_TESTS"], "1")
         self.assertEqual(environment["GTK_A11Y"], "none")
         self.assertEqual(environment["NO_AT_BRIDGE"], "1")
 

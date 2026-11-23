@@ -1,8 +1,0 @@
-{"scenario":"camera-formats-preview-sandbox-rune","modes":["columns"],"layout":"us","tree":{},"setup":[{"fs":{"path":"small.png","image":{"width":80,"height":40,"rgb":[255,255,255]}}},{"fs":{"path":"small.png","thumbnail":{"cache":"$cache/thumbnails/large","width":256,"height":128,"rgb":[0,0,255],"mode":"700"}}}],"variants":[{"id":"heic","vars":{"ext":"heic"},"setup":[{"fs":{"path":"camera.heic","magick":["-limit","thread","1","$fixture/small.png"]}}]},{"id":"avif","vars":{"ext":"avif"},"setup":[{"fs":{"path":"camera.avif","magick":["-limit","thread","1","$fixture/small.png"]}}]}],"cost":{"columns-heic":0.4,"columns-avif":0.4},"quality":{"impact":3,"coverage":3,"criticality":4,"diagnostic":4,"score":33,"note":"HEIC/AVIF thumbnails and Space previews on Rune, the decoded picture found by name; twin of camera-formats-preview-sandbox"},"targets":["rune"],"parity":{"twin":"camera-formats-preview-sandbox","exception":"toolkit","ref":"lgse/strata#2596","differs":"line 5 waits for the decoded image by name instead of reading a white pixel of it, since no Rune target can read drawn pixels (packet entry 75); the mov and mp4 runs need no twin"}}
-{"select_with_keyboard":"camera.$ext"}
-{"fs":{"path":"camera.$ext","cached_in":"$cache/thumbnails/large","pixel":{"at":[0,0],"rgb":[255,255,255]}},"message":"the $ext thumbnail to decode in the browser sandbox"}
-{"key":"space"}
-{"wait":{"present":{"role":"image","name":"camera.$ext","within":{"preview":true}}},"message":"the $ext image to decode in the preview sandbox"}
-{"expect":{"not":{"preview":"Preview unavailable"}},"message":"the camera preview to succeed"}
-{"key":"space"}
-{"wait":{"preview":null},"message":"the preview to close"}

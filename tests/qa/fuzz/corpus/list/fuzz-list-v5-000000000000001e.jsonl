@@ -1,8 +1,0 @@
-{"scenario":"fuzz-list-v5-000000000000001e","modes":["list"],"prefs":{"type_to_search":false}}
-{"key":"Down","when":{"not":{"focused":{"one_of":["todo.txt","spreadsheet.csv","photo.txt"]}}}}
-{"key":"ctrl+period"}
-{"key":"shift+Down","when":{"not":{"focused":{"one_of":["todo.txt","spreadsheet.csv","photo.txt"]}}}}
-{"key":"shift+Down","when":{"not":{"focused":{"one_of":["todo.txt","spreadsheet.csv","photo.txt"]}}}}
-{"key":"ctrl+period"}
-{"key":"ctrl+period"}
-{"key":"shift+Up","when":{"not":{"focused":{"one_of":["archive","notes.txt","diagram.txt","fuzz-b.txt"]}}}}

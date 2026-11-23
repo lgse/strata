@@ -1,4 +1,0 @@
-{"scenario":"fuzz-icons-v3-0000000000000044","modes":["icons"],"prefs":{"type_to_search":false}}
-{"click":{"entry":"documents"},"count":2,"when":{"all":[{"present":{"entry":"documents"}}]}}
-{"click":{"entry":"notes.txt"},"button":3,"when":{"all":[{"present":{"entry":"notes.txt"}}]}}
-{"click":{"entry":"spreadsheet.csv"},"mods":["shift"],"when":{"all":[{"present":{"entry":"spreadsheet.csv"}},{"not":{"selected":[]}}]}}

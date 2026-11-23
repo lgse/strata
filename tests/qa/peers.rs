@@ -16,7 +16,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use gtk::{gio, gio::prelude::*, glib};
+use gio::prelude::*;
 use serde::Deserialize;
 
 const BACKEND: &str = "org.freedesktop.impl.portal.desktop.strata";

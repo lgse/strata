@@ -1,3 +1,0 @@
-{"scenario":"fuzz-calibration-v3-000000000000041c","modes":["columns"]}
-{"key":"shift+Up"}
-{"click":{"entry":"pictures"},"when":{"all":[{"present":{"entry":"pictures"}},{"not":{"field":{"name":"Rename"}}}]}}

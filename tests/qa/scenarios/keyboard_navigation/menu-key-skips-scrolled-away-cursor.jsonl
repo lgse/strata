@@ -1,4 +1,4 @@
-{"scenario":"menu-key-skips-scrolled-away-cursor","modes":["columns","icons"],"layout":"us","mutation":"menu-key-offscreen-cursor","tree":{"file-{000..199}.txt":"{}\n"},"quality":{"impact":4,"coverage":4,"criticality":4,"diagnostic":4,"score":56,"note":"Menu key and Shift+F10 open no menu for an off-screen cursor in Columns/Icons (List opens a wrong entry's, #2235); only Menu-key scenario"}}
+{"scenario":"menu-key-skips-scrolled-away-cursor","modes":["columns","icons"],"layout":"us","mutation":null,"tree":{"file-{000..199}.txt":"{}\n"},"quality":{"impact":4,"coverage":4,"criticality":4,"diagnostic":4,"score":56,"note":"Menu key and Shift+F10 open no menu for an off-screen cursor in Columns/Icons (List opens a wrong entry's, #2235); only Menu-key scenario"}}
 {"select":{"entry":"file-000.txt","dir":"$root"}}
 {"wait":{"all":[{"focused":"file-000.txt"},{"selected":["file-000.txt"],"dir":"$root"}]},"message":"the cursor and selection to rest on 'file-000.txt'"}
 {"wheel":{"container":"$root"},"clicks":3,"direction":"down","until":{"absent":{"entry":"file-000.txt","dir":"$root"}},"tries":30}
@@ -7,8 +7,8 @@
 {"expect":[{"menu_items":null},{"selected":[],"dir":"$root"},{"absent":{"entry":"file-000.txt","dir":"$root"}}],"timeout_ms":1000,"hold_ms":500,"message":"the Menu key with the cursor's entry out of view to open no menu, select no entry in view and leave the scroll alone"}
 {"key":"shift+F10"}
 {"expect":[{"menu_items":null},{"selected":[],"dir":"$root"},{"absent":{"entry":"file-000.txt","dir":"$root"}}],"timeout_ms":1000,"hold_ms":500,"message":"Shift+F10 with the cursor's entry out of view to open no menu, select no entry in view and leave the scroll alone"}
-{"wheel":{"container":"$root"},"clicks":3,"direction":"up","until":{"present":{"entry":"file-000.txt","dir":"$root"}},"tries":30}
-{"wait":{"present":{"entry":"file-000.txt","dir":"$root"}},"message":"the wheel to bring the cursor's entry back into view"}
+{"wheel":{"container":"$root"},"clicks":3,"direction":"up","until":{"on_screen":{"entry":"file-000.txt","dir":"$root"}},"tries":30}
+{"wait":{"on_screen":{"entry":"file-000.txt","dir":"$root"}},"message":"the wheel to bring the cursor's entry back into view"}
 {"expect":[{"selected":["file-000.txt"],"dir":"$root"},{"focused":"file-000.txt"}],"message":"the cursor and the selection to have stayed on 'file-000.txt'"}
 {"key":"Menu"}
 {"wait":{"menu_items":{"contains":["Rename","Move to Trash"]}},"message":"the Menu key with the cursor's entry in view to open its context menu"}

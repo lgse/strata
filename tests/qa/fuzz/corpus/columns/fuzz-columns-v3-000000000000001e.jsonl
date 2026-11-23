@@ -1,7 +1,0 @@
-{"scenario":"fuzz-columns-v3-000000000000001e","modes":["columns"],"prefs":{"type_to_search":false}}
-{"key":"Down","when":{"not":{"field":{"name":"Rename"}}}}
-{"click":{"entry":"todo.txt"},"button":3,"when":{"all":[{"present":{"entry":"todo.txt"}},{"not":{"field":{"name":"Rename"}}}]}}
-{"click":{"entry":"report.md"},"when":{"all":[{"present":{"entry":"report.md"}},{"not":{"field":{"name":"Rename"}}}]}}
-{"key":"Down","when":{"not":{"field":{"name":"Rename"}}}}
-{"click":{"entry":"documents"},"mods":["shift"],"when":{"all":[{"present":{"entry":"documents"}},{"not":{"field":{"name":"Rename"}}}]}}
-{"key":"j","when":{"not":{"field":{"name":"Rename"}}}}

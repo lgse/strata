@@ -1,4 +1,4 @@
-{"scenario":"rename-survives-window-switch","modes":["columns"],"layout":"us","mutation":"rename-inactive-window","known_bug":null,"session_bus":true,"quality":{"impact":3,"coverage":4,"criticality":4,"diagnostic":4,"score":49,"note":"Rename stays open while its window is inactive and keys follow the active window; sole switch-back route, no unit test of #1714's rule"}}
+{"scenario":"rename-survives-window-switch","modes":["columns"],"layout":"us","mutation":null,"known_bug":"Rune QA hosts drive one browser window and refuse activate_window (#2683)","known_bug_step":11,"session_bus":true,"quality":{"impact":3,"coverage":4,"criticality":4,"diagnostic":4,"score":49,"note":"Rename stays open while its window is inactive and keys follow the active window; sole switch-back route, no unit test of #1714's rule"}}
 {"select_with_keyboard":"todo.txt"}
 {"key":"F2"}
 {"wait":{"field":{"name":"Rename","focused":true}},"message":"the rename editor to take focus"}

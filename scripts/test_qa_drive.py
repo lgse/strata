@@ -99,7 +99,6 @@ class QaDriveMatchesTheRunner(unittest.TestCase):
             (".current_dir(launch.fixture)", '--chdir="$(cat "$session/fixture")"'),
             ('.env("STRATA_INPUT_LOG"', "STRATA_INPUT_LOG="),
             (".env(SHADER_CACHE_VARIABLE", "MESA_SHADER_CACHE_DIR="),
-            ('.args(["-display", &self.name, "-window", "root"])', 'import -display "$display" -window root'),
         ):
             with self.subTest(runner=runner):
                 self.assertIn(runner, RUNNER, "tests/qa.rs changed; update qa-drive.sh and this test")

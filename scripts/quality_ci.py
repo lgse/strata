@@ -16,25 +16,20 @@ import sys
 import time
 
 from image_inputs import image_key, source_key
-import lanes
 
 ROOT = Path(__file__).resolve().parents[1]
 BUNDLE = ROOT / "target/quality-bundle"
 REPORTS = ROOT / "target/quality-reports"
 LOCAL = ROOT / "target/quality-local"
 SHARDS = 4
-# Tests outside GTK children share libtest's threads, four on CI runners, instead of queueing
-# for the display, so they cost a shard about a quarter of their serial time.
+# Tests share libtest's threads, four on CI runners, so they cost a shard a fraction of their
+# serial time.
 PARALLEL_DISCOUNT = 4
-# GTK tests serialize per display, not per machine, so each lane of a shard owns an Xvfb server.
+# Each lane of a shard owns a private Xvfb server and isolated D-Bus/Wayland environment.
 FIRST_DISPLAY = 99
 XVFB_SERVER = "-screen 0 1280x1024x24 -nolisten tcp -noreset"
-PRIVATE_GTK_ENV = ("GDK_BACKEND=x11", "GTK_A11Y=none", "NO_AT_BRIDGE=1", "STRATA_REQUIRE_GTK_TESTS=1")
-ISOLATED_TEST = (
-    "ui::search::tests::"
-    "deferred_scroll_restoration_yields_to_updates_wheel_scrollbar_and_query_reset"
-)
-# Parent libtest lines start a test; a GTK child repeats its name and prints no time of its own.
+PRIVATE_TEST_ENV = ("WAYLAND_DISPLAY=strata-test-no-wayland", "GTK_A11Y=none", "NO_AT_BRIDGE=1")
+# Parent libtest lines start a test; a subprocess repeats its name and prints no time of its own.
 TIMED = re.compile(r"^test (\S+) \.\.\. |\bok <(\d+(?:\.\d+)?)s>$", re.MULTILINE)
 TIMING_ARGS = ("-Z", "unstable-options", "--report-time", "--test-threads=1")
 SUMMARY = re.compile(
@@ -84,20 +79,26 @@ def test_source_key(repository):
 
 def build():
     BUNDLE.mkdir(parents=True, exist_ok=True)
-    result = subprocess.run(
-        ["cargo", "test", "--locked", *lanes.gtk(), "--all-targets", "--all-features", "--no-run",
-         "--message-format=json"], cwd=ROOT, text=True, stdout=subprocess.PIPE,
+    # Build every workspace crate's tests and only strata-gallery's unit tests (goldens and
+    # scripts need a Vulkan GPU and run on demand via `mise run test-gallery`).
+    commands = (
+        ["cargo", "test", "--locked", "--workspace", "--exclude", "strata-gallery",
+         "--all-targets", "--all-features", "--no-run", "--message-format=json"],
+        ["cargo", "test", "--locked", "--package", "strata-gallery",
+         "--lib", "--bins", "--examples", "--all-features", "--no-run", "--message-format=json"],
     )
     artifacts = {}
-    for line in result.stdout.splitlines():
-        message = json.loads(line)
-        if message.get("reason") == "compiler-message":
-            print(message["message"].get("rendered", ""), end="", flush=True)
-        if message.get("reason") == "compiler-artifact" and message.get("profile", {}).get("test"):
-            executable = message.get("executable")
-            if executable:
-                artifacts[executable] = message["target"]["name"]
-    result.check_returncode()
+    for command in commands:
+        result = subprocess.run(command, cwd=ROOT, text=True, stdout=subprocess.PIPE)
+        for line in result.stdout.splitlines():
+            message = json.loads(line)
+            if message.get("reason") == "compiler-message":
+                print(message["message"].get("rendered", ""), end="", flush=True)
+            if message.get("reason") == "compiler-artifact" and message.get("profile", {}).get("test"):
+                executable = message.get("executable")
+                if executable:
+                    artifacts[executable] = message["target"]["name"]
+        result.check_returncode()
     if not artifacts:
         raise ValueError("Cargo produced no test executables")
     durations = balancing_hints()
@@ -134,9 +135,6 @@ def validate_plan(plan):
             raise ValueError("Missing, extra, or duplicate assignment")
         for index, shard in enumerate(shards):
             totals[index] += len(set(shard) - set(ignored))
-    if sum(ISOLATED_TEST in binary["tests"] and ISOLATED_TEST not in binary["ignored"]
-           for binary in plan["binaries"]) != 1:
-        raise ValueError("Expected exactly one runnable isolated test")
     if len(files) != len(set(files)) or not all(totals):
         raise ValueError("Duplicate binary or empty runnable shard")
 
@@ -170,7 +168,7 @@ def default_lanes():
 
 def private_display(display, command):
     return ["xvfb-run", "-n", str(display), "-s", XVFB_SERVER, "dbus-run-session", "--",
-            "env", "-u", "WAYLAND_DISPLAY", *PRIVATE_GTK_ENV, *command]
+            "env", "-u", "WAYLAND_SOCKET", *PRIVATE_TEST_ENV, *command]
 
 
 def run_lane(lane, lanes, work, timings, log_path):
@@ -180,30 +178,29 @@ def run_lane(lane, lanes, work, timings, log_path):
     measured = {}
     with log_path.open("wb") as log:
         for binary, executable, tests in work:
-            batches = [[test for test in tests if test == ISOLATED_TEST],
-                       [test for test in tests if test != ISOLATED_TEST]]
-            for batch in filter(None, batches):
-                command = [str(executable), "--exact", *batch, "--nocapture"]
-                environment = None
-                if timings:
-                    # Stable libtest reports times only behind -Z; one thread keeps GTK lock waits out.
-                    command.extend(TIMING_ARGS)
-                    environment = {**os.environ, "RUSTC_BOOTSTRAP": "1"}
-                log.flush()
-                offset = log.tell()
-                code = subprocess.run(private_display(next(displays), command), cwd=ROOT,
-                                      stdout=log, stderr=subprocess.STDOUT, env=environment).returncode
-                log.seek(0, os.SEEK_END)
-                with log_path.open("rb") as written:
-                    written.seek(offset)
-                    output = written.read().decode(errors="replace")
-                summaries = SUMMARY.findall(output)
-                ignored_count = len(set(batch) & set(binary["ignored"]))
-                expected = (str(len(batch) - ignored_count), str(ignored_count))
-                if code or not summaries or summaries[-1] != expected:
-                    log.write(f"\n{binary['file']} failed or did not execute its complete selection\n".encode())
-                    return lane, False, time.monotonic() - started, measured
-                measured.update(test_times(output))
+            if not tests:
+                continue
+            command = [str(executable), "--exact", *tests, "--nocapture"]
+            environment = None
+            if timings:
+                # Stable libtest reports times only behind -Z; one thread avoids contention.
+                command.extend(TIMING_ARGS)
+                environment = {**os.environ, "RUSTC_BOOTSTRAP": "1"}
+            log.flush()
+            offset = log.tell()
+            code = subprocess.run(private_display(next(displays), command), cwd=ROOT,
+                                  stdout=log, stderr=subprocess.STDOUT, env=environment).returncode
+            log.seek(0, os.SEEK_END)
+            with log_path.open("rb") as written:
+                written.seek(offset)
+                output = written.read().decode(errors="replace")
+            summaries = SUMMARY.findall(output)
+            ignored_count = len(set(tests) & set(binary["ignored"]))
+            expected = (str(len(tests) - ignored_count), str(ignored_count))
+            if code or not summaries or summaries[-1] != expected:
+                log.write(f"\n{binary['file']} failed or did not execute its complete selection\n".encode())
+                return lane, False, time.monotonic() - started, measured
+            measured.update(test_times(output))
     return lane, True, time.monotonic() - started, measured
 
 

@@ -1,3 +1,0 @@
-{"scenario":"fuzz-columns-v3-000000000000003c","modes":["columns"],"prefs":{"type_to_search":false}}
-{"click":{"entry":"pictures"},"when":{"all":[{"present":{"entry":"pictures"}},{"not":{"field":{"name":"Rename"}}}]}}
-{"click":{"entry":"pictures"},"when":{"all":[{"present":{"entry":"pictures"}},{"not":{"field":{"name":"Rename"}}}]}}

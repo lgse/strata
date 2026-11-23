@@ -4,7 +4,7 @@
 
 The image's dependency stage (tests/container/Dockerfile) leaves under /opt/strata-dependencies
 every crate Cargo.lock names, fetched, and the third-party crates of the QA builds, compiled.
-qa.sh, qa-parity.sh, qa-drive.sh and quality.sh run this inside the container before Cargo, so
+qa.sh, qa-drive.sh and quality.sh run this inside the container before Cargo, so
 a first run in a new checkout fetches nothing.
 
 A cache Cargo has already fetched into is never touched. The compiled crates are copied only

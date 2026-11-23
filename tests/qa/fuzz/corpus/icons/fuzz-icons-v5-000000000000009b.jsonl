@@ -1,5 +1,0 @@
-{"scenario":"fuzz-icons-v5-000000000000009b","modes":["icons"],"prefs":{"type_to_search":false}}
-{"click":{"entry":"documents"},"count":2,"when":{"all":[{"present":{"entry":"documents"}}]}}
-{"click":{"entry":"report.md"},"button":3,"when":{"all":[{"present":{"entry":"report.md"}}]}}
-{"key":"Escape","when":{"menu_items":{}}}
-{"key":"shift+Left","when":{"any":[{"focused":"readme.md"},{"focused":"todo.txt"},{"focused":"report.md"},{"focused":"spreadsheet.csv"},{"focused":"photo.txt"}]}}

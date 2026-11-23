@@ -15,36 +15,13 @@ CARGO_TERM_COLOR = "always"
 description = "Check Rust formatting"
 run = "cargo fmt --all --check"
 
-# The GTK application and the Rune side build in separate cargo runs: one run would unify
-# their dependency features, and the application does not compile under Rune's
-# (docs/workspace.md). scripts/lanes.py names each side's packages.
 [tasks.compile]
-description = "Type-check all targets, each side of the workspace on its own"
-run = '''
-set -eu
-for name in gtk rune; do
-  lane="$(python3 scripts/lanes.py "$name")"
-  cargo check $lane --all-targets --all-features --locked
-done
-'''
+description = "Type-check all targets across the workspace"
+run = "cargo check --workspace --all-targets --all-features --locked"
 
 [tasks.clippy]
-description = "Lint with Clippy, each side of the workspace on its own"
-run = '''
-set -eu
-for name in gtk rune; do
-  lane="$(python3 scripts/lanes.py "$name")"
-  cargo clippy $lane --all-targets --all-features --locked -- -D warnings
-done
-'''
-
-[tasks.test]
-description = "Run the application's Rust tests without a desktop display"
-run = '''
-set -eu
-lane="$(python3 scripts/lanes.py gtk)"
-env -u DISPLAY -u WAYLAND_DISPLAY GDK_BACKEND=x11 cargo test $lane --all-targets --all-features --locked
-'''
+description = "Lint all targets across the workspace with Clippy"
+run = "cargo clippy --workspace --all-targets --all-features --locked -- -D warnings"
 
 # Headless: no X display, and a Wayland socket and a session bus that don't exist, so nothing
 # can reach the desktop session (libwayland would otherwise fall back to wayland-0).
@@ -55,25 +32,55 @@ env -u DISPLAY -u WAYLAND_DISPLAY GDK_BACKEND=x11 cargo test $lane --all-targets
 # page tests and scripts; the PNG goldens and the scripts start a gallery process each) are not
 # run here: only its unit tests are. `mise run test-gallery` runs the rest on demand. A trailing filter goes to both
 # cargo runs; mise appends the task's arguments to the script's last line, `both`.
-[tasks.test-rune]
-description = "Run the Rune side's tests headless, never on the desktop display, with only the gallery's unit tests"
+[tasks.test]
+description = "Run the workspace's Rust tests headless, never on the desktop display, with only the gallery's unit tests"
 raw_args = true
 run = '''
-lane="$(python3 scripts/lanes.py rune)" || exit
-rest="$(printf '%s' "$lane" | sed 's/--package strata-gallery//')"
-case "$rest" in
-  *strata-gallery*)
-    echo "test-rune: strata-gallery is still in the first run's packages: $rest" >&2
-    exit 1 ;;
-esac
+tmp="$(mktemp -d)"
+trap 'rm -rf "$tmp"' EXIT
 headless() {
   env -u DISPLAY -u WAYLAND_SOCKET WAYLAND_DISPLAY=strata-test-no-wayland \
     DBUS_SESSION_BUS_ADDRESS=unix:path=/nonexistent/strata-test-no-bus \
+    GIO_USE_VFS=local \
+    CARGO_HOME="${CARGO_HOME:-$HOME/.cargo}" \
+    RUSTUP_HOME="${RUSTUP_HOME:-$HOME/.rustup}" \
+    HOME="$tmp" \
+    XDG_CONFIG_HOME="$tmp/config" \
+    XDG_DATA_HOME="$tmp/data" \
+    XDG_CACHE_HOME="$tmp/cache" \
+    XDG_STATE_HOME="$tmp/state" \
     CARGO_PROFILE_DEV_DEBUG=0 \
     cargo test "$@"
 }
 both() {
-  headless $rest --all-targets --all-features --locked "$@" &&
+  headless --workspace --exclude strata-gallery --all-targets --all-features --locked "$@" &&
+    headless --package strata-gallery --lib --bins --examples --all-features --locked "$@"
+}
+both
+'''
+
+[tasks.test-rune]
+description = "Alias for `mise run test` (kept for compatibility)"
+raw_args = true
+run = '''
+tmp="$(mktemp -d)"
+trap 'rm -rf "$tmp"' EXIT
+headless() {
+  env -u DISPLAY -u WAYLAND_SOCKET WAYLAND_DISPLAY=strata-test-no-wayland \
+    DBUS_SESSION_BUS_ADDRESS=unix:path=/nonexistent/strata-test-no-bus \
+    GIO_USE_VFS=local \
+    CARGO_HOME="${CARGO_HOME:-$HOME/.cargo}" \
+    RUSTUP_HOME="${RUSTUP_HOME:-$HOME/.rustup}" \
+    HOME="$tmp" \
+    XDG_CONFIG_HOME="$tmp/config" \
+    XDG_DATA_HOME="$tmp/data" \
+    XDG_CACHE_HOME="$tmp/cache" \
+    XDG_STATE_HOME="$tmp/state" \
+    CARGO_PROFILE_DEV_DEBUG=0 \
+    cargo test "$@"
+}
+both() {
+  headless --workspace --exclude strata-gallery --all-targets --all-features --locked "$@" &&
     headless --package strata-gallery --lib --bins --examples --all-features --locked "$@"
 }
 both
@@ -124,8 +131,7 @@ case "$f" in
     echo "bless: filter '$f' must be lowercase: a page id, a scene or <id>/<script>" >&2
     exit 2 ;;
 esac
-lane="$(python3 scripts/lanes.py rune)"
-set -- cargo test $lane --all-targets --all-features --locked
+set -- cargo test -p strata-gallery --all-targets --all-features --locked
 if [ -n "$f" ]; then
   set -- "$@" -- "${f%%[-/]*}::" registry::bless_filter_names_a_page_scene_or_script
 fi
@@ -157,7 +163,7 @@ done
 # `mise run test-platform window::`; a change to strata-platform still owes its own session
 # tests. x2 and x3 stay here, run on demand.
 [tasks.test-platform]
-description = "Run the compositor tests (strata-platform's, the gallery's x2 and x3, and strata-rune's window), each in a private headless sway session"
+description = "Run the compositor tests (strata-platform's, the gallery's x2 and x3, and strata's window), each in a private headless sway session"
 usage = '''
 arg "[args]..." help="libtest arguments: a filter (w3::, p2::), --test-threads=1, --nocapture" var=#true
 '''
@@ -180,7 +186,7 @@ cargo test -p strata-platform --all-targets --all-features --locked -- --ignored
 cargo test -p strata-gallery --test x2 --all-features --locked -- --ignored "$@"
 cargo test -p strata-gallery --test x3 --all-features --locked -- --ignored "$@"
 # The windowed binary itself, which cargo builds for its own tests (tests/window.rs).
-cargo test -p strata-rune --test window --all-features --locked -- --ignored "$@"
+cargo test -p strata --test window --all-features --locked -- --ignored "$@"
 '''
 
 [tasks.scripts]
@@ -202,7 +208,7 @@ run = "./scripts/qa.sh"
 
 [tasks.check]
 description = "Local pre-push quality checks"
-depends = ["fmt", "compile", "compile-features", "clippy", "test", "test-rune", "deny", "typos"]
+depends = ["fmt", "compile", "compile-features", "clippy", "test", "deny", "typos"]
 
 [tasks.start-dev]
 description = "Rebuild and restart as files change"

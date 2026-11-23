@@ -144,13 +144,9 @@ class RecipeTests(unittest.TestCase):
     def test_the_stage_builds_what_the_qa_scripts_build_where_they_keep_it(self):
         recipe = stage()
         qa = (REPOSITORY / "scripts/qa.sh").read_text(encoding="utf-8")
-        parity = (REPOSITORY / "scripts/qa-parity.sh").read_text(encoding="utf-8")
-        gtk = "cargo test --locked --features qa,invariant-checks --test qa"
-        rune = "cargo build --locked -p strata-rune --features qa"
-        self.assertIn(gtk, qa)
-        self.assertIn(rune, parity)
-        self.assertIn(f"{gtk} --no-run", recipe)
-        self.assertIn(rune, recipe)
+        runner = "cargo test --locked --features qa,invariant-checks --test qa"
+        self.assertIn(runner, qa)
+        self.assertIn(f"{runner} --no-run", recipe)
         container = (REPOSITORY / "scripts/lib/qa-container.sh").read_text(encoding="utf-8")
         cache = re.search(r"STRATA_TEST_CARGO_CACHE:-\$repository/(target/[a-z-]+)\}", container).group(1)
         self.assertIn(f'--env "CARGO_HOME=/workspace/$cargo_cache/cargo"', container)

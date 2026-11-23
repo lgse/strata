@@ -1,4 +1,0 @@
-{"scenario":"fuzz-filter-v2-000000000000008e","modes":["columns"]}
-{"key":"ctrl+f","when":{"all":[{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}
-{"type":"e","when":{"all":[{"field":{"focused":true}},{"not":{"field":{"name":"Rename"}}}]}}
-{"key":"ctrl+period","when":{"all":[{"not":{"field":{"name":"Rename"}}},{"not":{"dialog":true}},{"menu_items":null}]}}

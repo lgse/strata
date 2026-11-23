@@ -1,8 +1,0 @@
-# The session-drops alphabet's sequences parked against their findings
-# (docs/rune/parity/findings.md):
-#
-#   v<version>-<seed> <code> <issue>
-#
-# Each line is a finding's sequence shrunk GTK against Rune, named for the smoke seed that met
-# it. Versions 1 to 6 were F5's drafts, never merged. None is parked now: #2668's v6-08, a fault
-# of GTK's harness that #2694 fixed, agrees again.

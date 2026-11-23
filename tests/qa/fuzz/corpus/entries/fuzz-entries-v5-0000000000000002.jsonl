@@ -1,3 +1,0 @@
-{"scenario":"fuzz-entries-v5-0000000000000002","modes":["columns"],"prefs":{"type_to_search":false}}
-{"key":"Delete","when":{"all":[{"focused_in_matches":true},{"not":{"field":{"name":"Rename"}}}]}}
-{"click":{"entry":"documents"},"when":{"all":[{"present":{"entry":"documents"}},{"not":{"field":{"name":"Rename"}}}]}}

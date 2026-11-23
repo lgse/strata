@@ -30,6 +30,15 @@ qa = [
     "dep:xkbcommon",
     "strata-core/qa",
 ]
+# Exact but slow consistency checks; tests and QA builds turn them on.
+invariant-checks = ["strata-fs/invariant-checks"]
+# Test hooks and test-only items of the workspace crates.
+test-support = [
+    "strata-core/test-support",
+    "strata-desktop/test-support",
+    "strata-fs/test-support",
+    "strata-preview/test-support",
+]
 
 # The one crate that knows both sides: Strata's shared crates and the Rune side
 # (docs/workspace.md). It never depends on gtk4, gdk4, sourceview5 or the `strata` package.

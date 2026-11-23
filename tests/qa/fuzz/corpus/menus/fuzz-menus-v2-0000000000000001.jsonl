@@ -1,6 +1,0 @@
-{"scenario":"fuzz-menus-v2-0000000000000001","modes":["columns"],"prefs":{"type_to_search":false,"keymap":{"default":{"activate":["Return","o"],"escape":["Escape","<Control>bracketleft"],"rename":["<Control>e"],"actions.compress":["<Control><Shift>g"]}}}}
-{"click":{"entry":"readme.md"},"when":{"all":[{"present":{"entry":"readme.md"}},{"present":{"entry":"todo.txt"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}
-{"click":{"entry":"todo.txt"},"mods":["ctrl"],"when":{"all":[{"present":{"entry":"todo.txt"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}
-{"click":{"entry":"readme.md"},"button":3,"when":{"all":[{"present":{"entry":"readme.md"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}
-{"click":{"menu_item":"Compress…"},"when":{"present":{"menu_item":"Compress…"}}}
-{"click":{"role":"button","name":"Cancel","within":{"dialog":true}},"when":{"dialog":"Compress"}}

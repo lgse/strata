@@ -1,4 +1,0 @@
-{"scenario":"fuzz-list-v7-00000000000000aa","modes":["list"],"prefs":{"type_to_search":false}}
-{"key":"End"}
-{"click":{"entry":"documents"},"mods":["shift"],"when":{"all":[{"present":{"entry":"documents"}}]}}
-{"key":"F5"}

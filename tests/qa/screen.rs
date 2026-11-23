@@ -1,32 +1,27 @@
 // SPDX-License-Identifier: MIT
 
-//! What a `screenshot` step and a run's closing `screenshot.png` take of each target. The
-//! GTK application draws on the run's display, which the runner captures. The Rune target
-//! draws offscreen and puts nothing there, so a capture would be an empty screen: it gets
-//! a text file beside where the image would be instead, saying so, with the accessibility
-//! tree as the step found it. The pinned image has no GPU adapter for Rune to draw its own
-//! frame with (`docs/rune/parity/owner.md`, H3).
+//! What a `screenshot` step and a run's closing `screenshot.png` write. The Rune QA target
+//! draws offscreen (and the pinned image has no GPU adapter), so a capture would be empty:
+//! it gets a text file beside where the image would be instead, saying so, with the
+//! accessibility tree as the step found it.
 
 use std::{fs, path::Path};
 
 use serde_json::{Value, json};
 
-use crate::{Application, COMMAND_TIMEOUT, Display, target::Target};
+use crate::{Application, COMMAND_TIMEOUT, Display};
 
 /// What the text file says first.
 pub(crate) const DREW_NOTHING: &str =
     "The Rune target draws offscreen and put nothing on the display, so there is no image.";
 
-/// Takes the screen as `destination`, a `.png`: an image on GTK, and on Rune the tree as text
-/// in `destination` with the extension `txt`.
+/// Takes the screen as `destination`, a `.png`: writes the tree as text in `destination` with
+/// the extension `txt`.
 pub(crate) fn take(
     application: &mut Application,
-    display: &Display,
+    _display: &Display,
     destination: &Path,
 ) -> Result<(), String> {
-    if !draws_offscreen() {
-        return display.screenshot(destination);
-    }
     let reply = application.send(&json!({ "query": "tree" }), COMMAND_TIMEOUT)?;
     write_offscreen(destination, &step_text(&reply))
 }
@@ -44,17 +39,14 @@ pub(crate) fn step_text(reply: &Value) -> String {
     }
 }
 
-/// The closing screenshot, after the application has stopped answering steps. On Rune it says
-/// where the last tree is: the run's `tree.txt`, when the application still answered at the
-/// end (`with_tree`), and otherwise that there is none.
+/// The closing screenshot, after the application has stopped answering steps. It says where
+/// the last tree is: the run's `tree.txt`, when the application still answered at the end
+/// (`with_tree`), and otherwise that there is none.
 pub(crate) fn take_last(
-    display: &Display,
+    _display: &Display,
     destination: &Path,
     with_tree: bool,
 ) -> Result<(), String> {
-    if !draws_offscreen() {
-        return display.screenshot(destination);
-    }
     write_offscreen(destination, &closing_text(with_tree))
 }
 
@@ -67,10 +59,6 @@ pub(crate) fn closing_text(with_tree: bool) -> String {
              was read and there is no tree.txt.\n"
         )
     }
-}
-
-fn draws_offscreen() -> bool {
-    Target::from_environment() == Ok(Target::Rune)
 }
 
 /// Writes `text` where the image `destination` would be, with the extension `txt`.

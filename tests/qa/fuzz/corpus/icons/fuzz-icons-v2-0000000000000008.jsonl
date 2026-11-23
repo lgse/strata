@@ -1,4 +1,0 @@
-{"scenario":"fuzz-icons-v2-0000000000000008","modes":["icons"],"prefs":{"type_to_search":false}}
-{"key":"End"}
-{"click":{"entry":"documents"},"mods":["shift"],"when":{"all":[{"present":{"entry":"documents"}},{"not":{"selected":[]}}]}}
-{"key":"Return","when":{"any":[{"focused":"documents"},{"focused":"pictures"}]}}

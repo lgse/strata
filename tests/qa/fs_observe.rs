@@ -245,15 +245,15 @@ impl FsCheck {
                     .ok_or(format!("names {found:?} contain {part:?}"))
             }
             FsKind::CanTrash(expected) => {
-                use gtk::gio::prelude::FileExt as _;
-                let actual = gtk::gio::File::for_path(&path)
+                use gio::prelude::FileExt as _;
+                let actual = gio::File::for_path(&path)
                     .query_info(
-                        gtk::gio::FILE_ATTRIBUTE_ACCESS_CAN_TRASH,
-                        gtk::gio::FileQueryInfoFlags::NONE,
-                        gtk::gio::Cancellable::NONE,
+                        gio::FILE_ATTRIBUTE_ACCESS_CAN_TRASH,
+                        gio::FileQueryInfoFlags::NONE,
+                        gio::Cancellable::NONE,
                     )
                     .map_err(|error| error.to_string())?
-                    .boolean(gtk::gio::FILE_ATTRIBUTE_ACCESS_CAN_TRASH);
+                    .boolean(gio::FILE_ATTRIBUTE_ACCESS_CAN_TRASH);
                 (actual == expected)
                     .then_some(())
                     .ok_or(format!("can_trash is {actual}"))
@@ -409,7 +409,7 @@ impl FsCheck {
                     .map_err(|error| error.to_string())
             }
             FsKind::Base64(text) => {
-                fs::write(&path, gtk::glib::base64_decode(text)).map_err(|error| error.to_string())
+                fs::write(&path, glib::base64_decode(text)).map_err(|error| error.to_string())
             }
             FsKind::Append(text) => File::options()
                 .append(true)
@@ -499,19 +499,19 @@ impl FsCheck {
                     .ok_or(format!("is_zip is {is_zip}"))
             }
             FsKind::DefaultApp(default) => {
-                use gtk::gio::prelude::FileExt as _;
-                let content_type = gtk::gio::File::for_path(other(&default.file))
+                use gio::prelude::FileExt as _;
+                let content_type = gio::File::for_path(other(&default.file))
                     .query_info(
-                        gtk::gio::FILE_ATTRIBUTE_STANDARD_CONTENT_TYPE,
-                        gtk::gio::FileQueryInfoFlags::NONE,
-                        gtk::gio::Cancellable::NONE,
+                        gio::FILE_ATTRIBUTE_STANDARD_CONTENT_TYPE,
+                        gio::FileQueryInfoFlags::NONE,
+                        gio::Cancellable::NONE,
                     )
                     .map_err(|error| error.to_string())?
                     .content_type()
                     .ok_or("the file has no content type")?;
-                let associations = gtk::glib::KeyFile::new();
+                let associations = glib::KeyFile::new();
                 associations
-                    .load_from_file(&path, gtk::glib::KeyFileFlags::NONE)
+                    .load_from_file(&path, glib::KeyFileFlags::NONE)
                     .map_err(|error| error.to_string())?;
                 let listed = associations
                     .string("Default Applications", &content_type)
@@ -522,16 +522,14 @@ impl FsCheck {
                     .ok_or(format!("the default for {content_type} is {first:?}"))
             }
             FsKind::Opened(paths) => {
-                use gtk::gio::prelude::FileExt as _;
+                use gio::prelude::FileExt as _;
                 let text = fs::read_to_string(&path).map_err(|error| error.to_string())?;
-                let received: Vec<gtk::gio::File> = text
-                    .lines()
-                    .map(gtk::gio::File::for_commandline_arg)
-                    .collect();
+                let received: Vec<gio::File> =
+                    text.lines().map(gio::File::for_commandline_arg).collect();
                 let missing: Vec<&String> = paths
                     .iter()
                     .filter(|expected| {
-                        let expected = gtk::gio::File::for_path(other(expected));
+                        let expected = gio::File::for_path(other(expected));
                         !received.iter().any(|file| file.equal(&expected))
                     })
                     .collect();

@@ -1,12 +1,16 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: MIT
-"""Proves each `--qa` scenario with a `mutation` catches the defect its patch introduces."""
+"""Proves each `--qa` mutation patch under tests/qa/mutations is caught by its scenario.
+
+Each patch is named `<scenario>.patch`, or `<scenario>.<label>.patch` when one scenario
+catches more than one behaviour's breaking (the label is lowercase words joined by hyphens).
+Each patch is checked by running its scenario unmodified (all runs must pass) and then with
+the patch applied (at least one run must fail a step and qa.sh must exit non-zero).
+"""
 
 from __future__ import annotations
 
 import argparse
-import json
-import os
 import re
 import signal
 import subprocess
@@ -20,6 +24,7 @@ SCENARIOS = REPOSITORY / "tests/qa/scenarios"
 MUTATIONS = REPOSITORY / "tests/qa/mutations"
 OUTPUT = REPOSITORY / "target/qa-mutation"
 
+LABEL = re.compile(r"[a-z0-9]+(-[a-z0-9]+)*")
 RUN = r"(?P<run>[^/\s]+/\S+)"
 PLANNED = re.compile(rf"^RUN {RUN}$")
 PASSED = re.compile(rf"^PASS {RUN}$")
@@ -28,36 +33,97 @@ FAILED = re.compile(rf"^{RUN} (?P<outcome>failed:|could not run:|passes but is m
 
 
 @dataclass(frozen=True)
-class Scenario:
-    name: str
-    mutation: str | None
+class PatchTarget:
+    scenario: str
+    patch: str
 
 
-def scenarios(directory: Path | None = None) -> list[Scenario]:
-    found = []
-    for path in sorted((directory or SCENARIOS).glob("*/*.jsonl")):
-        header = json.loads(path.read_text(encoding="utf-8").splitlines()[0])
-        found.append(Scenario(path.stem, header.get("mutation")))
-    return found
+def scenario_names(directory: Path | None = None) -> set[str]:
+    return {path.stem for path in (directory or SCENARIOS).glob("*/*.jsonl")}
 
 
-def chosen_scenarios(names: list[str], directory: Path | None = None) -> list[Scenario]:
-    """The scenarios named by patch or by scenario name, or every one with a mutation."""
+def patches(directory: Path | None = None) -> list[str]:
+    """The committed patches' stems: `<scenario>` or `<scenario>.<label>`."""
 
-    found = scenarios(directory)
+    return sorted(path.stem for path in (directory or MUTATIONS).glob("*.patch"))
+
+
+def scenario_of(patch: str) -> str:
+    """The scenario a patch is named for: its stem up to a label's dot."""
+
+    return patch.split(".", 1)[0]
+
+
+def well_named(patch: str) -> bool:
+    """Whether a patch's stem is `<scenario>` or `<scenario>.<label>`."""
+
+    scenario, dot, label = patch.partition(".")
+    return bool(scenario) and (not dot or LABEL.fullmatch(label) is not None)
+
+
+def malformed(available: list[str]) -> list[str]:
+    return [
+        f"{patch}.patch is named neither <scenario>.patch nor <scenario>.<label>.patch, a "
+        "label being lowercase words joined by hyphens"
+        for patch in available
+        if not well_named(patch)
+    ]
+
+
+def in_mutations(name: str, mutations: Path = MUTATIONS) -> bool:
+    if "/" not in name:
+        return True
+    path = Path(name)
+    bases = [Path()] if path.is_absolute() else [Path.cwd(), REPOSITORY]
+    return any((base / path).resolve().parent == mutations.resolve() for base in bases)
+
+
+def names_one_patch(name: str, stem: str) -> bool:
+    return name.endswith(".patch") or "/" in name or "." in stem
+
+
+def selection(name: str, available: list[str]) -> list[str]:
+    stem = Path(name).name.removesuffix(".patch")
+    if names_one_patch(name, stem):
+        return [stem] if stem in available else []
+    return [patch for patch in available if scenario_of(patch) == stem]
+
+
+def chosen_patches(
+    names: list[str],
+    scenarios_dir: Path | None = None,
+    mutations_dir: Path | None = None,
+) -> list[PatchTarget]:
+    """The patches selected by `names`, or every patch under `mutations_dir` when empty."""
+
+    mutations_dir = mutations_dir or MUTATIONS
+    available = patches(mutations_dir)
+    problems = malformed(available)
+    known = scenario_names(scenarios_dir)
+
     if not names:
-        return [scenario for scenario in found if scenario.mutation]
-    chosen = []
-    for name in names:
-        matching = [s for s in found if s.mutation == name] or [s for s in found if s.name == name]
-        if not matching:
-            raise SystemExit(f"{name}: neither a mutation patch nor a QA scenario")
-        if len(matching) > 1:
-            raise SystemExit(f"{name}: {len(matching)} QA scenarios name it as their mutation")
-        if not matching[0].mutation:
-            raise SystemExit(f"{name}: the scenario names no mutation")
-        chosen.append(matching[0])
-    return chosen
+        picked = list(available)
+    else:
+        picked = []
+        for name in names:
+            selected = selection(name, available)
+            if not in_mutations(name, mutations_dir):
+                problems.append(
+                    f"{name!r} is outside {mutations_dir}"
+                )
+            elif not selected:
+                problems.append(f"{name}: no mutation patch in {mutations_dir}")
+            else:
+                picked.extend(patch for patch in selected if patch not in picked)
+
+    for patch in picked:
+        scenario = scenario_of(patch)
+        if scenario not in known:
+            problems.append(f"{patch}.patch names unknown QA scenario {scenario!r}")
+
+    if problems:
+        raise SystemExit("\n".join(problems))
+    return [PatchTarget(scenario=scenario_of(patch), patch=patch) for patch in picked]
 
 
 def parse_qa_log(text: str) -> dict[str, str]:
@@ -171,7 +237,7 @@ def run_qa(names: list[str], destination: Path) -> tuple[dict[str, str], int]:
 
 @dataclass
 class Report:
-    scenario: Scenario
+    target: PatchTarget
     baseline: Verdict
     mutated: Verdict | None = None
     runs: dict[str, str] = field(default_factory=dict)
@@ -189,7 +255,7 @@ def write_summary(reports: list[Report], elapsed: float | None, output: Path | N
     for report in reports:
         mutated = report.mutated.note if report.mutated else "not run: the unmodified runs do not pass"
         lines.append(
-            f"| {report.scenario.mutation} | {report.scenario.name} | {cell(report.baseline.note)} | "
+            f"| {report.target.patch} | {report.target.scenario} | {cell(report.baseline.note)} | "
             f"{'caught' if report.caught else 'MISSED'}: {cell(mutated)} |"
         )
     took = f" ({elapsed / 60:.1f} minutes)" if elapsed is not None else ""
@@ -203,24 +269,25 @@ def write_summary(reports: list[Report], elapsed: float | None, output: Path | N
 
 def check(names: list[str]) -> int:
     started = time.monotonic()
-    chosen = chosen_scenarios(names)
+    chosen = chosen_patches(names)
     (OUTPUT / "summary.md").unlink(missing_ok=True)
     if not chosen:
-        print("No scenario names a mutation.", file=sys.stderr)
+        print("No mutation patch under tests/qa/mutations.", file=sys.stderr)
         return 2
+    unique_scenarios = list(dict.fromkeys(target.scenario for target in chosen))
     print("== unmodified tree", flush=True)
-    baseline, _ = run_qa([scenario.name for scenario in chosen], OUTPUT / "baseline")
+    baseline, _ = run_qa(unique_scenarios, OUTPUT / "baseline")
     reports = []
-    for scenario in chosen:
-        report = Report(scenario, baseline_verdict(own_runs(scenario.name, baseline)))
+    for target in chosen:
+        report = Report(target, baseline_verdict(own_runs(target.scenario, baseline)))
         reports.append(report)
         if not report.baseline.caught:
-            print(f"== {scenario.mutation}: skipped, {report.baseline.note}", flush=True)
+            print(f"== {target.patch}: skipped, {report.baseline.note}", flush=True)
             continue
-        print(f"== {scenario.mutation}: mutated tree", flush=True)
-        with Mutation(scenario.mutation):
-            runs, status = run_qa([scenario.name], OUTPUT / "mutations" / scenario.mutation)
-        report.runs = own_runs(scenario.name, runs)
+        print(f"== {target.patch}: mutated tree", flush=True)
+        with Mutation(target.patch):
+            runs, status = run_qa([target.scenario], OUTPUT / "mutations" / target.patch)
+        report.runs = own_runs(target.scenario, runs)
         report.mutated = mutated_verdict(report.runs, status)
     summary = write_summary(reports, time.monotonic() - started)
     print("\n" + summary)
@@ -229,16 +296,16 @@ def check(names: list[str]) -> int:
 
 def main(arguments: list[str]) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("names", nargs="*", help="mutation patches or scenario names; every mutation if none")
+    parser.add_argument(
+        "names",
+        nargs="*",
+        help="scenario names, <scenario>.patch, <scenario>.<label>, or patch paths; every patch if none",
+    )
     options = parser.parse_args(arguments)
 
     def terminate(_number, _frame):
         raise KeyboardInterrupt
     signal.signal(signal.SIGTERM, terminate)
-    if os.environ.get("STRATA_QA_UPDATE_BASELINES") == "1":
-        print("STRATA_QA_UPDATE_BASELINES must be unset; a mutated run must never write a baseline",
-              file=sys.stderr)
-        return 2
     try:
         return check(options.names)
     except KeyboardInterrupt:
