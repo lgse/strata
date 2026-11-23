@@ -7,7 +7,10 @@ use std::ffi::OsStr;
 use std::{env, ffi::OsString, path::PathBuf, process::ExitCode};
 
 use strata_core::model::Location;
-use strata_desktop::tabs_session::{self, RestoredSession};
+use strata_desktop::{
+    build_info,
+    tabs_session::{self, RestoredSession},
+};
 use strata_fs::adapters::list_archive_entries_direct;
 #[cfg(any(test, feature = "qa"))]
 use strata_fs::adapters::location_for_file;
@@ -21,13 +24,14 @@ use crate::{
     startup,
 };
 
-const USAGE: &str = "usage: strata [PATH...|--portal]";
+const USAGE: &str = "usage: strata [PATH...|--portal|--version]";
 
 #[derive(Debug, PartialEq, Eq)]
 enum Command {
     Open(Vec<OsString>),
     /// Run the XDG Desktop Portal `FileChooser` D-Bus service.
     Portal,
+    Version,
     Help,
 }
 
@@ -44,6 +48,7 @@ fn parse(arguments: impl IntoIterator<Item = OsString>) -> Result<Command, Strin
         match option {
             Some("--") => options_ended = true,
             Some("--help" | "-h") => return Ok(Command::Help),
+            Some("--version" | "-V") => return Ok(Command::Version),
             Some("--portal") => portals += 1,
             Some(unknown) => return Err(format!("unknown option {unknown}")),
             None => paths.push(argument),
@@ -217,6 +222,10 @@ pub fn run(arguments: impl IntoIterator<Item = OsString>) -> ExitCode {
     match parse(arguments.iter().skip(1).cloned()) {
         Ok(Command::Help) => {
             println!("{USAGE}");
+            ExitCode::SUCCESS
+        }
+        Ok(Command::Version) => {
+            println!("strata {}", build_info::displayed_version());
             ExitCode::SUCCESS
         }
         Ok(Command::Portal) => match portal() {

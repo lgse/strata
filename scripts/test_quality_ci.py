@@ -39,7 +39,8 @@ class QualityCiTests(unittest.TestCase):
             "  sys.exit('the option `Z` is only accepted on the nightly compiler')\n"
             " with open(os.environ['RECORD'], 'a') as record:\n"
             "  record.write(json.dumps(dict(display=os.environ.get('DISPLAY'), selected=selected,\n"
-            "                               wayland=os.environ.get('WAYLAND_DISPLAY'))) + '\\n')\n"
+            "                               wayland=os.environ.get('WAYLAND_DISPLAY'),\n"
+            "                               bin_exe=os.environ.get('CARGO_BIN_EXE_strata'))) + '\\n')\n"
             " if os.environ.get('FAIL_TEST') in selected:\n"
             "  print(\"thread 'x' panicked at src/fixture.rs:1:1:\\nboom\")\n"
             "  sys.exit(101)\n"
@@ -234,15 +235,25 @@ class QualityCiTests(unittest.TestCase):
         artifact = self.root / "compiled-test"
         artifact.write_bytes(self.executable.read_bytes())
         artifact.chmod(0o755)
-        message = dict(reason="compiler-artifact", profile=dict(test=True),
-                       executable=str(artifact), target=dict(name="unit"))
+        compiled_bin = self.root / "compiled-strata"
+        compiled_bin.write_text("#!/bin/sh\nexit 0\n")
+        compiled_bin.chmod(0o644)
+        messages = [
+            dict(reason="compiler-artifact", profile=dict(test=True),
+                 executable=str(artifact), target=dict(name="unit", kind=["test"])),
+            dict(reason="compiler-artifact", profile=dict(test=False),
+                 executable=str(compiled_bin), target=dict(name="strata", kind=["bin"])),
+            dict(reason="compiler-artifact", profile=dict(test=False),
+                 executable=str(compiled_bin), target=dict(name="demo", kind=["example"])),
+        ]
         real_run = subprocess.run
         commands = []
 
         def run(command, **kwargs):
             if command[0] == "cargo":
                 commands.append(command)
-                return subprocess.CompletedProcess(command, 0, json.dumps(message) + "\n")
+                payload = "\n".join(json.dumps(message) for message in messages) + "\n"
+                return subprocess.CompletedProcess(command, 0, payload)
             return real_run(command, **kwargs)
 
         with patch.object(quality.subprocess, "run", side_effect=run):
@@ -254,6 +265,38 @@ class QualityCiTests(unittest.TestCase):
         self.assertEqual(plan["binaries"][0]["ignored"], ["ignored"])
         self.assertEqual(plan["binaries"][0]["shards"],
                          quality.partition(plan["binaries"][0]["tests"], {}))
+        self.assertEqual(
+            plan["executables"],
+            [dict(file="bin-strata", target="strata", sha256=quality.digest(compiled_bin))],
+        )
+        # Removing the original compiled path still lets shards run with CARGO_BIN_EXE_strata.
+        compiled_bin.unlink()
+        self.run_all(lanes=2)
+        self.verify()
+        bundled = self.bundle / "bin-strata"
+        self.assertTrue(bundled.stat().st_mode & 0o111)
+        self.assertTrue(all(run["bin_exe"] == str(bundled) for run in self.runs()))
+
+    def test_bundled_executables_reject_invalid_plan_entries_and_tampered_files(self):
+        bundled = self.bundle / "bin-strata"
+        bundled.write_text("#!/bin/sh\nexit 0\n")
+        good = dict(file="bin-strata", target="strata", sha256=quality.digest(bundled))
+        for bad in (
+            [dict(file="../bin-strata", target="strata", sha256=good["sha256"])],
+            [dict(file="bin-strata", target="../strata", sha256=good["sha256"])],
+            [dict(file="bin-strata", target="strata", sha256="")],
+            [good, good],
+        ):
+            with self.subTest(bad=bad):
+                plan = copy.deepcopy(self.plan)
+                plan["executables"] = bad
+                with self.assertRaises(ValueError):
+                    quality.validate_plan(plan)
+        self.plan["executables"] = [good]
+        self.save_plan()
+        bundled.write_text("#!/bin/sh\nexit 1\n")
+        with self.assertRaises(ValueError):
+            quality.run(0)
 
     def run_local(self, lanes=2, timings=False):
         artifact = self.root / "compiled-test"

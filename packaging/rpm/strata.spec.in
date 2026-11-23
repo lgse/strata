@@ -25,14 +25,15 @@ ExclusiveArch:  x86_64 aarch64
 BuildRequires:  cargo-rpm-macros >= 26
 BuildRequires:  desktop-file-utils
 BuildRequires:  gcc
-BuildRequires:  /usr/bin/glib-compile-resources
+BuildRequires:  pkgconfig(cairo)
+BuildRequires:  pkgconfig(cairo-gobject)
 BuildRequires:  pkgconfig(fontconfig)
+BuildRequires:  pkgconfig(gdk-pixbuf-2.0)
 BuildRequires:  pkgconfig(gio-unix-2.0)
-BuildRequires:  pkgconfig(gstreamer-1.0) >= 1.20
-BuildRequires:  pkgconfig(gstreamer-app-1.0) >= 1.20
-BuildRequires:  pkgconfig(gtk4) >= 4.12
-BuildRequires:  pkgconfig(gtksourceview-5)
+BuildRequires:  pkgconfig(pango)
 BuildRequires:  pkgconfig(poppler-glib)
+BuildRequires:  pkgconfig(wayland-client)
+BuildRequires:  pkgconfig(xkbcommon)
 
 # Executed rather than linked, so no automatic dependency covers them.
 Requires:       bubblewrap
@@ -43,8 +44,6 @@ Requires:       xdg-utils
 Recommends:     /usr/bin/ffmpeg
 Recommends:     dcraw
 Recommends:     ffmpegthumbnailer
-Recommends:     gstreamer1-plugin-libav
-Recommends:     gstreamer1-plugins-good
 Recommends:     gvfs-smb
 Recommends:     ImageMagick
 Recommends:     LibRaw-samples
@@ -52,7 +51,7 @@ Recommends:     squashfs-tools
 Recommends:     xdg-terminal-exec
 
 %description
-Strata is a fast, keyboard-first file manager for Linux built with GTK 4. It
+Strata is a fast, keyboard-first file manager for Linux built with Rune. It
 offers column, list, and icon views, previews and thumbnails rendered in a
 sandbox, archives, remote locations, and file operations that stay responsive
 on large directories.
@@ -63,6 +62,9 @@ the package repository.
 %prep
 %autosetup -n strata-@TAG_VERSION@ -a1 -p1
 %cargo_prep -v vendor
+if [ -f vendor-git-config.toml ]; then
+    cat vendor-git-config.toml >> .cargo/config.toml
+fi
 
 %build
 export STRATA_UPDATER=disabled

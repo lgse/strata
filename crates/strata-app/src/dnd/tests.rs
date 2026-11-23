@@ -271,8 +271,10 @@ fn dragging_folder_back_over_itself_does_not_spring_open_while_other_folder_does
             open_listed(&mut host, root);
 
             let docs = label_centre(&mut host, "documents");
+            let todo = label_centre(&mut host, "todo.txt");
             let archive = label_centre(&mut host, "archive");
-            drag_steps(&mut host, docs, archive, false);
+            // Cross the drag threshold over a plain file so a slow tick cannot spring a folder.
+            drag_steps(&mut host, docs, todo, false);
             // Return the held drag back over its own folder and dwell past the 750 ms spring delay.
             host.runtime().pointer_move(docs.0, docs.1);
             host.turn();
@@ -285,17 +287,19 @@ fn dragging_folder_back_over_itself_does_not_spring_open_while_other_folder_does
                 "returning a dragged folder over itself must not spring-open it"
             );
 
-            // Moving over a different folder still spring-opens it.
+            // Moving over a different folder still spring-opens it once async descent completes.
             host.runtime().pointer_move(archive.0, archive.1);
             host.turn();
             host.runtime().frame(0.9);
-            host.turn();
-            idle(&mut host);
-            assert_eq!(
-                host.app().browser().active_location(),
-                Some(Location::local(root.join("archive"))),
-                "hovering a different folder must still spring-open it"
+            let wanted = Location::local(root.join("archive"));
+            assert!(
+                host.run_until(PATIENCE, |h| {
+                    h.app().browser().active_location() == Some(wanted.clone())
+                }),
+                "hovering a different folder must still spring-open it; active = {:?}",
+                host.app().browser().active_location()
             );
+            idle(&mut host);
             escape_and_release(&mut host, archive);
         },
     );
