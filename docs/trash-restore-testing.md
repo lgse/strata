@@ -30,7 +30,7 @@ exists at the destination, or the outcome cannot be confirmed, the payload and
 its trash metadata remain intact.
 
 Deleting or trashing a folder in Strata removes its sidebar pin and pins inside
-it from GTK's shared bookmarks file and every open sidebar. Only confirmed
+it from the shared `gtk-3.0/bookmarks` file and every open sidebar. Only confirmed
 deletions remove pins; failed and unattempted items keep theirs. Unavailable
 drives and network locations stay pinned. Restoring a folder, including Undo,
 does not restore its former pins; pin it again if needed.
@@ -45,7 +45,7 @@ settings writer saves it (quitting waits up to 10 seconds for queued saves).
 
 ## Automated regressions
 
-Run the full Rust suite with isolated GTK, disposable preferences, and required
+Run the full Rust suite with an isolated environment, disposable preferences, and required
 cross-device coverage:
 
 ```bash
@@ -62,12 +62,11 @@ Focused selections can be run on the same infrastructure:
 ```bash
 ./scripts/test-headless.py restore
 ./scripts/test-headless.py volume
-./scripts/test-headless.py ui::window::bookmarks::tests
 ./scripts/test-headless.py adapters::bookmarks::tests
 ./scripts/test-headless.py adapters::local_operations::tests::deletion
-./scripts/test-headless.py ui::browser::trash::tests
+./scripts/test-headless.py trash::
 ./scripts/test-headless.py adapters::gio_location::tests
-./scripts/test-headless.py without_trash_support
+./scripts/test-headless.py without_trash
 ```
 
 The tests create their own temporary payloads and metadata. They cover:
@@ -96,13 +95,12 @@ The tests create their own temporary payloads and metadata. They cover:
 - the explained, Cancel-first permanent confirmation when Trash is unsupported,
   both before a Trash attempt (the listing reports no Trash support) and after
   one fails, in the foreground, docked, and after a mixed failure, with local or
-  network wording (`ui::browser::trash::tests`);
+  network wording (`crates/strata-app/src/trash/`);
 - FUSE trash refusals: the error classifier and mount-health facts, the
   per-mount record keyed by mount ID, and removal of only new, empty trash
   folders (`adapters::trash_support::tests`); the retryable result on FUSE but
   not on a local disk (`adapters::local_operations::tests::deletion`); and the
-  up-front confirmation after a recorded refusal until Reload
-  (`ui::window::tests::keyboard_dispatch::file_commands`).
+  up-front confirmation after a recorded refusal until Reload.
 
 Run the real keyboard and drag/drop regressions in the pinned QA container:
 

@@ -1,101 +1,55 @@
 # strata-platform
 
 Linux platform shims for [Rune](https://github.com/anomalyco/rune) apps: the Wayland and X11
-pieces Rune doesn't ship yet. Any Rune app on Linux can use it. Of Rune's crates it depends on
-`rune` only, and each shim adds optional dependencies of its own. It has no app-specific names in
-its API.
+pieces Rune does not ship yet. Of Rune's crates it depends on `rune` only, and each shim adds
+optional dependencies of its own behind its own cargo feature. Its API carries no app-specific
+names.
 
-In Strata's workspace the crate has no release of its own: it is a workspace member, and the
-sections below on tags, pinning and versioning describe the repository it was imported from
-(`wmfeht/strata-components` at `e4f2df1a`). The GStreamer-based `media-audio` shim from that
-repository was not imported (`docs/workspace.md`); `media-audio` here is a zero-GStreamer Linux
-PCM output shim (`libpulse-simple.so.0`, `libasound.so.2`, and silent real-time fallback).
-
-Each shim is a module behind its own cargo feature, so an app builds only what it uses. Most are
-asked of Rune upstream, and a shim is deprecated once Rune ships its feature (see
-[Shim lifecycle](#shim-lifecycle)). One isn't: the GLib bridge is outside Rune's scope.
-
-The crate keeps the name `strata-platform` (the owner's ruling; `docs/rune/decisions/S5-upstream.md`,
-"Crate name"). The name is taken on crates.io by an unrelated crate, so releases are git tags
-only (see [Pinning a release](#pinning-a-release)).
+In Strata's workspace the crate is a workspace member pinned to the same Rune rev as the root
+`Cargo.toml` (`67d73a5f18390686c8e9b8b3a32b3414ebd66db0`). Most shims correspond to upstream
+Rune asks and are deprecated once Rune ships the capability natively; the GLib shims are outside
+Rune's scope.
 
 ## Features
 
-None is on by default. `dnd`, `clipboard`, `foreign-parent`, `glib-bridge`, `glib-loop`, `csd`, `settings`,
-`icon-theme`, `media-audio` and `single-instance` are implemented. "Issue" is the upstream ask, drafted in
-[`docs/rune/decisions/S5-upstream.md`](../../docs/rune/decisions/S5-upstream.md#draft-index), with its link
-once filed.
+None is enabled by default. Verify feature isolation with `mise run compile-features`.
 
-| Feature | Module | What Rune lacks on Linux | Issue |
+| Feature | Module | What Rune lacks on Linux | Upstream issue |
 | --- | --- | --- | --- |
-| `dnd` | `dnd` | System drag and drop: `drag_out` starts nothing on Linux (macOS and Windows only), and Wayland drops reach no handler. `DragItem` carries files, PNG data and text with copy, move and link, but no arbitrary MIME types, no ask action and no public live-frame element snapshot, and drop handlers take file paths only. Implemented: drag sources and drop targets with any MIME types (lazy writers), copy, move, ask (and link on X11) following Ctrl and Shift, an image or view-snapshot icon, the outcome, and a typed payload between the app's own windows, on Wayland (`wl_data_device`) and X11 (XDND). On Wayland a drag from another app takes the compositor's action (sway and Hyprland map no modifiers), and only `Dnd::cancel_drag` cancels a drag. Needs libwayland 1.23 on Wayland. | [U1](../../docs/rune/decisions/S5-upstream.md#u1), [U2](../../docs/rune/decisions/S5-upstream.md#u2), [U3](../../docs/rune/decisions/S5-upstream.md#u3), [U9](../../docs/rune/decisions/S5-upstream.md#u9), [U10](../../docs/rune/decisions/S5-upstream.md#u10), [U-P1-1](../../docs/rune/decisions/S5-upstream.md#u-p1-1), [U-P1-2](../../docs/rune/decisions/S5-upstream.md#u-p1-2); upstream [#171](https://github.com/anomalyco/rune/issues/171), [#424](https://github.com/anomalyco/rune/issues/424) |
-| `clipboard` | `clipboard` | Custom MIME types, several forms in one write, typed reads, an app API for the primary selection (Rune's is internal to pointer text selection and field middle-click paste), and a notice when another app takes a selection. Implemented: copies of any MIME types (lazy writers, images), the offered types and typed reads with limits, change and loss notices, clearing, the file-manager formats (`Files`), and on X11 the hand-off to a clipboard manager at exit, over Wayland data control, `wl_data_device` (mutter) or X11 selections (X11, or Xwayland when Wayland has no route). | [U5](../../docs/rune/decisions/S5-upstream.md#u5), [U9](../../docs/rune/decisions/S5-upstream.md#u9) |
-| `csd` | `csd` | Interactive resize, minimise and the window menu for a borderless window, and its maximised state. Implemented: borderless windows on Wayland and X11, a header that moves the window, and window buttons routed to Rune or the window manager. X11 resizes from the edges and has minimise and the window menu through its own connection (mutter and KWin untested). Wayland has no edge resize, minimise or window menu until Rune ships them. | [U6](../../docs/rune/decisions/S5-upstream.md#u6), [U7](../../docs/rune/decisions/S5-upstream.md#u7), [U8](../../docs/rune/decisions/S5-upstream.md#u8), [U9](../../docs/rune/decisions/S5-upstream.md#u9); upstream [#145](https://github.com/anomalyco/rune/issues/145), [#309](https://github.com/anomalyco/rune/issues/309), [#310](https://github.com/anomalyco/rune/issues/310), [#313](https://github.com/anomalyco/rune/issues/313) |
-| `foreign-parent` | `foreign_parent` | Making a window transient for another app's window, before it maps, and marking it modal (X11). Implemented: a portal's `wayland:` and `x11:` parent handles parsed, then on Wayland `zxdg_importer_v2` and `set_parent_of` on winit's display, and on X11 `WM_TRANSIENT_FOR`, the dialog type and `_NET_WM_STATE_MODAL`, with an outcome naming the fallback when it can't. Open the window hidden and apply from `App::on_window`. Wayland has no modality (Rune hands out no `xdg_toplevel`), an `x11:` parent leaves a Wayland window parentless, and libwayland below 1.23 (Ubuntu 24.04) leaves it parentless. | [U11](../../docs/rune/decisions/S5-upstream.md#u11), [U9](../../docs/rune/decisions/S5-upstream.md#u9) |
-| `settings` | `settings` | Settings portal keys beyond `color-scheme`, and the desktop's double-click interval. Implemented: the text scale, double-click interval, drag threshold, caret blink, animations switch, `reduced-motion` and recent-files switch from the Settings portal, with their changes on Rune's loop. Rune's own double press keeps its fixed 0.5 s. The portal is the only source: a session without one gets the defaults. | [U12](../../docs/rune/decisions/S5-upstream.md#u12), [U13](../../docs/rune/decisions/S5-upstream.md#u13) |
-| `icon-theme` | `icon_theme` | The user's icon theme: `ImageCache::app_icon` reads hicolor only (no theme, no `Inherits`, no `index.theme` sizes), takes no icon names, and fails a missing icon like a broken file. Implemented: icons by name, with fallback names, or by file, at a size and scale, as GTK 4's `GtkIconTheme` finds them (`Inherits` then hicolor, `index.theme` sizes, scale directories, unthemed icons and pixmaps), looked up on a thread and decoded by Rune's `ImageCache` into `rune::Pixels`, with "not found" apart from a broken file. Symbolic icons draw as their files paint them, not recoloured; no XPM and no `icon-theme.cache`. | Upstream [#21](https://github.com/anomalyco/rune/issues/21); [U-P6-1](../../docs/rune/decisions/S5-upstream.md#u-p6-1), [U-P6-2](../../docs/rune/decisions/S5-upstream.md#u-p6-2) |
-| `media-audio` | `media` | Linux PCM audio output with a playback clock: Rune's `Player` takes only a file or URL and uses `video/unsupported.rs` off macOS, with no PCM sink API. Implemented: non-blocking interleaved `S16Le`/`F32Le` PCM output on a dedicated worker thread with bounded ring backpressure, live volume/mute scaling, latency-adjusted monotonic playback clock, pause/resume rewind, seek flush, EOF drain, and device-loss recovery via runtime `dlopen` of `libpulse-simple.so.0` (PipeWire/PulseAudio) and `libasound.so.2` (ALSA), degrading to a silent real-time clock when headless. Zero GStreamer or build-time audio header dependencies. | Upstream [#525](https://github.com/anomalyco/rune/issues/525) |
-| `single-instance` | `single_instance` | D-Bus single instance and desktop activation: `rune::single_instance` uses a private Unix socket that forwards UTF-8 `scheme://` links to `App::on_open_url` or reopens the front window, without D-Bus activation, GApplication interop, arbitrary byte-string arguments, working directory, activation tokens, exit status or `FileManager1`. Implemented: one primary per app id on the session bus, with a later launch's arguments, working directory and activation token forwarded over GApplication's wire protocol, `org.freedesktop.Application`, and an opt-in `org.freedesktop.FileManager1`. On X11, focusing a window already open ignores the startup id. | Upstream [#22](https://github.com/anomalyco/rune/issues/22); [U-P8-1](../../docs/rune/decisions/S5-upstream.md#u-p8-1) |
-| `glib-bridge` | `glib_bridge` | A GLib main loop: Rune never iterates a `GMainContext`, so GIO's async calls, signals and monitors never dispatch. Implemented: `GlibThread` runs one on its own thread, and answers land in app state for `poll`. Needs GLib and GIO (`libglib2.0-dev` to build). | None: outside Rune's scope |
-| `glib-loop` | `glib_loop` | The same gap, for state that cannot leave the interface thread. Implemented: `GlibLoop` waits for what a context waits for (its file descriptors and timeout) on a helper thread, and `pump` dispatches it on Rune's loop, so nothing polls. The app sends the pump through `AppHandle::update_if`: a `Waker` call never runs `poll` while a Wayland window is covered. Needs GLib (`libglib2.0-dev` to build). | Upstream [#139](https://github.com/anomalyco/rune/issues/139) |
+| `dnd` | `dnd` | System drag and drop: Wayland (`wl_data_device`) and X11 (XDND) drag sources and drop targets with arbitrary MIME types (lazy writers), copy/move/ask/link actions, image or snapshot icons, outcomes, and typed intra-app payloads. Needs `libwayland-client` 1.23+ on Wayland. | [#171](https://github.com/anomalyco/rune/issues/171), [#424](https://github.com/anomalyco/rune/issues/424) |
+| `clipboard` | `clipboard` | Custom MIME types, multi-format writes, typed reads with limits, app API for `PRIMARY`, change/loss notices, file-manager `Files` formats, and X11 clipboard-manager hand-off on exit, over Wayland data control, `wl_data_device`, or X11 selections. | — |
+| `csd` | `csd` | Borderless window controls on Wayland and X11, drag-move headers, and X11 edge resize, minimise, and window menu. | [#145](https://github.com/anomalyco/rune/issues/145), [#309](https://github.com/anomalyco/rune/issues/309), [#310](https://github.com/anomalyco/rune/issues/310), [#313](https://github.com/anomalyco/rune/issues/313) |
+| `foreign-parent` | `foreign_parent` | Parenting a portal/dialog window to another app's exported `wayland:` (`zxdg_importer_v2`) or `x11:` (`WM_TRANSIENT_FOR` / `_NET_WM_STATE_MODAL`) handle before mapping. Needs `libwayland-client` 1.23+ on Wayland. | — |
+| `backdrop-blur` | `backdrop_blur` | Native Wayland compositor backdrop blur behind translucent surfaces via `ext_background_effect_v1` and Plasma/KWin `org_kde_kwin_blur_manager`, degrading cleanly when unsupported. | — |
+| `settings` | `settings` | XDG Settings portal keys beyond `color-scheme` (text scale, double-click interval, drag threshold, caret blink, animations, `reduced-motion`, recent-files) streamed onto Rune's loop. | — |
+| `icon-theme` | `icon_theme` | FreeDesktop icon theme lookup (`Inherits`, hicolor fallback, `index.theme` sizes, scale directories, unthemed icons/pixmaps) decoded via Rune's `ImageCache` into `rune::Pixels`. | [#21](https://github.com/anomalyco/rune/issues/21) |
+| `media-audio` | `media` | Zero-GStreamer Linux PCM audio output (`S16Le`/`F32Le`) on a dedicated worker thread with bounded ring backpressure, live volume/mute, latency-adjusted monotonic playback clock, pause/resume rewind, seek flush, EOF drain, and device-loss recovery via runtime `dlopen` of `libpulse-simple.so.0` (PipeWire/PulseAudio) and `libasound.so.2` (ALSA), degrading to a silent real-time clock when headless. | [#525](https://github.com/anomalyco/rune/issues/525) |
+| `single-instance` | `single_instance` | D-Bus single-instance primary per app ID with arbitrary byte-string arguments, working directory, activation tokens, `org.freedesktop.Application`, and opt-in `org.freedesktop.FileManager1`. | [#22](https://github.com/anomalyco/rune/issues/22) |
+| `glib-bridge` | `glib_bridge` | Dedicated GLib `GMainContext` worker thread for GIO async operations, signals, and monitors, delivering results back for `poll`. | Outside Rune's scope |
+| `glib-loop` | `glib_loop` | Embedding the UI thread's GLib `GMainContext` into Rune's loop via a descriptor-waiting helper thread and `AppHandle::update_if` so covered Wayland windows keep dispatching without polling. | [#139](https://github.com/anomalyco/rune/issues/139) |
 
-Each module's own docs say what Rune lacks in detail, and the limits of the shim.
+Each module's Rustdoc documents its exact contract and limits.
 
 ## Supported systems
 
-On Wayland, libwayland-client 1.23 or later. `dnd`, `clipboard` and `foreign-parent` reach
-winit's display through `wl_proxy_get_display`, which 1.23 added. An older libwayland (Ubuntu
-24.04 ships 1.22) is unsupported. The shims still degrade there rather than fail: no Wayland
-drag and drop, the clipboard through data control or Xwayland, and a parentless window
-(`Reason::NoDisplay`).
+On Wayland, `libwayland-client` 1.23 or newer is required for shared-display shims (`dnd`,
+`clipboard`, `foreign-parent`, `backdrop-blur`), which reach winit's display through
+`wl_proxy_get_display`. On older `libwayland-client` builds (such as 1.22 on Ubuntu 24.04),
+the shims degrade cleanly rather than failing.
 
-## Supported Rune revs
+## Supported Rune rev
 
-Each release tag supports exactly one Rune rev. Pin that rev, in full, beside the tag.
-
-| Tag | Rune rev | Rust | Released |
-| --- | --- | --- | --- |
-| Unreleased (`main`) | [`67d73a5f18390686c8e9b8b3a32b3414ebd66db0`](https://github.com/anomalyco/rune/commit/67d73a5f18390686c8e9b8b3a32b3414ebd66db0) | 1.99.1 | — |
-
-## Pinning a release
-
-Rune isn't on crates.io, so neither is this crate: crates.io takes no git dependencies. Releases
-are git tags named `strata-platform-v<version>+rune.<rev>`, where `<rev>` is the first seven
-digits of the Rune rev the release supports. Pin the tag, and pin Rune at that same rev:
-
-```toml
-[dependencies]
-rune = { git = "https://github.com/anomalyco/rune", rev = "67d73a5f18390686c8e9b8b3a32b3414ebd66db0" }
-strata-platform = { git = "https://github.com/wmfeht/strata-components", tag = "strata-platform-v0.1.0+rune.67d73a5", features = ["glib-bridge"] }
-```
-
-The tag shown is an example; take a real one from [Supported Rune revs](#supported-rune-revs).
-
-- **Copy the rev exactly, all 40 digits.** Cargo treats `rev = "67d73a5"` and the full rev as two
-  different sources. It then builds Rune twice, and this crate's Rune types don't match your
-  app's. `cargo tree -e normal --prefix none --format '{p}' --color never | grep '^rune v' | sort -u`
-  must print one Rune, ignoring the ` (*)` cargo adds to repeats.
-- Your features of `rune` are your own: cargo merges them with this crate's.
-- Write the tag with a plain `+` in `Cargo.toml`. Only web links write it as `%2B`.
-- To move to a new Rune rev, move both pins together, to a tag that names the new rev.
-
-## Versioning
-
-The crate follows semver. Moving to a new Rune rev is a minor release, because Rune's types
-appear in the API. The [changelog](https://github.com/wmfeht/strata-components/blob/e4f2df1a718dfe5ad282f27d20b4d1b8858fe7e7/CHANGELOG.md) lists every release, with the Rune rev and
-Rust version it supports.
+| Workspace | Rune rev | Rust |
+| --- | --- | --- |
+| `strata` | [`67d73a5f18390686c8e9b8b3a32b3414ebd66db0`](https://github.com/anomalyco/rune/commit/67d73a5f18390686c8e9b8b3a32b3414ebd66db0) | 1.99.1 |
 
 ## Shim lifecycle
 
-When Rune ships a feature that a module shims:
+When Rune ships a feature natively that a module shims:
 
-1. The release that moves to that Rune rev deprecates the replaced items, naming the Rune API to
-   use instead. The module docs and the changelog say the same.
-2. The next minor release removes them, or the whole module and its feature if Rune replaces
-   all of it.
-
-If Rune ships only part of a feature, only the replaced items go. The full checklist is in
-[`docs/rune/decisions/S5-upstream.md`](../../docs/rune/decisions/S5-upstream.md#shim-deprecation-checklist).
+1. Move the workspace's pinned Rune rev and deprecate the replaced shim items, naming the
+   native Rune API to use instead.
+2. Migrate callers in `strata-app` and remove the deprecated shim and feature in a follow-up.
 
 ## License
 

@@ -5,51 +5,49 @@ description: >
   (tests/qa/scenarios/*.jsonl, run by tests/qa.rs through ./scripts/qa.sh),
   and work with the `strata --qa` JSON-lines protocol behind them. Use for any
   task that writes or changes a scenario file or its header (modes, variants,
-  cost, quality, skip, known_bug, parity, targets), writes a Rune twin of a
-  scenario, reads a QA failure or its artifacts in target/qa-artifacts,
-  changes the QA runner, or writes or runs a fuzz alphabet or sequence
-  (tests/qa/fuzz, ./scripts/qa-fuzz.sh).
+  host, cost, quality, skip, known_bug, mutation), reads a QA failure or its
+  artifacts in target/qa-artifacts, or changes the QA runner.
 ---
 
 # QA scenarios
 
-QA scenarios are Strata's GUI test suite. Each scenario is one `.jsonl` file
-that drives the real app with real X input and checks what a user would see.
-This file covers the common 80%; [reference.md](reference.md) has every
-header key, step, target, predicate, and `fs` kind, and is the only catalogue
-of them. The "QA scenarios (`--qa` mode)" section of `docs/testing.md` covers
-the run environment, keyboard layouts, scheduling, visual baselines, and
-mutations; its "Skipped scenarios" and "Waits for the app's own timers" lists
-are part of the suite.
+QA scenarios are Strata's end-to-end GUI test suite. Each scenario is one
+`.jsonl` file that drives `strata --qa` and checks both what a user sees and
+what happened on disk. This file covers the common 80%;
+[reference.md](reference.md) has every header key, step, target, predicate, and
+`fs` kind, and is the only catalogue of them. The "QA scenarios (`--qa` mode)"
+section of `docs/testing.md` covers the run environment, offscreen vs. session
+hosts, keyboard layouts, scheduling, and mutations; its "Skipped scenarios" and
+"Waits for the app's own timers" sections are part of the suite.
 
 ## How it fits together
 
 - **The app side.** A build with the `qa` cargo feature (never released)
-  accepts `strata --qa <directory>`: the normal window opens on the directory,
-  then the session reads one JSON command per line on stdin, runs it on the GTK
-  main loop, and writes one reply per line on stdout once the main context
-  drains. Input is XTEST sent from inside the process; state is read from the
-  widget tree by the accessible names `src/ui/accessibility.rs` sets.
-  `strata --qa --portal` runs the FileChooser portal backend instead.
-  `crates/strata-qa/` parses commands and, in `src/engine/`, runs the session:
-  it resolves targets, builds the snapshot, decides predicates and runs each
-  step's loop, all through its `Backend` trait. `src/qa/` is GTK's `Backend`
-  (`backend.rs`): it reads widgets, sends input, and keeps the few steps and
-  predicates only GTK can answer (`dispatch.rs`, `check.rs`).
+  accepts `strata --qa <directory>`: it opens on the directory, reads one JSON
+  command per line on stdin, runs it through `strata-qa`'s engine and
+  `strata-app`'s QA backend (`crates/strata-app/src/qa/`), and writes one JSON
+  reply per line on stdout. By default it drives Rune's offscreen QA host; for
+  `"host": "session"` runs (`STRATA_QA_WINDOW=1`) it opens a real window on a
+  private headless `sway` compositor (`crates/strata-app/src/qa/session.rs`).
+  `strata --qa --portal` runs the FileChooser portal backend instead. State is
+  read directly from Strata's accessibility tree (roles mapped to standard
+  AT-SPI names).
 - **The reply.** `{"ok","app","changed","criticals","result","failures","error"}`.
   `app` is the state snapshot (view mode, directory, panes with selection and
   focus, focused entry, dialog, menu, preview, field, matches). Any GLib
   warning or critical in `criticals` fails the run.
-- **The runner.** `tests/qa.rs` and its modules in `tests/qa/` (custom harness `tests/qa/harness.rs`,
-  `harness = false`) loads every file, checks every step with the process's
-  own parser before launching anything, and makes each run a test named
-  `<scenario>/<run>`. Each run gets its own Xvfb, HOME, XDG directories, and
-  fixture tree from `tests/fixtures/harness.json`. Runner-side steps (`fs`,
-  `restart`, `layout`, peers in `tests/qa/peers.rs`) execute in the runner;
-  the rest go to the process. Costliest runs start first.
+- **The runner.** `tests/qa.rs` and its modules in `tests/qa/` (custom harness
+  `tests/qa/harness.rs`, `harness = false`) loads every file, validates every
+  step with `strata-qa`'s parser before launching anything, and makes each run
+  a test named `<scenario>/<run>`. Each run gets its own HOME, XDG directories,
+  and fixture tree from `tests/fixtures/harness.json` (plus a private headless
+  `sway` session when `"host": "session"`). Runner-side steps (`fs`, `restart`,
+  `layout`, peers in `tests/qa/peers.rs`) execute in the runner; the rest go to
+  the process. Costliest runs start first.
 - **The container.** `./scripts/qa.sh` runs
-  `cargo test --features qa,invariant-checks --test qa` inside the pinned image.
-  `tests/qa.rs` refuses to start without the `STRATA_QA_CONTAINER=1` it sets.
+  `cargo test --locked --features qa,invariant-checks --test qa` inside the
+  pinned image. `tests/qa.rs` refuses to start without the
+  `STRATA_QA_CONTAINER=1` it sets.
 - **The files.** `tests/qa/scenarios/<folder>/<scenario>.jsonl`, one scenario
   per file. Line 1 is the header; every later line is one step.
 
@@ -121,14 +119,14 @@ Container rules:
    menus, files, preferences, and text. Do not assert widget geometry,
    alignment, spacing, sizes, wrapping, or pixel placement; geometry
    predicates are for behaviour that is positional (a scroll reached its
-   target, a drag landed, a repaint happened, a committed visual baseline).
+   target or a drag landed).
 8. **Target by accessibility.** Copy roles and names from a `tree` query.
    Entry rows are labelled with their name and described `Folder` or `File`;
    panes are labelled with their directory; menu items carry the accelerator
    in their description; dialogs carry the dialog role and a name; a button
    with a text label is named by it. Tooltips never name a target. If a
-   control has no usable name, name it in the app (`accessibility::set_label`
-   for an icon-only button); never reach around the accessibility layer.
+   control has no usable name, name it in the component/app; never reach around
+   the accessibility layer.
 9. **Run it** by name until it passes, then run each of its runs a few times
    and once inside a full `./scripts/qa.sh`, which runs it under load.
 10. **Prove it can fail.** Break the behaviour temporarily (change a step's
@@ -222,17 +220,16 @@ send the key that moves back one entry in each view.
 | Key | Use |
 | --- | --- |
 | `modes` | `columns`, `icons`, `list`; one run each. The run's mode is written as `browser_mode` over every `prefs`. |
+| `host` | `"offscreen"` (default) or `"session"` (real window on private headless `sway`, for clipboard, compositor DnD, window focus, or portal scenarios). Variants may override `host`. |
 | `prefs` | `settings.toml` overrides, for example `{"type_to_search":false}`. |
-| `variants` | `[{"id":"ru","layout":"ru","vars":{"key":"value"},"prefs":{...},"modes":[...]}]`: reruns, labelled `<mode>-<id>`; steps opt in with `"variants":["ru"]`. |
+| `variants` | `[{"id":"ru","layout":"ru","host":"session","vars":{"key":"value"},"prefs":{...},"modes":[...]}]`: reruns, labelled `<mode>-<id>`; steps opt in with `"variants":["ru"]`. |
 | `tree`, `images`, `setup`, `teardown` | Fixture contents, written before launch; `teardown` runs however the run ends. |
 | `session_bus`, `env`, `portal`, `fixture_root` | A private D-Bus; extra app variables; the portal backend; a fixed `/tmp/<name>` fixture path. |
-| `input_method` | A private fcitx5 with that input method (host runs only; see `docs/testing.md`). |
 | `known_bug`, `known_bug_step` | An issue and the line expected to fail. |
 | `mutation` | A patch in `tests/qa/mutations/` the scenario must catch; check it with `./scripts/qa-mutation.sh <scenario>`. |
 | `skip` | A reason; keeps the scenario out of the default run. |
 | `cost` | Measured start-order weights per run label. |
 | `quality` | The scenario's value rating. |
-| `parity`, `targets` | The label of a scenario and its Rune twin, and the twin's `["rune"]`. Only for a pair: see "Write a Rune twin". |
 
 Step modifiers: `"modes":[...]`, `"variants":[...]`, `"when":PREDICATE`,
 `"if"`/`"unless"` (flags kept by `expect`/`flag` with `"as"`),
@@ -274,95 +271,6 @@ Step modifiers: `"modes":[...]`, `"variants":[...]`, `"when":PREDICATE`,
   set the issue and the exact failing line. The run then passes only while
   that step fails; once the bug is fixed the run fails with "remove the
   marker". Never use it for a flake.
-
-## Write a Rune twin
-
-On `strata-next` the same files run on the GTK application and on
-`strata-rune`, and the parity ledger, `tests/qa/parity/<folder>.toml`, says
-how each run stands. A **twin** is a second scenario,
-`<scenario>-rune.jsonl` beside the original, that stands in on Rune for a run
-the shared file cannot pass there under a named exception. "Twins" in
-`docs/testing.md` has the rules, the exceptions and who approves each; this is
-the procedure.
-
-A twin is the fourth resort of five. First try, in order: fix the port
-(`crates/strata-app` or the component); absorb the difference in the Rune QA
-backend (key names, role maps, settle rules and field offsets never go in a
-scenario); reword the scenario on `main`, with its own reason, so one file
-passes on both targets. Write a twin only when none fits and one of the six
-exceptions does: `timing`, `a11y`, `rune`, `oracle`, `toolkit` or `deviation`.
-`platform` never has a twin (the same file runs on the session host), and
-`scope`, `harness` and `component` are pending reasons. With no exception, the
-run stays `pending` with a blocker.
-
-1. **Have the reference.** An issue on `lgse/strata` that says what differs
-   and why none of those three fits (label `exception`; `oracle` for a bug in
-   Strata itself). A `rune` twin cites its packet entry instead,
-   `docs/rune/upstream/rune/<number>-<name>.md`. A `deviation` twin needs the
-   owner's ruling before it is written. The ruling is recorded under "Ruled" in
-   `docs/rune/parity/owner.md` and names the finding's reference issue, which
-   the twin cites. A parity finding's issue is its reference, and may be closed
-   at once; `docs/rune/parity/findings.md` holds its state.
-2. **Write the twin** beside the original. It holds only the modes or
-   variants that differ, and starts from the same `tree`, `images`,
-   `fixture_root`, `setup`, `teardown`, `prefs`, `layout`, `portal`, `env`,
-   `session_bus`, `input_method` and `volume_monitor`. Only the steps the exception names
-   differ, and at least one does: a twin whose steps are its original's is
-   refused, since then the shared file passes and the run is `required` (a
-   `message` or a `timeout_ms` is no difference). It keeps the original's
-   intent and end-state checks: every `fs` step and every `wait` or `expect`
-   on a `pref` of the original's run stays, unchanged and in order, by a
-   check, and the rest by review. Its header:
-
-   ```json
-   {"scenario":"<scenario>-rune","modes":["columns"],"targets":["rune"],"parity":{"twin":"<scenario>","exception":"timing","ref":"lgse/strata#NNN","differs":"<one line: which steps differ and why>"}}
-   ```
-
-   Give it messages on its waits and, by convention, the original's `cost`
-   for the runs it holds and a `quality`. No `mutation` and no `known_bug`.
-3. **Label the original**, and change nothing else in it. Its steps stay:
-
-   ```json
-   "parity":{"twin":"<scenario>-rune","exception":"timing","ref":"lgse/strata#NNN"}
-   ```
-
-4. **Flip the ledger entry** of each run the twin holds, in the folder's
-   file. The twin's own runs get no entry. A run that is `required` today
-   goes `parallel` only with the owner's agreement:
-
-   ```toml
-   status = "parallel"
-   exception = "timing"
-   twin = "<scenario>-rune/columns"
-   ref = "lgse/strata#NNN"
-   ```
-
-5. **Prove the twin can fail.** Add
-   `tests/qa/parity/mutations/<scenario>-rune.patch`, which breaks the
-   behaviour the twin's own steps check in `crates/strata-app`, and prove it
-   once, alone, with the patched files clean:
-   `./scripts/qa-parity.sh mutations <scenario>-rune` runs the twin on Rune
-   unpatched and sees it pass, applies the patch, sees a step fail (not a
-   build or launch failure) and restores the files; see
-   `git status --porcelain` empty before committing anything. A
-   scenario whose every run is parallel has no patch of its own: `git mv` it
-   to the twin's name.
-6. **Check and run the pair.** `./scripts/qa-parity.sh <folder> --twins`
-   reads the ledger, every label and both files, says what to do about a
-   pair that does not hold, and lists each twin with how many of its steps
-   are the original's, its own, and the original's it drops: put that
-   listing in the pull request. `./scripts/qa-parity.sh <folder> --scenario
-   <scenario>-rune` runs the original on GTK and the twin on Rune. A run is
-   `parallel` only once both passed three times running. `./scripts/qa.sh`
-   never runs a twin, its counts do not change, and naming a twin to it
-   fails the selection.
-7. **Look for twins that are no longer needed.** `./scripts/qa-parity.sh
-   <folder> --parallel` runs each parallel run's shared file on Rune. One
-   that passes has an exception that lapsed: remove the twin, its patch and
-   the label, and make the entry `required`.
-
-A labelled original's header is one line that `main` edits too. When a merge
-from `main` conflicts there, take `main`'s line and add the label back.
 
 ## Flakes and races
 
@@ -422,58 +330,14 @@ run.
 - **A GLib warning failed the run.** The failure names it; it is an app bug,
   not a scenario bug.
 
-## Fuzz sequences
-
-`./scripts/qa-fuzz.sh` drives the same runner with sequences a seed generates
-from an area's alphabet, and compares what a user could observe after every
-step between replays. "Fuzzing" in `docs/testing.md` has the method;
-[reference.md](reference.md#fuzz-sequences) has the file formats.
-
-```bash
-./scripts/qa-fuzz.sh run --alphabet calibration --seeds 1..20   # generate, replay twice, compare
-./scripts/qa-fuzz.sh run --alphabet entries --seeds 1..20 --target gtk,rune   # Rune against GTK too
-./scripts/qa-fuzz.sh replay                                     # every kept sequence that is not parked
-./scripts/qa-fuzz.sh replay --parked --repeats 24               # the parked ones, on purpose
-./scripts/qa-fuzz.sh shrink --alphabet calibration --seeds 7    # the fewest steps that still differ
-./scripts/qa-fuzz.sh scenario <file>                            # a sequence file, as the scenario it is
-./scripts/qa-fuzz.sh check                                      # load everything; print the rule and mask counts
-```
-
-- **An alphabet is data**, `tests/qa/fuzz/alphabets/<area>.toml`: actions
-  with weights, each one or more scenario steps copied as they are. Name
-  targets by role and name, give a step a `when` wherever its target may not
-  be there (an unguarded miss waits 15 seconds), and keep the sequence inside
-  the fixture. When a change makes a seed write another sequence, raise
-  `version` and write the line the runner names in
-  `tests/qa/fuzz/alphabets/pins`: a seed means nothing across versions.
-- **A sequence is a scenario file** named `fuzz-<area>-v<version>-<seed>`. It holds
-  steps that act and `fs` actions, and no checks: every step is followed by
-  an observation at rest. A `wait` belongs only where the area knows what the
-  application shows when a slow action is done.
-- **`DIFFER` is not yet a bug.** Shrink it first: a divergence counts when
-  the shortest sequence shows it three times out of three. One that does not
-  confirm is noise, and goes to calibration.
-- **Never mask to get a run green.** `tests/qa/fuzz/calibration.mask` grows
-  only when two GTK replays of a seed differ and no longer rest cures it, and
-  each line says what can no longer be seen. An exception between the two
-  targets goes in `tests/qa/fuzz/normalisation.map` with its code and issue.
-  Both counts are printed in every summary.
-- **A GTK bug the fuzzer finds** is an `oracle` issue: file it, keep its
-  sequence in `tests/qa/fuzz/corpus/<area>/` and park it in that folder's
-  `parked`, and go on. Before blaming one target for a difference, replay it
-  on the other alone many times: a race agrees with itself most of the time.
-- It shares `target/qa-container` with the other QA scripts: one at a time.
-
 ## Change the runner
 
-Runner unit tests live in `tests/qa/scenario_tests.rs`,
-`tests/qa/step_tests.rs`, `tests/qa/parity_tests.rs` and
-`tests/qa/twin_tests.rs` and must be listed in the `unit_tests!` macro in
+Runner unit tests live in `tests/qa/scenario_tests.rs` and
+`tests/qa/step_tests.rs` and must be listed in the `unit_tests!` macro in
 `tests/qa/unit_tests.rs`: the custom harness ignores `#[test]` and
 `#[cfg(test)]`, and `no_test_attribute_hides_a_runner_test` rejects them.
-The fuzz driver's are in `tests/qa/fuzz/tests.rs`, listed in that file's own
-`unit_tests!`. Unit tests run in every `./scripts/qa.sh` run that names no
-scenario. Script tests: `python3 -m unittest discover -s scripts -p 'test_*.py'`.
+Unit tests run in every `./scripts/qa.sh` run that names no scenario. Script
+tests: `mise run scripts` (`python3 -m unittest discover -s scripts -p 'test_*.py'`).
 
 The main-thread I/O audit also runs through the runner: with
 `STRATA_QA_MAIN_IO` set, `tests/qa/main_io.rs` starts every Strata launch
@@ -497,13 +361,9 @@ traces still appear. See "Main-thread I/O audit" in `docs/testing.md`.
       re-rated with the `qa-quality` skill and checked by its independent
       cheap-model grader.
 - [ ] `skip`, `known_bug`, and any wait for the app's own timers carry an
-      issue and are listed in the guide.
+      issue and are listed in `docs/testing.md`.
 - [ ] A scenario with a `mutation` still catches it:
       `./scripts/qa-mutation.sh <scenario>`.
-- [ ] A twin, or a scenario that has one: both labels, the ledger entries,
-      the steps and the twin's patch are in order (`./scripts/qa-parity.sh
-      <folder> --twins`), and the pair passes
-      (`./scripts/qa-parity.sh <folder> --scenario <scenario>-rune`).
 - [ ] Renamed or removed names are gone from `docs/`, `tests/`, and the
       skills.
 - [ ] `git diff --check` is clean.

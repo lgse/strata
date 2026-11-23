@@ -46,7 +46,7 @@ stack in unoptimized builds and overflows worker and test threads.
 Translate at the presentation boundary, not in filesystem or protocol code:
 
 ```rust
-let label = gtk::Label::new(Some(&crate::i18n::tr("Language")));
+let label = strata_core::i18n::tr("Language");
 let message = rust_i18n::t!("Copied to %{device_name}", device_name = device_name);
 ```
 
@@ -104,20 +104,11 @@ dates and durations put no space between digits and Han: "2026年9月7日",
 "1小時2分", "2分5秒", and "45秒". Key names, unit symbols, and product names
 stay as in English.
 
-Translate each string exactly once. The shared modal builders (`modal_layout`,
-`message_dialog_layout`) display their title, subtitle, and confirm label as given,
-so callers pass translated text. Do not pre-wrap dialog text:
-`controls::dialog_text` only normalizes ASCII spaces and tabs (no-break spaces are
-kept) and keeps explicit line and paragraph breaks, and dialog labels use
-`WrapMode::WordChar` so Pango breaks scripts without spaces at valid positions.
-Call `controls::keep_words_whole` on wrapping labels that show translated
-sentences: it disables inserted hyphens and keeps short Korean words unbroken,
-since Pango otherwise breaks between any two Hangul syllables. A dialog whose
-action row holds several translated buttons should call
-`controls::stack_actions_when_constrained`, which stacks the buttons vertically
-once the dialog is narrowed to the window. Do not compare translated text to
-choose behavior; pass an explicit kind instead. Keep internal or diagnostic errors
-that are never shown to users in English.
+Translate each string exactly once. Shared modal dialog components in
+`strata-components` display their title, subtitle, and button labels as given,
+so callers pass translated text. Do not pre-wrap dialog text or compare
+translated text to choose behavior; pass an explicit kind instead. Keep internal
+or diagnostic errors that are never shown to users in English.
 
 Show I/O failures through `services::io_error_message` (`std::io::Error`, including
 rustix errnos converted with `.into()`) or `services::gio_error_message`
@@ -190,9 +181,6 @@ help text and destructive-operation confirmations.
 
 The following text is outside Strata's catalogs or deliberately English:
 
-- GTK toolkit-owned text, such as the color chooser's "Custom", "Cancel" and swatch
-  names, GtkNotebook "Page N", and the password entry's "Show Text". GTK translates
-  these from the process locale, not Strata's language setting.
 - GIO and MIME descriptions, such as content-type names in Properties and the List
   Type column, and Open With application descriptions.
 - External release notes, which are written upstream and shown verbatim.
@@ -203,39 +191,27 @@ The following text is outside Strata's catalogs or deliberately English:
 - Internal worker, task-panic, decoder and renderer diagnostics that appear only
   when a background thread or helper fails internally.
 
-GTK uses Fontconfig fallback for characters absent from the selected font.
-Japanese, Korean, and Simplified Chinese require installed CJK fonts, such as
-Noto Sans CJK (commonly packaged as `noto-fonts-cjk` or `fonts-noto-cjk`);
-Simplified Chinese needs one with Simplified Chinese glyphs, such as Noto Sans
-CJK SC, and Traditional Chinese needs one with Traditional glyphs, such as Noto
-Sans CJK TC. Chinese and Japanese text share Han code points, whose regional glyph
-forms Pango chooses from the text language. GTK takes that language from the
-process locale (`LC_CTYPE`), not from Strata's language setting. If the locale is
-neither Chinese nor Japanese, Pango uses the first Chinese or Japanese entry in
-`PANGO_LANGUAGE` (or `LANGUAGE` when that is unset); without one, the forms are
-the defaults of whichever CJK font Fontconfig picks. A manual 简体中文 or 正體中文
-choice can therefore show another region's forms. To see Simplified or
-Traditional forms on a locale that is neither Chinese nor Japanese, run Strata
-with `PANGO_LANGUAGE=zh-cn` or `PANGO_LANGUAGE=zh-tw`. Strata does not download or install fonts. A minimal
-container without CJK fonts can expose correct accessible text while rendering
-missing-glyph boxes; check actual rendering with suitable fonts installed, rather
-than relying only on accessibility tests.
+Rune uses Fontconfig fallback for characters absent from the bundled font.
+Japanese, Korean, and Chinese require installed CJK fonts, such as Noto Sans CJK
+(commonly packaged as `noto-fonts-cjk` or `fonts-noto-cjk`); Simplified Chinese
+needs Simplified Chinese glyphs (such as Noto Sans CJK SC), and Traditional
+Chinese needs Traditional glyphs (such as Noto Sans CJK TC). Strata does not
+download or install fonts. A minimal container without CJK fonts can expose
+correct accessible text while rendering missing-glyph boxes; check actual
+rendering with suitable fonts installed, rather than relying only on
+accessibility tests.
 
 ## Validation
 
-Run targeted regressions using the private display/session bus:
+Run targeted headless regressions:
 
 ```bash
-./scripts/test-headless.py i18n::
-./scripts/test-headless.py language_
-./scripts/test-headless.py util::tests
-./scripts/test-headless.py ui::settings::tests::general
+mise run test i18n::
+mise run test language_
 ```
 
 Catalog tests require every supported locale to contain the same source keys
-and preserve interpolation placeholders. They cannot see a source string that
-was never added to a catalog, so a Settings test builds every page and requires
-each section heading to have an entry in every catalog. Behavioral tests cover saved startup
+and preserve interpolation placeholders. Behavioral tests cover saved startup
 language, restart-only application, synchronized Settings controls, restart
 close guards, plural rules, literal user data, and app-language calendar labels.
 For broad code changes, also follow the full validation policy in `AGENTS.md`.

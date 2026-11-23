@@ -1,12 +1,12 @@
-# Strata on Rune: planned features
+# Strata planned features
 
-Features and enhancements planned for the Rune port **after the GTK parity sweep completes**
-and **before shipping the Rune release**, alongside the optimization work tracked under
-[performance/](performance/README.md).
+Features and enhancements tracked for Strata on Rune, alongside the optimization
+work recorded in [performance/large-directory-open.md](performance/large-directory-open.md)
+and [performance-baseline.md](performance-baseline.md).
 
 ## Variable surface transparency
 
-**Status:** Implemented on `strata-next` (UI-54).
+**Status:** Implemented.
 
 ### Goal
 

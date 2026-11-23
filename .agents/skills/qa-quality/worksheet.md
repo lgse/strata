@@ -9,7 +9,7 @@ Scenario:      <folder>/<name>.jsonl
 Behaviour:     <action> via <route> in <modes> → <asserted outcome>
 Runs:          modes=<...> variants=<...>; distinct paths: <which ones differ, and how>
 Overlaps:      <scenario>: <shared fixture/route/mode/assertions>; superset? <yes/no/mirror>
-Unit/GTK:      <src/.../tests.rs::fn>: pins <what>; leaves <what> to the GUI
+Unit/comp:     <crates/.../tests.rs::fn>: pins <what>; leaves <what> to the GUI
 History:       churn <n> commits/90d in <paths>; fixes <ids>; origin <hash> (<fix|feat|test>)
 Impact:        <1-5>  because <worst realistic failure>
 Coverage:      <1-5>  because <what only this scenario verifies>

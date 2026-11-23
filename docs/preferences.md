@@ -1,56 +1,42 @@
 # Preference lifecycle
 
 Application-wide preferences live in `strata_desktop::settings::Preferences`, with
-their defaults, their stored forms and the reading and salvage of the file. That
-module has no toolkit, so the Rune interface reads the same file through it. The
-`ui::preferences::PreferenceManager` loads them once per application process and
-persists changes atomically to
-`$XDG_CONFIG_HOME/strata/settings.toml` (normally `~/.config/strata/settings.toml`).
+their defaults, their stored forms, and the reading and salvage of the file.
+`crates/strata-app/src/settings/` loads them at startup and persists changes
+atomically to `$XDG_CONFIG_HOME/strata/settings.toml` (normally
+`~/.config/strata/settings.toml`).
 The file may be a symlink, for example into a dotfiles repository: Strata follows
 up to eight links owned by the current user to a regular file the user owns,
 replaces that target atomically in its own directory, keeps its permission bits
 and leaves the links in place. Links owned by another user, links to directories
 or missing targets, and longer chains are refused. A missing file is created
 with owner-only permissions; an existing one keeps its permission bits.
-It owns the serialized schema, change notifications, and widget bindings for every
-settings consumer, theme-related or not. `ui::theme::ThemeManager` separately owns
-the theme catalog, shared CSS application, custom themes, system light/dark mode following, and Omarchy following;
-it reads preferences through the `PreferenceManager` and reapplies shared CSS when
-appearance preferences change. Fresh installations select Tokyo Night, unless an
-available Omarchy theme is followed automatically. Saved theme choices remain
-unchanged. Folder peeking is off by default when no value is saved; explicitly
-saved choices are preserved. Enable it under **Settings → General → Browsing**.
-When enabled, automatic folder peeks in Icons and List wait for a 500 ms hover;
-explicit keyboard peeks in those views remain immediate. Miller columns never
-show folder-peek popovers, regardless of the saved preference.
+`crates/strata-app/src/theme.rs` and `crates/strata-app/src/appearance/` manage
+the theme catalog, `strata-kit::Look` synthesis, custom themes,
+system light/dark mode following, Omarchy following, and surface transparency.
+Fresh installations select Tokyo Night, unless an available Omarchy theme is
+followed automatically. Saved theme choices remain unchanged. Folder peeking is
+off by default when no value is saved; explicitly saved choices are preserved.
+Enable it under **Settings → General → Browsing**. When enabled, automatic
+folder peeks in Icons and List wait for a 500 ms hover; explicit keyboard peeks
+in those views remain immediate. Miller columns never show folder-peek popovers,
+regardless of the saved preference.
 
-Settings-wide search is transient, panel-local UI state, not a saved preference.
-It filters the existing bound controls rather than creating copies. Register new
-settings in `settings/search.rs`; `settings_option` tags ordinary rows, while
-custom sections use `search::tag`. Keep installation-specific availability
-separate with `search::set_available`, so clearing a query cannot reveal an
-unsupported release-channel selector. Lazy pages apply the latest query when
-they finish loading. Give each new target a `settings_keywords.<id>` entry in
-every catalog (see [Internationalization](internationalization.md)). Search
-routes to pages through the `NAVIGATION` table in `settings.rs`.
-`ui::settings::search::tests::every_page_row_is_registered_for_search` builds
-every page and fails on a row or section without a target. Register the row, or
-tag status-only content with its section's target (the managed-install row uses
-"Check for updates"), rather than exempting it.
+Settings-wide search is transient, dialog-local UI state, not a saved preference.
+It filters the live Settings controls in `crates/strata-app/src/settings_dialog/`.
+Give each searchable setting a `settings_keywords.<id>` entry in every locale
+catalog (see [Internationalization](internationalization.md)).
 
 ## One initialization and update path
 
-Use `PreferenceManager::bind_preference(anchor, read, apply)` for cached behavior and
-controls, and `ThemeManager::bind_theme_preference(anchor, read, apply)` for values
-derived from the theme catalog or live Omarchy availability. The binding applies the
-current value immediately, then applies only
-changes to its selected value. There is no separate startup initializer to keep
-in sync with the change handler. Every setter goes through `save_preferences`,
-which deduplicates unchanged preferences and publishes changes through the same
-notification mechanism. The setter returns once the change is published; the file
-is written by Strata's one background settings writer (`storage::writer`), which
-runs every save of Strata's own settings and state files in order on its own
-thread and keeps only the newest contents of a file whose save is still waiting.
+Preferences are loaded once at startup before the first window renders and are
+read directly from the live application settings store across all shell parts
+and open windows; there is no separate Settings-page-only initializer. Every
+change deduplicates unchanged values, updates in-memory state immediately across
+windows, and queues a write to Strata's background settings writer
+(`storage::writer`), which runs every save of Strata's own settings and state
+files in order on its own thread and keeps only the newest contents of a file
+whose save is still waiting.
 Quitting waits up to 10 seconds for queued saves; a crash before a queued save
 runs loses that last change. Failed writes are logged with the path and reason, still
 apply in memory, and are retried on the next save, so a transient failure such as
@@ -62,7 +48,7 @@ succeeded and then failed. A failure while no browser window is active, such as
 a background Omarchy theme update, is only logged and leaves the notice for the
 next failure. If an existing settings file cannot be read
 or parsed as TOML, startup logs a warning and uses temporary defaults. Preference
-changes still apply in memory, but saving is disabled for that manager's lifetime
+changes still apply in memory, but saving is disabled for that session
 to preserve the original file. The first change made in a browser window then
 opens a "Settings file can't be read" dialog instead, once. Fix the file and restart
 Strata to resume saving. Portal file choosers never show these dialogs; their
@@ -70,17 +56,9 @@ failures are only logged.
 Missing files allow normal first-run saves; invalid values in otherwise valid
 TOML still use the existing per-entry recovery.
 
-Bindings use weak widget anchors and remove their listeners when the anchor is
-destroyed. Callbacks must capture weak references to any owned widget/state or
-manager. Reentrant changes are delivered in another notification pass, without
-holding preference/listener borrows across callbacks. A binding updates its
-last-seen value before calling its consumer.
-
 Settings pages **only edit preferences**; they must not initialize application
-behavior. Boolean and segmented controls use `settings::bindings` helpers,
-which ignore programmatic synchronization instead of writing it back. A
-multi-field choice reads its other fields from the manager, not from another
-control that might be midway through synchronization.
+behavior. A multi-field choice reads its other fields from the settings store,
+not from another control that might be midway through synchronization.
 
 ## Consumers and intentional scopes
 
@@ -101,14 +79,14 @@ control that might be midway through synchronization.
 | Search time limit, search entry limit | Global search, pane filters, 10xer path search, and folder pickers read the current limits when they start a query, including before Settings opens. A changed limit restarts the next query's index walk; an open result snapshot keeps its limits until it requeries. See [Search limits](#search-limits). |
 | 10xer mode | Interactive browsers and the portal file chooser bind pane Close/filter/refresh/sort chrome and the Yazi-style keymap at construction, including lazily rebuilt views. Window Search hides in interactive browsers. Window Close, chooser Accept/Cancel, and List column headings stay. Unclaimed letter commands return focus from non-text window chrome to the listing; text fields, menus, and previews retain their own input. Off by default; toggle with `Ctrl+Shift+M` or Settings → General → Browsing. Enabling shows a brief non-interactive splash that respects Reduce motion; reopening an already-enabled window does not replay it. |
 | Include subfolders | Every pane filter binds at construction, including lazy view rebuilds. Enabled by default; disabling indexes only immediate files and folders, without traversing descendants. Live changes cancel pending queries and invalidate old result streams before refreshing the active filter. Global search remains recursive. 10xer mode ignores it: entering or leaving the mode re-runs active filters in the new scope. |
-| File icon colors | Brand colors by default: Catppuccin file-type icons keep their own palette, Mocha on dark themes and Latte on light ones. Theme colors draws every one of their strokes in the theme accent instead. `ThemeManager` applies the choice with the other appearance preferences, before Settings opens and live across windows and rebuilt views; Lucide interface icons and folders are unaffected. Set under **Settings → Appearance → File icons**. |
-| Element glow | Shared semantic glow color is applied by `ThemeManager` when the appearance preferences change, before Settings opens and live across windows, dialogs, menus, and rebuilt views. Focus outlines and ordinary depth shadows are preserved. The video preview's ambient light, and the band it needs around the frame, follow the same switch live. |
-| Reduced motion | Set before any window is constructed; animation helpers read the current process-wide value. While on, it also holds GTK's `gtk-enable-animations` setting off, so stylesheet transitions and keyframes, stack and revealer transitions, spinners, and animated scrolling stop too, live across windows. Turning it off returns the setting to the desktop's value. |
-| Corner roundness | `corner_roundness` stores a percent of the stylesheet's corner radii (0–200, default 60). `ThemeManager` reparses the shared stylesheet with every pixel radius scaled when the value changes, before Settings opens and live across windows, dialogs, menus, and rebuilt views; percentage radii that draw circles are unchanged. Set under **Settings → Appearance → Shape**. |
-| Interface font | `interface_font` stores a font family name; absent means the bundled JetBrains Mono. `ThemeManager` loads the family into a stylesheet below Strata's own, so the explicit monospace of text, source, and command previews still wins, and into GTK's font setting, before Settings opens and live across windows, dialogs, menus, and rebuilt views. The bundled families follow the saved one, so text keeps the default look if it is uninstalled. Independent of text size. Choose it, or Default to restore the bundled font, under **Settings → Appearance → Text**; the picker lists installed families and filters them as you type. |
-| Theme, light/dark mode/Omarchy following, Omarchy variant, text size | `ThemeManager` applies shared CSS when theme selection, the system light/dark mode, Omarchy following or variant, text size, or element glow change; controls and theme-card selections bind to preferences through `ThemeManager::bind_theme_preference`. `mode = "system"` keeps `theme` as a curated light/dark family anchor. It uses the desktop portal's `org.freedesktop.appearance` `color-scheme` first (`1` dark, `2` light, `0` no preference), then GNOME's `color-scheme` (`prefer-dark` night; `default`, `prefer-light`, and unexpected values day), and leaves unpaired IDs unchanged. With `mode = "system"` saved, Strata waits up to 500 ms for the first portal result before applying its initial palette. It uses GNOME or light after a portal failure, no preference, or timeout, then applies a late portal reply. System and Omarchy following are exclusive. Newly saved custom themes appear in other open theme pages. A saved system mode is repaired when neither portal nor GSettings is available. |
+| File icon colors | Brand colors by default: Catppuccin file-type icons keep their own palette, Mocha on dark themes and Latte on light ones. Theme colors draws every one of their strokes in the theme accent instead. Applied through `strata-kit::icons` before Settings opens and live across windows and rebuilt views; Lucide interface icons and folders are unaffected. Set under **Settings → Appearance → File icons**. |
+| Element glow | Shared semantic glow token is updated in `strata-kit::Look` when appearance preferences change, before Settings opens and live across windows, dialogs, menus, and rebuilt views. Focus outlines and ordinary depth shadows are preserved. The video preview's ambient light, and the band it needs around the frame, follow the same switch live. |
+| Reduced motion | Read before any window is constructed and live across windows; animations, transitions, and effects read the current reduced-motion state and disable nonessential motion immediately when enabled. |
+| Corner roundness | `corner_roundness` stores a percent of `strata-kit`'s corner radii (0–200, default 60). Applied to `strata-kit::Look` before Settings opens and live across windows, dialogs, menus, and rebuilt views. Set under **Settings → Appearance → Shape**. |
+| Transparency effects | `TransparencyPreferences` under **Settings → Appearance → Transparency** controls surface transparency (`enabled`, background transparency, raised surface transparency, frosted glass backdrop blur, and unfocused window multiplier) live without restarting the window, while keeping foreground text, icons, thumbnails, selection fills, and media at full opacity. |
+| Interface font | `interface_font` stores a font family name; absent means the bundled JetBrains Mono. Applied to Rune's text system before Settings opens and live across windows, dialogs, menus, and rebuilt views while keeping explicit monospace for text, source, and command previews. Independent of text size. Choose it, or Default to restore the bundled font, under **Settings → Appearance → Text**; the picker lists installed families and filters them as you type. |
+| Theme, light/dark mode/Omarchy following, Omarchy variant, text size | `strata-kit::Look` updates live when theme selection, system light/dark mode, Omarchy following or variant, text size, or element glow change. `mode = "system"` keeps `theme` as a curated light/dark family anchor. It uses the desktop portal's `org.freedesktop.appearance` `color-scheme` first (`1` dark, `2` light, `0` no preference), then GNOME's `color-scheme` (`prefer-dark` night; `default`, `prefer-light`, and unexpected values day), and leaves unpaired IDs unchanged. With `mode = "system"` saved, Strata waits up to 500 ms for the first portal result before applying its initial palette. It uses GNOME or light after a portal failure, no preference, or timeout, then applies a late portal reply. System and Omarchy following are exclusive. Newly saved custom themes appear in other open theme pages. A saved system mode is repaired when neither portal nor GSettings is available. |
 | Language | Initialized before application UI from the saved manual language or system locale priorities. The selection and Restart button synchronize across Settings windows, but the running interface keeps its startup language until a full restart. This deliberate restart-to-apply exception avoids rebuilding active browsers, dialogs, and operations. |
-| Interface renderer | GTK selects the renderer at process startup. The saved GTK default or Cairo choice is read before GTK initializes; GTK default is selected for new installs. The control and Restart button synchronize across Settings windows, but changes take effect only after restarting Strata (via the button or after fully quitting and reopening). An explicit `GSK_RENDERER` always overrides the saved choice. |
 | Keymap overrides | Every key dispatcher, the portal chooser included, reads the tables built from the saved overrides at press time, before Settings opens; labels that show shortcuts follow changes live across windows. See [Keymap](#keymap). Edited under **Settings → Keyboard**, one table per mode. |
 | Keybinding hints | Navigation hints and the shortcuts button bind immediately and live. When hidden, the status bar appears only while the clipboard badge or F1 reference needs it; otherwise the empty bar is hidden. |
 | Show thumbnails | Enabled by default. **Settings → Appearance → File icons** switches file thumbnails to the existing file-type icons. Applies before Settings opens and live across browser windows, the portal chooser, searches, peeks, and rebuilt views. Disabling cancels pending thumbnail requests and prevents cache reads and decoding for new requests; re-enabling restores thumbnails for still-bound entries. Live thumbnail changes preserve pending dimensions and duration metadata; rebinding or unbinding a row still discards stale updates. Custom icons and the preview panel are unchanged. |
@@ -126,7 +104,7 @@ control that might be midway through synchronization.
 | Preview mute/volume | Every player's controls and media stream bind to the saved audio state. Slider changes publish/persist together, without a delayed stale save overwriting another window or being discarded when closing a preview. |
 | Automatic updates, release channel | Eligibility checks read current preferences. Controls synchronize, and all windows clear outdated notices when these preferences change, even without opening Settings. A package-managed installation's tracked channel is enforced when read, not by constructing Settings. On by default. The switch controls the automatic check, which runs at every start once the first window paints and again when a window or **Settings → Updates** opens if no check has completed in the last 24 hours. Turning it off also locks the channel, hides shown update notices, and discards an in-flight check's result; turning it back on or changing the channel checks immediately. The Updates page reuses the latest completed check and follows later results in every open Settings window, without starting another request just to display them. Running or completed installations keep their own status. **Check now** and the release-notes card (fetched when the Updates page opens, unless cached) ignore the switch. |
 | Sidebar order | Existing sidebars bind to the shared order. |
-| Sidebar default-place visibility | Existing sidebars bind to the shared Home, Trash, Network, Recent, and standard-folder visibility (Desktop, Documents, Downloads, Music, Pictures, and Videos) and rebuild. Enabled by default; hiding removes that place from the sidebar without changing pins or devices. Recent is also omitted when GTK recent-file tracking or the runtime Recent VFS backend is unavailable, and from local-only sidebars. Toggle the location chips under General → Sidebar; existing default-place Unpin context actions remain available where supported. Re-enable a hidden place’s chip to restore it. |
+| Sidebar default-place visibility | Existing sidebars bind to the shared Home, Trash, Network, Recent, and standard-folder visibility (Desktop, Documents, Downloads, Music, Pictures, and Videos) and rebuild. Enabled by default; hiding removes that place from the sidebar without changing pins or devices. Recent is also omitted when the runtime Recent VFS backend is unavailable, and from local-only sidebars. Toggle the location chips under General → Sidebar; existing default-place Unpin context actions remain available where supported. Re-enable a hidden place’s chip to restore it. |
 | Sidebar expanded | Browser windows bind their header toggle at construction: a saved collapsed state starts closed without animation. The header toggle, `Ctrl+B`, or `Ctrl+N` in 10xer mode steps the sidebar from full to compact to hidden and back to full; each step persists and updates all open browser windows live. Expanded by default; not exposed in Settings. The portal chooser keeps its own unsaved sidebar state. |
 | Sidebar compact | The second step of the header toggle shows the icon rail and persists it; existing sidebars bind to it and change live, and a saved compact state starts as the rail at any window width. When the full sidebar does not fit beside the content (one column, or the preview and its minimum when a preview is present), a sidebar that is not compact by choice rails automatically; stepping from hidden to full shows the full sidebar anyway, and that stays until the window or the preview next runs out of room. Space that returns releases only an automatic rail. Off by default; not exposed in Settings. The portal chooser keeps its own unsaved compact state. |
 | Sidebar collapsed sections | Existing sidebars bind to the shared PINNED and DEVICES collapsed state (`sidebar_pinned_collapsed`, `sidebar_devices_collapsed`, both expanded by default) and fold or unfold in place without rebuilding. A collapsed section hides its rows except the selected pinned place, which stays under its header; the header shows the hidden count while collapsed. `g 1..9` chords and pin keycaps keep their numbers while a section is collapsed. The icon rail keeps the same state and each header's row, showing only its chevron, so toggling the sidebar moves no icon. Toggle with the section header. Not exposed in Settings. |
@@ -135,19 +113,18 @@ control that might be midway through synchronization.
 | Device display labels | `device_labels` stores Strata-only labels by filesystem UUID, with mount URI fallback when a UUID is unavailable. Sidebar device rows and Properties bind at construction, update across open windows, and reapply on row rebuilds. Set label… edits the label; blank restores the system-provided name. Filesystem labels, mount/boot configuration, and other applications remain unchanged. Label editors retain their local draft while their Save action follows the latest shared value. Send-to menus and destructive Format confirmations retain system-provided drive names. No Settings page is required. |
 | Recent Send-to destinations | `send_to_recent_destinations` stores up to three relative directory paths per stable removable-device ID. The selection menu lists those that a check on the device's lane last found inside its current canonical root, checks again each time it opens, and activation checks again; no Settings control is exposed. |
 | Restore open tabs | Plain launches reopen the previous tabs in strip order with the previously active tab selected, when the Startup toggle is on (the default). Explicit folder arguments, reveal requests, and unlock flows bypass restore. Toggle it under General → Startup; the toggle binds live across Settings windows. |
-| Window buttons (minimize, maximize, close) | Every window header binds at construction and updates live. When no choice is saved, all three buttons are hidden on recognized tiling sessions (Hyprland, Sway, i3 and niri) and shown on other desktops, including KDE, GNOME and unknown sessions. Detection matches complete, case-insensitive names in the colon-separated `XDG_CURRENT_DESKTOP`; any recognized tiler takes precedence in a mixed list. Missing or unrecognized desktop names keep the controls visible, regardless of GTK's decoration layout. Each explicitly saved choice, whether visible or hidden, is unchanged. The maximize button also restores a maximized window. |
+| Window buttons (minimize, maximize, close) | Every window header binds at construction and updates live. When no choice is saved, all three buttons are hidden on recognized tiling sessions (Hyprland, Sway, i3 and niri) and shown on other desktops, including KDE, GNOME and unknown sessions. Detection matches complete, case-insensitive names in the colon-separated `XDG_CURRENT_DESKTOP`; any recognized tiler takes precedence in a mixed list. Missing or unrecognized desktop names keep the controls visible. Each explicitly saved choice, whether visible or hidden, is unchanged. The maximize button also restores a maximized window. |
 
 Tab locations persist in a separate session store (`$XDG_CONFIG_HOME/strata/tabs.toml`),
 saved whenever tabs change and validated on load.
 
 Reading the files that build the first window happens on the interface thread
 before that window shows: `settings.toml`, `folder-views.toml`, `tabs.toml`, custom
-themes, the Omarchy theme state and GTK's bookmarks file. These startup reads are an
+themes, the Omarchy theme state, and the shared `gtk-3.0/bookmarks` file. These startup reads are an
 exception to keeping file calls off the interface thread. Every later save goes
 through the settings writer: preferences, folder settings, the tabs session, folder
 history, recent applications, custom themes, pinned folders and custom actions. The
-source-preview style scheme is never saved: it is built in memory and read through
-`resource://`. Open With reads recent applications on the writer
+source-preview syntax theme is synthesized in memory from the active palette. Open With reads recent applications on the writer
 too, so a launch that is still being recorded is listed. Every later re-read after
 another process changed a file (folder settings and default sort and size saved by
 the portal chooser, custom themes, Omarchy theme changes) is parsed on the writer
@@ -320,7 +297,7 @@ The size is saved numerically, for example `text_size = 27`. Existing `"small"`,
 `"medium"`, and `"large"` settings still load as 11, 13, and 15 px. Out-of-range
 integers are clamped; unknown legacy names use 13 px.
 
-Desktop text scaling multiplies the chosen size once. GTK/compositor monitor
+Desktop text scaling multiplies the chosen size once. Compositor monitor
 scaling then converts logical coordinates to device pixels; Strata does not
 multiply widget geometry by a monitor's scale factor. Moving between monitors
 therefore does not overwrite the saved size. Toolbar/row icons and initial
@@ -382,27 +359,6 @@ and protocol identifiers are not translated.
 Translations are compiled into the binary with `rust-i18n`; installing system
 locale packages is not required. See [Internationalization](internationalization.md)
 for catalog and contributor guidance.
-
-## Interface renderer
-
-**Settings → Appearance → Rendering** offers **GTK default** (initial choice) and **Cairo**.
-Cairo avoids small-text artifacts on some systems but can use more CPU and reduce
-rendering performance. The choice is saved as `interface_renderer = "cairo"` or
-`"system"`. Use **Restart now** after changing the choice, or fully quit and reopen Strata,
-including closing all windows. A caller-supplied `GSK_RENDERER` (even an empty value)
-takes precedence. Cairo selected by Strata is a process environment setting,
-so applications started by Strata may inherit it; it does not change desktop
-or system-wide settings.
-
-Independently of the renderer choice, Strata switches GTK's `gtk-font-rendering`
-setting to **manual** for its own process. GTK's default automatic mode sizes GPU
-glyph atlas slots from unhinted glyph extents while rasterizing with slight
-hinting, so at some device pixel sizes (15px JetBrains Mono, for example) the GL
-and Vulkan renderers drop the top pixel row of glyphs such as `T`
-([GNOME/gtk#8395](https://gitlab.gnome.org/GNOME/gtk/-/issues/8395)). Manual mode
-hints metrics as well, so the extents match the raster, and it follows the
-desktop's antialiasing and hint-style settings. This is process-local and does
-not change the desktop setting.
 
 ## Element glow
 
@@ -508,7 +464,7 @@ Icons panes. The sidebar, window header, footer, and other controls outside
 those panes stay pointer-operated. **`s`** is current-folder recursive fuzzy path
 search and **`f`** filters the current folder with the same fuzzy terms;
 **`S`** is unbound. Toggle with **Ctrl+Shift+M**, close the window with **Q**. The
-preference is defined in `src/ui/preferences.rs`, saved as `tenxer_mode` in
+preference is defined in `strata_desktop::settings`, saved as `tenxer_mode` in
 `settings.toml`, and live-updates every window. Real mode transitions clear
 prompts and credentials, chords, find highlights, hidden filters/search
 (including forced recursion from **s**), and a keyboard folder peek. Leaving visual mode preserves the ordinary listing's filled selection;
@@ -531,7 +487,7 @@ and Icons. See
 
 `settings.toml` stores keyboard shortcut overrides only, one table per map:
 `[keymap.default]` and `[keymap.tenxer]` (10xer mode). Each entry names a
-command by its stable id from `ui::keys::bindings` and lists its accelerators,
+command by its stable id from `strata_desktop::keys::bindings` and lists its accelerators,
 primary first; the primary is the one menus show, and all of them work. A file
 without overrides has no `keymap` tables, so existing files save unchanged.
 
@@ -546,15 +502,16 @@ toggle_sidebar = ["<Control>n", "F9"]
 ```
 
 - An entry replaces that map's whole entry for the command; the other map keeps
-  its own. An empty list unbinds the command, so its key reaches GTK. A
-  structural key (`escape`, `activate`, `focus_next`, `focus_previous`, `up`,
-  `down`, `left`, `right`) with an empty list leaves Strata's handlers, while
-  GTK widgets keep their own handling of the physical key, and physical Escape
-  always cancels.
-- Accelerators use GTK's syntax, as `Binding::accelerator` writes them: Ctrl,
-  Alt, Shift and Super only, Shift written out (`<Shift>g`; a letter's case does
-  not matter), digits by digit-row position, keypad keys as the main keys they
-  act as. A plain digit also accepts Shift, which AZERTY needs.
+  its own. An empty list unbinds the command. A structural key (`escape`,
+  `activate`, `focus_next`, `focus_previous`, `up`, `down`, `left`, `right`)
+  with an empty list leaves Strata's command handlers, while focused controls
+  keep their own handling of the physical key, and physical Escape always
+  cancels.
+- Accelerators use the canonical `<Control>` / `<Alt>` / `<Shift>` / `<Super>`
+  syntax written by `Binding::accelerator` (Shift written out as `<Shift>g`;
+  a letter's case does not matter; digits by digit-row position; keypad keys as
+  the main keys they act as). A plain digit also accepts Shift, which AZERTY
+  needs.
 - A plain printable key (no Ctrl, Alt or Super) that an entry adds acts only
   where nothing owns typing: a focused text field or popover, and
   type-to-search while it is on, keep the key, as they keep structural
@@ -581,7 +538,7 @@ toggle_sidebar = ["<Control>n", "F9"]
   dot: unquoted, TOML reads `go.home = [..]` as a table, which is logged and
   left out.
 - An uppercase letter without `<Shift>`, such as `<Control>E`, is logged once
-  as a warning, because GTK reads it as the plain letter while labels show
+  as a warning, because the parser reads it as the plain letter while labels show
   Shift+e as **E**; the entry still applies as the plain letter. Keys recorded
   in Settings are always saved in the lowercase, Shift-explicit form.
 - An entry whose id names no command, that is not a list, or that holds an
@@ -589,11 +546,9 @@ toggle_sidebar = ["<Control>n", "F9"]
   verbatim in the file, and left out of the tables, so that command keeps its
   shipped keys and a newer version's entries survive an older version's save.
   A map that is not a table is dropped without touching the other map.
-- These warnings, and the uppercase-letter one, come from the resolver both
-  interfaces share, `strata_desktop::settings::resolve_keymap`, so on
-  `strata-next` they are logged under the target
-  `strata_desktop::settings::keymap_resolve`, not `strata::ui::preferences::keymap`.
-  The conflict findings below stay the GTK application's.
+- These warnings, and the uppercase-letter one, come from
+  `strata_desktop::settings::resolve_keymap` (logged under
+  `strata_desktop::settings::keymap_resolve`).
 - Keys an entry adds beyond its shipped ones are checked against the rest of
   their table when the tables are first built (see
   [Checking keymap entries](keyboard-shortcuts.md#checking-keymap-entries)),
@@ -601,18 +556,12 @@ toggle_sidebar = ["<Control>n", "F9"]
   path, the map, the id, the accelerator and the finding: an error, such as a
   key another command holds, as a warning, and a key that works only in some
   places as information. The entry still applies.
-- `PreferenceManager` builds the tables (`keymap()`) on first use and rebuilds
-  them on every change through `set_bindings`, `reset_binding` and `reset_map`;
-  saving the shipped keys removes the entry, and `reset_map` keeps unknown ids.
-  `keys::active_keymap()` reads these tables, so dispatch in every window and
-  the portal file chooser follows the file loaded at startup before Settings
-  opens. Text built once that shows shortcuts binds to `shown_keys` (10xer mode,
-  whether type-to-search is active, since labels then leave out the plain keys a
-  user added to the default map, and `keymap_revision()`) through
-  `shortcut_reference::follow_keys`: footer
-  hints, the F1 reference, sidebar keycaps, tooltips, Settings copy that names
-  keys, and context-menu hints with their native `accel` attributes follow a
-  change in every open window.
+- `crates/strata-app/src/settings/` builds and updates the active keymap tables
+  live on every change; saving the shipped keys removes the entry, and
+  `reset_map` keeps unknown ids. Dispatch in every window and the portal file
+  chooser reads the active tables before Settings opens, and footer hints, the
+  F1 reference, sidebar keycaps, tooltips, Settings copy, and context-menu
+  hints follow changes live in every open window.
 - Where 10xer key presses fall through to default-map stages (keys the 10xer
   stages do not claim, text fields, popovers, the file chooser's own keys,
   thumbnail resizing), the default
@@ -647,45 +596,29 @@ updates live in every window and is saved immediately; the menu stays open.
 | Content | `browser_density`, `browser_density_custom_px`  | 0–16  | 4       | 8    | `BrowserDensity` |
 
 `*_density` is `"compact"`, `"airy"`, or `"custom"`; `*_custom_px` is read only for
-`"custom"`. Old settings files that have only `browser_density` keep loading. Both
-types implement `browser_modes::DensityScale`, whose `from_px` maps a snap-point
-value to its preset. As a result, a slider resting on 4 px is saved as Compact rather
-than as Custom.
+`"custom"`. Old settings files that have only `browser_density` keep loading. A slider
+resting on a preset snap-point (such as 4 px) is saved as that preset rather than Custom.
 
-**Content** is the vertical margin of Columns and List rows. Compact and Airy keep the
-static `density-compact`/`density-airy` rules in `style.css` and their 20/16 Icons
-column caps. A Custom value sets `density-custom`.
-`browser_modes::browser_density_custom_css` then extrapolates every preset property
-linearly through those two rules, so the slider never jumps at a preset. Those
-properties are row margins and minimum heights, plus the Icons grid padding, cell
-margins, and card padding.
-
-**Frame** is one extra vertical inset applied in lock step to the browser header,
-tab strip, Icons/List pane header, Miller column headers, preview header, and
-sidebar rows, so their heights stay aligned. Miller headers keep the two extra
-bottom pixels that balance their top indicator. The same value spaces out the icon
-buttons in those bars through `margin-left`. At 0 px, which is Compact, no rule is
-emitted.
-
-`ThemeManager::apply_density` loads both generated stylesheets into one provider
-above the static stylesheet. It reloads only when either density changes, so
-dragging a slider never reapplies the theme.
+**Content** scales Columns/List row vertical spacing and Icons grid cell/card padding
+through `strata-kit::Look` density tokens. **Frame** adds vertical inset in lock step
+to the browser header, tab strip, Icons/List pane header, Miller column headers, preview
+header, and sidebar rows so their heights stay aligned.
 
 ## Adding a preference
 
-1. Add its backward-compatible serialized field/default, getter and setter.
-2. Bind cached consumers at construction, or read directly at action dispatch.
-   Do not add behavior initialization to a Settings page.
-3. Bind its controls with the shared helpers; document any deliberate override.
-4. Extend the **exhaustive** fixture in `ui/preferences/fixtures.rs` (it has no
-   `..Default` escape hatch) and the setter notification/persistence coverage.
-   That test compares the union of changed keys against every serialized field,
-   so extending the fixture without exercising the new setter still fails.
-5. Test the effective behavior with a saved non-default value before opening
-   Settings, a live change in two windows, and any relevant lazy view rebuild.
-   Test both directions; a test that only saves and deserializes is insufficient.
+1. Add its backward-compatible serialized field and default in `strata_desktop::settings`
+   (and update its exhaustive serialization/round-trip fixtures).
+2. Wire live reading and updates in `crates/strata-app/src/settings/` and its UI control
+   in `crates/strata-app/src/settings_dialog/`. Do not add behavior initialization to a
+   Settings page.
+3. Add localized strings and `settings_keywords.<id>` entries across all thirteen catalogs
+   under `data/locales/`.
+4. Test the effective behavior with a saved non-default value before opening Settings, a
+   live change across windows, and any relevant view rebuild. Test both directions; a
+   test that only saves and deserializes is insufficient.
 
 The regression suites also check no writes from opening Settings, no duplicate
-notifications, reentrant changes, listener cleanup, failed-write retries and
-notices, symlinked settings files, chooser overrides, type-to-search keyboard
-behavior, and synchronized media controls. Run GTK tests on the private display described in [testing](testing.md).
+notifications, failed-write retries and notices, symlinked settings files, chooser
+overrides, type-to-search keyboard behavior, and synchronized media controls. Run the
+workspace suite via `mise run test` and QA scenarios via `./scripts/qa.sh` (see
+[testing](testing.md)).

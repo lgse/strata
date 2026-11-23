@@ -20,7 +20,7 @@
 
 </div>
 
-Strata combines spatial Miller-column navigation with familiar Icons and List views, instant fuzzy filename search, rich previews, and native Linux desktop integration. It is designed for Omarchy and works on compatible GTK4 Linux environments.
+Strata combines spatial Miller-column navigation with familiar Icons and List views, instant fuzzy filename search, rich previews, and native Linux desktop integration. Built on [Rune](https://github.com/anomalyco/rune) — a GPU-accelerated Rust UI toolkit — it is designed for Omarchy and Wayland desktops and also runs on X11.
 
 ## Contents
 
@@ -51,16 +51,16 @@ Strata combines spatial Miller-column navigation with familiar Icons and List vi
 ## Features
 
 - **Three browser modes:** navigable Columns, an Icons grid, and a sortable List table.
-- **Keyboard-first control:** directional-key movement, navigation history, location entry, pane filtering, fuzzy search, file operations, and quick previews. An optional footer and F1 shortcut reference help you learn each mode; the footer also shows clipboard status. See [keyboard navigation and paste destinations](docs/keyboard-navigation.md). Optional [10xer mode](docs/10xer-mode.md) hides window and pane chrome and uses Yazi-style keys. Change, add, or remove shortcuts, separately for each mode, in **Settings → Keyboard**; see [Keymap](docs/keymap.md).
+- **Keyboard-first control:** directional-key movement, navigation history, location entry, pane filtering, fuzzy search, file operations, and quick previews. An optional footer and F1 shortcut reference help you learn each mode; the footer also shows clipboard status. See [keyboard navigation and paste destinations](docs/keyboard-navigation.md). Optional [10xer mode](docs/10xer-mode.md) hides window and pane chrome, uses Yazi-style keys, and greets you with a GPU plasma/electricity splash. Change, add, or remove shortcuts, separately for each mode, in **Settings → Keyboard**; see [Keymap](docs/keymap.md).
 - **Fast recursive search:** press <kbd>Ctrl</kbd>+<kbd>K</kbd> to find files and directories by name or path while the tree is still being indexed. Global search covers Home and the mounted local drives listed under **Devices** in the sidebar, regardless of the current folder; system mounts that Devices hides, such as a btrfs subvolume for a package cache, are not searched. The dialog warns when results are incomplete; raise or remove the indexing time and entry limits under **Settings → General → Search & filtering** for slow or network mounts. Folder-scoped filtering/search remains separate. URI-native remote shares are not yet included.
-- **Rich previews and thumbnails:** native rendered Markdown and static HTML, plus bounded previews for text, source code, images, camera RAW, PDF, audio, and video, with native parser-backed formats isolated from the application. Audio opens in a now-playing view with artwork and a live spectrum; video gets technical badges, a keyframe storyboard while scrubbing, ambient light around the frame, silent autoplay that eases its sound in, and <kbd>Enter</kbd> hands the position to your default player. File Properties shows available media resolution, duration, bitrate, codecs, HDR, subtitle and chapter counts, and audio/video rates. RAW previews and Properties also show dimensions, camera, lens, focal length, shutter speed, ISO, and GPS coordinates, with `N/A` for unavailable values.
+- **Rich previews and thumbnails:** native rendered Markdown (including interactive tables) and static HTML, plus bounded previews for text, source code (highlighted via `syntect`), images, animated GIF and WebP playback, camera RAW, PDF (with full-document search backed by single-pass sandboxed text indexing), audio, and video, with native parser-backed formats isolated from the application. Audio opens in a now-playing view with album artwork and a live waveform/spectrum; video gets technical badges, a keyframe storyboard while scrubbing, ambient glow around the frame, silent autoplay that eases its sound in, and <kbd>Enter</kbd> hands the position to your default player. File Properties shows available media resolution, duration, bitrate, codecs, HDR, subtitle and chapter counts, and audio/video rates. RAW previews and Properties also show dimensions, camera, lens, focal length, shutter speed, ISO, and GPS coordinates, with `N/A` for unavailable values.
 - **Drives kept together in Devices:** each drive's volumes stay next to each other in the system's drive order, with fixed disks before removable ones, a divider between drives, and network shares last.
 - **Shared storage properties:** volumes and mounted storage entries in Devices use the same Properties dialog for name, device, filesystem, mount status, and available capacity/usage. **Set label…** saves a display label only in Strata; it never changes the filesystem label, mounts/unmounts a drive, or alters system configuration. Labels update the sidebar and Properties live and can be cleared to restore the normal device name. Formatting remains restricted to eligible removable drives; release actions follow the device's reported capabilities.
 - **Responsive filesystem work:** cancellable directory loading, bounded streaming, incremental monitoring, stable selection, and virtualized large directories.
 - **Everyday file operations:** create folders, rename, cut, copy, paste, trash, permanent delete, sorting, hidden files, pins, and history. [Drop images, selected text, and web links](docs/content-drops.md) from a browser into a folder to save them as files; a dropped link is saved as a link file and never fetched.
 - **Remote locations:** browse GIO/GVfs locations such as authenticated SMB shares and SFTP servers from the location field, with explicit host-key decisions.
 - **Administrator access:** open a local folder you can't read, such as a root-owned backup folder, after the system's polkit password prompt. See [Administrator access](docs/administrator-access.md).
-- **Adaptive appearance:** compact or airy density, 95 bundled themes, custom themes, and live Omarchy Quattro theme following.
+- **Adaptive appearance:** compact or airy density, 95 bundled themes, custom themes, live Omarchy Quattro theme following, and live variable surface transparency with frosted glass (Wayland `ext_background_effect_v1` / KWin compositor blur and GPU backdrop blur).
 - **Updates in the app:** automatic update checks (on by default; turn them off in **Settings → Updates**), release notes, verified downloads, and in-place installation for release binaries.
 - **Custom actions:** add your own scripts to the file and folder context menus, with a manager in **Settings → Actions** and background progress in the Jobs dashboard. See [Custom actions](docs/custom-actions.md).
 - **Integrations:** opt-in providers maintained in the repository's [`integrations/`](integrations/README.md) catalog, installed, updated and removed from **Settings → Integrations**; they plug services and devices into the context menu and the **Send to…** menu. See [External file providers](docs/file-providers.md).
@@ -252,16 +252,16 @@ Give this prompt to a coding agent with terminal access:
 Install the latest stable Strata release from https://github.com/lgse/strata safely.
 
 Before changing anything:
-1. Confirm this is a glibc-based Linux system with a graphical GTK4 environment.
+1. Confirm this is a glibc-based Linux system with a graphical Wayland or X11 environment.
 2. Detect whether the machine is x86_64 or aarch64 and select only the matching
    *-unknown-linux-gnu archive from the canonical lgse/strata GitHub release.
 3. Show me the runtime packages you need and ask before using sudo or changing
    my default file-manager association.
 
 Then:
-- Install the required GTK4, GtkSourceView 5, Poppler GLib, Fontconfig, Bubblewrap,
-  FFmpeg/GStreamer, and desktop-integration runtime dependencies using the system
-  package manager. Add gvfs-smb only if I want SMB support.
+- Install the required Poppler GLib, Fontconfig, GDK Pixbuf, Bubblewrap, FFmpeg,
+  and desktop-integration (GVfs) runtime dependencies using the system package
+  manager. Add gvfs-smb only if I want SMB support.
 - Ask whether I want phone access. On Arch/Omarchy, add gvfs-afc and usbmuxd for
   iPhone/iPad app documents, gvfs-gphoto2 for camera/PTP photo access, or gvfs-mtp
   for Android file transfers, only if requested. Other distributions need their
@@ -311,7 +311,7 @@ On Arch Linux or Omarchy:
 
 ```bash
 sudo pacman -S --needed bubblewrap ffmpeg ffmpegthumbnailer fontconfig \
-  gstreamer gst-libav gst-plugins-base gst-plugins-good gtk4 gtksourceview5 gvfs poppler-glib
+  gdk-pixbuf2 gvfs poppler-glib
 # Optional SMB, AppImage icon, and broader camera RAW support:
 sudo pacman -S --needed gvfs-smb imagemagick libraw dcraw squashfs-tools
 ```
@@ -320,13 +320,12 @@ On Fedora (prefer the [COPR package](#fedora), which installs these itself):
 
 ```bash
 sudo dnf install bubblewrap ffmpeg-free ffmpegthumbnailer fontconfig \
-  gstreamer1 gstreamer1-plugin-libav gstreamer1-plugins-base gstreamer1-plugins-good \
-  gtk4 gtksourceview5 gvfs poppler-glib
+  gdk-pixbuf2 gvfs poppler-glib
 # Optional SMB, AppImage icon, and broader camera RAW support:
 sudo dnf install gvfs-smb ImageMagick LibRaw dcraw squashfs-tools
 ```
 
-GTK **4.12 or newer** and glibc **2.39 or newer** are required. Other glibc-based distributions may work when they provide equivalent runtime libraries, but their package names and binary compatibility vary. Systems with an older glibc must [build Strata from source](#development-and-documentation).
+Strata requires glibc **2.39 or newer** and a GPU or software Vulkan/OpenGL driver (no GTK4, GtkSourceView, or GStreamer runtime dependencies are needed). Other glibc-based distributions may work when they provide equivalent runtime libraries, but their package names and binary compatibility vary. Systems with an older glibc must [build Strata from source](#development-and-documentation).
 
 Device discovery requires the GVfs UDisks2 volume monitor (`gvfs` on Arch and
 Fedora; `gvfs-daemons` on Debian/Ubuntu). Without that backend, removable drives
@@ -803,7 +802,7 @@ Use **Search settings** to filter options across pages and navigate to the close
 
 ### Follow system light/dark mode
 
-Turn on **Follow system light/dark mode** under **Settings → Appearance** to have Strata switch between the light and dark versions of your chosen Strata theme when your desktop switches between light and dark mode. Only the light/dark preference is followed; Strata keeps its own theme palettes and does not adopt the desktop's GTK theme, icons, or accent color. Choose either version of a paired theme in the library to change the theme family without turning the switch off. Themes without a light/dark partner keep the same palette in both modes.
+Turn on **Follow system light/dark mode** under **Settings → Appearance** to have Strata switch between the light and dark versions of your chosen Strata theme when your desktop switches between light and dark mode. Only the light/dark preference is followed; Strata keeps its own theme palettes and does not adopt the desktop's widget theme, icons, or accent color. Choose either version of a paired theme in the library to change the theme family without turning the switch off. Themes without a light/dark partner keep the same palette in both modes.
 
 Strata reads the desktop light/dark preference from `org.freedesktop.portal.Settings` (`org.freedesktop.appearance`, `color-scheme`). The portal uses `1` for dark, `2` for light, and `0` for no preference. This supports KDE and Flatpak. When the portal reports no preference or is unavailable, Strata follows GNOME's `org.gnome.desktop.interface` `color-scheme` key; `prefer-dark` selects dark and `default`, `prefer-light`, and unexpected values select light. When the switch is on, Strata waits up to 500 ms for the first portal result before applying its initial palette. It uses the GSettings result (or light) only after a portal failure, no preference, or timeout; after a timeout it updates when the portal reply arrives. The switch is hidden and a saved system selection is repaired only after neither source is available. **Follow system light/dark mode** and **Follow Omarchy** are exclusive; enabling either one turns the other off.
 
@@ -823,7 +822,7 @@ Select **Add a theme**, enter a name, and choose the semantic colors for the bac
 
 Custom themes are stored as shareable TOML files in `~/.config/strata/themes/`. A selected theme is re-read when its file changes on disk, so a generator that rewrites it in place (for example a [matugen](https://github.com/InioX/matugen) template following the wallpaper) updates open windows without a restart. See [Themes](docs/themes.md) for the schema, file location, live updates, and Omarchy color mapping.
 
-To go beyond the color tokens, an optional `~/.config/strata/style.css` is loaded above Strata's own stylesheets and re-read when it changes; see [User stylesheet](docs/themes.md#user-stylesheet).
+Corner roundness, density, text size, element glow, and surface transparency are configurable live under **Settings → Appearance**; see [Token overrides](docs/themes.md#token-overrides) for the status of `strata-kit`'s `overrides.toml` token-override support.
 
 ## Release channels
 
@@ -843,7 +842,7 @@ See [Releasing](docs/releasing.md) for the tag grammar these channels rely on an
 
 ### Why search stays fast
 
-Strata walks and indexes the selected directory tree on a background thread, never on GTK's UI thread. Results appear progressively during that walk. Names and relative paths are normalized once as index entries are created, and each query maintains only the best **100** fuzzy-ranked matches instead of sending an unbounded result set to the interface.
+Strata walks and indexes the selected directory tree on a background thread, never on the UI thread. Results appear progressively during that walk. Names and relative paths are normalized once as index entries are created, and each query maintains only the best **100** fuzzy-ranked matches instead of sending an unbounded result set to the interface.
 
 Each walk stops at the saved time and entry limits (10 s and 200,000 entries by default, each adjustable up to no limit) and reports partial results. Rapid keystrokes are coalesced to the newest query. During indexing, result publication is throttled to 50 ms intervals; the UI consumes those bounded updates on its own timed loop, keeping rendering aligned with responsive frame-sized work. Exact and contiguous matches, word/path boundaries, and names rank ahead of loose path subsequences.
 
@@ -853,7 +852,7 @@ The deliberate tradeoff: this is fast **filename and path** search, not file-con
 
 Files shown while browsing are untrusted. Image, camera RAW, PDF, thumbnail, and media parsing therefore runs out of process through **Bubblewrap**, not inside the main Strata process. Each short-lived helper receives namespace isolation, a minimal read-only runtime, exactly one canonicalized input file, private output and temporary directories, no network, and no capabilities. Memory, CPU/wall time, input, file, and parent-side output limits bound the work.
 
-Only media helpers may receive allowlisted GPU render devices, and only for accelerated decoding; image, PDF, and thumbnail helpers receive no device mounts. Images are normalized to bounded PNG images. Media arrives incrementally as validated raw RGBA frames and fixed-format PCM: GTK presents textures and GStreamer outputs raw audio, without opening the original file or decoding a compressed clip. Four media sessions per process, bounded queues, and paused-worker cleanup limit concurrent work. Cancellation or timeout kills the process group and Bubblewrap PID namespace, tearing down descendants. Missing isolation, crashes, malformed output, timeouts, and permission failures all fail closed to a normal icon or **Preview unavailable**—Strata never silently retries an untrusted native parser without the sandbox.
+Only media helpers may receive allowlisted GPU render devices, and only for accelerated decoding; image, PDF, and thumbnail helpers receive no device mounts. Images are normalized to bounded PNG images. Media arrives incrementally as validated raw RGBA frames and fixed-format PCM: Rune uploads video frames directly to the GPU and `strata-platform`'s zero-GStreamer Linux PCM sink streams raw audio via `dlopen` (PulseAudio/PipeWire or ALSA, with a silent clock fallback), without opening the original file or decoding a compressed clip in the UI process. Four media sessions per process, bounded queues, and paused-worker cleanup limit concurrent work. Cancellation or timeout kills the process group and Bubblewrap PID namespace, tearing down descendants. Missing isolation, crashes, malformed output, timeouts, and permission failures all fail closed to a normal icon or **Preview unavailable**—Strata never silently retries an untrusted native parser without the sandbox.
 
 Plain-text and source previews are different: they stay in process because they do not invoke a native format parser, and reads are capped at 1 MiB. See [Preview sandbox](docs/preview-sandbox.md) for provider ordering, exact mounts, formats, and resource budgets. For settings that further reduce exposure, such as software-only video decoding, see [Hardened configuration](docs/hardened-configuration.md).
 
@@ -861,23 +860,25 @@ Plain-text and source previews are different: they stay in process because they 
 
 | Area | Details |
 | --- | --- |
-| Platform | 64-bit Linux with glibc 2.39+; designed for Omarchy and Wayland. GTK may use another backend supplied by the host, but Wayland is the primary display stack. |
+| Platform | 64-bit Linux with glibc 2.39+; designed for Omarchy and Wayland, with X11 support. |
 | Release architectures | `x86_64-unknown-linux-gnu` and `aarch64-unknown-linux-gnu` |
-| UI and runtime | Rust 2024, GTK 4.12+, GIO/GLib, Cairo, GtkSourceView 5, Poppler GLib, GDK Pixbuf, GStreamer, and Fontconfig |
+| UI and runtime | Rust 2024, [Rune](https://github.com/anomalyco/rune) (`wgpu` GPU-accelerated UI), GIO/GLib, `syntect` syntax highlighting, Poppler GLib (sandboxed PDF rendering & text indexing), GDK Pixbuf (sandboxed image decoding), Fontconfig, and zero-GStreamer Linux PCM audio (`dlopen` PulseAudio/PipeWire/ALSA) |
 | Filesystems | Native Linux paths (including non-UTF-8 names) and GIO/GVfs locations; remote protocol availability depends on installed GVfs backends |
 | Preview boundary | Bubblewrap is mandatory for native parser-backed previews; helpers have no network and fail closed. Plain text is read in process with a 1 MiB cap. |
 | Optional preview tools | `ffmpegthumbnailer`/`ffmpeg` for video; ImageMagick, classic `dcraw`, and LibRaw `simple_dcraw` expand camera RAW support; `squashfs-tools` (`unsquashfs`) extracts icons embedded in AppImages |
-| Hardware acceleration | Media-only VA-API or Vulkan decoding with software fallback; GPU and codec support depend on host drivers |
+| Hardware acceleration | GPU-accelerated UI rendering (`wgpu`); media-only VA-API or Vulkan decoding with software fallback; GPU and codec support depend on host drivers |
 | Scale targets | Virtualized browser models and bounded asynchronous updates are tested with deterministic directories up to 100,000 entries |
 | Packaging | Dynamically linked release archive with a signed update manifest, SHA-256 digest, GitHub build-provenance attestation, and `SOURCE_COMMIT` |
 
 ## Development and documentation
 
-Build requirements are the latest stable Rust toolchain, a C toolchain, `pkg-config`, GTK 4.12+, GtkSourceView 5, Poppler GLib, Fontconfig, and GStreamer 1.20+ (including its app/base development libraries). [mise](https://mise.jdx.dev) pins that toolchain locally (`mise install`). On Arch:
+Build requirements are the Rust toolchain pinned in `mise.toml`, a C toolchain, `pkg-config`, Fontconfig, Poppler GLib, and GDK Pixbuf (for sandboxed image decoding). [mise](https://mise.jdx.dev) pins the Rust and script tooling locally (`mise install`). On Arch:
 
 ```bash
 sudo pacman -S --needed base-devel bubblewrap ffmpeg ffmpegthumbnailer fontconfig \
-  gstreamer gst-libav gst-plugins-base gst-plugins-good gtk4 gtksourceview5 gvfs poppler-glib
+  gdk-pixbuf2 gvfs poppler-glib
+cargo build               # build the debug `strata` binary
+cargo run                 # launch Strata
 mise run install-local    # build an optimized release and install it for your user
 mise run start-dev        # rebuild and restart as files change
 mise run dev              # build and launch the main app once

@@ -11,11 +11,11 @@ Install [mise](https://mise.jdx.dev), then install the pinned toolchain (Rust
 mise install
 ```
 
-GTK 4, Fontconfig, a C toolchain, and `pkg-config` still come from the system
+Fontconfig, Poppler GLib, GDK Pixbuf, a C toolchain, and `pkg-config` still come from the system
 package manager. On Arch Linux:
 
 ```bash
-sudo pacman -S --needed base-devel fontconfig gtk4 gtksourceview5 poppler-glib
+sudo pacman -S --needed base-devel fontconfig gdk-pixbuf2 poppler-glib
 ```
 
 Run the application:
@@ -26,7 +26,7 @@ mise run dev
 
 To rebuild and restart the running application whenever code or bundled assets
 change, use the development watcher. On Arch, Debian/Ubuntu, and Fedora, it
-installs missing native GTK libraries (prompting for `sudo`) when needed:
+installs missing native libraries (prompting for `sudo`) when needed:
 
 ```bash
 mise run start-dev
@@ -88,15 +88,12 @@ The always-available checks are:
 
 ```bash
 cargo fmt --all --check
-cargo check $(python3 scripts/lanes.py gtk) --all-targets --all-features
-cargo clippy $(python3 scripts/lanes.py gtk) --all-targets --all-features -- -D warnings
-cargo test $(python3 scripts/lanes.py gtk) --all-targets --all-features
+cargo check --workspace --all-targets --all-features --locked
+cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+mise run test
 ```
 
-On `strata-next` the workspace also holds the Rune-side crates, which build in their own
-cargo runs: repeat the commands with `$(python3 scripts/lanes.py rune)`, and run the tests
-through `mise run test-rune` so they cannot reach your desktop. A plain `--workspace` run
-does not compile; [`docs/workspace.md`](docs/workspace.md) explains why.
+See [`docs/workspace.md`](docs/workspace.md) for the crate layering enforced by `cargo-deny`.
 
 CI additionally runs:
 
@@ -113,20 +110,14 @@ cargo install --locked typos-cli
 
 ## GUI tests
 
-`./scripts/check.sh` clears desktop display variables and skips display-dependent
-Rust tests. Run `./scripts/test-headless.py` to include those tests on a private
-Xvfb display without opening windows on your desktop. The QA scenarios drive the
-real application on a private display inside the pinned test container and
-check both the window and the resulting files:
+`mise run test` and `./scripts/check.sh` run headless without reaching your desktop display or session bus. Use `mise run test-platform [filter]` to run compositor, D-Bus, and windowed tests in private headless sway sessions. The QA scenarios drive the real application inside the pinned test container and check both the window and the resulting files:
 
 ```bash
 ./scripts/qa.sh                       # every scenario
 ./scripts/qa.sh copy-leaves-source    # one scenario
 ```
 
-They need Docker or Podman; the container provides Xvfb, D-Bus, GTK, and the
-rest. See [testing](docs/testing.md) for how runs are set up, scheduled, and
-checked against visual baselines, and the
+They need Docker or Podman; the container provides the headless display/compositor, D-Bus, and preview helpers. See [testing](docs/testing.md) for how runs are set up, scheduled, and verified, and the
 [scenario reference](.agents/skills/qa-scenarios/reference.md) for every step,
 target, and predicate a scenario can use.
 
@@ -144,7 +135,7 @@ See [the performance baseline](docs/performance-baseline.md) for recorded result
 
 ## Engineering expectations
 
-- Keep filesystem, search, preview, and operation work off the GTK thread.
+- Keep filesystem, search, preview, and operation work off the UI thread.
 - Make asynchronous work cancellable or reject stale results.
 - Preserve native paths; do not assume filenames are valid UTF-8.
 - Put product state and behavior outside widgets where practical.

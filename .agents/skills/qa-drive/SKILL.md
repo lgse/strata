@@ -13,11 +13,11 @@ description: >
 # Drive Strata in QA mode
 
 `./scripts/qa-drive.sh` keeps one `strata --qa` session open inside the
-pinned container: a private Xvfb (`:90`), a fresh HOME and XDG directories,
+pinned container: an isolated display, a fresh HOME and XDG directories,
 a fixture tree, and either a private session bus or a bus address that
 cannot connect. You send one JSON command at a time; each `send` prints the
-reply and returns in milliseconds. Input is real XTEST from inside the
-process, and state is read from the widget tree by accessible name.
+reply and returns quickly. State is read from Strata's accessibility tree by
+accessible name and role.
 
 This is a hands-on check, not coverage. To make a check permanent, write a
 scenario with the **qa-scenarios** skill; its `reference.md` lists every
@@ -221,18 +221,19 @@ with an `error`. Use the subcommands instead, or write a scenario.
 
 ## Check accessible names and focus
 
-The app reads its own widget tree with AT-SPI off (`GTK_A11Y=none`); names
-are what `src/ui/accessibility.rs` sets, as a screen reader would hear them.
+The app reads its own accessibility tree directly without an external AT-SPI
+client; names and roles are what `strata-components` and `strata-app` expose to
+screen readers.
 
 1. Print the tree:
    `./scripts/qa-drive.sh send '{"query":"tree"}' | jq -r .result > target/qa-drive/tree.txt`.
-   Its first line is the focus (`focus: GtkModelButton role="menu item" name="New Folder with Selection"`);
-   every widget then shows its role, `name`, `description`, screen box, and
+   Its first line is the focus (`focus: role="menu item" name="New Folder with Selection"`);
+   every node then shows its role, `name`, `description`, screen box, and
    `[selected]` or `[focused]`:
 
    ```text
-   GtkModelButton role="menu item" name="Copy" description="Ctrl+C" (29,269 294x26)
-   StrataSidebarToggle role="toggle button" name="Toggle sidebar (Ctrl+B)" (5,6 24x24)
+   role="menu item" name="Copy" description="Ctrl+C" (29,269 294x26)
+   role="toggle button" name="Toggle sidebar (Ctrl+B)" (5,6 24x24)
    ```
 
 2. Assert what matters: `{"name":…}`, `{"description":…}`, or `present` with
@@ -241,14 +242,14 @@ are what `src/ui/accessibility.rs` sets, as a screen reader would hear them.
 3. Check focus after every interaction that moves it (menus, dialogs, rename,
    Escape, close): `{"focused":…}` for an entry,
    `{"focused_widget":"name"}` or `{"focused_widget_is":TARGET}` for any
-   widget, `{"state":{"target":…,"focused":true}}` for one widget, and the
+   control, `{"state":{"target":…,"focused":true}}` for one control, and the
    tree's `focus:` line when nothing seems focused. Focus that lands on an
-   unnamed widget (`"actual":""`) is worth reporting.
+   unnamed control (`"actual":""`) is worth reporting.
 
 ## Simulate input
 
-- Find a shortcut's binding in the `ui::keys::bindings` catalog and send the
-  chord: `{"key":"ctrl+period"}` toggled hidden files in a test session.
+- Find a shortcut's binding in the `strata_desktop::keys::bindings` catalog and
+  send the chord: `{"key":"ctrl+period"}` toggled hidden files in a test session.
 - Keys are US key positions under the session's US layout. Layout-dependent
   behaviour needs a scenario with a `layout` step.
 - Prefer `select` over `click` to select an entry; it retries until the
@@ -276,8 +277,8 @@ are what `src/ui/accessibility.rs` sets, as a screen reader would hear them.
     '{"wait":{"pref":{"key":"show_hidden","value":true}},"message":"show_hidden saved"}'
   ```
 
-- Different GTK settings, keyboard layouts, or a fixed fixture path need a
-  scenario header; `start` cannot set them.
+- Different keyboard layouts, a `"host": "session"` sway window, or a fixed
+  fixture path need a scenario header; `start` cannot set them.
 
 ## Files
 

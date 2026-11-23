@@ -105,31 +105,14 @@ The archive also ships `io.github.lgse.Strata.FileManager1.service`, which users
 ### D-Bus activation and desktop portals
 
 The FileManager1 service starts Strata with `--gapplication-service`, and the
-FileChooser portal backend service starts it with `--portal`. For both launch
-modes, Strata re-executes before GTK initialization with `no-portals` added to
-`GDK_DEBUG`, preserving other debug flags. Keep those service arguments when
-adapting the activation commands for a package.
-
-This avoids a circular wait with desktop portals that synchronously dispatch
-`OpenDirectory` to `FileManager1.ShowItems` or `OpenFile` to the FileChooser
-backend: GTK can query the same portal's host registry during startup, before
-Strata can answer. With GTK 4.24.1 and xdg-desktop-portal 1.22.1, that cycle
-delays cold activation for approximately 25 seconds and stalls other portal
-consumers.
-
-This is a compatibility mitigation for the activated process, not a replacement
-for asynchronous dispatch in the desktop portal. GTK portal integration is
-disabled for that process's lifetime, and later launches of Strata reuse that
-process until it exits. Programs it launches, file providers, and a restart from
-Settings get the original `GDK_DEBUG` back; ordinary application launches
-never acquire the override. Do not set `GDK_DEBUG=no-portals` globally to
-address this problem.
+FileChooser portal backend service starts it with `--portal`. Keep those service
+arguments when adapting the activation commands for a package.
 
 ## Nix
 
-`flake.nix` exposes `packages.<system>.default` for `x86_64-linux` and `aarch64-linux`, built from `package.nix` with `nix build`, `nix run`, or a flake input in a NixOS or Home Manager configuration; the README shows the user-facing steps. Unlike the AUR packages it compiles from source, with `STRATA_UPDATER=disabled`, without the unfree `rar` feature unless `rarSupport = true`, and with the [sandbox runtime paths](preview-sandbox.md#packaging-non-fhs-runtimes) and `STRATA_TRUSTED_COMMAND_PATH` embedded so bubblewrap and the preview helpers come from the package closure rather than a system profile. `nix flake check` builds the package; the Rust test suite is not run inside the Nix build because it needs the private display and D-Bus session described in [testing.md](testing.md).
+`flake.nix` exposes `packages.<system>.default` for `x86_64-linux` and `aarch64-linux`, built from `package.nix` with `nix build`, `nix run`, or a flake input in a NixOS or Home Manager configuration; the README shows the user-facing steps. Unlike the AUR packages it compiles from source, with `STRATA_UPDATER=disabled`, without the unfree `rar` feature unless `rarSupport = true`, and with the [sandbox runtime paths](preview-sandbox.md#packaging-non-fhs-runtimes) and `STRATA_TRUSTED_COMMAND_PATH` embedded so bubblewrap and the preview helpers come from the package closure rather than a system profile. `nix flake check` builds the package; the Rust test suite is not run inside the Nix build because it needs the isolated test environment described in [testing.md](testing.md).
 
-`wrapGAppsHook4` turns `bin/strata` into a wrapper around `bin/.strata-wrapped`, and every store path changes on update. The runtime-installed integrations (file chooser portal, FileManager1 service, Omarchy setup, udiskie unlock hook) record `/proc/self/exe`, which on Nix is the wrapped binary of one build: a D-Bus-activated instance would start without the wrapper's GStreamer, gdk-pixbuf, and XDG environment, and the next update or garbage collection would leave the files pointing at a stale or missing store path. The package therefore compiles with [`STRATA_INTEGRATIONS=package`](#building-with-package-provided-integrations) and ships the files itself: `passthru.fileChooserPortal` holds `share/xdg-desktop-portal/portals/strata.portal` and the `org.freedesktop.impl.portal.desktop.strata` D-Bus service, and `passthru.fileManagerService` holds the `org.freedesktop.FileManager1` service, each with `Exec` pointing at the package's wrapper. They are separate derivations rather than part of `$out` because NixOS registers every system package's `share/dbus-1/services` with the session bus, so shipping the FileManager1 service in the main package would make every install claim that bus name ahead of or behind the desktop's own file manager, depending on directory order. The README shows the NixOS and Home Manager options that enable them; `nix flake check` builds both derivations. The inactive template under `share/strata` remains for the manual copy the README describes for other installs.
+Because Nix wraps `bin/strata` and every store path changes on update, runtime-installed integrations (file chooser portal, FileManager1 service, Omarchy setup, udiskie unlock hook) would record a wrapped binary path from one build that the next update or garbage collection invalidates. The package therefore compiles with [`STRATA_INTEGRATIONS=package`](#building-with-package-provided-integrations) and ships the files itself: `passthru.fileChooserPortal` holds `share/xdg-desktop-portal/portals/strata.portal` and the `org.freedesktop.impl.portal.desktop.strata` D-Bus service, and `passthru.fileManagerService` holds the `org.freedesktop.FileManager1` service, each with `Exec` pointing at the package's wrapper. They are separate derivations rather than part of `$out` because NixOS registers every system package's `share/dbus-1/services` with the session bus, so shipping the FileManager1 service in the main package would make every install claim that bus name ahead of or behind the desktop's own file manager, depending on directory order. The README shows the NixOS and Home Manager options that enable them; `nix flake check` builds both derivations. The inactive template under `share/strata` remains for the manual copy the README describes for other installs.
 
 The default folder handler stays a user-level `xdg-mime` association because it stores only the desktop ID, which does not change between builds; Home Manager users set it through `xdg.mimeApps.defaultApplications`. The Omarchy shortcut block has no Nix equivalent, and the udiskie hook is a `services.udiskie.settings` entry.
 

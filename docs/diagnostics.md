@@ -24,8 +24,9 @@ binary:
   converters, and `unsquashfs` are looked up with `sandbox::sandbox_tool`, which
   searches the configured `STRATA_SANDBOX_PATH`, not the user's `PATH`, because
   helpers run inside the sandbox.
-- **Audio playback** looks up the GStreamer elements the preview audio pipeline
-  links and the highest-ranked audio sink.
+- **Audio playback** checks the zero-GStreamer Linux PCM audio sink
+  (`strata-platform`'s `media-audio` runtime lookup for PulseAudio/PipeWire
+  `libpulse-simple` or ALSA `libasound`).
 - **GVfs** checks that GIO's default VFS is GVfs, and each backend looks for
   its URI scheme among the schemes GVfs supports. `GIO_USE_VFS=local` means
   the startup probe found GVfs unresponsive and restarted Strata without it.
@@ -36,10 +37,10 @@ binary:
 - The **update server** check requests `https://api.github.com/rate_limit`,
   which GitHub does not count against the API rate limit.
 - Syntax highlighting, folder change monitoring, the terminal, and custom
-  actions run on the GTK thread; everything else runs on worker threads and
+  actions run on the UI thread; everything else runs on worker threads and
   streams results to the page as they finish.
 
-Libraries Strata links against, such as GTK, Poppler, and GStreamer core,
+Libraries Strata links against, such as Poppler, GLib/GIO, and Fontconfig,
 cannot be diagnosed in-app: the dynamic loader fails before Strata starts.
 
 Each result is passed, warning, or problem. A failed check names the package
@@ -57,16 +58,16 @@ before posting.
 
 1. Add a `CheckId` and place it in `services::diagnostics::GROUPS`; a check that
    is not in a group never gets a row and is reported as not run.
-2. Probe in `preview_checks`, `system_checks`, or `network_checks`, or in
-   `main_thread_checks` in `ui/settings/diagnostics.rs` when the probe touches
-   GTK objects. Keep the decision in a pure function that takes the probe's
-   result, and cover it with a table test in `services/diagnostics/tests.rs`.
+2. Probe in `preview_checks`, `system_checks`, or `network_checks`, or on the UI
+   thread in `crates/strata-app/src/settings_dialog/diagnostics/` when needed.
+   Keep the decision in a pure function that takes the probe's result, and cover
+   it with a table test.
 3. Return language-neutral data: a `Finding`, the `packages` that fix it, and
    untranslated library text in `detail`. Add the title and message in
-   `ui/settings/diagnostics.rs` and translate them in every catalog (see
-   [Internationalization](internationalization.md)).
+   `crates/strata-app/src/settings_dialog/diagnostics/` and translate them in
+   every catalog (see [Internationalization](internationalization.md)).
 
-Tests inject the background checks through `diagnostics_page_with`, so the
-page's tests never start sandboxes or contact the network. Probes that need the
-real Strata executable, such as the sandbox checks, fail inside the test binary
-because the sandbox re-executes the current executable as its helper.
+Tests inject the background checks so page tests never start sandboxes or
+contact the network. Probes that need the real Strata executable, such as the
+sandbox checks, fail inside the test binary because the sandbox re-executes the
+current executable as its helper.

@@ -56,8 +56,8 @@ initial default size over a manual resize.
 The exported Wayland handle does not expose parent geometry. Other compositors,
 X11 requests, missing or differently named app IDs, multiple matching windows,
 and unavailable IPC retain monitor-based sizing. This is a best-effort improvement,
-not guaranteed parent-relative sizing on every desktop. GTK's compositor bounds
-and the controls' minimum usable size continue to apply.
+not guaranteed parent-relative sizing on every desktop. Compositor bounds and the
+controls' minimum usable size continue to apply.
 
 ### Initial placement on Hyprland
 
@@ -206,13 +206,8 @@ On a desktop that does not manage the frontend as a systemd user unit, log out a
   Save dialogs start in the files: **r** edits the name, and **Enter** saves in
   the current folder.
 
-The X11 keyboard and context-menu regression tests require `xdotool` (or
-`STRATA_TEST_XDOTOOL`) and isolated XDG directories. Run each alone under a test display:
-
-```bash
-cargo test keyboard_only_controls_and_file_navigation_work_in_every_chooser_view -- --ignored
-cargo test chooser_context_menus_and_rename_work_in_every_view -- --ignored
-```
+Portal file chooser QA scenarios live under `tests/qa/scenarios/portal_chooser/`
+and run via `./scripts/qa.sh` on the session host (see [testing.md](testing.md)).
 
 ## Verification
 
