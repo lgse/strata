@@ -422,23 +422,6 @@ pub(crate) fn check_step(step: &Value) -> Result<(), String> {
             )
         };
     }
-    if let Some(name) = step.get("baseline") {
-        let valid = step.as_object().is_some_and(|object| {
-            object
-                .keys()
-                .all(|key| key == "baseline" || (key == "message" && object[key].is_string()))
-        }) && name
-            .as_str()
-            .is_some_and(|name| !name.is_empty() && !name.contains('/') && !name.contains('.'));
-        return if valid {
-            Ok(())
-        } else {
-            Err(
-                "baseline names a committed image in tests/qa/baselines without its .png, and takes only a message"
-                    .to_owned(),
-            )
-        };
-    }
     let keeps_flag = step.get("expect").is_some()
         || step
             .get("log")

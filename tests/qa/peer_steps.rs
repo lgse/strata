@@ -190,18 +190,6 @@ pub(crate) struct Peers {
     foreign: Option<peers::ForeignSource>,
 }
 
-impl Peers {
-    /// Whether a `foreign` step's drag source runs.
-    pub(crate) fn foreign_runs(&self) -> bool {
-        self.foreign.is_some()
-    }
-
-    /// The last portal request sent, if any.
-    pub(crate) fn portal_request(&mut self) -> Option<&mut peers::PortalRequest> {
-        self.portal.as_mut()
-    }
-}
-
 pub(crate) enum PeerError {
     Failed(String),
     Harness(String),
@@ -272,7 +260,7 @@ pub(crate) fn peer_step(
         })
     } else if object.contains_key("http") {
         parsed::<HttpStep>(object, "http").and_then(|step| {
-            let server = peers::ImageServer::start(gtk::glib::base64_decode(&step.http))
+            let server = peers::ImageServer::start(glib::base64_decode(&step.http))
                 .map_err(PeerError::Harness)?;
             keep(notes, &step.name, json!(server.url));
             peers.server = Some(server);

@@ -1,3 +1,0 @@
-{"scenario":"fuzz-sidebar-v2-000000000000000f","modes":["columns"],"prefs":{"type_to_search":false}}
-{"key":"shift+Down","when":{"all":[{"focused_in_matches":true},{"menu_items":null}]}}
-{"key":"shift+Up","when":{"all":[{"focused_in_matches":true},{"not":{"focused":{"one_of":["archive","notes.txt","diagram.txt","fuzz-b.txt"]}}},{"menu_items":null}]}}

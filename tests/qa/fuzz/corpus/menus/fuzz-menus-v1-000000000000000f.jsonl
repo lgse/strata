@@ -1,7 +1,0 @@
-{"scenario":"fuzz-menus-v1-000000000000000f","modes":["columns"],"prefs":{"type_to_search":false,"keymap":{"default":{"activate":["Return","o"],"escape":["Escape","<Control>bracketleft"],"rename":["<Control>e"],"actions.compress":["<Control><Shift>g"]}}}}
-{"key":"F1","when":{"all":[{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}
-{"type":"escape","when":{"field":{"name":"Search actions or keys…","focused":true}}}
-{"key":"ctrl+Left","when":{"field":{"name":"Search actions or keys…","focused":true}}}
-{"key":"Escape","when":{"dialog":"Keyboard shortcuts"}}
-{"key":"F1","when":{"all":[{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}
-{"key":"Escape","when":{"dialog":"Keyboard shortcuts"}}

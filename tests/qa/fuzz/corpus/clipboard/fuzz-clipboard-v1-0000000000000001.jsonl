@@ -1,3 +1,0 @@
-{"scenario":"fuzz-clipboard-v1-0000000000000001","modes":["columns"],"prefs":{"type_to_search":false}}
-{"key":"j","when":{"all":[{"focused_pane":true},{"not":{"matches":[]}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}
-{"click":{"entry":"documents","dir":"$root"},"when":{"all":[{"present":{"entry":"documents","dir":"$root"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}

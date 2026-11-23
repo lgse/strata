@@ -11,7 +11,6 @@ use serde_json::{Value, json};
 
 use crate::{
     CONTROLLER_PANIC, REPOSITORY,
-    baseline::{DIFFERENT_PIXEL_BUDGET, compare_in, different_fraction, differing_pixels},
     drive::{file_failure, wait_for_fs},
     fixture::{OrderedMap, expand_tree, fixed_fixture_name, manifest},
     fs_check::{FsState, FsStep, contained},
@@ -781,68 +780,7 @@ pub(crate) fn a_heif_family_output_must_carry_its_iso_bmff_brand() {
     }
 }
 
-pub(crate) fn baseline_comparison_thresholds_pixels_and_budget() {
-    let grey = image::Rgb([100, 100, 100]);
-    let baseline = image::RgbImage::from_pixel(200, 1, grey);
-    for (channel, shift, differs) in [(0, 24, false), (1, 25, true), (2, -25, true)] {
-        let mut candidate = baseline.clone();
-        let mut moved = grey;
-        moved.0[channel] = moved.0[channel].saturating_add_signed(shift);
-        candidate.put_pixel(7, 0, moved);
-        let mask = differing_pixels(&baseline, &candidate);
-        assert_eq!(
-            mask.iter().filter(|value| **value).count(),
-            usize::from(differs)
-        );
-    }
-    for (different, matched) in [(1, true), (2, false)] {
-        let mask: Vec<bool> = (0..200).map(|index| index < different).collect();
-        assert_eq!(different_fraction(&mask) <= DIFFERENT_PIXEL_BUDGET, matched);
-    }
-}
-
-pub(crate) fn baseline_mismatches_fail_and_only_an_update_writes_the_baseline() {
-    let scratch = tempfile::tempdir().expect("a scratch directory");
-    let (images, artifacts) = (
-        scratch.path().join("gtk-4.22"),
-        scratch.path().join("artifacts"),
-    );
-    fs::create_dir_all(&images).expect("the baseline directory");
-    fs::create_dir_all(&artifacts).expect("the artifact directory");
-    let save = |path: &Path, width| {
-        image::RgbImage::from_pixel(width, 2, image::Rgb([9, 9, 9]))
-            .save_with_format(path, image::ImageFormat::Png)
-            .expect("an image");
-    };
-    let (expected, actual) = (images.join("view.png"), scratch.path().join("capture.png"));
-    save(&expected, 2);
-    save(&actual, 3);
-    let committed = fs::read(&expected).expect("the baseline");
-
-    let resized = compare_in(&images, "view", &actual, &artifacts, false).expect("a comparison");
-    assert!(!resized.matched);
-    assert_eq!(resized.detail, "size changed from (2, 2) to (3, 2)");
-    let missing = compare_in(&images, "absent", &actual, &artifacts, false).expect("a comparison");
-    assert!(!missing.matched);
-    assert_eq!(missing.detail, "no baseline at gtk-4.22/absent.png");
-    assert_eq!(missing.different_fraction, 1.0);
-
-    assert_eq!(fs::read(&expected).expect("the baseline"), committed);
-    assert!(!images.join("absent.png").exists());
-    assert!(artifacts.join("view.actual.png").is_file());
-
-    let captured = fs::read(&actual).expect("the capture");
-    for name in ["view", "absent"] {
-        let updated = compare_in(&images, name, &actual, &artifacts, true).expect("an update");
-        assert!(updated.matched, "{name}");
-        assert_eq!(
-            fs::read(images.join(format!("{name}.png"))).expect("the baseline"),
-            captured
-        );
-    }
-}
-
-pub(crate) fn fixture_roots_and_baseline_steps_check_their_shape_before_the_run() {
+pub(crate) fn fixture_roots_check_their_shape_before_the_run() {
     let names = [
         ("/tmp/strata-e2e-baseline", Some("strata-e2e-baseline")),
         ("/tmp/a/b", None),
@@ -852,14 +790,6 @@ pub(crate) fn fixture_roots_and_baseline_steps_check_their_shape_before_the_run(
     ];
     for (root, name) in names {
         assert_eq!(fixed_fixture_name(root), name, "{root}");
-    }
-    assert!(check_step(&json!({ "baseline": "columns-view" })).is_ok());
-    for step in [
-        json!({ "baseline": "columns-view.png" }),
-        json!({ "baseline": "" }),
-        json!({ "baseline": "a", "timeout_ms": 5 }),
-    ] {
-        assert!(check_step(&step).is_err(), "{step}");
     }
 }
 

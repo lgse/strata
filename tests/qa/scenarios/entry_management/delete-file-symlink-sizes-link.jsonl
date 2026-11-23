@@ -6,7 +6,7 @@
 {"key":"shift+Delete"}
 {"wait":{"dialog":"Permanently delete 1 item?"},"message":"the file symlink delete confirmation to open"}
 {"wait":{"present":{"role":"label","name":"11 B","within":{"dialog":true}}},"message":"the delete row to show the symlink's own size"}
-{"wait":{"present":{"role":"label","name":"1 item · 11 B will be permanently deleted","within":{"dialog":true}}},"message":"the total to count the symlink rather than its target"}
+{"wait":{"description":{"target":{"role":"dialog","name":"Permanently delete 1 item?"},"text":"1 item · 11 B will be permanently deleted"}},"message":"the total to count the symlink rather than its target"}
 {"expect":{"absent":{"role":"label","name":"100 kB","within":{"dialog":true}}},"message":"the confirmation must not reuse the followed target size"}
 {"click":{"dialog_button":"Permanently delete 1 item"}}
 {"wait":{"dialog":null},"message":"the delete confirmation to close"}

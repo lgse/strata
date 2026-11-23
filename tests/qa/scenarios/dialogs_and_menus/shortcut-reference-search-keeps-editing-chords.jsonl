@@ -1,12 +1,17 @@
-{"scenario":"shortcut-reference-search-keeps-editing-chords","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":0.3},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":4,"score":28,"note":"F1 reference search edits with Ctrl+Left and keeps Ctrl+, from opening Settings under real input; chooser/keys unit tests pin blocked commands only"},"parity":{"twin":"shortcut-reference-search-keeps-editing-chords-rune","exception":"a11y","ref":"lgse/strata#2466"}}
+{"scenario":"shortcut-reference-search-keeps-editing-chords","modes":["columns"],"layout":"us","cost":{"columns":0.3},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":4,"score":28,"note":"F1 reference search edits with Ctrl+Left and keeps Ctrl+, from opening Settings under real input; chooser/keys unit tests pin blocked commands only"}}
 {"key":"F1"}
-{"wait":{"present":{"role":"label","name":"Keyboard shortcuts"}},"message":"the shortcut reference to open"}
-{"expect":{"presented":{"role":"label","name":"Ctrl+Alt+Space"}}}
-{"expect":{"presented":{"role":"label","name":"Ctrl+Alt+← / →"}}}
-{"expect":{"presented":{"role":"label","name":"Ctrl+Alt+↑ / ↓"}}}
-{"expect":{"presented":{"role":"label","name":"Ctrl+Alt+M"}}}
+{"wait":{"present":{"role":"dialog","name":"Keyboard shortcuts"}},"message":"the shortcut reference to open (C19 names its dialog with the title, which it hides)"}
 {"wait":{"field":{}},"message":"the shortcut search to take focus"}
 {"remember":{"field":true},"as":"field"}
+{"type":"ctrl+alt"}
+{"wait":{"field":{"of":"field","text":"ctrl+alt"}},"message":"the search to be typed (C19 builds only the rows near the viewport, so the search brings the Preview media rows into the tree)"}
+{"expect":{"presented":{"role":"table cell","name":"Ctrl+Alt+Space"}},"message":"the Ctrl+Alt+Space row's keys (C19's rows are table rows of cells)"}
+{"expect":{"presented":{"role":"table cell","name":"Ctrl+Alt+← / →"}},"message":"the Ctrl+Alt+← / → row's keys (C19's rows are table rows of cells)"}
+{"expect":{"presented":{"role":"table cell","name":"Ctrl+Alt+↑ / ↓"}},"message":"the Ctrl+Alt+↑ / ↓ row's keys (C19's rows are table rows of cells)"}
+{"expect":{"presented":{"role":"table cell","name":"Ctrl+Alt+M"}},"message":"the Ctrl+Alt+M row's keys (C19's rows are table rows of cells)"}
+{"key":"ctrl+a"}
+{"key":"BackSpace"}
+{"wait":{"field":{"of":"field","text":""}},"message":"the search to be cleared before the original's steps go on"}
 {"type":"open tab"}
 {"wait":{"field":{"of":"field","text":"open tab"}},"message":"the search to be typed"}
 {"key":"ctrl+Left"}
@@ -16,6 +21,6 @@
 {"type":"x"}
 {"wait":{"field":{"of":"field","text":"open new xtab"}},"message":"typing to stay in the reference after Ctrl+,"}
 {"expect":{"absent":{"role":"button","name":"Close settings"}},"message":"Ctrl+, must not open Settings"}
-{"expect":{"present":{"role":"label","name":"Keyboard shortcuts"}},"message":"the reference to stay open"}
+{"expect":{"present":{"role":"dialog","name":"Keyboard shortcuts"}},"message":"the reference to stay open (its dialog's name)"}
 {"key":"Escape"}
-{"wait":{"absent":{"role":"label","name":"Keyboard shortcuts"}},"message":"Escape to close the shortcut reference"}
+{"wait":{"absent":{"role":"dialog","name":"Keyboard shortcuts"}},"message":"Escape to close the shortcut reference (its dialog's name)"}

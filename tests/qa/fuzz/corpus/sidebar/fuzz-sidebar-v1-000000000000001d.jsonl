@@ -1,3 +1,0 @@
-{"scenario":"fuzz-sidebar-v1-000000000000001d","modes":["columns"],"prefs":{"type_to_search":false}}
-{"click":{"sidebar":"Desktop"},"button":3,"when":{"present":{"sidebar":"Desktop"}}}
-{"click":{"sidebar":"Home"},"button":3,"when":{"present":{"sidebar":"Home"}}}

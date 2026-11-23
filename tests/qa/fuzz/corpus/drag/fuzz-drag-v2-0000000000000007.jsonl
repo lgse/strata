@@ -1,5 +1,0 @@
-{"scenario":"fuzz-drag-v2-0000000000000007","modes":["list"],"prefs":{"type_to_search":false,"single_click_previews":false,"explorer_folder_clicks":1,"explorer_file_clicks":2}}
-{"click":{"entry":"archive"},"when":{"all":[{"present":{"entry":"archive"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}
-{"key":"alt+Up","when":{"all":[{"not":{"directory":"$root"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}
-{"drag":{"from":{"entry":"readme.md"},"to":{"entry":"archive"}},"when":{"all":[{"directory":"$root"},{"present":{"entry":"readme.md"}},{"not":{"all_selected":{"contains":["readme.md"]}}},{"present":{"entry":"archive"}},{"file":{"path":"$fixture/archive/readme.md","exists":false}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}
-{"click":{"entry":"archive"},"when":{"all":[{"present":{"entry":"archive"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}

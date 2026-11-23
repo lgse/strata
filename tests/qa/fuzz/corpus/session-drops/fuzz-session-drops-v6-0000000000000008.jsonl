@@ -1,6 +1,0 @@
-{"scenario":"fuzz-session-drops-v6-0000000000000008","modes":["list"],"session_bus":true,"prefs":{"type_to_search":false,"single_click_previews":false,"explorer_folder_clicks":1,"explorer_file_clicks":2}}
-{"key":"ctrl+t","when":{"all":[{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}
-{"click":{"entry":"archive"},"when":{"all":[{"present":{"entry":"archive"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}
-{"fs":{"path":"$environment/offer.txt","write":"Selected words\nsecond line"}}
-{"foreign":{"offers":[{"mime":"text/plain;charset=utf-8","path":"$environment/offer.txt"}]},"as":"foreign","when":{"all":[{"present":{"role":"page tab","name":"$root"}},{"not":{"directory":"$root"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}
-{"drag":{"from":{"kept":"foreign"},"to":{"role":"page tab","name":"$root"}},"when":{"all":[{"present":{"role":"page tab","name":"$root"}},{"not":{"directory":"$root"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}

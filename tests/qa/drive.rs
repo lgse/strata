@@ -13,7 +13,6 @@ use serde_json::{Map, Value, json};
 use crate::{
     Application, COMMAND_TIMEOUT, CONTROLLER_PANIC, DEFAULT_LAYOUT, DEFAULT_WAIT, Display,
     LAUNCH_TIMEOUT, Launch, POLL_INTERVAL, STEP_IF, STEP_UNLESS, STEP_WHEN, WAIT_MARGIN,
-    baseline::compare_to_baseline,
     fixture::Manifest,
     fs_check::{FsState, FsStep},
     keyboard::switch,
@@ -22,7 +21,7 @@ use crate::{
     runner_steps::{EachStep, Kept, LogStep, ProcStep},
     screen,
     steps::{flag_names, increment, parent, slice, stem, substitute_notes},
-    target::Target,
+    target,
     variables::unescape,
 };
 
@@ -34,7 +33,6 @@ pub(crate) struct Context<'a> {
     pub(crate) fixture: &'a Path,
     pub(crate) fixture_time: SystemTime,
     pub(crate) screens: &'a Path,
-    pub(crate) artifacts: &'a Path,
     pub(crate) launch: &'a Launch<'a>,
 }
 
@@ -162,27 +160,6 @@ pub(crate) fn drive(
             if let Err(error) = taken {
                 outcome.errors.push(format!("{label}: {error}"));
                 return outcome;
-            }
-            continue;
-        }
-        if let Some(name) = object.get("baseline") {
-            let name = name.as_str().unwrap_or_default();
-            let capture = context.screens.join(format!("{name}.capture.png"));
-            let compared = fs::create_dir_all(context.screens)
-                .map_err(|error| error.to_string())
-                .and_then(|()| context.display.screenshot(&capture))
-                .and_then(|()| compare_to_baseline(name, &capture, context.screens));
-            match compared {
-                Ok(comparison) if comparison.matched => {}
-                Ok(comparison) => {
-                    let failure = comparison.failure(context.artifacts);
-                    file_failure(&mut outcome, *line, &label, &failure);
-                    return outcome;
-                }
-                Err(error) => {
-                    outcome.errors.push(format!("{label}: {error}"));
-                    return outcome;
-                }
             }
             continue;
         }
@@ -461,9 +438,7 @@ fn change_layout(
         .layouts
         .get(name)
         .ok_or_else(|| format!("no layout {name:?} in the manifest"))?;
-    let Some(step) = Target::from_environment()?.keymap_step(layout) else {
-        return Ok(());
-    };
+    let step = target::keymap_step(layout);
     let reply = application.send(&step, COMMAND_TIMEOUT)?;
     record(outcome, line, "layout", &step, reply)
 }

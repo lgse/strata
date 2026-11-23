@@ -1,4 +1,0 @@
-{"scenario":"fuzz-sidebar-v1-0000000000000061","modes":["columns"],"prefs":{"type_to_search":false}}
-{"key":"Right"}
-{"click":{"named":"Toggle sidebar (Ctrl+B)","within":{"window":true}}}
-{"key":"Menu"}

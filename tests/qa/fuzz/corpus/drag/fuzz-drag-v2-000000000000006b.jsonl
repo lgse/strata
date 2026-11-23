@@ -1,4 +1,0 @@
-{"scenario":"fuzz-drag-v2-000000000000006b","modes":["list"],"prefs":{"type_to_search":false,"single_click_previews":false,"explorer_folder_clicks":1,"explorer_file_clicks":2}}
-{"drag":{"from":{"entry":"readme.md"},"to":{"entry":"pictures"}},"mods":["ctrl"],"when":{"all":[{"directory":"$root"},{"present":{"entry":"readme.md"}},{"not":{"all_selected":{"contains":["readme.md"]}}},{"present":{"entry":"pictures"}},{"file":{"path":"$fixture/pictures/readme.md","exists":false}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}
-{"click":{"entry":"pictures"},"when":{"all":[{"present":{"entry":"pictures"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}
-{"key":"ctrl+z","when":{"all":[{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}

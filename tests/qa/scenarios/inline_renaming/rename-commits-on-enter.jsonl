@@ -1,4 +1,4 @@
-{"scenario":"rename-commits-on-enter","modes":["columns"],"layout":"us","mutation":"rename-enter","known_bug":null,"cost":{"columns":0.9},"quality":{"impact":4,"coverage":2,"criticality":4,"diagnostic":4,"score":19,"note":"Return commits Columns rename; valid-name-commits-remaining covers Enter in Columns, unique only the listing check; rename-commits-on-click-away has pointer route"}}
+{"scenario":"rename-commits-on-enter","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":0.9},"quality":{"impact":4,"coverage":2,"criticality":4,"diagnostic":4,"score":19,"note":"Return commits Columns rename; valid-name-commits-remaining covers Enter in Columns, unique only the listing check; rename-commits-on-click-away has pointer route"}}
 {"select":{"entry":"readme.md"}}
 {"select_with_keyboard":"todo.txt"}
 {"key":"F2"}

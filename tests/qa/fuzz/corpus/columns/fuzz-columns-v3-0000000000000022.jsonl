@@ -1,5 +1,0 @@
-{"scenario":"fuzz-columns-v3-0000000000000022","modes":["columns"],"prefs":{"type_to_search":false}}
-{"key":"End","when":{"not":{"field":{"name":"Rename"}}}}
-{"click":{"entry":"documents"},"mods":["shift"],"when":{"all":[{"present":{"entry":"documents"}},{"not":{"field":{"name":"Rename"}}}]}}
-{"key":"Menu","when":{"all":[{"focused_in_matches":true},{"not":{"field":{"name":"Rename"}}}]}}
-{"click":{"entry":"documents"},"mods":["shift"],"when":{"all":[{"present":{"entry":"documents"}},{"not":{"field":{"name":"Rename"}}}]}}

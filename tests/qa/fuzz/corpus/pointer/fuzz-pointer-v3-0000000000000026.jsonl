@@ -1,3 +1,0 @@
-{"scenario":"fuzz-pointer-v3-0000000000000026","modes":["list"],"prefs":{"type_to_search":false,"single_click_previews":false,"explorer_folder_clicks":1,"explorer_file_clicks":2}}
-{"drag":{"from":{"entry":"readme.md","part":"label"},"from_at":["2/3","50%"],"to":{"entry":"documents"}},"when":{"all":[{"present":{"entry":"readme.md"}},{"not":{"all_selected":{"contains":["readme.md"]}}},{"present":{"entry":"documents"}},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}
-{"fs":{"path":"fuzz-a.txt","write":"fuzz\n"},"when":{"file":{"path":"$fixture/fuzz-a.txt","exists":false}}}

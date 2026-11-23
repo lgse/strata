@@ -42,9 +42,7 @@ pub(crate) fn every_scenario_file_is_planned_and_well_formed() {
         })
         .collect();
     expected.sort();
-    // Every file's runs, whatever targets it lists: `twin_tests.rs` has what a target plans.
-    let mut planned: Vec<String> = plan(&files, None, false)
-        .tests
+    let mut planned: Vec<String> = plan(&files, false)
         .into_iter()
         .filter(|test| test.group.is_some())
         .map(|test| test.name)

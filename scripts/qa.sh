@@ -3,7 +3,6 @@
 #   ./scripts/qa.sh                                  every scenario, every mode
 #   ./scripts/qa.sh arrow-keys-move-focus            one scenario (hyphens or underscores)
 #   ./scripts/qa.sh arrow-keys-move-focus/columns    one run of it
-# STRATA_QA_UPDATE_BASELINES=1 writes each `baseline` capture to tests/qa/baselines.
 set -euo pipefail
 
 unset DISPLAY WAYLAND_DISPLAY NOTIFY_SOCKET
@@ -65,7 +64,6 @@ qa_container_options --rm
 qa_container_mounts
 exec "$engine" run "${options[@]}" "${mounts[@]}" \
   --env "STRATA_QA_KEEP_ARTIFACTS=${STRATA_QA_KEEP_ARTIFACTS:-0}" \
-  --env "STRATA_QA_UPDATE_BASELINES=${STRATA_QA_UPDATE_BASELINES:-0}" \
   --env "STRATA_QA_NAMED=${named:-0}" \
   --env "STRATA_QA_MAIN_IO=${STRATA_QA_MAIN_IO:-}" \
   --env "STRATA_UI_STALL_MS=${STRATA_UI_STALL_MS:-}" \

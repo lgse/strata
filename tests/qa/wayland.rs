@@ -9,7 +9,7 @@
 use std::{
     fs::{self, File},
     path::{Path, PathBuf},
-    process::{Child, Command, Stdio},
+    process::{Command, Stdio},
     time::{Duration, Instant},
 };
 
@@ -45,23 +45,6 @@ for_window [app_id=\"{peer}\"] move position {peer_x} {peer_y}
 
 pub(crate) struct Sway {
     pub(crate) ipc: PathBuf,
-    runtime: PathBuf,
-}
-
-impl Sway {
-    pub(crate) fn screenshot(&self, socket: &str, destination: &Path) -> Result<Child, String> {
-        spawn(
-            Command::new("grim")
-                .arg(destination)
-                .env_clear()
-                .env("PATH", std::env::var_os("PATH").unwrap_or_default())
-                .env("XDG_RUNTIME_DIR", &self.runtime)
-                .env("WAYLAND_DISPLAY", socket)
-                .stdout(Stdio::null())
-                .stderr(Stdio::null()),
-        )
-        .map_err(|error| format!("cannot run grim: {error}"))
-    }
 }
 
 pub(crate) fn start(scratch: &Path, runtime: &Path) -> Result<Display, String> {
@@ -111,7 +94,6 @@ pub(crate) fn start(scratch: &Path, runtime: &Path) -> Result<Display, String> {
                 log,
                 kind: Server::Wayland(Sway {
                     ipc: runtime.join(ipc),
-                    runtime: runtime.to_owned(),
                 }),
             });
         }
